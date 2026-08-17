@@ -38,11 +38,11 @@ const defaultLogsClickhouseClient = singleton(
 );
 
 function initializeLogsSearchProjectorClickhouseClient() {
-  if (!env.LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL) {
-    throw new Error("LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL is not set");
+  if (!env.LOGS_CLICKHOUSE_URL) {
+    throw new Error("LOGS_CLICKHOUSE_URL is not set");
   }
 
-  const url = new URL(env.LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL);
+  const url = new URL(env.LOGS_CLICKHOUSE_URL);
   url.searchParams.delete("secure");
 
   return new ClickHouse({

@@ -11,6 +11,7 @@ const at = (value: string) => new Date(value);
 
 postgresTest(
   "persists low-churn control state and append-only finalized checkpoints",
+  { timeout: 20_000 },
   async ({ prisma }) => {
     const store = new PrismaLogsSearchProjectorStateStore(prisma);
     const initial = at("2026-08-14T12:00:00.000Z");

@@ -2097,11 +2097,10 @@ const EnvironmentSchema = z
     // Keep reads on v1 until the scheduled v2 projector has enough history.
     LOGS_SEARCH_TABLE_VERSION: z.enum(["v1", "v2"]).default("v1"),
 
-    // Scheduled logs-search projection. Disabled by default. The writer URL must reach both the
-    // task_events_v2 source and task_events_search_v2 destination tables.
+    // Scheduled logs-search projection. Disabled by default. LOGS_CLICKHOUSE_URL must reach both
+    // the task_events_v2 source and task_events_search_v2 destination tables.
     LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
     LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
-    LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL: z.string().optional(),
     LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
     LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
       .number()
@@ -2437,14 +2436,6 @@ const EnvironmentSchema = z
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)
   .superRefine((env, ctx) => {
-    if (env.LOGS_SEARCH_PROJECTOR_ENABLED && !env.LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["LOGS_SEARCH_PROJECTOR_CLICKHOUSE_URL"],
-        message: "Required when LOGS_SEARCH_PROJECTOR_ENABLED is true",
-      });
-    }
-
     const presets = new Set(env.COMPUTE_TEMPLATE_MACHINE_PRESETS);
     for (const required of env.COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED) {
       if (!presets.has(required)) {
