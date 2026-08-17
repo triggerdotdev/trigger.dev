@@ -1693,7 +1693,11 @@ export class RunQueue {
     const visibilityTimeoutMs = (ttlSystem.visibilityTimeoutMs ?? 30_000).toString();
 
     // Atomically get and remove expired runs from TTL set, ack them from normal queues, and enqueue to TTL worker
-    const results = await this.redis.expireTtlRunsTracked(
+    const expireTtlRuns = this.#ckVtimeEnabled
+      ? this.redis.expireTtlRunsVtimeTracked.bind(this.redis)
+      : this.redis.expireTtlRunsTracked.bind(this.redis);
+
+    const results = await expireTtlRuns(
       ttlQueueKey,
       keyPrefix,
       now.toString(),
@@ -2891,6 +2895,29 @@ export class RunQueue {
       const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(message.queue);
       const runningCounterKey = this.keys.queueRunningCounterKeyFromQueue(message.queue);
 
+      if (this.#ckVtimeEnabled) {
+        return this.redis.acknowledgeMessageCkVtimeTracked(
+          masterQueueKey,
+          messageKey,
+          messageQueue,
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueCurrentDequeuedKey,
+          envCurrentDequeuedKey,
+          envQueueKey,
+          workerQueueKey,
+          ckIndexKey,
+          lengthCounterKey,
+          runningCounterKey,
+          this.keys.ckVtimeKeyFromQueue(message.queue),
+          messageId,
+          messageQueue,
+          messageKeyValue,
+          removeFromWorkerQueue ? "1" : "0",
+          ckWildcardName
+        );
+      }
+
       return this.redis.acknowledgeMessageCkTracked(
         masterQueueKey,
         messageKey,
@@ -3111,23 +3138,44 @@ export class RunQueue {
       const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(message.queue);
       const runningCounterKey = this.keys.queueRunningCounterKeyFromQueue(message.queue);
 
-      await this.redis.moveToDeadLetterQueueCkTracked(
-        masterQueueKey,
-        messageKey,
-        messageQueue,
-        queueCurrentConcurrencyKey,
-        envCurrentConcurrencyKey,
-        queueCurrentDequeuedKey,
-        envCurrentDequeuedKey,
-        envQueueKey,
-        deadLetterQueueKey,
-        ckIndexKey,
-        lengthCounterKey,
-        runningCounterKey,
-        messageId,
-        messageQueue,
-        ckWildcardName
-      );
+      if (this.#ckVtimeEnabled) {
+        await this.redis.moveToDeadLetterQueueCkVtimeTracked(
+          masterQueueKey,
+          messageKey,
+          messageQueue,
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueCurrentDequeuedKey,
+          envCurrentDequeuedKey,
+          envQueueKey,
+          deadLetterQueueKey,
+          ckIndexKey,
+          lengthCounterKey,
+          runningCounterKey,
+          this.keys.ckVtimeKeyFromQueue(message.queue),
+          messageId,
+          messageQueue,
+          ckWildcardName
+        );
+      } else {
+        await this.redis.moveToDeadLetterQueueCkTracked(
+          masterQueueKey,
+          messageKey,
+          messageQueue,
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueCurrentDequeuedKey,
+          envCurrentDequeuedKey,
+          envQueueKey,
+          deadLetterQueueKey,
+          ckIndexKey,
+          lengthCounterKey,
+          runningCounterKey,
+          messageId,
+          messageQueue,
+          ckWildcardName
+        );
+      }
     } else {
       await this.redis.moveToDeadLetterQueue(
         masterQueueKey,
@@ -4665,6 +4713,118 @@ return results
       `,
     });
 
+    this.redis.defineCommand("expireTtlRunsVtimeTracked", {
+      numberOfKeys: 1,
+      lua: `
+local ttlQueueKey = KEYS[1]
+local keyPrefix = ARGV[1]
+local currentTime = tonumber(ARGV[2])
+local batchSize = tonumber(ARGV[3])
+local shardCount = tonumber(ARGV[4])
+local workerQueueKey = ARGV[5]
+local workerItemsKey = ARGV[6]
+local visibilityTimeoutMs = tonumber(ARGV[7])
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+local expiredMembers = redis.call('ZRANGEBYSCORE', ttlQueueKey, '-inf', currentTime, 'LIMIT', 0, batchSize)
+
+if #expiredMembers == 0 then
+  return {}
+end
+
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
+local results = {}
+
+for i, member in ipairs(expiredMembers) do
+  local pipePos1 = string.find(member, "|", 1, true)
+  if pipePos1 then
+    local pipePos2 = string.find(member, "|", pipePos1 + 1, true)
+    if pipePos2 then
+      local rawQueueKey = string.sub(member, 1, pipePos1 - 1)
+      local runId = string.sub(member, pipePos1 + 1, pipePos2 - 1)
+      local orgId = string.sub(member, pipePos2 + 1)
+
+      local queueKey = keyPrefix .. rawQueueKey
+
+      redis.call('ZREM', ttlQueueKey, member)
+
+      local orgKeyStart = string.find(rawQueueKey, "{org:", 1, true)
+      local orgKeyEnd = string.find(rawQueueKey, "}", orgKeyStart, true)
+      local orgFromQueue = string.sub(rawQueueKey, orgKeyStart + 5, orgKeyEnd - 1)
+
+      local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
+
+      redis.call('DEL', messageKey)
+
+      -- ZREM from queue; if successful AND this is a CK variant, DECR lengthCounter.
+      local removedFromZset = redis.call('ZREM', queueKey, runId)
+
+      local envMatch = string.match(rawQueueKey, ":env:([^:]+)")
+      if envMatch then
+        local envQueueKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. envMatch
+        redis.call('ZREM', envQueueKey, runId)
+      end
+
+      local concurrencyKey = queueKey .. ":currentConcurrency"
+      local dequeuedKey = queueKey .. ":currentDequeued"
+      redis.call('SREM', concurrencyKey, runId)
+      local removedFromDequeued = redis.call('SREM', dequeuedKey, runId)
+
+      local projMatch = string.match(rawQueueKey, ":proj:([^:]+):env:")
+      local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentConcurrency"
+      local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentDequeued"
+      redis.call('SREM', envConcurrencyKey, runId)
+      redis.call('SREM', envDequeuedKey, runId)
+
+      -- Rebalance CK index AND update counters if this is a CK queue
+      local ckMatch = string.match(rawQueueKey, "(.-):ck:")
+      if ckMatch then
+        local lengthCounterKey = keyPrefix .. ckMatch .. ":lengthCounter"
+        local runningCounterKey = keyPrefix .. ckMatch .. ":runningCounter"
+        if removedFromZset == 1 then
+          decrFloored(lengthCounterKey)
+        end
+        if removedFromDequeued == 1 then
+          decrFloored(runningCounterKey)
+        end
+
+        local ckIndexKey = keyPrefix .. ckMatch .. ":ckIndex"
+        local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+        if #earliest == 0 then
+          redis.call('ZREM', ckIndexKey, rawQueueKey)
+          -- NEW: derived rather than passed in, because this sweep discovers the queues it
+          -- touches inside the script, exactly as ckIndexKey above is derived.
+          redis.call('ZREM', keyPrefix .. ckMatch .. ":ckVtime", rawQueueKey)
+        else
+          redis.call('ZADD', ckIndexKey, earliest[2], rawQueueKey)
+        end
+      end
+
+      local serializedItem = cjson.encode({
+        job = "expireTtlRun",
+        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey },
+        visibilityTimeoutMs = visibilityTimeoutMs,
+        attempt = 0
+      })
+      redis.call('ZADD', workerQueueKey, nowMs, runId)
+      redis.call('HSET', workerItemsKey, runId, serializedItem)
+
+      table.insert(results, member)
+    end
+  end
+end
+
+return results
+      `,
+    });
+
     this.redis.defineCommand("dequeueMessagesFromQueue", {
       numberOfKeys: 10,
       lua: `
@@ -5891,6 +6051,94 @@ end
 `,
     });
 
+    this.redis.defineCommand("acknowledgeMessageCkVtimeTracked", {
+      numberOfKeys: 13,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local workerQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+local lengthCounterKey = KEYS[11]
+local runningCounterKey = KEYS[12]
+local ckVtimeKey = KEYS[13]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageKeyValue = ARGV[3]
+local removeFromWorkerQueue = ARGV[4]
+local ckWildcardName = ARGV[5]
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Remove the message from the message key
+redis.call('DEL', messageKey)
+
+-- Remove the message from the CK-specific queue. The ZREM is defensive — by
+-- ack time the message is normally in currentConcurrency, not the zset — but
+-- if it does remove something, the counter was tracking that entry so decr.
+local removedFromZset = redis.call('ZREM', messageQueueKey, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+if removedFromZset == 1 then
+  decrFloored(lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliestInCkQueue = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliestInCkQueue == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)
+  -- NEW: the variant has drained, so it leaves the fair order too. Previously only the
+  -- vtime dequeue removed a ckVtime entry, so an ack left one behind whose tag had
+  -- stopped advancing until some later scan happened to visit and collect it.
+  redis.call('ZREM', ckVtimeKey, messageQueueName)
+else
+  redis.call('ZADD', ckIndexKey, earliestInCkQueue[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestInCkIndex = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestInCkIndex == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
+
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry (the message was in flight).
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+
+-- Remove the message from the worker queue
+if removeFromWorkerQueue == '1' then
+  redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+end
+`,
+    });
+
     // Tracked variant: same as nackMessageCk. SREM currentDequeued may DECR
     // runningCounter (floored); ZADD back to the variant zset INCRs
     // lengthCounter only when ZADD reported a new entry.
@@ -6139,6 +6387,87 @@ end
 local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 if #earliest == 0 then
   redis.call('ZREM', ckIndexKey, messageQueueName)
+else
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
+
+-- Add the message to the dead letter queue
+redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
+
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry.
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+`,
+    });
+
+    this.redis.defineCommand("moveToDeadLetterQueueCkVtimeTracked", {
+      numberOfKeys: 13,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueue = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local deadLetterQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+local lengthCounterKey = KEYS[11]
+local runningCounterKey = KEYS[12]
+local ckVtimeKey = KEYS[13]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local ckWildcardName = ARGV[3]
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Remove the message from the CK-specific queue. ZREM may be a no-op if the
+-- message was already moved to currentConcurrency; only decr when it actually
+-- removes something.
+local removedFromZset = redis.call('ZREM', messageQueue, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+if removedFromZset == 1 then
+  decrFloored(lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+if #earliest == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)
+  -- NEW: the variant has drained, so it leaves the fair order too. Previously only the
+  -- vtime dequeue removed a ckVtime entry, so an ack left one behind whose tag had
+  -- stopped advancing until some later scan happened to visit and collect it.
+  redis.call('ZREM', ckVtimeKey, messageQueueName)
 else
   redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
 end
@@ -6965,6 +7294,28 @@ declare module "@internal/redis" {
       callback?: Callback<void>
     ): Result<void, Context>;
 
+    acknowledgeMessageCkVtimeTracked(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      workerQueueKey: string,
+      ckIndexKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      ckVtimeKey: string,
+      messageId: string,
+      messageQueueName: string,
+      messageKeyValue: string,
+      removeFromWorkerQueue: string,
+      ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
     nackMessageCkTracked(
       masterQueueKey: string,
       messageKey: string,
@@ -7031,7 +7382,39 @@ declare module "@internal/redis" {
       callback?: Callback<void>
     ): Result<void, Context>;
 
+    moveToDeadLetterQueueCkVtimeTracked(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      deadLetterQueueKey: string,
+      ckIndexKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      ckVtimeKey: string,
+      messageId: string,
+      messageQueueName: string,
+      ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
     expireTtlRunsTracked(
+      ttlQueueKey: string,
+      keyPrefix: string,
+      currentTime: string,
+      batchSize: string,
+      shardCount: string,
+      workerQueueKey: string,
+      workerItemsKey: string,
+      visibilityTimeoutMs: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+
+    expireTtlRunsVtimeTracked(
       ttlQueueKey: string,
       keyPrefix: string,
       currentTime: string,
