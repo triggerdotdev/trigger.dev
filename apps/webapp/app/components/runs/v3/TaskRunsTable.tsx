@@ -34,7 +34,6 @@ import {
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
-import { cn } from "~/utils/cn";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -75,6 +74,7 @@ import {
   type SmartColumnSource,
 } from "./runColumns";
 import { extractSmartValue, parseSource, type ParsedSource } from "./smartColumnData";
+import { isNumericSmartDisplay, SmartCellContent } from "./smartColumnCell";
 
 type RunsTableProps = {
   total: number;
@@ -490,36 +490,6 @@ function SmartColumnHeader({ def }: { def: SmartColumnDef }) {
   );
 }
 
-function stringifySmartValue(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function renderSmartValue(value: unknown, def: SmartColumnDef): React.ReactNode {
-  switch (def.displayAs) {
-    case "number": {
-      const n = typeof value === "number" ? value : Number(value);
-      return Number.isFinite(n) ? n.toLocaleString() : stringifySmartValue(value);
-    }
-    case "duration": {
-      const n = typeof value === "number" ? value : Number(value);
-      return Number.isFinite(n)
-        ? formatDurationMilliseconds(n, { style: "short" })
-        : stringifySmartValue(value);
-    }
-    case "badge":
-      return <Badge variant="extra-small">{stringifySmartValue(value)}</Badge>;
-    default:
-      return stringifySmartValue(value);
-  }
-}
-
 function SmartColumnCell({
   def,
   run,
@@ -531,40 +501,12 @@ function SmartColumnCell({
   path: string;
   parsed: ParsedSource | undefined;
 }) {
-  const numeric = def.displayAs === "number" || def.displayAs === "duration";
+  const numeric = isNumericSmartDisplay(def.displayAs);
   const cell = extractSmartValue(parsed ?? { state: "empty" }, def.path);
-
-  if (cell.state === "offloaded") {
-    return (
-      <TableCell to={path}>
-        <SimpleTooltip
-          disableHoverableContent
-          button={
-            <span className="border-b border-dotted border-amber-500/60 text-amber-500">
-              Too large
-            </span>
-          }
-          content={`This run's ${def.source} is offloaded to object storage instead of the run row. Open the run to read it.`}
-        />
-      </TableCell>
-    );
-  }
-
-  if (cell.state === "empty") {
-    return (
-      <TableCell to={path} className={numeric ? "tabular-nums" : undefined}>
-        –
-      </TableCell>
-    );
-  }
-
-  const provisional = !run.hasFinished;
 
   return (
     <TableCell to={path} className={numeric ? "text-right tabular-nums" : undefined}>
-      <span className={cn(provisional && "border-b border-dotted border-text-dimmed/50")}>
-        {renderSmartValue(cell.value, def)}
-      </span>
+      <SmartCellContent cell={cell} def={def} provisional={!run.hasFinished} />
     </TableCell>
   );
 }

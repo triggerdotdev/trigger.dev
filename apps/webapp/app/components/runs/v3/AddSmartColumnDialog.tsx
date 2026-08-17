@@ -24,6 +24,7 @@ import {
   type ParsedSource,
 } from "./smartColumnData";
 import { SmartColumnSample } from "./SmartColumnSample";
+import { isNumericSmartDisplay, SmartCellContent } from "./smartColumnCell";
 import type { loader as sampleLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.smart-column-sample";
 
 type AddSmartColumnDialogProps = {
@@ -98,36 +99,39 @@ export function AddSmartColumnDialog({
   const sampleLoaded = sample.data !== undefined && sample.state === "idle";
   const sampleData = sample.data;
 
-  const { usable, anyOffloaded, runCount } = useMemo(() => {
+  const { perRun, usable, anyOffloaded, runCount } = useMemo(() => {
     const runs = sampleData?.runs ?? [];
-    const parsed = runs.map((run) => {
-      switch (source) {
-        case "payload":
-          return parseSource({ data: run.payload, dataType: run.payloadType });
-        case "metadata":
-          return parseSource({ data: run.metadata, dataType: run.metadataType });
-        case "output":
-          return parseSource({ data: run.output, dataType: run.outputType });
-      }
-    });
+    const perRun = runs.map((run) => ({
+      hasFinished: run.hasFinished,
+      parsed:
+        source === "payload"
+          ? parseSource({ data: run.payload, dataType: run.payloadType })
+          : source === "metadata"
+            ? parseSource({ data: run.metadata, dataType: run.metadataType })
+            : parseSource({ data: run.output, dataType: run.outputType }),
+    }));
     return {
       runCount: runs.length,
-      anyOffloaded: parsed.some((p) => p.state === "offloaded"),
-      usable: parsed.filter(
-        (p): p is Extract<ParsedSource, { state: "parsed" }> => p.state === "parsed"
+      perRun,
+      anyOffloaded: perRun.some((r) => r.parsed.state === "offloaded"),
+      usable: perRun.filter(
+        (r): r is { hasFinished: boolean; parsed: Extract<ParsedSource, { state: "parsed" }> } =>
+          r.parsed.state === "parsed"
       ),
     };
   }, [sampleData, source]);
 
   const activeIndex = usable.length > 0 ? Math.min(sampleIndex, usable.length - 1) : 0;
-  const activeSample = usable[activeIndex];
-
-  const resolved = useMemo(() => {
-    if (!activeSample || path.trim().length === 0) return undefined;
-    return extractSmartValue(activeSample, path);
-  }, [activeSample, path]);
+  const activeSample = usable[activeIndex]?.parsed;
 
   const canSubmit = path.trim().length > 0;
+
+  const previewDef: SmartColumnDef = {
+    source,
+    path: path.trim(),
+    label: effectiveLabel,
+    displayAs,
+  };
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -137,7 +141,7 @@ export function AddSmartColumnDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[820px]!">
+      <DialogContent className="sm:max-w-[1040px]!">
         <DialogHeader>{editing ? "Edit smart column" : "Add smart column"}</DialogHeader>
         <div className="flex flex-col gap-5 p-1">
           <Callout variant="info">
@@ -145,7 +149,7 @@ export function AddSmartColumnDialog({
             the list by it. To narrow the list, use tags or the query editor.
           </Callout>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_300px]">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_260px_220px]">
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-1.5">
                 <Label>Source</Label>
@@ -253,10 +257,11 @@ export function AddSmartColumnDialog({
                   No recent run has a {source} value to sample.
                 </Paragraph>
               )}
-              <Paragraph variant="extra-extra-small/dimmed/caps" className="mt-2">
-                Resolves to
-              </Paragraph>
-              <SmartColumnResolvedPreview label={effectiveLabel} resolved={resolved} />
+            </div>
+
+            <div className="flex flex-col gap-1.5 self-start">
+              <Paragraph variant="extra-extra-small/dimmed/caps">Preview</Paragraph>
+              <SmartColumnPreview rows={perRun} def={previewDef} loaded={sampleLoaded} />
             </div>
           </div>
         </div>
@@ -347,27 +352,50 @@ function SourceCard({
   );
 }
 
-function SmartColumnResolvedPreview({
-  label,
-  resolved,
+function SmartColumnPreview({
+  rows,
+  def,
+  loaded,
 }: {
-  label: string;
-  resolved: ReturnType<typeof extractSmartValue> | undefined;
+  rows: { hasFinished: boolean; parsed: ParsedSource }[];
+  def: SmartColumnDef;
+  loaded: boolean;
 }) {
-  let value: string;
-  if (!resolved) value = "–";
-  else if (resolved.state === "offloaded") value = "Too large";
-  else if (resolved.state === "empty") value = "–";
-  else if (typeof resolved.value === "object") value = JSON.stringify(resolved.value);
-  else value = String(resolved.value);
+  const numeric = isNumericSmartDisplay(def.displayAs);
+  const alignClass = numeric ? "justify-end text-right tabular-nums" : "justify-start text-left";
 
   return (
-    <div className="rounded border border-grid-dimmed">
-      <div className="flex items-center gap-1 border-b border-grid-dimmed px-2 py-1">
+    <div className="overflow-hidden rounded-lg border border-grid-dimmed">
+      <div className="flex items-center gap-1 border-b border-grid-dimmed bg-background-dimmed px-2.5 py-1.5">
         <BoltIcon className="size-3.5 flex-none text-text-dimmed" />
-        <span className="truncate text-xs text-text-bright">{label || "Column"}</span>
+        <span className="truncate text-xs font-medium text-text-bright">
+          {def.label || "Column"}
+        </span>
       </div>
-      <div className="px-2 py-1.5 text-right text-sm tabular-nums text-text-bright">{value}</div>
+      <div className="max-h-80 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        {!loaded ? (
+          <div className="px-2.5 py-2 text-xs text-text-dimmed">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="px-2.5 py-2 text-xs text-text-dimmed">No runs</div>
+        ) : (
+          rows.map((row, index) => {
+            const cell = def.path
+              ? extractSmartValue(row.parsed, def.path)
+              : ({ state: "empty" } as const);
+            return (
+              <div
+                key={index}
+                className={cn(
+                  "flex h-8 items-center border-b border-grid-dimmed/60 px-2.5 text-sm last:border-b-0",
+                  alignClass
+                )}
+              >
+                <SmartCellContent cell={cell} def={def} provisional={!row.hasFinished} />
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
