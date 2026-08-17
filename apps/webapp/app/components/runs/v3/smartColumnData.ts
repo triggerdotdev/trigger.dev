@@ -57,11 +57,20 @@ export function extractSmartValue(parsed: ParsedSource, path: string): SmartCell
 
 const PATH_TOKEN_RE = /\.([^.[\]]+)|\[(\d+)\]|\['([^']*)'\]|\["([^"]*)"\]/g;
 
+type PathToken =
+  | { kind: "dot"; key: string }
+  | { kind: "key"; key: string }
+  | { kind: "index"; index: number };
+
 /**
  * Read a value out of a parsed object with dot/bracket notation. Accepts a
  * leading `$`, dotted keys, and numeric or quoted bracket indices, e.g.
  * `$.failed`, `suites[0].name`, `$['a.b'].c`. Returns undefined when any
  * segment is missing.
+ *
+ * A dot-accessed `.length` is computed: array/string length, or an object's
+ * key count. To read a real property literally named `length`, use a bracket
+ * key (`['length']`).
  */
 export function getAtPath(root: unknown, path: string): unknown {
   let normalized = path.trim();
@@ -71,7 +80,7 @@ export function getAtPath(root: unknown, path: string): unknown {
     normalized = `.${normalized}`;
   }
 
-  const tokens: (string | number)[] = [];
+  const tokens: PathToken[] = [];
   let lastIndex = 0;
   PATH_TOKEN_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -79,18 +88,31 @@ export function getAtPath(root: unknown, path: string): unknown {
     if (match.index !== lastIndex) return undefined;
     lastIndex = PATH_TOKEN_RE.lastIndex;
 
-    if (match[1] !== undefined) tokens.push(match[1]);
-    else if (match[2] !== undefined) tokens.push(Number(match[2]));
-    else if (match[3] !== undefined) tokens.push(match[3]);
-    else if (match[4] !== undefined) tokens.push(match[4]);
+    if (match[1] !== undefined) tokens.push({ kind: "dot", key: match[1] });
+    else if (match[2] !== undefined) tokens.push({ kind: "index", index: Number(match[2]) });
+    else if (match[3] !== undefined) tokens.push({ kind: "key", key: match[3] });
+    else if (match[4] !== undefined) tokens.push({ kind: "key", key: match[4] });
   }
   if (lastIndex !== normalized.length) return undefined;
 
   let current: unknown = root;
   for (const token of tokens) {
     if (current === null || current === undefined) return undefined;
+
+    if (token.kind === "dot" && token.key === "length") {
+      if (Array.isArray(current) || typeof current === "string") {
+        current = current.length;
+      } else if (typeof current === "object") {
+        current = Object.keys(current).length;
+      } else {
+        return undefined;
+      }
+      continue;
+    }
+
     if (typeof current !== "object") return undefined;
-    current = (current as Record<string | number, unknown>)[token];
+    const key = token.kind === "index" ? token.index : token.key;
+    current = (current as Record<string | number, unknown>)[key];
   }
   return current;
 }

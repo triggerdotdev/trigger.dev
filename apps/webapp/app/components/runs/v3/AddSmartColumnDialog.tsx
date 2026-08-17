@@ -177,7 +177,8 @@ export function AddSmartColumnDialog({
                   />
                   <Paragraph variant="extra-small" className="text-text-dimmed">
                     Dot and bracket notation, e.g. <code>$.order.total</code> or{" "}
-                    <code>$.items[0].sku</code>.
+                    <code>$.items[0].sku</code>. Use <code>.length</code> for an array, string, or
+                    key count.
                   </Paragraph>
                 </div>
                 <div className="flex flex-col gap-1.5">

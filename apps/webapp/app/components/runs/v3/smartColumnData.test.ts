@@ -93,6 +93,19 @@ describe("getAtPath", () => {
     expect(getAtPath(obj, "$.a..b")).toBeUndefined();
     expect(getAtPath(obj, "$.a[b]")).toBeUndefined();
   });
+
+  it("computes a dot-accessed .length for arrays, strings, and objects", () => {
+    const data = { tags: ["a", "b", "c"], name: "hello", info: { x: 1, y: 2 }, count: 5 };
+    expect(getAtPath(data, "$.tags.length")).toBe(3);
+    expect(getAtPath(data, "$.name.length")).toBe(5);
+    expect(getAtPath(data, "$.info.length")).toBe(2);
+    expect(getAtPath(data, "$.count.length")).toBeUndefined();
+  });
+
+  it("treats a bracket-quoted ['length'] as a literal key, not the computed length", () => {
+    expect(getAtPath({ length: 42 }, "$['length']")).toBe(42);
+    expect(getAtPath({ length: 42 }, "$.length")).toBe(1);
+  });
 });
 
 describe("extractSmartValue", () => {
