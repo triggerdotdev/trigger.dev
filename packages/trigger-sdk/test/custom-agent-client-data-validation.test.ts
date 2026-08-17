@@ -421,6 +421,98 @@ describe("chat.customAgent clientData validation", () => {
     }
   });
 
+  it("exits without a turn when a handover-prepare boot has invalid clientData and the warm handler skips", async () => {
+    const clientData: { userId: unknown } = { userId: 123 };
+    let runCalls = 0;
+
+    const agent = chat.withClientData({ schema: z.object({ userId: z.string() }) }).customAgent({
+      id: "custom-agent-client-data-handover-skip",
+      run: async () => {
+        runCalls++;
+        await chat.writeTurnComplete();
+      },
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "custom-agent-client-data-handover-skip-chat",
+      mode: "handover-prepare",
+      clientData,
+    });
+
+    try {
+      await waitFor(() =>
+        harness.allChunks.some((chunk) => (chunk as { type?: string }).type === "error")
+      );
+      expect(runCalls).toBe(0);
+
+      // The recovery path must drain the skip via the handover facade and
+      // end the run, mirroring the normal handover-skip exit.
+      await harness.sendHandoverSkip();
+
+      // The run has exited — a valid frame must NOT boot the loop. (Without
+      // the drain, the run would still be sitting in the message wait and
+      // would process it.) Fire-and-forget: no turn-complete will arrive.
+      clientData.userId = "user_123";
+      void harness.sendMessage(userMessage("late", "message-1")).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(runCalls).toBe(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("drops the head-start partial and recovers on the next valid frame when a handover-prepare boot has invalid clientData", async () => {
+    const clientData: { userId: unknown } = { userId: 123 };
+    let runCalls = 0;
+    let receivedTrigger: string | undefined;
+    let receivedClientData: unknown;
+
+    const agent = chat.withClientData({ schema: z.object({ userId: z.string() }) }).customAgent({
+      id: "custom-agent-client-data-handover-drop",
+      run: async (payload) => {
+        runCalls++;
+        receivedTrigger = payload.trigger;
+        receivedClientData = payload.metadata;
+        await chat.writeTurnComplete();
+      },
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "custom-agent-client-data-handover-drop-chat",
+      mode: "handover-prepare",
+      clientData,
+    });
+
+    try {
+      await waitFor(() =>
+        harness.allChunks.some((chunk) => (chunk as { type?: string }).type === "error")
+      );
+      expect(runCalls).toBe(0);
+
+      // Resolves on the next turn-complete — the recovered message turn below.
+      const handover = harness.sendHandover({
+        partialAssistantMessage: [
+          { role: "assistant", content: [{ type: "text", text: "warm partial" }] },
+        ],
+      });
+      // Let the recovery drain consume the handover signal before the
+      // message frame goes out — a frame arriving mid-drain would be
+      // discarded by the handover facade (same as the pre-existing turn-0
+      // handover wait in chat.createSession).
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      clientData.userId = "user_123";
+      await harness.sendMessage(userMessage("retry", "message-1"));
+      await handover;
+
+      expect(runCalls).toBe(1);
+      expect(receivedTrigger).toBe("submit-message");
+      expect(receivedClientData).toEqual({ userId: "user_123" });
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("passes clientData through unchanged when no schema is configured", async () => {
     const clientData = { userId: "user_123", nested: { enabled: true } };
     let initialClientData: unknown;

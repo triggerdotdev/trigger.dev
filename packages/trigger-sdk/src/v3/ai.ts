@@ -5539,10 +5539,13 @@ type ChatCustomAgentOptions<
    * `chat.messages.on()` cannot safely complete a turn that may still be
    * streaming, so subscribed frames are reported through this callback and
    * the task log instead.
+   *
+   * `payload.metadata` is typed `unknown`: this callback only fires when
+   * the metadata failed to parse, so it can be any shape the client sent.
    */
   onClientDataValidationError?: (event: {
     error: unknown;
-    payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+    payload: ChatTaskWirePayload<TUIMessage, unknown>;
   }) => Promise<void> | void;
   run: TaskOptions<
     TIdentifier,
@@ -5625,6 +5628,28 @@ function chatCustomAgent<
         return userRun(
           validated.payload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
           runOptions
+        );
+      }
+
+      // A handover-prepare boot parks the warm handler's signal on
+      // `session.in`. Drain it with the handover facade BEFORE the message
+      // wait below — that facade consumes-and-discards non-message chunks
+      // and would swallow the signal (see `waitForHandover`). The warm
+      // partial cannot be spliced without valid clientData: mirror the
+      // normal flow for skip/crash (exit without a turn) and drop a real
+      // partial — the error chunk above already reported the failure.
+      if (payload.trigger === "handover-prepare") {
+        const signal = await waitForHandover({
+          payload,
+          timeout: "1h",
+          spanName: "waiting for handover signal (invalid clientData)",
+        });
+        if (!signal || signal.kind === "handover-skip") {
+          return;
+        }
+        logger.warn(
+          "chat.customAgent: dropping head-start handover partial — clientData failed validation",
+          { chatId: payload.chatId, isFinal: signal.isFinal }
         );
       }
 
@@ -8561,7 +8586,10 @@ export interface ChatBuilder<
         options: ChatCustomAgentOptions<TId, undefined, TUIMessage>
       ) => Task<TId, ChatTaskWirePayload<TUIMessage, undefined>, unknown>
     : <TId extends string>(
-        options: ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>
+        options: Omit<
+          ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>,
+          "clientDataSchema"
+        >
       ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 }
 

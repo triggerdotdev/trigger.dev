@@ -23,7 +23,7 @@ Inside the wrapper, pick one of two loop styles:
 
 Use `chat.withClientData({ schema })` to validate `payload.metadata`. Custom agents parse the initial payload and later message and action frames before passing them to `run`, `chat.messages`, or `chat.createSession`. Schema defaults and transforms are included in the value your code receives. Close frames are not validated.
 
-If validation fails in `run`, `chat.createSession()`, or an async read such as `wait()`, the SDK writes an error chunk followed by `turn-complete` and skips the invalid frame. The invalid value never reaches your run handler or turn loop. If the initial payload is invalid, the task waits for the next valid frame instead of starting `run` with bad data. Without a schema, metadata is passed through unchanged.
+If validation fails in `run`, `chat.createSession()`, or an async read such as `wait()`, the SDK writes an error chunk followed by `turn-complete` and skips the invalid frame. The invalid value never reaches your run handler or turn loop. If the initial payload is invalid, the task waits for the next valid frame instead of starting `run` with bad data. On a [head-start handover](/ai-chat/fast-starts#handover-with-custom-agents) boot with invalid client data, the SDK drains the warm handover signal first: a skip ends the run, and a real handover partial is discarded with a logged warning. Without a schema, metadata is passed through unchanged.
 
 `chat.messages.on()` is different because a subscribed frame can arrive while the current response is still streaming. Ending the turn at that point would cut off the response. The SDK skips the frame, logs the validation error, and calls `onClientDataValidationError` if you set it:
 
