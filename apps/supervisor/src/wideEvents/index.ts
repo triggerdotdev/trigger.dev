@@ -14,7 +14,6 @@ export {
   runWideEvent,
   setExtra,
   setMeta,
-  type WideEventLifecycleOptions,
   type WideEventOptions,
 } from "./middleware.js";
 export type { ErrorInfo, PhaseRecord, State } from "./state.js";
