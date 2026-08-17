@@ -170,6 +170,10 @@ export function organizationSettingsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings`;
 }
 
+export function organizationSupportPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/support`;
+}
+
 export function organizationIntegrationsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings/integrations`;
 }

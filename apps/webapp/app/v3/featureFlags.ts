@@ -35,6 +35,11 @@ export const FEATURE_FLAG = {
   // System-wide kill switch for additional (scoped) environment API-key lookup.
   // Defaults off; enable during rollout once the new lookup path is trusted.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
+  // Gates the private Slack support channel. Off by default: the feature only
+  // works once the plan entitlement and the Slack app scopes are both live, and
+  // those ship independently of this code. Per-organization override supported,
+  // so a single org can be switched on first.
+  supportChannelEnabled: "supportChannelEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -100,6 +105,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
+  [FEATURE_FLAG.supportChannelEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

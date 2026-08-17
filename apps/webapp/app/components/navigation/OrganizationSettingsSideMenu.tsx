@@ -19,6 +19,7 @@ import {
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationSsoPath,
+  organizationSupportPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
   v3BillingLimitsPath,
@@ -49,11 +50,13 @@ export function OrganizationSettingsSideMenu({
   buildInfo,
   isUsingPlugin,
   isSsoUsingPlugin,
+  supportChannelEnabled,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
   isSsoUsingPlugin: boolean;
+  supportChannelEnabled: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
@@ -135,6 +138,17 @@ export function OrganizationSettingsSideMenu({
             to={organizationTeamPath(organization)}
             data-action="team"
           />
+          {isManagedCloud && supportChannelEnabled && (
+            <SideMenuItem
+              name="Support"
+              icon={SlackIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
+              iconClassName="size-4 ml-0.5"
+              to={organizationSupportPath(organization)}
+              data-action="support"
+            />
+          )}
           {featureFlags.hasPrivateConnections && (
             <SideMenuItem
               name="Private Connections"

@@ -43,6 +43,10 @@ export default function Page() {
               to: "/admin/notifications",
             },
             {
+              label: "Slack Channels",
+              to: "/admin/slack-channels",
+            },
+            {
               label: "Back office",
               to: "/admin/back-office",
               end: false,

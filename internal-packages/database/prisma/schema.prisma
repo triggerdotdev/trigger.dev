@@ -245,6 +245,7 @@ model Organization {
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
   organizationIntegrations OrganizationIntegration[]
+  supportChannel           OrganizationSupportChannel?
   organizationAccessTokens OrganizationAccessToken[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
@@ -3342,4 +3343,31 @@ model OrganizationDataStore {
   updatedAt       DateTime      @updatedAt
 
   @@index([kind])
+}
+
+enum OrganizationSupportChannelStatus {
+  PENDING
+  PROVISIONING
+  INVITED
+  FAILED
+  LINKED
+  ARCHIVED
+}
+
+model OrganizationSupportChannel {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String       @unique
+
+  status OrganizationSupportChannelStatus @default(PENDING)
+
+  slackChannelId   String? @unique
+  slackChannelName String?
+  inviteUrl        String?
+  invitedEmail     String?
+  lastError        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
