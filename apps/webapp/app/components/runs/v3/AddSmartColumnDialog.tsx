@@ -78,7 +78,7 @@ export function AddSmartColumnDialog({
   }, [organization.slug, project.slug, environment.slug, currentSearch]);
 
   useEffect(() => {
-    if (open && sample.state === "idle" && sample.data === undefined) {
+    if (open && sample.state === "idle") {
       sample.load(sampleUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,6 +86,7 @@ export function AddSmartColumnDialog({
 
   const effectiveLabel = labelEdited ? label : labelFromPath(path);
 
+  const sampleLoaded = sample.data !== undefined && sample.state === "idle";
   const sampleRuns = sample.data?.runs ?? [];
   const clampedIndex = sampleRuns.length > 0 ? Math.min(sampleIndex, sampleRuns.length - 1) : 0;
   const sampleRun = sampleRuns[clampedIndex] ?? null;
@@ -210,7 +211,7 @@ export function AddSmartColumnDialog({
                   />
                 )}
               </div>
-              {sample.state === "loading" ? (
+              {!sampleLoaded ? (
                 <Paragraph variant="extra-small" className="text-text-dimmed">
                   Loading…
                 </Paragraph>
