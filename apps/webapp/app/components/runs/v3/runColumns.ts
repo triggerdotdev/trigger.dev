@@ -254,21 +254,28 @@ export type ResolvedColumn =
   | { kind: "standard"; def: StandardColumnDef }
   | { kind: "smart"; index: number; def: SmartColumnDef };
 
+/** A column in the popover's full display order, with its current visibility. */
+export type LayoutColumn = { col: ResolvedColumn; hidden: boolean };
+
 export type ColumnLayout = {
-  /** Visible columns in display order. */
+  /** Every column in display order, hidden ones included (drives the popover). */
+  ordered: LayoutColumn[];
+  /** Shown columns in display order (drives the table). */
   visible: ResolvedColumn[];
-  /** Available standard columns that are currently hidden, in default order. */
-  hiddenStandard: StandardColumnDef[];
   /** All decoded smart columns (visible or not), indexed by position. */
   smartColumns: SmartColumnDef[];
   /** Whether the layout differs from the default (drives "Reset to default"). */
   isCustomized: boolean;
 };
 
+/** A hidden column is written into `cols` with this prefix, keeping its slot. */
+const HIDDEN_PREFIX = "-";
+
 /**
- * Resolve the on-screen layout from the URL params and the runtime gates. When
- * `cols` is absent the default layout (all available standard columns in
- * default order, no smart columns) is returned and `sc` is ignored.
+ * Resolve the on-screen layout from the URL params and the runtime gates. `cols`
+ * carries the full column order; a `-`-prefixed token is hidden but keeps its
+ * position. When `cols` is absent the default layout (all available standard
+ * columns in default order, nothing hidden) is returned and `sc` is ignored.
  */
 export function resolveColumnLayout(
   params: { cols: string[]; sc: string[] },
@@ -281,61 +288,62 @@ export function resolveColumnLayout(
     .filter((c): c is SmartColumnDef => c !== undefined);
 
   if (params.cols.length === 0) {
-    return {
-      visible: available.map((def) => ({ kind: "standard", def })),
-      hiddenStandard: [],
-      smartColumns,
-      isCustomized: false,
-    };
+    const ordered = available.map<LayoutColumn>((def) => ({
+      col: { kind: "standard", def },
+      hidden: false,
+    }));
+    return { ordered, visible: ordered.map((o) => o.col), smartColumns, isCustomized: false };
   }
 
-  const visible: ResolvedColumn[] = [];
+  const ordered: LayoutColumn[] = [];
   const seenStandard = new Set<RunColumnId>();
 
   for (const token of params.cols) {
-    const smartIndex = parseSmartColumnRef(token);
+    const hidden = token.startsWith(HIDDEN_PREFIX);
+    const base = hidden ? token.slice(HIDDEN_PREFIX.length) : token;
+
+    const smartIndex = parseSmartColumnRef(base);
     if (smartIndex !== undefined) {
       const def = smartColumns[smartIndex];
-      if (def) visible.push({ kind: "smart", index: smartIndex, def });
+      if (def) ordered.push({ col: { kind: "smart", index: smartIndex, def }, hidden });
       continue;
     }
 
-    if (seenStandard.has(token as RunColumnId)) continue;
-    const def = availableById.get(token as RunColumnId);
+    if (seenStandard.has(base as RunColumnId)) continue;
+    const def = availableById.get(base as RunColumnId);
     if (!def) continue;
-    visible.push({ kind: "standard", def });
+    ordered.push({ col: { kind: "standard", def }, hidden: hidden && !def.locked });
     seenStandard.add(def.id);
   }
 
-  ensureLockedColumnsPresent(visible, seenStandard, available);
+  ensureAllStandardColumnsPresent(ordered, seenStandard, available);
 
-  const hiddenStandard = available.filter((def) => !def.locked && !seenStandard.has(def.id));
-
-  return { visible, hiddenStandard, smartColumns, isCustomized: true };
+  const visible = ordered.filter((o) => !o.hidden).map((o) => o.col);
+  return { ordered, visible, smartColumns, isCustomized: true };
 }
 
 /**
- * Locked columns can never be hidden, so a `cols` param that omits one (a
- * hand-edited or stale URL) gets it reinserted at its default-order position.
+ * Any available standard column missing from `cols` (a locked column, or one
+ * added after a URL was saved) is inserted, shown, at its default position.
  */
-function ensureLockedColumnsPresent(
-  visible: ResolvedColumn[],
+function ensureAllStandardColumnsPresent(
+  ordered: LayoutColumn[],
   seenStandard: Set<RunColumnId>,
   available: StandardColumnDef[]
 ): void {
   const defaultIndex = new Map(available.map((def, index) => [def.id, index] as const));
   for (const def of available) {
-    if (!def.locked || seenStandard.has(def.id)) continue;
+    if (seenStandard.has(def.id)) continue;
     const target = defaultIndex.get(def.id) ?? 0;
-    let insertAt = visible.length;
-    for (let i = 0; i < visible.length; i++) {
-      const col = visible[i];
+    let insertAt = ordered.length;
+    for (let i = 0; i < ordered.length; i++) {
+      const { col } = ordered[i];
       if (col.kind === "standard" && (defaultIndex.get(col.def.id) ?? 0) > target) {
         insertAt = i;
         break;
       }
     }
-    visible.splice(insertAt, 0, { kind: "standard", def });
+    ordered.splice(insertAt, 0, { col: { kind: "standard", def }, hidden: false });
     seenStandard.add(def.id);
   }
 }
@@ -345,15 +353,17 @@ function ensureLockedColumnsPresent(
  * default layout so the URL stays clean (the caller deletes both keys).
  */
 export function encodeColumnLayout(
-  visible: ResolvedColumn[],
+  ordered: LayoutColumn[],
   runtime: RunColumnRuntime
 ): { cols: string[]; sc: string[] } {
   const available = availableStandardColumns(runtime);
-  const hasSmart = visible.some((c) => c.kind === "smart");
+  const hasSmart = ordered.some((o) => o.col.kind === "smart");
   const isDefault =
     !hasSmart &&
-    visible.length === available.length &&
-    visible.every((c, i) => c.kind === "standard" && c.def.id === available[i]?.id);
+    ordered.length === available.length &&
+    ordered.every(
+      (o, i) => o.col.kind === "standard" && o.col.def.id === available[i]?.id && !o.hidden
+    );
 
   if (isDefault) {
     return { cols: [], sc: [] };
@@ -361,7 +371,7 @@ export function encodeColumnLayout(
 
   const sc: string[] = [];
   const smartRefByIndex = new Map<number, string>();
-  for (const col of visible) {
+  for (const { col } of ordered) {
     if (col.kind === "smart") {
       const ref = smartColumnRef(sc.length);
       smartRefByIndex.set(col.index, ref);
@@ -369,9 +379,10 @@ export function encodeColumnLayout(
     }
   }
 
-  const cols = visible.map((col) =>
-    col.kind === "standard" ? col.def.id : (smartRefByIndex.get(col.index) as string)
-  );
+  const cols = ordered.map(({ col, hidden }) => {
+    const base = col.kind === "standard" ? col.def.id : (smartRefByIndex.get(col.index) as string);
+    return hidden ? `${HIDDEN_PREFIX}${base}` : base;
+  });
 
   return { cols, sc };
 }

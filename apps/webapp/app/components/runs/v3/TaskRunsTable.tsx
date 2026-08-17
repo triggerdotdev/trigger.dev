@@ -2,7 +2,7 @@ import {
   ArrowPathIcon,
   ArrowRightIcon,
   ClockIcon,
-  CodeBracketIcon,
+  VariableIcon,
   CpuChipIcon,
   NoSymbolIcon,
   RectangleStackIcon,
@@ -482,7 +482,7 @@ function SmartColumnHeader({ def }: { def: SmartColumnDef }) {
   return (
     <TableHeaderCell>
       <span className="flex items-center gap-1">
-        <CodeBracketIcon className="size-3.5 flex-none text-text-dimmed" />
+        <VariableIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate">{def.label}</span>
       </span>
     </TableHeaderCell>

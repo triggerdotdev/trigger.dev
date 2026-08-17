@@ -82,42 +82,60 @@ describe("availableStandardColumns gating", () => {
   });
 });
 
+const orderedIds = (layout: { ordered: { col: ResolvedColumn }[] }) =>
+  layout.ordered.map((o) => (o.col.kind === "standard" ? o.col.def.id : o.col.def.label));
+
+const visibleIds = (layout: { visible: ResolvedColumn[] }) =>
+  layout.visible.map((c) => (c.kind === "standard" ? c.def.id : c.def.label));
+
 describe("resolveColumnLayout", () => {
   it("returns the default layout when cols is absent", () => {
     const layout = resolveColumnLayout({ cols: [], sc: [] }, cloud);
     expect(layout.isCustomized).toBe(false);
-    expect(layout.hiddenStandard).toHaveLength(0);
-    expect(layout.visible[0]).toMatchObject({ kind: "standard", def: { id: "id" } });
+    expect(layout.ordered.every((o) => !o.hidden)).toBe(true);
+    expect(layout.ordered[0].col).toMatchObject({ kind: "standard", def: { id: "id" } });
     expect(layout.visible).toHaveLength(availableStandardColumns(cloud).length);
   });
 
-  it("keeps locked columns in the requested order (they are reorderable)", () => {
+  it("keeps every column in the requested order (columns are reorderable)", () => {
     const layout = resolveColumnLayout({ cols: ["task", "status", "id"], sc: [] }, cloud);
-    const ids = layout.visible.map((c) => (c.kind === "standard" ? c.def.id : "smart"));
-    expect(ids).toEqual(["task", "status", "id"]);
+    expect(orderedIds(layout).slice(0, 3)).toEqual(["task", "status", "id"]);
   });
 
-  it("moves omitted standard columns into hiddenStandard", () => {
-    const layout = resolveColumnLayout({ cols: ["id", "task", "status"], sc: [] }, cloud);
-    const hidden = layout.hiddenStandard.map((c) => c.id);
-    expect(hidden).toContain("tags");
-    expect(hidden).toContain("ttl");
-    expect(hidden).not.toContain("id");
+  it("hides a `-`-prefixed column in place without dropping it from the order", () => {
+    const layout = resolveColumnLayout(
+      { cols: ["id", "task", "status", "ver", "-ttl", "tags"], sc: [] },
+      cloud
+    );
+    const ttl = layout.ordered.find((o) => o.col.kind === "standard" && o.col.def.id === "ttl");
+    expect(ttl?.hidden).toBe(true);
+    const ids = orderedIds(layout);
+    expect(ids.indexOf("ttl")).toBeGreaterThan(ids.indexOf("ver"));
+    expect(ids.indexOf("ttl")).toBeLessThan(ids.indexOf("tags"));
+    expect(visibleIds(layout)).not.toContain("ttl");
   });
 
-  it("never hides locked columns and reinserts them if the URL omits them", () => {
+  it("never hides locked columns, even with a `-` prefix", () => {
+    const layout = resolveColumnLayout({ cols: ["id", "-task", "-status", "ver"], sc: [] }, cloud);
+    const locked = layout.ordered.filter(
+      (o) => o.col.kind === "standard" && o.col.def.locked
+    );
+    expect(locked.every((o) => !o.hidden)).toBe(true);
+  });
+
+  it("reinserts standard columns missing from the URL as visible", () => {
     const layout = resolveColumnLayout({ cols: ["id", "ver"], sc: [] }, cloud);
-    const ids = layout.visible.filter((c) => c.kind === "standard").map((c) => c.def.id);
-    expect(ids).toContain("task");
-    expect(ids).toContain("status");
-    const hidden = layout.hiddenStandard.map((c) => c.id);
-    expect(hidden).not.toContain("task");
-    expect(hidden).not.toContain("status");
+    expect(visibleIds(layout)).toEqual(expect.arrayContaining(["task", "status", "tags", "ttl"]));
   });
 
   it("resolves smart-column refs positionally", () => {
     const sc = [
-      encodeSmartColumn({ source: "metadata", path: "$.failed", label: "Failed", displayAs: "number" }),
+      encodeSmartColumn({
+        source: "metadata",
+        path: "$.failed",
+        label: "Failed",
+        displayAs: "number",
+      }),
     ];
     const layout = resolveColumnLayout({ cols: ["id", "sc1"], sc }, cloud);
     const smart = layout.visible.find((c) => c.kind === "smart");
@@ -126,15 +144,21 @@ describe("resolveColumnLayout", () => {
 
   it("drops gated columns referenced on a runtime that lacks them", () => {
     const layout = resolveColumnLayout({ cols: ["id", "region", "compute", "task"], sc: [] }, dev);
-    const ids = layout.visible.map((c) => (c.kind === "standard" ? c.def.id : "smart"));
-    expect(ids).toEqual(["id", "task", "status"]);
+    expect(orderedIds(layout)).not.toContain("region");
+    expect(orderedIds(layout)).not.toContain("compute");
+    expect(orderedIds(layout).slice(0, 2)).toEqual(["id", "task"]);
   });
 });
 
 describe("encodeColumnLayout round-trip", () => {
+  const std = (id: string) => ({
+    kind: "standard" as const,
+    def: availableStandardColumns(cloud).find((c) => c.id === id)!,
+  });
+
   it("encodes the default layout to empty params", () => {
     const layout = resolveColumnLayout({ cols: [], sc: [] }, cloud);
-    expect(encodeColumnLayout(layout.visible, cloud)).toEqual({ cols: [], sc: [] });
+    expect(encodeColumnLayout(layout.ordered, cloud)).toEqual({ cols: [], sc: [] });
   });
 
   it("round-trips a reordered, hidden, smart-augmented layout", () => {
@@ -146,18 +170,21 @@ describe("encodeColumnLayout round-trip", () => {
     };
     const encoded = encodeColumnLayout(
       [
-        { kind: "standard", def: availableStandardColumns(cloud).find((c) => c.id === "id")! },
-        { kind: "standard", def: availableStandardColumns(cloud).find((c) => c.id === "status")! },
-        { kind: "smart", index: 0, def: scDef },
+        { col: std("id"), hidden: false },
+        { col: std("status"), hidden: false },
+        { col: std("ttl"), hidden: true },
+        { col: { kind: "smart", index: 0, def: scDef }, hidden: false },
       ],
       cloud
     );
-    expect(encoded.cols).toEqual(["id", "status", "sc1"]);
+    expect(encoded.cols).toEqual(["id", "status", "-ttl", "sc1"]);
     expect(encoded.sc).toHaveLength(1);
 
     const layout = resolveColumnLayout(encoded, cloud);
-    const ids = layout.visible.map((c) => (c.kind === "standard" ? c.def.id : c.def.label));
-    expect(ids).toEqual(["id", "task", "status", "Order total"]);
+    const ttl = layout.ordered.find((o) => o.col.kind === "standard" && o.col.def.id === "ttl");
+    expect(ttl?.hidden).toBe(true);
+    expect(visibleIds(layout)).toContain("Order total");
+    expect(visibleIds(layout)).not.toContain("ttl");
   });
 });
 
