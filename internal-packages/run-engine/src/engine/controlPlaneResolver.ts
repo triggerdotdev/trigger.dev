@@ -81,7 +81,7 @@ export type ResolvedTaskQueue = {
 };
 
 /** The `select` that yields a `ResolvedTaskQueue`. */
-export const resolvedTaskQueueSelect = {
+const resolvedTaskQueueSelect = {
   id: true,
   name: true,
 } satisfies Prisma.TaskQueueSelect;
