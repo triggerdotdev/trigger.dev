@@ -7,7 +7,7 @@
  * Off by default behind a kill switch - the dispatch hotpath runs at high
  * QPS, so logging pressure must be cleanly removable.
  */
-export { type Env, type NewStateOptions } from "./new.js";
+export { type NewStateOptions } from "./new.js";
 export { emit, EmitMessage } from "./emit.js";
 export { parseTraceId } from "./traceparent.js";
 export { fromContext, wideEventStorage } from "./context.js";
