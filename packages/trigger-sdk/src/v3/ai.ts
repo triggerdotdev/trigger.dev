@@ -8717,8 +8717,8 @@ function requestUpgrade(): void {
  * `chat.createSession()` instead.) Call only between turns and after detaching
  * input listeners for the old run. If the old run completed its current turn,
  * persist its state and call {@link chatWriteTurnComplete} before handing off.
- * Do not write a new turn boundary after receiving input that the continuation
- * run should process: the boundary acknowledges the latest dispatched input.
+ * Do not write a new turn boundary after input that the continuation run should
+ * process has been dispatched: the boundary acknowledges that input.
  *
  * The server starts the continuation run but does not stop this run, so return
  * from the task immediately after awaiting this function. The promise rejects
@@ -8729,7 +8729,7 @@ function requestUpgrade(): void {
  *
  * @example
  * ```ts
- * messageSubscription.off();
+ * // Detach any chat.messages.on() subscriptions you created.
  * await persistMessages();
  * await chat.writeTurnComplete();
  * await chat.endAndContinue();
