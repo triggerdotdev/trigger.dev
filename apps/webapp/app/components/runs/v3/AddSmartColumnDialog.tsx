@@ -227,17 +227,11 @@ export function AddSmartColumnDialog({
                   No {source} value for this run.
                 </Paragraph>
               ) : (
-                <>
-                  <SmartColumnSample
-                    value={parsed.value}
-                    activePath={path.trim()}
-                    onSelectPath={setPath}
-                  />
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    Click a value to use its path. Expand objects and arrays to reach the value you
-                    want.
-                  </Paragraph>
-                </>
+                <SmartColumnSample
+                  value={parsed.value}
+                  activePath={path.trim()}
+                  onSelectPath={setPath}
+                />
               )}
               <Paragraph variant="extra-extra-small/dimmed/caps" className="mt-2">
                 Resolves to
@@ -272,9 +266,6 @@ function SampleRunPicker({
 }) {
   return (
     <div className="flex flex-none items-center gap-1 text-xs text-text-dimmed">
-      <span className="tabular-nums">
-        {index + 1}/{total}
-      </span>
       <button
         type="button"
         onClick={onPrev}
