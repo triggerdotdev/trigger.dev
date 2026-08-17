@@ -115,7 +115,7 @@ export async function runDashboardAgentRetention(
   return result;
 }
 
-export const dashboardAgentMaintenance = schedules.task({
+const dashboardAgentMaintenance = schedules.task({
   id: "dashboard-agent-maintenance",
   cron: "0 3 * * *",
   retry: { maxAttempts: 3 },

@@ -182,7 +182,7 @@ const EMPTY_SWEEP_RESULT: InvestigationSweepResult = {
   failed: 0,
 };
 
-export const dashboardAgentInvestigationSweep = schedules.task({
+const dashboardAgentInvestigationSweep = schedules.task({
   id: "dashboard-agent-investigation-sweep",
   cron: "*/5 * * * *",
   retry: { maxAttempts: 3 },
