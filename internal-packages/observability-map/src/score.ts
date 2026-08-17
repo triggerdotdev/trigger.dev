@@ -34,7 +34,7 @@ export type ScoredEntry = {
  * What one check contributes to the composite. Disclosed rather than weighted, deliberately: see
  * README, "What the score is made of".
  */
-export type CheckContribution = {
+type CheckContribution = {
   id: string;
   /** Entry points the check was applicable to, pre-suppression. */
   applicable: number;
