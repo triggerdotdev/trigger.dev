@@ -128,8 +128,10 @@ const publicToken = await auth.createPublicToken({
 ```
 
 - If `expirationTime` is a string, it will be treated as a time span
-- If `expirationTime` is a number, it will be treated as a Unix timestamp
+- If `expirationTime` is a number, it will be treated as a Unix timestamp in **seconds**
 - If `expirationTime` is a `Date`, it will be treated as a date
+
+When using non-root API keys (recommended), the expiration cannot be more than 30 days in the future.
 
 The format used for a time span is the same as the [jose package](https://github.com/panva/jose), which is a number followed by a unit. Valid units are: "sec", "secs", "second", "seconds", "s", "minute", "minutes", "min", "mins", "m", "hour", "hours", "hr", "hrs", "h", "day", "days", "d", "week", "weeks", "w", "year", "years", "yr", "yrs", and "y". It is not possible to specify months. 365.25 days is used as an alias for a year. If the string is suffixed with "ago", or prefixed with a "-", the resulting time span gets subtracted from the current unix timestamp. A "from now" suffix can also be used for readability when adding to the current unix timestamp.
 
