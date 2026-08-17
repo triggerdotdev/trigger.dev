@@ -683,10 +683,10 @@ export class SessionInputChannel {
   }
 
   /**
-   * The highest S2 sequence number of any record this channel has
-   * delivered to a `once()` / `wait()` consumer (or had shifted off its
-   * buffer into one). Distinct from "last received" — buffered-but-not-
-   * yet-consumed records don't count.
+   * The highest S2 sequence number that is safe to persist as consumed.
+   * This stays behind the earliest unconsumed record if a later record was
+   * handled first. Distinct from "last received", which advances for records
+   * that may still be pending.
    *
    * Used by `chat.agent` to persist the `.in` resume cursor on each
    * `turn-complete` control record, so the next worker boot can subscribe

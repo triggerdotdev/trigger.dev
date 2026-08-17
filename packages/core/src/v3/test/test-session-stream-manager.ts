@@ -40,6 +40,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
   private buffer = new Map<string, SessionStreamRecord[]>();
   private seqNums = new Map<string, number>();
   private dispatchedSeqNums = new Map<string, number>();
+  private unconsumedSeqNums = new Map<string, Set<number>>();
 
   on(sessionId: string, io: SessionChannelIO, handler: Handler): { off: () => void } {
     const key = keyFor(sessionId, io);
@@ -150,6 +151,14 @@ export class TestSessionStreamManager implements SessionStreamManager {
         }
       }
 
+      if (options?.timeoutMs === 0) {
+        resolve({
+          ok: false,
+          error: new InputStreamTimeoutError(key, 0),
+        });
+        return;
+      }
+
       const waiter: OnceWaiter = { resolve, predicate, signal: options?.signal };
 
       if (options?.timeoutMs !== undefined) {
@@ -192,14 +201,6 @@ export class TestSessionStreamManager implements SessionStreamManager {
     return this.buffer.get(keyFor(sessionId, io))?.[0];
   }
 
-  peekRecordWhere(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate
-  ): SessionStreamRecord | undefined {
-    return this.buffer.get(keyFor(sessionId, io))?.find(predicate);
-  }
-
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
     return this.seqNums.get(keyFor(sessionId, io));
   }
@@ -209,17 +210,53 @@ export class TestSessionStreamManager implements SessionStreamManager {
   }
 
   lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.dispatchedSeqNums.get(keyFor(sessionId, io));
+    const key = keyFor(sessionId, io);
+    const highWatermark = this.dispatchedSeqNums.get(key);
+    if (highWatermark === undefined) return undefined;
+
+    const unconsumedSeqNums = this.unconsumedSeqNums.get(key);
+    if (!unconsumedSeqNums || unconsumedSeqNums.size === 0) return highWatermark;
+
+    let earliestUnconsumedSeqNum = Infinity;
+    for (const seqNum of unconsumedSeqNums) {
+      earliestUnconsumedSeqNum = Math.min(earliestUnconsumedSeqNum, seqNum);
+    }
+
+    const safeCursor = Math.min(highWatermark, earliestUnconsumedSeqNum - 1);
+    return safeCursor >= 0 ? safeCursor : undefined;
   }
 
   setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+    if (!Number.isFinite(seqNum)) return;
+
     this.#advanceLastDispatched(keyFor(sessionId, io), seqNum);
   }
 
   #advanceLastDispatched(key: string, seqNum: number): void {
+    this.#removeUnconsumedRecord(key, seqNum);
+    if (!Number.isFinite(seqNum)) return;
     const current = this.dispatchedSeqNums.get(key);
     if (current === undefined || seqNum > current) {
       this.dispatchedSeqNums.set(key, seqNum);
+    }
+  }
+
+  #markUnconsumedRecord(key: string, seqNum: number): void {
+    if (!Number.isFinite(seqNum)) return;
+
+    let unconsumedSeqNums = this.unconsumedSeqNums.get(key);
+    if (!unconsumedSeqNums) {
+      unconsumedSeqNums = new Set();
+      this.unconsumedSeqNums.set(key, unconsumedSeqNums);
+    }
+    unconsumedSeqNums.add(seqNum);
+  }
+
+  #removeUnconsumedRecord(key: string, seqNum: number): void {
+    const unconsumedSeqNums = this.unconsumedSeqNums.get(key);
+    unconsumedSeqNums?.delete(seqNum);
+    if (unconsumedSeqNums?.size === 0) {
+      this.unconsumedSeqNums.delete(key);
     }
   }
 
@@ -245,8 +282,8 @@ export class TestSessionStreamManager implements SessionStreamManager {
     return false;
   }
 
-  disconnectStream(_sessionId: string, _io: SessionChannelIO): void {
-    // no-op — no real SSE tail in tests
+  disconnectStream(sessionId: string, io: SessionChannelIO): void {
+    this.buffer.delete(keyFor(sessionId, io));
   }
 
   clearHandlers(): void {
@@ -267,6 +304,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.buffer.clear();
     this.seqNums.clear();
     this.dispatchedSeqNums.clear();
+    this.unconsumedSeqNums.clear();
   }
 
   disconnect(): void {
@@ -301,6 +339,9 @@ export class TestSessionStreamManager implements SessionStreamManager {
   ): Promise<void> {
     const key = keyFor(sessionId, io);
     const seqNum = metadata?.seqNum ?? (this.seqNums.get(key) ?? -1) + 1;
+    if (!Number.isFinite(seqNum)) {
+      throw new TypeError("Test Session stream records require a finite sequence number");
+    }
     const record: SessionStreamRecord = {
       id: metadata?.id ?? `test-record-${seqNum}`,
       seqNum,
@@ -349,6 +390,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(record);
+    this.#markUnconsumedRecord(key, record.seqNum);
     this.#drainOnceWaitersFromBuffer(key);
   }
 

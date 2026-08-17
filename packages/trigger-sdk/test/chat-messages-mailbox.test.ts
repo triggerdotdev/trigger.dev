@@ -102,7 +102,7 @@ describe("chat.messages mailbox", () => {
     const agent = chat.customAgent({
       id: "chat-messages-mailbox-timeout",
       run: async () => {
-        result = await chat.messages.next({ timeoutInSeconds: 0.01 });
+        result = await chat.messages.next({ timeoutInSeconds: 0 });
       },
     });
     const run = resourceCatalog.getTask(agent.id)?.fns.run;
@@ -128,6 +128,7 @@ describe("chat.messages mailbox", () => {
       cursorAfterBlocked?: number;
       headAfterBlocked?: unknown;
       control?: unknown;
+      pendingAfterControl?: boolean;
       message?: ChatMessageRecord;
       cursorAfterMessage?: number;
     } = {};
@@ -139,12 +140,13 @@ describe("chat.messages mailbox", () => {
         await inspect.promise;
 
         observations.pending = await chat.messages.hasPending();
-        observations.blocked = await chat.messages.next({ timeoutInSeconds: 0.01 });
+        observations.blocked = await chat.messages.next({ timeoutInSeconds: 0 });
         observations.cursorAfterBlocked = sessionStreams.lastDispatchedSeqNum(chatId, "in");
         observations.headAfterBlocked = sessionStreams.peekRecord(chatId, "in");
 
         const control = await sessionStreams.onceRecord(chatId, "in");
         observations.control = control.ok ? control.output : undefined;
+        observations.pendingAfterControl = await chat.messages.hasPending();
         observations.message = await chat.messages.next({ timeoutInSeconds: 0 });
         observations.cursorAfterMessage = sessionStreams.lastDispatchedSeqNum(chatId, "in");
       },
@@ -176,7 +178,7 @@ describe("chat.messages mailbox", () => {
     });
 
     expect(observations).toEqual({
-      pending: true,
+      pending: false,
       blocked: undefined,
       cursorAfterBlocked: undefined,
       headAfterBlocked: {
@@ -189,6 +191,7 @@ describe("chat.messages mailbox", () => {
         seqNum: 30,
         data: { kind: "handover", partialAssistantMessage: [], isFinal: false },
       },
+      pendingAfterControl: true,
       message: {
         id: "message-1",
         seqNum: 31,
@@ -198,43 +201,108 @@ describe("chat.messages mailbox", () => {
     });
   });
 
+  it("keeps the cursor behind a buffered message when a later stop is consumed", async () => {
+    const chatId = "mailbox-cursor-gap";
+    const ready = deferred();
+    const inspect = deferred();
+    const observations: {
+      cursorBefore?: number;
+      message?: ChatMessageRecord;
+      cursorAfter?: number;
+    } = {};
+
+    const agent = chat.customAgent({
+      id: "chat-messages-mailbox-cursor-gap",
+      run: async () => {
+        const stop = chat.createStopSignal();
+        ready.resolve();
+        await inspect.promise;
+
+        observations.cursorBefore = sessionStreams.lastDispatchedSeqNum(chatId, "in");
+        observations.message = await chat.messages.next({ timeoutInSeconds: 0 });
+        observations.cursorAfter = sessionStreams.lastDispatchedSeqNum(chatId, "in");
+        stop.cleanup();
+      },
+    });
+    const run = resourceCatalog.getTask(agent.id)?.fns.run;
+    if (!run) throw new Error("custom agent was not registered");
+
+    await runInMockTaskContext(async (drivers) => {
+      const runPromise = run(
+        { chatId, trigger: "preload" },
+        { ctx: drivers.ctx, signal: new AbortController().signal }
+      );
+      await ready.promise;
+
+      await drivers.sessions.in.send(
+        chatId,
+        { kind: "message", payload: userPayload(chatId, "u1") },
+        "in",
+        { id: "message-1", seqNum: 50 }
+      );
+      await drivers.sessions.in.send(chatId, { kind: "stop" }, "in", {
+        id: "stop-1",
+        seqNum: 51,
+      });
+      inspect.resolve();
+      await runPromise;
+    });
+
+    expect(observations).toEqual({
+      cursorBefore: 49,
+      message: {
+        id: "message-1",
+        seqNum: 50,
+        payload: userPayload(chatId, "u1"),
+      },
+      cursorAfter: 51,
+    });
+  });
+
   it("keeps record id and sequence stable across redelivery", async () => {
     const payload = userPayload("mailbox-redelivery", "u-redelivered");
+    const ready = deferred();
+    const consumeFirst = deferred();
+    const readyForRedelivery = deferred();
+    const consumeRedelivery = deferred();
+    let first: ChatMessageRecord | undefined;
+    let redelivered: ChatMessageRecord | undefined;
+    const agent = chat.customAgent({
+      id: "chat-messages-mailbox-redelivery",
+      run: async () => {
+        ready.resolve();
+        await consumeFirst.promise;
+        first = await chat.messages.next({ timeoutInSeconds: 0 });
 
-    async function consumeDelivery(agentId: string): Promise<ChatMessageRecord | undefined> {
-      const ready = deferred();
-      const consume = deferred();
-      let result: ChatMessageRecord | undefined;
-      const agent = chat.customAgent({
-        id: agentId,
-        run: async () => {
-          ready.resolve();
-          await consume.promise;
-          result = await chat.messages.next();
-        },
+        sessionStreams.disconnectStream(payload.chatId, "in");
+        readyForRedelivery.resolve();
+        await consumeRedelivery.promise;
+        redelivered = await chat.messages.next({ timeoutInSeconds: 0 });
+      },
+    });
+    const run = resourceCatalog.getTask(agent.id)?.fns.run;
+    if (!run) throw new Error("custom agent was not registered");
+
+    await runInMockTaskContext(async (drivers) => {
+      const runPromise = run(
+        { chatId: payload.chatId, trigger: "preload" },
+        { ctx: drivers.ctx, signal: new AbortController().signal }
+      );
+      await ready.promise;
+      await drivers.sessions.in.send(payload.chatId, { kind: "message", payload }, "in", {
+        id: "part-redelivered",
+        seqNum: 27,
       });
-      const run = resourceCatalog.getTask(agent.id)?.fns.run;
-      if (!run) throw new Error("custom agent was not registered");
+      consumeFirst.resolve();
 
-      await runInMockTaskContext(async (drivers) => {
-        const runPromise = run(
-          { chatId: payload.chatId, trigger: "preload" },
-          { ctx: drivers.ctx, signal: new AbortController().signal }
-        );
-        await ready.promise;
-        await drivers.sessions.in.send(payload.chatId, { kind: "message", payload }, "in", {
-          id: "part-redelivered",
-          seqNum: 27,
-        });
-        consume.resolve();
-        await runPromise;
+      await readyForRedelivery.promise;
+      await drivers.sessions.in.send(payload.chatId, { kind: "message", payload }, "in", {
+        id: "part-redelivered",
+        seqNum: 27,
       });
-
-      return result;
-    }
-
-    const first = await consumeDelivery("chat-messages-mailbox-first-delivery");
-    const redelivered = await consumeDelivery("chat-messages-mailbox-redelivery");
+      consumeRedelivery.resolve();
+      await runPromise;
+    });
 
     expect(first).toEqual({ id: "part-redelivered", seqNum: 27, payload });
     expect(redelivered).toEqual(first);

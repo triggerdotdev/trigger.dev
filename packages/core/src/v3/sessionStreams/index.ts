@@ -86,18 +86,6 @@ export class SessionStreamsAPI implements SessionStreamManager {
     return manager.peekRecord(sessionId, io);
   }
 
-  public peekRecordWhere(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate
-  ): SessionStreamRecord | undefined {
-    const manager = this.#getManager();
-    if (!manager.peekRecordWhere) {
-      throw new Error("The configured Session stream manager does not support selective records");
-    }
-    return manager.peekRecordWhere(sessionId, io, predicate);
-  }
-
   public lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
     return this.#getManager().lastSeqNum(sessionId, io);
   }

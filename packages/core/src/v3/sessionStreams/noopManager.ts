@@ -55,14 +55,6 @@ export class NoopSessionStreamManager implements SessionStreamManager {
     return undefined;
   }
 
-  peekRecordWhere(
-    _sessionId: string,
-    _io: SessionChannelIO,
-    _predicate: SessionStreamRecordPredicate
-  ): SessionStreamRecord | undefined {
-    return undefined;
-  }
-
   lastSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
     return undefined;
   }

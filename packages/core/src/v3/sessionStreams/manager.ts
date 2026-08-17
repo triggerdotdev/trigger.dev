@@ -66,14 +66,17 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   // that's already being delivered out-of-band via the waitpoint.
   private explicitlyDisconnected = new Set<string>();
   private seqNums = new Map<string, number>();
-  // Highest seq_num that has been *consumed* (delivered to a once()
-  // waiter or shifted off the buffer into a once() caller) on a channel.
+  // Sequence numbers for records that were delivered but not consumed.
+  // Kept separately from `buffer` because `disconnectStream()` clears the
+  // local buffer before a waitpoint suspension, but those records must still
+  // hold the persisted consume cursor back.
+  private unconsumedSeqNums = new Map<string, Set<number>>();
+  // High-water mark of seq_nums that have been *consumed* (delivered to a
+  // once() waiter or shifted off the buffer into a once() caller) on a channel.
   // Distinct from `seqNums`, which advances whenever any record is
   // received from SSE — even ones still sitting in the local buffer.
-  // The committed-consume cursor is what gets persisted on the
-  // turn-complete control record's `session-in-event-id` header so the
-  // next worker boot can resume `.in` from this point without
-  // re-delivering already-handled user messages.
+  // `lastDispatchedSeqNum()` clamps this behind any unconsumed barrier before
+  // it is persisted on a turn-complete control record.
   private lastDispatchedSeqNums = new Map<string, number>();
   // Reconnect attempt counter per key. Drives the exponential backoff
   // applied by `#ensureTailConnected`'s `.finally` so a persistent
@@ -182,35 +185,29 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   ): InputStreamOncePromise<SessionStreamRecord> {
     const key = keyFor(sessionId, io);
 
+    if (options?.timeoutMs === 0) {
+      const record = this.#takeBufferedRecord(key, predicate);
+      return new InputStreamOncePromise((resolve) => {
+        resolve(
+          record
+            ? { ok: true, output: record }
+            : { ok: false, error: new InputStreamTimeoutError(key, 0) }
+        );
+      });
+    }
+
     this.explicitlyDisconnected.delete(key);
     this.#ensureTailConnected(sessionId, io);
 
-    const buffered = this.buffer.get(key);
-    if (buffered && buffered.length > 0) {
-      const record = buffered[0]!;
-      if (!predicate || predicate(record)) {
-        buffered.shift();
-        if (buffered.length === 0) {
-          this.buffer.delete(key);
-        }
-        this.#advanceLastDispatched(key, record.seqNum);
-        this.#drainOnceWaitersFromBuffer(key);
-        return new InputStreamOncePromise((resolve) => {
-          resolve({ ok: true, output: record });
-        });
-      }
+    const record = this.#takeBufferedRecord(key, predicate);
+    if (record) {
+      return new InputStreamOncePromise((resolve) => {
+        resolve({ ok: true, output: record });
+      });
     }
 
     return new InputStreamOncePromise<SessionStreamRecord>((resolve, reject) => {
       const waiter: OnceWaiter = { resolve, reject, predicate };
-
-      if (predicate && options?.timeoutMs === 0) {
-        resolve({
-          ok: false,
-          error: new InputStreamTimeoutError(key, 0),
-        });
-        return;
-      }
 
       if (options?.signal) {
         if (options.signal.aborted) {
@@ -246,20 +243,31 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     });
   }
 
+  #takeBufferedRecord(
+    key: string,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): SessionStreamRecord | undefined {
+    const buffered = this.buffer.get(key);
+    if (!buffered || buffered.length === 0) return undefined;
+
+    const record = buffered[0]!;
+    if (predicate && !predicate(record)) return undefined;
+
+    buffered.shift();
+    if (buffered.length === 0) {
+      this.buffer.delete(key);
+    }
+    this.#advanceLastDispatched(key, record.seqNum);
+    this.#drainOnceWaitersFromBuffer(key);
+    return record;
+  }
+
   peek(sessionId: string, io: SessionChannelIO): unknown | undefined {
     return this.peekRecord(sessionId, io)?.data;
   }
 
   peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
     return this.buffer.get(keyFor(sessionId, io))?.[0];
-  }
-
-  peekRecordWhere(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate
-  ): SessionStreamRecord | undefined {
-    return this.buffer.get(keyFor(sessionId, io))?.find(predicate);
   }
 
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
@@ -275,18 +283,53 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   }
 
   lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.lastDispatchedSeqNums.get(keyFor(sessionId, io));
+    const key = keyFor(sessionId, io);
+    const highWatermark = this.lastDispatchedSeqNums.get(key);
+    if (highWatermark === undefined) return undefined;
+
+    const unconsumedSeqNums = this.unconsumedSeqNums.get(key);
+    if (!unconsumedSeqNums || unconsumedSeqNums.size === 0) return highWatermark;
+
+    let earliestUnconsumedSeqNum = Infinity;
+    for (const seqNum of unconsumedSeqNums) {
+      earliestUnconsumedSeqNum = Math.min(earliestUnconsumedSeqNum, seqNum);
+    }
+
+    const safeCursor = Math.min(highWatermark, earliestUnconsumedSeqNum - 1);
+    return safeCursor >= 0 ? safeCursor : undefined;
   }
 
   setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+    if (!Number.isFinite(seqNum)) return;
+
     this.#advanceLastDispatched(keyFor(sessionId, io), seqNum);
   }
 
   #advanceLastDispatched(key: string, seqNum: number): void {
+    this.#removeUnconsumedRecord(key, seqNum);
     if (!Number.isFinite(seqNum)) return;
     const current = this.lastDispatchedSeqNums.get(key);
     if (current === undefined || seqNum > current) {
       this.lastDispatchedSeqNums.set(key, seqNum);
+    }
+  }
+
+  #markUnconsumedRecord(key: string, seqNum: number): void {
+    if (!Number.isFinite(seqNum)) return;
+
+    let unconsumedSeqNums = this.unconsumedSeqNums.get(key);
+    if (!unconsumedSeqNums) {
+      unconsumedSeqNums = new Set();
+      this.unconsumedSeqNums.set(key, unconsumedSeqNums);
+    }
+    unconsumedSeqNums.add(seqNum);
+  }
+
+  #removeUnconsumedRecord(key: string, seqNum: number): void {
+    const unconsumedSeqNums = this.unconsumedSeqNums.get(key);
+    unconsumedSeqNums?.delete(seqNum);
+    if (unconsumedSeqNums?.size === 0) {
+      this.unconsumedSeqNums.delete(key);
     }
   }
 
@@ -366,6 +409,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.disconnect();
     this.seqNums.clear();
     this.lastDispatchedSeqNums.clear();
+    this.unconsumedSeqNums.clear();
     this.minTimestamps.clear();
     this.handlers.clear();
     this.reconnectAttempts.clear();
@@ -457,9 +501,8 @@ export class StandardSessionStreamManager implements SessionStreamManager {
         onPart: (part) => {
           if (signal.aborted) return;
           const seqNum = parseInt(part.id, 10);
-          if (Number.isFinite(seqNum)) {
-            this.seqNums.set(key, seqNum);
-          }
+          if (!Number.isFinite(seqNum)) return;
+          this.seqNums.set(key, seqNum);
 
           // Trigger control records (turn-complete, upgrade-required)
           // are dispatched out-of-band via `onControl` — they're not
@@ -551,6 +594,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(record);
+    this.#markUnconsumedRecord(key, record.seqNum);
     this.#drainOnceWaitersFromBuffer(key);
   }
 

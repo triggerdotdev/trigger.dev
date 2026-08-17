@@ -82,13 +82,6 @@ export interface SessionStreamManager {
   /** Non-blocking peek at the head record, including its durable metadata. */
   peekRecord?(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined;
 
-  /** Non-blocking peek at the first buffered record accepted by `predicate`. */
-  peekRecordWhere?(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate
-  ): SessionStreamRecord | undefined;
-
   /** Last S2 sequence number seen on the given channel. */
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
 
@@ -96,10 +89,11 @@ export interface SessionStreamManager {
   setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 
   /**
-   * Highest sequence number that has been *consumed* on the channel —
-   * delivered to a `once()` waiter or shifted off the buffer into one.
-   * Distinct from {@link lastSeqNum}, which advances on every received
-   * record regardless of whether anything consumed it. Used by
+   * Highest sequence number that is safe to persist as consumed. When a later
+   * record is handled while an earlier record remains unconsumed, this stays
+   * behind the earliest unconsumed record. Distinct from {@link lastSeqNum},
+   * which advances on every received record regardless of whether anything
+   * consumed it. Used by
    * `chat.agent` to persist the `.in` resume cursor on each
    * `turn-complete` control record so the next worker boot can resume
    * the channel from this point without replaying processed messages.
@@ -109,7 +103,8 @@ export interface SessionStreamManager {
   /**
    * Seed the committed-consume cursor at worker boot — e.g. from the
    * `session-in-event-id` header on the latest `turn-complete` on
-   * `.out`. Monotonic: only ever advances forward, never backwards.
+   * `.out`. Monotonic: only ever advances forward, never backwards. Existing
+   * unconsumed records still constrain {@link lastDispatchedSeqNum}.
    */
   setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 

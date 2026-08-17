@@ -228,14 +228,15 @@ For full control, skip `createSession` and compose the primitives directly:
 | Method | Behavior |
 | --- | --- |
 | `peek()` | Return the buffer head when it is a message, without consuming it; otherwise return `undefined` |
-| `hasPending()` | Resolve `true` when any message is buffered; does not consume it |
+| `hasPending()` | Resolve `true` when the buffer head is a message; does not consume it |
 | `next({ timeoutInSeconds? })` | Consume exactly one message record in channel order, or resolve `undefined` when the optional timeout elapses |
 | `on(handler)` | Consume messages as they arrive and invoke the handler |
 | `waitWithIdleTimeout(options)` | Wait warm, then suspend the run until the next message arrives |
 
-`hasPending()` checks the local, already-delivered buffer. It does not query the
-remote Session channel or start a subscription. Use `waitWithIdleTimeout()` when
-the loop needs to idle until future input arrives.
+`hasPending()` checks whether the local, already-delivered buffer head is a
+message that `next()` can consume immediately. It does not query the remote
+Session channel or start a subscription. Use `waitWithIdleTimeout()` when the
+loop needs to idle until future input arrives.
 
 `next()` returns a readonly record envelope:
 
@@ -258,8 +259,9 @@ contrast, `on()` commits a record as soon as it dispatches the handler; avoid
 mixing `on()` and `next()` when a single loop owns mailbox consumption.
 
 The Session `.in` channel also carries control records such as handovers. If one
-comes before a message, `next()` leaves it for its own consumer and waits until
-that record has been handled.
+comes before a message, `hasPending()` stays `false` and `next()` leaves the
+control record for its own consumer. After that record is handled, the message
+becomes pending.
 
 A complete loop:
 

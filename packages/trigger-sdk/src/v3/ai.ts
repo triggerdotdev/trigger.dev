@@ -1557,7 +1557,7 @@ export type ChatMessageRecord = Readonly<{
 }>;
 
 export type ChatMessages = RealtimeDefinedInputStream<ChatTaskWirePayload> & {
-  /** Whether a delivered message is waiting in the local buffer. Does not consume it. */
+  /** Whether the local buffer head is a message that can be consumed immediately. */
   hasPending(): Promise<boolean>;
   /** Consume one message record, or return `undefined` when the optional timeout elapses. */
   next(options?: { timeoutInSeconds?: number }): Promise<ChatMessageRecord | undefined>;
@@ -1632,8 +1632,7 @@ const messagesInput: ChatMessages = {
     return undefined;
   },
   async hasPending() {
-    const session = getChatSession();
-    return sessionStreams.peekRecordWhere(session.id, "in", isChatMessageRecord) !== undefined;
+    return messagesInput.peek() !== undefined;
   },
   async next(options) {
     const timeoutInSeconds = options?.timeoutInSeconds;
