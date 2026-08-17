@@ -12,6 +12,7 @@
   "ignorePatterns": [
     "**/dist/**",
     "**/build/**",
+    "**/.worktrees/**",
     "**/*.d.ts",
     "**/seed.js",
     "**/seedCloud.ts",
