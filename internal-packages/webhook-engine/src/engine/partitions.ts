@@ -34,7 +34,7 @@ export function dayBucket(lo: Date): Bucket {
 }
 
 /** All day buckets covering [start, end] inclusive of the day containing end. */
-export function dayBuckets(start: Date, end: Date): Bucket[] {
+function dayBuckets(start: Date, end: Date): Bucket[] {
   const out: Bucket[] = [];
   let cur = floorDayUTC(start);
   const last = floorDayUTC(end);
