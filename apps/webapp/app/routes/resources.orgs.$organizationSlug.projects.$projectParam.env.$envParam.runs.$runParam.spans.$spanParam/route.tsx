@@ -1777,7 +1777,7 @@ function SpanEntity({ span }: { span: Span }) {
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
-          <AIToolCallSpanDetails data={span.entity.object} />
+          <AIToolCallSpanDetails data={span.entity.object} spanEvents={span.events} />
         </div>
       );
     }
@@ -1787,7 +1787,7 @@ function SpanEntity({ span }: { span: Span }) {
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
-          <AIEmbedSpanDetails data={span.entity.object} />
+          <AIEmbedSpanDetails data={span.entity.object} spanEvents={span.events} />
         </div>
       );
     }
