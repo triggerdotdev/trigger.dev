@@ -364,14 +364,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new Error("Failed to get project client");
   }
 
-  if (projectClient.defaultRuntime) {
-    resolvedConfig = await loadConfig({
-      cwd: projectPath,
-      overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
-      configFile: options.config,
-      defaultRuntime: projectClient.defaultRuntime,
-      warn: false,
-    });
+  if (!resolvedConfig.runtimeWasExplicit && projectClient.defaultRuntime) {
+    resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
   if (options.nativeBuildServer) {

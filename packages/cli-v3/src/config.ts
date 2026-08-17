@@ -34,17 +34,19 @@ export type ResolveConfigOptions = {
   cwd?: string;
   overrides?: Partial<TriggerConfig>;
   configFile?: string;
-  defaultRuntime?: BuildRuntime;
   warn?: boolean;
+};
+
+export type LoadedConfig = ResolvedConfig & {
+  runtimeWasExplicit: boolean;
 };
 
 export async function loadConfig({
   cwd = process.cwd(),
   overrides,
   configFile,
-  defaultRuntime,
   warn = true,
-}: ResolveConfigOptions = {}): Promise<ResolvedConfig> {
+}: ResolveConfigOptions = {}): Promise<LoadedConfig> {
   const result = await c12.loadConfig<TriggerConfig>({
     name: "trigger",
     cwd,
@@ -52,17 +54,17 @@ export async function loadConfig({
     jitiOptions: { debug: logger.loggerLevel === "debug" },
   });
 
-  return await resolveConfig(cwd, result, overrides, defaultRuntime, warn);
+  return await resolveConfig(cwd, result, overrides, warn);
 }
 
 type ResolveWatchConfigOptions = ResolveConfigOptions & {
-  onUpdate: (config: ResolvedConfig) => void;
+  onUpdate: (config: LoadedConfig) => void;
   debounce?: number;
   ignoreInitial?: boolean;
 };
 
 type ResolveWatchConfigResult = {
-  config: ResolvedConfig;
+  config: LoadedConfig;
   files: string[];
   stop: () => Promise<void>;
 };
@@ -74,7 +76,6 @@ export async function watchConfig({
   ignoreInitial = true,
   overrides,
   configFile,
-  defaultRuntime,
 }: ResolveWatchConfigOptions): Promise<ResolveWatchConfigResult> {
   const result = await c12.watchConfig<TriggerConfig>({
     name: "trigger",
@@ -84,13 +85,13 @@ export async function watchConfig({
     chokidarOptions: { ignoreInitial },
     jitiOptions: { debug: logger.loggerLevel === "debug" },
     onUpdate: async ({ newConfig }) => {
-      const resolvedConfig = await resolveConfig(cwd, newConfig, overrides, defaultRuntime, false);
+      const resolvedConfig = await resolveConfig(cwd, newConfig, overrides, false);
 
       onUpdate(resolvedConfig);
     },
   });
 
-  const config = await resolveConfig(cwd, result, overrides, defaultRuntime);
+  const config = await resolveConfig(cwd, result, overrides);
 
   return {
     config,
@@ -159,9 +160,8 @@ async function resolveConfig(
   cwd: string,
   result: c12.ResolvedConfig<TriggerConfig>,
   overrides?: Partial<TriggerConfig>,
-  defaultRuntime?: BuildRuntime,
   warn = true
-): Promise<ResolvedConfig> {
+): Promise<LoadedConfig> {
   // `trigger.config` is the fallback value set by c12. Bail out with actionable guidance before
   // touching the filesystem: the pkg-types resolvers below throw raw errors when run outside a
   // project (e.g. `dev` before `init`), which would mask this message.
@@ -186,8 +186,7 @@ async function resolveConfig(
     ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
   );
   const legacyDefaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
-  const configuredRuntime =
-    overrides?.runtime ?? config.runtime ?? defaultRuntime ?? legacyDefaultRuntime;
+  const configuredRuntime = overrides?.runtime ?? config.runtime ?? legacyDefaultRuntime;
   const runtime = resolveBuildRuntime(configuredRuntime);
 
   if (warn && isDeprecatedConfigRuntime(configuredRuntime)) {
@@ -229,7 +228,7 @@ async function resolveConfig(
     config,
     {
       dirs,
-      runtime: defaultRuntime ?? legacyDefaultRuntime,
+      runtime: legacyDefaultRuntime,
       tsconfig: tsconfigPath,
       build: {
         jsx: {
@@ -246,12 +245,19 @@ async function resolveConfig(
     }
   ) as ResolvedConfig; // TODO: For some reason, without this, there is a weird type error complaining about tsconfigPath being string | nullish, which can't be assigned to string | undefined
 
-  return {
+  const resolvedConfig = {
     ...mergedConfig,
     dirs: Array.from(new Set(dirs)),
     instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
     runtime,
   };
+
+  Object.defineProperty(resolvedConfig, "runtimeWasExplicit", {
+    value: overrides?.runtime !== undefined || config.runtime !== undefined,
+    enumerable: false,
+  });
+
+  return resolvedConfig as LoadedConfig;
 }
 
 function resolveTriggerDir(dir: string, workingDir: string): string {
