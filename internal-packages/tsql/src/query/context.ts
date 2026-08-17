@@ -5,7 +5,7 @@ import type { Database } from "./database";
 import type { PropertySwapper } from "./property_types";
 import type { TSQLTimings } from "./timings";
 
-export interface TSQLNotice {
+interface TSQLNotice {
   start?: number;
   end?: number;
   message: string;
@@ -23,7 +23,7 @@ export interface TSQLQueryModifiers {
   optimizeProjections?: boolean;
 }
 
-export interface TSQLFieldAccess {
+interface TSQLFieldAccess {
   input: string[];
   type?: "run";
   field?: string;

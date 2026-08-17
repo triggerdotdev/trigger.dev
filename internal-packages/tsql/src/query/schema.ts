@@ -616,7 +616,7 @@ export function validateGroupColumn(
 /**
  * Get the actual ClickHouse column name (handles aliasing)
  */
-export function getClickHouseColumnName(col: ColumnSchema): string {
+function getClickHouseColumnName(col: ColumnSchema): string {
   return col.clickhouseName ?? col.name;
 }
 
@@ -828,7 +828,7 @@ export function getInternalValueFromMappingCaseInsensitive(
 /**
  * Get all column names available for autocomplete
  */
-export function getTableColumnNames(schema: SchemaRegistry, tableName: string): string[] {
+function getTableColumnNames(schema: SchemaRegistry, tableName: string): string[] {
   const table = findTable(schema, tableName);
   if (!table) return [];
   return Object.keys(table.columns);
@@ -837,7 +837,7 @@ export function getTableColumnNames(schema: SchemaRegistry, tableName: string): 
 /**
  * Get all table names available for autocomplete
  */
-export function getAllTableNames(schema: SchemaRegistry): string[] {
+function getAllTableNames(schema: SchemaRegistry): string[] {
   return Object.keys(schema.tables);
 }
 

@@ -671,7 +671,7 @@ export class PropertySwapper extends CloningVisitor {
 }
 
 // Main function to build property swapper
-export function buildPropertySwapper(node: AST, context: TSQLContext): void {
+function buildPropertySwapper(node: AST, context: TSQLContext): void {
   if (!context || !context.team_id) {
     return;
   }

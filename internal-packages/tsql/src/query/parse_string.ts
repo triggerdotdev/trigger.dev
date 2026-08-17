@@ -48,13 +48,13 @@ export function parseStringLiteralText(text: string): string {
   return replaceCommonEscapeCharacters(result);
 }
 
-export function parseStringLiteralCtx(ctx: { getText(): string }): string {
+function parseStringLiteralCtx(ctx: { getText(): string }): string {
   /** Converts a STRING_LITERAL received from antlr via ctx.getText() into a JavaScript string */
   const text = ctx.getText();
   return parseStringLiteralText(text);
 }
 
-export function parseStringTextCtx(
+function parseStringTextCtx(
   ctx: { getText(): string },
   escapeQuotes: boolean = true
 ): string {

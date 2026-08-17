@@ -28,13 +28,13 @@ export interface DatabaseSchemaTable {
   name: string;
 }
 
-export interface DatabaseSchemaSystemTable extends DatabaseSchemaTable {
+interface DatabaseSchemaSystemTable extends DatabaseSchemaTable {
   fields: Record<string, DatabaseSchemaField>;
   id: string;
   name: string;
 }
 
-export interface DatabaseSchemaDataWarehouseTable extends DatabaseSchemaTable {
+interface DatabaseSchemaDataWarehouseTable extends DatabaseSchemaTable {
   fields: Record<string, DatabaseSchemaField>;
   id: string;
   name: string;
@@ -45,7 +45,7 @@ export interface DatabaseSchemaDataWarehouseTable extends DatabaseSchemaTable {
   row_count?: number;
 }
 
-export interface DatabaseSchemaViewTable extends DatabaseSchemaTable {
+interface DatabaseSchemaViewTable extends DatabaseSchemaTable {
   fields: Record<string, DatabaseSchemaField>;
   id: string;
   name: string;
@@ -53,7 +53,7 @@ export interface DatabaseSchemaViewTable extends DatabaseSchemaTable {
   row_count?: number;
 }
 
-export interface DatabaseSchemaManagedViewTable extends DatabaseSchemaTable {
+interface DatabaseSchemaManagedViewTable extends DatabaseSchemaTable {
   fields: Record<string, DatabaseSchemaField>;
   id: string;
   name: string;
@@ -62,7 +62,7 @@ export interface DatabaseSchemaManagedViewTable extends DatabaseSchemaTable {
   query: { query: string };
 }
 
-export interface DatabaseSchemaEndpointTable extends DatabaseSchemaTable {
+interface DatabaseSchemaEndpointTable extends DatabaseSchemaTable {
   fields: Record<string, DatabaseSchemaField>;
   id: string;
   name: string;
@@ -71,7 +71,7 @@ export interface DatabaseSchemaEndpointTable extends DatabaseSchemaTable {
   status?: string;
 }
 
-export interface DatabaseSchemaField {
+interface DatabaseSchemaField {
   name: string;
   tsql_value: string;
   type: DatabaseSerializedFieldType;
@@ -82,7 +82,7 @@ export interface DatabaseSchemaField {
   id?: string;
 }
 
-export interface DatabaseSchemaSchema {
+interface DatabaseSchemaSchema {
   id: string;
   name: string;
   should_sync: boolean;
@@ -91,7 +91,7 @@ export interface DatabaseSchemaSchema {
   last_synced_at: string;
 }
 
-export interface DatabaseSchemaSource {
+interface DatabaseSchemaSource {
   id: string;
   status: string;
   source_type: string;
@@ -99,7 +99,7 @@ export interface DatabaseSchemaSource {
   last_synced_at?: string | null;
 }
 
-export enum DatabaseSerializedFieldType {
+enum DatabaseSerializedFieldType {
   STRING = "string",
   INTEGER = "integer",
   FLOAT = "float",
@@ -119,7 +119,7 @@ export enum DatabaseSerializedFieldType {
   FIELD_TRAVERSER = "field_traverser",
 }
 
-export interface SerializedField {
+interface SerializedField {
   key: string;
   name: string;
   type: DatabaseSerializedFieldType;
@@ -467,7 +467,7 @@ function constantTypeToSerializedFieldType(
   return null;
 }
 
-export function serializeFields(
+function serializeFields(
   fieldInput: Record<string, FieldOrTable>,
   context: TSQLContext,
   tableChain: string[],
