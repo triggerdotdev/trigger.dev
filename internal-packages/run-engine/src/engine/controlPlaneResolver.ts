@@ -99,7 +99,7 @@ export type ResolvedWorkerDeployment = {
 };
 
 /** The `select` that yields a `ResolvedWorkerDeployment`. */
-export const resolvedWorkerDeploymentSelect = {
+const resolvedWorkerDeploymentSelect = {
   id: true,
   friendlyId: true,
   imageReference: true,
