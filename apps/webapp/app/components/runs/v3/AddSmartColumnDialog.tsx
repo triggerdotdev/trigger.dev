@@ -1,7 +1,6 @@
 import { BoltIcon } from "@heroicons/react/20/solid";
 import { useEffect, useMemo, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
-import { CodeBlock } from "~/components/code/CodeBlock";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -19,6 +18,7 @@ import {
   type SmartColumnSource,
 } from "./runColumns";
 import { extractSmartValue, labelFromPath, parseSource } from "./smartColumnData";
+import { SmartColumnSample } from "./SmartColumnSample";
 import type { loader as sampleLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.smart-column-sample";
 
 type AddSmartColumnDialogProps = {
@@ -42,10 +42,6 @@ const DISPLAY_OPTIONS = SMART_COLUMN_DISPLAYS.map((display) => ({
 }));
 
 const DEFAULT_SOURCE: SmartColumnSource = "payload";
-
-/** Cap the highlighted sample so a large inline blob doesn't stall the modal;
- * the full parsed value is still used to resolve the path. */
-const MAX_SAMPLE_CHARS = 15000;
 
 export function AddSmartColumnDialog({
   open,
@@ -101,29 +97,6 @@ export function AddSmartColumnDialog({
         return parseSource({ data: sampleRun.output, dataType: sampleRun.outputType });
     }
   }, [sampleRun, source]);
-
-  const sampleJson = useMemo<{ text: string; truncated: boolean } | undefined>(() => {
-    if (!parsed) return undefined;
-    if (parsed.state === "offloaded") {
-      return {
-        text: "// Offloaded to object storage — too large to sample here.",
-        truncated: false,
-      };
-    }
-    if (parsed.state === "empty") {
-      return { text: "// No value for this run.", truncated: false };
-    }
-    let text: string;
-    try {
-      text = JSON.stringify(parsed.value, null, 2);
-    } catch {
-      text = String(parsed.value);
-    }
-    if (text.length > MAX_SAMPLE_CHARS) {
-      return { text: `${text.slice(0, MAX_SAMPLE_CHARS)}\n…`, truncated: true };
-    }
-    return { text, truncated: false };
-  }, [parsed]);
 
   const resolved = useMemo(() => {
     if (!parsed || path.trim().length === 0) return undefined;
@@ -229,26 +202,29 @@ export function AddSmartColumnDialog({
                 <Paragraph variant="extra-small" className="text-text-dimmed">
                   Loading…
                 </Paragraph>
-              ) : sampleJson ? (
-                <>
-                  <CodeBlock
-                    language="json"
-                    code={sampleJson.text}
-                    maxLines={16}
-                    showLineNumbers={false}
-                    showChrome={false}
-                    showCopyButton={false}
-                  />
-                  {sampleJson.truncated && (
-                    <Paragraph variant="extra-small" className="text-text-dimmed">
-                      Sample truncated. The full value is still used to resolve the path.
-                    </Paragraph>
-                  )}
-                </>
-              ) : (
+              ) : !parsed ? (
                 <Paragraph variant="extra-small" className="text-text-dimmed">
                   No runs to sample.
                 </Paragraph>
+              ) : parsed.state === "offloaded" ? (
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  This {source} is offloaded to object storage, too large to sample here.
+                </Paragraph>
+              ) : parsed.state === "empty" ? (
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  No {source} value for this run.
+                </Paragraph>
+              ) : (
+                <>
+                  <SmartColumnSample
+                    value={parsed.value}
+                    activePath={path.trim()}
+                    onSelectPath={setPath}
+                  />
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    Click a key to use its path.
+                  </Paragraph>
+                </>
               )}
               <Paragraph variant="extra-extra-small/dimmed/caps" className="mt-2">
                 Resolves to
