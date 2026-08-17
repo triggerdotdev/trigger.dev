@@ -23,7 +23,6 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "knip": "knip --include files,exports,types,dependencies,unlisted,binaries,unresolved,catalog",
-    "knip:deps": "knip --dependencies",
     "docker": "node scripts/docker.mjs -f docker/docker-compose.yml up -d --build --remove-orphans",
     "docker:stop": "node scripts/docker.mjs -f docker/docker-compose.yml stop",
     "docker:full": "node scripts/docker.mjs -f docker/docker-compose.yml -f docker/docker-compose.extras.yml up -d --build --remove-orphans",
