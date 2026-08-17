@@ -1418,18 +1418,57 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   );
 
   redisTest(
-    "a ckVtime entry stranded by an ack is collected by the next scan",
+    "acking the last queued message drops the variant from both indexes",
     async ({ redisContainer }) => {
-      // ckVtime is maintained by the enqueue, nack and dequeue scripts. Ack is not one of
-      // them: acknowledgeMessageCkTracked ZREMs the variant from ckIndex when the zset
-      // empties, has no vtime counterpart, and its caller does not branch on the flag, so
-      // acking a message that is still QUEUED (a cancellation) leaves a ckVtime entry with
-      // no ckIndex member. The TTL-expiry and dead-letter scripts strand one the same way.
-      // The membership test above records that this direction of the invariant is allowed
-      // to break; what it does not cover is the other half of the bargain, that a scan
-      // collects the orphan. It does, and promptly: a stranded tag stops advancing while
-      // live variants climb, so it sorts to the front of the window and is visited at no
-      // cost to the batch.
+      // Ack used to be the widest hole in ckVtime maintenance: it ZREMs the variant from
+      // ckIndex once the zset empties, had no vtime counterpart, and its caller did not
+      // branch on the flag, so acking a message that was still QUEUED (a cancellation)
+      // left a ckVtime entry with no ckIndex member. It is the common case of the three,
+      // ahead of TTL expiry and the dead-letter path. All three now have vtime variants,
+      // so the drain leaves nothing behind in the first place.
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-ghost", concurrencyKey: "ghost", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        const ghostVariant = variantName("ghost");
+        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(ghostVariant);
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(ghostVariant);
+
+        expect(await queue.redis.zscore(ckIndexKey, ghostVariant)).not.toBeNull();
+        expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).not.toBeNull();
+
+        // Never dequeued, so this is the cancellation path rather than a normal completion.
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r-ghost", {
+          skipDequeueProcessing: true,
+        });
+
+        // Both, in the same script, without waiting for a scan to notice.
+        expect(await queue.redis.zscore(ckIndexKey, ghostVariant)).toBeNull();
+        expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).toBeNull();
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "an entry stranded by an older deploy is still collected by the next scan",
+    async ({ redisContainer }) => {
+      // The vtime-aware ack only helps instances running it. During a rolling deploy an
+      // older instance still calls acknowledgeMessageCkTracked, which strands an entry, so
+      // GC-on-scan remains load-bearing and is what this pins. Driving the old command
+      // directly is the point: it is the only way to reproduce what that instance does.
+      //
+      // Collection is prompt because a stranded tag stops advancing while live variants
+      // climb, so it sorts to the front of the window, and visiting an empty variant serves
+      // nothing and costs the batch nothing.
       const queue = createQueue(redisContainer);
       try {
         const t0 = Date.now() - 100_000;
@@ -1456,23 +1495,35 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const ghostVariant = variantName("ghost");
         const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(ghostVariant);
         const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(ghostVariant);
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
 
-        expect(await queue.redis.zscore(ckIndexKey, ghostVariant)).not.toBeNull();
-        expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).not.toBeNull();
+        // Exactly what a pre-fix instance runs: no ckVtime key among its arguments.
+        await queue.redis.acknowledgeMessageCkTracked(
+          testOptions.keys.masterQueueKeyForShard(shard),
+          testOptions.keys.messageKey(authenticatedEnvDev.organization.id, "r-ghost"),
+          ghostVariant,
+          testOptions.keys.queueCurrentConcurrencyKeyFromQueue(ghostVariant),
+          testOptions.keys.envCurrentConcurrencyKeyFromQueue(ghostVariant),
+          testOptions.keys.queueCurrentDequeuedKeyFromQueue(ghostVariant),
+          testOptions.keys.envCurrentDequeuedKeyFromQueue(ghostVariant),
+          testOptions.keys.envQueueKeyFromQueue(ghostVariant),
+          testOptions.keys.workerQueueKey(authenticatedEnvDev.id),
+          ckIndexKey,
+          testOptions.keys.queueLengthCounterKeyFromQueue(ghostVariant),
+          testOptions.keys.queueRunningCounterKeyFromQueue(ghostVariant),
+          "r-ghost",
+          ghostVariant,
+          "",
+          "0",
+          testOptions.keys.toCkWildcard(ghostVariant)
+        );
 
-        // Never dequeued, so this is the cancellation path rather than a normal completion.
-        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r-ghost", {
-          skipDequeueProcessing: true,
-        });
-
+        // Stranded, which is the state an older instance leaves behind.
         expect(await queue.redis.zscore(ckIndexKey, ghostVariant)).toBeNull();
         expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).not.toBeNull();
 
-        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
         const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
 
-        // ghost holds the lowest tag, so the very next scan visits and collects it, and the
-        // wasted candidate slot costs the batch nothing: the call still served real work.
         expect(await queue.redis.zscore(ckVtimeKey, ghostVariant)).toBeNull();
         expect(messages.length).toBe(1);
         expect(messages[0]!.message.concurrencyKey).toBe("live");
@@ -1481,6 +1532,112 @@ describe("CK virtual-time (SFQ) dequeue", () => {
       }
     }
   );
+
+  redisTest(
+    "the dead-letter path drops the variant from both indexes",
+    async ({ redisContainer }) => {
+      // Driven at the script rather than through nackMessage on purpose. The dead-letter
+      // path only empties a variant when the message it removes is still QUEUED, and the
+      // public route into it (nacking past maxAttempts) acts on an in-flight message whose
+      // variant the dequeue has usually already collected. The queued case is the one that
+      // used to strand, so it is the one worth pinning.
+      const queue = createQueue(redisContainer);
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r-dlq",
+            concurrencyKey: "dlq",
+            timestamp: Date.now() - 100_000,
+          }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        const v = variantName("dlq");
+        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(v);
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(v);
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+        expect(await queue.redis.zscore(ckVtimeKey, v)).not.toBeNull();
+
+        await queue.redis.moveToDeadLetterQueueCkVtimeTracked(
+          testOptions.keys.masterQueueKeyForShard(shard),
+          testOptions.keys.messageKey(authenticatedEnvDev.organization.id, "r-dlq"),
+          v,
+          testOptions.keys.queueCurrentConcurrencyKeyFromQueue(v),
+          testOptions.keys.envCurrentConcurrencyKeyFromQueue(v),
+          testOptions.keys.queueCurrentDequeuedKeyFromQueue(v),
+          testOptions.keys.envCurrentDequeuedKeyFromQueue(v),
+          testOptions.keys.envQueueKeyFromQueue(v),
+          testOptions.keys.deadLetterQueueKeyFromQueue(v),
+          ckIndexKey,
+          testOptions.keys.queueLengthCounterKeyFromQueue(v),
+          testOptions.keys.queueRunningCounterKeyFromQueue(v),
+          ckVtimeKey,
+          "r-dlq",
+          v,
+          testOptions.keys.toCkWildcard(v)
+        );
+
+        expect(await queue.redis.zscore(ckIndexKey, v)).toBeNull();
+        expect(await queue.redis.zscore(ckVtimeKey, v)).toBeNull();
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest("TTL expiry drops the variant from both indexes", async ({ redisContainer }) => {
+    // The one of the three that cannot take the key as an argument: this sweep discovers
+    // the queues it touches from the members of the TTL zset, so it derives the ckVtime
+    // key by string surgery the same way it already derives ckIndex. That derivation is
+    // the part worth a test, since a mismatch would silently no-op rather than error.
+    const queue = createQueue(redisContainer);
+    try {
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({
+          runId: "r-ttl",
+          concurrencyKey: "ttl",
+          timestamp: Date.now() - 100_000,
+        }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+
+      const v = variantName("ttl");
+      const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(v);
+      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(v);
+      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+      const ttlQueueKey = testOptions.keys.ttlQueueKeyForShard(shard);
+
+      expect(await queue.redis.zscore(ckVtimeKey, v)).not.toBeNull();
+
+      // The member format the sweep parses: <variant queue>|<runId>|<orgId>, already due.
+      await queue.redis.zadd(
+        ttlQueueKey,
+        Date.now() - 1000,
+        `${v}|r-ttl|${authenticatedEnvDev.organization.id}`
+      );
+
+      await queue.redis.expireTtlRunsVtimeTracked(
+        ttlQueueKey,
+        "runqueue:test:",
+        Date.now().toString(),
+        "10",
+        "2",
+        "ttlworker",
+        "ttlworkeritems",
+        "30000"
+      );
+
+      expect(await queue.redis.zscore(ckIndexKey, v)).toBeNull();
+      expect(await queue.redis.zscore(ckVtimeKey, v)).toBeNull();
+    } finally {
+      await queue.quit();
+    }
+  });
 
   redisTest(
     "flag off creates no vtime keys and matches head-timestamp order",
