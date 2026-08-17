@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 import {
   BEDROCK_MODEL_IDS,
@@ -25,8 +25,18 @@ const AWS_ENV_VARS = [
   "AWS_DEFAULT_REGION",
 ] as const;
 
-afterEach(() => {
+let priorEnv: Record<string, string | undefined>;
+
+beforeEach(() => {
+  priorEnv = Object.fromEntries(AWS_ENV_VARS.map((key) => [key, process.env[key]]));
   for (const key of AWS_ENV_VARS) delete process.env[key];
+});
+
+afterEach(() => {
+  for (const key of AWS_ENV_VARS) {
+    if (priorEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = priorEnv[key];
+  }
 });
 
 describe("resolveDashboardAgentModel", () => {
