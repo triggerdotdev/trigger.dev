@@ -418,13 +418,13 @@ export function TaskRunsTable({
                     {run.isPending ? (
                       "–"
                     ) : run.startedAt ? (
-                      formatDuration(new Date(run.createdAt), new Date(run.startedAt), {
+                      formatDuration(new Date(run.triggeredAt), new Date(run.startedAt), {
                         style: "short",
                       })
                     ) : run.isCancellable ? (
-                      <LiveTimer startTime={new Date(run.createdAt)} />
+                      <LiveTimer startTime={new Date(run.triggeredAt)} />
                     ) : (
-                      formatDuration(new Date(run.createdAt), new Date(run.updatedAt), {
+                      formatDuration(new Date(run.triggeredAt), new Date(run.updatedAt), {
                         style: "short",
                       })
                     )}

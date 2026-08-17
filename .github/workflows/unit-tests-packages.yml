@@ -99,6 +99,7 @@ jobs:
           pull redis:7.2
           pull testcontainers/ryuk:0.14.0
           pull electricsql/electric:1.2.4
+          pull otel/opentelemetry-collector-k8s:0.158.0@sha256:c09130a633196a5becee164411473a0932ecf223f94fda6dab5f22798ff9f376
           echo "Image pre-pull complete"
 
       - name: 📥 Download deps

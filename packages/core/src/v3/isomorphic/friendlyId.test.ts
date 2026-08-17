@@ -4,6 +4,7 @@ import {
   WaitpointId,
   SnapshotId,
   QueueId,
+  WebhookDeliveryId,
   RUN_OPS_ID_LENGTH,
   RUN_OPS_ID_REGION_INDEX,
   RUN_OPS_ID_VERSION,
@@ -199,5 +200,53 @@ describe("firekeeper pod-name round-trip (runner-<id>[-attempt-N] → run_<id>)"
     const podName = `runner-${generateRunOpsId("eu-central-1")}`;
     expect(podName).toMatch(/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/);
     expect(podName.length).toBeLessThanOrEqual(63);
+  });
+});
+
+describe("WebhookDeliveryId (time-encoded)", () => {
+  it("generate() round-trips and parseTimestamp recovers the exact mint timestamp", () => {
+    const { id, friendlyId, timestamp } = WebhookDeliveryId.generate();
+
+    expect(friendlyId).toBe(`whd_${id}`);
+    expect(id.length).toBe(25);
+    expect(WebhookDeliveryId.toId(friendlyId)).toBe(id);
+    expect(WebhookDeliveryId.toId(id)).toBe(id);
+    expect(WebhookDeliveryId.toFriendlyId(id)).toBe(friendlyId);
+    expect(WebhookDeliveryId.parseTimestamp(friendlyId)?.getTime()).toBe(timestamp.getTime());
+    expect(WebhookDeliveryId.parseTimestamp(id)?.getTime()).toBe(timestamp.getTime());
+  });
+
+  it("encodes the wall-clock mint time so the partition key is recoverable", () => {
+    vi.useFakeTimers();
+    try {
+      const minted = new Date("2026-08-09T12:34:56.789Z");
+      vi.setSystemTime(minted);
+      const { friendlyId, timestamp } = WebhookDeliveryId.generate();
+      expect(timestamp.getTime()).toBe(minted.getTime());
+      expect(WebhookDeliveryId.parseTimestamp(friendlyId)?.toISOString()).toBe(
+        "2026-08-09T12:34:56.789Z"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sorts lexicographically in mint order at millisecond resolution", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-09T00:00:00.000Z"));
+      const first = WebhookDeliveryId.generate().id;
+      vi.setSystemTime(new Date("2026-08-09T00:00:00.001Z"));
+      const second = WebhookDeliveryId.generate().id;
+      expect(first < second).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns undefined for legacy or malformed ids so callers skip pruning", () => {
+    expect(WebhookDeliveryId.parseTimestamp("whd_tooShort")).toBeUndefined();
+    expect(WebhookDeliveryId.parseTimestamp(`whd_${"z".repeat(24)}1`)).toBeUndefined();
+    expect(WebhookDeliveryId.parseTimestamp(`whd_${"0".repeat(24)}9`)).toBeUndefined();
   });
 });

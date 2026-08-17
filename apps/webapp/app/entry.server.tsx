@@ -41,6 +41,18 @@ import { registerRunChangeNotifierHandlers } from "./services/realtime/runChange
 // TRI-9864 for the incident write-up.
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
 (globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
+// Touch the webhook deliveries replication singleton at entry so it boots
+// deterministically alongside the sessions replicator. Same `sideEffects: false`
+// tree-shaking constraint applies — assign to globalThis, do NOT use `void`.
+import { webhookDeliveriesReplicationInstance } from "./services/webhookDeliveriesReplicationInstance.server";
+(globalThis as Record<string, unknown>).__webhookDeliveriesReplicationInstance =
+  webhookDeliveriesReplicationInstance;
+// Touch the webhook engine singleton at entry so its redis-worker boots
+// deterministically on webapp startup (the constructor calls worker.start()).
+// Same `sideEffects: false` tree-shaking constraint applies: assign to
+// globalThis, do NOT use `void`.
+import { webhookEngine } from "./v3/webhookEngine.server";
+(globalThis as Record<string, unknown>).__webhookEngine = webhookEngine;
 import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
 (globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
 import { workerRegionRegistry } from "./v3/workerRegions.server";
@@ -338,6 +350,7 @@ export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { otlpRateLimiter } from "./services/otlpRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
+export { webhookIngressIpRateLimiter } from "./services/webhookIngressIpRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 

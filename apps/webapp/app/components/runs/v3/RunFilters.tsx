@@ -200,7 +200,7 @@ export const TaskRunListSearchFilters = z.object({
   ),
   errorId: z.string().optional().describe("Error ID to filter runs by (e.g. error_abc123)"),
   sources: StringOrStringArray.describe(
-    "Task trigger sources to filter by (STANDARD, SCHEDULED, AGENT)"
+    "Task trigger sources to filter by (STANDARD, SCHEDULED, AGENT, WEBHOOK)"
   ),
 });
 
@@ -1918,6 +1918,7 @@ const sourceOptions: { value: TaskTriggerSource; title: string }[] = [
   { value: "STANDARD", title: "Standard" },
   { value: "SCHEDULED", title: "Scheduled" },
   { value: "AGENT", title: "Agent" },
+  { value: "WEBHOOK", title: "Webhook" },
 ];
 
 function SourceDropdown({

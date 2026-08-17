@@ -214,6 +214,19 @@ pnpm exec trigger dev --log-level debug
 5. Commit the generated migration files as well as the changes to `schema.prisma`.
 6. If you're using VSCode you may need to restart the TypeScript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
 
+## Git hooks (lefthook)
+
+We use [lefthook](https://lefthook.dev) for local git hooks, configured in `lefthook.yml` (the source of truth for what runs and when). Today that's a pre-push hook mirroring the CI `code-quality` checks; the set may grow, so check `lefthook.yml` rather than this guide.
+
+Hooks install automatically on `pnpm install`. A failing hook prints exactly what to run to fix it.
+
+**Opting out**
+
+- GitButler skips hooks on `but push` unless you enable **Run hooks** in the project settings (off by default).
+- Plain git: `LEFTHOOK=0 git push` / `--no-verify` to skip once; `pnpm exec lefthook uninstall` to remove.
+
+This never affects correctness — CI enforces the same checks on every PR; the hooks just give you faster feedback.
+
 ## Making a pull request
 
 **If you get errors, be sure to fix them before committing.**
@@ -247,7 +260,7 @@ If your change touches core infrastructure, modifies widely-used code paths, or 
 
 We use [changesets](https://github.com/changesets/changesets) to manage our package versions and changelogs. If you've never used changesets before, first read [their guide here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md).
 
-If you are contributing a change to any packages in this monorepo (anything in either the `/packages` or `/integrations` directories), then you will need to add a changeset to your Pull Requests before they can be merged.
+Changesets are user-facing release notes, not a catalog of every change. If you are contributing a **user-facing** change to a package in this monorepo (anything in `/packages` or `/integrations` that a user would notice or act on), add a changeset to your Pull Request before it can be merged. Skip the changeset for internal-only changes, refactors, chores, and packages that are not consumed independently (e.g. `@trigger.dev/redis-worker`), where a version bump means nothing to a user.
 
 To add a changeset, run the following command in the root of the repo
 
@@ -265,7 +278,7 @@ Most of the time the changes you'll make are likely to be categorized as patch r
 
 ## Adding server changes
 
-Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
+Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes AND the change is user-facing, add a `.server-changes/` file so the change appears in release notes. Skip it for internal-only or admin-only changes, refactors, and chores.
 
 Create a markdown file with a descriptive name:
 
@@ -286,13 +299,13 @@ EOF
 
 The body text (below the frontmatter) is a one-line description of the change. Keep it concise — it will appear in release notes.
 
-**When to add which:**
+**When to add which** (only for user-facing changes; skip the note entirely for internal-only or admin-only changes, refactors, and chores):
 
 | PR changes | What to add |
 |---|---|
-| Only packages (`packages/`) | Changeset |
-| Only server (`apps/`) | `.server-changes/` file |
-| Both packages and server | Just the changeset |
+| Only packages (`packages/` or `integrations/`) | Changeset (if the package change is user-facing) |
+| Only server (`apps/`) | `.server-changes/` file (if the server change is user-facing) |
+| Both packages and server | The changeset covers it; if the package change needs no changeset but the server change is user-facing, add a `.server-changes/` file |
 
 See `.server-changes/README.md` for more details.
 

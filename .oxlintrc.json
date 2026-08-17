@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
   "plugins": ["typescript", "import", "react"],
   "jsPlugins": [
     "./oxlint-plugins/no-thrown-unawaited-redirect.mjs",
@@ -9,6 +12,7 @@
   "ignorePatterns": [
     "**/dist/**",
     "**/build/**",
+    "**/.worktrees/**",
     "**/*.d.ts",
     "**/seed.js",
     "**/seedCloud.ts",
@@ -32,7 +36,7 @@
     "no-control-regex": "off",
     "typescript/no-non-null-asserted-optional-chain": "off",
     "no-unused-expressions": [
-      "warn",
+      "error",
       {
         "allowShortCircuit": true,
         "allowTernary": true

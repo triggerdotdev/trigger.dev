@@ -7,6 +7,8 @@ import {
   type PrismaReplicaClient,
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
+  type WebhookDatabase,
+  type WebhookReplicaDatabase,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { markReadReplicaClient } from "@internal/run-store";
@@ -32,6 +34,13 @@ import {
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
+import {
+  controlPlaneTransactionResilience,
+  registerTransactionResilience,
+  resilienceForClient,
+  runOpsLegacyTransactionResilience,
+  runOpsTransactionResilience,
+} from "./v3/transactionResilience.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
@@ -41,6 +50,8 @@ export type {
   PrismaClientOrTransaction,
   PrismaTransactionOptions,
   PrismaReplicaClient,
+  WebhookDatabase,
+  WebhookReplicaDatabase,
 };
 
 // Boundary logger for transac(): skips an error the client extension already
@@ -57,6 +68,18 @@ function logTransactionPrismaError(error: Prisma.PrismaClientKnownRequestError) 
     message: error.message,
     name: error.name,
   });
+}
+
+function withTransactionDefaults(
+  client: PrismaClientOrTransaction,
+  options?: PrismaTransactionOptions
+): PrismaTransactionOptions {
+  const resilience = resilienceForClient(client as object);
+  return {
+    maxWait: resilience.maxWait,
+    ...options,
+    startRetry: options?.startRetry ?? resilience.startRetry,
+  };
 }
 
 export async function $transaction<R>(
@@ -93,35 +116,41 @@ async function $transactionInner<R>(
   options?: PrismaTransactionOptions
 ): Promise<R | undefined> {
   if (typeof fnOrName === "string") {
+    const effectiveOptions = withTransactionDefaults(prisma, options);
     return await startActiveSpan(fnOrName, async (span) => {
       span.setAttribute("$transaction", true);
 
-      if (options?.isolationLevel) {
-        span.setAttribute("isolation_level", options.isolationLevel);
+      if (effectiveOptions.isolationLevel) {
+        span.setAttribute("isolation_level", effectiveOptions.isolationLevel);
       }
 
-      if (options?.timeout) {
-        span.setAttribute("timeout", options.timeout);
+      if (effectiveOptions.timeout) {
+        span.setAttribute("timeout", effectiveOptions.timeout);
       }
 
-      if (options?.maxWait) {
-        span.setAttribute("max_wait", options.maxWait);
+      if (effectiveOptions.maxWait) {
+        span.setAttribute("max_wait", effectiveOptions.maxWait);
       }
 
-      if (options?.swallowPrismaErrors) {
-        span.setAttribute("swallow_prisma_errors", options.swallowPrismaErrors);
+      if (effectiveOptions.swallowPrismaErrors) {
+        span.setAttribute("swallow_prisma_errors", effectiveOptions.swallowPrismaErrors);
       }
 
       const fn = fnOrOptions as (prisma: PrismaTransactionClient, span: Span) => Promise<R>;
 
-      return transac(prisma, (client) => fn(client, span), logTransactionPrismaError, options);
+      return transac(
+        prisma,
+        (client) => fn(client, span),
+        logTransactionPrismaError,
+        effectiveOptions
+      );
     });
   } else {
     return transac(
       prisma,
       fnOrName,
       logTransactionPrismaError,
-      typeof fnOrOptions === "function" ? undefined : fnOrOptions
+      withTransactionDefaults(prisma, typeof fnOrOptions === "function" ? undefined : fnOrOptions)
     );
   }
 }
@@ -134,7 +163,9 @@ type DatasourceLabel =
   | "legacy-run-ops-writer"
   | "legacy-run-ops-replica"
   | "run-ops-writer"
-  | "run-ops-replica";
+  | "run-ops-replica"
+  | "webhook-writer"
+  | "webhook-replica";
 
 function tagDatasource<T extends PrismaClient>(datasource: DatasourceLabel, client: T): T {
   return client.$extends({
@@ -180,7 +211,10 @@ function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClien
 }
 
 export const prisma = singleton("prisma", () =>
-  captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient()))
+  registerTransactionResilience(
+    captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient())),
+    controlPlaneTransactionResilience
+  )
 );
 
 export const $replica: PrismaReplicaClient = singleton("replica", () => {
@@ -192,6 +226,52 @@ export const $replica: PrismaReplicaClient = singleton("replica", () => {
         captureInfrastructureErrors(tagDatasource("control-plane-replica", replica))
       )
     : prisma;
+});
+
+/**
+ * Webhook feature data-plane seam. The whole webhook feature (WebhookEndpoint + WebhookDelivery)
+ * can run on a dedicated Postgres via WEBHOOK_DATABASE_URL; unset reuses the main prisma instance,
+ * so single-DB installs open no extra pool.
+ */
+export const webhookPrisma: WebhookDatabase = singleton("webhookPrisma", () => {
+  if (!env.WEBHOOK_DATABASE_URL) {
+    return prisma;
+  }
+  return captureInfrastructureErrors(
+    tagDatasource(
+      "webhook-writer",
+      buildWriterClient({
+        url: env.WEBHOOK_DATABASE_URL,
+        clientType: "webhook-writer",
+        connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+      })
+    )
+  );
+});
+
+/**
+ * Webhook reader chain: an explicit webhook replica, else the webhook writer once split (no
+ * separate replica yet), else the main $replica when the feature is not split.
+ */
+export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica", () => {
+  if (env.WEBHOOK_DATABASE_READ_REPLICA_URL) {
+    return markReadReplicaClient(
+      captureInfrastructureErrors(
+        tagDatasource(
+          "webhook-replica",
+          buildReplicaClient({
+            url: env.WEBHOOK_DATABASE_READ_REPLICA_URL,
+            clientType: "webhook-reader",
+            connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+          })
+        )
+      )
+    );
+  }
+  if (env.WEBHOOK_DATABASE_URL) {
+    return webhookPrisma;
+  }
+  return $replica;
 });
 
 export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
@@ -309,15 +389,18 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
     {
       controlPlane: { writer: prisma, replica: $replica },
       buildNewWriter: (url, clientType) =>
-        captureInfraErrorsRunOps(
-          tagDatasourceRunOps(
-            "run-ops-writer",
-            buildRunOpsWriterClient({
-              url,
-              clientType,
-              useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
-            })
-          )
+        registerTransactionResilience(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-writer",
+              buildRunOpsWriterClient({
+                url,
+                clientType,
+                useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsTransactionResilience
         ),
       // Brand the run-ops replica (only built for a real replica URL) so routed replica reads stay
       // off the primary. When no replica URL is set, selectRunOpsTopology reuses the writer here —
@@ -338,17 +421,20 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       // Legacy client shares the exact control-plane wrapper stack (the legacy DB carries the full
       // control-plane schema); markReadReplicaClient only on a real replica URL, as with the NEW replica.
       buildLegacyWriter: (url, clientType) =>
-        captureInfrastructureErrors(
-          tagDatasource(
-            "legacy-run-ops-writer",
-            buildWriterClient({
-              url,
-              clientType,
-              poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
-              connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
-              useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
-            })
-          )
+        registerTransactionResilience(
+          captureInfrastructureErrors(
+            tagDatasource(
+              "legacy-run-ops-writer",
+              buildWriterClient({
+                url,
+                clientType,
+                poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
+                connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
+                useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsLegacyTransactionResilience
         ),
       buildLegacyReplica: (url, clientType) =>
         markReadReplicaClient(
@@ -493,18 +579,20 @@ function buildDriverAdapterPool(
 export function buildWriterClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
   poolTimeout,
   connectTimeout,
   useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
   poolTimeout?: number;
   connectTimeout?: number;
   useDriverAdapter?: boolean;
 }): PrismaClient {
   const databaseUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    connectionLimit: connectionLimit.toString(),
     poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
     connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
     applicationName: env.SERVICE_NAME,
@@ -677,18 +765,20 @@ function getReplicaClient() {
 export function buildReplicaClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
   poolTimeout,
   connectTimeout,
   useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
   poolTimeout?: number;
   connectTimeout?: number;
   useDriverAdapter?: boolean;
 }): PrismaClient {
   const replicaUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    connectionLimit: connectionLimit.toString(),
     poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
     connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
     applicationName: env.SERVICE_NAME,

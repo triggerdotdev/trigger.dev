@@ -11,6 +11,7 @@ import { env } from "~/env.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { runTriggeredAt } from "~/v3/runTimestamps";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -92,6 +93,8 @@ export class RunPresenter {
           friendlyId: true,
           status: true,
           startedAt: true,
+          queueTimestamp: true,
+          scheduleId: true,
           completedAt: true,
           logsDeletedAt: true,
           annotations: true,
@@ -151,6 +154,7 @@ export class RunPresenter {
     }
 
     const showLogs = showDeletedLogs || !run.logsDeletedAt;
+    const triggeredAt = runTriggeredAt(run);
 
     const runData = {
       id: run.id,
@@ -240,7 +244,7 @@ export class RunPresenter {
           message: run.taskIdentifier,
           style: { icon: "task", variant: "primary" },
           events: [],
-          startTime: run.createdAt,
+          startTime: triggeredAt,
           duration: 0,
           isError:
             run.status === "COMPLETED_WITH_ERRORS" ||
@@ -364,7 +368,7 @@ export class RunPresenter {
         rootStartedAt: tree?.data.startTime,
         startedAt: run.startedAt,
         queuedDuration: run.startedAt
-          ? millisecondsToNanoseconds(run.startedAt.getTime() - run.createdAt.getTime())
+          ? millisecondsToNanoseconds(run.startedAt.getTime() - triggeredAt.getTime())
           : undefined,
         overridesBySpanId: traceSummary.overridesBySpanId,
         linkedRunIdBySpanId,

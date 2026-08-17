@@ -1,11 +1,4 @@
-import type {
-  BackgroundWorker,
-  BackgroundWorkerTask,
-  Prisma,
-  RuntimeEnvironmentType,
-  TaskQueue,
-  WorkerDeployment,
-} from "@trigger.dev/database";
+import type { BackgroundWorker, Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 
@@ -49,12 +42,67 @@ export type ResolvedEnv = {
   concurrencyLimitBurstFactor: Prisma.Decimal;
 };
 
+/**
+ * The BackgroundWorkerTask columns the dequeue resolve path reads. Mirrors run-engine's
+ * `ResolvedWorkerTask` exactly. The unread heavy JSON columns (`payloadSchema`, `config`,
+ * `queueConfig`, `description`) are dropped so this hot control-plane read stops shipping
+ * ~62KB/query (and each cached entry stays small); `machineConfig`/`retryConfig` are read
+ * at dequeue and stay.
+ */
+export type ResolvedWorkerTask = {
+  id: string;
+  slug: string;
+  machineConfig: Prisma.JsonValue | null;
+  retryConfig: Prisma.JsonValue | null;
+  maxDurationInSeconds: number | null;
+};
+
+/** The `select` that yields a `ResolvedWorkerTask`. */
+export const resolvedWorkerTaskSelect = {
+  id: true,
+  slug: true,
+  machineConfig: true,
+  retryConfig: true,
+  maxDurationInSeconds: true,
+} satisfies Prisma.BackgroundWorkerTaskSelect;
+
+/** Mirrors run-engine's `ResolvedTaskQueue` exactly. `id` + `name` (the matcher keys on both). */
+export type ResolvedTaskQueue = {
+  id: string;
+  name: string;
+};
+
+/** The `select` that yields a `ResolvedTaskQueue`. */
+export const resolvedTaskQueueSelect = {
+  id: true,
+  name: true,
+} satisfies Prisma.TaskQueueSelect;
+
+/**
+ * Mirrors run-engine's `ResolvedWorkerDeployment` exactly. Drops the unread heavy JSON columns
+ * (`externalBuildData`, `buildServerMetadata`, `errorData`, `git`) from this single-row read.
+ */
+export type ResolvedWorkerDeployment = {
+  id: string;
+  friendlyId: string;
+  imageReference: string | null;
+  imagePlatform: string;
+};
+
+/** The `select` that yields a `ResolvedWorkerDeployment`. */
+export const resolvedWorkerDeploymentSelect = {
+  id: true,
+  friendlyId: true,
+  imageReference: true,
+  imagePlatform: true,
+} satisfies Prisma.WorkerDeploymentSelect;
+
 /** Mirrors `WorkerDeploymentWithWorkerTasks` in `dequeueSystem.ts` exactly. */
 export type ResolvedWorkerVersion = {
   worker: BackgroundWorker;
-  tasks: BackgroundWorkerTask[];
-  queues: TaskQueue[];
-  deployment: WorkerDeployment | null;
+  tasks: ResolvedWorkerTask[];
+  queues: ResolvedTaskQueue[];
+  deployment: ResolvedWorkerDeployment | null;
 };
 
 // The canonical authenticated-environment shape (slug/type/project/organization/orgMember/…)
@@ -180,7 +228,6 @@ export class ControlPlaneCache {
     this.#bump(`env:${id}`);
   }
 
-  // worker version: key = `${environmentId}:${backgroundWorkerId ?? "current"}`
   getWorkerVersion(key: string): (ResolvedWorkerVersion | null) | undefined {
     return this.#read(this.#version, `version:${key}`);
   }

@@ -8,7 +8,12 @@ import {
 } from "@heroicons/react/20/solid";
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useParams, useSubmit } from "@remix-run/react";
-import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import {
+  type ActionFunction,
+  type LoaderFunctionArgs,
+  json,
+  redirect,
+} from "@remix-run/server-runtime";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -132,8 +137,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       }),
     ]);
 
+    if (result.foundTask && result.triggerSource === "WEBHOOK") {
+      throw redirect(
+        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/webhooks/${taskParam}?tab=console`
+      );
+    }
+
     return typedjson({ ...result, regions: regionsResult.regions });
   } catch (error) {
+    if (error instanceof Response) throw error;
+
     logger.error("Failed to load test page", {
       taskParam,
       error: error instanceof Error ? error.message : error,
@@ -303,7 +316,7 @@ export default function Page() {
     }
   }, [params.organizationSlug, params.projectParam, params.envParam]);
 
-  const defaultTaskQueue = result.queue;
+  const defaultTaskQueue = "queue" in result ? result.queue : undefined;
   const queues = useMemo(() => {
     const customQueues = queueFetcher.data?.queues ?? [];
 

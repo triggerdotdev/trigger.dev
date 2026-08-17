@@ -16,6 +16,11 @@ import { runsReplicationInstance } from "~/services/runsReplicationInstance.serv
 // effect the bundler must preserve. See TRI-9864.
 import { sessionsReplicationInstance } from "~/services/sessionsReplicationInstance.server";
 (globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
+// Same reference-hold as the sessions replicator above (and the same
+// `void`-tree-shaking caveat) for the webhook deliveries replication singleton.
+import { webhookDeliveriesReplicationInstance } from "~/services/webhookDeliveriesReplicationInstance.server";
+(globalThis as Record<string, unknown>).__webhookDeliveriesReplicationInstance =
+  webhookDeliveriesReplicationInstance;
 import { singleton } from "~/utils/singleton";
 import { tracer } from "../tracer.server";
 import { $replica } from "~/db.server";

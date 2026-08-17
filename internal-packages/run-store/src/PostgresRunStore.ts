@@ -1,4 +1,4 @@
-import { Prisma, boundedIn } from "@trigger.dev/database";
+import { Prisma, boundedIn, withTransactionStartRetry } from "@trigger.dev/database";
 import type {
   BatchTaskRun,
   BatchTaskRunItemStatus,
@@ -6,6 +6,7 @@ import type {
   PrismaClientOrTransaction,
   TaskRun,
   TaskRunStatus,
+  TransactionStartRetryConfig,
   WaitpointTag,
 } from "@trigger.dev/database";
 import type {
@@ -109,6 +110,13 @@ export type PostgresRunStoreOptions = {
   readOnlyPrisma: RunOpsCapableClient;
   /** Defaults to `"legacy"` so existing callers/tests are unaffected. */
   schemaVariant?: RunStoreSchemaVariant;
+  /**
+   * `maxWait` (ms) applied when THIS store opens its own transaction. Threaded from the app
+   * boundary (IoC). Undefined leaves Prisma's own default (2000ms), preserving test behavior.
+   */
+  maxWait?: number;
+  /** Env-driven P2028-at-acquisition retry config, threaded from the app boundary (IoC). */
+  transactionStartRetry?: TransactionStartRetryConfig;
 };
 
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
@@ -629,6 +637,8 @@ export class PostgresRunStore implements RunStore {
   private readonly prisma: RunOpsCapableClient;
   private readonly readOnlyPrisma: RunOpsCapableClient;
   private readonly schemaVariant: RunStoreSchemaVariant;
+  private readonly maxWait?: number;
+  private readonly transactionStartRetry?: TransactionStartRetryConfig;
 
   constructor(options: PostgresRunStoreOptions) {
     // Normalize foreign (run-ops-generation) Prisma known-request-errors to the control-plane
@@ -637,6 +647,8 @@ export class PostgresRunStore implements RunStore {
     this.prisma = wrapRunOpsClientForErrorNormalization(options.prisma);
     this.readOnlyPrisma = wrapRunOpsClientForErrorNormalization(options.readOnlyPrisma);
     this.schemaVariant = options.schemaVariant ?? "legacy";
+    this.maxWait = options.maxWait;
+    this.transactionStartRetry = options.transactionStartRetry;
   }
 
   // The writer handle in read-client form, so the routing layer can honor a caller-passed client
@@ -654,8 +666,18 @@ export class PostgresRunStore implements RunStore {
     _runId: string | undefined,
     fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
   ): Promise<R> {
-    return (this.prisma as RunOpsTransactionalClient).$transaction((tx) =>
-      fn(this, tx as unknown as PrismaClientOrTransaction)
+    let entered = false;
+    return withTransactionStartRetry(
+      () =>
+        (this.prisma as RunOpsTransactionalClient).$transaction(
+          (tx) => {
+            entered = true;
+            return fn(this, tx as unknown as PrismaClientOrTransaction);
+          },
+          { maxWait: this.maxWait }
+        ),
+      this.transactionStartRetry,
+      () => !entered
     );
   }
 
@@ -674,9 +696,16 @@ export class PostgresRunStore implements RunStore {
     if (alreadyInTransaction) {
       return fn(tx);
     }
-    return (this.prisma as RunOpsTransactionalClient).$transaction(
-      (t) => fn(t as unknown as PrismaClientOrTransaction),
-      options
+    const txOptions = { maxWait: this.maxWait, ...options };
+    let entered = false;
+    return withTransactionStartRetry(
+      () =>
+        (this.prisma as RunOpsTransactionalClient).$transaction((t) => {
+          entered = true;
+          return fn(t as unknown as PrismaClientOrTransaction);
+        }, txOptions),
+      this.transactionStartRetry,
+      () => !entered
     );
   }
 
