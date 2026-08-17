@@ -2,7 +2,7 @@ import {
   ArrowUturnLeftIcon,
   PencilSquareIcon,
   PlusIcon,
-  VariableIcon,
+  BoltIcon,
   ViewColumnsIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -224,7 +224,7 @@ function ColumnRow({
   return (
     <div
       className={cn(
-        "relative flex h-8 items-center gap-2 px-3 transition-colors hover:bg-charcoal-750",
+        "group relative flex h-8 items-center gap-2 px-3 transition-colors hover:bg-charcoal-750",
         dragging && "opacity-40"
       )}
       draggable
@@ -236,7 +236,7 @@ function ColumnRow({
     >
       {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500" />}
       {locked ? <Checkbox checked disabled /> : <Checkbox checked={checked} onChange={onToggle} />}
-      {isSmart && <VariableIcon className="size-4 flex-none text-text-dimmed" />}
+      {isSmart && <BoltIcon className="size-4 flex-none text-text-dimmed" />}
       <span
         className={cn("flex-1 truncate text-sm", checked ? "text-text-bright" : "text-text-dimmed")}
       >
@@ -247,7 +247,7 @@ function ColumnRow({
           type="button"
           onClick={onEdit}
           aria-label={`Edit ${col.def.label}`}
-          className="flex size-5 items-center justify-center rounded text-text-dimmed transition-colors hover:text-text-bright focus-custom"
+          className="flex size-5 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:text-text-bright focus-custom group-hover:opacity-100"
         >
           <PencilSquareIcon className="size-3.5" />
         </button>
@@ -257,12 +257,12 @@ function ColumnRow({
           type="button"
           onClick={onRemove}
           aria-label={`Remove ${col.def.label}`}
-          className="flex size-5 items-center justify-center rounded text-text-dimmed transition-colors hover:text-error focus-custom"
+          className="flex size-5 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:text-error focus-custom group-hover:opacity-100"
         >
           <XMarkIcon className="size-3.5" />
         </button>
       )}
-      <GripVerticalIcon className="size-4 cursor-grab text-text-dimmed active:cursor-grabbing" />
+      <GripVerticalIcon className="size-4 flex-none cursor-grab text-text-dimmed opacity-0 transition group-hover:opacity-100 active:cursor-grabbing" />
     </div>
   );
 }

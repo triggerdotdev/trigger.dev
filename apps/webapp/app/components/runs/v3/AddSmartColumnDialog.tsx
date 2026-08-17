@@ -1,4 +1,4 @@
-import { VariableIcon } from "@heroicons/react/20/solid";
+import { BoltIcon } from "@heroicons/react/20/solid";
 import { useEffect, useMemo, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { Button } from "~/components/primitives/Buttons";
@@ -253,7 +253,7 @@ function SmartColumnResolvedPreview({
   return (
     <div className="rounded border border-grid-dimmed">
       <div className="flex items-center gap-1 border-b border-grid-dimmed px-2 py-1">
-        <VariableIcon className="size-3.5 flex-none text-text-dimmed" />
+        <BoltIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate text-xs text-text-bright">{label || "Column"}</span>
       </div>
       <div className="px-2 py-1.5 text-right text-sm tabular-nums text-text-bright">{value}</div>
