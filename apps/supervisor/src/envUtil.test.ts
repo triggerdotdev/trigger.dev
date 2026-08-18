@@ -224,9 +224,7 @@ describe("OrgPlacementOverrides", () => {
     ).toEqual({
       org_123: {
         nodeSelector: { "node.cluster.x-k8s.io/machinepool": "dedicated-pool" },
-        tolerations: [
-          { key: "dedicated", operator: "Equal", value: "pool", effect: "NoSchedule" },
-        ],
+        tolerations: [{ key: "dedicated", operator: "Equal", value: "pool", effect: "NoSchedule" }],
       },
     });
   });
@@ -284,15 +282,15 @@ describe("OrgPlacementOverrides", () => {
 
   it("should trim whitespace around node selector keys and values", () => {
     expect(
-      OrgPlacementOverrides.parse(JSON.stringify({ org_123: { nodeSelector: { " pool ": " a " } } }))
+      OrgPlacementOverrides.parse(
+        JSON.stringify({ org_123: { nodeSelector: { " pool ": " a " } } })
+      )
     ).toEqual({ org_123: { nodeSelector: { pool: "a" } } });
   });
 
   it("should reject blank or padded org keys, since the lookup is exact", () => {
     for (const key of [" ", " org_123", "org_123 "]) {
-      expect(
-        OrgPlacementOverrides.safeParse(JSON.stringify({ [key]: {} })).success
-      ).toBe(false);
+      expect(OrgPlacementOverrides.safeParse(JSON.stringify({ [key]: {} })).success).toBe(false);
     }
   });
 
