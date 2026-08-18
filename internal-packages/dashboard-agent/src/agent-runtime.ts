@@ -57,7 +57,7 @@ function getDb(): DashboardAgentDbClient {
 
 // Resolves the `"provider:model-id"` strings on our managed prompts to AI SDK
 // models, against whichever provider is switched on.
-export { registry, resolveDashboardAgentModel } from "./model-provider";
+export { resolveDashboardAgentModel } from "./model-provider";
 
 // The agent's persistence, behind an interface so tests can inject a fake via
 // `locals` and never need a real database.
