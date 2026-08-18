@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   nodetypeNodeSelector,
   runPodTolerations,
+  runnerSecurityContext,
   withRunnerSeccompProfile,
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
@@ -151,5 +152,26 @@ describe("withRunnerSeccompProfile", () => {
         withRunnerSeccompProfile(basePodSpec, { ...base, runtimes, checkpointsEnabled: false })
       ).toBe(basePodSpec);
     }
+  });
+});
+
+describe("runnerSecurityContext", () => {
+  it("sets nothing when off", () => {
+    expect(runnerSecurityContext("off")).toBeUndefined();
+  });
+
+  it("drops all capabilities and blocks escalation at baseline", () => {
+    expect(runnerSecurityContext("baseline")).toEqual({
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ["ALL"] },
+    });
+  });
+
+  it("additionally requires a non-root image when restricted", () => {
+    expect(runnerSecurityContext("restricted")).toEqual({
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ["ALL"] },
+      runAsNonRoot: true,
+    });
   });
 });

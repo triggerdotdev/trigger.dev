@@ -96,3 +96,22 @@ export function withRunnerSeccompProfile(
     },
   };
 }
+
+/**
+ * runnerSecurityContext maps a configured level onto the run container's security
+ * context. "baseline" drops the capability bounding set and blocks setuid
+ * escalation; "restricted" additionally requires a non-root image.
+ */
+export function runnerSecurityContext(
+  level: "off" | "baseline" | "restricted"
+): k8s.V1SecurityContext | undefined {
+  if (level === "off") {
+    return undefined;
+  }
+
+  return {
+    allowPrivilegeEscalation: false,
+    capabilities: { drop: ["ALL"] },
+    ...(level === "restricted" ? { runAsNonRoot: true } : {}),
+  };
+}
