@@ -1726,20 +1726,28 @@ export class RunQueue {
     const visibilityTimeoutMs = (ttlSystem.visibilityTimeoutMs ?? 30_000).toString();
 
     // Atomically get and remove expired runs from TTL set, ack them from normal queues, and enqueue to TTL worker
-    const expireTtlRuns = this.#ckVtimeEnabled
-      ? this.redis.expireTtlRunsVtimeTracked.bind(this.redis)
-      : this.redis.expireTtlRunsTracked.bind(this.redis);
-
-    const results = await expireTtlRuns(
-      ttlQueueKey,
-      keyPrefix,
-      now.toString(),
-      batchSize.toString(),
-      shardCount.toString(),
-      workerQueueKey,
-      workerItemsKey,
-      visibilityTimeoutMs
-    );
+    const results = this.#ckVtimeEnabled
+      ? await this.redis.expireTtlRunsVtimeTracked(
+          ttlQueueKey,
+          keyPrefix,
+          now.toString(),
+          batchSize.toString(),
+          shardCount.toString(),
+          workerQueueKey,
+          workerItemsKey,
+          visibilityTimeoutMs,
+          String(this.#ckVtimeStateTtl)
+        )
+      : await this.redis.expireTtlRunsTracked(
+          ttlQueueKey,
+          keyPrefix,
+          now.toString(),
+          batchSize.toString(),
+          shardCount.toString(),
+          workerQueueKey,
+          workerItemsKey,
+          visibilityTimeoutMs
+        );
 
     if (!results || results.length === 0) {
       return [];
@@ -2265,6 +2273,7 @@ export class RunQueue {
               baseQueueKey,
               this.keys.ckVtimeKeyFromQueue(message.queue),
               this.keys.ckVtimeFloorKeyFromQueue(message.queue),
+              this.keys.ckVtimeIdleKeyFromQueue(message.queue),
               // args
               queueName,
               messageId,
@@ -2340,6 +2349,7 @@ export class RunQueue {
               baseQueueKey,
               this.keys.ckVtimeKeyFromQueue(message.queue),
               this.keys.ckVtimeFloorKeyFromQueue(message.queue),
+              this.keys.ckVtimeIdleKeyFromQueue(message.queue),
               // args
               queueName,
               messageId,
@@ -2659,6 +2669,7 @@ export class RunQueue {
             runningCounterKey,
             this.keys.ckVtimeKeyFromQueue(ckWildcardQueue),
             this.keys.ckVtimeFloorKeyFromQueue(ckWildcardQueue),
+            this.keys.ckVtimeIdleKeyFromQueue(ckWildcardQueue),
             //args
             ckWildcardQueue,
             String(Date.now()),
@@ -2943,11 +2954,13 @@ export class RunQueue {
           lengthCounterKey,
           runningCounterKey,
           this.keys.ckVtimeKeyFromQueue(message.queue),
+          this.keys.ckVtimeIdleKeyFromQueue(message.queue),
           messageId,
           messageQueue,
           messageKeyValue,
           removeFromWorkerQueue ? "1" : "0",
-          ckWildcardName
+          ckWildcardName,
+          String(this.#ckVtimeStateTtl)
         );
       }
 
@@ -3096,6 +3109,7 @@ export class RunQueue {
           runningCounterKey,
           this.keys.ckVtimeKeyFromQueue(message.queue),
           this.keys.ckVtimeFloorKeyFromQueue(message.queue),
+          this.keys.ckVtimeIdleKeyFromQueue(message.queue),
           //args
           messageId,
           messageQueue,
@@ -3186,9 +3200,11 @@ export class RunQueue {
           lengthCounterKey,
           runningCounterKey,
           this.keys.ckVtimeKeyFromQueue(message.queue),
+          this.keys.ckVtimeIdleKeyFromQueue(message.queue),
           messageId,
           messageQueue,
-          ckWildcardName
+          ckWildcardName,
+          String(this.#ckVtimeStateTtl)
         );
       } else {
         await this.redis.moveToDeadLetterQueueCkTracked(
@@ -4248,7 +4264,7 @@ return __qmret(0)
     // brand-new key is present in the fair order from its first enqueue. The
     // fast path (direct-to-worker-queue) neither registers nor advances.
     this.redis.defineCommand("enqueueMessageCkVtimeTracked", {
-      numberOfKeys: 17,
+      numberOfKeys: 18,
       lua: `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
@@ -4267,9 +4283,10 @@ local envConcurrencyLimitBurstFactorKey = KEYS[13]
 -- Counter keys (KEYS 14-15)
 local lengthCounterKey = KEYS[14]
 local baseQueueKey = KEYS[15]
--- Virtual-time keys (KEYS 16-17)
+-- Virtual-time keys (KEYS 16-18)
 local ckVtimeKey = KEYS[16]
 local ckVtimeFloorKey = KEYS[17]
+local ckVtimeIdleKey = KEYS[18]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -4354,12 +4371,20 @@ if #earliest > 0 then
   redis.call('ZADD', ckIndexKey, earliest[2], queueName)
 end
 
--- Register this variant in the virtual-time index at the floor. NX means an
--- already-advanced tag is never rewound.
+-- Register this variant in the virtual-time index. NX means an already-advanced tag is
+-- never rewound. The start is max(floor, remembered idle tag): a variant that drained and
+-- came back would otherwise be handed full credit at the floor on every re-enqueue, which
+-- starves any variant carrying a persistent backlog.
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
-redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName)
+local vstart = tonumber(vfloor)
+local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
+if vidle and tonumber(vidle) > vstart then
+  vstart = tonumber(vidle)
+end
+redis.call('ZADD', ckVtimeKey, 'NX', tostring(vstart), queueName)
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
 redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
+redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
 
 -- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
@@ -4390,7 +4415,7 @@ return __qmret(0)
     // Vtime variant of enqueueMessageWithTtlCkTracked. Same slow-path-only
     // registration as enqueueMessageCkVtimeTracked above.
     this.redis.defineCommand("enqueueMessageWithTtlCkVtimeTracked", {
-      numberOfKeys: 18,
+      numberOfKeys: 19,
       lua: `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
@@ -4410,9 +4435,10 @@ local envConcurrencyLimitBurstFactorKey = KEYS[14]
 -- Counter keys (KEYS 15-16)
 local lengthCounterKey = KEYS[15]
 local baseQueueKey = KEYS[16]
--- Virtual-time keys (KEYS 17-18)
+-- Virtual-time keys (KEYS 17-19)
 local ckVtimeKey = KEYS[17]
 local ckVtimeFloorKey = KEYS[18]
+local ckVtimeIdleKey = KEYS[19]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -4492,12 +4518,20 @@ if #earliest > 0 then
   redis.call('ZADD', ckIndexKey, earliest[2], queueName)
 end
 
--- Register this variant in the virtual-time index at the floor. NX means an
--- already-advanced tag is never rewound.
+-- Register this variant in the virtual-time index. NX means an already-advanced tag is
+-- never rewound. The start is max(floor, remembered idle tag): a variant that drained and
+-- came back would otherwise be handed full credit at the floor on every re-enqueue, which
+-- starves any variant carrying a persistent backlog.
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
-redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName)
+local vstart = tonumber(vfloor)
+local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
+if vidle and tonumber(vidle) > vstart then
+  vstart = tonumber(vidle)
+end
+redis.call('ZADD', ckVtimeKey, 'NX', tostring(vstart), queueName)
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
 redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
+redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
 
 -- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
@@ -4757,6 +4791,7 @@ local shardCount = tonumber(ARGV[4])
 local workerQueueKey = ARGV[5]
 local workerItemsKey = ARGV[6]
 local visibilityTimeoutMs = tonumber(ARGV[7])
+local stateTtl = tonumber(ARGV[8] or '86400')
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -4834,7 +4869,16 @@ for i, member in ipairs(expiredMembers) do
           redis.call('ZREM', ckIndexKey, rawQueueKey)
           -- NEW: derived rather than passed in, because this sweep discovers the queues it
           -- touches inside the script, exactly as ckIndexKey above is derived.
-          redis.call('ZREM', keyPrefix .. ckMatch .. ":ckVtime", rawQueueKey)
+          -- NEW: park the tag first so the variant's next enqueue re-registers with the
+          -- credit it earned rather than at the floor.
+          local ckVtimeKey = keyPrefix .. ckMatch .. ":ckVtime"
+          local ckVtimeIdleKey = keyPrefix .. ckMatch .. ":ckVtimeIdle"
+          local idleTag = redis.call('ZSCORE', ckVtimeKey, rawQueueKey)
+          if idleTag then
+            redis.call('ZADD', ckVtimeIdleKey, idleTag, rawQueueKey)
+            redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
+          end
+          redis.call('ZREM', ckVtimeKey, rawQueueKey)
         else
           redis.call('ZADD', ckIndexKey, earliest[2], rawQueueKey)
         end
@@ -5307,7 +5351,7 @@ return __qmret(results)
     // pass 1 could not see rather than serving them, which is what keeps a backlog
     // queued before the flag went on from being unreachable.
     this.redis.defineCommand("dequeueMessagesFromCkQueueVtimeTracked", {
-      numberOfKeys: 13,
+      numberOfKeys: 14,
       lua: `
 local ckIndexKey = KEYS[1]
 local queueConcurrencyLimitKey = KEYS[2]
@@ -5322,6 +5366,7 @@ local lengthCounterKey = KEYS[10]
 local runningCounterKey = KEYS[11]
 local ckVtimeKey = KEYS[12]
 local ckVtimeFloorKey = KEYS[13]
+local ckVtimeIdleKey = KEYS[14]
 
 local ckWildcardName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -5389,6 +5434,9 @@ local attempted = {}
 local function tryServe(ckQueueName, mayRaiseFloor)
   attempted[ckQueueName] = true
   local fullQueueKey = keyPrefix .. ckQueueName
+  -- NEW: the tag this call wrote back, if it served. Site A below reuses it rather than
+  -- re-reading the score it just wrote.
+  local servedTag = nil
 
   local ckConcurrencyKey = fullQueueKey .. ':currentConcurrency'
   local ckCurrentConcurrency = tonumber(redis.call('SCARD', ckConcurrencyKey) or '0')
@@ -5443,7 +5491,8 @@ local function tryServe(ckQueueName, mayRaiseFloor)
           if mayRaiseFloor and (minServableTag == nil or tag < minServableTag) then
             minServableTag = tag
           end
-          redis.call('ZADD', ckVtimeKey, tostring(tag + (quantum / weight)), ckQueueName)
+          servedTag = tag + (quantum / weight)
+          redis.call('ZADD', ckVtimeKey, tostring(servedTag), ckQueueName)
         end
       else
         redis.call('ZREM', fullQueueKey, messageId)
@@ -5454,6 +5503,24 @@ local function tryServe(ckQueueName, mayRaiseFloor)
       local earliest = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
       if #earliest == 0 then
         redis.call('ZREM', ckIndexKey, ckQueueName)
+        -- NEW: park the tag in the idle set so the next enqueue re-registers with the
+        -- credit this variant earned instead of full credit at the floor. Only above the
+        -- floor is worth keeping: registration takes max(floor, idleTag), so an entry at
+        -- or below the floor confers nothing and just grows the set.
+        -- servedTag is nil when the branch above dropped an expired or payload-less message
+        -- rather than serving one; the tag is still on record, so read it back before the
+        -- ZREM discards it. Only that rare path pays the extra read.
+        local parkTag = servedTag
+        if parkTag == nil then
+          local storedTag = redis.call('ZSCORE', ckVtimeKey, ckQueueName)
+          if storedTag then
+            parkTag = tonumber(storedTag)
+          end
+        end
+        if parkTag ~= nil and parkTag > floor then
+          redis.call('ZADD', ckVtimeIdleKey, tostring(parkTag), ckQueueName)
+          redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
+        end
         redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
       else
         redis.call('ZADD', ckIndexKey, earliest[2], ckQueueName)
@@ -5462,6 +5529,13 @@ local function tryServe(ckQueueName, mayRaiseFloor)
       local any = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
       if #any == 0 then
         redis.call('ZREM', ckIndexKey, ckQueueName)
+        -- NEW: nothing was served, so no tag is in hand. Read it before the ZREM discards
+        -- it, and keep it only if it is above the floor (see Site A).
+        local idleTag = redis.call('ZSCORE', ckVtimeKey, ckQueueName)
+        if idleTag and tonumber(idleTag) > floor then
+          redis.call('ZADD', ckVtimeIdleKey, idleTag, ckQueueName)
+          redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
+        end
         redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
       else
         redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
@@ -5483,7 +5557,14 @@ local function tryServe(ckQueueName, mayRaiseFloor)
     -- already registered keeps the tag it earned, which is the usual case and costs one op.
     -- The TTL only needs setting when this actually registered something, since that is the
     -- path that can recreate a ckVtime key which expired out from under a live ckIndex.
-    if redis.call('ZADD', ckVtimeKey, 'NX', tostring(floor), ckQueueName) == 1 then
+    -- NEW: registers at max(floor, remembered idle tag), same rule as the enqueue path, so
+    -- a variant that drained under the gate does not come back with full credit.
+    local gateStart = floor
+    local gateIdle = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
+    if gateIdle and tonumber(gateIdle) > gateStart then
+      gateStart = tonumber(gateIdle)
+    end
+    if redis.call('ZADD', ckVtimeKey, 'NX', tostring(gateStart), ckQueueName) == 1 then
       redis.call('EXPIRE', ckVtimeKey, stateTtl)
     end
   end
@@ -5556,6 +5637,9 @@ if dequeuedCount > 0 then
     floor = minServableTag
   end
   redis.call('SET', ckVtimeFloorKey, tostring(floor), 'EX', stateTtl)
+  -- NEW: an idle entry at or below the floor confers no credit, because registration takes
+  -- max(floor, idleTag). Dropping it bounds the idle set at one op per serving call.
+  redis.call('ZREMRANGEBYSCORE', ckVtimeIdleKey, '-inf', tostring(floor))
   if redis.call('EXISTS', ckVtimeKey) == 1 then
     redis.call('EXPIRE', ckVtimeKey, stateTtl)
   end
@@ -6099,7 +6183,7 @@ end
     });
 
     this.redis.defineCommand("acknowledgeMessageCkVtimeTracked", {
-      numberOfKeys: 13,
+      numberOfKeys: 14,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -6115,6 +6199,7 @@ local ckIndexKey = KEYS[10]
 local lengthCounterKey = KEYS[11]
 local runningCounterKey = KEYS[12]
 local ckVtimeKey = KEYS[13]
+local ckVtimeIdleKey = KEYS[14]
 
 -- Args:
 local messageId = ARGV[1]
@@ -6122,6 +6207,7 @@ local messageQueueName = ARGV[2]
 local messageKeyValue = ARGV[3]
 local removeFromWorkerQueue = ARGV[4]
 local ckWildcardName = ARGV[5]
+local stateTtl = tonumber(ARGV[6] or '86400')
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -6148,6 +6234,14 @@ if #earliestInCkQueue == 0 then
   -- NEW: the variant has drained, so it leaves the fair order too. Previously only the
   -- vtime dequeue removed a ckVtime entry, so an ack left one behind whose tag had
   -- stopped advancing until some later scan happened to visit and collect it.
+  -- NEW: park the tag first, so the variant's next enqueue re-registers with the credit it
+  -- earned rather than at the floor. No floor key here, so this saves unconditionally; the
+  -- dequeue command reaps everything at or below the floor on its next serving call.
+  local idleTag = redis.call('ZSCORE', ckVtimeKey, messageQueueName)
+  if idleTag then
+    redis.call('ZADD', ckVtimeIdleKey, idleTag, messageQueueName)
+    redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
+  end
   redis.call('ZREM', ckVtimeKey, messageQueueName)
 else
   redis.call('ZADD', ckIndexKey, earliestInCkQueue[2], messageQueueName)
@@ -6287,7 +6381,7 @@ end
     // of the variant into the :ckVtime ZSET at the floor (NX), so a GC'd variant
     // that a nack revives rejoins the fair order.
     this.redis.defineCommand("nackMessageCkVtimeTracked", {
-      numberOfKeys: 13,
+      numberOfKeys: 14,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -6304,6 +6398,7 @@ local runningCounterKey = KEYS[11]
 -- Virtual-time keys (KEYS 12-13)
 local ckVtimeKey = KEYS[12]
 local ckVtimeFloorKey = KEYS[13]
+local ckVtimeIdleKey = KEYS[14]
 
 -- Args:
 local messageId = ARGV[1]
@@ -6366,12 +6461,20 @@ if #earliest > 0 then
   redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
 end
 
--- Register this variant in the virtual-time index at the floor. NX means an
--- already-advanced tag is never rewound.
+-- Register this variant in the virtual-time index. NX means an already-advanced tag is
+-- never rewound. The start is max(floor, remembered idle tag): a nack after the variant
+-- drained would otherwise hand back full credit at the floor, which is the same starvation
+-- the enqueue path guards against.
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
-redis.call('ZADD', ckVtimeKey, 'NX', vfloor, messageQueueName)
+local vstart = tonumber(vfloor)
+local vidle = redis.call('ZSCORE', ckVtimeIdleKey, messageQueueName)
+if vidle and tonumber(vidle) > vstart then
+  vstart = tonumber(vidle)
+end
+redis.call('ZADD', ckVtimeKey, 'NX', tostring(vstart), messageQueueName)
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
 redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
+redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
 
 -- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
@@ -6470,7 +6573,7 @@ end
     });
 
     this.redis.defineCommand("moveToDeadLetterQueueCkVtimeTracked", {
-      numberOfKeys: 13,
+      numberOfKeys: 14,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -6486,11 +6589,13 @@ local ckIndexKey = KEYS[10]
 local lengthCounterKey = KEYS[11]
 local runningCounterKey = KEYS[12]
 local ckVtimeKey = KEYS[13]
+local ckVtimeIdleKey = KEYS[14]
 
 -- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local ckWildcardName = ARGV[3]
+local stateTtl = tonumber(ARGV[4] or '86400')
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -6514,6 +6619,12 @@ if #earliest == 0 then
   -- NEW: the variant has drained, so it leaves the fair order too. Previously only the
   -- vtime dequeue removed a ckVtime entry, so an ack left one behind whose tag had
   -- stopped advancing until some later scan happened to visit and collect it.
+  -- NEW: park the tag first, same rule as the ack path.
+  local idleTag = redis.call('ZSCORE', ckVtimeKey, messageQueueName)
+  if idleTag then
+    redis.call('ZADD', ckVtimeIdleKey, idleTag, messageQueueName)
+    redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
+  end
   redis.call('ZREM', ckVtimeKey, messageQueueName)
 else
   redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
@@ -7209,6 +7320,7 @@ declare module "@internal/redis" {
       baseQueueKey: string,
       ckVtimeKey: string,
       ckVtimeFloorKey: string,
+      ckVtimeIdleKey: string,
       queueName: string,
       messageId: string,
       messageData: string,
@@ -7245,6 +7357,7 @@ declare module "@internal/redis" {
       baseQueueKey: string,
       ckVtimeKey: string,
       ckVtimeFloorKey: string,
+      ckVtimeIdleKey: string,
       queueName: string,
       messageId: string,
       messageData: string,
@@ -7300,6 +7413,7 @@ declare module "@internal/redis" {
       runningCounterKey: string,
       ckVtimeKey: string,
       ckVtimeFloorKey: string,
+      ckVtimeIdleKey: string,
       ckWildcardName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
@@ -7355,11 +7469,13 @@ declare module "@internal/redis" {
       lengthCounterKey: string,
       runningCounterKey: string,
       ckVtimeKey: string,
+      ckVtimeIdleKey: string,
       messageId: string,
       messageQueueName: string,
       messageKeyValue: string,
       removeFromWorkerQueue: string,
       ckWildcardName: string,
+      stateTtl: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -7399,6 +7515,7 @@ declare module "@internal/redis" {
       runningCounterKey: string,
       ckVtimeKey: string,
       ckVtimeFloorKey: string,
+      ckVtimeIdleKey: string,
       messageId: string,
       messageQueueName: string,
       messageData: string,
@@ -7443,9 +7560,11 @@ declare module "@internal/redis" {
       lengthCounterKey: string,
       runningCounterKey: string,
       ckVtimeKey: string,
+      ckVtimeIdleKey: string,
       messageId: string,
       messageQueueName: string,
       ckWildcardName: string,
+      stateTtl: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -7470,6 +7589,7 @@ declare module "@internal/redis" {
       workerQueueKey: string,
       workerItemsKey: string,
       visibilityTimeoutMs: string,
+      stateTtl: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
 

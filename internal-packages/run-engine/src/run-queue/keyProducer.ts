@@ -24,6 +24,7 @@ const constants = {
   CK_INDEX_PART: "ckIndex",
   CK_VTIME_PART: "ckVtime",
   CK_VTIME_FLOOR_PART: "ckVtimeFloor",
+  CK_VTIME_IDLE_PART: "ckVtimeIdle",
   LENGTH_COUNTER_PART: "lengthCounter",
   RUNNING_COUNTER_PART: "runningCounter",
 } as const;
@@ -323,6 +324,10 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   ckVtimeFloorKeyFromQueue(queue: string): string {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.CK_VTIME_FLOOR_PART}`;
+  }
+
+  ckVtimeIdleKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.CK_VTIME_IDLE_PART}`;
   }
 
   // indexOf instead of /:ck:.+$/ (queue names are user-controlled; polynomial regex).
