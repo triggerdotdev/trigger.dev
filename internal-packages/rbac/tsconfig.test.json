@@ -1,7 +1,8 @@
 {
+  "include": ["src/**/*.test.ts"],
   "compilerOptions": {
-    "target": "ES2019",
-    "lib": ["ES2019", "DOM"],
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "esModuleInterop": true,
@@ -11,9 +12,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "strict": true,
+    "types": ["vitest/globals", "node"],
     "customConditions": ["@triggerdotdev/source"]
-  },
-  // Excluded from this IDE-default project: needs ES2022 lib to type-check
-  // (see tsconfig.test.json). typecheck script still checks it.
-  "exclude": ["node_modules", "dist", "src/fallback.userActor.test.ts"]
+  }
 }
