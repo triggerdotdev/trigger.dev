@@ -32,8 +32,6 @@ export function formatFeature(slug: string): string {
     .join(" ");
 }
 
-/** @deprecated Use formatFeature instead. */
-
 /** Capitalize a provider name. */
 export function formatProviderName(provider: string): string {
   const names: Record<string, string> = {
