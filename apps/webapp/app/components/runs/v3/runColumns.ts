@@ -27,7 +27,7 @@ const RUN_COLUMN_IDS = [
 
 export type RunColumnId = (typeof RUN_COLUMN_IDS)[number];
 
-export type RunColumnGate = "managedCloud" | "nonDev";
+type RunColumnGate = "managedCloud" | "nonDev";
 
 type RunSelectField = keyof Prisma.TaskRunSelect;
 
@@ -87,7 +87,7 @@ const ALWAYS_SELECTED_FIELDS = [
   "annotations",
 ] as const satisfies readonly RunSelectField[];
 
-export const STANDARD_COLUMNS: readonly StandardColumnDef[] = [
+const STANDARD_COLUMNS: readonly StandardColumnDef[] = [
   { id: "id", label: "ID", locked: true, fields: ["friendlyId", "spanId"] },
   {
     id: "task",
@@ -132,7 +132,7 @@ export const STANDARD_COLUMNS: readonly StandardColumnDef[] = [
 
 const STANDARD_COLUMNS_BY_ID = new Map(STANDARD_COLUMNS.map((c) => [c.id, c] as const));
 
-export const SMART_COLUMN_SOURCES = ["payload", "metadata", "output"] as const;
+const SMART_COLUMN_SOURCES = ["payload", "metadata", "output"] as const;
 export type SmartColumnSource = (typeof SMART_COLUMN_SOURCES)[number];
 
 export const SMART_COLUMN_DISPLAYS = ["text", "number", "duration", "badge"] as const;
@@ -153,7 +153,7 @@ const SMART_SOURCE_FIELDS: Record<SmartColumnSource, readonly RunSelectField[]> 
 
 const SMART_REF_PREFIX = "sc";
 
-export function smartColumnRef(index: number): string {
+function smartColumnRef(index: number): string {
   return `${SMART_REF_PREFIX}${index + 1}`;
 }
 
