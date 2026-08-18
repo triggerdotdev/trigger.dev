@@ -146,34 +146,68 @@ export const Tolerations = z.string().transform((val, ctx) => {
     });
 });
 
-const NodeSelector = z.record(z.string(), z.string()).superRefine((selector, ctx) => {
-  for (const [key, value] of Object.entries(selector)) {
-    if (!isQualifiedName(key)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Invalid node selector key "${key}". Must be a Kubernetes label key, optionally prefixed with a DNS subdomain.`,
-      });
+/**
+ * Scalar values are coerced: YAML/JSON easily produce `true` or `3` where a label
+ * value is meant, and Kubernetes label values are always strings. An empty value
+ * is rejected rather than passed through - as a selector it matches only nodes
+ * carrying a literal empty-valued label, which pins the org to nothing.
+ */
+const NodeSelector = z
+  .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+  .transform((selector, ctx) => {
+    const result: Record<string, string> = {};
+
+    for (const [rawKey, rawValue] of Object.entries(selector)) {
+      const key = rawKey.trim();
+      const value = String(rawValue).trim();
+
+      if (!isQualifiedName(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid node selector key "${rawKey}". Must be a Kubernetes label key, optionally prefixed with a DNS subdomain.`,
+        });
+        continue;
+      }
+
+      if (!value) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Empty node selector value for key "${key}". Remove the key instead of blanking the value.`,
+        });
+        continue;
+      }
+
+      if (!isLabelValue(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid node selector value "${value}" for key "${key}". Must be a Kubernetes label value: alphanumeric, with dashes, underscores and dots inside, at most 63 characters.`,
+        });
+        continue;
+      }
+
+      result[key] = value;
     }
 
-    if (!isLabelValue(value)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Invalid node selector value "${value}" for key "${key}". Must be a Kubernetes label value: alphanumeric, with dashes, underscores and dots inside, at most 63 characters.`,
-      });
-    }
-  }
-});
+    return result;
+  });
 
 /**
- * Per-organization placement overrides for run pods, as JSON keyed by org id:
+ * Per-organization placement overrides for run pods, as JSON keyed by the
+ * internal org id (the `org` label on run pods):
  * `{"<orgId>": {"nodeSelector": {"<key>": "<value>"}, "tolerations": "<csv>"}}`.
- * Tolerations use the same CSV format as `Tolerations`. Everything is validated
- * at startup for the same reason as tolerations above: a typo would otherwise
- * reject every pod create for that org, with the cause buried in API errors.
+ * Tolerations use the same CSV format as `Tolerations`, or an array of such
+ * entries. Everything is validated at startup for the same reason as
+ * tolerations above: a typo would otherwise reject every pod create for that
+ * org, with the cause buried in API errors. A blank value means no overrides.
  */
 export const OrgPlacementOverrides = z
   .string()
+  .optional()
   .transform((val, ctx) => {
+    if (val === undefined || val.trim() === "") {
+      return undefined;
+    }
+
     try {
       return JSON.parse(val) as unknown;
     } catch {
@@ -185,15 +219,21 @@ export const OrgPlacementOverrides = z
     }
   })
   .pipe(
-    z.record(
-      z.string().min(1),
-      z
-        .object({
-          nodeSelector: NodeSelector.optional(),
-          tolerations: Tolerations.optional(),
-        })
-        .strict()
-    )
+    z
+      .record(
+        z.string().min(1),
+        z
+          .object({
+            nodeSelector: NodeSelector.optional(),
+            tolerations: z
+              .union([z.string(), z.array(z.string())])
+              .transform((val) => (Array.isArray(val) ? val.join(",") : val))
+              .pipe(Tolerations)
+              .optional(),
+          })
+          .strict()
+      )
+      .optional()
   );
 
 export const AdditionalEnvVars = z.preprocess((val) => {

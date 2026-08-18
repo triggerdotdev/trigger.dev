@@ -70,6 +70,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
         domain: opts.workloadApiDomain,
       });
     }
+
+    if (env.KUBERNETES_ORG_PLACEMENT_OVERRIDES) {
+      this.logger.info("[KubernetesWorkloadManager] Org placement overrides enabled", {
+        orgIds: Object.keys(env.KUBERNETES_ORG_PLACEMENT_OVERRIDES),
+      });
+    }
   }
 
   private addPlacementTags(
@@ -112,10 +118,23 @@ export class KubernetesWorkloadManager implements WorkloadManager {
 
     try {
       const orgOverride = env.KUBERNETES_ORG_PLACEMENT_OVERRIDES?.[opts.orgId];
-      const basePodSpec = withNodeSelector(
-        this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
-        orgOverride?.nodeSelector
-      );
+      const taggedPodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
+      const basePodSpec = withNodeSelector(taggedPodSpec, orgOverride?.nodeSelector);
+
+      if (orgOverride?.nodeSelector) {
+        const replacedKeys = Object.keys(orgOverride.nodeSelector).filter(
+          (key) =>
+            taggedPodSpec.nodeSelector?.[key] !== undefined &&
+            taggedPodSpec.nodeSelector[key] !== orgOverride.nodeSelector?.[key]
+        );
+
+        if (replacedKeys.length > 0) {
+          this.logger.warn(
+            "[KubernetesWorkloadManager] Org placement override replaces node selector keys",
+            { orgId: opts.orgId, replacedKeys }
+          );
+        }
+      }
       const podSpec = this.opts.checkpointsEnabled
         ? withBlockIoUringSeccompProfile(basePodSpec, opts.runtime)
         : basePodSpec;

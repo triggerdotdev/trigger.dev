@@ -251,6 +251,53 @@ describe("OrgPlacementOverrides", () => {
     }
   });
 
+  it("should treat a blank or missing value as no overrides, like the sibling settings", () => {
+    expect(OrgPlacementOverrides.parse(undefined)).toBeUndefined();
+    expect(OrgPlacementOverrides.parse("")).toBeUndefined();
+    expect(OrgPlacementOverrides.parse("   ")).toBeUndefined();
+  });
+
+  it("should accept tolerations as an array of entries, matching the Helm list shape", () => {
+    expect(
+      OrgPlacementOverrides.parse(
+        JSON.stringify({
+          org_123: { tolerations: ["dedicated=pool:NoSchedule", "spot:NoExecute"] },
+        })
+      )
+    ).toEqual({
+      org_123: {
+        tolerations: [
+          { key: "dedicated", operator: "Equal", value: "pool", effect: "NoSchedule" },
+          { key: "spot", operator: "Exists", effect: "NoExecute" },
+        ],
+      },
+    });
+  });
+
+  it("should coerce scalar node selector values to strings, as Kubernetes labels are", () => {
+    expect(
+      OrgPlacementOverrides.parse(
+        JSON.stringify({ org_123: { nodeSelector: { paid: true, replicas: 3 } } })
+      )
+    ).toEqual({ org_123: { nodeSelector: { paid: "true", replicas: "3" } } });
+  });
+
+  it("should trim whitespace around node selector keys and values", () => {
+    expect(
+      OrgPlacementOverrides.parse(JSON.stringify({ org_123: { nodeSelector: { " pool ": " a " } } }))
+    ).toEqual({ org_123: { nodeSelector: { pool: "a" } } });
+  });
+
+  it("should reject an empty node selector value instead of pinning the org to nothing", () => {
+    for (const value of ["", "   "]) {
+      expect(
+        OrgPlacementOverrides.safeParse(
+          JSON.stringify({ org_123: { nodeSelector: { pool: value } } })
+        ).success
+      ).toBe(false);
+    }
+  });
+
   it("should reject an unknown field, so a typo cannot silently drop an override", () => {
     expect(
       OrgPlacementOverrides.safeParse(
