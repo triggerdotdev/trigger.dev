@@ -142,7 +142,8 @@ export async function buildWorker(options: BuildWorkerOptions) {
   return buildManifest;
 }
 
-function rewriteBuildManifestPaths(
+/** @knipignore Exported for the CLI end-to-end suite. */
+export function rewriteBuildManifestPaths(
   buildManifest: BuildManifest,
   destinationDir: string
 ): BuildManifest {

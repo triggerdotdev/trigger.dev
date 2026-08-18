@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "tags": ["-knipignore"],
   "workspaces": {
     ".": {
       "entry": ["scripts/**/*.{js,mjs,cjs,ts,mts,cts}"],
@@ -62,7 +63,8 @@
         "src/index.ts",
         "src/entryPoints/**/*.ts",
         "src/**/*-cjs.cts",
-        "src/dev/devWatchdog.ts"
+        "src/dev/devWatchdog.ts",
+        "src/shims/esm.ts"
       ],
       "ignoreDependencies": ["@epic-web/test-server", "execa", "find-up"],
       "ignoreBinaries": ["xdg-open"]
