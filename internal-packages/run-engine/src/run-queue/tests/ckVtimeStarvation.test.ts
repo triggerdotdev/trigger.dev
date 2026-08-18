@@ -2,7 +2,6 @@ import { redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { Decimal } from "@trigger.dev/database";
-import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
@@ -51,12 +50,19 @@ const baseEnv = {
 
 const QUEUE = "task/my-task";
 
-function createQueue(redisContainer: any, keyPrefix: string, vtimeEnabled: boolean) {
+function createQueue(
+  redisContainer: any,
+  keyPrefix: string,
+  vtimeEnabled: boolean,
+  idleMaxEntries?: number
+) {
   return new RunQueue({
     ...testOptions,
     masterQueueConsumersDisabled: true,
     workerOptions: { disabled: true },
-    ...(vtimeEnabled ? { ckVirtualTimeScheduling: { enabled: true } } : {}),
+    ...(vtimeEnabled
+      ? { ckVirtualTimeScheduling: { enabled: true, ...(idleMaxEntries ? { idleMaxEntries } : {}) } }
+      : {}),
     queueSelectionStrategy: new FairQueueSelectionStrategy({
       redis: { keyPrefix, host: redisContainer.getHost(), port: redisContainer.getPort() },
       keys: testOptions.keys,
@@ -384,6 +390,60 @@ describe("CK vtime starvation by drain-and-re-register", () => {
 
       // Nothing drained, so nothing was ever parked.
       expect(on.idleSize).toBe(0);
+    }
+  );
+
+  // The idle set is trimmed two ways. The at-or-below-floor reap is the cheap one, but it
+  // is worth nothing while the floor is pinned, and a workload that keeps minting fresh
+  // concurrency keys pins it indefinitely: each new key registers at the floor and is
+  // served at it, so minServableTag never rises. A resource benchmark caught the set
+  // growing by the drain count every round and never shrinking. The rank cap is the bound
+  // that does not depend on the floor moving.
+  redisTest(
+    "the idle set stays capped when fresh keys keep the floor pinned",
+    async ({ redisContainer }) => {
+      const CAP = 25;
+      const DRAINS = 400;
+      const keyPrefix = `runqueue:test:idlecap:`;
+      const queue = createQueue(redisContainer, keyPrefix, true, CAP);
+
+      try {
+        const env = { ...baseEnv, maximumConcurrencyLimit: 20 };
+        await queue.updateEnvConcurrencyLimits(env);
+        const shard = testOptions.keys.masterQueueShardForEnvironment(env.id, 2);
+
+        // Every iteration uses a concurrency key never seen before, drains it, and never
+        // brings it back: the worst case for a set that remembers drained variants.
+        for (let i = 0; i < DRAINS; i++) {
+          await queue.enqueueMessage({
+            env,
+            message: makeMessage({ runId: `f-${i}`, concurrencyKey: `fresh-${i}` }),
+            workerQueue: env.id,
+            skipDequeueProcessing: true,
+          });
+          const msgs = await queue.testDequeueFromMasterQueue(shard, env.id, 1);
+          for (const m of msgs) {
+            await queue.acknowledgeMessage(env.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        const idleKey = testOptions.keys.ckVtimeIdleKeyFromQueue(variantName("fresh-0"));
+        const idleSize = await queue.redis.zcard(idleKey);
+        const floor = await queue.redis.get(
+          testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("fresh-0"))
+        );
+
+        // The floor really is pinned, so the score reap cannot be what bounded this.
+        expect(Number(floor ?? 0)).toBe(0);
+        // One call can park past the cap before the next trim, hence the small margin.
+        expect(idleSize).toBeLessThanOrEqual(CAP + 10);
+        // And it is the cap doing the work, not an empty set.
+        expect(idleSize).toBeGreaterThan(0);
+      } finally {
+        await queue.quit();
+      }
     }
   );
 });
