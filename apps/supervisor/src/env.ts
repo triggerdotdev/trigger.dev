@@ -1,7 +1,13 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv, NodeLabelValue, Tolerations } from "./envUtil.js";
+import {
+  AdditionalEnvVars,
+  BoolEnv,
+  NodeLabelValue,
+  OrgPlacementOverrides,
+  Tolerations,
+} from "./envUtil.js";
 
 export const Env = z
   .object({
@@ -260,6 +266,11 @@ export const Env = z
     KUBERNETES_RUNNER_TOLERATIONS: Tolerations.optional(), // every run pod
     KUBERNETES_SCHEDULED_RUN_TOLERATIONS: Tolerations.optional(), // schedule-tree runs only
 
+    // Per-org placement overrides, JSON keyed by the internal org id
+    // (the `org` label on run pods):
+    // {"<orgId>": {"nodeSelector": {"<key>": "<value>"}, "tolerations": "<csv or array>"}}
+    KUBERNETES_ORG_PLACEMENT_OVERRIDES: OrgPlacementOverrides,
+
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
     PLACEMENT_TAGS_PREFIX: z.string().default("node.cluster.x-k8s.io"),
@@ -304,6 +315,22 @@ export const Env = z
           "TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE must be less than TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE",
         path: ["TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE"],
       });
+    }
+    if (data.KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED && data.KUBERNETES_ORG_PLACEMENT_OVERRIDES) {
+      // Non-large presets carry a hard NotIn on the large-machine pool, so an org
+      // pinned to that pool could never schedule its non-large runs.
+      for (const [orgId, override] of Object.entries(data.KUBERNETES_ORG_PLACEMENT_OVERRIDES)) {
+        const pinnedPool =
+          override.nodeSelector?.[data.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY];
+
+        if (pinnedPool === data.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Org "${orgId}" pins run pods to the large-machine pool, but non-large presets are required to stay off it, so those runs would never schedule. Use a different pool or disable KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED.`,
+            path: ["KUBERNETES_ORG_PLACEMENT_OVERRIDES"],
+          });
+        }
+      }
     }
     if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_METADATA_URL) {
       ctx.addIssue({

@@ -18,6 +18,7 @@ import {
   nodetypeNodeSelector,
   runPodTolerations,
   withBlockIoUringSeccompProfile,
+  withNodeSelector,
 } from "./kubernetesPodSpec.js";
 
 type ResourceQuantities = {
@@ -69,6 +70,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
         domain: opts.workloadApiDomain,
       });
     }
+
+    if (env.KUBERNETES_ORG_PLACEMENT_OVERRIDES) {
+      this.logger.info("[KubernetesWorkloadManager] Org placement overrides enabled", {
+        orgIds: Object.keys(env.KUBERNETES_ORG_PLACEMENT_OVERRIDES),
+      });
+    }
   }
 
   private addPlacementTags(
@@ -110,7 +117,24 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     try {
-      const basePodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
+      const orgOverride = env.KUBERNETES_ORG_PLACEMENT_OVERRIDES?.[opts.orgId];
+      const taggedPodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
+      const basePodSpec = withNodeSelector(taggedPodSpec, orgOverride?.nodeSelector);
+
+      if (orgOverride?.nodeSelector) {
+        const replacedKeys = Object.keys(orgOverride.nodeSelector).filter(
+          (key) =>
+            taggedPodSpec.nodeSelector?.[key] !== undefined &&
+            taggedPodSpec.nodeSelector[key] !== orgOverride.nodeSelector?.[key]
+        );
+
+        if (replacedKeys.length > 0) {
+          this.logger.warn(
+            "[KubernetesWorkloadManager] Org placement override replaces node selector keys",
+            { orgId: opts.orgId, replacedKeys }
+          );
+        }
+      }
       const podSpec = this.opts.checkpointsEnabled
         ? withBlockIoUringSeccompProfile(basePodSpec, opts.runtime)
         : basePodSpec;
@@ -131,7 +155,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           spec: {
             ...podSpec,
             affinity: this.#getAffinity(opts),
-            tolerations: this.#getTolerations(this.#isScheduledRun(opts)),
+            tolerations: this.#getTolerations(this.#isScheduledRun(opts), orgOverride?.tolerations),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
@@ -555,11 +579,15 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     };
   }
 
-  #getTolerations(isScheduledRun: boolean): k8s.V1Toleration[] | undefined {
+  #getTolerations(
+    isScheduledRun: boolean,
+    orgTolerations?: k8s.V1Toleration[]
+  ): k8s.V1Toleration[] | undefined {
     return runPodTolerations(
       env.KUBERNETES_RUNNER_TOLERATIONS,
       env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS,
-      isScheduledRun
+      isScheduledRun,
+      orgTolerations
     );
   }
 
