@@ -58,7 +58,7 @@ type DisplayOptionsProps = {
   message?: ReactNode;
 } & ErrorDisplayOptions;
 
-export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
+function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
   return (
     // The backdrop stays dark in every theme (the rotating-logo animation is
     // dark artwork), so the text pins to the dark-theme colors on light too.

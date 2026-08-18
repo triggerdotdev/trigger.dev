@@ -8,7 +8,7 @@ import { useTypedMatchesData } from "./useTypedMatchData";
 export type MatchedOrganization = UseDataFunctionReturn<typeof orgLoader>["organizations"][number];
 export const organizationMatchId = "routes/_app.orgs.$organizationSlug";
 
-export function useOptionalOrganizations(matches?: UIMatch[]) {
+function useOptionalOrganizations(matches?: UIMatch[]) {
   const data = useTypedMatchesData<typeof orgLoader>({
     id: "routes/_app.orgs.$organizationSlug",
     matches,
@@ -42,14 +42,6 @@ export function useOrganization(matches?: UIMatch[]) {
   return org;
 }
 
-export function useIsNewOrganizationPage(matches?: UIMatch[]): boolean {
-  const data = useTypedMatchesData<any>({
-    id: "routes/_app.orgs.new",
-    matches,
-  });
-  return !!data;
-}
-
 export const useOrganizationChanged = (action: (org: MatchedOrganization | undefined) => void) => {
   useChanged(useOptionalOrganization, action);
 };
@@ -61,8 +53,6 @@ export function useIsImpersonating(matches?: UIMatch[]) {
   });
   return data?.isImpersonating === true;
 }
-
-export type CustomDashboard = UseDataFunctionReturn<typeof orgLoader>["customDashboards"][number];
 
 export function useCustomDashboards(matches?: UIMatch[]) {
   const data = useTypedMatchesData<typeof orgLoader>({

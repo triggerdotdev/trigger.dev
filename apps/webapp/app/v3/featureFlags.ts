@@ -5,6 +5,7 @@ export const FEATURE_FLAG = {
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
+  hasWebhooksAccess: "hasWebhooksAccess",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
@@ -41,6 +42,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
+  [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
@@ -133,11 +135,6 @@ export function validateFeatureFlagValue<T extends FeatureFlagKey>(
   return FeatureFlagCatalog[key].safeParse(value);
 }
 
-// Utility function to validate all feature flags at once
-export function validateAllFeatureFlags(values: Record<string, unknown>) {
-  return FeatureFlagCatalogSchema.safeParse(values);
-}
-
 // Utility function to validate partial feature flags (all keys optional)
 export function validatePartialFeatureFlags(values: Record<string, unknown>) {
   return FeatureFlagCatalogSchema.partial().safeParse(values);
@@ -199,7 +196,7 @@ export type FlagControlType =
   | { type: "number"; min?: number; max?: number }
   | { type: "string" };
 
-export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
+function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
   const typeName = schema._def.typeName;
 
   if (typeName === "ZodBoolean") {

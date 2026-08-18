@@ -38,7 +38,7 @@ function parseClickHouseDateTime(value: string): Date {
   return new Date(value.replace(" ", "T") + "Z");
 }
 
-export class ApiErrorGroupPresenter extends BasePresenter {
+class ApiErrorGroupPresenter extends BasePresenter {
   /**
    * Resolves a single error group to its API detail shape, or `undefined` if no
    * such fingerprint exists in the environment (the route turns that into 404).

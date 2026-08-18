@@ -34,7 +34,7 @@ type DockerNetworkAttachment = DockerResource & {
   containers: string[];
 };
 
-export async function getDockerNetworkAttachments(): Promise<DockerNetworkAttachment[]> {
+async function getDockerNetworkAttachments(): Promise<DockerNetworkAttachment[]> {
   let attachments: DockerNetworkAttachment[] = [];
   let networks: DockerResource[] = [];
 
@@ -88,7 +88,7 @@ type DockerContainerNetwork = DockerResource & {
   networks: string[];
 };
 
-export async function getDockerContainerNetworks(): Promise<DockerContainerNetwork[]> {
+async function getDockerContainerNetworks(): Promise<DockerContainerNetwork[]> {
   let results: DockerContainerNetwork[] = [];
   let containers: DockerResource[] = [];
 

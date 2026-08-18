@@ -3,7 +3,7 @@ import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { serialiseMollifierSnapshot, type MollifierSnapshot } from "./mollifierSnapshot.server";
 import type { TripDecision } from "./mollifierGate.server";
 
-export type MollifyNotice = {
+type MollifyNotice = {
   code: "mollifier.queued";
   message: string;
   docs: string;

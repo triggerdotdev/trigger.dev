@@ -45,7 +45,7 @@ const QUERY_TIMEOUT_MS = 30_000;
 // "query" is the server rejecting the TRQL, "transport" is the request breaking, "busy" is
 // the server too loaded or rate limited to answer — the same query may work shortly. Chart
 // validation only fails a render on "query".
-export type QueryPostResult =
+type QueryPostResult =
   | { ok: true; rows: Array<Record<string, unknown>> }
   | { ok: false; kind: "query" | "transport" | "busy"; error: string };
 

@@ -20,14 +20,14 @@ import { logger as defaultLogger } from "~/services/logger.server";
 import { ownerEngine, UnclassifiableRunId } from "@trigger.dev/core/v3/isomorphic";
 import { isSplitEnabled } from "./splitMode.server";
 
-export type ReadThroughSource = "new" | "legacy-replica";
+type ReadThroughSource = "new" | "legacy-replica";
 
 export type ReadThroughResult<T> =
   | { source: ReadThroughSource; value: T }
   | { source: "not-found" }
   | { source: "past-retention" };
 
-export type ReadThroughDeps = {
+type ReadThroughDeps = {
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
   /** Resolved boot constant; never `await`ed per-request when supplied. */

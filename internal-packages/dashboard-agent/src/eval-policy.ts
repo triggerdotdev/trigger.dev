@@ -24,7 +24,7 @@ export const DEFAULT_EVAL_SAMPLE_RATE = 0.1;
 export const DEFAULT_CI_EVAL_SAMPLE_RATE = 1;
 
 /** Set to "ci" by the golden harness only. Nothing else selects the CI lane. */
-export const EVAL_CONTEXT_ENV = "DASHBOARD_AGENT_EVAL_CONTEXT";
+const EVAL_CONTEXT_ENV = "DASHBOARD_AGENT_EVAL_CONTEXT";
 
 /**
  * The two lanes read different variables, so a CI run can neither read nor change the
@@ -60,7 +60,7 @@ export function shouldEvalTurn(): boolean {
  * would have to be handed the customer's code to check the answer against it, and a
  * source-free judgement of a source-grounded answer is not worth the row.
  */
-export const SOURCE_TOOLS = ["read_file", "search_code", "list_files", "get_repo_info"];
+const SOURCE_TOOLS = ["read_file", "search_code", "list_files", "get_repo_info"];
 
 export function turnReadSource(toolActivity: Array<{ toolName: string }>): boolean {
   return toolActivity.some((activity) => SOURCE_TOOLS.includes(activity.toolName));
@@ -369,7 +369,7 @@ export function classifyEvalError(output: unknown): EvalErrorCategory {
  * already there. A string `error` is replaced by its shape: the label is what the judge
  * gets, never the sentence it came from.
  */
-export function annotateEvalErrorCategory(original: unknown, redacted: unknown): unknown {
+function annotateEvalErrorCategory(original: unknown, redacted: unknown): unknown {
   if (!evalOutputErrored(original)) return redacted;
   if (redacted === null || typeof redacted !== "object" || Array.isArray(redacted)) return redacted;
 

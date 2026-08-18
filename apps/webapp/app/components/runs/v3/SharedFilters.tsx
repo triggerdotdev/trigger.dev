@@ -358,6 +358,8 @@ export interface TimeFilterProps {
   maxPeriodDays?: number;
   /** Optional className override for the value text in the filter pill */
   valueClassName?: string;
+  /** Extra URL params to clear when the range changes, in addition to the default cursor/direction (e.g. a page's namespaced pagination params). */
+  clearParams?: string[];
 }
 
 export function TimeFilter({
@@ -372,6 +374,7 @@ export function TimeFilter({
   onValueChange,
   maxPeriodDays,
   valueClassName,
+  clearParams,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
   // In controlled mode (onValueChange provided) the caller owns all three values via local
@@ -441,6 +444,7 @@ export function TimeFilter({
           applyShortcut={applyShortcut}
           onValueChange={onValueChange}
           maxPeriodDays={maxPeriodDays}
+          clearParams={clearParams}
         />
       )}
     </FilterMenuProvider>
@@ -460,7 +464,7 @@ function getInitialCustomDuration(period?: string): { value: string; unit: strin
 
 type SectionType = "duration" | "dateRange";
 
-export function TimeDropdown({
+function TimeDropdown({
   trigger,
   period,
   from,
@@ -471,6 +475,7 @@ export function TimeDropdown({
   onApply,
   onValueChange,
   maxPeriodDays,
+  clearParams,
 }: {
   trigger: ReactNode;
   period?: string;
@@ -484,10 +489,13 @@ export function TimeDropdown({
   onValueChange?: (values: TimeFilterApplyValues) => void;
   /** When set an upgrade message will be shown if you select a period further back than this number of days */
   maxPeriodDays?: number;
+  /** Extra URL params to clear on apply, alongside the default cursor/direction. */
+  clearParams?: string[];
 }) {
   const organization = useOptionalOrganization();
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
+  const extraCleared = Object.fromEntries((clearParams ?? []).map((key) => [key, undefined]));
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
 
@@ -561,6 +569,7 @@ export function TimeDropdown({
         onValueChange(values);
       } else {
         replace({
+          ...extraCleared,
           period: periodToApply,
           cursor: undefined,
           direction: undefined,
@@ -620,6 +629,7 @@ export function TimeDropdown({
       } else {
         // URL mode - navigate
         replace({
+          ...extraCleared,
           period: undefined,
           cursor: undefined,
           direction: undefined,

@@ -17,7 +17,7 @@ function getDevBranchEnvVar(): string | undefined {
   return value && !isDefaultDevBranch(value) ? value : undefined;
 }
 
-export class ApiClientMissingError extends Error {
+class ApiClientMissingError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ApiClientMissingError";

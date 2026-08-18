@@ -64,9 +64,7 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
   }
 }
 
-export async function findOrCreateMagicLinkUser({
-  email,
-}: FindOrCreateMagicLink): Promise<LoggedInUser> {
+async function findOrCreateMagicLinkUser({ email }: FindOrCreateMagicLink): Promise<LoggedInUser> {
   assertEmailAllowed(email);
 
   const existingUser = await prisma.user.findFirst({
@@ -97,7 +95,7 @@ export async function findOrCreateMagicLinkUser({
   };
 }
 
-export async function findOrCreateGithubUser({
+async function findOrCreateGithubUser({
   email,
   authenticationProfile,
   authenticationExtraParams,
@@ -187,7 +185,7 @@ export async function findOrCreateGithubUser({
   };
 }
 
-export async function findOrCreateGoogleUser({
+async function findOrCreateGoogleUser({
   email,
   authenticationProfile,
   authenticationExtraParams,
@@ -375,10 +373,6 @@ export async function getUserById(id: User["id"]) {
   };
 }
 
-export async function getUserByEmail(email: User["email"]) {
-  return prisma.user.findUnique({ where: { email } });
-}
-
 export function updateUser({
   id,
   name,
@@ -400,19 +394,6 @@ export function updateUser({
       referralSource,
       onboardingData,
       confirmedBasicDetails: true,
-    },
-  });
-}
-
-export async function grantUserCloudAccess({ id, inviteCode }: { id: string; inviteCode: string }) {
-  return prisma.user.update({
-    where: { id },
-    data: {
-      invitationCode: {
-        connect: {
-          code: inviteCode,
-        },
-      },
     },
   });
 }

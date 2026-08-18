@@ -34,25 +34,25 @@ export type ToolUse = {
 // ---------------------------------------------------------------------------
 
 /** System prompt text (collapsible) */
-export type SystemItem = {
+type SystemItem = {
   type: "system";
   text: string;
 };
 
 /** User message text */
-export type UserItem = {
+type UserItem = {
   type: "user";
   text: string;
 };
 
 /** One or more tool calls with their results, grouped */
-export type ToolUseItem = {
+type ToolUseItem = {
   type: "tool-use";
   tools: ToolUse[];
 };
 
 /** Final assistant text response */
-export type AssistantItem = {
+type AssistantItem = {
   type: "assistant";
   text: string;
 };

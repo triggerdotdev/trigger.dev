@@ -49,11 +49,15 @@ export class RunEngineControlPlaneResolver implements EngineControlPlaneResolver
     environmentId: string;
     type: RuntimeEnvironmentType;
     workerId?: string;
+    taskIdentifier?: string;
+    queue?: { lockedQueueId?: string | null; name: string };
   }): Promise<ResolvedWorkerVersion | null> {
     return this.#resolver.resolveWorkerVersion({
       environmentId: args.environmentId,
       backgroundWorkerId: args.workerId,
       type: args.type,
+      taskIdentifier: args.taskIdentifier,
+      queue: args.queue,
     });
   }
 

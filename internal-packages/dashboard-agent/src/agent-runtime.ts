@@ -1,4 +1,3 @@
-import { anthropic } from "@ai-sdk/anthropic";
 import {
   appendChatMessageOnce,
   createDashboardAgentDb,
@@ -18,13 +17,7 @@ import {
   type UpsertInvestigationResult,
 } from "@internal/dashboard-agent-db";
 import { locals, logger } from "@trigger.dev/sdk";
-import {
-  createProviderRegistry,
-  type LanguageModel,
-  type ModelMessage,
-  type ToolSet,
-  type UIMessage,
-} from "ai";
+import { type LanguageModel, type ModelMessage, type ToolSet, type UIMessage } from "ai";
 import { z } from "zod";
 import {
   agentPageContextSchema,
@@ -32,8 +25,8 @@ import {
   investigationStateSchema,
   type InvestigationState,
 } from "@internal/dashboard-agent-contracts";
+import { withCacheBreakpoint } from "./model-provider";
 import { codeSystemPrompt, systemPrompt } from "./prompts";
-import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 import { buildDashboardAgentTools } from "./tools";
 
 /**
@@ -63,8 +56,8 @@ function getDb(): DashboardAgentDbClient {
 }
 
 // Resolves the `"provider:model-id"` strings on our managed prompts to AI SDK
-// models. Add another @ai-sdk/* provider here to allow it on a prompt.
-export const registry = createProviderRegistry({ anthropic });
+// models, against whichever provider is switched on.
+export { resolveDashboardAgentModel } from "./model-provider";
 
 // The agent's persistence, behind an interface so tests can inject a fake via
 // `locals` and never need a real database.
@@ -354,7 +347,7 @@ export function sanitizeReplayedToolInputs(messages: ModelMessage[]): ModelMessa
   }) as ModelMessage[];
 }
 
-// Same Anthropic breakpoint `prepareMessages` rolls onto a turn's last message.
+// Same breakpoint `prepareMessages` rolls onto a turn's last message.
 export function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
   if (messages.length === 0) return messages;
   const last = messages[messages.length - 1]!;
@@ -362,12 +355,9 @@ export function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessag
     ...messages.slice(0, -1),
     {
       ...last,
-      providerOptions: {
-        ...last.providerOptions,
-        // Merged, not replaced: the breakpoint is one Anthropic option among any
-        // others the message already carries.
-        anthropic: { ...last.providerOptions?.anthropic, cacheControl: PROMPT_CACHE_CONTROL },
-      },
+      // Merged, not replaced: the breakpoint is one provider option among any
+      // others the message already carries.
+      providerOptions: withCacheBreakpoint(last.providerOptions, "prefix"),
     },
   ];
 }

@@ -1,5 +1,4 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";
@@ -512,31 +511,6 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
     );
   }
 );
-
-export const TableCellChevron = forwardRef<
-  HTMLTableCellElement,
-  {
-    className?: string;
-    to?: string;
-    children?: ReactNode;
-    isSticky?: boolean;
-    onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
-  }
->(({ className, to, children, isSticky, onClick }, ref) => {
-  return (
-    <TableCell
-      className={className}
-      isSticky={isSticky}
-      to={to}
-      onClick={onClick}
-      ref={ref}
-      alignment="right"
-    >
-      {children}
-      <ChevronRightIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
-    </TableCell>
-  );
-});
 
 export const TableCellMenu = forwardRef<
   HTMLTableCellElement,

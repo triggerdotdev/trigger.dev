@@ -16,7 +16,7 @@ import {
   getStore,
   getSystemPrompt,
   modeFor,
-  registry,
+  resolveDashboardAgentModel,
   sanitizeReplayedToolInputs,
   settlementCardMessages,
   clearOpenInvestigations,
@@ -25,7 +25,7 @@ import {
   type DashboardAgentStore,
 } from "./agent-runtime";
 import { titlePrompt } from "./prompts";
-import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
+import { withCacheBreakpoint } from "./model-provider";
 import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
 import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
 import { dashboardAgentCompaction, withDurableState } from "./compaction";
@@ -309,9 +309,7 @@ async function generateAndSaveTitle(
   const { text } = await generateText({
     model:
       locals.get(dashboardAgentModelKey) ??
-      registry.languageModel(
-        (resolved.model ?? "anthropic:claude-haiku-4-5") as `anthropic:${string}`
-      ),
+      resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-haiku-4-5"),
     system: resolved.text,
     prompt: userText,
     ...resolved.toAISDKTelemetry(),
@@ -428,7 +426,7 @@ export const dashboardAgent = chat.agent({
     // prompt; the resolve is cached per process. The cache breakpoint on the system
     // block carries through toStreamTextOptions() and survives suspend/resume.
     chat.prompt.set(await getSystemPrompt(modeFor(clientData)), {
-      providerOptions: { anthropic: { cacheControl: PROMPT_CACHE_CONTROL } },
+      providerOptions: withCacheBreakpoint(undefined, "prefix"),
     });
   },
 
@@ -581,9 +579,7 @@ export const dashboardAgent = chat.agent({
       ...options,
       model:
         locals.get(dashboardAgentModelKey) ??
-        registry.languageModel(
-          (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
-        ),
+        resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
       messages,
       abortSignal: signal,
       prepareStep: stepCachePrepareStep(options) as never,

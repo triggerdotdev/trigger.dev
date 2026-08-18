@@ -30,7 +30,7 @@ export function useTypedMatchesData<T = AppData>({
   return useTypedDataFromMatches<T>({ id, matches });
 }
 
-export function useTypedMatchData<T = AppData>(
+function useTypedMatchData<T = AppData>(
   match: UIMatch | undefined
 ): UseDataFunctionReturn<T> | undefined {
   if (!match) {

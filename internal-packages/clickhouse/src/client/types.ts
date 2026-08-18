@@ -4,6 +4,7 @@ import type { InsertError, QueryError } from "./errors.js";
 import {
   type ClickHouseSettings,
   type BaseQueryParams,
+  type CommandResult,
   type InsertResult,
 } from "@clickhouse/client";
 import type { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
@@ -237,6 +238,14 @@ export interface ClickhouseReader {
   close(): Promise<void>;
 }
 
+export type ClickhouseCommandFunction<TInput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<CommandResult, QueryError>>;
+
 export type ClickhouseInsertFunction<TInput> = (
   events: TInput | TInput[],
   options?: {
@@ -246,6 +255,13 @@ export type ClickhouseInsertFunction<TInput> = (
 ) => Promise<Result<InsertResult, InsertError>>;
 
 export interface ClickhouseWriter {
+  command<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    query: string;
+    params?: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseCommandFunction<z.input<TSchema>>;
+
   insert<TSchema extends z.ZodSchema<any>>(req: {
     name: string;
     table: string;

@@ -12,7 +12,6 @@ import { GenericContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
 import type { TestContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
-import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
 
 async function tryCatch<T, E = Error>(promise: Promise<T>): Promise<[E, null] | [null, T]> {
@@ -168,6 +167,20 @@ export async function createPostgresContainer(
   return { url: container.getConnectionUri(), container, network };
 }
 
+/**
+ * A second schema-loaded Postgres on its own container (no shared network alias), for tests that
+ * exercise a split across two databases. The caller owns stopping the returned container.
+ */
+export async function createStandalonePostgresContainer() {
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .start();
+
+  await pushDatabaseSchema(container.getConnectionUri());
+
+  return { url: container.getConnectionUri(), container };
+}
+
 export async function createClickHouseContainer(network: StartedNetwork) {
   const container = await withCiResourceLimits(new ClickHouseContainer())
     .withNetwork(network)
@@ -288,18 +301,6 @@ export async function createElectricContainer(
   return {
     container,
     origin: `http://${container.getHost()}:${container.getMappedPort(3000)}`,
-  };
-}
-
-export async function createMinIOContainer(network: StartedNetwork) {
-  const container = await withCiResourceLimits(new MinIOContainer())
-    .withNetwork(network)
-    .withNetworkAliases("minio")
-    .start();
-
-  return {
-    container,
-    network,
   };
 }
 

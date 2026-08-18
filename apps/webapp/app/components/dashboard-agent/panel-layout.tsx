@@ -2,7 +2,7 @@
 // class change only and the open chat's transport, session and transcript survive it.
 import { cn } from "~/utils/cn";
 
-export const AGENT_FULLSCREEN_STORAGE_KEY = "tdev:dashboard-agent:fullscreen";
+const AGENT_FULLSCREEN_STORAGE_KEY = "tdev:dashboard-agent:fullscreen";
 
 export function readAgentFullscreen(): boolean {
   if (typeof window === "undefined") return false;

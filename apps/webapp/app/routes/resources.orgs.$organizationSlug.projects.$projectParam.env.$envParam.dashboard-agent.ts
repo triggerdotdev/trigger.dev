@@ -17,6 +17,7 @@ import {
   softDeleteChat,
 } from "@internal/dashboard-agent-db";
 import { watchDraftSchema, type WatchDraft } from "@internal/dashboard-agent-contracts";
+import { dashboardAgentProvider } from "@internal/dashboard-agent/model-provider";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
@@ -329,7 +330,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const chatId = generateFriendlyId("chat");
     try {
       const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
-      const headStarted = Boolean(env.ANTHROPIC_API_KEY);
+      const headStarted =
+        dashboardAgentProvider() === "bedrock"
+          ? Boolean(env.DASHBOARD_AGENT_AWS_REGION || env.AWS_REGION || env.AWS_DEFAULT_REGION)
+          : Boolean(env.ANTHROPIC_API_KEY);
 
       // The lookups and the mint all run before the chat row exists, so a failure here can't
       // leave an empty chat behind in the user's history.

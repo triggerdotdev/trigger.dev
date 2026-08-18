@@ -37,6 +37,7 @@ const environment = {
   project: {
     id: "proj_123",
     name: "Example project",
+    defaultRuntime: "node-24",
   },
 };
 
@@ -82,6 +83,7 @@ describe("project environment credential response", () => {
     await expect(responseJson(response)).resolves.toMatchObject({
       apiKey: "tr_prod_sk_presented",
       projectId: "proj_123",
+      defaultRuntime: "node-24",
     });
     expect(mocks.authorizePatEnvironmentAccess).not.toHaveBeenCalled();
   });

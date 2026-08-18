@@ -8,7 +8,7 @@ export async function latestMetrics(helper: MetricsHelper) {
   return all[all.length - 1];
 }
 
-export function findMetric(resourceMetrics: any, name: string): any | undefined {
+function findMetric(resourceMetrics: any, name: string): any | undefined {
   if (!resourceMetrics) return undefined;
   for (const scopeMetrics of resourceMetrics.scopeMetrics) {
     for (const metric of scopeMetrics.metrics) {

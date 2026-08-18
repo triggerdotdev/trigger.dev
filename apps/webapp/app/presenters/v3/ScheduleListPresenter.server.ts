@@ -20,7 +20,7 @@ type ScheduleListOptions = {
 
 const DEFAULT_PAGE_SIZE = 20;
 
-export type ScheduleListItem = {
+type ScheduleListItem = {
   id: string;
   type: ScheduleType;
   friendlyId: string;
@@ -43,8 +43,6 @@ export type ScheduleListItem = {
     branchName?: string;
   }[];
 };
-export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
-export type ScheduleListAppliedFilters = ScheduleList["filters"];
 
 export class ScheduleListPresenter extends BasePresenter {
   public async call({

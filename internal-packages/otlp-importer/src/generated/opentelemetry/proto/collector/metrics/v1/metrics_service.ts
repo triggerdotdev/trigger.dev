@@ -3,7 +3,7 @@ import Long from "long";
 import _m0 from "protobufjs/minimal";
 import { ResourceMetrics } from "../../../metrics/v1/metrics";
 
-export const protobufPackage = "opentelemetry.proto.collector.metrics.v1";
+const protobufPackage = "opentelemetry.proto.collector.metrics.v1";
 
 export interface ExportMetricsServiceRequest {
   /**
@@ -290,7 +290,7 @@ export const ExportMetricsPartialSuccess = {
  * instrumented with OpenTelemetry and a collector, or between a collector and a
  * central collector.
  */
-export interface MetricsService {
+interface MetricsService {
   /**
    * For performance reasons, it is recommended to keep this RPC
    * alive for the entire life of the application.
@@ -298,8 +298,8 @@ export interface MetricsService {
   export(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse>;
 }
 
-export const MetricsServiceServiceName = "opentelemetry.proto.collector.metrics.v1.MetricsService";
-export class MetricsServiceClientImpl implements MetricsService {
+const MetricsServiceServiceName = "opentelemetry.proto.collector.metrics.v1.MetricsService";
+class MetricsServiceClientImpl implements MetricsService {
   private readonly rpc: Rpc;
   private readonly service: string;
   constructor(rpc: Rpc, opts?: { service?: string }) {
@@ -320,7 +320,7 @@ interface Rpc {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin
+type DeepPartial<T> = T extends Builtin
   ? T
   : T extends globalThis.Array<infer U>
     ? globalThis.Array<DeepPartial<U>>
@@ -331,7 +331,7 @@ export type DeepPartial<T> = T extends Builtin
         : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin
+type Exact<P, I extends P> = P extends Builtin
   ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 

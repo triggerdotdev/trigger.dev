@@ -8,15 +8,13 @@ import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.s
 
 const DAYS = 7;
 
-export type TaskKind = "AGENT" | "STANDARD" | "SCHEDULED";
-
 export type DailyRunPoint = {
   /** ISO date (YYYY-MM-DD, UTC) */
   day: string;
   count: number;
 };
 
-export type TasksDashboardResult = {
+type TasksDashboardResult = {
   counts: {
     agents: number;
     standard: number;
@@ -29,7 +27,7 @@ export type TasksDashboardResult = {
   }>;
 };
 
-export class TasksDashboardPresenter {
+class TasksDashboardPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({

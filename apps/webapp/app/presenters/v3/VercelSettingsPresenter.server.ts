@@ -50,7 +50,7 @@ export type VercelSettingsResult = {
   currentTriggerVersionFetchFailed?: boolean;
 };
 
-export type VercelAvailableProject = {
+type VercelAvailableProject = {
   id: string;
   name: string;
 };

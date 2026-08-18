@@ -7,7 +7,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { resolveImpersonationState, type ImpersonationState } from "~/utils/impersonationState";
 
-export const impersonationSessionStorage = createCookieSessionStorage({
+const impersonationSessionStorage = createCookieSessionStorage({
   cookie: {
     name: "__impersonate", // use any name you want here
     sameSite: "lax", // this helps with CSRF
@@ -28,7 +28,7 @@ const IMPERSONATED_USER_ID_KEY = "impersonatedUserId";
  */
 const VIEWING_AS_USER_KEY = "viewingAsUser";
 
-export function getImpersonationSession(request: Request) {
+function getImpersonationSession(request: Request) {
   return impersonationSessionStorage.getSession(request.headers.get("Cookie"));
 }
 

@@ -46,7 +46,7 @@ export function safeIdentifier(identifier: string): string {
  * Escape a string value for use as a parameter in ClickHouse
  * Copied from clickhouse_driver.util.escape_param
  */
-export function escapeParamClickhouse(value: string): string {
+function escapeParamClickhouse(value: string): string {
   const escaped = value
     .split("")
     .map((c) => singlequoteEscapeCharsMap[c] || c)

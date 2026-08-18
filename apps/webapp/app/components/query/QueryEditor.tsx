@@ -99,7 +99,7 @@ type QueryActionResponse = {
   maxQueryPeriod?: number;
 };
 
-export type QueryEditorMode =
+type QueryEditorMode =
   | { type: "standalone" }
   | { type: "dashboard-add"; dashboardId: string; dashboardName: string }
   | {

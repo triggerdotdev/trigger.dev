@@ -22,5 +22,3 @@ export function createTtlWorkerCatalog(options?: TtlWorkerCatalogOptions) {
     },
   };
 }
-
-export const ttlWorkerCatalog = createTtlWorkerCatalog();

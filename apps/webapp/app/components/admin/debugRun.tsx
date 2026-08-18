@@ -31,7 +31,7 @@ export function AdminDebugRun({ friendlyId }: { friendlyId: string }) {
   );
 }
 
-export function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
+function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
   return (
     <DialogContent
       key={`debug`}

@@ -27,7 +27,7 @@ const logger = new Logger("tsql", "info");
 
 export type { QueryStats };
 
-export type { FieldMappings, QuerySettings, TableSchema, TimeRange, WhereClauseCondition };
+export type { FieldMappings, TableSchema, WhereClauseCondition };
 
 /**
  * Options for executing a TSQL query

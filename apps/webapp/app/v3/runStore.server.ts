@@ -12,6 +12,10 @@ import {
 } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import {
+  resilienceForClient,
+  type TransactionResilienceConfig,
+} from "./transactionResilience.server";
 
 type BuildRunStoreDeps = {
   /** Boot constant: true only when both run-ops DBs are configured and the split flag is on. */
@@ -27,6 +31,10 @@ type BuildRunStoreDeps = {
   singleReplica: PrismaReplicaClient;
   /** Residency classifier; defaults to ownerEngine inside RoutingRunStore. */
   classify?: (id: string) => Residency;
+  /** Per-pool transaction-resilience configs threaded into the store(s) this builds (IoC). */
+  singleResilience?: TransactionResilienceConfig;
+  newResilience?: TransactionResilienceConfig;
+  legacyResilience?: TransactionResilienceConfig;
 };
 
 /**
@@ -46,6 +54,8 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     return new PostgresRunStore({
       prisma: deps.singleWriter,
       readOnlyPrisma: deps.singleReplica,
+      maxWait: deps.singleResilience?.maxWait,
+      transactionStartRetry: deps.singleResilience?.startRetry,
     });
   }
 
@@ -59,10 +69,14 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     prisma: deps.newWriter,
     readOnlyPrisma: deps.newReplica,
     schemaVariant: "dedicated",
+    maxWait: deps.newResilience?.maxWait,
+    transactionStartRetry: deps.newResilience?.startRetry,
   });
   const legacyStore = new PostgresRunStore({
     prisma: deps.legacyWriter,
     readOnlyPrisma: deps.legacyReplica,
+    maxWait: deps.legacyResilience?.maxWait,
+    transactionStartRetry: deps.legacyResilience?.startRetry,
   });
 
   return new RoutingRunStore({
@@ -110,6 +124,7 @@ export const runStore: RunStore = singleton("RunStore", () => {
       splitEnabled: false,
       singleWriter: prisma,
       singleReplica: $replica,
+      singleResilience: resilienceForClient(prisma),
     });
   }
   return buildRunStore({
@@ -117,5 +132,8 @@ export const runStore: RunStore = singleton("RunStore", () => {
     ...handles,
     singleWriter: prisma,
     singleReplica: $replica,
+    singleResilience: resilienceForClient(prisma),
+    newResilience: resilienceForClient(handles.newWriter),
+    legacyResilience: resilienceForClient(handles.legacyWriter),
   });
 });

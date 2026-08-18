@@ -81,7 +81,7 @@ export function TabContainer({
   return <div className={cn(`flex`, className)}>{children}</div>;
 }
 
-export function TabLink({
+function TabLink({
   to,
   children,
   layoutId,

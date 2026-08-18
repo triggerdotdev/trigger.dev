@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { RequireKeys } from "../types/index.js";
 import {
+  WebhookVerifierArtifact,
+  WebhookRoutingTarget,
+  WebhookSecretProvisioning,
+} from "./webhookConfig.js";
+import {
   MachineConfig,
   MachinePreset,
   MachinePresetName,
@@ -271,6 +276,28 @@ export const SkillManifest = z.object({
   ...taskFileMetadata,
 });
 export type SkillManifest = z.infer<typeof SkillManifest>;
+
+// ── Webhooks ────────────────────────────────────────────────────────────────
+
+const webhookMetadata = {
+  id: z.string(),
+  description: z.string().optional(),
+  source: z.string(),
+  verifierArtifact: WebhookVerifierArtifact,
+  routingTarget: WebhookRoutingTarget,
+  secretProvisioning: WebhookSecretProvisioning.optional(),
+  filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
+  metadata: z.record(z.unknown()).optional(),
+};
+
+export const WebhookMetadata = z.object(webhookMetadata);
+export type WebhookMetadata = z.infer<typeof WebhookMetadata>;
+
+export const WebhookManifest = z.object({
+  ...webhookMetadata,
+  ...taskFileMetadata, // filePath, exportName?, entryPoint
+});
+export type WebhookManifest = z.infer<typeof WebhookManifest>;
 
 export const PostStartCauses = z.enum(["index", "create", "restore"]);
 export type PostStartCauses = z.infer<typeof PostStartCauses>;

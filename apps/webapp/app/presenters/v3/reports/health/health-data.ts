@@ -263,7 +263,7 @@ async function tryQuery(
   }
 }
 
-export type FlowData = {
+type FlowData = {
   flowSource: HealthInput["flowSource"];
   pending: HealthInput["pending"];
   startLatency: HealthInput["startLatency"];
@@ -286,12 +286,12 @@ type RunsContext = { liveScalar: Row; liveSeries: Row[]; baselineScalar: Row };
  * "unavailable" is a recognized rollout state, so the next source down is a legitimate substitute.
  * "failed" is anything else and must make the flow verdict unassessable, never fall through to it.
  */
-export type FlowLoadResult =
+type FlowLoadResult =
   | { status: "ok"; data: FlowData }
   | { status: "unavailable" }
   | { status: "failed"; error: unknown };
 
-export interface FlowSource {
+interface FlowSource {
   loadFlow(
     env: AuthenticatedEnvironment,
     period: string,
@@ -334,7 +334,7 @@ function isRolloutError(error: unknown): boolean {
 }
 
 /** Measured depth and scheduling-delay p95 from `env_metrics`. Unavailable until it is populated. */
-export const QueueMetricsSource: FlowSource = {
+const QueueMetricsSource: FlowSource = {
   async loadFlow(env, period, ctx, deps) {
     try {
       // The rejection must be guarded: if the queries below throw first this is never awaited, and
@@ -495,7 +495,7 @@ function buildQueueMetricsFlow(args: {
  * Fallback: live Redis depth plus a backlog proxy from `runs` (triggered minus finished). The proxy
  * is shape-only: it starts at 0 within the window and can't see backlog that predates it.
  */
-export const SnapshotFlowSource: FlowSource = {
+const SnapshotFlowSource: FlowSource = {
   async loadFlow(env, _period, ctx, deps) {
     // Last-resort source, so a Redis failure must not break the report.
     const pendingNow = await deps.lengthOfEnvQueue(env).catch(() => undefined);

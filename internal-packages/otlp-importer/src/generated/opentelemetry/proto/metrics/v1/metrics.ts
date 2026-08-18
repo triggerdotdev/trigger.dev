@@ -4,7 +4,7 @@ import _m0 from "protobufjs/minimal";
 import { InstrumentationScope, KeyValue } from "../../common/v1/common";
 import { Resource } from "../../resource/v1/resource";
 
-export const protobufPackage = "opentelemetry.proto.metrics.v1";
+const protobufPackage = "opentelemetry.proto.metrics.v1";
 
 /**
  * AggregationTemporality defines how a metric aggregator reports aggregated
@@ -82,7 +82,7 @@ export enum AggregationTemporality {
   UNRECOGNIZED = -1,
 }
 
-export function aggregationTemporalityFromJSON(object: any): AggregationTemporality {
+function aggregationTemporalityFromJSON(object: any): AggregationTemporality {
   switch (object) {
     case 0:
     case "AGGREGATION_TEMPORALITY_UNSPECIFIED":
@@ -100,7 +100,7 @@ export function aggregationTemporalityFromJSON(object: any): AggregationTemporal
   }
 }
 
-export function aggregationTemporalityToJSON(object: AggregationTemporality): string {
+function aggregationTemporalityToJSON(object: AggregationTemporality): string {
   switch (object) {
     case AggregationTemporality.UNSPECIFIED:
       return "AGGREGATION_TEMPORALITY_UNSPECIFIED";
@@ -122,7 +122,7 @@ export function aggregationTemporalityToJSON(object: AggregationTemporality): st
  *
  *   (point.flags & DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK) == DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK
  */
-export enum DataPointFlags {
+enum DataPointFlags {
   /**
    * DO_NOT_USE - The zero value for the enum. Should not be used for comparisons.
    * Instead use bitwise "and" with the appropriate mask as shown above.
@@ -137,7 +137,7 @@ export enum DataPointFlags {
   UNRECOGNIZED = -1,
 }
 
-export function dataPointFlagsFromJSON(object: any): DataPointFlags {
+function dataPointFlagsFromJSON(object: any): DataPointFlags {
   switch (object) {
     case 0:
     case "DATA_POINT_FLAGS_DO_NOT_USE":
@@ -152,7 +152,7 @@ export function dataPointFlagsFromJSON(object: any): DataPointFlags {
   }
 }
 
-export function dataPointFlagsToJSON(object: DataPointFlags): string {
+function dataPointFlagsToJSON(object: DataPointFlags): string {
   switch (object) {
     case DataPointFlags.DO_NOT_USE:
       return "DATA_POINT_FLAGS_DO_NOT_USE";
@@ -176,7 +176,7 @@ export function dataPointFlagsToJSON(object: DataPointFlags): string {
  * When new fields are added into this message, the OTLP request MUST be updated
  * as well.
  */
-export interface MetricsData {
+interface MetricsData {
   /**
    * An array of ResourceMetrics.
    * For data coming from a single resource this array will typically contain
@@ -649,7 +649,7 @@ export interface ExponentialHistogramDataPoint {
  * Buckets are a set of bucket counts, encoded in a contiguous array
  * of counts.
  */
-export interface ExponentialHistogramDataPoint_Buckets {
+interface ExponentialHistogramDataPoint_Buckets {
   /**
    * Offset is the bucket index of the first entry in the bucket_counts array.
    *
@@ -732,7 +732,7 @@ export interface SummaryDataPoint {
  * See the following issue for more context:
  * https://github.com/open-telemetry/opentelemetry-proto/issues/125
  */
-export interface SummaryDataPoint_ValueAtQuantile {
+interface SummaryDataPoint_ValueAtQuantile {
   /**
    * The quantile of a distribution. Must be in the interval
    * [0.0, 1.0].
@@ -752,7 +752,7 @@ export interface SummaryDataPoint_ValueAtQuantile {
  * was recorded, for example the span and trace ID of the active span when the
  * exemplar was recorded.
  */
-export interface Exemplar {
+interface Exemplar {
   /**
    * The set of key/value pairs that were filtered out by the aggregator, but
    * recorded alongside the original measurement. Only key/value pairs that were
@@ -786,7 +786,7 @@ function createBaseMetricsData(): MetricsData {
   return { resourceMetrics: [] };
 }
 
-export const MetricsData = {
+const MetricsData = {
   encode(message: MetricsData, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     for (const v of message.resourceMetrics) {
       ResourceMetrics.encode(v!, writer.uint32(10).fork()).ldelim();
@@ -2387,7 +2387,7 @@ function createBaseExponentialHistogramDataPoint_Buckets(): ExponentialHistogram
   return { offset: 0, bucketCounts: [] };
 }
 
-export const ExponentialHistogramDataPoint_Buckets = {
+const ExponentialHistogramDataPoint_Buckets = {
   encode(
     message: ExponentialHistogramDataPoint_Buckets,
     writer: _m0.Writer = _m0.Writer.create()
@@ -2670,7 +2670,7 @@ function createBaseSummaryDataPoint_ValueAtQuantile(): SummaryDataPoint_ValueAtQ
   return { quantile: 0, value: 0 };
 }
 
-export const SummaryDataPoint_ValueAtQuantile = {
+const SummaryDataPoint_ValueAtQuantile = {
   encode(
     message: SummaryDataPoint_ValueAtQuantile,
     writer: _m0.Writer = _m0.Writer.create()
@@ -2758,7 +2758,7 @@ function createBaseExemplar(): Exemplar {
   };
 }
 
-export const Exemplar = {
+const Exemplar = {
   encode(message: Exemplar, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     for (const v of message.filteredAttributes) {
       KeyValue.encode(v!, writer.uint32(58).fork()).ldelim();
@@ -2930,7 +2930,7 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin
+type DeepPartial<T> = T extends Builtin
   ? T
   : T extends globalThis.Array<infer U>
     ? globalThis.Array<DeepPartial<U>>
@@ -2941,7 +2941,7 @@ export type DeepPartial<T> = T extends Builtin
         : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin
+type Exact<P, I extends P> = P extends Builtin
   ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 

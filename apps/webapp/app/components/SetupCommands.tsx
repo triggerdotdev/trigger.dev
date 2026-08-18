@@ -243,52 +243,6 @@ export function TriggerDevStepV3({ title }: TabsProps) {
   );
 }
 
-export function TriggerLoginStepV3({ title }: TabsProps) {
-  const triggerCliTag = useTriggerCliTag();
-  const { activePackageManager, setActivePackageManager } = usePackageManager();
-
-  return (
-    <ClientTabs
-      defaultValue="npm"
-      value={activePackageManager}
-      onValueChange={setActivePackageManager}
-    >
-      <div className="flex items-center gap-4">
-        {title && <span>{title}</span>}
-        <ClientTabsList className={title ? "ml-auto" : ""}>
-          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-        </ClientTabsList>
-      </div>
-      <ClientTabsContent value={"npm"}>
-        <ClipboardField
-          variant="secondary/medium"
-          iconButton
-          className="mb-4"
-          value={`npx trigger.dev@${triggerCliTag} login`}
-        />
-      </ClientTabsContent>
-      <ClientTabsContent value={"pnpm"}>
-        <ClipboardField
-          variant="secondary/medium"
-          iconButton
-          className="mb-4"
-          value={`pnpm dlx trigger.dev@${triggerCliTag} login`}
-        />
-      </ClientTabsContent>
-      <ClientTabsContent value={"yarn"}>
-        <ClipboardField
-          variant="secondary/medium"
-          iconButton
-          className="mb-4"
-          value={`yarn dlx trigger.dev@${triggerCliTag} login`}
-        />
-      </ClientTabsContent>
-    </ClientTabs>
-  );
-}
-
 export function TriggerDeployStep({
   title,
   environment,

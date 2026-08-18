@@ -1,6 +1,13 @@
 import { logger } from "@trigger.dev/sdk";
 import type { ModelMessage, ToolSet } from "ai";
 import {
+  cacheUsageFromProviderMetadata,
+  isLongLivedCacheBreakpoint,
+  isStepCacheBreakpoint,
+  withCacheBreakpoint,
+  withoutCacheBreakpoint,
+} from "./model-provider";
+import {
   describePromptPrefix,
   promptCacheAttributes,
   type PromptCacheUsage,
@@ -15,36 +22,16 @@ import {
  * its accumulated tool outputs uncached on every step.
  */
 
-export const STEP_CACHE_CONTROL = { type: "ephemeral", ttl: "5m" } as const;
+export { STEP_CACHE_CONTROL } from "./model-provider";
 
 // Anthropic silently refuses to cache a prefix shorter than roughly 1024 tokens.
 export const MIN_STEP_CACHE_CHARS = 4_096;
 
 type MaybeCached = { providerOptions?: Record<string, unknown> };
 
-function cacheControlTtl(message: MaybeCached): string | undefined {
-  const anthropic = message.providerOptions?.anthropic as
-    | { cacheControl?: { ttl?: unknown } }
-    | undefined;
-  const ttl = anthropic?.cacheControl?.ttl;
-  return typeof ttl === "string" ? ttl : undefined;
-}
-
-function anthropicOptions(message: MaybeCached): Record<string, unknown> {
-  const anthropic = message.providerOptions?.anthropic;
-  return typeof anthropic === "object" && anthropic !== null
-    ? (anthropic as Record<string, unknown>)
-    : {};
-}
-
 function withoutStepBreakpoint<T extends MaybeCached>(message: T): T {
-  if (cacheControlTtl(message) !== STEP_CACHE_CONTROL.ttl) return message;
-  const { anthropic, ...rest } = message.providerOptions as Record<string, unknown>;
-  const { cacheControl: _dropped, ...anthropicRest } = anthropic as Record<string, unknown>;
-  // An empty `anthropic` is not the same as no Anthropic options, so drop the key.
-  const providerOptions =
-    Object.keys(anthropicRest).length > 0 ? { ...rest, anthropic: anthropicRest } : rest;
-  return { ...message, providerOptions };
+  if (!isStepCacheBreakpoint(message.providerOptions)) return message;
+  return { ...message, providerOptions: withoutCacheBreakpoint(message.providerOptions) };
 }
 
 // Only ever one step breakpoint at a time: Anthropic allows four in total, and the
@@ -54,8 +41,7 @@ export function markStepCacheBreakpoint<T extends MaybeCached>(messages: T[]): T
 
   let lastLongLived = -1;
   messages.forEach((message, index) => {
-    const ttl = cacheControlTtl(message);
-    if (ttl !== undefined && ttl !== STEP_CACHE_CONTROL.ttl) lastLongLived = index;
+    if (isLongLivedCacheBreakpoint(message.providerOptions)) lastLongLived = index;
   });
   const tail = messages.slice(lastLongLived + 1);
   if ((JSON.stringify(tail)?.length ?? 0) < MIN_STEP_CACHE_CHARS) {
@@ -66,13 +52,7 @@ export function markStepCacheBreakpoint<T extends MaybeCached>(messages: T[]): T
   const last = stripped[stripped.length - 1]!;
   return [
     ...stripped.slice(0, -1),
-    {
-      ...last,
-      providerOptions: {
-        ...last.providerOptions,
-        anthropic: { ...anthropicOptions(last), cacheControl: STEP_CACHE_CONTROL },
-      },
-    },
+    { ...last, providerOptions: withCacheBreakpoint(last.providerOptions, "step") },
   ];
 }
 
@@ -97,16 +77,16 @@ export function stepCachePrepareStep(options: unknown): PrepareStepFn {
 
 export function stepCacheAttributes(
   step: number | undefined,
-  providerMetadata: unknown
+  providerMetadata: unknown,
+  usage?: PromptCacheUsage
 ): Record<string, unknown> {
-  const anthropic = (providerMetadata as { anthropic?: Record<string, unknown> } | undefined)
-    ?.anthropic;
-  const write = anthropic?.cacheCreationInputTokens;
-  const read = anthropic?.cacheReadInputTokens;
+  const { write, read } = cacheUsageFromProviderMetadata(providerMetadata);
   return {
     "dashboard_agent.step": step ?? null,
-    "gen_ai.usage.cache_creation_input_tokens": typeof write === "number" ? write : null,
-    "gen_ai.usage.cache_read_input_tokens": typeof read === "number" ? read : null,
+    "gen_ai.usage.cache_creation_input_tokens":
+      write ?? usage?.inputTokenDetails?.cacheWriteTokens ?? null,
+    "gen_ai.usage.cache_read_input_tokens":
+      read ?? usage?.inputTokenDetails?.cacheReadTokens ?? null,
   };
 }
 
@@ -131,7 +111,7 @@ export function recordPromptCacheUsage(args: {
         usage: args.usage,
         prefix: describePromptPrefix({ system: args.system, tools: args.tools }),
       }),
-      ...stepCacheAttributes(args.step, args.providerMetadata),
+      ...stepCacheAttributes(args.step, args.providerMetadata, args.usage),
     });
   } catch (error) {
     // Measurement must never fail a turn.

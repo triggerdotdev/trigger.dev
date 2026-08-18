@@ -734,7 +734,7 @@ function isValidAndNotEmpty(name: string | undefined): boolean {
   return isValid(name) && name.length > 0;
 }
 
-export function parseOtelResourceAttributes(
+function parseOtelResourceAttributes(
   rawEnvAttributes: string | undefined | null
 ): Record<string, string> {
   if (!rawEnvAttributes) return {};

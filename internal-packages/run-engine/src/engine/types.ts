@@ -30,7 +30,7 @@ import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.
  * Re-declared here because @internal/run-engine must not depend on the webapp.
  * Keep field names identical so the injected value is assignable.
  */
-export type CrossSeamGuardDecision = {
+type CrossSeamGuardDecision = {
   store: "new" | "legacy";
   residency: "NEW" | "LEGACY";
   routeKind: string;

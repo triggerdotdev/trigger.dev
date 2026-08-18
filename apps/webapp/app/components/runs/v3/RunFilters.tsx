@@ -87,7 +87,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 
-export const RunStatus = z.enum(allTaskRunStatuses);
+const RunStatus = z.enum(allTaskRunStatuses);
 
 const StringOrStringArray = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -105,7 +105,7 @@ const StringOrStringArray = z.preprocess((value) => {
   return undefined;
 }, z.string().array().optional());
 
-export const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
+const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
   if (typeof value === "string") {
     if (value.length > 0) {
       const parsed = MachinePresetName.safeParse(value);
@@ -200,7 +200,7 @@ export const TaskRunListSearchFilters = z.object({
   ),
   errorId: z.string().optional().describe("Error ID to filter runs by (e.g. error_abc123)"),
   sources: StringOrStringArray.describe(
-    "Task trigger sources to filter by (STANDARD, SCHEDULED, AGENT)"
+    "Task trigger sources to filter by (STANDARD, SCHEDULED, AGENT, WEBHOOK)"
   ),
 });
 
@@ -1918,6 +1918,7 @@ const sourceOptions: { value: TaskTriggerSource; title: string }[] = [
   { value: "STANDARD", title: "Standard" },
   { value: "SCHEDULED", title: "Scheduled" },
   { value: "AGENT", title: "Agent" },
+  { value: "WEBHOOK", title: "Webhook" },
 ];
 
 function SourceDropdown({

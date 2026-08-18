@@ -49,7 +49,7 @@ export function concreteStateFromInput({
   });
 }
 
-export function concreteStateFromPartialState<TData>(
+function concreteStateFromPartialState<TData>(
   tree: FlatTree<TData>,
   state: PartialNodeState
 ): NodesState {

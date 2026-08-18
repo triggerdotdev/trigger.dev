@@ -123,7 +123,7 @@ export class FinalizeDeploymentService extends BaseService {
         }
       );
 
-      await updateEnvConcurrencyLimits(authenticatedEnv);
+      await updateEnvConcurrencyLimits(authenticatedEnv, undefined, this._prisma);
     } catch (err) {
       logger.error("Failed to publish WORKER_CREATED event", { err });
     }

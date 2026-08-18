@@ -161,7 +161,7 @@ export function configureInstallMcpCommand(program: Command) {
     });
 }
 
-export async function installMcpCommand(options: unknown) {
+async function installMcpCommand(options: unknown) {
   return await wrapCommandAction(
     "installMcpCommand",
     InstallMcpCommandOptions,

@@ -25,7 +25,7 @@ import { useThemeMode } from "~/hooks/useThemeMode";
 //   into it. The default playlist is sequenced so every consecutive pair of
 //   shapes shares dots.
 
-export const MATRIX = 5;
+const MATRIX = 5;
 
 // --- shapes (5-line bitmaps: "o" = dot on) ---------------------------------
 
@@ -97,7 +97,7 @@ export const EXTRA_FACE_SHAPES: DotShapeName[] = [
 
 // Sequenced so every consecutive pair (including the wrap) shares dots — the
 // head hands off between shapes without ever jumping.
-export const DEFAULT_PLAYLIST: DotShapeName[] = [
+const DEFAULT_PLAYLIST: DotShapeName[] = [
   "square",
   "rectH",
   "circle",

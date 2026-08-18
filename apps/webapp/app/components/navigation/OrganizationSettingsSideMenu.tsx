@@ -14,13 +14,13 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
+  organizationPath,
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationSsoPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
-  rootPath,
   v3BillingLimitsPath,
   v3BillingPath,
   v3PrivateConnectionsPath,
@@ -72,7 +72,7 @@ export function OrganizationSettingsSideMenu({
         <LinkButton
           variant="minimal/medium"
           LeadingIcon={ArrowLeftIcon}
-          to={rootPath()}
+          to={organizationPath(organization)}
           fullWidth
           textAlignLeft
         >

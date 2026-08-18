@@ -10,7 +10,7 @@ import type {
 } from "@internal/dashboard-agent-contracts";
 import { ctx, type PromptSlot } from "./prompt-chips";
 
-export const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
+const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
   fresh_failure: "investigate",
   slow_run: "investigate",
   waiting_run: "watch",
@@ -18,7 +18,7 @@ export const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
 };
 
 /** Signal precedence within a slot. Mirrors `demoSignalsByPriority` in the fixtures. */
-export const SIGNAL_PRIORITY: AgentPageSignalKind[] = [
+const SIGNAL_PRIORITY: AgentPageSignalKind[] = [
   "fresh_failure",
   "waiting_run",
   "slow_run",
@@ -26,7 +26,7 @@ export const SIGNAL_PRIORITY: AgentPageSignalKind[] = [
 ];
 
 /** "3m", "2h", "4d". */
-export function formatAgo(ms: number): string {
+function formatAgo(ms: number): string {
   if (ms < 60_000) return "moments";
   if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
   if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h`;
@@ -34,12 +34,12 @@ export function formatAgo(ms: number): string {
 }
 
 /** "2.4x" under 10x, "31x" above. */
-export function formatMultiplier(factor: number): string {
+function formatMultiplier(factor: number): string {
   return factor < 10 ? `${factor.toFixed(1)}x` : `${Math.round(factor)}x`;
 }
 
 /** Undefined when the signal lacks the data to say anything, e.g. a `slow_run` with no baseline. */
-export function promptForSignal(signal: AgentPageSignal, now: number): SuggestedPrompt | undefined {
+function promptForSignal(signal: AgentPageSignal, now: number): SuggestedPrompt | undefined {
   switch (signal.kind) {
     case "fresh_failure": {
       const failedAt = Date.parse(signal.failedAt);
@@ -79,19 +79,6 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
         "Concurrency is saturated right now. Watch it and tell me when the backlog drains."
       );
   }
-}
-
-/** In precedence order. */
-export function contextualPrompts(context: AgentPageContext, now: number): SuggestedPrompt[] {
-  const prompts: SuggestedPrompt[] = [];
-  for (const kind of SIGNAL_PRIORITY) {
-    for (const signal of context.signals) {
-      if (signal.kind !== kind) continue;
-      const prompt = promptForSignal(signal, now);
-      if (prompt) prompts.push(prompt);
-    }
-  }
-  return prompts;
 }
 
 /** Each group is in precedence order. */

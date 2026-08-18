@@ -4,7 +4,7 @@ import { useSearchParams } from "@remix-run/react";
 // Module-level bridge: `DashboardAgentProvider` is mounted by the environment layout, so
 // callers above it cannot reach the agent through context.
 
-export type DashboardAgentOpenRequest = {
+type DashboardAgentOpenRequest = {
   /** Omitted just opens the panel. */
   prompt?: string;
 };
@@ -19,7 +19,7 @@ function notifyAvailability() {
 }
 
 /** Returns the unsubscribe. */
-export function registerDashboardAgentHost(handler: Handler): () => void {
+function registerDashboardAgentHost(handler: Handler): () => void {
   handlers.add(handler);
   notifyAvailability();
   return () => {

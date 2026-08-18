@@ -31,14 +31,14 @@ export function configureListProfilesCommand(program: Command) {
     });
 }
 
-export async function listProfilesCommand(options: unknown) {
+async function listProfilesCommand(options: unknown) {
   return await wrapCommandAction("listProfiles", ListProfilesOptions, options, async (opts) => {
     await printInitialBanner(false);
     return await listProfiles(opts);
   });
 }
 
-export async function listProfiles(options: ListProfilesOptions) {
+async function listProfiles(options: ListProfilesOptions) {
   const authConfig = readAuthConfigFile();
 
   if (!authConfig) {

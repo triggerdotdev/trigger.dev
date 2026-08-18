@@ -224,7 +224,7 @@ heteroPostgresTest(
 // --- resolveWorkerVersion ---------------------------------------------------
 
 heteroPostgresTest(
-  "resolveWorkerVersion (pinned) returns worker/tasks/queues and caches it",
+  "resolveWorkerVersion (pinned) returns worker/tasks/queues and reads fresh each call",
   async ({ prisma14 }) => {
     const { environment, project } = await seedControlPlane(prisma14);
     const { worker, task, queue } = await seedWorker(prisma14, {
@@ -250,6 +250,37 @@ heteroPostgresTest(
     const readsAfterFirst = reads();
     expect(readsAfterFirst).toBeGreaterThanOrEqual(1);
 
+    const second = await resolver.resolveWorkerVersion({
+      environmentId: environment.id,
+      backgroundWorkerId: worker.id,
+    });
+    expect(second?.worker.id).toBe(worker.id);
+    expect(reads()).toBeGreaterThan(readsAfterFirst);
+  }
+);
+
+heteroPostgresTest(
+  "resolveWorkerVersion (pinned) serves from cache when the kill-switch is off",
+  async ({ prisma14 }) => {
+    const { environment, project } = await seedControlPlane(prisma14);
+    const { worker } = await seedWorker(prisma14, {
+      projectId: project.id,
+      environmentId: environment.id,
+    });
+    const { client: counting, reads } = countQueries(prisma14);
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: counting,
+      controlPlanePrimary: counting,
+      cache: new ControlPlaneCache(),
+      splitEnabled: () => true,
+      workerVersionFreshReadEnabled: () => false,
+    });
+
+    await resolver.resolveWorkerVersion({
+      environmentId: environment.id,
+      backgroundWorkerId: worker.id,
+    });
+    const readsAfterFirst = reads();
     const second = await resolver.resolveWorkerVersion({
       environmentId: environment.id,
       backgroundWorkerId: worker.id,
@@ -283,7 +314,7 @@ heteroPostgresTest(
 
     const second = await resolver.resolveWorkerVersion({ environmentId: environment.id });
     expect(second?.worker.id).toBe(worker.id);
-    expect(reads()).toBe(readsAfterFirst);
+    expect(reads()).toBeGreaterThan(readsAfterFirst);
   }
 );
 

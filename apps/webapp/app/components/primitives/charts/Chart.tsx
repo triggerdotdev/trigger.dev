@@ -252,8 +252,6 @@ const ChartTooltipContent = React.forwardRef<
 );
 ChartTooltipContent.displayName = "ChartTooltip";
 
-const ChartLegend = RechartsPrimitive.Legend;
-
 type ExtendedLegendPayload = Parameters<
   NonNullable<RechartsPrimitive.LegendProps["formatter"]>
 >[0] & {
@@ -458,12 +456,4 @@ function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key:
   return configLabelKey in config ? config[configLabelKey] : config[key as keyof typeof config];
 }
 
-export {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  ChartLegendContentRows,
-  ChartStyle,
-};
+export { ChartContainer, ChartTooltip, ChartTooltipContent };

@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { ConfigManifest } from "./config.js";
-import { PromptManifest, QueueManifest, SkillManifest, TaskFile, TaskManifest } from "./schemas.js";
+import {
+  PromptManifest,
+  QueueManifest,
+  SkillManifest,
+  TaskFile,
+  TaskManifest,
+  WebhookManifest,
+} from "./schemas.js";
 
 export const BuildExternal = z.object({
   name: z.string(),
@@ -105,6 +112,8 @@ export const WorkerManifest = z.object({
   tasks: TaskManifest.array(),
   prompts: PromptManifest.array().optional(),
   skills: SkillManifest.array().optional(),
+  webhooks: WebhookManifest.array().optional(), // NEW
+  unclaimedSessionWebhooks: z.array(z.string()).optional(), // session.webhook descriptors no agent listed
   queues: QueueManifest.array().optional(),
   workerEntryPoint: z.string(),
   controllerEntryPoint: z.string().optional(),

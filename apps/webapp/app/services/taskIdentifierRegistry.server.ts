@@ -16,6 +16,7 @@ import {
 function toTriggerSource(source: string | undefined): TaskTriggerSource {
   const normalized = source?.toUpperCase();
   if (normalized === "AGENT") return "AGENT";
+  if (normalized === "WEBHOOK") return "WEBHOOK";
   if (normalized === "SCHEDULED" || normalized === "SCHEDULE") return "SCHEDULED";
   return "STANDARD";
 }

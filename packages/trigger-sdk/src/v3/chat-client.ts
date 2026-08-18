@@ -58,16 +58,16 @@ export type ChatSession = {
  * `AgentChat`. Same shape as the type on `TriggerChatTransport` — these
  * mirror so customers can share a single resolver between the two clients.
  */
-export type AgentChatEndpoint = "in" | "out";
+type AgentChatEndpoint = "in" | "out";
 
-export type AgentChatEndpointContext = {
+type AgentChatEndpointContext = {
   endpoint: AgentChatEndpoint;
   chatId: string;
 };
 
-export type AgentChatBaseURLResolver = (ctx: AgentChatEndpointContext) => string;
+type AgentChatBaseURLResolver = (ctx: AgentChatEndpointContext) => string;
 
-export type AgentChatFetchOverride = (
+type AgentChatFetchOverride = (
   url: string,
   init: RequestInit,
   ctx: AgentChatEndpointContext

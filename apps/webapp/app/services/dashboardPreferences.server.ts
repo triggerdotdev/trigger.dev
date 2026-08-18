@@ -8,17 +8,13 @@ import {
   SideMenuPreferences,
 } from "~/utils/dashboardPreferences";
 
-export type {
-  DashboardPreferences,
-  FavoritePage,
-  SideMenuPreferences,
-} from "~/utils/dashboardPreferences";
+export type { DashboardPreferences, FavoritePage } from "~/utils/dashboardPreferences";
 
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
 import { type ThemePreference } from "~/utils/themePreference";
-export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
+export { type ThemePreference } from "~/utils/themePreference";
 
 export function getDashboardPreferences(data?: any | null): DashboardPreferences {
   return parseDashboardPreferences(data, (error) => {
@@ -435,15 +431,6 @@ export async function updateSideMenuCustomization({
 
     return { ...prefs, sideMenu: SideMenuPreferences.parse(next) };
   });
-}
-
-/** Get the stored item order for a specific list within an organization */
-export function getItemOrder(
-  sideMenu: SideMenuPreferences | undefined,
-  organizationId: string,
-  listId: string
-): string[] | undefined {
-  return sideMenu?.organizations?.[organizationId]?.orderedItems?.[listId];
 }
 
 export async function updateItemOrder({

@@ -34,7 +34,7 @@ const watch = (
   cancellable: status === "active",
 });
 
-export const demoRunFinishedWatch = watch(
+const demoRunFinishedWatch = watch(
   "run-finished",
   {
     kind: "run_finished",
@@ -64,7 +64,7 @@ export const demoBacklogDrainWatch = watch(
   "2026-07-27T15:02:00.000Z"
 );
 
-export const demoErrorRecurrenceWatch = watch(
+const demoErrorRecurrenceWatch = watch(
   "email-sends",
   {
     kind: "error_recurrence",
@@ -80,7 +80,7 @@ export const demoErrorRecurrenceWatch = watch(
   "2026-07-27T10:40:00.000Z"
 );
 
-export const demoHealthRecoveryWatch = watch(
+const demoHealthRecoveryWatch = watch(
   "health-recovery",
   {
     kind: "health_recovery",
@@ -96,7 +96,7 @@ export const demoHealthRecoveryWatch = watch(
   "2026-07-27T08:20:00.000Z"
 );
 
-export const demoCancelledWatch = watch(
+const demoCancelledWatch = watch(
   "run-start",
   {
     kind: "run_start",
@@ -111,7 +111,7 @@ export const demoCancelledWatch = watch(
   "2026-07-27T11:01:00.000Z"
 );
 
-export const demoWatchRow: DemoWatch[] = [
+const demoWatchRow: DemoWatch[] = [
   demoRunFinishedWatch,
   demoBacklogDrainWatch,
   demoErrorRecurrenceWatch,
@@ -119,7 +119,7 @@ export const demoWatchRow: DemoWatch[] = [
   demoCancelledWatch,
 ];
 
-export const demoActiveWatchRow: DemoWatch[] = [demoRunFinishedWatch, demoBacklogDrainWatch];
+const demoActiveWatchRow: DemoWatch[] = [demoRunFinishedWatch, demoBacklogDrainWatch];
 
 export const demoWatchNarration = {
   wake: `**The retry finished.** \`${DEMO_WORLD.failedRunId}\` completed successfully 4 minutes ago, on attempt 2 — the provider accepted the request once the delay pushed it out of the rate-limit window.

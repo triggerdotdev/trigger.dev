@@ -4,7 +4,7 @@ import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 export type CurrentRunningStats = Record<string, { queued: number; running: number }>;
 
-export interface EnvironmentMetricsRepository {
+interface EnvironmentMetricsRepository {
   getCurrentRunningStats(options: {
     organizationId: string;
     projectId: string;
