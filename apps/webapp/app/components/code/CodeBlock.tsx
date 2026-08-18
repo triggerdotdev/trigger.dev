@@ -439,7 +439,7 @@ function Chrome({ title }: { title?: string }) {
       <div className="flex items-center justify-center">
         <div className={cn("rounded-sm px-3 py-0.5 text-xs text-text-faint")}>{title}</div>
       </div>
-      <div></div>
+      <div />
     </div>
   );
 }

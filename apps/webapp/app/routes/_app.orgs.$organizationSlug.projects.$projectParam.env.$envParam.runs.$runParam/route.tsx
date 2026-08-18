@@ -1723,7 +1723,7 @@ function LiveReloadingStatus({
               </Paragraph>
             </div>
           }
-        ></SimpleTooltip>
+        />
       )}
     </>
   );
