@@ -23,7 +23,7 @@ CREATE TABLE "public"."LogsSearchProjectorCheckpoint" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "LogsSearchProjectorCheckpoint_projectorId_mode_windowStart_windowEnd_key"
+CREATE UNIQUE INDEX "LogsSearchProjectorCheckpoint_projectorId_mode_windowStart__key"
 ON "public"."LogsSearchProjectorCheckpoint"("projectorId", "mode", "windowStart", "windowEnd");
 
 -- CreateIndex
