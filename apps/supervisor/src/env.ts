@@ -210,6 +210,7 @@ export const Env = z
 
     KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
+    KUBERNETES_RUNNER_SECCOMP_PROFILE_PATH: z.string().default("profiles/block-io-uring.json"),
 
     // Pod DNS config — override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
     // Default k8s ndots is 5: any name with fewer than 5 dots (e.g. `api.example.com`, 2 dots) is first walked

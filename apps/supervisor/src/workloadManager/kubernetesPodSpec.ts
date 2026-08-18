@@ -1,12 +1,6 @@
 import type { k8s } from "../clients/kubernetes.js";
 
 /**
- * Relative path (kubelet seccomp root) of the profile blocking only io_uring
- * syscalls. Must match the profile deployed to worker nodes.
- */
-export const BLOCK_IO_URING_SECCOMP_PROFILE = "profiles/block-io-uring.json";
-
-/**
  * An empty label is the documented off-switch, leaving the pod unpinned. The Helm
  * chart ships an empty value, so don't collapse this into a fallback default -
  * that would pin every chart install to a label its nodes don't carry.
@@ -61,16 +55,15 @@ export function withNodeSelector(
 }
 
 /**
- * Node >= 24 always creates io_uring fds, which can't be checkpointed. Blocking
- * io_uring_setup makes libuv fall back to epoll. Other runtimes don't need this,
- * so the profile is only applied for node-24+. Tolerates an "experimental-" prefix.
+ * Applies the runner seccomp profile. The profile is a node-local file installed
+ * outside this repo, so an empty path leaves the pod on the runtime default -
+ * pointing at a profile the nodes don't have fails pod creation.
  */
-export function withBlockIoUringSeccompProfile(
+export function withRunnerSeccompProfile(
   podSpec: Omit<k8s.V1PodSpec, "containers">,
-  runtime: string | null | undefined
+  profilePath: string | undefined
 ): Omit<k8s.V1PodSpec, "containers"> {
-  const match = runtime ? /^(?:experimental-)?node-(\d+)$/.exec(runtime) : null;
-  if (!match || Number(match[1]) < 24) {
+  if (!profilePath) {
     return podSpec;
   }
 
@@ -80,7 +73,7 @@ export function withBlockIoUringSeccompProfile(
       ...podSpec.securityContext,
       seccompProfile: {
         type: "Localhost",
-        localhostProfile: BLOCK_IO_URING_SECCOMP_PROFILE,
+        localhostProfile: profilePath,
       },
     },
   };

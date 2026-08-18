@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  BLOCK_IO_URING_SECCOMP_PROFILE,
   nodetypeNodeSelector,
   runPodTolerations,
-  withBlockIoUringSeccompProfile,
+  withRunnerSeccompProfile,
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
 
@@ -100,27 +99,25 @@ describe("withNodeSelector", () => {
   });
 });
 
-describe("withBlockIoUringSeccompProfile", () => {
-  it("adds the Localhost io_uring profile for node-24 and above, preserving pod security defaults", () => {
-    for (const runtime of ["node-24", "node-26", "node-30", "experimental-node-24"]) {
-      const podSpec = withBlockIoUringSeccompProfile(basePodSpec, runtime);
+describe("withRunnerSeccompProfile", () => {
+  it("applies the profile for every runtime, preserving pod security defaults", () => {
+    const podSpec = withRunnerSeccompProfile(basePodSpec, "profiles/example.json");
 
-      expect(podSpec).toMatchObject({
-        ...basePodSpec,
-        securityContext: {
-          ...basePodSpec.securityContext,
-          seccompProfile: {
-            type: "Localhost",
-            localhostProfile: BLOCK_IO_URING_SECCOMP_PROFILE,
-          },
+    expect(podSpec).toMatchObject({
+      ...basePodSpec,
+      securityContext: {
+        ...basePodSpec.securityContext,
+        seccompProfile: {
+          type: "Localhost",
+          localhostProfile: "profiles/example.json",
         },
-      });
-    }
+      },
+    });
   });
 
-  it("leaves the pod spec unchanged for runtimes that do not create io_uring fds", () => {
-    for (const runtime of ["node", "node-22", "bun", undefined, null, ""]) {
-      expect(withBlockIoUringSeccompProfile(basePodSpec, runtime)).toEqual(basePodSpec);
+  it("leaves the pod spec untouched when no profile is configured", () => {
+    for (const profilePath of [undefined, ""]) {
+      expect(withRunnerSeccompProfile(basePodSpec, profilePath)).toBe(basePodSpec);
     }
   });
 });
