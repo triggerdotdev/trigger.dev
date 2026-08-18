@@ -1,12 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   finalizedSafeCutoff,
+  LogsSearchProjector,
   previewSafeCutoff,
   selectFinalizedWindow,
   selectPreviewWindow,
+  type LogsSearchProjectorRedisStore,
+  type LogsSearchProjectorStateStore,
 } from "~/services/logsSearchProjector.server";
 
+const telemetry = vi.hoisted(() => ({
+  recordWindow: vi.fn(),
+  recordLeaseContention: vi.fn(),
+  recordCheckpointConflict: vi.fn(),
+  recordPreviewSkipped: vi.fn(),
+  updateState: vi.fn(),
+}));
+
+vi.mock("~/services/logsSearchProjectorTelemetry.server", () => ({
+  logsSearchProjectorTelemetry: telemetry,
+}));
+
 const at = (value: string) => new Date(value);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("logs search projector window selection", () => {
   it("floors preview work to a closed five-second boundary", () => {
@@ -64,6 +83,62 @@ describe("logs search projector window selection", () => {
     expect(selectPreviewWindow(preview, preview)).toEqual({
       window: null,
       skippedWindows: 0,
+    });
+  });
+});
+
+describe("logs search projector telemetry", () => {
+  it("refreshes lag after a finalized projection failure", async () => {
+    const now = at("2026-08-14T12:10:59.999Z");
+    const watermark = at("2026-08-14T12:05:00.000Z");
+    const control = {
+      id: "task_events_search_v2",
+      initialWatermark: watermark,
+      paused: false,
+    };
+    const stateStore = {
+      initialize: vi.fn(async () => control),
+      findControl: vi.fn(async () => control),
+      getControl: vi.fn(async () => control),
+      getFinalizedWatermark: vi.fn(async () => watermark),
+      appendFinalizedCheckpoint: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+    } satisfies LogsSearchProjectorStateStore;
+    const redisStore = {
+      acquireLease: vi.fn(async () => true),
+      releaseLease: vi.fn(),
+      readLeaseStatus: vi.fn(async () => null),
+      initializePreviewWatermark: vi.fn(async () => watermark),
+      getPreviewWatermark: vi.fn(async () => null),
+      advancePreviewWatermark: vi.fn(async () => true),
+    } satisfies LogsSearchProjectorRedisStore;
+    const projectionError = new Error("projection failed");
+    const projector = new LogsSearchProjector(
+      {
+        previewEnabled: true,
+        maxFinalizedWindowsPerTick: 1,
+        leaseDurationMs: 60_000,
+      },
+      stateStore,
+      redisStore,
+      vi.fn(async () => {
+        throw projectionError;
+      }),
+      () => now,
+      {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      }
+    );
+
+    await expect(projector.processTick()).rejects.toBe(projectionError);
+    expect(telemetry.updateState).toHaveBeenCalledWith({
+      previewLagMs: null,
+      finalizedLagMs: 180_000,
+      paused: false,
     });
   });
 });

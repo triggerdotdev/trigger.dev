@@ -110,7 +110,14 @@ export class LogsSearchProjector {
       return { finalized: 0, preview: false };
     }
 
-    const finalized = await this.processFinalizedWindows(finalizedCutoff);
+    let finalized: number;
+    try {
+      finalized = await this.processFinalizedWindows(finalizedCutoff);
+    } catch (error) {
+      await this.updateTelemetryStateAfterFailure(now, control);
+      throw error;
+    }
+
     const refreshedControl = await this.stateStore.getControl();
     const currentNow = await this.clock();
     const currentFinalizedCutoff = finalizedSafeCutoff(currentNow);
@@ -353,6 +360,19 @@ export class LogsSearchProjector {
       activeProjectionMode: lease?.mode ?? null,
       leaseExpiresAt: lease?.expiresAt ?? null,
     };
+  }
+
+  private async updateTelemetryStateAfterFailure(
+    now: Date,
+    control: LogsSearchProjectorControl
+  ): Promise<void> {
+    try {
+      await this.updateTelemetryState(now, control);
+    } catch (error) {
+      this.logger.warn("Failed to refresh logs search projector telemetry after tick failure", {
+        error,
+      });
+    }
   }
 
   private async updateTelemetryState(
