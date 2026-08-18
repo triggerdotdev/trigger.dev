@@ -1,5 +1,4 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
-import {} from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";

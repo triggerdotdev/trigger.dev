@@ -15,7 +15,6 @@ import { markReadReplicaClient } from "@internal/run-store";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import invariant from "tiny-invariant";
-import {} from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";

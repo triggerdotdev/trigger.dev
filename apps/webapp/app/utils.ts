@@ -1,5 +1,3 @@
-import {} from "@remix-run/react";
-
 const DEFAULT_REDIRECT = "/";
 
 // Pathnames that are NOT user-navigable destinations: fetcher endpoints,

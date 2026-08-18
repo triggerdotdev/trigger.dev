@@ -9,7 +9,6 @@ import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.
 import assertNever from "assert-never";
 import { HourglassIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
-import {} from "~/database-types";
 import { cn } from "~/utils/cn";
 
 export type ExtendedTaskAttemptStatus = TaskRunAttemptStatusType | "ENQUEUED";

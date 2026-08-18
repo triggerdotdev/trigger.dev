@@ -1,6 +1,5 @@
 import type { Span, SpanOptions, Tracer } from "@opentelemetry/api";
 import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
-import {} from "@opentelemetry/api-logs";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv } from "./tracer.server";
 

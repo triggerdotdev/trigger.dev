@@ -2,7 +2,6 @@ import { log } from "@clack/prompts";
 import chalk from "chalk";
 import type { TerminalLinkOptions } from "./terminalLink.js";
 import { terminalLink } from "./terminalLink.js";
-import {} from "std-env";
 
 export const isLinksSupported = terminalLink.isSupported;
 

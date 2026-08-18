@@ -21,7 +21,6 @@ import type {
 } from "@trigger.dev/rbac";
 import { assertUserActorEnvironment } from "./userActorEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import {} from "./safeEnvironmentLog";
 import {
   type PersonalAccessTokenAuthenticationResult,
   authenticateApiRequestWithPersonalAccessToken,

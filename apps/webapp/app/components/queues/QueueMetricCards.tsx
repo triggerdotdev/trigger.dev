@@ -14,7 +14,6 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { QUEUE_METRICS_DEFAULT_PERIOD } from "~/components/queues/queueMetricsPeriod";
-import {} from "~/utils/numberFormatter";
 
 // Shared building blocks for queue-metric UI (queue detail page, task detail page,
 // run inspector). All CH-derived data is fetched client-side through useQueueMetric
