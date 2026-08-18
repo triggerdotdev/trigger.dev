@@ -288,6 +288,14 @@ describe("OrgPlacementOverrides", () => {
     ).toEqual({ org_123: { nodeSelector: { pool: "a" } } });
   });
 
+  it("should reject blank or padded org keys, since the lookup is exact", () => {
+    for (const key of [" ", " org_123", "org_123 "]) {
+      expect(
+        OrgPlacementOverrides.safeParse(JSON.stringify({ [key]: {} })).success
+      ).toBe(false);
+    }
+  });
+
   it("should reject an empty node selector value instead of pinning the org to nothing", () => {
     for (const value of ["", "   "]) {
       expect(

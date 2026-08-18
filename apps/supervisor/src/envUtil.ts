@@ -221,7 +221,13 @@ export const OrgPlacementOverrides = z
   .pipe(
     z
       .record(
-        z.string().min(1),
+        z
+          .string()
+          .min(1)
+          .refine((key) => key === key.trim() && key.trim().length > 0, {
+            message:
+              "Org override keys must not be blank or padded with whitespace; the lookup is exact",
+          }),
         z
           .object({
             nodeSelector: NodeSelector.optional(),
