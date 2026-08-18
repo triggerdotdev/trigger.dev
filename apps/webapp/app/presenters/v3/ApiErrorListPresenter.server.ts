@@ -48,9 +48,7 @@ export const ApiErrorListSearchParams = z.object({
       const statuses = value.split(",");
       // hasOwnProperty, not `in`: `in` walks the prototype chain, so
       // `filter[status]=toString` would pass and map to a function.
-      const invalid = statuses.filter(
-        (status) => !Object.prototype.hasOwnProperty.call(API_STATUS_TO_DB, status)
-      );
+      const invalid = statuses.filter((status) => !Object.hasOwn(API_STATUS_TO_DB, status));
 
       if (invalid.length > 0) {
         ctx.addIssue({

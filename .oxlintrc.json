@@ -49,6 +49,11 @@
     "react-hooks/rules-of-hooks": "off",
     "guard-for-in": "error",
     "symbol-description": "error",
+    "no-unneeded-ternary": "error",
+    "prefer-object-has-own": "error",
+    "no-redeclare": "error",
+    "no-multi-assign": "error",
+    "prefer-object-spread": "error",
     "react/jsx-no-target-blank": "error",
     "trigger/no-thrown-unawaited-redirect": "error",
     "trigger-prisma/no-unbounded-list-filter": "error",
@@ -74,6 +79,12 @@
       "rules": {
         "trigger-prisma/no-unbounded-list-filter": "off",
         "trigger-prisma/no-unbounded-list-filter-in-args-helper": "off"
+      }
+    },
+    {
+      "files": ["internal-packages/tsql/**"],
+      "rules": {
+        "prefer-object-has-own": "off"
       }
     }
   ]

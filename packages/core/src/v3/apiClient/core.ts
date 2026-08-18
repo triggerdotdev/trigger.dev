@@ -613,7 +613,7 @@ export function isEmptyObj(obj: object | null | undefined): boolean {
 
 // https://eslint.org/docs/latest/rules/no-prototype-builtins
 export function hasOwn(obj: object, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(obj, key);
+  return Object.hasOwn(obj, key);
 }
 
 // If the requestInit has a header x-trigger-worker = true, then we will do

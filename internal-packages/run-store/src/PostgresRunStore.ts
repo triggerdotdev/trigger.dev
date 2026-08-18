@@ -1950,7 +1950,7 @@ export class PostgresRunStore implements RunStore {
           ?.filter((c) => c.index !== undefined)
           .sort((a, b) => a.index! - b.index!)
           .map((w) => w.id),
-        isValid: error ? false : true,
+        isValid: !error,
         error,
       },
       include: { checkpoint: true },
