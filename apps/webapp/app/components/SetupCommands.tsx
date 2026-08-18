@@ -1,5 +1,5 @@
 import { CheckIcon, SparklesIcon } from "@heroicons/react/20/solid";
-import { createContext, useContext, useRef, useState } from "react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
 import { useTriggerCliTag } from "~/hooks/useTriggerCliTag";
@@ -24,10 +24,13 @@ const PackageManagerContext = createContext<PackageManagerContextType | undefine
 export function PackageManagerProvider({ children }: { children: React.ReactNode }) {
   const [activePackageManager, setActivePackageManager] = useState("npm");
 
+  const contextValue = useMemo(
+    () => ({ activePackageManager, setActivePackageManager }),
+    [activePackageManager]
+  );
+
   return (
-    <PackageManagerContext.Provider value={{ activePackageManager, setActivePackageManager }}>
-      {children}
-    </PackageManagerContext.Provider>
+    <PackageManagerContext.Provider value={contextValue}>{children}</PackageManagerContext.Provider>
   );
 }
 

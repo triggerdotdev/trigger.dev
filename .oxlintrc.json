@@ -57,6 +57,7 @@
     "react/jsx-no-target-blank": "error",
     "react/jsx-fragments": "error",
     "react/self-closing-comp": "error",
+    "react/jsx-no-constructed-context-values": "error",
     "no-lone-blocks": "error",
     "typescript/prefer-function-type": "error",
     "typescript/prefer-for-of": "error",
@@ -90,6 +91,15 @@
       "files": ["internal-packages/tsql/**"],
       "rules": {
         "prefer-object-has-own": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/webapp/app/components/primitives/charts/Chart.tsx",
+        "apps/webapp/app/components/primitives/Timeline.tsx"
+      ],
+      "rules": {
+        "react/jsx-no-constructed-context-values": "off"
       }
     }
   ]

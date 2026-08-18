@@ -1,4 +1,11 @@
-import React, { createContext, useState, useContext, type ReactNode } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 type DateRangeContextType = {
   /** Start date as ISO string (YYYY-MM-DD) or custom format */
@@ -87,28 +94,22 @@ export function DateRangeProvider({
   const [startDate, setStartDate] = useState<string>(defaultStartISO);
   const [endDate, setEndDate] = useState<string>(defaultEndISO);
 
-  const setDateRange = (start: string, end: string) => {
+  const setDateRange = useCallback((start: string, end: string) => {
     setStartDate(start);
     setEndDate(end);
-  };
+  }, []);
 
-  const resetDateRange = () => {
+  const resetDateRange = useCallback(() => {
     setStartDate(defaultStartISO);
     setEndDate(defaultEndISO);
-  };
+  }, [defaultEndISO, defaultStartISO]);
 
-  return (
-    <DateRangeContext.Provider
-      value={{
-        startDate,
-        endDate,
-        setDateRange,
-        resetDateRange,
-      }}
-    >
-      {children}
-    </DateRangeContext.Provider>
+  const contextValue = useMemo(
+    () => ({ startDate, endDate, setDateRange, resetDateRange }),
+    [startDate, endDate, setDateRange, resetDateRange]
   );
+
+  return <DateRangeContext.Provider value={contextValue}>{children}</DateRangeContext.Provider>;
 }
 
 export function useDateRange(): DateRangeContextType | null {

@@ -1,7 +1,14 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
-import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";
+import React, {
+  type ReactNode,
+  createContext,
+  forwardRef,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
@@ -84,8 +91,10 @@ export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: Table
     },
     ref
   ) => {
+    const contextValue = useMemo(() => ({ variant }), [variant]);
+
     return (
-      <TableContext.Provider value={{ variant }}>
+      <TableContext.Provider value={contextValue}>
         <div
           className={cn(
             "whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
