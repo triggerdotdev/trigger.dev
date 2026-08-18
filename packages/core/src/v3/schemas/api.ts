@@ -59,6 +59,53 @@ export const GetProjectsResponseBody = z.array(GetProjectResponseBody);
 
 export type GetProjectsResponseBody = z.infer<typeof GetProjectsResponseBody>;
 
+/** The Node.js major version currently targeted by the runtime update report. */
+export const NODE_RUNTIME_UPDATE_MAJOR = 21;
+
+/**
+ * Returns the observed Node.js major version for a deployment.
+ *
+ * `runtime: "node"` is an alias whose underlying Node.js version has changed over time, so the
+ * recorded runtimeVersion is deliberately the source of truth here.
+ */
+export function nodeMajor(
+  runtime: string | null | undefined,
+  runtimeVersion: string | null | undefined
+) {
+  if (!runtime?.startsWith("node")) return undefined;
+
+  const match = runtimeVersion?.match(/^(\d+)(?:\.\d+){1,2}(?:[-+].*)?$/);
+  return match ? Number(match[1]) : undefined;
+}
+
+export const GetProjectRuntimesResponseBody = z.array(
+  z.object({
+    organization: z.object({
+      title: z.string(),
+      slug: z.string(),
+    }),
+    project: z.object({
+      name: z.string(),
+      slug: z.string(),
+      externalRef: z.string(),
+    }),
+    environment: z.object({
+      slug: z.string(),
+    }),
+    deployment: z
+      .object({
+        runtime: z.string().nullable(),
+        runtimeVersion: z.string().nullable(),
+        nodeMajor: z.number().int().positive().nullable(),
+        deployedAt: z.coerce.date().nullable(),
+        shortCode: z.string(),
+      })
+      .nullable(),
+  })
+);
+
+export type GetProjectRuntimesResponseBody = z.infer<typeof GetProjectRuntimesResponseBody>;
+
 export const GetOrgsResponseBody = z.array(
   z.object({
     id: z.string(),

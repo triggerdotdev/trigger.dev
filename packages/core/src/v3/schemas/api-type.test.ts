@@ -1,6 +1,25 @@
 import { describe, it, expect } from "vitest";
-import { BatchItemNDJSON, InitializeDeploymentRequestBody, TriggerTaskRequestBody } from "./api.js";
+import {
+  BatchItemNDJSON,
+  InitializeDeploymentRequestBody,
+  nodeMajor,
+  TriggerTaskRequestBody,
+} from "./api.js";
 import type { InitializeDeploymentRequestBody as InitializeDeploymentRequestBodyType } from "./api.js";
+
+describe("nodeMajor", () => {
+  it.each([
+    ["node", "20.18.0", 20],
+    ["node", "21.7.3", 21],
+    ["node-22", "22.16.0", 22],
+    ["node-24", "24.18.0", 24],
+    ["bun", "1.3.3", undefined],
+    ["node", null, undefined],
+    ["node", "unknown", undefined],
+  ])("resolves %s %s", (runtime, runtimeVersion, expected) => {
+    expect(nodeMajor(runtime, runtimeVersion)).toBe(expected);
+  });
+});
 
 describe("InitializeDeploymentRequestBody", () => {
   const base = { contentHash: "abc123" };

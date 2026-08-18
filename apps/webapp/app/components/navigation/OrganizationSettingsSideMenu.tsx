@@ -1,4 +1,4 @@
-import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowPathIcon } from "@heroicons/react/24/solid";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
@@ -16,6 +16,7 @@ import { cn } from "~/utils/cn";
 import {
   organizationPath,
   organizationRolesPath,
+  organizationRuntimeUpdatesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationSsoPath,
@@ -127,6 +128,14 @@ export function OrganizationSettingsSideMenu({
               ) : null}
             </>
           )}
+          <SideMenuItem
+            name="Runtime updates"
+            icon={ArrowPathIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationRuntimeUpdatesPath(organization)}
+            data-action="runtime-updates"
+          />
           <SideMenuItem
             name="Team"
             icon={UserGroupIcon}

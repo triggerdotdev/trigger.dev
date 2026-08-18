@@ -38,6 +38,10 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
   ["webhooks", page("webhooks")],
 ]);
 
+export const ORG_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
+  ["runtime-updates", page("runtime-updates")],
+]);
+
 export const DEEPLINK_PATH_PREFIX = "/_";
 
 export function deeplinkSuffix(pathname: string): string {
@@ -61,11 +65,14 @@ function isSafeSegment(segment: string): boolean {
   return decoded !== "." && decoded !== "..";
 }
 
-export function resolveDeeplinkPage(suffix: string): string | undefined {
+function resolveDeeplinkTarget(
+  targets: ReadonlyMap<string, DeeplinkTarget>,
+  suffix: string
+): string | undefined {
   const segments = suffix.split("/").filter(isSafeSegment);
   const [first = "", ...rest] = segments;
 
-  const target = ENV_PAGE_TARGETS.get(first.toLowerCase());
+  const target = targets.get(first.toLowerCase());
   if (target === undefined) return undefined;
 
   if (rest.length === 0) return target.landing;
@@ -75,4 +82,12 @@ export function resolveDeeplinkPage(suffix: string): string | undefined {
   const beyondPrefix = writesPrefix ? segments.slice(prefixDepth) : rest;
 
   return [target.prefix, ...beyondPrefix].join("/");
+}
+
+export function resolveDeeplinkPage(suffix: string): string | undefined {
+  return resolveDeeplinkTarget(ENV_PAGE_TARGETS, suffix);
+}
+
+export function resolveOrganizationDeeplinkPage(suffix: string): string | undefined {
+  return resolveDeeplinkTarget(ORG_PAGE_TARGETS, suffix);
 }
