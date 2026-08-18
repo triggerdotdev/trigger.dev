@@ -129,7 +129,7 @@ export function RunsDisplayOptions() {
       <Popover>
         <PopoverTrigger asChild>
           <Button variant="secondary/small" LeadingIcon={ViewColumnsIcon}>
-            Display
+            Columns
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 p-0">
