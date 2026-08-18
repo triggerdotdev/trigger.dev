@@ -324,13 +324,7 @@ const withWarmup = <T extends WarmableTestApi>(
   api: T,
   warmUp: (context: any) => Promise<void>
 ): T => {
-  let registered = false;
-
   const register = () => {
-    if (registered) {
-      return;
-    }
-    registered = true;
     api.beforeAll(warmUp, CONTAINER_WARMUP_TIMEOUT_MS);
   };
 
