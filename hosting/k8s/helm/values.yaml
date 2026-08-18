@@ -297,6 +297,7 @@ supervisor:
       namespace: "" # Default: uses release namespace
       workerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
       runnerTolerations: [] # Run pod tolerations, e.g. ["dedicated=runs:NoSchedule"]
+      orgPlacementOverrides: {} # Per-org run pod placement, e.g. {"<orgId>": {"nodeSelector": {"pool": "dedicated"}, "tolerations": "dedicated=runs:NoSchedule"}}
       ephemeralStorageSizeLimit: "" # Default: 10Gi
       ephemeralStorageSizeRequest: "" # Default: 2Gi´
     podCleaner:
