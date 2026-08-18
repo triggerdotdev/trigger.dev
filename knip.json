@@ -18,6 +18,7 @@
         "prisma/populate.ts",
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
         "test/**/*.producer.ts",
+        "test/types/**/*.types.ts",
         "test/setup/global-e2e-full-setup.ts",
         "vite/node-globals-shim.js",
         "app/v3/otlpTransformWorker.ts"
