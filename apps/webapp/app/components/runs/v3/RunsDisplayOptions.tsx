@@ -128,7 +128,7 @@ export function RunsDisplayOptions() {
     <>
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="secondary/small" LeadingIcon={ViewColumnsIcon} className="ml-auto">
+          <Button variant="secondary/small" LeadingIcon={ViewColumnsIcon}>
             Display
           </Button>
         </PopoverTrigger>

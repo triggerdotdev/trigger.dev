@@ -39,6 +39,7 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { $replica } from "~/db.server";
@@ -404,6 +405,7 @@ function RunsList({
                         )}
                       </span>
                     </Button>
+                    <RunsDisplayOptions />
                     <ListPagination list={list} />
                   </div>
                 </div>
