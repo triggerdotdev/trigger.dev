@@ -586,9 +586,9 @@ function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
           </DialogHeader>
           {isSsoManaged ? (
             <Paragraph variant="small" className="py-4">
-              Your organization signs you in through its own identity provider, so your email
-              address is managed there rather than here. To change it, ask an admin on your account
-              to update it for you.
+              Your organization uses single sign-on, so your email address is managed by your
+              identity provider rather than here. To change it, ask an organization admin to update
+              it for you.
             </Paragraph>
           ) : (
             <fetcher.Form method="post">
