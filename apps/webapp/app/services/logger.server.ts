@@ -8,10 +8,6 @@ import { captureException, captureMessage } from "@sentry/remix";
 
 const currentFieldsStore = new AsyncLocalStorage<Record<string, unknown>>();
 
-function trace<T>(fields: Record<string, unknown>, fn: () => T): T {
-  return currentFieldsStore.run(fields, fn);
-}
-
 // The keys below aren't already in the Logger's default deny-list. Passing them here means the
 // extra data sent to Sentry gets the same redaction as the stdout line, instead of bypassing it.
 const SENTRY_EXTRA_FILTERED_KEYS = ["examples", "connectionString"];
@@ -74,10 +70,6 @@ export const logger = new Logger(
     return { ...fields, http: httpContext };
   }
 );
-
-
-
-
 
 // Opt-in, dev-only: mirror this process's stdout to a local telnet/TCP stream.
 // We patch console (rather than the static Logger.onLog sink) so the stream also captures logs

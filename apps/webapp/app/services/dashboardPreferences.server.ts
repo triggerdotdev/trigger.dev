@@ -433,15 +433,6 @@ export async function updateSideMenuCustomization({
   });
 }
 
-/** Get the stored item order for a specific list within an organization */
-function getItemOrder(
-  sideMenu: SideMenuPreferences | undefined,
-  organizationId: string,
-  listId: string
-): string[] | undefined {
-  return sideMenu?.organizations?.[organizationId]?.orderedItems?.[listId];
-}
-
 export async function updateItemOrder({
   user,
   organizationId,

@@ -1,24 +1,6 @@
 import type { InlineCodeVariant } from "~/components/code/InlineCode";
 import { InlineCode } from "~/components/code/InlineCode";
-import { SpanCodePathAccessory } from "./SpanTitle";
 import { cn } from "~/utils/cn";
-
-type TaskPathProps = {
-  filePath: string;
-  functionName: string;
-  className?: string;
-};
-
-function TaskPath({ filePath, functionName, className }: TaskPathProps) {
-  return (
-    <SpanCodePathAccessory
-      accessory={{
-        items: [{ text: filePath }, { text: functionName }],
-      }}
-      className={className}
-    />
-  );
-}
 
 type TaskFileNameProps = {
   fileName: string;

@@ -49,22 +49,6 @@ export function recordDecision(outcome: DecisionOutcome, opts: RecordDecisionOpt
 // the Electric stream anyway so the eventual drainer-INSERT propagates
 // to the client; this counter is the signal of how often customers
 // subscribe inside the buffered window.
-const realtimeBufferedSubscriptionsCounter = meter.createCounter(
-  "mollifier.realtime_subscriptions.buffered",
-  {
-    description:
-      "Realtime subscriptions opened against a runId that exists only in the mollifier buffer",
-  }
-);
-
-// No `envId` attribute — `envId` is a banned high-cardinality metric
-// label per the repo's OTel rules. The structured warn log emitted
-// alongside the counter tick (in `mollifierStaleSweep.server.ts`)
-// carries the envId / orgId / runId for forensic drill-down; the
-// metric stays an aggregate.
-function recordRealtimeBufferedSubscription(): void {
-  realtimeBufferedSubscriptionsCounter.add(1);
-}
 
 // Counts buffer entries that have been waiting in the queue ZSET longer
 // than the configured stale threshold. Useful for historical "stale
@@ -140,13 +124,3 @@ meter.addBatchObservableCallback(
   },
   [drainingCountGauge]
 );
-
-// Electric SQL's shape-stream protocol adds a `handle=` query param on
-// every reconnect after the initial GET. Gating the realtime-buffered
-// log/counter on its absence keeps the signal at one tick per
-// subscription instead of one tick per ~20s live-poll iteration —
-// without it the counter would over-count by the long-poll factor.
-function isInitialBufferedSubscriptionRequest(url: string | URL): boolean {
-  const u = typeof url === "string" ? new URL(url) : url;
-  return !u.searchParams.has("handle");
-}

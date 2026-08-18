@@ -618,12 +618,6 @@ export function shortcutFromIndex(
   return { key: String(adjustedIndex + 1) };
 }
 
-interface SelectSeparatorProps extends React.ComponentProps<"div"> {}
-
-function SelectSeparator(props: SelectSeparatorProps) {
-  return <div {...props} className={cn("h-px bg-background-raised", props.className)} />;
-}
-
 export interface SelectGroupProps extends Ariakit.SelectGroupProps {}
 
 export function SelectGroup(props: SelectGroupProps) {

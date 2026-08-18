@@ -204,32 +204,6 @@ export function formatUtcOffset(date: Date, timeZone: string): string {
   return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
 }
 
-// New component that only shows date when it changes
-const SmartDateTime = ({ date, previousDate = null, hour12 = true }: DateTimeProps) => {
-  const locales = useLocales();
-  const userTimeZone = useUserTimeZone();
-  const realDate = typeof date === "string" ? new Date(date) : date;
-  const realPrevDate = previousDate
-    ? typeof previousDate === "string"
-      ? new Date(previousDate)
-      : previousDate
-    : null;
-
-  // Check if we should show the date
-  const showDatePart = !realPrevDate || !isSameDay(realDate, realPrevDate);
-
-  // Format with appropriate function
-  const formattedDateTime = showDatePart
-    ? formatSmartDateTime(realDate, userTimeZone, locales, hour12)
-    : formatTimeOnly(realDate, userTimeZone, locales, hour12);
-
-  return (
-    <span suppressHydrationWarning>
-      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
-    </span>
-  );
-};
-
 // Helper function to check if two dates are on the same day
 function isSameDay(date1: Date, date2: Date): boolean {
   return (
@@ -237,26 +211,6 @@ function isSameDay(date1: Date, date2: Date): boolean {
     date1.getMonth() === date2.getMonth() &&
     date1.getDate() === date2.getDate()
   );
-}
-
-// Format with date and time
-function formatSmartDateTime(
-  date: Date,
-  timeZone: string,
-  locales: string[],
-  hour12: boolean = true
-): string {
-  return new Intl.DateTimeFormat(locales, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-    timeZone,
-    // @ts-ignore fractionalSecondDigits works in most modern browsers
-    fractionalSecondDigits: 3,
-    hour12,
-  }).format(date);
 }
 
 // Format time only

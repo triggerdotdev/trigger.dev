@@ -71,8 +71,6 @@ const BillingLimitConfiguredCustomSchema = z.object({
   amountCents: z.number().int().positive(),
 });
 
-
-
 export const BillingLimitResultSchema = z.union([
   BillingLimitUnconfiguredSchema,
   BillingLimitConfiguredNoneSchema,

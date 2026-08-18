@@ -15,8 +15,6 @@ export type LogDetailOptions = {
   startTime: string;
 };
 
-type LogDetail = Awaited<ReturnType<LogDetailPresenter["call"]>>;
-
 export class LogDetailPresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,

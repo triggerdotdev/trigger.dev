@@ -2750,52 +2750,6 @@ export const convertDateToClickhouseDateTime = (date: Date): string => {
 };
 
 /**
- * Convert a ClickHouse DateTime64 to nanoseconds since epoch (UTC).
- * Accepts:
- *  - "2025-09-23 12:32:46.130262875"
- *  - "2025-09-23T12:32:46.13"
- *  - "2025-09-23 12:32:46Z"
- *  - "2025-09-23 12:32:46.130262875+02:00"
- */
-function convertClickhouseDateTime64ToNanosecondsEpoch(date: string): bigint {
-  const s = date.trim();
-  const m = CLICKHOUSE_DATETIME_REGEX.exec(s);
-  if (!m) {
-    throw new Error(`Invalid ClickHouse DateTime64 string: "${date}"`);
-  }
-
-  const year = Number(m[1]);
-  const month = Number(m[2]); // 1-12
-  const day = Number(m[3]); // 1-31
-  const hour = Number(m[4]);
-  const minute = Number(m[5]);
-  const second = Number(m[6]);
-  const fraction = m[7] ?? ""; // up to 9 digits
-  const sign = m[8] as "+" | "-" | undefined;
-  const offH = m[9] ? Number(m[9]) : 0;
-  const offM = m[10] ? Number(m[10]) : 0;
-
-  // Convert fractional seconds to exactly 9 digits (nanoseconds within the second).
-  const nsWithinSecond = Number(fraction.padEnd(9, "0")); // 0..999_999_999
-
-  // Split into millisecond part (for Date) and leftover nanoseconds.
-  const msPart = Math.trunc(nsWithinSecond / 1_000_000); // 0..999
-  const leftoverNs = nsWithinSecond - msPart * 1_000_000; // 0..999_999
-
-  // Build milliseconds since epoch in UTC using Date.UTC (avoids local TZ/DST issues).
-  let msEpoch = Date.UTC(year, month - 1, day, hour, minute, second, msPart);
-
-  // If an explicit offset was provided, adjust to true UTC.
-  if (sign) {
-    const offsetMinutesSigned = (sign === "+" ? 1 : -1) * (offH * 60 + offM);
-    msEpoch -= offsetMinutesSigned * 60_000;
-  }
-
-  // Combine ms to ns with leftover.
-  return BigInt(msEpoch) * 1_000_000n + BigInt(leftoverNs);
-}
-
-/**
  * Convert a ClickHouse DateTime64 to a JS Date.
  * Accepts:
  *  - "2025-09-23 12:32:46.130262875"

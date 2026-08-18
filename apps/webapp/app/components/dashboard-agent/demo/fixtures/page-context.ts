@@ -247,5 +247,3 @@ export const demoResolvedDismissedPromptIds: string[] = ["sp:fresh-failure"];
 export const demoPromptsAfterDismissal: SuggestedPrompt[] = demoPromptSets.failedRun
   .filter((p) => !demoDismissedPromptIds.includes(p.id))
   .slice(0, SUGGESTED_PROMPT_CAP);
-
-

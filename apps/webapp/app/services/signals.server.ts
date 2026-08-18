@@ -16,10 +16,6 @@ type SignalsEvents = {
   ];
 };
 
-type SignalsEventArgs<T extends keyof SignalsEvents> = SignalsEvents[T];
-
-type SignalsEmitter = EventEmitter<SignalsEvents>;
-
 function initializeSignalsEmitter() {
   const emitter = new EventEmitter<SignalsEvents>();
 

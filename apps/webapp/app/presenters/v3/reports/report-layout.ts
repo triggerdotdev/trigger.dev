@@ -96,8 +96,6 @@ export const REPORT_SECTION_ORDER = [
   "footer",
 ] as const;
 
-type ReportSectionId = (typeof REPORT_SECTION_ORDER)[number];
-
 /**
  * Reasons that mean "we can't say" rather than a verdict, so their finding renders headline-only.
  * A measured finding never carries one: an unmeasured input costs its own metric, not the verdict.

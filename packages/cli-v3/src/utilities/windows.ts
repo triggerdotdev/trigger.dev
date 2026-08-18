@@ -3,10 +3,6 @@ import { isWindows as stdEnvIsWindows } from "std-env";
 
 const isWindows = stdEnvIsWindows;
 
-function escapeImportPath(path: string) {
-  return isWindows ? path.replaceAll("\\", "\\\\") : path;
-}
-
 // Removes ANSI escape sequences to get actual visible length
 function getVisibleLength(str: string): number {
   return (

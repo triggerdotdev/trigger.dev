@@ -581,8 +581,6 @@ export type SpanTimelineProps = {
   style?: TimelineStyle;
 };
 
-type SpanTimelineState = "error" | "pending" | "complete";
-
 export function SpanTimeline({
   startTime,
   duration,

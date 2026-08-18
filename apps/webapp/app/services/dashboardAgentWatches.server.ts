@@ -8,7 +8,6 @@ import {
   appendChatMessageOnce,
   armWatchBatch,
   cancelWatch,
-  chatExists,
   claimWatchSubmission,
   countActiveWatchesForOrg,
   createChat,
@@ -1279,14 +1278,6 @@ export async function listActiveWatchesForChats(params: {
       })),
     ])
   );
-}
-
-function chatBelongsToUser(params: {
-  chatId: string;
-  userId: string;
-  organizationId: string;
-}): Promise<boolean> {
-  return chatExists(dashboardAgentDb, params);
 }
 
 export type { ChatWatchContext };

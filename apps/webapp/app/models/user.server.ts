@@ -373,10 +373,6 @@ export async function getUserById(id: User["id"]) {
   };
 }
 
-async function getUserByEmail(email: User["email"]) {
-  return prisma.user.findUnique({ where: { email } });
-}
-
 export function updateUser({
   id,
   name,
@@ -398,19 +394,6 @@ export function updateUser({
       referralSource,
       onboardingData,
       confirmedBasicDetails: true,
-    },
-  });
-}
-
-async function grantUserCloudAccess({ id, inviteCode }: { id: string; inviteCode: string }) {
-  return prisma.user.update({
-    where: { id },
-    data: {
-      invitationCode: {
-        connect: {
-          code: inviteCode,
-        },
-      },
     },
   });
 }

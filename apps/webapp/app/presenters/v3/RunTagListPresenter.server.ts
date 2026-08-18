@@ -19,9 +19,6 @@ export type TagListOptions = {
 
 const DEFAULT_PAGE_SIZE = 25;
 
-type TagList = Awaited<ReturnType<RunTagListPresenter["call"]>>;
-type TagListItem = TagList["tags"][number];
-
 export class RunTagListPresenter extends BasePresenter {
   public async call({
     organizationId,

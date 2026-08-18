@@ -34,43 +34,6 @@ interface DatabaseSchemaSystemTable extends DatabaseSchemaTable {
   name: string;
 }
 
-interface DatabaseSchemaDataWarehouseTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  format?: string;
-  url_pattern?: string;
-  schema?: DatabaseSchemaSchema;
-  source?: DatabaseSchemaSource;
-  row_count?: number;
-}
-
-interface DatabaseSchemaViewTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  query: { query: string };
-  row_count?: number;
-}
-
-interface DatabaseSchemaManagedViewTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  kind: string;
-  source_id?: string;
-  query: { query: string };
-}
-
-interface DatabaseSchemaEndpointTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  query: { query: string };
-  row_count?: number;
-  status?: string;
-}
-
 interface DatabaseSchemaField {
   name: string;
   tsql_value: string;
@@ -80,23 +43,6 @@ interface DatabaseSchemaField {
   table?: string;
   chain?: Array<string | number>;
   id?: string;
-}
-
-interface DatabaseSchemaSchema {
-  id: string;
-  name: string;
-  should_sync: boolean;
-  incremental: boolean;
-  status: string;
-  last_synced_at: string;
-}
-
-interface DatabaseSchemaSource {
-  id: string;
-  status: string;
-  source_type: string;
-  prefix: string;
-  last_synced_at?: string | null;
 }
 
 enum DatabaseSerializedFieldType {
@@ -117,16 +63,6 @@ enum DatabaseSerializedFieldType {
   LAZY_TABLE = "lazy_table",
   VIRTUAL_TABLE = "virtual_table",
   FIELD_TRAVERSER = "field_traverser",
-}
-
-interface SerializedField {
-  key: string;
-  name: string;
-  type: DatabaseSerializedFieldType;
-  schema_valid: boolean;
-  fields?: string[];
-  table?: string;
-  chain?: Array<string | number>;
 }
 
 import { TableNodeImpl } from "./models";

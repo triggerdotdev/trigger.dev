@@ -47,20 +47,3 @@ export function parseStringLiteralText(text: string): string {
 
   return replaceCommonEscapeCharacters(result);
 }
-
-function parseStringLiteralCtx(ctx: { getText(): string }): string {
-  /** Converts a STRING_LITERAL received from antlr via ctx.getText() into a JavaScript string */
-  const text = ctx.getText();
-  return parseStringLiteralText(text);
-}
-
-function parseStringTextCtx(ctx: { getText(): string }, escapeQuotes: boolean = true): string {
-  /** Converts a STRING_TEXT received from antlr via ctx.getText() into a JavaScript string */
-  let text = ctx.getText();
-  if (escapeQuotes) {
-    text = text.replace(/''/g, "'");
-    text = text.replace(/\\'/g, "'");
-  }
-  text = text.replace(/\\{/g, "{");
-  return replaceCommonEscapeCharacters(text);
-}

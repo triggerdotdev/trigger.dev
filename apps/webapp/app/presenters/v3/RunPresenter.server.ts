@@ -13,10 +13,6 @@ import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runTriggeredAt } from "~/v3/runTimestamps";
 
-type Result = Awaited<ReturnType<RunPresenter["call"]>>;
-type Run = Result["run"];
-type RunEvent = NonNullable<Result["trace"]>["events"][0];
-
 export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {
     super(message);

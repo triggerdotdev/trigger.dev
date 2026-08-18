@@ -116,24 +116,6 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ChatToolRow({ children }: { children: React.ReactNode }) {
-  return <div className={cn("min-w-0", TURN_BODY_GAP)}>{children}</div>;
-}
-
-function ChatNote({ children }: { children: React.ReactNode }) {
-  const insetClass = useInsetClass();
-  return (
-    <div
-      className={cn(
-        insetClass,
-        "rounded-md border border-dashed border-border-bright bg-background-bright/40 px-3 py-2"
-      )}
-    >
-      <span className="text-xs text-text-dimmed">{children}</span>
-    </div>
-  );
-}
-
 export function ChatStatusLine({
   icon,
   children,

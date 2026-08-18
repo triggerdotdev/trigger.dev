@@ -4,8 +4,6 @@ import { Prisma } from "@trigger.dev/database";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
-
-type CommonTaskEvent = Omit<TaskEvent, "id">;
 type TraceEvent = Pick<
   TaskEvent,
   | "spanId"

@@ -43,8 +43,6 @@ type ScheduleListItem = {
     branchName?: string;
   }[];
 };
-type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
-type ScheduleListAppliedFilters = ScheduleList["filters"];
 
 export class ScheduleListPresenter extends BasePresenter {
   public async call({

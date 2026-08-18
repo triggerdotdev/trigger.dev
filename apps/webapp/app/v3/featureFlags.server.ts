@@ -157,7 +157,6 @@ function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
 export const flag = makeFlag();
 export const flags = makeFlags();
 
-
 // Utility function to set multiple feature flags at once
 export function makeSetMultipleFlags(_prisma: PrismaClientOrTransaction = prisma) {
   return async function setMultipleFlags(

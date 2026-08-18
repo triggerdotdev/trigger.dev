@@ -252,8 +252,6 @@ const ChartTooltipContent = React.forwardRef<
 );
 ChartTooltipContent.displayName = "ChartTooltip";
 
-
-
 type ExtendedLegendPayload = Parameters<
   NonNullable<RechartsPrimitive.LegendProps["formatter"]>
 >[0] & {

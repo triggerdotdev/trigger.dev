@@ -926,8 +926,6 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 }
 
-
-
 // Derived from the slim AuthenticatedEnvironment so a full AE satisfies
 // this type — the legacy Prisma payload had `builtInEnvironmentVariableOverrides`
 // as Prisma's JsonValue, which is a subtype of `unknown` in the slim

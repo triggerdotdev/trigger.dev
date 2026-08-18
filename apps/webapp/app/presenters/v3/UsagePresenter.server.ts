@@ -15,16 +15,6 @@ type Options = {
   startDate: Date;
 };
 
-type TaskUsageItem = {
-  taskIdentifier: string;
-  runCount: number;
-  averageDuration: number;
-  averageCost: number;
-  totalDuration: number;
-  totalCost: number;
-  totalBaseCost: number;
-};
-
 export type UsageSeriesData = {
   date: string;
   dollars: number;

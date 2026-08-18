@@ -63,18 +63,6 @@ function bulkActionTitle(type: BulkActionType): string {
   }
 }
 
-function bulkActionVerb(type: BulkActionType): string {
-  switch (type) {
-    case "REPLAY":
-      return "Replaying";
-    case "CANCEL":
-      return "Canceling";
-    default: {
-      assertNever(type);
-    }
-  }
-}
-
 export function BulkActionStatusCombo({
   status,
   className,

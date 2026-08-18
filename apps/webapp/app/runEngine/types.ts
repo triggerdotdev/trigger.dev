@@ -31,12 +31,6 @@ export type TriggerTaskRequest = {
   options?: TriggerTaskServiceOptions;
 };
 
-type TriggerTaskResult = {
-  run: TaskRun;
-  isCached: boolean;
-  error?: TaskRunError;
-};
-
 export type QueueValidationResult =
   | {
       ok: true;

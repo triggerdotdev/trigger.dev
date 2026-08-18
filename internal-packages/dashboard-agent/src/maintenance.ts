@@ -5,9 +5,8 @@ import {
   hardDeleteChatsSoftDeletedBefore,
   type DashboardAgentDb,
 } from "@internal/dashboard-agent-db";
-import { logger, schedules } from "@trigger.dev/sdk";
+import { logger } from "@trigger.dev/sdk";
 import { serializeError } from "./serialize-error";
-import { getWatchDb, watchConnectionString } from "./watch-task-adapters";
 
 /**
  * Retention for the agent's own datastore: judged turns, soft-deleted chats, and the
@@ -114,5 +113,3 @@ export async function runDashboardAgentRetention(
 
   return result;
 }
-
-

@@ -199,15 +199,4 @@ const ClientTabsContent = React.forwardRef<
 ));
 ClientTabsContent.displayName = TabsPrimitive.Content.displayName;
 
-type TabsProps = {
-  tabs: {
-    label: string;
-    value: string;
-  }[];
-  currentValue: string;
-  className?: string;
-  layoutId: string;
-  variant?: Variants;
-};
-
 export { ClientTabs, ClientTabsContent, ClientTabsList, ClientTabsTrigger };

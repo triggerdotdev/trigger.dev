@@ -23,13 +23,6 @@ export interface TSQLQueryModifiers {
   optimizeProjections?: boolean;
 }
 
-interface TSQLFieldAccess {
-  input: string[];
-  type?: "run";
-  field?: string;
-  sql: string;
-}
-
 export interface Team {
   id: number;
   project_id: number;

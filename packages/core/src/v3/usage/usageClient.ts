@@ -1,10 +1,5 @@
 import { apiClientManager } from "../apiClientManager-api.js";
 
-type UsageClientOptions = {
-  token: string;
-  baseUrl: string;
-};
-
 export type UsageEvent = {
   durationMs: number;
 };

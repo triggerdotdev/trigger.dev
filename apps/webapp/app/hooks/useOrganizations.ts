@@ -42,14 +42,6 @@ export function useOrganization(matches?: UIMatch[]) {
   return org;
 }
 
-function useIsNewOrganizationPage(matches?: UIMatch[]): boolean {
-  const data = useTypedMatchesData<any>({
-    id: "routes/_app.orgs.new",
-    matches,
-  });
-  return !!data;
-}
-
 export const useOrganizationChanged = (action: (org: MatchedOrganization | undefined) => void) => {
   useChanged(useOptionalOrganization, action);
 };
@@ -61,8 +53,6 @@ export function useIsImpersonating(matches?: UIMatch[]) {
   });
   return data?.isImpersonating === true;
 }
-
-type CustomDashboard = UseDataFunctionReturn<typeof orgLoader>["customDashboards"][number];
 
 export function useCustomDashboards(matches?: UIMatch[]) {
   const data = useTypedMatchesData<typeof orgLoader>({

@@ -357,5 +357,3 @@ export function authorizationRateLimitMiddleware({
     );
   };
 }
-
-type RateLimitMiddleware = ReturnType<typeof authorizationRateLimitMiddleware>;

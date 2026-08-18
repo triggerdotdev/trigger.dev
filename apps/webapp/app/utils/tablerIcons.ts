@@ -4820,5 +4820,3 @@ const tablerIconNames = [
 ];
 
 export const tablerIcons = new Set(tablerIconNames);
-
-

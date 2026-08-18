@@ -1,64 +1,13 @@
-import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { hashToken } from "~/utils/tokens.server";
-
-const tokenValueLength = 40;
-//lowercase only, removed 0 and l to avoid confusion
-const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
 
 // Skip the lastAccessedAt write if the existing value is already within this
 // window. Eliminates per-auth UPDATE churn on a small narrow hot table; the
 // settings UI reads this field at human granularity so a few-minute
 // staleness is fine.
 export const OAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
-
-type CreateOrganizationAccessTokenOptions = {
-  name: string;
-  organizationId: string;
-  expiresAt?: Date;
-};
-
-async function getValidOrganizationAccessTokens(organizationId: string) {
-  const organizationAccessTokens = await prisma.organizationAccessToken.findMany({
-    select: {
-      id: true,
-      name: true,
-      createdAt: true,
-      lastAccessedAt: true,
-      expiresAt: true,
-    },
-    where: {
-      organizationId,
-      revokedAt: null,
-      OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-    },
-  });
-
-  return organizationAccessTokens.map((oat) => ({
-    id: oat.id,
-    name: oat.name,
-    createdAt: oat.createdAt,
-    lastAccessedAt: oat.lastAccessedAt,
-    expiresAt: oat.expiresAt,
-  }));
-}
-
-type ObfuscatedOrganizationAccessToken = Awaited<
-  ReturnType<typeof getValidOrganizationAccessTokens>
->[number];
-
-async function revokeOrganizationAccessToken(tokenId: string) {
-  await prisma.organizationAccessToken.update({
-    where: {
-      id: tokenId,
-    },
-    data: {
-      revokedAt: new Date(),
-    },
-  });
-}
 
 export type OrganizationAccessTokenAuthenticationResult = {
   organizationId: string;
@@ -139,35 +88,4 @@ export function isOrganizationAccessToken(token: string) {
   return token.startsWith(tokenPrefix);
 }
 
-async function createOrganizationAccessToken({
-  name,
-  organizationId,
-  expiresAt,
-}: CreateOrganizationAccessTokenOptions) {
-  const token = createToken();
-
-  const organizationAccessToken = await prisma.organizationAccessToken.create({
-    data: {
-      name,
-      organizationId,
-      hashedToken: hashToken(token),
-      expiresAt,
-    },
-  });
-
-  return {
-    id: organizationAccessToken.id,
-    name,
-    organizationId,
-    token,
-    expiresAt: organizationAccessToken.expiresAt,
-  };
-}
-
-type CreatedOrganizationAccessToken = Awaited<ReturnType<typeof createOrganizationAccessToken>>;
-
 const tokenPrefix = "tr_oat_";
-
-function createToken() {
-  return `${tokenPrefix}${tokenGenerator()}`;
-}

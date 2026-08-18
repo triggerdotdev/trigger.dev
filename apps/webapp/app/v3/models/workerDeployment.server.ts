@@ -1,34 +1,13 @@
-import type { Prettify } from "@trigger.dev/core";
 import type {
   BackgroundWorker,
   PrismaClientOrTransaction,
   RunEngineVersion,
   WorkerDeploymentType,
 } from "@trigger.dev/database";
-import {
-  CURRENT_DEPLOYMENT_LABEL,
-  CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
-} from "@trigger.dev/core/v3/isomorphic";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-
-type CurrentWorkerDeployment = Prettify<
-  NonNullable<Awaited<ReturnType<typeof findCurrentWorkerDeployment>>>
->;
-
-type BackgroundWorkerTaskSlim = Prisma.BackgroundWorkerTaskGetPayload<{
-  select: {
-    id: true;
-    friendlyId: true;
-    slug: true;
-    filePath: true;
-    exportName: true;
-    triggerSource: true;
-    machineConfig: true;
-    maxDurationInSeconds: true;
-  };
-}>;
 
 type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
   select: {
@@ -186,16 +165,6 @@ export async function getCurrentWorkerDeploymentEngineVersion(
   return undefined;
 }
 
-async function findCurrentUnmanagedWorkerDeployment(
-  environmentId: string
-): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  return await findCurrentWorkerDeployment({
-    environmentId,
-    label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
-    type: "UNMANAGED",
-  });
-}
-
 export async function findCurrentWorkerFromEnvironment(
   environment: Pick<AuthenticatedEnvironment, "id" | "type">,
   prismaClient: PrismaClientOrTransaction = prisma,
@@ -231,76 +200,4 @@ export async function findCurrentWorkerFromEnvironment(
     });
     return deployment?.worker ?? null;
   }
-}
-
-async function findCurrentUnmanagedWorkerFromEnvironment(
-  environment: Pick<AuthenticatedEnvironment, "id" | "type">,
-  prismaClient: PrismaClientOrTransaction = prisma
-): Promise<Pick<
-  BackgroundWorker,
-  "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts"
-> | null> {
-  if (environment.type === "DEVELOPMENT") {
-    return null;
-  }
-
-  return await findCurrentWorkerFromEnvironment(
-    environment,
-    prismaClient,
-    CURRENT_UNMANAGED_DEPLOYMENT_LABEL
-  );
-}
-
-async function getWorkerDeploymentFromWorker(
-  workerId: string
-): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const worker = await prisma.backgroundWorker.findFirst({
-    where: {
-      id: workerId,
-    },
-    include: {
-      deployment: true,
-      tasks: true,
-    },
-  });
-
-  if (!worker?.deployment) {
-    return;
-  }
-
-  const { deployment, ...workerWithoutDeployment } = worker;
-
-  return {
-    ...deployment,
-    worker: workerWithoutDeployment,
-  };
-}
-
-async function getWorkerDeploymentFromWorkerTask(
-  workerTaskId: string
-): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const workerTask = await prisma.backgroundWorkerTask.findFirst({
-    where: {
-      id: workerTaskId,
-    },
-    include: {
-      worker: {
-        include: {
-          deployment: true,
-          tasks: true,
-        },
-      },
-    },
-  });
-
-  if (!workerTask?.worker.deployment) {
-    return;
-  }
-
-  const { deployment, ...workerWithoutDeployment } = workerTask.worker;
-
-  return {
-    ...deployment,
-    worker: workerWithoutDeployment,
-  };
 }

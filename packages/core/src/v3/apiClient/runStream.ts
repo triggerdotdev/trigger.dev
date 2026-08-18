@@ -665,10 +665,6 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
   }
 }
 
-interface RunShapeProvider {
-  onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void>;
-}
-
 export type RunSubscriptionOptions = RunShapeStreamOptions & {
   runShapeStream: ReadableStream<SubscribeRunRawShape>;
   stopRunShapeStream: () => void;

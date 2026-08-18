@@ -61,23 +61,7 @@ const FAILED_RUN_STATUSES = [
 
 type FAILED_RUN_STATUSES = (typeof FAILED_RUN_STATUSES)[number];
 
-const FATAL_RUN_STATUSES = ["SYSTEM_FAILURE", "CRASHED"] satisfies TaskRunStatus[];
-
-type FATAL_RUN_STATUSES = (typeof FAILED_RUN_STATUSES)[number];
-
 const CANCELLABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
-const CANCELLABLE_ATTEMPT_STATUSES = NON_FINAL_ATTEMPT_STATUSES;
-
-const CRASHABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
-const CRASHABLE_ATTEMPT_STATUSES = NON_FINAL_ATTEMPT_STATUSES;
-
-const FAILABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
-
-const FREEZABLE_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "RETRYING_AFTER_FAILURE"];
-const FREEZABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["EXECUTING", "FAILED"];
-
-const RESTORABLE_RUN_STATUSES: TaskRunStatus[] = ["WAITING_TO_RESUME"];
-const RESTORABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["PAUSED"];
 
 export function isFinalRunStatus(status: TaskRunStatus): boolean {
   return FINAL_RUN_STATUSES.includes(status);
@@ -90,44 +74,12 @@ export function isFailedRunStatus(status: TaskRunStatus): boolean {
   return FAILED_RUN_STATUSES.includes(status);
 }
 
-function isFatalRunStatus(status: TaskRunStatus): boolean {
-  return FATAL_RUN_STATUSES.includes(status);
-}
-
 export function isCancellableRunStatus(status: TaskRunStatus): boolean {
   return CANCELLABLE_RUN_STATUSES.includes(status);
-}
-function isCancellableAttemptStatus(status: TaskRunAttemptStatus): boolean {
-  return CANCELLABLE_ATTEMPT_STATUSES.includes(status);
 }
 
 export function isPendingRunStatus(status: TaskRunStatus): boolean {
   return PENDING_STATUSES.includes(status);
-}
-
-function isCrashableRunStatus(status: TaskRunStatus): boolean {
-  return CRASHABLE_RUN_STATUSES.includes(status);
-}
-function isCrashableAttemptStatus(status: TaskRunAttemptStatus): boolean {
-  return CRASHABLE_ATTEMPT_STATUSES.includes(status);
-}
-
-function isFailableRunStatus(status: TaskRunStatus): boolean {
-  return FAILABLE_RUN_STATUSES.includes(status);
-}
-
-function isFreezableRunStatus(status: TaskRunStatus): boolean {
-  return FREEZABLE_RUN_STATUSES.includes(status);
-}
-function isFreezableAttemptStatus(status: TaskRunAttemptStatus): boolean {
-  return FREEZABLE_ATTEMPT_STATUSES.includes(status);
-}
-
-function isRestorableRunStatus(status: TaskRunStatus): boolean {
-  return RESTORABLE_RUN_STATUSES.includes(status);
-}
-function isRestorableAttemptStatus(status: TaskRunAttemptStatus): boolean {
-  return RESTORABLE_ATTEMPT_STATUSES.includes(status);
 }
 
 export function shouldIdempotencyKeyBeCleared(status: TaskRunStatus): boolean {

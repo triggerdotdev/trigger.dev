@@ -1,5 +1,5 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
+import {} from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";
@@ -512,8 +512,6 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
     );
   }
 );
-
-
 
 export const TableCellMenu = forwardRef<
   HTMLTableCellElement,

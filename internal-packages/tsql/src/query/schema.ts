@@ -614,13 +614,6 @@ export function validateGroupColumn(
 }
 
 /**
- * Get the actual ClickHouse column name (handles aliasing)
- */
-function getClickHouseColumnName(col: ColumnSchema): string {
-  return col.clickhouseName ?? col.name;
-}
-
-/**
  * Check if a column is a virtual (computed) column
  *
  * Virtual columns have an expression property that defines how they are computed
@@ -823,22 +816,6 @@ export function getInternalValueFromMappingCaseInsensitive(
   }
 
   return null;
-}
-
-/**
- * Get all column names available for autocomplete
- */
-function getTableColumnNames(schema: SchemaRegistry, tableName: string): string[] {
-  const table = findTable(schema, tableName);
-  if (!table) return [];
-  return Object.keys(table.columns);
-}
-
-/**
- * Get all table names available for autocomplete
- */
-function getAllTableNames(schema: SchemaRegistry): string[] {
-  return Object.keys(schema.tables);
 }
 
 /**

@@ -65,11 +65,6 @@ export function getRunChangeNotifier(): RunChangeNotifier {
   return singleton("runChangeNotifier", initializeRunChangeNotifier);
 }
 
-/** Whether the notifier subsystem is enabled for this process. */
-function isRunChangeNotifierEnabled(): boolean {
-  return nativeBackendEnabled;
-}
-
 /** Fire-and-forget publish of a run-changed record. No-op (and no notifier construction)
  * when disabled, so publish sites can call it unconditionally. */
 export function publishChangeRecord(input: ChangeRecordInput): void {
@@ -82,18 +77,5 @@ export function publishChangeRecord(input: ChangeRecordInput): void {
     getRunChangeNotifier().publish(input);
   } catch (error) {
     logger.error("[runChangeNotifier] publishChangeRecord threw; dropping notification", { error });
-  }
-}
-
-function publishManyChangeRecords(inputs: ChangeRecordInput[]): void {
-  if (!nativeBackendEnabled) {
-    return;
-  }
-  try {
-    getRunChangeNotifier().publishMany(inputs);
-  } catch (error) {
-    logger.error("[runChangeNotifier] publishManyChangeRecords threw; dropping notifications", {
-      error,
-    });
   }
 }

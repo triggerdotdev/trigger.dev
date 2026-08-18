@@ -46,17 +46,6 @@ export function shouldResetAlertsOnLimitChange(
   return isPercentageAlertMode(previousMode) !== isPercentageAlertMode(nextMode);
 }
 
-/** Configured billing limit mode before a save; null when billing limit was never configured. */
-function getPreviousBillingLimitModeForAlertSync(
-  billingLimit: BillingLimitResult
-): BillingLimitMode | null {
-  if (!billingLimit.isConfigured) {
-    return null;
-  }
-
-  return billingLimit.mode;
-}
-
 export function hasConfiguredAlerts(
   alerts: BillingAlertsFormData,
   billingLimit: BillingLimitResult,
@@ -65,10 +54,6 @@ export function hasConfiguredAlerts(
   const mode = getBillingLimitMode(billingLimit);
   const effectiveLimitCents = getEffectiveLimitCents(billingLimit, planLimitCents);
   return storedAlertsToThresholds(alerts, mode, effectiveLimitCents, planLimitCents).length > 0;
-}
-
-function hasSavedAlertThresholds(alerts: BillingAlertsFormData): boolean {
-  return alerts.alertLevels.length > 0;
 }
 
 /** Saved thresholds that would be cleared when the billing limit alert format changes. */
@@ -235,33 +220,6 @@ export function isLegacyDollarAmountField(
 
   return rawAmount === planDollars || rawAmount === effectiveDollars;
 }
-function isAbsoluteSavedAlerts(alerts: BillingAlertsFormData): boolean {
-  return getSavedAlertAmountCents(alerts) === ABSOLUTE_ALERT_BASE_CENTS;
-}
-
-/** Build a cleaned alerts payload when saving billing limits in the same alert format. */
-function buildCleanedAlertsPayloadForLimitSave(
-  alerts: BillingAlertsFormData,
-  nextMode: BillingLimitMode,
-  effectiveLimitCents: number,
-  planLimitCents: number
-): { amount: number; alertLevels: number[]; emails: string[] } | null {
-  if (alerts.alertLevels.length === 0) {
-    return null;
-  }
-
-  const thresholds = storedAlertsToThresholds(
-    alerts,
-    nextMode,
-    effectiveLimitCents,
-    planLimitCents
-  );
-
-  return {
-    emails: alerts.emails,
-    ...thresholdsToAlertPayload(thresholds, nextMode, effectiveLimitCents),
-  };
-}
 
 /** Convert stored percentage alert levels to UI percent values (10, 50, 80). */
 export function percentageAlertLevelsToUiThresholds(levels: number[]): number[] {
@@ -384,10 +342,6 @@ export function thresholdsToAlertPayload(
     amount: effectiveLimitCents,
     alertLevels: thresholds.map((percent) => percent / 100),
   };
-}
-
-function isEmptyThreshold(value: number): boolean {
-  return !Number.isFinite(value) || value <= 0;
 }
 
 export function previewDollarAmountForPercent(

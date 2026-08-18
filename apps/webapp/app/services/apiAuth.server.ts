@@ -1,5 +1,5 @@
 import { json } from "@remix-run/server-runtime";
-import { SignJWT, errors, jwtVerify } from "jose";
+import { SignJWT } from "jose";
 import { z } from "zod";
 
 import { $replica } from "~/db.server";
@@ -21,9 +21,7 @@ import type {
 } from "@trigger.dev/rbac";
 import { assertUserActorEnvironment } from "./userActorEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import { logger } from "./logger.server";
-import { safeEnvironmentLogFields } from "./safeEnvironmentLog";
-import { missingJwtLogContext } from "./safeRequestLogContext";
+import {} from "./safeEnvironmentLog";
 import {
   type PersonalAccessTokenAuthenticationResult,
   authenticateApiRequestWithPersonalAccessToken,
@@ -861,104 +859,6 @@ export async function generateJWTTokenForEnvironment(
     project_id: environment.projectId,
     ...payload,
   })
-    .setProtectedHeader({ alg: JWT_ALGORITHM })
-    .setIssuedAt()
-    .setIssuer("https://id.trigger.dev")
-    .setAudience("https://api.trigger.dev")
-    .setExpirationTime(calculateJWTExpiration())
-    .sign(JWT_SECRET);
-
-  return jwt;
-}
-
-async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
-  request: Request,
-  payloadSchema: T
-): Promise<{ payload: z.infer<T>; jwt: string } | undefined> {
-  try {
-    const jwt = request.headers.get("x-trigger-jwt");
-
-    if (!jwt) {
-      // Log a safe breadcrumb, not the raw headers (which carry the
-      // caller's Authorization credential).
-      logger.debug("Missing JWT token in request", missingJwtLogContext(request));
-
-      return;
-    }
-
-    const { payload: rawPayload } = await jwtVerify(jwt, JWT_SECRET, {
-      issuer: "https://id.trigger.dev",
-      audience: "https://api.trigger.dev",
-    });
-
-    const payload = payloadSchema.safeParse(rawPayload);
-
-    if (!payload.success) {
-      logger.error("Failed to validate JWT", { payload: rawPayload, issues: payload.error.issues });
-
-      return;
-    }
-
-    const renewedJwt = await renewJWTToken(payload.data);
-
-    return {
-      payload: payload.data,
-      jwt: renewedJwt,
-    };
-  } catch (error) {
-    if (error instanceof errors.JWTExpired) {
-      // Now we need to try and renew the token using the API key auth
-      const authenticatedEnv = await authenticateApiRequest(request);
-
-      if (!authenticatedEnv) {
-        logger.error("Failed to renew JWT token, missing or invalid Authorization header", {
-          error: error.message,
-        });
-
-        return;
-      }
-
-      if (!authenticatedEnv.ok) {
-        logger.error("Failed to renew JWT token, invalid API key", {
-          error: error.message,
-        });
-
-        return;
-      }
-
-      const payload = payloadSchema.safeParse(error.payload);
-
-      if (!payload.success) {
-        logger.error("Failed to parse jwt payload after expired", {
-          payload: error.payload,
-          issues: payload.error.issues,
-        });
-
-        return;
-      }
-
-      const renewedJwt = await generateJWTTokenForEnvironment(authenticatedEnv.environment, {
-        ...payload.data,
-      });
-
-      // The environment carries secret material; log only non-secret fields.
-      logger.debug("Renewed JWT token from Authorization header API Key", {
-        environment: safeEnvironmentLogFields(authenticatedEnv.environment),
-        payload: payload.data,
-      });
-
-      return {
-        payload: payload.data,
-        jwt: renewedJwt,
-      };
-    }
-
-    logger.error("Failed to validate JWT token", { error });
-  }
-}
-
-async function renewJWTToken(payload: Record<string, string>) {
-  const jwt = await new SignJWT(payload)
     .setProtectedHeader({ alg: JWT_ALGORITHM })
     .setIssuedAt()
     .setIssuer("https://id.trigger.dev")

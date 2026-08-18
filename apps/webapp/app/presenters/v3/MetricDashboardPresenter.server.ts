@@ -1,25 +1,9 @@
 import { BasePresenter } from "./basePresenter.server";
-import { type QueryScope } from "~/services/queryService.server";
 import { getLimit } from "~/services/platform.v3.server";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { builtInDashboard } from "./BuiltInDashboards.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
-
-type MetricFilters = {
-  /** Org, project, environment */
-  scope: QueryScope;
-  /** Time filter settings */
-  filterPeriod: string | null;
-  filterFrom: Date | null;
-  filterTo: Date | null;
-  /** Tasks */
-  taskIdentifiers?: string[];
-  /** Queues */
-  queues?: string[];
-  /** Tags */
-  tags?: string[];
-};
 
 export const LayoutItem = z.object({
   i: z.string(),

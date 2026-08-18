@@ -318,7 +318,6 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
  */
 export const FOOTER_WATCH_CODE = "watch_recovery";
 
-
 /** A dimmed line that accompanies a row entry. */
 const FOOTER_NOTE_LINES: Record<string, string> = {
   check_control_plane: "There's nothing to fix on your side.",
@@ -587,21 +586,6 @@ const LABEL_CLASS = "text-xs uppercase leading-tight tracking-wide text-text-dim
 
 /** A metric's movement against its baseline. Direction is always an arrow. */
 export type ReportDelta = { text: string; dir: "up" | "down" | "flat" };
-
-/**
- * A view model `Delta` as the row's arrow. A multiplier only reads as movement
- * once it rounds past 1×; below that a metric with a baseline is flat, and one
- * without a baseline has nothing to compare against.
- */
-function reportDelta(
-  delta: { dir: "up" | "down" | "flat"; mult?: number } | undefined,
-  hasBaseline: boolean
-): ReportDelta | undefined {
-  if (delta && delta.mult !== undefined && delta.mult > 1 && delta.dir !== "flat") {
-    return { text: `${delta.dir === "up" ? "↑" : "↓"} ${delta.mult}×`, dir: delta.dir };
-  }
-  return hasBaseline ? { text: "→ flat", dir: "flat" } : undefined;
-}
 
 export function ReportMetricRow({
   label,

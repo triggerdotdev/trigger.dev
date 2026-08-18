@@ -16,7 +16,6 @@ const safeJsonParse = Result.fromThrowable(
  * Parses the string as JSON and returns the array, or null if invalid.
  */
 
-
 /**
  * Zod transform for form fields that submit JSON-encoded EnvSlug arrays.
  * Parses the string as JSON and validates each element is a valid EnvSlug.
@@ -142,17 +141,6 @@ export function getAvailableEnvSlugsForBuildSettings(
   );
 }
 
-function isDiscoverEnvVarsEnabledForEnvironment(
-  discoverEnvVars: EnvSlug[] | null | undefined,
-  environmentType: TriggerEnvironmentType
-): boolean {
-  if (!discoverEnvVars || discoverEnvVars.length === 0) {
-    return false;
-  }
-  const envSlug = envTypeToSlug(environmentType);
-  return discoverEnvVars.includes(envSlug);
-}
-
 export function envTypeToSlug(environmentType: TriggerEnvironmentType): EnvSlug {
   switch (environmentType) {
     case "DEVELOPMENT":
@@ -227,15 +215,4 @@ export function isPullEnvVarsEnabledForEnvironment(
   }
   const envSlug = envTypeToSlug(environmentType);
   return pullEnvVarsBeforeBuild.includes(envSlug);
-}
-
-function isAtomicBuildsEnabledForEnvironment(
-  atomicBuilds: EnvSlug[] | null | undefined,
-  environmentType: TriggerEnvironmentType
-): boolean {
-  if (!atomicBuilds || atomicBuilds.length === 0) {
-    return false;
-  }
-  const envSlug = envTypeToSlug(environmentType);
-  return atomicBuilds.includes(envSlug);
 }

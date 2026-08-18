@@ -15,7 +15,7 @@ import { markReadReplicaClient } from "@internal/run-store";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import invariant from "tiny-invariant";
-import { z } from "zod";
+import {} from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
@@ -1141,8 +1141,6 @@ function redactUrlSecrets(hrefOrUrl: string | URL) {
 }
 
 export type { PrismaClient } from "@trigger.dev/database";
-
-
 
 function getDatabaseSchema() {
   if (!isValidDatabaseUrl(env.DATABASE_URL)) {

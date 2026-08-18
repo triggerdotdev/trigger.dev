@@ -59,14 +59,6 @@ export function registerDatabaseMetricsSource(source: DatabaseMetricsSource): vo
   sources.set(source.clientType, source);
 }
 
-function listDatabaseMetricsSources(): ReadonlyArray<DatabaseMetricsSource> {
-  return Array.from(sources.values());
-}
-
-function resetDatabaseMetricsSources(): void {
-  sources.clear();
-}
-
 function indexByKey(entries: Array<{ key: string; value: number }>): Record<string, number> {
   const out: Record<string, number> = {};
   for (const entry of entries) {

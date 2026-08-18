@@ -21,7 +21,6 @@ export const SIDE_MENU_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium track
 
 /** Default top-to-bottom order of the customizable side menu sections. */
 
-
 /**
  * Order entries by a saved preference. Entries missing from the saved order (e.g. a section or
  * item that shipped after the user customized) are inserted at their default position relative

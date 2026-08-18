@@ -8,8 +8,6 @@ import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.s
 
 const DAYS = 7;
 
-type TaskKind = "AGENT" | "STANDARD" | "SCHEDULED";
-
 export type DailyRunPoint = {
   /** ISO date (YYYY-MM-DD, UTC) */
   day: string;

@@ -1,10 +1,10 @@
-import { z } from "zod";
+import {} from "zod";
 import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
 import { TimeGranularity } from "~/utils/timeGranularity";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
-import { type Direction, DirectionSchema } from "~/components/ListPagination";
+import { type Direction } from "~/components/ListPagination";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
@@ -36,11 +36,7 @@ export type ErrorGroupOptions = {
   direction?: Direction;
 };
 
-
-
 const DEFAULT_RUNS_PAGE_SIZE = 25;
-
-type ErrorGroupDetail = Awaited<ReturnType<ErrorGroupPresenter["call"]>>;
 
 function parseClickHouseDateTime(value: string): Date {
   const asNum = Number(value);

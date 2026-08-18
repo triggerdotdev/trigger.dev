@@ -2,8 +2,6 @@
 // different chips can't clobber each other's write.
 const KEY_PREFIX = "tdev:dashboard-agent:prompt-dismissed:";
 
-const dismissedPromptStorageKey = (promptId: string) => `${KEY_PREFIX}${promptId}`;
-
 export function readDismissedPromptIds(): string[] {
   if (typeof window === "undefined") return [];
   try {
@@ -15,14 +13,5 @@ export function readDismissedPromptIds(): string[] {
     return ids;
   } catch {
     return [];
-  }
-}
-
-function writeDismissedPromptId(promptId: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(dismissedPromptStorageKey(promptId), "1");
-  } catch {
-    /* storage full or blocked — the dismissal just doesn't persist */
   }
 }

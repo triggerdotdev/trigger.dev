@@ -15,8 +15,6 @@ export const ProjectAlertEmailProperties = z.object({
 
 export type ProjectAlertEmailProperties = z.infer<typeof ProjectAlertEmailProperties>;
 
-
-
 export const ProjectAlertSlackProperties = z.object({
   channelId: z.string(),
   channelName: z.string(),

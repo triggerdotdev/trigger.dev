@@ -1,22 +1,10 @@
-import {
-  type PrismaClientOrTransaction,
-  type RuntimeEnvironmentType,
-  type TaskTriggerSource,
-} from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { type ClickHouse } from "@internal/clickhouse";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
-
-type AgentListItem = {
-  slug: string;
-  filePath: string;
-  createdAt: Date;
-  triggerSource: TaskTriggerSource;
-  config: unknown;
-};
 
 export type AgentActiveState = {
   running: number;

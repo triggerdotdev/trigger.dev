@@ -13,9 +13,6 @@ import { getLimit } from "~/services/platform.v3.server";
 type AlertChannelListPresenterData = Awaited<ReturnType<AlertChannelListPresenter["call"]>>;
 export type AlertChannelListPresenterRecord =
   AlertChannelListPresenterData["alertChannels"][number];
-type AlertChannelListPresenterAlertProperties = NonNullable<
-  AlertChannelListPresenterRecord["properties"]
->;
 
 export class AlertChannelListPresenter extends BasePresenter {
   public async call(projectId: string, environmentType?: RuntimeEnvironmentType) {

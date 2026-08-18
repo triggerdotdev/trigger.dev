@@ -1,30 +1,3 @@
-import { cn } from "~/utils/cn";
-
-type GitHubLoginButtonProps = {
-  label?: string;
-  className?: string;
-  onClick?: () => void;
-};
-
-function GitHubLoginButton({
-  label = "Continue with GitHub",
-  className,
-  onClick,
-}: GitHubLoginButtonProps) {
-  return (
-    <button
-      className={cn(
-        "flex items-center justify-center gap-2 rounded-md bg-indigo-800 py-3 pl-5 pr-6 text-lg font-medium text-white transition hover:bg-indigo-700",
-        className
-      )}
-      onClick={onClick}
-    >
-      <OctoKitty className="h-5 w-5" />
-      {label}
-    </button>
-  );
-}
-
 export function OctoKitty({ className }: { className?: string }) {
   return (
     <svg

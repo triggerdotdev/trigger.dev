@@ -41,13 +41,10 @@ export type ErrorsListOptions = {
   pageSize?: number;
 };
 
-
-
 const DEFAULT_PAGE_SIZE = 25;
 
 export type ErrorsList = Awaited<ReturnType<ErrorsListPresenter["call"]>>;
 export type ErrorGroup = ErrorsList["errorGroups"][0];
-type ErrorsListAppliedFilters = ErrorsList["filters"];
 export type ErrorOccurrences = Awaited<ReturnType<ErrorsListPresenter["getOccurrences"]>>;
 export type ErrorOccurrenceActivity = ErrorOccurrences["data"][string];
 

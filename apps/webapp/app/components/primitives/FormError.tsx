@@ -1,4 +1,3 @@
-import type { z } from "zod";
 import { Paragraph } from "./Paragraph";
 import { motion } from "framer-motion";
 import { cn } from "~/utils/cn";
@@ -29,27 +28,5 @@ export function FormError({
         </motion.div>
       )}
     </>
-  );
-}
-
-function ZodFormErrors({ errors, path }: { errors: z.ZodIssue[]; path: string[] }) {
-  if (errors.length === 0) {
-    return null;
-  }
-
-  const relevantErrors = errors.filter((error) => {
-    return error.path.join(".") === path.join(".");
-  });
-
-  if (relevantErrors.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="col-span-full mt-1 text-sm text-rose-600">
-      {relevantErrors.map((error, index) => (
-        <FormError key={index}>{error.message}</FormError>
-      ))}
-    </div>
   );
 }

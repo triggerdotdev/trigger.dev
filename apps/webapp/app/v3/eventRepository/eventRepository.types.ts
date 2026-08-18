@@ -7,7 +7,6 @@ import type {
 } from "@trigger.dev/core/v3";
 import type {
   Prisma,
-  TaskEvent,
   TaskEventKind,
   TaskEventLevel,
   TaskEventStatus,
@@ -144,13 +143,6 @@ export type EventBuilder = {
   failWithError: (error: TaskRunError) => void;
 };
 
-type UpdateEventOptions = {
-  attributes: TraceAttributes;
-  endTime?: Date;
-  immediate?: boolean;
-  events?: SpanEvents;
-};
-
 // ============================================================================
 // Configuration Types
 // ============================================================================
@@ -168,14 +160,6 @@ export type EventRepoConfig = {
   loadSheddingThreshold?: number;
   loadSheddingEnabled?: boolean;
 };
-
-// ============================================================================
-// Query Types
-// ============================================================================
-
-type QueryOptions = Prisma.TaskEventWhereInput;
-
-type TaskEventRecord = TaskEvent;
 
 export type QueriedEvent = Prisma.TaskEventGetPayload<{
   select: {

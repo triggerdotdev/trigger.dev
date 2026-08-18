@@ -20,8 +20,6 @@ const textColorVariants = {
   dimmed: "text-text-dimmed",
 };
 
-type HeaderVariant = keyof typeof headerVariants;
-
 type HeaderProps = {
   className?: string;
   children: React.ReactNode;

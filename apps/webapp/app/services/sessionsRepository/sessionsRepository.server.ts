@@ -47,10 +47,6 @@ const SessionListInputOptionsSchema = z.object({
 });
 
 export type SessionListInputOptions = z.infer<typeof SessionListInputOptionsSchema>;
-type SessionListInputFilters = Omit<
-  SessionListInputOptions,
-  "organizationId" | "projectId" | "environmentId"
->;
 
 export type FilterSessionsOptions = Omit<SessionListInputOptions, "period"> & {
   /** period converted to milliseconds duration */
@@ -191,10 +187,6 @@ export class SessionsRepository implements ISessionsRepository {
       }
     );
   }
-}
-
-function parseSessionListInputOptions(data: unknown): SessionListInputOptions {
-  return SessionListInputOptionsSchema.parse(data);
 }
 
 export function convertSessionListInputOptionsToFilterOptions(

@@ -81,19 +81,6 @@ function promptForSignal(signal: AgentPageSignal, now: number): SuggestedPrompt 
   }
 }
 
-/** In precedence order. */
-function contextualPrompts(context: AgentPageContext, now: number): SuggestedPrompt[] {
-  const prompts: SuggestedPrompt[] = [];
-  for (const kind of SIGNAL_PRIORITY) {
-    for (const signal of context.signals) {
-      if (signal.kind !== kind) continue;
-      const prompt = promptForSignal(signal, now);
-      if (prompt) prompts.push(prompt);
-    }
-  }
-  return prompts;
-}
-
 /** Each group is in precedence order. */
 export function contextualPromptsBySlot(
   context: AgentPageContext,

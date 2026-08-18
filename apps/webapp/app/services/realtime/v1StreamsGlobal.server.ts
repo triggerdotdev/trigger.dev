@@ -10,9 +10,7 @@ import { singleton } from "~/utils/singleton";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 import { S2RealtimeStreams } from "./s2realtimeStreams.server";
-import {
-  resolveRealtimeStreamsVersion,
-} from "./realtimeStreamsVersion";
+import { resolveRealtimeStreamsVersion } from "./realtimeStreamsVersion";
 import type { StreamIngestor, StreamResponder } from "./types";
 
 function initializeRedisRealtimeStreams() {

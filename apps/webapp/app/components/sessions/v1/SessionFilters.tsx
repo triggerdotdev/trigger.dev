@@ -71,7 +71,6 @@ export const SessionListSearchFilters = z.object({
 });
 
 export type SessionListSearchFilters = z.infer<typeof SessionListSearchFilters>;
-type SessionListSearchFilterKey = keyof SessionListSearchFilters;
 
 export function getSessionFiltersFromSearchParams(
   searchParams: URLSearchParams

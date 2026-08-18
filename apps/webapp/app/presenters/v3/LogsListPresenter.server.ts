@@ -74,7 +74,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
 export type LogEntry = LogsList["logs"][0];
-type LogsListAppliedFilters = LogsList["filters"];
 
 // Bump when the cursor shape changes so stale cursors are ignored (reset to the first page)
 // rather than misparsed.

@@ -53,10 +53,6 @@ export function demoSourceUri(sha: string, path: string, line?: number): Trigger
   });
 }
 
-function demoInvestigationUri(investigationId: string): TriggerUri {
-  return formatTriggerUri({ kind: "investigation", ...scope, investigationId });
-}
-
 export const DEMO_WORLD = {
   failedRunId: "run_demo0f2c91",
   failedSpanId: "span_demoa41b",

@@ -83,20 +83,6 @@ export async function populateTaskIdentifierCache(
   }
 }
 
-async function invalidateTaskIdentifierCache(environmentId: string): Promise<void> {
-  if (!redis) return;
-
-  try {
-    const key = buildKey(environmentId);
-    await redis.del(key);
-  } catch (error) {
-    logger.error("Failed to invalidate task identifier cache", {
-      environmentId,
-      error,
-    });
-  }
-}
-
 export async function getTaskIdentifiersFromCache(
   environmentId: string
 ): Promise<TaskIdentifierEntry[] | null> {

@@ -13,17 +13,6 @@ import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects
 export type { AITimeFilter };
 
 /**
- * Stream event types for AI query generation
- */
-type AIQueryStreamEvent =
-  | { type: "thinking"; content: string }
-  | { type: "tool_call"; tool: string; args: unknown }
-  | { type: "tool_result"; tool: string; result: unknown }
-  | { type: "time_filter"; filter: AITimeFilter }
-  | { type: "result"; success: true; query: string; timeFilter?: AITimeFilter }
-  | { type: "result"; success: false; error: string };
-
-/**
  * Result type for non-streaming call
  */
 export type AIQueryResult =

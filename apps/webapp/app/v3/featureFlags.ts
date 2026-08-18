@@ -135,11 +135,6 @@ export function validateFeatureFlagValue<T extends FeatureFlagKey>(
   return FeatureFlagCatalog[key].safeParse(value);
 }
 
-// Utility function to validate all feature flags at once
-function validateAllFeatureFlags(values: Record<string, unknown>) {
-  return FeatureFlagCatalogSchema.safeParse(values);
-}
-
 // Utility function to validate partial feature flags (all keys optional)
 export function validatePartialFeatureFlags(values: Record<string, unknown>) {
   return FeatureFlagCatalogSchema.partial().safeParse(values);
