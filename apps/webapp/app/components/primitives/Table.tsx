@@ -513,30 +513,7 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
   }
 );
 
-const TableCellChevron = forwardRef<
-  HTMLTableCellElement,
-  {
-    className?: string;
-    to?: string;
-    children?: ReactNode;
-    isSticky?: boolean;
-    onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
-  }
->(({ className, to, children, isSticky, onClick }, ref) => {
-  return (
-    <TableCell
-      className={className}
-      isSticky={isSticky}
-      to={to}
-      onClick={onClick}
-      ref={ref}
-      alignment="right"
-    >
-      {children}
-      <ChevronRightIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
-    </TableCell>
-  );
-});
+
 
 export const TableCellMenu = forwardRef<
   HTMLTableCellElement,

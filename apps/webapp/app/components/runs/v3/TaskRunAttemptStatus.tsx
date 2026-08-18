@@ -12,7 +12,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TaskRunAttemptStatus } from "~/database-types";
 import { cn } from "~/utils/cn";
 
-const allTaskRunAttemptStatuses = Object.values(TaskRunAttemptStatus) as TaskRunAttemptStatusType[];
+
 
 export type ExtendedTaskAttemptStatus = TaskRunAttemptStatusType | "ENQUEUED";
 

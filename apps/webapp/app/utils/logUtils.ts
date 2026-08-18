@@ -4,7 +4,7 @@ import { z } from "zod";
 export const LogLevelSchema = z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
-const validLogLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
+
 
 // Default styles for search highlighting
 const DEFAULT_HIGHLIGHT_STYLES: React.CSSProperties = {

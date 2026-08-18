@@ -36,18 +36,7 @@ export type ErrorGroupOptions = {
   direction?: Direction;
 };
 
-const ErrorGroupOptionsSchema = z.object({
-  userId: z.string().optional(),
-  projectId: z.string(),
-  fingerprint: z.string(),
-  versions: z.array(z.string()).optional(),
-  runsPageSize: z.number().int().positive().max(1000).optional(),
-  period: z.string().optional(),
-  from: z.number().int().nonnegative().optional(),
-  to: z.number().int().nonnegative().optional(),
-  cursor: z.string().optional(),
-  direction: DirectionSchema.optional(),
-});
+
 
 const DEFAULT_RUNS_PAGE_SIZE = 25;
 

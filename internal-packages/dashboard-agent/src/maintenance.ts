@@ -115,22 +115,4 @@ export async function runDashboardAgentRetention(
   return result;
 }
 
-const dashboardAgentMaintenance = schedules.task({
-  id: "dashboard-agent-maintenance",
-  cron: "0 3 * * *",
-  retry: { maxAttempts: 3 },
-  run: async (): Promise<RetentionResult | undefined> => {
-    if (!watchConnectionString()) {
-      logger.warn(
-        "dashboard-agent maintenance skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
-      );
-      return undefined;
-    }
 
-    const { db } = getWatchDb();
-
-    const result = await runDashboardAgentRetention(db);
-    logger.info("dashboard-agent retention swept", result);
-    return result;
-  },
-});

@@ -4821,4 +4821,4 @@ const tablerIconNames = [
 
 export const tablerIcons = new Set(tablerIconNames);
 
-const tablerIconsFilled = new Set(tablerIconNames.filter((i) => i.endsWith("-filled")));
+

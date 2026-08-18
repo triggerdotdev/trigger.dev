@@ -248,10 +248,4 @@ export const demoPromptsAfterDismissal: SuggestedPrompt[] = demoPromptSets.faile
   .filter((p) => !demoDismissedPromptIds.includes(p.id))
   .slice(0, SUGGESTED_PROMPT_CAP);
 
-const demoPrompts = {
-  sets: demoPromptSets,
-  defaults: DEFAULT_PROMPTS,
-  dismissedIds: demoDismissedPromptIds,
-  afterDismissal: demoPromptsAfterDismissal,
-  cap: SUGGESTED_PROMPT_CAP,
-} as const;
+

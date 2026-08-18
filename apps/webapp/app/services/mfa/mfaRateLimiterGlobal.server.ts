@@ -22,8 +22,8 @@ const mfaRateLimiters = singleton("mfaRateLimiters", () =>
   })
 );
 
-const mfaRateLimiter = mfaRateLimiters.perMinute;
-const mfaDailyRateLimiter = mfaRateLimiters.daily;
+
+
 
 /**
  * Production entrypoint: rate-limit an MFA validation attempt for `userId`

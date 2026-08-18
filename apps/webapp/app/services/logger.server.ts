@@ -75,27 +75,9 @@ export const logger = new Logger(
   }
 );
 
-const workerLogger = new Logger(
-  "worker",
-  (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
-  ["examples", "output", "connectionString"],
-  sensitiveDataReplacer,
-  () => {
-    const fields = currentFieldsStore.getStore();
-    return fields ? { ...fields } : {};
-  }
-);
 
-const socketLogger = new Logger(
-  "socket",
-  (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
-  [],
-  sensitiveDataReplacer,
-  () => {
-    const fields = currentFieldsStore.getStore();
-    return fields ? { ...fields } : {};
-  }
-);
+
+
 
 // Opt-in, dev-only: mirror this process's stdout to a local telnet/TCP stream.
 // We patch console (rather than the static Logger.onLog sink) so the stream also captures logs

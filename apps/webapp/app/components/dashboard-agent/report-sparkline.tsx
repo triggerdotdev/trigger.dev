@@ -19,7 +19,6 @@ import { Bar, Cell, type TooltipProps } from "recharts";
 import {
   REPORT_LABELS,
   reportFooterStyle,
-  type ReportFooterStyle,
   type ReportTone,
 } from "~/presenters/v3/reports/report-layout";
 import { ActivityBarChart } from "~/components/metrics/ActivityBarChart";
@@ -318,7 +317,7 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
  * because it is phrased differently when it is the only thing on offer.
  */
 export const FOOTER_WATCH_CODE = "watch_recovery";
-const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
+
 
 /** A dimmed line that accompanies a row entry. */
 const FOOTER_NOTE_LINES: Record<string, string> = {

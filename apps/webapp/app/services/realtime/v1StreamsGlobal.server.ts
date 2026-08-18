@@ -12,7 +12,6 @@ import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 import { S2RealtimeStreams } from "./s2realtimeStreams.server";
 import {
   resolveRealtimeStreamsVersion,
-  type RealtimeStreamsVersionConfig,
 } from "./realtimeStreamsVersion";
 import type { StreamIngestor, StreamResponder } from "./types";
 

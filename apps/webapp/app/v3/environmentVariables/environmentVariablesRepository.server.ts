@@ -926,18 +926,7 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 }
 
-const RuntimeEnvironmentForEnvRepoPayload = {
-  select: {
-    id: true,
-    slug: true,
-    type: true,
-    projectId: true,
-    apiKey: true,
-    organizationId: true,
-    branchName: true,
-    builtInEnvironmentVariableOverrides: true,
-  },
-} as const;
+
 
 // Derived from the slim AuthenticatedEnvironment so a full AE satisfies
 // this type — the legacy Prisma payload had `builtInEnvironmentVariableOverrides`

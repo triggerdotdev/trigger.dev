@@ -15,16 +15,7 @@ const safeJsonParse = Result.fromThrowable(
  * Zod transform for form fields that submit JSON-encoded arrays.
  * Parses the string as JSON and returns the array, or null if invalid.
  */
-const jsonArrayField = z
-  .string()
-  .optional()
-  .transform((val) => {
-    if (!val) return null;
-    return safeJsonParse(val).match(
-      (parsed) => (Array.isArray(parsed) ? parsed : null),
-      () => null
-    );
-  });
+
 
 /**
  * Zod transform for form fields that submit JSON-encoded EnvSlug arrays.

@@ -182,23 +182,4 @@ const EMPTY_SWEEP_RESULT: InvestigationSweepResult = {
   failed: 0,
 };
 
-const dashboardAgentInvestigationSweep = schedules.task({
-  id: "dashboard-agent-investigation-sweep",
-  cron: "*/5 * * * *",
-  retry: { maxAttempts: 3 },
-  run: async (): Promise<InvestigationSweepResult> => {
-    if (!watchConnectionString()) {
-      logger.warn(
-        "dashboard-agent investigation sweep skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
-      );
-      return { ...EMPTY_SWEEP_RESULT };
-    }
 
-    const { db } = getWatchDb();
-    const result = await sweepDashboardAgentInvestigations(db);
-
-    logger.info("dashboard-agent investigations swept", result);
-
-    return result;
-  },
-});

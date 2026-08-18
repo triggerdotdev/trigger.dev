@@ -1142,9 +1142,7 @@ function redactUrlSecrets(hrefOrUrl: string | URL) {
 
 export type { PrismaClient } from "@trigger.dev/database";
 
-const PrismaErrorSchema = z.object({
-  code: z.string(),
-});
+
 
 function getDatabaseSchema() {
   if (!isValidDatabaseUrl(env.DATABASE_URL)) {

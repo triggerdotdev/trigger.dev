@@ -1,6 +1,5 @@
 import type { Attributes, Tracer } from "@opentelemetry/api";
 import type {
-  ExceptionEventProperties,
   SpanEvents,
   TaskEventEnvironment,
   TaskEventStyle,
