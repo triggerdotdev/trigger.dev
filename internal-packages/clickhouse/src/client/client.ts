@@ -13,6 +13,7 @@ import { flattenAttributes, tryCatch, type Result } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { InsertError, QueryError } from "./errors.js";
 import type {
+  ClickhouseCommandFunction,
   ClickhouseInsertFunction,
   ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
@@ -43,6 +44,7 @@ export type ClickhouseConfig = {
   clickhouseSettings?: ClickHouseSettings;
   logger?: Logger;
   maxOpenConnections?: number;
+  requestTimeoutMs?: number;
   logLevel?: LogLevel;
   compression?: {
     request?: boolean;
@@ -66,6 +68,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
       http_agent: config.httpAgent,
       compression: config.compression,
       max_open_connections: config.maxOpenConnections,
+      request_timeout: config.requestTimeoutMs,
       clickhouse_settings: {
         ...config.clickhouseSettings,
         output_format_json_quote_64bit_integers: 0,
@@ -670,6 +673,88 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         ...req.settings,
         ...chSettings?.settings,
       });
+  }
+
+  public command<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    query: string;
+    params?: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseCommandFunction<z.input<TSchema>> {
+    return async (params, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "command", async (span) => {
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        const validParams = req.params?.safeParse(params);
+        if (validParams?.error) {
+          recordSpanError(span, validParams.error);
+          return [
+            new QueryError(`Bad params: ${generateErrorMessage(validParams.error.issues)}`, {
+              query: req.query,
+            }),
+            null,
+          ];
+        }
+
+        this.logger.debug("Running clickhouse command", {
+          clientName: this.name,
+          name: req.name,
+          query: req.query.replace(/\s+/g, " "),
+          settings: req.settings,
+          attributes: options?.attributes,
+          queryId,
+        });
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.command({
+            query: req.query,
+            query_params: validParams?.data,
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error running clickhouse command", {
+            name: req.name,
+            error: clickhouseError,
+            query: req.query,
+            queryId,
+          });
+          recordClickhouseError(span, clickhouseError);
+          return [
+            new QueryError(`Unable to run clickhouse command: ${clickhouseError.message}`, {
+              query: req.query,
+            }),
+            null,
+          ];
+        }
+
+        span.setAttributes({
+          "clickhouse.query_id": result.query_id,
+          "clickhouse.summary.read_rows": result.summary?.read_rows,
+          "clickhouse.summary.read_bytes": result.summary?.read_bytes,
+          "clickhouse.summary.written_rows": result.summary?.written_rows,
+          "clickhouse.summary.written_bytes": result.summary?.written_bytes,
+          "clickhouse.summary.elapsed_ns": result.summary?.elapsed_ns,
+          ...flattenAttributes(result.response_headers, "clickhouse.response_headers"),
+        });
+
+        return [null, result];
+      });
+    };
   }
 
   public insert<TSchema extends z.ZodSchema<any>>(req: {

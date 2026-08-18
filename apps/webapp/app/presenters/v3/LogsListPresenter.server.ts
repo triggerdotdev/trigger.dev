@@ -1,8 +1,4 @@
-import {
-  type ClickHouse,
-  type LogsSearchListResult,
-  type WhereCondition,
-} from "@internal/clickhouse";
+import { type ClickHouse, type WhereCondition } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { z } from "zod";
 import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
@@ -19,19 +15,17 @@ import {
   convertDateToClickhouseDateTime,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import {
+  escapeClickHouseLike,
+  hasMinimumLogsSearchLength,
+  logsSearchExpansionPeriod,
+  LOGS_SEARCH_RETRY_OVERFETCH_FACTOR,
+  MIN_LOGS_SEARCH_LENGTH,
+  normalizeLogsSearchTerm,
+  prepareLogsSearchPage,
+} from "~/utils/logSearch";
 
 export type { LogLevel };
-
-type ErrorAttributes = {
-  error?: {
-    message?: unknown;
-  };
-  [key: string]: unknown;
-};
-
-function escapeClickHouseString(val: string): string {
-  return val.replace(/\\/g, "\\\\").replace(/\//g, "\\/").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 export type LogsListOptions = {
   userId?: string;
@@ -70,14 +64,12 @@ export const LogsListOptionsSchema = z.object({
   pageSize: z.number().int().positive().max(1000).optional(),
 });
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
 export type LogEntry = LogsList["logs"][0];
 
 // Bump when the cursor shape changes so stale cursors are ignored (reset to the first page)
 // rather than misparsed.
-const LOG_CURSOR_VERSION = 2;
+const LOG_CURSOR_VERSION = 4;
 
 // Cursor is a base64 encoded JSON of the pagination keys
 type LogCursor = {
@@ -87,6 +79,7 @@ type LogCursor = {
   triggeredTimestamp: string; // DateTime64(9) string
   traceId: string;
   spanId: string;
+  projectionFingerprint?: string;
 };
 
 const LogCursorSchema = z.object({
@@ -96,6 +89,7 @@ const LogCursorSchema = z.object({
   triggeredTimestamp: z.string(),
   traceId: z.string(),
   spanId: z.string(),
+  projectionFingerprint: z.string().optional(),
 });
 
 function encodeCursor(cursor: LogCursor): string {
@@ -114,34 +108,6 @@ function decodeCursor(cursor: string): LogCursor | null {
   } catch {
     return null;
   }
-}
-
-// Ordered list of lower bounds to try, narrowest (most recent) first, ending at the user's
-// requested floor (or undefined for an unbounded-below window). Because rows are returned
-// newest-first, a narrow window that already fills a page returns the exact same top rows the
-// full window would, so widening only happens when a page comes back short.
-function buildProbeFloors(
-  ceil: Date,
-  hardFloor: Date | undefined,
-  stepDays: number[]
-): (Date | undefined)[] {
-  const floors: (Date | undefined)[] = [];
-
-  for (const days of stepDays) {
-    let candidate = new Date(ceil.getTime() - days * DAY_MS);
-    if (hardFloor && candidate <= hardFloor) {
-      candidate = hardFloor;
-    }
-    floors.push(candidate);
-    if (hardFloor && candidate.getTime() === hardFloor.getTime()) {
-      // Reached the requested floor; nothing wider left to probe.
-      return floors;
-    }
-  }
-
-  // Final probe always covers the full requested window (or unbounded if no floor was given).
-  floors.push(hardFloor);
-  return floors;
 }
 
 // Convert display level to ClickHouse kinds and statuses
@@ -261,6 +227,7 @@ export class LogsListPresenter extends BasePresenter {
     }
 
     const effectivePageSize = Math.min(pageSize, env.LOGS_LIST_MAX_PAGE_SIZE);
+    const queryLimit = (effectivePageSize + 1) * LOGS_SEARCH_RETRY_OVERFETCH_FACTOR;
 
     // Only honor a cursor scoped to this org+env; one copied from another scope would shift the
     // pagination anchor instead of resetting to the first page.
@@ -272,21 +239,26 @@ export class LogsListPresenter extends BasePresenter {
         ? parsedCursor
         : null;
 
-    // Effective upper bound, always clamped to now so a probe never runs [floor, +inf).
+    // Effective upper bound, always clamped to now so a request never runs [floor, +inf).
     const now = new Date();
     const clampedTo = effectiveTo !== undefined ? (effectiveTo > now ? now : effectiveTo) : now;
 
+    const rawSearchTerm = search?.trim() ?? "";
+    const normalizedSearchTerm = normalizeLogsSearchTerm(rawSearchTerm);
+    if (rawSearchTerm !== "" && !hasMinimumLogsSearchLength(normalizedSearchTerm)) {
+      throw new ServiceValidationError(
+        `Log searches must be at least ${MIN_LOGS_SEARCH_LENGTH} characters.`
+      );
+    }
     const searchTerm =
-      search && search.trim() !== ""
-        ? escapeClickHouseString(search.trim()).toLowerCase()
-        : undefined;
+      normalizedSearchTerm === "" ? undefined : escapeClickHouseLike(normalizedSearchTerm);
 
-    // Runs the full list query restricted to a single [floor, ceil] window. The recent-first
-    // probe loop below calls this with progressively wider floors.
-    const runProbe = (floor: Date | undefined) => {
+    // Run exactly one bounded query. Broadening a search window is an explicit user action;
+    // silently rescanning the same recent rows makes absence queries needlessly expensive.
+    const runQuery = () => {
       const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
-      // The materialized view excludes events without a trace_id; this guards the legacy tail.
+      // The projector excludes events without a trace_id.
       queryBuilder.where("trace_id != ''");
       queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
       queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
@@ -298,9 +270,9 @@ export class LogsListPresenter extends BasePresenter {
         });
       }
 
-      if (floor) {
+      if (effectiveFrom) {
         queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
-          triggeredAtStart: convertDateToClickhouseDateTime(floor),
+          triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
         });
       }
 
@@ -314,12 +286,10 @@ export class LogsListPresenter extends BasePresenter {
         queryBuilder.where("run_id = {runId: String}", { runId });
       }
 
-      // Case-insensitive search in message and attributes
       if (searchTerm !== undefined) {
-        queryBuilder.where(
-          "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
-          { searchPattern: `%${searchTerm}%` }
-        );
+        queryBuilder.where("search_text LIKE {searchPattern: String}", {
+          searchPattern: `%${searchTerm}%`,
+        });
       }
 
       if (levels && levels.length > 0) {
@@ -349,61 +319,51 @@ export class LogsListPresenter extends BasePresenter {
         queryBuilder.whereOr(conditions);
       }
 
-      // Keyset pagination over the full sort key. ORDER BY is DESC, so the next page is the rows
-      // that sort after the cursor (strictly less-than). (triggered_timestamp, trace_id) is not
-      // unique because spans of a trace share both, so span_id is the final tiebreaker; without
-      // it rows at a tie boundary could be skipped or duplicated across pages.
+      // Keyset pagination over the sort key. ORDER BY is DESC, so the next page is the rows
+      // that sort after the cursor (strictly less-than). V2 adds the projection identity as the
+      // final tiebreaker so retry copies and distinct rows at a span boundary paginate safely.
       if (decodedCursor) {
+        const cursorParams = {
+          cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
+          cursorTraceId: decodedCursor.traceId,
+          cursorSpanId: decodedCursor.spanId,
+          ...(decodedCursor.projectionFingerprint
+            ? { cursorProjectionFingerprint: decodedCursor.projectionFingerprint }
+            : {}),
+        };
         queryBuilder.where(
-          `(triggered_timestamp < {cursorTriggeredTimestamp: String}
-            OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
-            OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String}))`,
-          {
-            cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
-            cursorTraceId: decodedCursor.traceId,
-            cursorSpanId: decodedCursor.spanId,
-          }
+          decodedCursor.projectionFingerprint
+            ? `(triggered_timestamp < {cursorTriggeredTimestamp: String}
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String})
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id = {cursorSpanId: String} AND projection_fingerprint < {cursorProjectionFingerprint: UInt128}))`
+            : `(triggered_timestamp < {cursorTriggeredTimestamp: String}
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String}))`,
+          cursorParams
         );
       }
 
-      queryBuilder.orderBy("triggered_timestamp DESC, trace_id DESC, span_id DESC");
-      // Limit + 1 to check if there are more results
-      queryBuilder.limit(effectivePageSize + 1);
+      queryBuilder.orderBy(
+        "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
+      );
+      queryBuilder.limit(queryLimit);
 
       return queryBuilder.execute();
     };
 
-    // Page ceiling: the cursor (deeper pages) or the requested upper bound. Widen the lower
-    // bound only when a recent window doesn't fill the page.
-    const ceil = decodedCursor
-      ? convertClickhouseDateTime64ToJsDate(decodedCursor.triggeredTimestamp)
-      : (clampedTo ?? new Date());
-
-    const probeFloors = buildProbeFloors(
-      ceil,
-      effectiveFrom ?? undefined,
-      env.LOGS_LIST_RECENT_FIRST_PROBE_DAYS
-    );
-
-    let records: LogsSearchListResult[] = [];
-    for (const floor of probeFloors) {
-      const [queryError, probeRecords] = await runProbe(floor);
-
-      if (queryError) {
-        throw queryError;
-      }
-
-      records = probeRecords ?? [];
-
-      if (records.length > effectivePageSize) {
-        // Page is full from this window; older rows can't be in the top page, stop widening.
-        break;
-      }
+    const [queryError, queryResult] = await runQuery();
+    if (queryError) {
+      throw queryError;
     }
 
-    const results = records;
-    const hasMore = results.length > effectivePageSize;
-    const logs = results.slice(0, effectivePageSize);
+    // ClickHouse's break overflow modes can return a short prefix without a reliable completion
+    // marker. Keep the default throw behavior so the product never presents truncated results as
+    // complete.
+    const results = queryResult ?? [];
+    const page = prepareLogsSearchPage(results, effectivePageSize, queryLimit);
+    const hasMore = page.hasMore;
+    const logs = page.rows;
 
     // Build next cursor from the last item
     let nextCursor: string | undefined;
@@ -416,6 +376,7 @@ export class LogsListPresenter extends BasePresenter {
         triggeredTimestamp: lastLog.triggered_timestamp,
         traceId: lastLog.trace_id,
         spanId: lastLog.span_id,
+        projectionFingerprint: lastLog.projection_fingerprint_string,
       });
     }
 
@@ -424,17 +385,10 @@ export class LogsListPresenter extends BasePresenter {
     const transformedLogs = logs.map((log) => {
       let displayMessage = log.message;
 
-      // For error logs with status ERROR, try to extract error message from attributes
-      if (log.status === "ERROR" && log.attributes_text) {
-        try {
-          const attributes = JSON.parse(log.attributes_text) as ErrorAttributes;
-
-          if (attributes?.error?.message && typeof attributes.error.message === "string") {
-            displayMessage = attributes.error.message;
-          }
-        } catch {
-          // If attributes parsing fails, use the regular message
-        }
+      // The search table extracts this leaf in the materialized view, so list queries never
+      // need to read or parse the complete attributes blob.
+      if (log.status === "ERROR" && log.error_message) {
+        displayMessage = log.error_message;
       }
 
       return {
@@ -455,6 +409,11 @@ export class LogsListPresenter extends BasePresenter {
         level: kindToLevel(log.kind, log.status),
       };
     });
+
+    const searchExpansion =
+      searchTerm !== undefined && time.isDefault && transformedLogs.length === 0
+        ? logsSearchExpansionPeriod(effectiveFrom, clampedTo, retentionLimitDays)
+        : undefined;
 
     return {
       logs: transformedLogs,
@@ -478,6 +437,7 @@ export class LogsListPresenter extends BasePresenter {
       hasFilters,
       hasAnyLogs: transformedLogs.length > 0,
       searchTerm: search,
+      searchExpansion: searchExpansion ? { nextPeriod: searchExpansion } : undefined,
       retention:
         retentionLimitDays !== undefined
           ? {

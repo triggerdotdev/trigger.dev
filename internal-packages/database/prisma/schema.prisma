@@ -3222,6 +3222,20 @@ model PlatformNotificationInteraction {
   @@unique([notificationId, userId])
 }
 
+model LogsSearchProjectorCheckpoint {
+  id BigInt @id @default(autoincrement())
+
+  projectorId String
+  mode        String
+  windowStart DateTime
+  windowEnd   DateTime
+  queryId     String?
+  completedAt DateTime @default(now())
+
+  @@unique([projectorId, mode, windowStart, windowEnd])
+  @@index([projectorId, mode, windowEnd(sort: Desc)])
+}
+
 enum ErrorGroupStatus {
   UNRESOLVED
   RESOLVED

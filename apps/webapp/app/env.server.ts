@@ -2094,20 +2094,28 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Logs list pagination tuning (page sizing + recent-first probe windows).
+    // Scheduled logs-search projection. Disabled by default. LOGS_CLICKHOUSE_URL, or the
+    // CLICKHOUSE_URL fallback, must reach both source and destination tables and allow writes.
+    LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
+    LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(120),
+    LOGS_SEARCH_PROJECTOR_MAX_ROWS_TO_READ: z.coerce.number().int().positive().default(10_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_500_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
+
+    // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
     LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),
-    // Days back from the page ceiling to probe before widening to the full requested window,
-    // comma-separated. Empty disables narrowing (a single full-window query).
-    LOGS_LIST_RECENT_FIRST_PROBE_DAYS: z
-      .string()
-      .default("1,7")
-      .transform((s) =>
-        s
-          .split(",")
-          .map((v) => Number(v.trim()))
-          .filter((n) => Number.isFinite(n) && n > 0)
-      ),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
@@ -2116,10 +2124,7 @@ const EnvironmentSchema = z
     AI_FEATURES_ENABLED: z.string().default("0"),
 
     // Logs page ClickHouse URL (for logs queries)
-    LOGS_CLICKHOUSE_URL: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
+    LOGS_CLICKHOUSE_URL: z.string().optional(),
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z
