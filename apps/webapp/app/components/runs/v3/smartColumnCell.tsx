@@ -21,14 +21,25 @@ function stringifySmartValue(value: unknown): string {
   }
 }
 
+/**
+ * Coerce to a finite number only from an actual number or a non-empty numeric
+ * string. Returns NaN for null/boolean/empty-string/array/object so those fall
+ * back to their raw rendering instead of coercing to a misleading 0.
+ */
+function toFiniteNumber(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim().length > 0) return Number(value);
+  return NaN;
+}
+
 function renderSmartValue(value: unknown, displayAs: SmartColumnDef["displayAs"]): React.ReactNode {
   switch (displayAs) {
     case "number": {
-      const n = typeof value === "number" ? value : Number(value);
+      const n = toFiniteNumber(value);
       return Number.isFinite(n) ? n.toLocaleString() : stringifySmartValue(value);
     }
     case "duration": {
-      const n = typeof value === "number" ? value : Number(value);
+      const n = toFiniteNumber(value);
       return Number.isFinite(n)
         ? formatDurationMilliseconds(n, { style: "short" })
         : stringifySmartValue(value);
