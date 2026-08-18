@@ -5,8 +5,9 @@ import {
   hardDeleteChatsSoftDeletedBefore,
   type DashboardAgentDb,
 } from "@internal/dashboard-agent-db";
-import { logger } from "@trigger.dev/sdk";
+import { logger, schedules } from "@trigger.dev/sdk";
 import { serializeError } from "./serialize-error";
+import { getWatchDb, watchConnectionString } from "./watch-task-adapters";
 
 /**
  * Retention for the agent's own datastore: judged turns, soft-deleted chats, and the
@@ -113,3 +114,23 @@ export async function runDashboardAgentRetention(
 
   return result;
 }
+
+export const dashboardAgentMaintenance = schedules.task({
+  id: "dashboard-agent-maintenance",
+  cron: "0 3 * * *",
+  retry: { maxAttempts: 3 },
+  run: async (): Promise<RetentionResult | undefined> => {
+    if (!watchConnectionString()) {
+      logger.warn(
+        "dashboard-agent maintenance skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
+      );
+      return undefined;
+    }
+
+    const { db } = getWatchDb();
+
+    const result = await runDashboardAgentRetention(db);
+    logger.info("dashboard-agent retention swept", result);
+    return result;
+  },
+});

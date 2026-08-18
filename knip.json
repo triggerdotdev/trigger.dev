@@ -26,7 +26,7 @@
       "ignoreDependencies": ["@sentry/cli", "assert", "util"]
     },
     "internal-packages/dashboard-agent": {
-      "entry": ["trigger.config.ts"],
+      "entry": ["trigger.config.ts", "src/investigation-sweep.ts", "src/maintenance.ts"],
       "ignoreBinaries": ["rg"]
     },
     "internal-packages/emails": {

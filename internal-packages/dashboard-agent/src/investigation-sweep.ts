@@ -9,8 +9,9 @@ import {
   type SettledInvestigation,
   type SettledInvestigationCard,
 } from "@internal/dashboard-agent-db";
-import { logger } from "@trigger.dev/sdk";
+import { logger, schedules } from "@trigger.dev/sdk";
 import { serializeError } from "./serialize-error";
+import { getWatchDb, watchConnectionString } from "./watch-task-adapters";
 
 /**
  * The investigation backstop, for cards left `in_progress`. They settle as `inconclusive`,
@@ -171,3 +172,33 @@ export async function sweepDashboardAgentInvestigations(
 
   return result;
 }
+
+const EMPTY_SWEEP_RESULT: InvestigationSweepResult = {
+  stale: 0,
+  settled: 0,
+  closed: 0,
+  alreadySettled: 0,
+  abandoned: 0,
+  failed: 0,
+};
+
+export const dashboardAgentInvestigationSweep = schedules.task({
+  id: "dashboard-agent-investigation-sweep",
+  cron: "*/5 * * * *",
+  retry: { maxAttempts: 3 },
+  run: async (): Promise<InvestigationSweepResult> => {
+    if (!watchConnectionString()) {
+      logger.warn(
+        "dashboard-agent investigation sweep skipped: no DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL"
+      );
+      return { ...EMPTY_SWEEP_RESULT };
+    }
+
+    const { db } = getWatchDb();
+    const result = await sweepDashboardAgentInvestigations(db);
+
+    logger.info("dashboard-agent investigations swept", result);
+
+    return result;
+  },
+});
