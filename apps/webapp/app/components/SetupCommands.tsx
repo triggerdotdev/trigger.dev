@@ -57,7 +57,7 @@ function useApiUrl() {
   }
 }
 
-function getApiUrlArg() {
+function useApiUrlArg() {
   const apiUrl = useApiUrl();
   return apiUrl ? `-a ${apiUrl}` : undefined;
 }
@@ -70,7 +70,7 @@ type TabsProps = {
 export function InitCommandV3({ title }: TabsProps) {
   const project = useProject();
   const projectRef = project.externalRef;
-  const apiUrlArg = getApiUrlArg();
+  const apiUrlArg = useApiUrlArg();
   const triggerCliTag = useTriggerCliTag();
 
   const initCommandParts = [`trigger.dev@${triggerCliTag}`, "init", `-p ${projectRef}`, apiUrlArg];
