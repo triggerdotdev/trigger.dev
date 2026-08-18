@@ -47,12 +47,11 @@ export type StandardColumnDef = {
 
 /**
  * The scalar fields the shared presenter always maps into its stable output,
- * regardless of which columns show. Because the presenter contract is fixed and
- * these are all small single-row columns (no DB win from narrowing them), the
- * select currently gates only the large blobs: payload/output are added solely
- * when a smart column references them. Shrinking this set to a behaviour-only
- * floor later is a change here plus defensive presenter mapping, not an API
- * change to `deriveRunSelect`.
+ * regardless of which columns show. These are all small single-row columns with
+ * no DB win from narrowing, so the select keeps them for a stable contract and
+ * gates only the large blobs: payload, output, and metadata are added solely
+ * when a smart column references them (metadata is display-only on the list, so
+ * there is no reason to hydrate it for every row otherwise).
  */
 const ALWAYS_SELECTED_FIELDS = [
   "id",
@@ -81,8 +80,6 @@ const ALWAYS_SELECTED_FIELDS = [
   "depth",
   "rootTaskRunId",
   "batchId",
-  "metadata",
-  "metadataType",
   "machinePreset",
   "queue",
   "workerQueue",

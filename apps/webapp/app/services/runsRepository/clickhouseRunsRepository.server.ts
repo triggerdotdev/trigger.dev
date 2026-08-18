@@ -51,8 +51,6 @@ const LIST_RUN_DEFAULT_SELECT = {
   depth: true,
   rootTaskRunId: true,
   batchId: true,
-  metadata: true,
-  metadataType: true,
   machinePreset: true,
   queue: true,
   workerQueue: true,

@@ -119,8 +119,6 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     depth: true;
     rootTaskRunId: true;
     batchId: true;
-    metadata: true;
-    metadataType: true;
     machinePreset: true;
     queue: true;
     workerQueue: true;
@@ -129,13 +127,16 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
   };
 }> & {
   /**
-   * Large source blobs hydrated only when a smart column references them (see
-   * `runSelect`). Absent from the default list select.
+   * Source blobs hydrated only when a smart column references them (see
+   * `runSelect`). Absent from the default list select; metadata is display-only
+   * on the list, payload/output can be large.
    */
   payload?: string;
   payloadType?: string;
   output?: string | null;
   outputType?: string;
+  metadata?: string | null;
+  metadataType?: string;
 };
 
 export type ListRunsOptions = RunListInputOptions &

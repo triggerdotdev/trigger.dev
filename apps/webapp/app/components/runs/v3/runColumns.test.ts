@@ -32,8 +32,6 @@ describe("deriveRunSelect", () => {
       "queueTimestamp",
       "delayUntil",
       "scheduleId",
-      "metadata",
-      "metadataType",
       "taskIdentifier",
       "machinePreset",
       "queue",
@@ -43,12 +41,14 @@ describe("deriveRunSelect", () => {
     }
   });
 
-  it("does not hydrate the large blobs unless a smart column references them", () => {
+  it("does not hydrate the source blobs unless a smart column references them", () => {
     const select = deriveRunSelect(["task", "status", "tags"], []);
     expect(select.payload).toBeUndefined();
     expect(select.payloadType).toBeUndefined();
     expect(select.output).toBeUndefined();
     expect(select.outputType).toBeUndefined();
+    expect(select.metadata).toBeUndefined();
+    expect(select.metadataType).toBeUndefined();
   });
 
   it("adds payload/output fields only for referenced smart sources", () => {
@@ -62,7 +62,8 @@ describe("deriveRunSelect", () => {
     expect(both.outputType).toBe(true);
   });
 
-  it("references metadata from the always-selected set without a smart source", () => {
+  it("adds metadata fields only when a metadata smart column references them", () => {
+    expect(deriveRunSelect([], []).metadata).toBeUndefined();
     const select = deriveRunSelect([], ["metadata"]);
     expect(select.metadata).toBe(true);
     expect(select.metadataType).toBe(true);
