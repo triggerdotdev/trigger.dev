@@ -221,6 +221,7 @@ export const Env = z
       .enum(["none", "node-24-plus", "all"])
       .default("node-24-plus"),
     KUBERNETES_RUNNER_SECURITY_CONTEXT: z.enum(["off", "baseline", "restricted"]).default("off"),
+    KUBERNETES_RUNNER_RUN_AS_USER: z.coerce.number().int().min(1).default(1000),
 
     // Pod DNS config — override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
     // Default k8s ndots is 5: any name with fewer than 5 dots (e.g. `api.example.com`, 2 dots) is first walked

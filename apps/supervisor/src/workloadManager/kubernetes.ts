@@ -176,7 +176,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                 ],
                 resources: this.#getResourcesForMachine(opts.machine),
-                securityContext: runnerSecurityContext(env.KUBERNETES_RUNNER_SECURITY_CONTEXT),
+                securityContext: runnerSecurityContext(
+                  env.KUBERNETES_RUNNER_SECURITY_CONTEXT,
+                  env.KUBERNETES_RUNNER_RUN_AS_USER
+                ),
                 env: [
                   {
                     name: "TRIGGER_DEQUEUED_AT_MS",

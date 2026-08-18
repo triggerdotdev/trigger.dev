@@ -157,21 +157,22 @@ describe("withRunnerSeccompProfile", () => {
 
 describe("runnerSecurityContext", () => {
   it("sets nothing when off", () => {
-    expect(runnerSecurityContext("off")).toBeUndefined();
+    expect(runnerSecurityContext("off", 1000)).toBeUndefined();
   });
 
   it("drops all capabilities and blocks escalation at baseline", () => {
-    expect(runnerSecurityContext("baseline")).toEqual({
+    expect(runnerSecurityContext("baseline", 1000)).toEqual({
       allowPrivilegeEscalation: false,
       capabilities: { drop: ["ALL"] },
     });
   });
 
   it("additionally requires a non-root image when restricted", () => {
-    expect(runnerSecurityContext("restricted")).toEqual({
+    expect(runnerSecurityContext("restricted", 1000)).toEqual({
       allowPrivilegeEscalation: false,
       capabilities: { drop: ["ALL"] },
       runAsNonRoot: true,
+      runAsUser: 1000,
     });
   });
 });
