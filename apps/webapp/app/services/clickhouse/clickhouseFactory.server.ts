@@ -38,11 +38,7 @@ const defaultLogsClickhouseClient = singleton(
 );
 
 function initializeLogsSearchProjectorClickhouseClient() {
-  if (!env.LOGS_CLICKHOUSE_URL) {
-    throw new Error("LOGS_CLICKHOUSE_URL is not set");
-  }
-
-  const url = new URL(env.LOGS_CLICKHOUSE_URL);
+  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_URL);
   url.searchParams.delete("secure");
 
   return new ClickHouse({
@@ -84,11 +80,7 @@ function getLogsListClickhouseSettings() {
 }
 
 function initializeLogsClickhouseClient() {
-  if (!env.LOGS_CLICKHOUSE_URL) {
-    throw new Error("LOGS_CLICKHOUSE_URL is not set");
-  }
-
-  const url = new URL(env.LOGS_CLICKHOUSE_URL);
+  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_READER_URL ?? env.CLICKHOUSE_URL);
   url.searchParams.delete("secure");
 
   return new ClickHouse({
