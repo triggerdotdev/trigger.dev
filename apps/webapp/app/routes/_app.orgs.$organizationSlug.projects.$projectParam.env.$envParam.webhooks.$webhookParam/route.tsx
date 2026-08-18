@@ -487,6 +487,7 @@ function WebhookContentArea({
               list ? (
                 <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                   <TaskRunsTable
+                    enableSmartColumns={false}
                     total={list.runs.length}
                     hasFilters={list.hasFilters}
                     filters={list.filters}

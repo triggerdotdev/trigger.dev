@@ -3,6 +3,7 @@ import { ErrorId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type FilterRunsOptions,
   type IRunsRepository,
+  type ListedRun,
   type ListRunsOptions,
   type RunIdsPage,
   type RunListInputOptions,
@@ -16,7 +17,6 @@ import { runStore } from "~/v3/runStore.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
 
 import { boundedIn, type Prisma } from "@trigger.dev/database";
-import { type ListedRun } from "./runsRepository.server";
 type RunCursorRow = { runId: string; createdAt: number };
 
 /**

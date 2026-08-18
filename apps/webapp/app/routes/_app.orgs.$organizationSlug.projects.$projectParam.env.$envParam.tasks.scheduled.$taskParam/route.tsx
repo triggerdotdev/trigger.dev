@@ -372,7 +372,7 @@ export default function Page() {
                           onClick={() => showNewRunsRef.current()}
                         />
                       ) : null}
-                      <RunsDisplayOptions />
+                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
                       <Suspense fallback={null}>
                         <TypedAwait resolve={runList} errorElement={null}>
                           {(list) => (list ? <ListPagination list={list} /> : null)}

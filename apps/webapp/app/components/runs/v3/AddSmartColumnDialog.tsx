@@ -34,6 +34,12 @@ type AddSmartColumnDialogProps = {
   onOpenChange: (open: boolean) => void;
   onSubmit: (def: SmartColumnDef) => void;
   currentSearch: string;
+  /**
+   * Extra filters merged into the sample request so the preview samples the
+   * runs the host page actually lists (e.g. its task or error), for pages that
+   * carry that scope in the route path rather than the query string.
+   */
+  sampleFilters?: Record<string, string>;
 };
 
 const SOURCE_CARDS: { value: SmartColumnSource; label: string; description: string }[] = [
@@ -55,6 +61,7 @@ export function AddSmartColumnDialog({
   onOpenChange,
   onSubmit,
   currentSearch,
+  sampleFilters,
 }: AddSmartColumnDialogProps) {
   const organization = useOrganization();
   const project = useProject();
@@ -78,10 +85,17 @@ export function AddSmartColumnDialog({
     setSampleIndex(0);
   }, [open, editing]);
 
+  const sampleFiltersKey = sampleFilters ? JSON.stringify(sampleFilters) : "";
   const sampleUrl = useMemo(() => {
     const base = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/smart-column-sample`;
-    return currentSearch ? `${base}?${currentSearch.replace(/^\?/, "")}` : base;
-  }, [organization.slug, project.slug, environment.slug, currentSearch]);
+    const params = new URLSearchParams(currentSearch.replace(/^\?/, ""));
+    if (sampleFilters) {
+      for (const [key, val] of Object.entries(sampleFilters)) params.set(key, val);
+    }
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organization.slug, project.slug, environment.slug, currentSearch, sampleFiltersKey]);
 
   useEffect(() => {
     if (open && sample.state === "idle") {

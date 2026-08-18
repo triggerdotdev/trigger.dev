@@ -339,7 +339,7 @@ export default function Page() {
                   </Suspense>
                 ) : (
                   <>
-                    <RunsDisplayOptions />
+                    <RunsDisplayOptions sampleFilters={{ tasks: agent.slug, rootOnly: "false" }} />
                     <Suspense fallback={null}>
                       <TypedAwait resolve={runList} errorElement={null}>
                         {(list) => (list ? <ListPagination list={list} /> : null)}

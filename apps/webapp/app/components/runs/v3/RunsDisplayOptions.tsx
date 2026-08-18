@@ -33,7 +33,11 @@ function keyFor(col: ResolvedColumn): string {
 
 type SmartEditTarget = { index: number; def: SmartColumnDef };
 
-export function RunsDisplayOptions() {
+export function RunsDisplayOptions({
+  sampleFilters,
+}: {
+  sampleFilters?: Record<string, string>;
+} = {}) {
   const environment = useEnvironment();
   const { isManagedCloud } = useFeatures();
   const location = useOptimisticLocation();
@@ -201,6 +205,7 @@ export function RunsDisplayOptions() {
         }}
         onSubmit={submitSmart}
         currentSearch={location.search}
+        sampleFilters={sampleFilters}
       />
     </>
   );

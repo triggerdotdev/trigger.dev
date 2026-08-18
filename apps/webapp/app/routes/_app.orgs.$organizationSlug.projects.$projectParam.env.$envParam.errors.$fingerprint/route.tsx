@@ -537,7 +537,12 @@ function ErrorGroupDetail({
                   >
                     Bulk replay…
                   </PermissionLink>
-                  <RunsDisplayOptions />
+                  <RunsDisplayOptions
+                    sampleFilters={{
+                      errorId: ErrorId.toFriendlyId(fingerprint),
+                      rootOnly: "false",
+                    }}
+                  />
                   <ListPagination list={runList} />
                 </div>
               )}

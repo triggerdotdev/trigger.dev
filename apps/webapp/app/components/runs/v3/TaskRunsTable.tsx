@@ -92,6 +92,13 @@ type RunsTableProps = {
   stickyHeader?: boolean;
   childrenStatusesBasePath?: string;
   /**
+   * Whether URL-driven smart columns render here. Default true; embedded run
+   * tables whose loader does not hydrate payload/metadata/output (schedule
+   * inspector, waitpoint, webhook) pass false so they never show a column they
+   * cannot fill.
+   */
+  enableSmartColumns?: boolean;
+  /**
    * Display-only write:runs flags from the caller's loader. Default true so
    * callers that don't pass them (and OSS, where the ability is permissive)
    * keep the controls enabled. The cancel/replay action routes enforce
@@ -573,6 +580,7 @@ export function TaskRunsTable({
   showTopBorder = true,
   stickyHeader = false,
   childrenStatusesBasePath,
+  enableSmartColumns = true,
   canCancelRuns = true,
   canReplayRuns = true,
 }: RunsTableProps) {
@@ -610,7 +618,10 @@ export function TaskRunsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colsParam, hideParam, scKey, isManagedCloud, isDevelopment]);
 
-  const visibleColumns = layout.visible;
+  const visibleColumns = useMemo(
+    () => (enableSmartColumns ? layout.visible : layout.visible.filter((c) => c.kind !== "smart")),
+    [layout, enableSmartColumns]
+  );
   const referencedSources = useMemo(() => visibleSmartSources(visibleColumns), [visibleColumns]);
 
   const sourcesByRunId = useMemo(() => {
