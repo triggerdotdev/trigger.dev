@@ -22,7 +22,7 @@
     "format:prisma": "pnpm --filter @trigger.dev/database run format:prisma && pnpm --filter @internal/run-ops-database run format:prisma",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "knip": "knip --include files,exports,types,dependencies,unlisted,binaries,unresolved,catalog",
+    "knip": "knip --cache --include files,exports,types,dependencies,unlisted,binaries,unresolved,catalog",
     "docker": "node scripts/docker.mjs -f docker/docker-compose.yml up -d --build --remove-orphans",
     "docker:stop": "node scripts/docker.mjs -f docker/docker-compose.yml stop",
     "docker:full": "node scripts/docker.mjs -f docker/docker-compose.yml -f docker/docker-compose.extras.yml up -d --build --remove-orphans",
