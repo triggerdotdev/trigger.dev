@@ -141,7 +141,11 @@
 */
 @theme {
   /* Text colors */
-  --color-primary: var(--color-apple-500);
+  /* The brand accent. Points at the link accent rather than carrying its own
+     value: the app had one indigo doing the work of a primary color and an
+     apple green sitting unused beside it, so this is the same hue by
+     definition and can't drift from it. */
+  --color-primary: var(--color-text-link);
   --color-secondary: var(--color-charcoal-650);
   --color-tertiary: var(--color-charcoal-700);
   --color-text-link: var(--color-lavender-400);
@@ -187,7 +191,11 @@
   --color-dev: var(--color-pink-500);
   --color-staging: var(--color-orange-400);
   --color-prod: var(--color-mint-500);
-  --color-preview: var(--color-yellow-400);
+  /* Blue in every theme, including under Stronger colors: yellow needed a
+     different value per mode to stay legible (yellow-400 on dark, yellow-700 on
+     white, which reads brown), and the two ends stopped looking like one
+     environment. */
+  --color-preview: var(--color-blue-500);
 
   /* Icon colors */
   --color-tasks: var(--color-blue-500);
@@ -218,7 +226,8 @@
   --color-sessions: var(--color-pink-500);
   --color-playgrounds: var(--color-fuchsia-500);
   --color-models: var(--color-violet-500);
-  --color-previewBranches: var(--color-yellow-500);
+  /* Branch labels sit inside a preview environment, so they track its color. */
+  --color-previewBranches: var(--color-blue-500);
 }
 
 /* Callout variant accents (see components/primitives/Callout.tsx) */
@@ -258,16 +267,13 @@
   /* Status */
   --color-success: var(--color-mint-600);
   --color-warning: var(--color-amber-600);
-  /* Env set: pink dev and green prod as in the base set, preview moves to blue
-     (yellow's unified mid-tone reads muddy brown). Staging stays warm orange
-     and is the one per-mode env color - see the light block. */
+  /* Env set: pink dev and green prod as in the base set. Preview and its branch
+     labels are blue in every theme now, so they need no entry here. Staging
+     stays warm orange and is the one per-mode env color - see the light block. */
   --color-prod: var(--color-mint-600);
-  --color-preview: var(--color-blue-500);
 
   /* Icons */
   --color-schedules: var(--color-yellow-700);
-  /* Matches the preview env color */
-  --color-previewBranches: var(--color-blue-500);
   --color-metrics: var(--color-green-600);
   --color-regions: var(--color-green-600);
   --color-aiMetrics: var(--color-green-600);
@@ -800,7 +806,6 @@
   --primary-foreground: #ffffff;
 
   /* Text */
-  --color-primary: var(--color-apple-600);
   --color-tertiary: #eef0f3;
   --color-text-link: var(--color-lavender-600);
   /* Hover goes *down* the ramp here, not up: on white, more prominent means
@@ -934,11 +939,9 @@
 
   /* Environments */
   --color-prod: var(--color-mint-600);
-  --color-preview: var(--color-yellow-700);
 
   /* Icons */
   --color-schedules: var(--color-yellow-700);
-  --color-previewBranches: var(--color-yellow-700);
   --color-metrics: var(--color-green-600);
   --color-regions: var(--color-green-600);
   --color-aiMetrics: var(--color-green-600);
