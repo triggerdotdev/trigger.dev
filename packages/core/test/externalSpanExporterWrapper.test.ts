@@ -246,6 +246,20 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
     expect(captured.at(-1)![0]!.spanContext().traceId).toBe(captured[0]![0]!.spanContext().traceId);
   });
 
+  it("passes through a log record emitted outside a span, which has no spanContext", () => {
+    const logs = makeCapturingLogExporter();
+
+    const wrapper = new ExternalLogRecordExporterWrapper(
+      logs.exporter,
+      new FallbackExternalTraceIds(SEED)
+    );
+
+    const record = { body: "hello", attributes: {} } as unknown as ReadableLogRecord;
+
+    expect(() => wrapper.export([record], () => {})).not.toThrow();
+    expect(logs.captured[0]).toEqual([record]);
+  });
+
   // A warm process is long-lived, so the map that remembers each run's id has
   // to be bounded rather than growing for the life of the worker.
   it("bounds how many runs it remembers", () => {
