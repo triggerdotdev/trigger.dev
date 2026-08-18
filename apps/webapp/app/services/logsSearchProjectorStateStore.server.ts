@@ -2,45 +2,50 @@ import type { PrismaClient } from "@trigger.dev/database";
 import {
   LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
   LOGS_SEARCH_PROJECTOR_ID,
+  LOGS_SEARCH_PROJECTOR_INITIAL_MODE,
   type LogsSearchProjectorCheckpointResult,
-  type LogsSearchProjectorControl,
   type LogsSearchProjectorProjectionResult,
   type LogsSearchProjectorStateStore,
   type LogsSearchProjectorWindow,
 } from "~/services/logsSearchProjector.server";
 
-type LogsSearchProjectorDatabase = Pick<
-  PrismaClient,
-  "logsSearchProjectorControl" | "logsSearchProjectorCheckpoint"
->;
+type LogsSearchProjectorDatabase = Pick<PrismaClient, "logsSearchProjectorCheckpoint">;
 
 export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorStateStore {
   constructor(private readonly database: LogsSearchProjectorDatabase) {}
 
-  async initialize(initialWatermark: Date): Promise<LogsSearchProjectorControl> {
-    const existing = await this.findControl();
+  async initialize(initialWatermark: Date): Promise<Date> {
+    const existing = await this.findInitialWatermark();
     if (existing) return existing;
 
-    return this.database.logsSearchProjectorControl.upsert({
-      where: { id: LOGS_SEARCH_PROJECTOR_ID },
-      create: {
-        id: LOGS_SEARCH_PROJECTOR_ID,
-        initialWatermark,
+    await this.database.logsSearchProjectorCheckpoint.createMany({
+      data: [
+        {
+          projectorId: LOGS_SEARCH_PROJECTOR_ID,
+          mode: LOGS_SEARCH_PROJECTOR_INITIAL_MODE,
+          windowStart: initialWatermark,
+          windowEnd: initialWatermark,
+        },
+      ],
+      skipDuplicates: true,
+    });
+
+    // Concurrent first ticks can choose adjacent safe boundaries. Starting from the earliest
+    // append-only initialization checkpoint preserves complete forward coverage.
+    return (await this.findInitialWatermark()) ?? initialWatermark;
+  }
+
+  async findInitialWatermark(): Promise<Date | null> {
+    const checkpoint = await this.database.logsSearchProjectorCheckpoint.findFirst({
+      where: {
+        projectorId: LOGS_SEARCH_PROJECTOR_ID,
+        mode: LOGS_SEARCH_PROJECTOR_INITIAL_MODE,
       },
-      update: {},
+      orderBy: { windowEnd: "asc" },
+      select: { windowEnd: true },
     });
-  }
 
-  async findControl(): Promise<LogsSearchProjectorControl | null> {
-    return this.database.logsSearchProjectorControl.findFirst({
-      where: { id: LOGS_SEARCH_PROJECTOR_ID },
-    });
-  }
-
-  async getControl(): Promise<LogsSearchProjectorControl> {
-    const control = await this.findControl();
-    if (!control) throw new Error("Logs search projector control is not initialized");
-    return control;
+    return checkpoint?.windowEnd ?? null;
   }
 
   async getFinalizedWatermark(initialWatermark: Date): Promise<Date> {
@@ -74,19 +79,5 @@ export class PrismaLogsSearchProjectorStateStore implements LogsSearchProjectorS
     });
 
     return inserted.count === 1 ? "inserted" : "duplicate";
-  }
-
-  async pause(): Promise<void> {
-    await this.database.logsSearchProjectorControl.update({
-      where: { id: LOGS_SEARCH_PROJECTOR_ID },
-      data: { paused: true },
-    });
-  }
-
-  async resume(): Promise<void> {
-    await this.database.logsSearchProjectorControl.update({
-      where: { id: LOGS_SEARCH_PROJECTOR_ID },
-      data: { paused: false },
-    });
   }
 }

@@ -3222,16 +3222,6 @@ model PlatformNotificationInteraction {
   @@unique([notificationId, userId])
 }
 
-model LogsSearchProjectorControl {
-  id String @id
-
-  initialWatermark DateTime
-  paused           Boolean  @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 model LogsSearchProjectorCheckpoint {
   id BigInt @id @default(autoincrement())
 

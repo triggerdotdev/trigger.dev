@@ -87,23 +87,48 @@ describe("logs search projector window selection", () => {
   });
 });
 
-describe("logs search projector telemetry", () => {
+describe("logs search projector execution", () => {
+  it("does no work when the projector is disabled", async () => {
+    const initialize = vi.fn(async () => at("2026-08-14T12:00:00.000Z"));
+    const projectWindow = vi.fn();
+    const projector = new LogsSearchProjector(
+      {
+        enabled: false,
+        previewEnabled: true,
+        maxFinalizedWindowsPerTick: 1,
+        leaseDurationMs: 60_000,
+      },
+      {
+        initialize,
+        findInitialWatermark: vi.fn(async () => null),
+        getFinalizedWatermark: vi.fn(async (watermark) => watermark),
+        appendFinalizedCheckpoint: vi.fn(),
+      },
+      {
+        acquireLease: vi.fn(async () => true),
+        releaseLease: vi.fn(),
+        readLeaseStatus: vi.fn(async () => null),
+        initializePreviewWatermark: vi.fn(async (watermark) => watermark),
+        getPreviewWatermark: vi.fn(async () => null),
+        advancePreviewWatermark: vi.fn(async () => true),
+      },
+      projectWindow,
+      () => at("2026-08-14T12:10:59.999Z")
+    );
+
+    await expect(projector.processTick()).resolves.toEqual({ finalized: 0, preview: false });
+    expect(initialize).not.toHaveBeenCalled();
+    expect(projectWindow).not.toHaveBeenCalled();
+  });
+
   it("refreshes lag after a finalized projection failure", async () => {
     const now = at("2026-08-14T12:10:59.999Z");
     const watermark = at("2026-08-14T12:05:00.000Z");
-    const control = {
-      id: "task_events_search_v2",
-      initialWatermark: watermark,
-      paused: false,
-    };
     const stateStore = {
-      initialize: vi.fn(async () => control),
-      findControl: vi.fn(async () => control),
-      getControl: vi.fn(async () => control),
+      initialize: vi.fn(async () => watermark),
+      findInitialWatermark: vi.fn(async () => watermark),
       getFinalizedWatermark: vi.fn(async () => watermark),
       appendFinalizedCheckpoint: vi.fn(),
-      pause: vi.fn(),
-      resume: vi.fn(),
     } satisfies LogsSearchProjectorStateStore;
     const redisStore = {
       acquireLease: vi.fn(async () => true),
@@ -116,6 +141,7 @@ describe("logs search projector telemetry", () => {
     const projectionError = new Error("projection failed");
     const projector = new LogsSearchProjector(
       {
+        enabled: true,
         previewEnabled: true,
         maxFinalizedWindowsPerTick: 1,
         leaseDurationMs: 60_000,
@@ -138,7 +164,6 @@ describe("logs search projector telemetry", () => {
     expect(telemetry.updateState).toHaveBeenCalledWith({
       previewLagMs: null,
       finalizedLagMs: 180_000,
-      paused: false,
     });
   });
 });

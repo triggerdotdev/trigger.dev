@@ -54,7 +54,7 @@ async function project(ch: ClickHouse, start: Date, end: Date) {
 }
 
 function searchRows(ch: ClickHouse) {
-  const builder = ch.taskEventsSearch.logsListQueryBuilder("v2");
+  const builder = ch.taskEventsSearch.logsListQueryBuilder();
   builder.where("organization_id = {organizationId: String}", { organizationId: ORG });
   builder.orderBy(
     "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
@@ -305,7 +305,7 @@ describe("task events search v2", () => {
 
       const cursor = rows?.[0];
       expect(cursor?.projection_fingerprint_string).toEqual(expect.any(String));
-      const nextPageBuilder = ch.taskEventsSearch.logsListQueryBuilder("v2");
+      const nextPageBuilder = ch.taskEventsSearch.logsListQueryBuilder();
       nextPageBuilder.where("organization_id = {organizationId: String}", {
         organizationId: ORG,
       });

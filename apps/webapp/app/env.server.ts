@@ -2094,9 +2094,6 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Keep reads on v1 until the scheduled v2 projector has enough history.
-    LOGS_SEARCH_TABLE_VERSION: z.enum(["v1", "v2"]).default("v1"),
-
     // Scheduled logs-search projection. Disabled by default. LOGS_CLICKHOUSE_URL, or the
     // CLICKHOUSE_URL fallback, must reach both source and destination tables and allow writes.
     LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),

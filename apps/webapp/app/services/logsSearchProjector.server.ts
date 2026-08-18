@@ -8,17 +8,12 @@ import {
 export type { LogsSearchProjectionMode } from "~/services/logsSearchProjectorTelemetry.server";
 
 export const LOGS_SEARCH_PROJECTOR_ID = "task_events_search_v2";
+export const LOGS_SEARCH_PROJECTOR_INITIAL_MODE = "INITIAL";
 export const LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE = "FINALIZED";
 const LOGS_SEARCH_PREVIEW_WINDOW_MS = 5_000;
 const LOGS_SEARCH_PREVIEW_SAFETY_DELAY_MS = 2_000;
 const LOGS_SEARCH_FINALIZED_WINDOW_MS = 60_000;
 const LOGS_SEARCH_FINALIZED_SAFETY_DELAY_MS = 120_000;
-
-export type LogsSearchProjectorControl = {
-  id: string;
-  initialWatermark: Date;
-  paused: boolean;
-};
 
 export type LogsSearchProjectorWindow = {
   mode: LogsSearchProjectionMode;
@@ -41,7 +36,7 @@ export type LogsSearchProjectorLeaseStatus = {
 
 export type LogsSearchProjectorStatus = {
   initialized: boolean;
-  paused: boolean;
+  enabled: boolean;
   previewEnabled: boolean;
   previewWatermark: Date | null;
   previewSafeCutoff: Date | null;
@@ -55,22 +50,20 @@ export type LogsSearchProjectorStatus = {
 };
 
 export type LogsSearchProjectorConfig = {
+  enabled: boolean;
   previewEnabled: boolean;
   maxFinalizedWindowsPerTick: number;
   leaseDurationMs: number;
 };
 
 export type LogsSearchProjectorStateStore = {
-  initialize(initialWatermark: Date): Promise<LogsSearchProjectorControl>;
-  findControl(): Promise<LogsSearchProjectorControl | null>;
-  getControl(): Promise<LogsSearchProjectorControl>;
+  initialize(initialWatermark: Date): Promise<Date>;
+  findInitialWatermark(): Promise<Date | null>;
   getFinalizedWatermark(initialWatermark: Date): Promise<Date>;
   appendFinalizedCheckpoint(
     window: LogsSearchProjectorWindow,
     result: LogsSearchProjectorProjectionResult
   ): Promise<LogsSearchProjectorCheckpointResult>;
-  pause(): Promise<void>;
-  resume(): Promise<void>;
 };
 
 export type LogsSearchProjectorRedisStore = {
@@ -81,8 +74,6 @@ export type LogsSearchProjectorRedisStore = {
   getPreviewWatermark(): Promise<Date | null>;
   advancePreviewWatermark(next: Date): Promise<boolean>;
 };
-
-export class LogsSearchProjectorConflictError extends Error {}
 
 export class LogsSearchProjector {
   constructor(
@@ -100,65 +91,50 @@ export class LogsSearchProjector {
   ) {}
 
   async processTick(): Promise<{ finalized: number; preview: boolean }> {
+    if (!this.config.enabled) return { finalized: 0, preview: false };
+
     const now = await this.clock();
     const finalizedCutoff = finalizedSafeCutoff(now);
-    const existingControl = await this.stateStore.findControl();
-    const control = existingControl ?? (await this.stateStore.initialize(finalizedCutoff));
-
-    if (control.paused) {
-      await this.updateTelemetryState(now, control);
-      return { finalized: 0, preview: false };
-    }
+    const initialWatermark = await this.stateStore.initialize(finalizedCutoff);
 
     let finalized: number;
     try {
-      finalized = await this.processFinalizedWindows(finalizedCutoff);
+      finalized = await this.processFinalizedWindows(finalizedCutoff, initialWatermark);
     } catch (error) {
-      await this.updateTelemetryStateAfterFailure(now, control);
+      await this.updateTelemetryStateAfterFailure(now, initialWatermark);
       throw error;
     }
 
-    const refreshedControl = await this.stateStore.getControl();
     const currentNow = await this.clock();
     const currentFinalizedCutoff = finalizedSafeCutoff(currentNow);
-    const finalizedWatermark = await this.stateStore.getFinalizedWatermark(
-      refreshedControl.initialWatermark
-    );
+    const finalizedWatermark = await this.stateStore.getFinalizedWatermark(initialWatermark);
 
     let preview = false;
-    if (
-      this.config.previewEnabled &&
-      !refreshedControl.paused &&
-      finalizedWatermark >= currentFinalizedCutoff
-    ) {
+    if (this.config.previewEnabled && finalizedWatermark >= currentFinalizedCutoff) {
       preview = await this.processPreviewWindow(previewSafeCutoff(currentNow));
     }
 
-    await this.updateTelemetryState(currentNow, await this.stateStore.getControl());
+    await this.updateTelemetryState(currentNow, initialWatermark);
     return { finalized, preview };
   }
 
   async status(): Promise<LogsSearchProjectorStatus> {
-    return this.readStatus(true);
-  }
+    const initialWatermark = await this.stateStore.findInitialWatermark();
+    if (!initialWatermark) return uninitializedProjectorStatus(this.config);
 
-  async pause(): Promise<LogsSearchProjectorStatus> {
-    if (!(await this.stateStore.findControl())) {
-      throw new LogsSearchProjectorConflictError("Logs search projector is not initialized");
+    let now: Date | null = null;
+    try {
+      now = await this.clock();
+    } catch (error) {
+      this.logger.warn("Failed to read ClickHouse clock for logs search projector status", {
+        error,
+      });
     }
-    await this.stateStore.pause();
-    return this.readStatus(false);
+
+    return this.buildStatus(initialWatermark, now);
   }
 
-  async resume(): Promise<LogsSearchProjectorStatus> {
-    if (!(await this.stateStore.findControl())) {
-      throw new LogsSearchProjectorConflictError("Logs search projector is not initialized");
-    }
-    await this.stateStore.resume();
-    return this.readStatus(false);
-  }
-
-  private async processFinalizedWindows(cutoff: Date): Promise<number> {
+  private async processFinalizedWindows(cutoff: Date, initialWatermark: Date): Promise<number> {
     let processed = 0;
 
     for (let index = 0; index < this.config.maxFinalizedWindowsPerTick; index++) {
@@ -175,10 +151,7 @@ export class LogsSearchProjector {
 
       let shouldStop = false;
       try {
-        const control = await this.stateStore.getControl();
-        if (control.paused) break;
-
-        const watermark = await this.stateStore.getFinalizedWatermark(control.initialWatermark);
+        const watermark = await this.stateStore.getFinalizedWatermark(initialWatermark);
         const window = selectFinalizedWindow(watermark, cutoff);
         if (!window) break;
 
@@ -225,9 +198,6 @@ export class LogsSearchProjector {
     }
 
     try {
-      const control = await this.stateStore.getControl();
-      if (control.paused) return false;
-
       const watermark = await this.redisStore.initializePreviewWatermark(cutoff);
       const selection = selectPreviewWindow(watermark, cutoff);
       if (!selection.window) return false;
@@ -301,31 +271,11 @@ export class LogsSearchProjector {
     }
   }
 
-  private async readStatus(includeClickHouseClock: boolean): Promise<LogsSearchProjectorStatus> {
-    const control = await this.stateStore.findControl();
-    if (!control) return uninitializedProjectorStatus(this.config.previewEnabled);
-
-    let now: Date | null = null;
-    if (includeClickHouseClock) {
-      try {
-        now = await this.clock();
-      } catch (error) {
-        this.logger.warn("Failed to read ClickHouse clock for logs search projector status", {
-          error,
-        });
-      }
-    }
-
-    return this.buildStatus(control, now);
-  }
-
   private async buildStatus(
-    control: LogsSearchProjectorControl,
+    initialWatermark: Date,
     now: Date | null
   ): Promise<LogsSearchProjectorStatus> {
-    const finalizedWatermark = await this.stateStore.getFinalizedWatermark(
-      control.initialWatermark
-    );
+    const finalizedWatermark = await this.stateStore.getFinalizedWatermark(initialWatermark);
     let previewWatermark: Date | null = null;
     let lease: LogsSearchProjectorLeaseStatus | null = null;
 
@@ -345,7 +295,7 @@ export class LogsSearchProjector {
 
     return {
       initialized: true,
-      paused: control.paused,
+      enabled: this.config.enabled,
       previewEnabled: this.config.previewEnabled,
       previewWatermark,
       previewSafeCutoff: previewCutoff,
@@ -362,12 +312,9 @@ export class LogsSearchProjector {
     };
   }
 
-  private async updateTelemetryStateAfterFailure(
-    now: Date,
-    control: LogsSearchProjectorControl
-  ): Promise<void> {
+  private async updateTelemetryStateAfterFailure(now: Date, initialWatermark: Date): Promise<void> {
     try {
-      await this.updateTelemetryState(now, control);
+      await this.updateTelemetryState(now, initialWatermark);
     } catch (error) {
       this.logger.warn("Failed to refresh logs search projector telemetry after tick failure", {
         error,
@@ -375,15 +322,11 @@ export class LogsSearchProjector {
     }
   }
 
-  private async updateTelemetryState(
-    now: Date,
-    control: LogsSearchProjectorControl
-  ): Promise<void> {
-    const status = await this.buildStatus(control, now);
+  private async updateTelemetryState(now: Date, initialWatermark: Date): Promise<void> {
+    const status = await this.buildStatus(initialWatermark, now);
     logsSearchProjectorTelemetry.updateState({
       previewLagMs: status.previewLagMs,
       finalizedLagMs: status.finalizedLagMs ?? 0,
-      paused: status.paused,
     });
   }
 }
@@ -446,11 +389,13 @@ function lagMs(watermark: Date | null, cutoff: Date | null): number | null {
   return Math.max(0, cutoff.getTime() - watermark.getTime());
 }
 
-function uninitializedProjectorStatus(previewEnabled: boolean): LogsSearchProjectorStatus {
+function uninitializedProjectorStatus(
+  config: LogsSearchProjectorConfig
+): LogsSearchProjectorStatus {
   return {
     initialized: false,
-    paused: false,
-    previewEnabled,
+    enabled: config.enabled,
+    previewEnabled: config.previewEnabled,
     previewWatermark: null,
     previewSafeCutoff: null,
     previewLagMs: null,

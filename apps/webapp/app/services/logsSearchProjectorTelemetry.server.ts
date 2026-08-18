@@ -9,7 +9,6 @@ const telemetry = singleton("logsSearchProjectorTelemetry", () => {
   const values: {
     previewLagMs?: number;
     finalizedLagMs?: number;
-    paused?: number;
     updatedAt?: number;
   } = {};
   const isFresh = () => values.updatedAt && Date.now() - values.updatedAt < 150_000;
@@ -28,14 +27,6 @@ const telemetry = singleton("logsSearchProjectorTelemetry", () => {
     .addCallback((result) => {
       if (isFresh() && values.finalizedLagMs !== undefined) result.observe(values.finalizedLagMs);
     });
-  meter
-    .createObservableGauge("logs_search.projector.paused", {
-      description: "Whether the logs search projector is paused",
-    })
-    .addCallback((result) => {
-      if (isFresh() && values.paused !== undefined) result.observe(values.paused);
-    });
-
   return {
     values,
     windows: meter.createCounter("logs_search.projector.windows", {
@@ -78,12 +69,11 @@ export const logsSearchProjectorTelemetry = {
   recordPreviewSkipped(count: number) {
     telemetry.previewSkipped.add(count);
   },
-  updateState(values: { previewLagMs: number | null; finalizedLagMs: number; paused: boolean }) {
+  updateState(values: { previewLagMs: number | null; finalizedLagMs: number }) {
     if (values.previewLagMs !== null) {
       telemetry.values.previewLagMs = Math.max(0, values.previewLagMs);
     }
     telemetry.values.finalizedLagMs = Math.max(0, values.finalizedLagMs);
-    telemetry.values.paused = values.paused ? 1 : 0;
     telemetry.values.updatedAt = Date.now();
   },
 };

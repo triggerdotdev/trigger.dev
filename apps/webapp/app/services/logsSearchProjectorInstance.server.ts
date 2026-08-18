@@ -33,6 +33,7 @@ function initializeLogsSearchProjector() {
 
   return new LogsSearchProjector(
     {
+      enabled: env.LOGS_SEARCH_PROJECTOR_ENABLED,
       previewEnabled: env.LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED,
       maxFinalizedWindowsPerTick: env.LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK,
       leaseDurationMs: (env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS + 90) * 1000,

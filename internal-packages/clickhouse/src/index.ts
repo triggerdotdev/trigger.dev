@@ -341,8 +341,7 @@ export class ClickHouse {
 
   get taskEventsSearch() {
     return {
-      logsListQueryBuilder: (version: "v1" | "v2" = "v1") =>
-        getLogsSearchListQueryBuilder(this.reader, version)(),
+      logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
       projectV2Window: projectTaskEventsSearchV2Window(this.writer),
     };
   }

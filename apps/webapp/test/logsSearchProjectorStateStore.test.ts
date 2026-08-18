@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import {
   LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
   LOGS_SEARCH_PROJECTOR_ID,
+  LOGS_SEARCH_PROJECTOR_INITIAL_MODE,
   type LogsSearchProjectorWindow,
 } from "~/services/logsSearchProjector.server";
 import { PrismaLogsSearchProjectorStateStore } from "~/services/logsSearchProjectorStateStore.server";
@@ -10,7 +11,7 @@ import { PrismaLogsSearchProjectorStateStore } from "~/services/logsSearchProjec
 const at = (value: string) => new Date(value);
 
 postgresTest(
-  "persists low-churn control state and append-only finalized checkpoints",
+  "persists append-only initialization and finalized checkpoints",
   { timeout: 20_000 },
   async ({ prisma }) => {
     const store = new PrismaLogsSearchProjectorStateStore(prisma);
@@ -22,15 +23,9 @@ postgresTest(
       end: at("2026-08-14T12:01:00.000Z"),
     };
 
-    await expect(store.findControl()).resolves.toBeNull();
-    await expect(store.initialize(initial)).resolves.toMatchObject({
-      id: LOGS_SEARCH_PROJECTOR_ID,
-      initialWatermark: initial,
-      paused: false,
-    });
-    await expect(store.initialize(laterInitialization)).resolves.toMatchObject({
-      initialWatermark: initial,
-    });
+    await expect(store.findInitialWatermark()).resolves.toBeNull();
+    await expect(store.initialize(initial)).resolves.toEqual(initial);
+    await expect(store.initialize(laterInitialization)).resolves.toEqual(initial);
     await expect(store.getFinalizedWatermark(initial)).resolves.toEqual(initial);
 
     await expect(
@@ -49,29 +44,24 @@ postgresTest(
     ).resolves.toBe("duplicate");
     await expect(store.getFinalizedWatermark(initial)).resolves.toEqual(window.end);
 
-    expect(
-      await prisma.logsSearchProjectorCheckpoint.findMany({
-        where: {
-          projectorId: LOGS_SEARCH_PROJECTOR_ID,
-          mode: LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
-        },
-      })
-    ).toHaveLength(1);
-
-    const controlBeforePause = await prisma.logsSearchProjectorControl.findFirst({
-      where: { id: LOGS_SEARCH_PROJECTOR_ID },
+    const checkpoints = await prisma.logsSearchProjectorCheckpoint.findMany({
+      where: { projectorId: LOGS_SEARCH_PROJECTOR_ID },
+      orderBy: { windowEnd: "asc" },
     });
-    await store.pause();
-    await expect(store.getControl()).resolves.toMatchObject({ paused: true });
-    await store.resume();
-    await expect(store.getControl()).resolves.toMatchObject({ paused: false });
-
-    const controlAfterResume = await prisma.logsSearchProjectorControl.findFirst({
-      where: { id: LOGS_SEARCH_PROJECTOR_ID },
-    });
-    expect(controlAfterResume?.initialWatermark).toEqual(initial);
-    expect(controlAfterResume?.updatedAt.getTime()).toBeGreaterThanOrEqual(
-      controlBeforePause!.updatedAt.getTime()
-    );
+    expect(checkpoints).toHaveLength(2);
+    expect(checkpoints).toEqual([
+      expect.objectContaining({
+        mode: LOGS_SEARCH_PROJECTOR_INITIAL_MODE,
+        windowStart: initial,
+        windowEnd: initial,
+        queryId: null,
+      }),
+      expect.objectContaining({
+        mode: LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE,
+        windowStart: window.start,
+        windowEnd: window.end,
+        queryId: "query-1",
+      }),
+    ]);
   }
 );

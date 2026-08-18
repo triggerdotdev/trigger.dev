@@ -227,10 +227,7 @@ export class LogsListPresenter extends BasePresenter {
     }
 
     const effectivePageSize = Math.min(pageSize, env.LOGS_LIST_MAX_PAGE_SIZE);
-    const usesV2Search = env.LOGS_SEARCH_TABLE_VERSION === "v2";
-    const queryLimit = usesV2Search
-      ? (effectivePageSize + 1) * LOGS_SEARCH_RETRY_OVERFETCH_FACTOR
-      : effectivePageSize + 1;
+    const queryLimit = (effectivePageSize + 1) * LOGS_SEARCH_RETRY_OVERFETCH_FACTOR;
 
     // Only honor a cursor scoped to this org+env; one copied from another scope would shift the
     // pagination anchor instead of resetting to the first page.
@@ -247,9 +244,7 @@ export class LogsListPresenter extends BasePresenter {
     const clampedTo = effectiveTo !== undefined ? (effectiveTo > now ? now : effectiveTo) : now;
 
     const rawSearchTerm = search?.trim() ?? "";
-    const normalizedSearchTerm = usesV2Search
-      ? normalizeLogsSearchTerm(rawSearchTerm)
-      : rawSearchTerm.toLowerCase();
+    const normalizedSearchTerm = normalizeLogsSearchTerm(rawSearchTerm);
     if (rawSearchTerm !== "" && !hasMinimumLogsSearchLength(normalizedSearchTerm)) {
       throw new ServiceValidationError(
         `Log searches must be at least ${MIN_LOGS_SEARCH_LENGTH} characters.`
@@ -261,11 +256,9 @@ export class LogsListPresenter extends BasePresenter {
     // Run exactly one bounded query. Broadening a search window is an explicit user action;
     // silently rescanning the same recent rows makes absence queries needlessly expensive.
     const runQuery = () => {
-      const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder(
-        env.LOGS_SEARCH_TABLE_VERSION
-      );
+      const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
-      // The materialized view excludes events without a trace_id; this guards the legacy tail.
+      // The projector excludes events without a trace_id.
       queryBuilder.where("trace_id != ''");
       queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
       queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
@@ -294,18 +287,9 @@ export class LogsListPresenter extends BasePresenter {
       }
 
       if (searchTerm !== undefined) {
-        if (usesV2Search) {
-          // One predicate lets the text index answer substring searches without an OR across
-          // independently indexed columns.
-          queryBuilder.where("search_text LIKE {searchPattern: String}", {
-            searchPattern: `%${searchTerm}%`,
-          });
-        } else {
-          queryBuilder.where(
-            "(lower(message) LIKE {searchPattern: String} OR lower(attributes_text) LIKE {searchPattern: String})",
-            { searchPattern: `%${searchTerm}%` }
-          );
-        }
+        queryBuilder.where("search_text LIKE {searchPattern: String}", {
+          searchPattern: `%${searchTerm}%`,
+        });
       }
 
       if (levels && levels.length > 0) {
@@ -343,12 +327,12 @@ export class LogsListPresenter extends BasePresenter {
           cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
           cursorTraceId: decodedCursor.traceId,
           cursorSpanId: decodedCursor.spanId,
-          ...(usesV2Search && decodedCursor.projectionFingerprint
+          ...(decodedCursor.projectionFingerprint
             ? { cursorProjectionFingerprint: decodedCursor.projectionFingerprint }
             : {}),
         };
         queryBuilder.where(
-          usesV2Search && decodedCursor.projectionFingerprint
+          decodedCursor.projectionFingerprint
             ? `(triggered_timestamp < {cursorTriggeredTimestamp: String}
               OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
               OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String})
@@ -361,9 +345,7 @@ export class LogsListPresenter extends BasePresenter {
       }
 
       queryBuilder.orderBy(
-        usesV2Search
-          ? "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
-          : "triggered_timestamp DESC, trace_id DESC, span_id DESC"
+        "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
       );
       queryBuilder.limit(queryLimit);
 
@@ -379,12 +361,7 @@ export class LogsListPresenter extends BasePresenter {
     // marker. Keep the default throw behavior so the product never presents truncated results as
     // complete.
     const results = queryResult ?? [];
-    const page = usesV2Search
-      ? prepareLogsSearchPage(results, effectivePageSize, queryLimit)
-      : {
-          rows: results.slice(0, effectivePageSize),
-          hasMore: results.length > effectivePageSize,
-        };
+    const page = prepareLogsSearchPage(results, effectivePageSize, queryLimit);
     const hasMore = page.hasMore;
     const logs = page.rows;
 

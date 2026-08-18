@@ -1,15 +1,4 @@
 -- CreateTable
-CREATE TABLE "public"."LogsSearchProjectorControl" (
-    "id" TEXT NOT NULL,
-    "initialWatermark" TIMESTAMP(3) NOT NULL,
-    "paused" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "LogsSearchProjectorControl_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."LogsSearchProjectorCheckpoint" (
     "id" BIGSERIAL NOT NULL,
     "projectorId" TEXT NOT NULL,

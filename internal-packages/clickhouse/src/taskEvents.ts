@@ -304,16 +304,10 @@ export const LogsSearchListResult = z.object({
 
 export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
 
-export type LogsSearchTableVersion = "v1" | "v2";
-
-export function getLogsSearchListQueryBuilder(
-  ch: ClickhouseReader,
-  version: LogsSearchTableVersion = "v1"
-) {
+export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
   const createBuilder = ch.queryBuilderFast<LogsSearchListResult>({
-    name: version === "v2" ? "getLogsSearchListV2" : "getLogsSearchListV1",
-    table:
-      version === "v2" ? "trigger_dev.task_events_search_v2" : "trigger_dev.task_events_search_v1",
+    name: "getLogsSearchListV2",
+    table: "trigger_dev.task_events_search_v2",
     columns: [
       "environment_id",
       "organization_id",
@@ -325,25 +319,15 @@ export function getLogsSearchListQueryBuilder(
       "span_id",
       "parent_span_id",
       { name: "message", expression: "LEFT(message, 512)" },
-      {
-        name: "error_message",
-        expression:
-          version === "v2"
-            ? "error_message"
-            : "LEFT(JSONExtractString(attributes_text, 'error', 'message'), 2048)",
-      },
+      "error_message",
       "kind",
       "status",
       "duration",
       "triggered_timestamp",
-      ...(version === "v2"
-        ? [
-            {
-              name: "projection_fingerprint_string",
-              expression: "toString(projection_fingerprint)",
-            },
-          ]
-        : []),
+      {
+        name: "projection_fingerprint_string",
+        expression: "toString(projection_fingerprint)",
+      },
     ],
     settings: {
       use_query_condition_cache: 1,
