@@ -585,7 +585,7 @@ function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
             <DialogTitle>Email address</DialogTitle>
           </DialogHeader>
           {isSsoManaged ? (
-            <Paragraph variant="small" className="py-4">
+            <Paragraph variant="small" className="pt-2">
               Your organization uses single sign-on, so your email address is managed by your
               identity provider rather than here. To change it, ask an organization admin to update
               it for you.
