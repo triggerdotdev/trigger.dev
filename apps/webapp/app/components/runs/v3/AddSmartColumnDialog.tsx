@@ -92,10 +92,11 @@ export function AddSmartColumnDialog({
     if (sampleFilters) {
       for (const [key, val] of Object.entries(sampleFilters)) params.set(key, val);
     }
+    params.set("source", source);
     const qs = params.toString();
     return qs ? `${base}?${qs}` : base;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organization.slug, project.slug, environment.slug, currentSearch, sampleFiltersKey]);
+  }, [organization.slug, project.slug, environment.slug, currentSearch, sampleFiltersKey, source]);
 
   useEffect(() => {
     if (open && sample.state === "idle") {

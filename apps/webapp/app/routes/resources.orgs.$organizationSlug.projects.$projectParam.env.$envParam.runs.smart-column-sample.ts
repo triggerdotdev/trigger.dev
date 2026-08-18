@@ -1,5 +1,5 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { deriveRunSelect } from "~/components/runs/v3/runColumns";
+import { deriveRunSelect, type SmartColumnSource } from "~/components/runs/v3/runColumns";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { loadProjectEnvironmentFromRequest } from "~/services/loadProjectEnvironmentFromRequest.server";
@@ -10,6 +10,14 @@ import { isFinalRunStatus } from "~/v3/taskStatus";
 /** How many recent runs the smart-column preview can page through. */
 const SAMPLE_RUN_COUNT = 10;
 
+const SAMPLE_SOURCES: SmartColumnSource[] = ["payload", "metadata", "output"];
+
+function parseSampleSource(value: string | null): SmartColumnSource {
+  return SAMPLE_SOURCES.includes(value as SmartColumnSource)
+    ? (value as SmartColumnSource)
+    : "payload";
+}
+
 /**
  * The most recent runs for the current filters, with their raw
  * payload/metadata/output packets, feeding the "Add smart column" preview. The
@@ -19,6 +27,7 @@ const SAMPLE_RUN_COUNT = 10;
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const { project, environment } = await loadProjectEnvironmentFromRequest(request, params);
   const filters = await getRunFiltersFromRequest(request);
+  const source = parseSampleSource(new URL(request.url).searchParams.get("source"));
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
@@ -45,7 +54,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     queues: filters.queues,
     machines: filters.machines,
     errorId: filters.errorId,
-    runSelect: deriveRunSelect([], ["payload", "metadata", "output"]),
+    runSelect: deriveRunSelect([], [source]),
     page: { size: SAMPLE_RUN_COUNT },
   });
 
