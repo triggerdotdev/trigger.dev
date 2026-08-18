@@ -9,10 +9,10 @@ export type { LogsSearchProjectionMode } from "~/services/logsSearchProjectorTel
 
 export const LOGS_SEARCH_PROJECTOR_ID = "task_events_search_v2";
 export const LOGS_SEARCH_PROJECTOR_CHECKPOINT_MODE = "FINALIZED";
-export const LOGS_SEARCH_PREVIEW_WINDOW_MS = 5_000;
-export const LOGS_SEARCH_PREVIEW_SAFETY_DELAY_MS = 2_000;
-export const LOGS_SEARCH_FINALIZED_WINDOW_MS = 60_000;
-export const LOGS_SEARCH_FINALIZED_SAFETY_DELAY_MS = 120_000;
+const LOGS_SEARCH_PREVIEW_WINDOW_MS = 5_000;
+const LOGS_SEARCH_PREVIEW_SAFETY_DELAY_MS = 2_000;
+const LOGS_SEARCH_FINALIZED_WINDOW_MS = 60_000;
+const LOGS_SEARCH_FINALIZED_SAFETY_DELAY_MS = 120_000;
 
 export type LogsSearchProjectorControl = {
   id: string;
@@ -368,11 +368,7 @@ export class LogsSearchProjector {
   }
 }
 
-export function calculateClosedWindowBoundary(
-  now: Date,
-  safetyDelayMs: number,
-  windowMs: number
-): Date {
+function calculateClosedWindowBoundary(now: Date, safetyDelayMs: number, windowMs: number): Date {
   return new Date(Math.floor((now.getTime() - safetyDelayMs) / windowMs) * windowMs);
 }
 

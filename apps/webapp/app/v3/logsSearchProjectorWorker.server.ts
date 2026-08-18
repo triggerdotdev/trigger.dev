@@ -45,7 +45,7 @@ function initializeWorker() {
   return worker;
 }
 
-export const logsSearchProjectorWorker = singleton("logsSearchProjectorWorker", initializeWorker);
+const logsSearchProjectorWorker = singleton("logsSearchProjectorWorker", initializeWorker);
 
 declare global {
   // eslint-disable-next-line no-var
