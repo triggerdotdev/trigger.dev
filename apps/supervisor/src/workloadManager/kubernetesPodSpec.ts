@@ -54,17 +54,35 @@ export function withNodeSelector(
   };
 }
 
+export type RunnerSeccompProfileOptions = {
+  profilePath: string;
+  runtimes: "none" | "node-24-plus" | "all";
+  runtime: string | null | undefined;
+  checkpointsEnabled: boolean | undefined;
+};
+
 /**
- * Applies the runner seccomp profile. The profile is a node-local file installed
- * outside this repo, so an empty path leaves the pod on the runtime default -
- * pointing at a profile the nodes don't have fails pod creation.
+ * Applies the runner seccomp profile, which is a node-local file installed outside
+ * this repo - pointing a pod at a profile its node doesn't have fails pod creation,
+ * so every condition for skipping it lives here.
+ *
+ * "node-24-plus" matches the original rollout: node >= 24 always creates io_uring
+ * fds, which can't be checkpointed, and blocking io_uring_setup makes libuv fall
+ * back to epoll. Tolerates an "experimental-" prefix. "bun" matches only under "all".
  */
 export function withRunnerSeccompProfile(
   podSpec: Omit<k8s.V1PodSpec, "containers">,
-  profilePath: string | undefined
+  options: RunnerSeccompProfileOptions
 ): Omit<k8s.V1PodSpec, "containers"> {
-  if (!profilePath) {
+  if (!options.checkpointsEnabled || options.runtimes === "none") {
     return podSpec;
+  }
+
+  if (options.runtimes === "node-24-plus") {
+    const match = options.runtime ? /^(?:experimental-)?node-(\d+)$/.exec(options.runtime) : null;
+    if (!match || Number(match[1]) < 24) {
+      return podSpec;
+    }
   }
 
   return {
@@ -73,7 +91,7 @@ export function withRunnerSeccompProfile(
       ...podSpec.securityContext,
       seccompProfile: {
         type: "Localhost",
-        localhostProfile: profilePath,
+        localhostProfile: options.profilePath,
       },
     },
   };
