@@ -57,6 +57,7 @@
     "react/jsx-no-target-blank": "error",
     "react/jsx-fragments": "error",
     "react/self-closing-comp": "error",
+    "no-lone-blocks": "error",
     "trigger/no-thrown-unawaited-redirect": "error",
     "trigger-prisma/no-unbounded-list-filter": "error",
     "trigger-prisma/no-unbounded-list-filter-in-args-helper": "error"
