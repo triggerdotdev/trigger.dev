@@ -950,7 +950,9 @@ export default function Page() {
                 <Paragraph variant="small" className="min-w-0 break-all text-right">
                   {user.email}
                 </Paragraph>
-                <EditEmailButton isSsoManaged={isSsoManaged} />
+                {/* TEMP: forced true to preview the SSO copy. Revert to
+                    `isSsoManaged={isSsoManaged}` before committing. */}
+                <EditEmailButton isSsoManaged={true} />
               </div>
             </div>
           </div>
