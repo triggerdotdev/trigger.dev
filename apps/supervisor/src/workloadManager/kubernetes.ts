@@ -20,6 +20,7 @@ import {
   withRunnerSeccompProfile,
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
+import { rewriteImageRegistry } from "./imageRegistry.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -163,7 +164,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             containers: [
               {
                 name: "run-controller",
-                image: this.stripImageDigest(opts.image),
+                image: rewriteImageRegistry(
+                  this.stripImageDigest(opts.image),
+                  env.KUBERNETES_IMAGE_REGISTRY_REWRITE_FROM,
+                  env.KUBERNETES_IMAGE_REGISTRY_REWRITE_TO
+                ),
                 ports: [
                   {
                     containerPort: 8000,
