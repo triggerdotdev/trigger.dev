@@ -253,7 +253,7 @@ export class InitializeDeploymentService extends BaseService {
             imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
             git: payload.gitMeta ?? undefined,
             commitSHA: payload.gitMeta?.commitSha ?? undefined,
-            runtime: payload.runtime ?? undefined,
+            runtime: payload.runtime ?? environment.project.defaultRuntime ?? undefined,
             triggeredVia: payload.triggeredVia ?? undefined,
             startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
           };

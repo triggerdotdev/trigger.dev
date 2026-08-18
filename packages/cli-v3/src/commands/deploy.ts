@@ -300,7 +300,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
   }
 
-  const resolvedConfig = await loadConfig({
+  let resolvedConfig = await loadConfig({
     cwd: projectPath,
     overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
     configFile: options.config,
@@ -362,6 +362,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (!projectClient) {
     throw new Error("Failed to get project client");
+  }
+
+  if (!resolvedConfig.runtimeWasExplicit && projectClient.defaultRuntime) {
+    resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
   if (options.nativeBuildServer) {

@@ -11,6 +11,7 @@ import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
 import { QueueTypeName } from "./queues.js";
 import { ScheduleWindow } from "./schemas.js";
+import { BuildRuntime } from "./build.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -43,6 +44,7 @@ export const GetProjectResponseBody = z.object({
   // (the project falls back to the global platform default). Optional so a
   // newer client still parses responses from an older server that omits it.
   defaultRegion: z.string().nullable().optional(),
+  defaultRuntime: BuildRuntime.nullable().optional(),
   organization: z.object({
     id: z.string(),
     title: z.string(),
@@ -98,6 +100,7 @@ export const GetProjectEnvResponse = z.object({
   name: z.string(),
   apiUrl: z.string(),
   projectId: z.string(),
+  defaultRuntime: BuildRuntime.nullable().optional(),
 });
 
 export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
