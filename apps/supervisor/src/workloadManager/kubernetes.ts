@@ -17,7 +17,7 @@ import { getRunnerId } from "../util.js";
 import {
   nodetypeNodeSelector,
   runPodTolerations,
-  withBlockIoUringSeccompProfile,
+  withRunnerSeccompProfile,
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
 
@@ -135,9 +135,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           );
         }
       }
-      const podSpec = this.opts.checkpointsEnabled
-        ? withBlockIoUringSeccompProfile(basePodSpec, opts.runtime)
-        : basePodSpec;
+      const podSpec = withRunnerSeccompProfile(basePodSpec, {
+        profilePath: env.KUBERNETES_RUNNER_SECCOMP_PROFILE_PATH,
+        runtimes: env.KUBERNETES_RUNNER_SECCOMP_PROFILE_RUNTIMES,
+        runtime: opts.runtime,
+        checkpointsEnabled: this.opts.checkpointsEnabled,
+      });
 
       await this.k8s.core.createNamespacedPod({
         namespace: this.namespace,

@@ -1,12 +1,6 @@
 import type { k8s } from "../clients/kubernetes.js";
 
 /**
- * Relative path (kubelet seccomp root) of the profile blocking only io_uring
- * syscalls. Must match the profile deployed to worker nodes.
- */
-export const BLOCK_IO_URING_SECCOMP_PROFILE = "profiles/block-io-uring.json";
-
-/**
  * An empty label is the documented off-switch, leaving the pod unpinned. The Helm
  * chart ships an empty value, so don't collapse this into a fallback default -
  * that would pin every chart install to a label its nodes don't carry.
@@ -60,18 +54,35 @@ export function withNodeSelector(
   };
 }
 
+export type RunnerSeccompProfileOptions = {
+  profilePath: string;
+  runtimes: "none" | "node-24-plus" | "all";
+  runtime: string | null | undefined;
+  checkpointsEnabled: boolean | undefined;
+};
+
 /**
- * Node >= 24 always creates io_uring fds, which can't be checkpointed. Blocking
- * io_uring_setup makes libuv fall back to epoll. Other runtimes don't need this,
- * so the profile is only applied for node-24+. Tolerates an "experimental-" prefix.
+ * Applies the runner seccomp profile, which is a node-local file installed outside
+ * this repo - pointing a pod at a profile its node doesn't have fails pod creation,
+ * so every condition for skipping it lives here.
+ *
+ * "node-24-plus" matches the original rollout: node >= 24 always creates io_uring
+ * fds, which can't be checkpointed, and blocking io_uring_setup makes libuv fall
+ * back to epoll. Tolerates an "experimental-" prefix. "bun" matches only under "all".
  */
-export function withBlockIoUringSeccompProfile(
+export function withRunnerSeccompProfile(
   podSpec: Omit<k8s.V1PodSpec, "containers">,
-  runtime: string | null | undefined
+  options: RunnerSeccompProfileOptions
 ): Omit<k8s.V1PodSpec, "containers"> {
-  const match = runtime ? /^(?:experimental-)?node-(\d+)$/.exec(runtime) : null;
-  if (!match || Number(match[1]) < 24) {
+  if (!options.checkpointsEnabled || options.runtimes === "none") {
     return podSpec;
+  }
+
+  if (options.runtimes === "node-24-plus") {
+    const match = options.runtime ? /^(?:experimental-)?node-(\d+)$/.exec(options.runtime) : null;
+    if (!match || Number(match[1]) < 24) {
+      return podSpec;
+    }
   }
 
   return {
@@ -80,7 +91,7 @@ export function withBlockIoUringSeccompProfile(
       ...podSpec.securityContext,
       seccompProfile: {
         type: "Localhost",
-        localhostProfile: BLOCK_IO_URING_SECCOMP_PROFILE,
+        localhostProfile: options.profilePath,
       },
     },
   };

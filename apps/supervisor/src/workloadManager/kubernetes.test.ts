@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  BLOCK_IO_URING_SECCOMP_PROFILE,
   nodetypeNodeSelector,
   runPodTolerations,
-  withBlockIoUringSeccompProfile,
+  withRunnerSeccompProfile,
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
 
@@ -100,27 +99,57 @@ describe("withNodeSelector", () => {
   });
 });
 
-describe("withBlockIoUringSeccompProfile", () => {
-  it("adds the Localhost io_uring profile for node-24 and above, preserving pod security defaults", () => {
-    for (const runtime of ["node-24", "node-26", "node-30", "experimental-node-24"]) {
-      const podSpec = withBlockIoUringSeccompProfile(basePodSpec, runtime);
+describe("withRunnerSeccompProfile", () => {
+  const base = {
+    profilePath: "profiles/example.json",
+    runtimes: "node-24-plus" as const,
+    runtime: "node-24",
+    checkpointsEnabled: true,
+  };
 
-      expect(podSpec).toMatchObject({
-        ...basePodSpec,
-        securityContext: {
-          ...basePodSpec.securityContext,
-          seccompProfile: {
-            type: "Localhost",
-            localhostProfile: BLOCK_IO_URING_SECCOMP_PROFILE,
-          },
-        },
-      });
+  const withProfile = {
+    ...basePodSpec,
+    securityContext: {
+      ...basePodSpec.securityContext,
+      seccompProfile: { type: "Localhost", localhostProfile: "profiles/example.json" },
+    },
+  };
+
+  it("applies the profile to node-24 and above under the default scope", () => {
+    for (const runtime of ["node-24", "node-26", "node-30", "experimental-node-24"]) {
+      expect(withRunnerSeccompProfile(basePodSpec, { ...base, runtime })).toMatchObject(
+        withProfile
+      );
     }
   });
 
-  it("leaves the pod spec unchanged for runtimes that do not create io_uring fds", () => {
+  it("skips older runtimes under the default scope", () => {
     for (const runtime of ["node", "node-22", "bun", undefined, null, ""]) {
-      expect(withBlockIoUringSeccompProfile(basePodSpec, runtime)).toEqual(basePodSpec);
+      expect(withRunnerSeccompProfile(basePodSpec, { ...base, runtime })).toBe(basePodSpec);
+    }
+  });
+
+  it("applies the profile to every runtime under the all scope", () => {
+    for (const runtime of ["node", "node-22", "bun", "node-24", undefined]) {
+      expect(
+        withRunnerSeccompProfile(basePodSpec, { ...base, runtimes: "all", runtime })
+      ).toMatchObject(withProfile);
+    }
+  });
+
+  it("applies nothing under the none scope, whatever the runtime", () => {
+    for (const runtime of ["node-24", "bun", "node-22"]) {
+      expect(withRunnerSeccompProfile(basePodSpec, { ...base, runtimes: "none", runtime })).toBe(
+        basePodSpec
+      );
+    }
+  });
+
+  it("applies nothing when checkpoints are disabled", () => {
+    for (const runtimes of ["none", "node-24-plus", "all"] as const) {
+      expect(
+        withRunnerSeccompProfile(basePodSpec, { ...base, runtimes, checkpointsEnabled: false })
+      ).toBe(basePodSpec);
     }
   });
 });
