@@ -1575,9 +1575,11 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           testOptions.keys.queueLengthCounterKeyFromQueue(v),
           testOptions.keys.queueRunningCounterKeyFromQueue(v),
           ckVtimeKey,
+          testOptions.keys.ckVtimeIdleKeyFromQueue(v),
           "r-dlq",
           v,
-          testOptions.keys.toCkWildcard(v)
+          testOptions.keys.toCkWildcard(v),
+          "86400"
         );
 
         expect(await queue.redis.zscore(ckIndexKey, v)).toBeNull();
@@ -1629,7 +1631,8 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         "2",
         "ttlworker",
         "ttlworkeritems",
-        "30000"
+        "30000",
+        "86400"
       );
 
       expect(await queue.redis.zscore(ckIndexKey, v)).toBeNull();
