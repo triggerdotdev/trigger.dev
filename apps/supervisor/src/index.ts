@@ -653,7 +653,6 @@ class ManagedSupervisor {
         projectId: message.project.id,
         deploymentFriendlyId: message.deployment.friendlyId,
         deploymentVersion: message.backgroundWorker.version,
-        runtime: message.backgroundWorker.runtime,
         deploymentToken,
         runId: message.run.id,
         runFriendlyId: message.run.friendlyId,
