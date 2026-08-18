@@ -7,7 +7,7 @@ import type { Prisma } from "@trigger.dev/database";
  *
  * The order of `RUN_COLUMN_IDS`/`STANDARD_COLUMNS` is the default column order.
  */
-export const RUN_COLUMN_IDS = [
+const RUN_COLUMN_IDS = [
   "id",
   "task",
   "status",
