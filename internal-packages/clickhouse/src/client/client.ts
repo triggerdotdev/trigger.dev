@@ -897,8 +897,8 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
         // Build compact format: [columns, ...rows]
         const compactData: any[] = [Array.from(req.columns)];
-        for (let i = 0; i < eventsArray.length; i++) {
-          compactData.push(req.toArray(eventsArray[i]));
+        for (const event of eventsArray) {
+          compactData.push(req.toArray(event));
         }
 
         const [clickhouseError, result] = await tryCatch(

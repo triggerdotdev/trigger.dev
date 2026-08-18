@@ -16,14 +16,12 @@ export type TriggerWebhookTaskParams = {
   endpointMetadata: unknown; // endpoint.metadata -> run metadata
 };
 
-export interface TriggerWebhookTaskCallback {
-  (params: TriggerWebhookTaskParams): Promise<{
-    success: boolean;
-    runId?: string; // persisted onto WebhookDelivery.runId on success
-    error?: string;
-    errorType?: WebhookDeliverTaskErrorType;
-  }>;
-}
+export type TriggerWebhookTaskCallback = (params: TriggerWebhookTaskParams) => Promise<{
+  success: boolean;
+  runId?: string; // persisted onto WebhookDelivery.runId on success
+  error?: string;
+  errorType?: WebhookDeliverTaskErrorType;
+}>;
 
 export interface WebhookEngineOptions {
   logger?: Logger;
@@ -82,16 +80,14 @@ export type DeliverWebhookToSessionParams = {
   isSessionStart: boolean;
 };
 
-export interface DeliverWebhookToSessionCallback {
-  (params: DeliverWebhookToSessionParams): Promise<{
-    success: boolean;
-    runId?: string; // the session's current run, persisted onto WebhookDelivery.runId
-    error?: string;
-    errorType?: WebhookDeliverTaskErrorType;
-    skipped?: boolean; // resume-only and no session existed: recorded FILTERED, not routed
-    skippedReason?: string;
-  }>;
-}
+export type DeliverWebhookToSessionCallback = (params: DeliverWebhookToSessionParams) => Promise<{
+  success: boolean;
+  runId?: string; // the session's current run, persisted onto WebhookDelivery.runId
+  error?: string;
+  errorType?: WebhookDeliverTaskErrorType;
+  skipped?: boolean; // resume-only and no session existed: recorded FILTERED, not routed
+  skippedReason?: string;
+}>;
 
 export type IngestInput = {
   opaqueId: string; // Q2: globally unique, so ingest resolves the endpoint (and its env id + type) from it
