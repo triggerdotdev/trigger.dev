@@ -24,7 +24,7 @@ import type {
   WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
@@ -67,15 +67,14 @@ import {
 } from "~/components/sessions/v1/SessionStatus";
 import { cn } from "~/utils/cn";
 import { validLogLevels } from "~/utils/logUtils";
-import { StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
+import { StoryGrid, StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
 import { measureTextContrast, NON_TEXT_THRESHOLD, TEXT_THRESHOLD } from "./contrast";
-import { useDocumentIconContrast, useThemeRevision } from "./useThemeRevision";
+import { useDocumentIconContrast, useDocumentTheme, useThemeRevision } from "./useThemeRevision";
 
 /* An audit page, not a component gallery. Every entry is something the app
    currently leans on color for - either the color is the only difference between
    two meanings, or the color itself is too low-contrast to see. Each one renders
-   twice: the base treatment on the left, the "Stronger colors" treatment on the
-   right.
+   five times: once per theme, then once under the "Stronger colors" preference.
 
    Scope note: the preference used to swap icons as well, and this page was named
    for that. It now only moves colors, so entries whose whole point was a shared
@@ -83,33 +82,80 @@ import { useDocumentIconContrast, useThemeRevision } from "./useThemeRevision";
    icon/label pair where the label's treatment changes and the icon is the
    context you need to read it.
 
-   The two columns work by putting `data-icon-contrast` on a wrapper div. Every
-   rule the preference drives is a plain descendant selector
-   (`[data-icon-contrast="true"] .contrast-chip`, the `system:` variant, the
-   accent token block), so it applies from any ancestor, not just <html>. The one
-   exception is the `--chart-2`/`--chart-3` override, which is a compound
-   selector against `[data-theme]` on <html> and so only follows the real
-   preference - noted where it matters. */
+   The columns work by putting `data-theme` and `data-icon-contrast` on a wrapper
+   div. Every rule either preference drives is a plain attribute or descendant
+   selector - `:is([data-theme="light"], ...)`, `[data-icon-contrast="true"]
+   .contrast-chip`, the `system:` variant, the `dark:` variant - so all of it
+   applies from any ancestor, not just <html>. Even the `--chart-2`/`--chart-3`
+   override resolves here: it wants both attributes on one element, and the last
+   column restates the theme it inherited. */
 
 // ---------------------------------------------------------------------------
 // Scaffolding
 // ---------------------------------------------------------------------------
 
-const COLUMNS = [
-  { contrast: false, label: "Original" },
-  { contrast: true, label: "Stronger colors" },
+/* The four themes side by side, then the preference. Pinning `data-theme` on a
+   wrapper works because every theme block is written as a plain attribute
+   selector (`:is([data-theme="light"], ...)`) rather than being anchored to
+   <html>, and the `dark:` variant is descendant-capable too - so a nested column
+   gets the whole token set, not just the custom properties.
+
+   The last column pins no theme of its own: it follows the page's switcher, so
+   you can put any theme next to its own high-contrast treatment. */
+const THEME_COLUMNS = [
+  { key: "light", label: "Light", theme: "light", strongerColors: false },
+  { key: "white", label: "White", theme: "white", strongerColors: false },
+  { key: "dark", label: "Dark", theme: "dark", strongerColors: false },
+  { key: "black", label: "Black", theme: "black", strongerColors: false },
+  { key: "stronger", label: "Stronger colors", theme: null, strongerColors: true },
 ] as const;
 
-/** The page-wide column header, pinned so the halves stay identifiable. */
-function ColumnHeader() {
+type ThemeColumn = (typeof THEME_COLUMNS)[number];
+
+/** Minimum width of one theme column, so a narrow viewport scrolls rather than
+ *  crushing five columns of live UI into slivers. */
+const THEME_COLUMN_MIN = "13rem";
+
+const THEME_GRID_TEMPLATE = `repeat(5, minmax(${THEME_COLUMN_MIN}, 1fr))`;
+
+/**
+ * A cell rendered in one theme's context. The four fixed columns restate the
+ * theme; the preference column takes whatever the page is on.
+ */
+function ThemeCell({
+  column,
+  className,
+  children,
+}: {
+  column: ThemeColumn;
+  className?: string;
+  children: ReactNode;
+}) {
+  const documentTheme = useDocumentTheme();
   return (
-    <div className="sticky top-0 z-20 -mx-8 grid grid-cols-2 gap-4 border-b border-grid-bright bg-background-dimmed px-8 py-2">
-      {COLUMNS.map((column) => (
-        <Paragraph key={column.label} variant="extra-extra-small/caps" className="text-text-dimmed">
-          {column.label}
-        </Paragraph>
-      ))}
+    <div
+      data-theme={column.theme ?? documentTheme}
+      data-icon-contrast={column.strongerColors ? "true" : "false"}
+      // An explicit surface, not the page background: statuses live in cards and
+      // tables, and the measured ratios need a known backdrop.
+      className={cn("min-w-0 bg-background-bright", className)}
+    >
+      {children}
     </div>
+  );
+}
+
+/** The five column labels, above a block's cells. */
+function ThemeColumnLabels({ leading }: { leading?: ReactNode }) {
+  return (
+    <>
+      {leading}
+      {THEME_COLUMNS.map((column) => (
+        <span key={column.key} className="truncate text-xxs uppercase text-text-dimmed">
+          {column.label}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -130,7 +176,7 @@ function Audit({
 }) {
   return (
     <div className="overflow-hidden rounded-sm border border-grid-dimmed">
-      <div className="space-y-1 border-b border-grid-dimmed bg-background-bright px-3 py-2">
+      <div className="space-y-1 border-b border-grid-dimmed bg-background-dimmed px-3 py-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <Header3>{title}</Header3>
           {where.map((file) => (
@@ -139,18 +185,26 @@ function Audit({
         </div>
         <Paragraph variant="extra-small">{note}</Paragraph>
       </div>
-      <div className="grid grid-cols-2 divide-x divide-grid-dimmed">
-        {COLUMNS.map((column) => (
-          <div
-            key={column.label}
-            data-icon-contrast={column.contrast ? "true" : "false"}
-            // An explicit surface, not the page background: statuses live in
-            // cards and tables, and the measured ratios need a known backdrop.
-            className="min-w-0 bg-background-bright p-3"
-          >
-            {children}
-          </div>
-        ))}
+      <div className="overflow-x-auto">
+        {/* Labels and cells are two grids on one template rather than a subgrid,
+            so `divide-x` can hang off the cell row alone - as one grid the label
+            strip counts as a child and pushes a stray rule onto the first cell. */}
+        <div
+          className="grid border-b border-grid-dimmed bg-background-dimmed [&>span]:px-3 [&>span]:py-1"
+          style={{ gridTemplateColumns: THEME_GRID_TEMPLATE }}
+        >
+          <ThemeColumnLabels />
+        </div>
+        <div
+          className="grid divide-x divide-grid-dimmed"
+          style={{ gridTemplateColumns: THEME_GRID_TEMPLATE }}
+        >
+          {THEME_COLUMNS.map((column) => (
+            <ThemeCell key={column.key} column={column} className="p-3">
+              {children}
+            </ThemeCell>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -214,67 +268,82 @@ type ContrastEntry = {
 };
 
 /** Name+usage, fill, ratio, verdict - wide enough that "passes 4.5:1" doesn't wrap. */
-const CONTRAST_GRID = "grid grid-cols-[minmax(0,1fr)_2.5rem_4rem_5rem]";
+/* Token details on the left, then Fill / Ratio / Verdict repeated for each of
+   the four themes and once more for the preference - sixteen columns in one flat
+   grid, so a sub-column lines up with its header all the way down. Wide by
+   design: the whole point is one token against every background at once, so the
+   table scrolls sideways rather than compressing. */
+const CONTRAST_TOKEN_COL = "minmax(12rem, 1.2fr)";
+/** Fill, Ratio, Verdict. Verdict is widest - it carries "passes 4.5:1". */
+const CONTRAST_SUB_COLS = "2.25rem 3.5rem 4.25rem";
+const CONTRAST_GRID_TEMPLATE = `${CONTRAST_TOKEN_COL} repeat(5, ${CONTRAST_SUB_COLS})`;
+
+/** Left edge of each theme group, so the three readings read as one band. */
+const THEME_GROUP_EDGE = "border-l border-grid-dimmed";
 
 /**
- * One measured swatch. The ratio is the sample's own computed color against the
- * surface behind it, so it tracks the theme, the contrast slider and (in the
- * right-hand column) the accessibility preference.
+ * The three readings for one token in one theme.
+ *
+ * `display: contents` on the themed wrapper is doing the work here: it puts
+ * `data-theme` in the ancestor chain - so the tokens, the `dark:` variant and
+ * the preference all resolve to that theme - while leaving the three cells as
+ * direct grid items of the row, which is what keeps them aligned under their
+ * headers. A wrapper with a box would nest them one level down and break the
+ * grid.
  */
-function ContrastRow({ entry }: { entry: ContrastEntry }) {
-  const sampleRef = useRef<HTMLSpanElement>(null);
+function ContrastCells({ entry, column }: { entry: ContrastEntry; column: ThemeColumn }) {
+  const fillRef = useRef<HTMLDivElement>(null);
   const revision = useThemeRevision();
+  const documentTheme = useDocumentTheme();
   const [ratio, setRatio] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!sampleRef.current) return;
-    setRatio(measureTextContrast(sampleRef.current));
+    if (!fillRef.current) return;
+    setRatio(measureTextContrast(fillRef.current));
   }, [revision, entry.token, entry.className]);
 
-  const name = entry.token ? entry.token.replace("--color-", "") : entry.className;
-  const style = entry.token ? { color: `var(${entry.token})` } : undefined;
   /* Under the 3:1 floor the value is unusable for anything, text or not - call
      it out in bold red so the failures pull the eye down a long table. The
      verdict words carry the same information, so the red is reinforcement
      rather than the signal. */
   const fails = ratio !== null && ratio < NON_TEXT_THRESHOLD;
+  const cell = "flex items-center bg-background-bright py-1";
 
   return (
     <div
-      className={cn(
-        CONTRAST_GRID,
-        "items-center gap-x-2 border-b border-grid-dimmed py-1 last:border-b-0"
-      )}
+      className="contents"
+      data-theme={column.theme ?? documentTheme}
+      data-icon-contrast={column.strongerColors ? "true" : "false"}
     >
-      <div className="min-w-0">
-        <span
-          ref={sampleRef}
-          style={style}
-          className={cn("block truncate font-mono text-xs", entry.className)}
-        >
-          {name}
-        </span>
-        <span className="block truncate text-xxs text-text-dimmed">{entry.usedBy}</span>
+      {/* The fill block is also the measured sample: it carries the token as its
+          own `color`, which is what the ratio reads, and as its background,
+          which is the shape non-text contrast is judged on. For a raw utility
+          the class sets `color`, so the fill comes from currentcolor instead. */}
+      <div className={cn(cell, THEME_GROUP_EDGE, "px-1.5")}>
+        <div
+          ref={fillRef}
+          className={cn("h-4 w-full rounded-xs border border-grid-bright", entry.className)}
+          style={{
+            color: entry.token ? `var(${entry.token})` : undefined,
+            backgroundColor: entry.token ? `var(${entry.token})` : "currentcolor",
+          }}
+        />
       </div>
-      {/* The same value as a filled block - the shape non-text contrast is
-          actually judged on. For a raw utility the class sets `color`, so the
-          fill has to come from currentcolor on this same element. */}
       <div
-        className={cn("h-5 rounded-xs border border-grid-bright", entry.className)}
-        style={{
-          backgroundColor: entry.token ? `var(${entry.token})` : "currentcolor",
-        }}
-      />
-      <span
         className={cn(
-          "text-right font-mono text-xs tabular-nums",
+          cell,
+          "justify-end font-mono text-xs tabular-nums",
           fails ? "font-bold text-error" : "text-text-bright"
         )}
       >
-        {ratio === null ? "—" : `${ratio.toFixed(2)}:1`}
-      </span>
-      <span
-        className={cn("text-right text-xxs", fails ? "font-bold text-error" : "text-text-dimmed")}
+        {ratio === null ? "\u2014" : ratio.toFixed(2)}
+      </div>
+      <div
+        className={cn(
+          cell,
+          "justify-end pr-2 text-xxs",
+          fails ? "font-bold text-error" : "text-text-dimmed"
+        )}
       >
         {ratio === null
           ? ""
@@ -283,25 +352,67 @@ function ContrastRow({ entry }: { entry: ContrastEntry }) {
             : ratio < TEXT_THRESHOLD
               ? "3:1 only"
               : "passes 4.5:1"}
-      </span>
+      </div>
+    </div>
+  );
+}
+
+function ContrastRow({ entry }: { entry: ContrastEntry }) {
+  const name = entry.token ? entry.token.replace("--color-", "") : entry.className;
+
+  return (
+    <div
+      className="grid items-stretch border-b border-grid-dimmed last:border-b-0"
+      style={{ gridTemplateColumns: CONTRAST_GRID_TEMPLATE }}
+    >
+      <div className="min-w-0 self-center py-1 pr-2">
+        <span className="block truncate font-mono text-xs text-text-bright">{name}</span>
+        <span className="block truncate text-xxs text-text-dimmed">{entry.usedBy}</span>
+      </div>
+      {THEME_COLUMNS.map((column) => (
+        <ContrastCells key={column.key} entry={entry} column={column} />
+      ))}
+    </div>
+  );
+}
+
+/** Two header rows on the same template: theme names spanning their three
+ *  readings, then the readings themselves. */
+function ContrastHeader() {
+  return (
+    <div className="text-xxs uppercase text-text-dimmed">
+      <div className="grid" style={{ gridTemplateColumns: CONTRAST_GRID_TEMPLATE }}>
+        <span className="truncate pr-2">Token &amp; where it's used</span>
+        {THEME_COLUMNS.map((column) => (
+          <span
+            key={column.key}
+            className={cn("col-span-3 truncate px-1.5 text-text-bright", THEME_GROUP_EDGE)}
+          >
+            {column.label}
+          </span>
+        ))}
+      </div>
+      <div
+        className="grid border-b border-grid-bright pb-1"
+        style={{ gridTemplateColumns: CONTRAST_GRID_TEMPLATE }}
+      >
+        <span />
+        {THEME_COLUMNS.map((column) => (
+          <Fragment key={column.key}>
+            <span className={cn("truncate px-1.5", THEME_GROUP_EDGE)}>Fill</span>
+            <span className="truncate text-right">Ratio</span>
+            <span className="truncate pr-2 text-right">Verdict</span>
+          </Fragment>
+        ))}
+      </div>
     </div>
   );
 }
 
 function ContrastTable({ entries }: { entries: ContrastEntry[] }) {
   return (
-    <div>
-      <div
-        className={cn(
-          CONTRAST_GRID,
-          "gap-x-2 border-b border-grid-bright pb-1 text-xxs uppercase text-text-dimmed"
-        )}
-      >
-        <span className="truncate">Token / class &amp; where it's used</span>
-        <span>Fill</span>
-        <span className="text-right">Ratio</span>
-        <span className="text-right">Verdict</span>
-      </div>
+    <div className="overflow-x-auto">
+      <ContrastHeader />
       {entries.map((entry) => (
         <ContrastRow key={entry.token ?? entry.className} entry={entry} />
       ))}
@@ -496,20 +607,75 @@ const AGENT_STATUS_SERIES = [
 ];
 
 // ---------------------------------------------------------------------------
+// Palette reference (formerly the Theme tokens page)
+// ---------------------------------------------------------------------------
+
+/* The raw semantic layer: surfaces, lines and the neutral ramp. These aren't
+   accents carrying meaning, so they get swatches rather than a measured verdict
+   - what matters is the value itself, and the theme switcher above shows each
+   theme's in place. */
+
+const BACKGROUND_TOKENS = [
+  "--color-background-deep",
+  "--color-background-dimmed",
+  "--color-background-bright",
+  "--color-background-hover",
+  "--color-background-raised",
+  "--color-secondary",
+  "--color-tertiary",
+  "--color-surface-control",
+  "--color-surface-control-hover",
+  "--color-surface-control-active",
+  "--color-input-bg",
+];
+
+const LINE_TOKENS = [
+  "--color-grid-dimmed",
+  "--color-grid-bright",
+  "--color-border-bright",
+  "--color-border-brighter",
+  "--color-border-brightest",
+];
+
+const BODY_TEXT_TOKENS = [
+  "--color-text-bright",
+  "--color-text-dimmed",
+  "--color-text-faint",
+  "--color-text-link",
+];
+
+const CHARCOAL_SCALE = [
+  100, 200, 300, 400, 500, 550, 600, 650, 700, 750, 775, 800, 850, 900, 950, 1000,
+].map((stop) => `--color-charcoal-${stop}`);
+
+function Swatch({ token, tall }: { token: string; tall?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div
+        className={cn("rounded-sm border border-grid-bright", tall ? "h-16" : "h-10")}
+        style={{ backgroundColor: `var(${token})` }}
+      />
+      <Paragraph variant="extra-extra-small" className="font-mono text-text-dimmed">
+        {token.replace("--color-", "")}
+      </Paragraph>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Chart examples
 // ---------------------------------------------------------------------------
 
 /* Invented numbers, shaped like a week of runs so the stack heights vary the way
    a real chart's would. Both charts share one series list, so the same four
    accents can be compared as fills and as strokes. */
+/* Three bars, not a full week: each chart renders five times across the row, so a
+   narrow column needs stacks wide enough to read the four fills against each
+   other rather than a dense week of slivers. */
 const CHART_WEEK = [
   { day: "Mon", completed: 186, queued: 38, delayed: 22, failed: 24 },
   { day: "Tue", completed: 205, queued: 44, delayed: 15, failed: 18 },
   { day: "Wed", completed: 164, queued: 29, delayed: 34, failed: 41 },
-  { day: "Thu", completed: 231, queued: 52, delayed: 11, failed: 12 },
-  { day: "Fri", completed: 198, queued: 35, delayed: 27, failed: 33 },
-  { day: "Sat", completed: 97, queued: 16, delayed: 9, failed: 8 },
-  { day: "Sun", completed: 84, queued: 12, delayed: 18, failed: 15 },
 ];
 
 /* A deliberate mix of how the tokens behave, so the columns show the range
@@ -607,22 +773,65 @@ export default function Story_() {
 
   return (
     <StoryPage
-      title="Stronger colors"
+      title="Colors"
       componentNames={["tailwind.css"]}
-      description="Every accent the “Stronger colors” preference moves, and every one whose contrast is worth checking. Left column is the base treatment, right column is the same thing with the preference on. Switch themes above to see all four — several accents only move on the dark themes, because Light and White already darken them for white and land on the same value the high-contrast set uses."
+      description="The palette, and every accent whose contrast is worth checking. Each block renders in all four themes side by side, then once more under the “Stronger colors” preference, which follows the theme switcher above — so you can put any theme next to its own high-contrast treatment. Ratios are measured live off the DOM, against that column's own background."
     >
       {documentIconContrast && (
         <Callout variant="warning">
-          The header's “Stronger colors” switch is on, so both columns are showing the high-contrast
-          treatment. Turn it off to compare them.
+          The header's “Stronger colors” switch is on, so the four theme columns already show the
+          high-contrast treatment and match the last one. Turn it off to compare them.
         </Callout>
       )}
 
-      <ColumnHeader />
+      {/* ------------------------------------------------------------------ */}
+      <StorySection
+        title="1. Palette"
+        description="The semantic layer these accents are built on. Surfaces, lines and the neutral ramp carry no meaning of their own, so they're shown as plain swatches following the theme switcher rather than measured against a floor."
+      >
+        <StorySubSection title="Backgrounds & surfaces">
+          <StoryGrid min="10rem">
+            {BACKGROUND_TOKENS.map((token) => (
+              <Swatch key={token} token={token} tall />
+            ))}
+          </StoryGrid>
+        </StorySubSection>
+
+        <StorySubSection title="Grid lines & borders">
+          <StoryGrid min="10rem">
+            {LINE_TOKENS.map((token) => (
+              <Swatch key={token} token={token} />
+            ))}
+          </StoryGrid>
+        </StorySubSection>
+
+        <StorySubSection title="Body text">
+          <div className="flex flex-col gap-2 rounded-sm border border-grid-dimmed p-4">
+            {BODY_TEXT_TOKENS.map((token) => (
+              <div key={token} className="flex items-baseline gap-4">
+                <span className="text-base" style={{ color: `var(${token})` }}>
+                  The quick brown fox jumps over the lazy dog
+                </span>
+                <Paragraph variant="extra-extra-small" className="font-mono text-text-dimmed">
+                  {token.replace("--color-", "")}
+                </Paragraph>
+              </div>
+            ))}
+          </div>
+        </StorySubSection>
+
+        <StorySubSection title="Charcoal scale">
+          <StoryGrid min="7rem">
+            {CHARCOAL_SCALE.map((token) => (
+              <Swatch key={token} token={token} />
+            ))}
+          </StoryGrid>
+        </StorySubSection>
+      </StorySection>
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="1. Measured contrast"
+        title="2. Measured contrast"
         description={`Each sample's own computed color against the surface behind it. 3:1 is the floor for icons, chart series and other non-text marks; 4.5:1 is the floor for the status labels next to them. Ratios re-measure when the theme, the interface-contrast slider or the preference changes.`}
       >
         <StorySubSection title="Status & text tokens">
@@ -639,7 +848,7 @@ export default function Story_() {
           <Audit
             title="Environment accents"
             where={["tailwind.css", "EnvironmentLabel.tsx"]}
-            note="Preview is the weakest of the four on white with the preference off (yellow-400 → yellow-700), and staging is the one token that differs per mode."
+            note="Staging is the one env token that still differs per mode. Preview and its branch labels are blue in every theme now, so they read the same at both ends of the `system` setting."
           >
             <ContrastTable entries={ENVIRONMENT_TOKENS} />
           </Audit>
@@ -696,7 +905,7 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="2. Icon and label pairs"
+        title="3. Icon and label pairs"
         description="Combos where the preference changes both halves: the label drops to the surrounding text color (system-mono-label) and the icon keeps a tint that moves. The icon is here as context for the label, not as the thing being audited — sets that differed only by glyph have been dropped, since the preference no longer touches icons."
       >
         <Audit
@@ -706,9 +915,9 @@ export default function Story_() {
             <>
               <code className="font-mono">DeployedEnvironmentIconSmall</code> is returned for both{" "}
               <code className="font-mono">STAGING</code> and{" "}
-              <code className="font-mono">PREVIEW</code>. Orange vs yellow is the only difference,
-              and both labels go monochrome under the preference, leaving the icon tint alone to
-              carry it.
+              <code className="font-mono">PREVIEW</code>. Orange vs blue now separates them at a
+              glance, but both labels go monochrome under the preference, leaving the icon tint
+              alone to carry it.
             </>
           }
         >
@@ -734,7 +943,7 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="3. Colored dots"
+        title="4. Colored dots"
         description="A filled circle has no shape to read. Where two dots differ only in fill, the state is unavailable without color — and at 6px the contrast floor is the hardest to clear."
       >
         <Audit
@@ -846,14 +1055,14 @@ export default function Story_() {
           <Row>
             <PulsingDot />
             <PulsingDot ringClassName="bg-success/50" dotClassName="bg-success" />
-            <PulsingDot className="size-3" ringClassName="bg-error/50" dotClassName="bg-error" />
+            <PulsingDot ringClassName="bg-error/50" dotClassName="bg-error" />
           </Row>
         </Audit>
       </StorySection>
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="4. Tinted chips and badges"
+        title="5. Tinted chips and badges"
         description="Same pill, same size, same weight — the tint and the text color are the only variables. These already opt into the contrast-chip ring, so the right-hand column shows what that ring does at the current interface-contrast setting."
       >
         <Audit
@@ -999,7 +1208,7 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="5. Status sets in list context"
+        title="6. Status sets in list context"
         description="The full sets, as they sit in the tables they were drawn for. Under the preference the labels go monochrome and the icon keeps the tint, so these show how much work the glyph is left doing."
       >
         <Audit
@@ -1134,7 +1343,7 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="6. Charts, bars and meters"
+        title="7. Charts, bars and meters"
         description="A series is identified by its swatch and nothing else. These are all judged at 3:1 against the plot surface, and separately against each other."
       >
         <Audit
@@ -1316,7 +1525,7 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="7. Trace and timeline"
+        title="8. Trace and timeline"
         description="In the waterfall and the run timeline the bar itself is the status. There is no icon, no label and no pattern — apart from the animated tile on in-progress spans."
       >
         <Audit
@@ -1394,7 +1603,7 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="8. Navigation accents"
+        title="9. Navigation accents"
         description="Each nav section has its own accent, applied to the icon when the item is active. Under the preference the active icon goes monochrome — which is the right call for contrast, and also removes the only thing distinguishing two sections that share a glyph family."
       >
         <Audit
@@ -1470,7 +1679,7 @@ export default function Story_() {
 
       {/* ------------------------------------------------------------------ */}
       <StorySection
-        title="9. Colored text on its own"
+        title="10. Colored text on its own"
         description="Text where the color is doing semantic work with no icon beside it. Most of these carry the meaning in the words too, which is why they're listed last — but they're all in the contrast audit."
       >
         <Audit

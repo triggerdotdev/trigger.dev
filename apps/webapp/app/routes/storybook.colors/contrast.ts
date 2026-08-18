@@ -1,8 +1,10 @@
-/* Live contrast measurement for the "Distinguish without color" audit page.
-   Ratios are read off real DOM nodes rather than hard-coded, so a swatch always
-   reports what the *active* combination resolves to - theme, the interface
-   contrast slider and the accessibility preference all feed into the same
-   custom properties, and any of them can move a token. */
+/* Live contrast measurement for the Colors audit page. Ratios are read off real
+   DOM nodes rather than hard-coded, so a swatch always reports what that
+   combination resolves to - theme, the interface contrast slider and the
+   Stronger colors preference all feed into the same custom properties, and any
+   of them can move a token. Because the measurement walks the DOM for its
+   background, a column that pins `data-theme` on a wrapper gets that theme's
+   answer without the page having to switch. */
 
 export type Rgb = { r: number; g: number; b: number; a: number };
 

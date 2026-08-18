@@ -27,13 +27,9 @@ type StorySection = {
 
 const sections: StorySection[] = [
   {
-    title: "Accessibility",
-    items: [{ name: "Stronger colors", slug: "stronger-colors" }],
-  },
-  {
     title: "Foundations",
     items: [
-      { name: "Theme tokens", slug: "theme-tokens" },
+      { name: "Colors", slug: "colors" },
       { name: "Typography", slug: "typography" },
       { name: "Icons", slug: "icons" },
       { name: "Avatars", slug: "avatar" },
@@ -299,7 +295,7 @@ export default function App() {
             <div className="flex flex-none items-center gap-3">
               <Switch
                 variant="minimal/medium"
-                label="Distinguish without color"
+                label="Stronger colors"
                 checked={iconContrast}
                 onCheckedChange={setIconContrast}
               />

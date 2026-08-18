@@ -78,6 +78,24 @@ export function useThemeRevision() {
  * audit page shows both treatments at once, so it needs to know when the header
  * switch has turned the left-hand column into a duplicate of the right.
  */
+/**
+ * The theme currently on `<html>`. The audit's "Stronger colors" column follows
+ * the page rather than pinning a theme, and it needs the value rather than just
+ * inheriting it: the `--chart-2`/`--chart-3` override is a compound selector
+ * wanting `data-theme` and `data-icon-contrast` on the *same* element, so that
+ * column has to restate the theme to pick it up.
+ */
+export function useDocumentTheme() {
+  const revision = useThemeRevision();
+  const [theme, setTheme] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    setTheme(document.documentElement.getAttribute("data-theme") ?? undefined);
+  }, [revision]);
+
+  return theme;
+}
+
 export function useDocumentIconContrast() {
   const revision = useThemeRevision();
   const [isOn, setIsOn] = useState(false);
