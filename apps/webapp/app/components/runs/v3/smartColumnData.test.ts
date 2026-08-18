@@ -94,6 +94,11 @@ describe("getAtPath", () => {
     expect(getAtPath(obj, "$.a[b]")).toBeUndefined();
   });
 
+  it("reads bracket keys with escaped quotes and backslashes (the form childPath emits)", () => {
+    expect(getAtPath({ "a'b": 1 }, "$['a\\'b']")).toBe(1);
+    expect(getAtPath({ "a\\b": 2 }, "$['a\\\\b']")).toBe(2);
+  });
+
   it("computes a dot-accessed .length for arrays, strings, and objects", () => {
     const data = { tags: ["a", "b", "c"], name: "hello", info: { x: 1, y: 2 }, count: 5 };
     expect(getAtPath(data, "$.tags.length")).toBe(3);

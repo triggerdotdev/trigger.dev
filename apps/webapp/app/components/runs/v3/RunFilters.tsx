@@ -406,6 +406,15 @@ export function RunsFilters(props: RunFiltersProps) {
       <FilterMenu {...props} />
       {hasFilters && (
         <Form className="-ml-1 h-6">
+          {searchParams.getAll("cols").map((v, i) => (
+            <input key={`cols-${i}`} type="hidden" name="cols" value={v} />
+          ))}
+          {searchParams.getAll("hide").map((v, i) => (
+            <input key={`hide-${i}`} type="hidden" name="hide" value={v} />
+          ))}
+          {searchParams.getAll("sc").map((v, i) => (
+            <input key={`sc-${i}`} type="hidden" name="sc" value={v} />
+          ))}
           <Button
             variant="minimal/small"
             LeadingIcon={XMarkIcon}

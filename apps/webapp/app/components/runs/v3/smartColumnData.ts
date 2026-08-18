@@ -55,7 +55,12 @@ export function extractSmartValue(parsed: ParsedSource, path: string): SmartCell
   return { state: "value", value };
 }
 
-const PATH_TOKEN_RE = /\.([^.[\]]+)|\[(\d+)\]|\['([^']*)'\]|\["([^"]*)"\]/g;
+const PATH_TOKEN_RE = /\.([^.[\]]+)|\[(\d+)\]|\['((?:\\.|[^'\\])*)'\]|\["((?:\\.|[^"\\])*)"\]/g;
+
+/** Reverse the backslash escaping applied to bracket-notation keys (e.g. `\'` -> `'`). */
+function unescapeBracketKey(raw: string): string {
+  return raw.replace(/\\(.)/g, "$1");
+}
 
 type PathToken =
   | { kind: "dot"; key: string }
@@ -90,8 +95,8 @@ export function getAtPath(root: unknown, path: string): unknown {
 
     if (match[1] !== undefined) tokens.push({ kind: "dot", key: match[1] });
     else if (match[2] !== undefined) tokens.push({ kind: "index", index: Number(match[2]) });
-    else if (match[3] !== undefined) tokens.push({ kind: "key", key: match[3] });
-    else if (match[4] !== undefined) tokens.push({ kind: "key", key: match[4] });
+    else if (match[3] !== undefined) tokens.push({ kind: "key", key: unescapeBracketKey(match[3]) });
+    else if (match[4] !== undefined) tokens.push({ kind: "key", key: unescapeBracketKey(match[4]) });
   }
   if (lastIndex !== normalized.length) return undefined;
 
@@ -129,12 +134,13 @@ export function labelFromPath(path: string): string {
     normalized = `.${normalized}`;
   }
 
-  const re = /\.([^.[\]]+)|\[(\d+)\]|\['([^']*)'\]|\["([^"]*)"\]/g;
+  const re = /\.([^.[\]]+)|\[(\d+)\]|\['((?:\\.|[^'\\])*)'\]|\["((?:\\.|[^"\\])*)"\]/g;
   let lastKey: string | undefined;
   let lastSegment: string | undefined;
   let match: RegExpExecArray | null;
   while ((match = re.exec(normalized)) !== null) {
-    const key = match[1] ?? match[3] ?? match[4];
+    const bracketKey = match[3] ?? match[4];
+    const key = match[1] ?? (bracketKey !== undefined ? unescapeBracketKey(bracketKey) : undefined);
     if (key !== undefined) {
       lastKey = key;
       lastSegment = key;
