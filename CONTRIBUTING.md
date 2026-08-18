@@ -59,7 +59,7 @@ branch are tagged into a release periodically.
    ```
 6. Create your `.env` file
    ```
-  --cache  cp .env.example .env
+   cp .env.example .env
    ```
 7. Open it and generate a new value for `ENCRYPTION_KEY`:
 
