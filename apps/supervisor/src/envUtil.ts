@@ -146,6 +146,56 @@ export const Tolerations = z.string().transform((val, ctx) => {
     });
 });
 
+const NodeSelector = z.record(z.string(), z.string()).superRefine((selector, ctx) => {
+  for (const [key, value] of Object.entries(selector)) {
+    if (!isQualifiedName(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid node selector key "${key}". Must be a Kubernetes label key, optionally prefixed with a DNS subdomain.`,
+      });
+    }
+
+    if (!isLabelValue(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid node selector value "${value}" for key "${key}". Must be a Kubernetes label value: alphanumeric, with dashes, underscores and dots inside, at most 63 characters.`,
+      });
+    }
+  }
+});
+
+/**
+ * Per-organization placement overrides for run pods, as JSON keyed by org id:
+ * `{"<orgId>": {"nodeSelector": {"<key>": "<value>"}, "tolerations": "<csv>"}}`.
+ * Tolerations use the same CSV format as `Tolerations`. Everything is validated
+ * at startup for the same reason as tolerations above: a typo would otherwise
+ * reject every pod create for that org, with the cause buried in API errors.
+ */
+export const OrgPlacementOverrides = z
+  .string()
+  .transform((val, ctx) => {
+    try {
+      return JSON.parse(val) as unknown;
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid org placement overrides: not valid JSON",
+      });
+      return z.NEVER;
+    }
+  })
+  .pipe(
+    z.record(
+      z.string().min(1),
+      z
+        .object({
+          nodeSelector: NodeSelector.optional(),
+          tolerations: Tolerations.optional(),
+        })
+        .strict()
+    )
+  );
+
 export const AdditionalEnvVars = z.preprocess((val) => {
   if (typeof val !== "string") {
     return val;

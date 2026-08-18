@@ -4,6 +4,7 @@ import {
   nodetypeNodeSelector,
   runPodTolerations,
   withBlockIoUringSeccompProfile,
+  withNodeSelector,
 } from "./kubernetesPodSpec.js";
 
 const basePodSpec = {
@@ -53,6 +54,49 @@ describe("runPodTolerations", () => {
     expect(runPodTolerations(worker, scheduled, false)).toEqual(worker);
     expect(runPodTolerations(worker, [], true)).toEqual(worker);
     expect(runPodTolerations(worker, scheduled, true)).toEqual([...worker, ...scheduled]);
+  });
+
+  it("appends the org tolerations regardless of run type", () => {
+    const org = [{ key: "dedicated", operator: "Equal", value: "org-pool", effect: "NoSchedule" }];
+
+    expect(runPodTolerations(undefined, undefined, false, org)).toEqual(org);
+    expect(runPodTolerations(worker, undefined, false, org)).toEqual([...worker, ...org]);
+    expect(runPodTolerations(worker, scheduled, true, org)).toEqual([
+      ...worker,
+      ...scheduled,
+      ...org,
+    ]);
+    expect(runPodTolerations(undefined, undefined, false, [])).toBeUndefined();
+  });
+});
+
+describe("withNodeSelector", () => {
+  const podSpec = { ...basePodSpec, nodeSelector: { nodetype: "v4-worker", paid: "true" } };
+
+  it("returns the pod spec untouched when there is nothing to merge", () => {
+    expect(withNodeSelector(podSpec, undefined)).toBe(podSpec);
+    expect(withNodeSelector(podSpec, {})).toBe(podSpec);
+  });
+
+  it("merges extra entries with existing ones", () => {
+    expect(withNodeSelector(podSpec, { machinepool: "dedicated-pool" })).toEqual({
+      ...podSpec,
+      nodeSelector: { nodetype: "v4-worker", paid: "true", machinepool: "dedicated-pool" },
+    });
+  });
+
+  it("lets the extra entries win on key collision", () => {
+    expect(withNodeSelector(podSpec, { nodetype: "other" }).nodeSelector).toEqual({
+      nodetype: "other",
+      paid: "true",
+    });
+  });
+
+  it("adds a nodeSelector to a spec that had none", () => {
+    expect(withNodeSelector(basePodSpec, { machinepool: "dedicated-pool" })).toEqual({
+      ...basePodSpec,
+      nodeSelector: { machinepool: "dedicated-pool" },
+    });
   });
 });
 

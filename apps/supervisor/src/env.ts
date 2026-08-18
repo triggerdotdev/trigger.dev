@@ -1,7 +1,13 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv, NodeLabelValue, Tolerations } from "./envUtil.js";
+import {
+  AdditionalEnvVars,
+  BoolEnv,
+  NodeLabelValue,
+  OrgPlacementOverrides,
+  Tolerations,
+} from "./envUtil.js";
 
 export const Env = z
   .object({
@@ -259,6 +265,10 @@ export const Env = z
 
     KUBERNETES_RUNNER_TOLERATIONS: Tolerations.optional(), // every run pod
     KUBERNETES_SCHEDULED_RUN_TOLERATIONS: Tolerations.optional(), // schedule-tree runs only
+
+    // Per-org placement overrides, JSON keyed by org id:
+    // {"<orgId>": {"nodeSelector": {"<key>": "<value>"}, "tolerations": "<csv>"}}
+    KUBERNETES_ORG_PLACEMENT_OVERRIDES: OrgPlacementOverrides.optional(),
 
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
