@@ -74,7 +74,7 @@ Write a summary in under 400 words, as notes rather than prose. Keep, in this or
 Drop tool mechanics, retries, and anything already superseded. Do not add advice, and do not invent anything that is not in the transcript. Everything you write is a record of what the transcript said, not a claim about the present.`;
 
 /** A summary that reads as a summary, and never as the user's next question. */
-export function summaryMessage(summary: string, durableState?: string): ModelMessage {
+function summaryMessage(summary: string, durableState?: string): ModelMessage {
   return {
     role: "user",
     content: durableState
@@ -116,7 +116,7 @@ export function shouldCompactConversation(event: {
  * The state a summary may not swallow
  * ------------------------------------------------------------------ */
 
-export type PinnedInvestigation = {
+type PinnedInvestigation = {
   id: string;
   title: string;
   outcome: string;

@@ -81,7 +81,7 @@ export function configureSkillsCommand(program: Command) {
     });
 }
 
-export async function installSkillsCommand(options: unknown) {
+async function installSkillsCommand(options: unknown) {
   return await wrapCommandAction(
     "installSkillsCommand",
     SkillsCommandOptions,

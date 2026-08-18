@@ -109,7 +109,7 @@ export class ApiWebhookDeliveryListPresenter extends BasePresenter {
   }
 }
 
-export class ApiWebhookDeliveryPresenter extends BasePresenter {
+class ApiWebhookDeliveryPresenter extends BasePresenter {
   public async call(
     environment: { id: string; projectId: string; organizationId: string },
     deliveryFriendlyId: string

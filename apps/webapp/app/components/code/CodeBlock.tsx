@@ -444,7 +444,7 @@ function Chrome({ title }: { title?: string }) {
   );
 }
 
-export function TitleRow({ title }: { title: ReactNode }) {
+function TitleRow({ title }: { title: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-3">
       <Paragraph variant="small/bright" className="w-full border-b border-grid-dimmed py-2">

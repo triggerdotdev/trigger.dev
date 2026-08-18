@@ -40,7 +40,7 @@ function getPillColor(value: string): string {
   return pillColors[Math.abs(hash) % pillColors.length];
 }
 
-export const TECHNOLOGY_OPTIONS = [
+const TECHNOLOGY_OPTIONS = [
   "Airflow",
   "Angular",
   "Anthropic",

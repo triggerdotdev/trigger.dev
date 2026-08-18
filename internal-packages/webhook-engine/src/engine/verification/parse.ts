@@ -28,7 +28,7 @@ export type PreparedVerification =
 
 // Parse one signature header into (a) candidate signature strings and (b) a field map for
 // signatureField lookups (e.g. Stripe `t`). See WebhookSignatureExtraction for the shapes.
-export function parseSignatureHeader(
+function parseSignatureHeader(
   headerValue: string,
   extraction?: WebhookSignatureExtraction
 ): { signatures: string[]; fields: Map<string, string[]> } {

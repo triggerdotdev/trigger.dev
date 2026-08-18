@@ -116,7 +116,7 @@ function onThrow<T>(
   );
 }
 
-export interface RetryFetchRequestInit extends RequestInit {
+interface RetryFetchRequestInit extends RequestInit {
   retry?: FetchRetryOptions;
   timeoutInMs?: number;
 }

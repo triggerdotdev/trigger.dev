@@ -1,6 +1,6 @@
-export type ErrorContext = Record<string, unknown>;
+type ErrorContext = Record<string, unknown>;
 
-export abstract class BaseError<TContext extends ErrorContext = ErrorContext> extends Error {
+abstract class BaseError<TContext extends ErrorContext = ErrorContext> extends Error {
   public abstract readonly retry: boolean;
   public readonly cause: BaseError | undefined;
   public readonly context: TContext | undefined;

@@ -79,6 +79,6 @@ export function isSplitEnabled(): Promise<boolean> {
   return cached;
 }
 
-export function __resetSplitModeCacheForTests(): void {
+function __resetSplitModeCacheForTests(): void {
   cached = undefined;
 }

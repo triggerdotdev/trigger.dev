@@ -124,7 +124,7 @@ function isVercelApiErrorShape(error: unknown): error is VercelApiError {
 // Schemas & token types
 // ---------------------------------------------------------------------------
 
-export const VercelSecretSchema = z.object({
+const VercelSecretSchema = z.object({
   accessToken: z.string(),
   tokenType: z.string().optional(),
   teamId: z.string().nullable().optional(),
@@ -133,7 +133,7 @@ export const VercelSecretSchema = z.object({
   raw: z.record(z.any()).optional(),
 });
 
-export type VercelSecret = z.infer<typeof VercelSecretSchema>;
+type VercelSecret = z.infer<typeof VercelSecretSchema>;
 
 export type TokenResponse = {
   accessToken: string;

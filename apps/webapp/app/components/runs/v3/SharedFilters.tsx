@@ -464,7 +464,7 @@ function getInitialCustomDuration(period?: string): { value: string; unit: strin
 
 type SectionType = "duration" | "dateRange";
 
-export function TimeDropdown({
+function TimeDropdown({
   trigger,
   period,
   from,

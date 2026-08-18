@@ -24,21 +24,21 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
 /**
  * Format a Date object as a short date string (e.g., "Nov 1")
  */
-export function formatChartDate(date: Date): string {
+function formatChartDate(date: Date): string {
   return shortDateFormatter.format(date);
 }
 
 /**
  * Format a Date object as a long date string (e.g., "Nov 1, 2023")
  */
-export function formatChartDateLong(date: Date): string {
+function formatChartDateLong(date: Date): string {
   return longDateFormatter.format(date);
 }
 
 /**
  * Convert a Date to ISO date string (YYYY-MM-DD) using local date components
  */
-export function toISODateString(date: Date): string {
+function toISODateString(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -48,7 +48,7 @@ export function toISODateString(date: Date): string {
 /**
  * Parse an ISO date string (YYYY-MM-DD) to a local Date object
  */
-export function parseISODateString(isoString: string): Date {
+function parseISODateString(isoString: string): Date {
   const [year, month, day] = isoString.split("-").map(Number);
   return new Date(year, month - 1, day);
 }

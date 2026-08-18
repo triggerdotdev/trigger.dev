@@ -926,19 +926,6 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 }
 
-export const RuntimeEnvironmentForEnvRepoPayload = {
-  select: {
-    id: true,
-    slug: true,
-    type: true,
-    projectId: true,
-    apiKey: true,
-    organizationId: true,
-    branchName: true,
-    builtInEnvironmentVariableOverrides: true,
-  },
-} as const;
-
 // Derived from the slim AuthenticatedEnvironment so a full AE satisfies
 // this type — the legacy Prisma payload had `builtInEnvironmentVariableOverrides`
 // as Prisma's JsonValue, which is a subtype of `unknown` in the slim
@@ -956,7 +943,7 @@ export type RuntimeEnvironmentForEnvRepo = Pick<
   | "builtInEnvironmentVariableOverrides"
 > & { organization?: { featureFlags: unknown } | null };
 
-export const environmentVariablesRepository = new EnvironmentVariablesRepository();
+const environmentVariablesRepository = new EnvironmentVariablesRepository();
 
 export async function resolveVariablesForEnvironment(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,

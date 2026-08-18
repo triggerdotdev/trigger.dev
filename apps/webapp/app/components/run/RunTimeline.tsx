@@ -26,7 +26,7 @@ export type TimelineEventVariant =
   | "end-cap";
 
 // Timeline item type definitions
-export type TimelineEventDefinition = {
+type TimelineEventDefinition = {
   type: "event";
   id: string;
   title: string;
@@ -38,7 +38,7 @@ export type TimelineEventDefinition = {
   helpText?: string;
 };
 
-export type TimelineLineDefinition = {
+type TimelineLineDefinition = {
   type: "line";
   id: string;
   title: React.ReactNode;
@@ -580,8 +580,6 @@ export type SpanTimelineProps = {
   events?: TimelineSpanEvent[];
   style?: TimelineStyle;
 };
-
-export type SpanTimelineState = "error" | "pending" | "complete";
 
 export function SpanTimeline({
   startTime,

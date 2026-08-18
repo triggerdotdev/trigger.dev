@@ -2,7 +2,7 @@ import { env } from "~/env.server";
 
 // Public origin webhook providers POST to. A dedicated WEBHOOK_INGRESS_ORIGIN (e.g.
 // https://webhook.trigger.dev) takes precedence; otherwise it rides the API/app origin.
-export function webhookIngressOrigin(): string {
+function webhookIngressOrigin(): string {
   return env.WEBHOOK_INGRESS_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN;
 }
 

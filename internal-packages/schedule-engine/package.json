@@ -20,7 +20,6 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "cron-parser": "^4.9.0",
-    "cronstrue": "^2.50.0",
     "zod": "3.25.76"
   },
   "devDependencies": {

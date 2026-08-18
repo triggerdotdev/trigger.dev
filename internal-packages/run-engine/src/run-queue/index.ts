@@ -216,7 +216,7 @@ export type RunQueueOptions = {
   };
 };
 
-export interface ConcurrencySweeperCallback {
+interface ConcurrencySweeperCallback {
   (runIds: string[]): Promise<Array<{ id: string; orgId: string }>>;
 }
 

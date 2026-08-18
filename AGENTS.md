@@ -81,6 +81,18 @@ pnpm run lint:fix    # oxlint — auto-fixes lint violations
 pnpm run lint        # oxlint — check only (no fixes)
 ```
 
+### Dead code
+
+We use knip to control unused dependencies and code. It is enforced by CI `code-quality`.
+
+Scan your code before pushing with:
+
+```bash
+pnpm run knip
+```
+
+If there are false positives, edit ./knip.json so that it passes.
+
 ### Imports
 
 **Prefer static imports over dynamic imports.** Only use dynamic `import()` when:

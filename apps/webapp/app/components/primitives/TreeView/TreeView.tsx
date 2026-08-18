@@ -26,9 +26,6 @@ export type TreeViewProps<TData> = {
   onScroll?: (scrollTop: number) => void;
 } & Pick<UseTreeStateOutput, "getTreeProps" | "getNodeProps">;
 
-export type GetTreePropsFn = UseTreeStateOutput["getTreeProps"];
-export type GetNodePropsFn = UseTreeStateOutput["getNodeProps"];
-
 export function TreeView<TData>({
   tree,
   renderNode,

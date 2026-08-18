@@ -87,7 +87,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 
-export const RunStatus = z.enum(allTaskRunStatuses);
+const RunStatus = z.enum(allTaskRunStatuses);
 
 const StringOrStringArray = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -105,7 +105,7 @@ const StringOrStringArray = z.preprocess((value) => {
   return undefined;
 }, z.string().array().optional());
 
-export const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
+const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
   if (typeof value === "string") {
     if (value.length > 0) {
       const parsed = MachinePresetName.safeParse(value);

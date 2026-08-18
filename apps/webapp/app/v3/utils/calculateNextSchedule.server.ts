@@ -4,7 +4,7 @@ export function calculateNextScheduledTimestampFromNow(schedule: string, timezon
   return calculateNextScheduledTimestamp(schedule, timezone, new Date());
 }
 
-export function calculateNextScheduledTimestamp(
+function calculateNextScheduledTimestamp(
   schedule: string,
   timezone: string | null,
   currentDate: Date = new Date()

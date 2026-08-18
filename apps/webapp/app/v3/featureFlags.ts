@@ -135,11 +135,6 @@ export function validateFeatureFlagValue<T extends FeatureFlagKey>(
   return FeatureFlagCatalog[key].safeParse(value);
 }
 
-// Utility function to validate all feature flags at once
-export function validateAllFeatureFlags(values: Record<string, unknown>) {
-  return FeatureFlagCatalogSchema.safeParse(values);
-}
-
 // Utility function to validate partial feature flags (all keys optional)
 export function validatePartialFeatureFlags(values: Record<string, unknown>) {
   return FeatureFlagCatalogSchema.partial().safeParse(values);
@@ -201,7 +196,7 @@ export type FlagControlType =
   | { type: "number"; min?: number; max?: number }
   | { type: "string" };
 
-export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
+function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
   const typeName = schema._def.typeName;
 
   if (typeName === "ZodBoolean") {

@@ -13,7 +13,7 @@ import { ssoController } from "~/services/sso.server";
 
 import { boundedIn } from "@trigger.dev/database";
 export const INVITE_NOT_FOUND = "Invite not found";
-export const INVITE_BLOCKED_DIRECTORY_MANAGED =
+const INVITE_BLOCKED_DIRECTORY_MANAGED =
   "Membership for this organization is managed by Directory Sync, so invites can't be accepted.";
 export const ENV_SETUP_INCOMPLETE =
   "You joined the organization, but we couldn't finish setting up your development environments. Please try accepting the invite again, or contact support if this persists.";

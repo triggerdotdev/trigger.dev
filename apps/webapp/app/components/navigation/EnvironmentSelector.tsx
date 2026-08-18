@@ -310,7 +310,7 @@ function Branches({
  * Inner content of the branches popover (list, empty states, "Manage branches" footer). Shared by
  * the `Branches` hover submenu and the side-menu Preview popover.
  */
-export function BranchesPopoverContent({
+function BranchesPopoverContent({
   parentEnvironment,
   branchEnvironments,
   currentEnvironment,

@@ -22,7 +22,7 @@
     "format:prisma": "pnpm --filter @trigger.dev/database run format:prisma && pnpm --filter @internal/run-ops-database run format:prisma",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "knip:deps": "knip --production --dependencies",
+    "knip": "knip --include files,exports,types,dependencies,unlisted,binaries,unresolved,catalog",
     "docker": "node scripts/docker.mjs -f docker/docker-compose.yml up -d --build --remove-orphans",
     "docker:stop": "node scripts/docker.mjs -f docker/docker-compose.yml stop",
     "docker:full": "node scripts/docker.mjs -f docker/docker-compose.yml -f docker/docker-compose.extras.yml up -d --build --remove-orphans",
@@ -56,12 +56,10 @@
     "storybook": "turbo run storybook"
   },
   "devDependencies": {
-    "@manypkg/cli": "^0.19.2",
     "@playwright/test": "^1.36.2",
     "@trigger.dev/database": "workspace:*",
     "@types/node": "24.13.3",
     "@vitest/coverage-v8": "4.1.7",
-    "autoprefixer": "^10.4.12",
     "knip": "6.25.0",
     "lefthook": "^2.1.10",
     "oxfmt": "^0.54.0",
@@ -71,15 +69,13 @@
     "tsx": "^3.7.1",
     "turbo": "^1.13.4",
     "typescript": "catalog:",
-    "vite-tsconfig-paths": "^4.0.5",
     "vitest": "4.1.7"
   },
   "packageManager": "pnpm@10.33.2",
   "dependencies": {
     "@changesets/cli": "2.26.2",
     "@remix-run/changelog-github": "^0.0.5",
-    "agentcrumbs": "^0.5.0",
-    "node-fetch": "2.6.x"
+    "agentcrumbs": "^0.5.0"
   },
   "pnpm": {
     "patchedDependencies": {

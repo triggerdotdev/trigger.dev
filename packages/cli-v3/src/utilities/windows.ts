@@ -1,11 +1,7 @@
 import { log, spinner as clackSpinner } from "@clack/prompts";
 import { isWindows as stdEnvIsWindows } from "std-env";
 
-export const isWindows = stdEnvIsWindows;
-
-export function escapeImportPath(path: string) {
-  return isWindows ? path.replaceAll("\\", "\\\\") : path;
-}
+const isWindows = stdEnvIsWindows;
 
 // Removes ANSI escape sequences to get actual visible length
 function getVisibleLength(str: string): number {

@@ -15,7 +15,7 @@ export type EvidenceScope = { projectRef: string; environmentId: string };
  * Builds the canonical `trigger://` URI for a cited ref. A ref that can't be
  * canonicalized is returned as a named error, never dropped.
  */
-export function canonicalizeEvidence(
+function canonicalizeEvidence(
   items: EvidenceRef[],
   scope: EvidenceScope,
   reads: SourceReadLookup

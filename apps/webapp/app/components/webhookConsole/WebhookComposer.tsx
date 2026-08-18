@@ -26,7 +26,7 @@ import { SampleSourcePicker } from "./SampleSourcePicker";
 
 type SourceTab = "body" | "sample" | "replay" | "ai";
 
-export type WebhookComposerEndpoint = {
+type WebhookComposerEndpoint = {
   friendlyId: string;
   label: string;
   source: string;

@@ -17,7 +17,7 @@ import {
 
 const pageSize = 20;
 
-export type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
+type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
 export type DeploymentListItem = DeploymentList["deployments"][0];
 
 export class DeploymentListPresenter {

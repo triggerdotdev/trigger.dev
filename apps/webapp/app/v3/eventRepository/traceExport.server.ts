@@ -28,7 +28,7 @@ export type TraceExportFormat = {
   footer?: (ctx: TraceExportContext) => string;
 };
 
-export type TraceExportFormatName = "log" | "jsonl" | "markdown";
+type TraceExportFormatName = "log" | "jsonl" | "markdown";
 
 /**
  * Streams a trace export by piping events through a {@link TraceExportFormat}.

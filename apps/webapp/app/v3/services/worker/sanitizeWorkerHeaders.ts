@@ -2,7 +2,7 @@ import { WORKER_HEADERS } from "@trigger.dev/core/v3/workers";
 
 // Secret-bearing headers to drop before logging request headers.
 // Dependency-free so the redaction is unit-tested directly.
-export const SENSITIVE_WORKER_HEADERS = new Set([
+const SENSITIVE_WORKER_HEADERS = new Set([
   "authorization",
   "cookie",
   WORKER_HEADERS.MANAGED_SECRET.toLowerCase(),

@@ -153,7 +153,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
   });
 }
 
-export interface DepotBuildImageOptions {
+interface DepotBuildImageOptions {
   auth: string;
   buildId: string;
   buildToken: string;

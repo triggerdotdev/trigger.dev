@@ -49,7 +49,7 @@ const FETCH_TIMEOUT_MS = 30_000;
 
 // Points at the mechanism the prompt already teaches — the stack-trace line is
 // where a truncated read gets resumed.
-export const READ_TRUNCATION_NOTICE =
+const READ_TRUNCATION_NOTICE =
   `Truncated to the first ${MAX_READ_LINES} lines / ${MAX_READ_BYTES / 1024}KB. ` +
   "Read the part you need with startLine and endLine — the line from the stack trace or the search match is where to start.";
 

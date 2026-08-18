@@ -36,3 +36,15 @@ pre-push:
           echo ""
           exit 1
         }
+    - name: knip
+      run: |
+        pnpm run knip || {
+          echo ""
+          echo "✖ Unused code or dependencies found. Run:"
+          echo ""
+          echo "    pnpm run knip"
+          echo ""
+          echo "  then remove the unused items or update knip.json and re-push."
+          echo ""
+          exit 1
+        }

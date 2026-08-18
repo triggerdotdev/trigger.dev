@@ -98,12 +98,6 @@ const MAX_CLAIM_RETRIES = 10;
 // Delay between retries when waiting for pending claim
 const CLAIM_RETRY_DELAY_MS = 50;
 
-export type DebounceData = {
-  key: string;
-  delay: string;
-  createdAt: Date;
-};
-
 /**
  * DebounceSystem handles debouncing of task triggers.
  *

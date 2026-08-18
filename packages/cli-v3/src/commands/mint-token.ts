@@ -37,7 +37,7 @@ export function configureMintTokenCommand(program: Command) {
   });
 }
 
-export async function mintTokenCommand(options: unknown) {
+async function mintTokenCommand(options: unknown) {
   return await wrapCommandAction(
     "mintTokenCommand",
     MintTokenCommandOptions,

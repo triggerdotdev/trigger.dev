@@ -15,7 +15,7 @@ const UNSUBSCRIBE_TOKEN_TTL = "365d";
 
 export type UnsubscribeTokenClaims = { channelId: string; alertType: string };
 
-export async function signDashboardAgentAlertUnsubscribeToken(
+async function signDashboardAgentAlertUnsubscribeToken(
   secret: string,
   opts: { channelId: string; alertType: string }
 ): Promise<string> {
@@ -33,7 +33,7 @@ export async function signDashboardAgentAlertUnsubscribeToken(
   return `${UNSUBSCRIBE_TOKEN_PREFIX}${jwt}`;
 }
 
-export async function verifyDashboardAgentAlertUnsubscribeToken(
+async function verifyDashboardAgentAlertUnsubscribeToken(
   secret: string,
   token: string
 ): Promise<UnsubscribeTokenClaims | undefined> {

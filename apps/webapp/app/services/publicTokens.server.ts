@@ -7,7 +7,7 @@ import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetr
 import { rbac } from "~/services/rbac.server";
 
 // Public access tokens may be valid for at most 30 days.
-export const MAX_PUBLIC_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
+const MAX_PUBLIC_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 const RequestBodySchema = z.object({
   scopes: z.array(z.string()).min(1),

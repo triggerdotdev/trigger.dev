@@ -123,7 +123,7 @@ Examples:
     });
 }
 
-export async function initCommand(dir: string, options: unknown) {
+async function initCommand(dir: string, options: unknown) {
   return await wrapCommandAction("initCommand", InitCommandOptions, options, async (opts) => {
     return await _initCommand(dir, opts);
   });
@@ -595,7 +595,7 @@ async function addConfigFileToTsConfig(tsconfigPath: string, options: InitComman
   });
 }
 
-export interface InstallPackagesOutputter {
+interface InstallPackagesOutputter {
   startSDK: () => void;
   installedSDK: () => void;
   startBuild: () => void;
@@ -648,7 +648,7 @@ class SilentInstallPackagesOutputter implements InstallPackagesOutputter {
   stoppedWithError() {}
 }
 
-export async function installPackages(
+async function installPackages(
   projectDir: string,
   tag: string,
   outputter: InstallPackagesOutputter = new SilentInstallPackagesOutputter()

@@ -678,14 +678,6 @@ export function getAdminClickhouse(): ClickHouse {
   return defaultAdminClickhouseClient;
 }
 
-export function getDefaultClickhouseClient(): ClickHouse {
-  return defaultClickhouseClient;
-}
-
-export function getDefaultLogsClickhouseClient(): ClickHouse {
-  return defaultLogsClickhouseClient;
-}
-
 /** Queue-metrics client for callers with no organization in scope (the ingestion consumer). */
 export function getQueueMetricsClickhouseClient(): ClickHouse {
   return defaultQueueMetricsClickhouseClient;

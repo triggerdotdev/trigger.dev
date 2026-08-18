@@ -27,8 +27,6 @@ import { meter, tracer } from "./tracer.server";
 
 export const webhookEngine = singleton("WebhookEngine", createWebhookEngine);
 
-export type { WebhookEngine };
-
 // The plaintext signing secret is stored under the "DATABASE" SecretStore
 // provider as { secret: string } (same shape as environment variables).
 const SigningSecretSchema = z.object({ secret: z.string() });

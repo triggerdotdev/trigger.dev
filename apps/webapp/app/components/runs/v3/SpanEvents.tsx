@@ -67,7 +67,7 @@ function SpanEvent({ spanEvent }: { spanEvent: OtelSpanEvent }) {
   );
 }
 
-export function SpanEventError({
+function SpanEventError({
   spanEvent,
   exception,
 }: {

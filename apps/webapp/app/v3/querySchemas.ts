@@ -451,7 +451,7 @@ export const runsSchema: TableSchema = {
 /**
  * Schema definition for the metrics table (trigger_dev.metrics_v1)
  */
-export const metricsSchema: TableSchema = {
+const metricsSchema: TableSchema = {
   name: "metrics",
   clickhouseName: "trigger_dev.metrics_v1",
   description: "Host and runtime metrics collected during task execution",
@@ -614,7 +614,7 @@ export const metricsSchema: TableSchema = {
  * Pre-aggregated into 10-second buckets. Counter columns re-aggregate with sum(),
  * gauges with max(), and wait_quantiles with quantilesMerge() — never FINAL.
  */
-export const queueMetricsSchema: TableSchema = {
+const queueMetricsSchema: TableSchema = {
   name: "queue_metrics",
   clickhouseName: "trigger_dev.queue_metrics_v1",
   description: "Per-queue depth, concurrency, throttling, and scheduling-delay metrics",
@@ -942,7 +942,7 @@ export const envMetricsSchema: TableSchema = {
 /**
  * Schema definition for the llm_metrics table (trigger_dev.llm_metrics_v1)
  */
-export const llmMetricsSchema: TableSchema = {
+const llmMetricsSchema: TableSchema = {
   name: "llm_metrics",
   clickhouseName: "trigger_dev.llm_metrics_v1",
   description: "LLM metrics: token usage, cost, performance, and behavior from GenAI spans",
@@ -1203,7 +1203,7 @@ export const llmMetricsSchema: TableSchema = {
  * Schema definition for the llm_models table (trigger_dev.llm_model_aggregates_v1)
  * Global table — no tenant columns. Contains anonymized cross-tenant model performance data.
  */
-export const llmModelsSchema: TableSchema = {
+const llmModelsSchema: TableSchema = {
   name: "llm_models",
   clickhouseName: "trigger_dev.llm_model_aggregates_v1",
   description:
@@ -1303,7 +1303,7 @@ export const llmModelsSchema: TableSchema = {
  * (e.g. per-tenant fairness). Rows are activity-bound: a (queue, key, bucket) row exists
  * only when that key had events, so key cardinality cannot inflate the table.
  */
-export const queueMetricsByKeySchema: TableSchema = {
+const queueMetricsByKeySchema: TableSchema = {
   name: "queue_metrics_by_key",
   clickhouseName: "trigger_dev.queue_metrics_ck_v1",
   description: "Per-concurrency-key queue metrics: backlog, throughput, and wait by key",
