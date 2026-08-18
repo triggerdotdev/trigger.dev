@@ -200,9 +200,6 @@ importers:
 
   apps/webapp:
     dependencies:
-      '@ai-sdk/anthropic':
-        specifier: ^3.0.0
-        version: 3.0.84(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^3.0.0
         version: 3.0.41(zod@3.25.76)
