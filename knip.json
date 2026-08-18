@@ -34,7 +34,7 @@
       "ignoreDependencies": ["@react-email/ui"]
     },
     "internal-packages/observability-map": {
-      "entry": ["fixtures/**/*.{js,mjs,cjs,ts,mts,cts,tsx}"]
+      "entry": ["src/index.ts", "fixtures/**/*.{js,mjs,cjs,ts,mts,cts,tsx}"]
     },
     "internal-packages/otlp-importer": {
       "ignoreDependencies": ["ts-proto"]
@@ -72,6 +72,9 @@
     "packages/core": {
       "ignoreFiles": ["src/**/*-cjs.cts"],
       "ignoreDependencies": ["ai-v7"]
+    },
+    "packages/react-hooks": {
+      "ignoreDependencies": ["@types/react-dom"]
     },
     "packages/rsc": {
       "ignoreFiles": ["src/**/*-cjs.cts"],
