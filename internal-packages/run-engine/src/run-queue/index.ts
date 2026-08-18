@@ -228,6 +228,13 @@ export type RunQueueOptions = {
     scanWindowMultiplier?: number;
     /** EXPIRE applied to ckVtime/ckVtimeFloor on every write. Default 86400. */
     stateTtlSeconds?: number;
+    /**
+     * Hard cap on remembered tags in ckVtimeIdle, enforced by rank so it holds even
+     * when the floor is pinned and the at-or-below-floor reap cannot fire. The lowest
+     * tags are dropped first: they sit nearest the floor, so they are the entries whose
+     * credit is worth least. Default 10000.
+     */
+    idleMaxEntries?: number;
   };
 };
 
@@ -317,6 +324,7 @@ export class RunQueue {
   readonly #ckVtimeQuantum: number;
   readonly #ckVtimeWindowMultiplier: number;
   readonly #ckVtimeStateTtl: number;
+  readonly #ckVtimeIdleMaxEntries: number;
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
@@ -334,6 +342,10 @@ export class RunQueue {
     this.#ckVtimeStateTtl = Math.max(
       1,
       Math.floor(options.ckVirtualTimeScheduling?.stateTtlSeconds ?? 86400)
+    );
+    this.#ckVtimeIdleMaxEntries = Math.max(
+      1,
+      Math.floor(options.ckVirtualTimeScheduling?.idleMaxEntries ?? 10000)
     );
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
@@ -2647,6 +2659,7 @@ export class RunQueue {
             String(this.#ckVtimeQuantum),
             String(this.#ckVtimeWindowMultiplier),
             String(this.#ckVtimeStateTtl),
+            String(this.#ckVtimeIdleMaxEntries),
             // Must stay last: the gauge fragment reads ARGV[#ARGV].
             metricsGaugeArg
           )
@@ -5330,6 +5343,7 @@ local maxCount = tonumber(ARGV[6] or '1')
 local quantum = tonumber(ARGV[7] or '1')
 local windowMultiplier = tonumber(ARGV[8] or '3')
 local stateTtl = tonumber(ARGV[9] or '86400')
+local idleMaxEntries = tonumber(ARGV[10] or '10000')
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
 
@@ -5593,6 +5607,13 @@ if dequeuedCount > 0 then
   -- NEW: an idle entry at or below the floor confers no credit, because registration takes
   -- max(floor, idleTag). Dropping it bounds the idle set at one op per serving call.
   redis.call('ZREMRANGEBYSCORE', ckVtimeIdleKey, '-inf', tostring(floor))
+  -- NEW: the reap above is worth nothing while the floor is pinned, which a workload that
+  -- keeps minting fresh concurrency keys does indefinitely (each one registers at the floor
+  -- and is served at it, so minServableTag never rises). Measured: the set grew by the drain
+  -- count every round and never shrank. Cap by rank as well, which does not depend on the
+  -- floor moving. Trimming the lowest tags first drops the entries nearest the floor, whose
+  -- remembered credit is worth least.
+  redis.call('ZREMRANGEBYRANK', ckVtimeIdleKey, 0, -(idleMaxEntries + 1))
   if redis.call('EXISTS', ckVtimeKey) == 1 then
     redis.call('EXPIRE', ckVtimeKey, stateTtl)
   end
@@ -7376,6 +7397,7 @@ declare module "@internal/redis" {
       quantum: string,
       windowMultiplier: string,
       stateTtlSeconds: string,
+      idleMaxEntries: string,
       metricsEnabled: string,
       callback?: Callback<[string[] | null, number[] | null]>
     ): Result<[string[] | null, number[] | null], Context>;
