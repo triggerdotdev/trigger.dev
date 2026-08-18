@@ -178,7 +178,8 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                 resources: this.#getResourcesForMachine(opts.machine),
                 securityContext: runnerSecurityContext(
                   env.KUBERNETES_RUNNER_SECURITY_CONTEXT,
-                  env.KUBERNETES_RUNNER_RUN_AS_USER
+                  env.KUBERNETES_RUNNER_RUN_AS_USER,
+                  opts.runtime
                 ),
                 env: [
                   {

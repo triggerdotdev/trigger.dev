@@ -157,22 +157,32 @@ describe("withRunnerSeccompProfile", () => {
 
 describe("runnerSecurityContext", () => {
   it("sets nothing when off", () => {
-    expect(runnerSecurityContext("off", 1000)).toBeUndefined();
+    expect(runnerSecurityContext("off", 1000, "node-24")).toBeUndefined();
   });
 
   it("drops all capabilities and blocks escalation at baseline", () => {
-    expect(runnerSecurityContext("baseline", 1000)).toEqual({
+    expect(runnerSecurityContext("baseline", 1000, "node-24")).toEqual({
       allowPrivilegeEscalation: false,
       capabilities: { drop: ["ALL"] },
     });
   });
 
-  it("additionally requires a non-root image when restricted", () => {
-    expect(runnerSecurityContext("restricted", 1000)).toEqual({
+  it("pins the configured uid when restricted", () => {
+    expect(runnerSecurityContext("restricted", 1000, "node-24")).toEqual({
       allowPrivilegeEscalation: false,
       capabilities: { drop: ["ALL"] },
       runAsNonRoot: true,
       runAsUser: 1000,
     });
+  });
+
+  it("pins bun's own uid, which differs from node's", () => {
+    expect(runnerSecurityContext("restricted", 1000, "bun")?.runAsUser).toBe(1001);
+  });
+
+  it("falls back to the configured uid when the runtime is unknown", () => {
+    for (const runtime of [undefined, null, "", "node", "node-22", "node-26"]) {
+      expect(runnerSecurityContext("restricted", 1000, runtime)?.runAsUser).toBe(1000);
+    }
   });
 });

@@ -97,18 +97,22 @@ export function withRunnerSeccompProfile(
   };
 }
 
+const BUN_RUN_AS_USER = 1001;
+
 /**
  * runnerSecurityContext maps a configured level onto the run container's security
  * context. "baseline" drops the capability bounding set and blocks setuid
  * escalation; "restricted" additionally pins the container to a non-root uid.
  *
- * The uid is set explicitly rather than relying on the image: the kubelet cannot
- * verify `runAsNonRoot` when an image declares a named user, and fails the
- * container instead.
+ * The uid is set explicitly rather than read from the image: the kubelet cannot
+ * verify `runAsNonRoot` against an image that declares a named user, and fails
+ * the container instead. Bun images carry their user at a different uid to
+ * node's, so the runtime selects which uid is pinned.
  */
 export function runnerSecurityContext(
   level: "off" | "baseline" | "restricted",
-  runAsUser: number
+  runAsUser: number,
+  runtime: string | null | undefined
 ): k8s.V1SecurityContext | undefined {
   if (level === "off") {
     return undefined;
@@ -117,6 +121,8 @@ export function runnerSecurityContext(
   return {
     allowPrivilegeEscalation: false,
     capabilities: { drop: ["ALL"] },
-    ...(level === "restricted" ? { runAsNonRoot: true, runAsUser } : {}),
+    ...(level === "restricted"
+      ? { runAsNonRoot: true, runAsUser: runtime === "bun" ? BUN_RUN_AS_USER : runAsUser }
+      : {}),
   };
 }
