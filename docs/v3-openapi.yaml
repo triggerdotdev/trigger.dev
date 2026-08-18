@@ -5744,6 +5744,10 @@ components:
           type: string
           example: "America/New_York"
           description: Defaults to "UTC". In IANA format ("America/New_York"). If set then it will trigger at the CRON frequency in that timezone and respect daylight savings time.
+        window:
+          type: string
+          example: "30m"
+          description: Optionally spread runs by assigning each schedule a stable time within this window after its cron time. Use a whole duration in minutes or hours up to 24 hours ("30m", "2h", "24h"), or a percentage of the interval between runs ("30%", "100%"). Use "0m" for no spreading.
       required:
         - task
         - cron
@@ -5761,6 +5765,10 @@ components:
           type: string
           example: "America/New_York"
           description: Defaults to "UTC". In IANA format ("America/New_York"). If set then it will trigger at the CRON frequency in that timezone and respect daylight savings time.
+        window:
+          type: string
+          example: "30m"
+          description: Optionally spread runs by assigning each schedule a stable time within this window after its cron time. Use a whole duration in minutes or hours up to 24 hours ("30m", "2h", "24h"), or a percentage of the interval between runs ("30%", "100%"). Use "0m" for no spreading.
       required:
         - task
         - cron
@@ -5812,11 +5820,20 @@ components:
           type: string
           example: "America/New_York"
           description: Defaults to UTC. In IANA format, if set then it will trigger at the CRON frequency in that timezone and respect daylight savings time.
+        window:
+          type: string
+          example: "30m"
+          description: The configured window used to spread runs after their cron time, if set. A whole duration such as "30m" or "2h", or a percentage such as "30%".
         nextRun:
           type: string
           format: date-time
-          description: The next time the schedule will run
+          description: The next nominal cron time the schedule will run
           example: "2024-04-01T00:00:00Z"
+        nextRunEffectiveAt:
+          type: string
+          format: date-time
+          description: The stable assigned time the next run will actually start. Equals `nextRun` when no window is set.
+          example: "2024-04-01T00:12:00Z"
         environments:
           type: array
           items:
