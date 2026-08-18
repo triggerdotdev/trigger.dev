@@ -371,6 +371,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             schedulerName: env.KUBERNETES_SCHEDULER_NAME,
           }
         : {}),
+      ...(env.KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME
+        ? {
+            priorityClassName: env.KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME,
+          }
+        : {}),
       ...nodetypeNodeSelector(env.KUBERNETES_WORKER_NODETYPE_LABEL),
       ...(env.KUBERNETES_POD_DNS_NDOTS_OVERRIDE_ENABLED
         ? {
