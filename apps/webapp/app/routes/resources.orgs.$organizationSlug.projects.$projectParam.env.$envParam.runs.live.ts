@@ -48,7 +48,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             projectId: project.id,
             environmentId: environment.id,
             runId: runIds,
-            runSelect: deriveRunSelect(columns.visibleStandardIds, columns.smartSources),
+            runSelect: deriveRunSelect(
+              columns.visibleStandardIds,
+              columns.smartSources.filter((source) => source !== "payload")
+            ),
             page: { size: 100 },
           })
           .then(({ runs: listedRuns }) => listedRuns.map(mapRunToLiveFields))

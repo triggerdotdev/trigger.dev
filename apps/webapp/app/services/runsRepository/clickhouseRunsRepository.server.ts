@@ -308,18 +308,20 @@ export class ClickHouseRunsRepository implements IRunsRepository {
       ? { ...options.runSelect, id: true }
       : LIST_RUN_DEFAULT_SELECT;
 
-    let runs = await this.#hydrateRunsByIds<ListedRun>(runIds, (client, ids) =>
-      store.findRuns(
-        {
-          where: {
-            id: {
-              in: boundedIn(ids),
+    let runs = await this.#hydrateRunsByIds<ListedRun>(
+      runIds,
+      (client, ids) =>
+        store.findRuns(
+          {
+            where: {
+              id: {
+                in: boundedIn(ids),
+              },
             },
+            select,
           },
-          select,
-        },
-        client
-      ) as Promise<ListedRun[]>
+          client
+        ) as Promise<ListedRun[]>
     );
 
     // ClickHouse is slightly delayed, so we're going to do in-memory status filtering too

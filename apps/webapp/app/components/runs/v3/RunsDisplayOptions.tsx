@@ -105,7 +105,7 @@ export function RunsDisplayOptions() {
     const to = arr.findIndex((o) => keyFor(o.col) === toKey);
     if (from < 0 || to < 0) return;
     const [moved] = arr.splice(from, 1);
-    arr.splice(to, 0, moved);
+    arr.splice(from < to ? to - 1 : to, 0, moved);
     applyLayout(arr);
   };
 
@@ -260,9 +260,7 @@ function ColumnRow({
       {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500" />}
       {locked ? <Checkbox checked disabled /> : <Checkbox checked={checked} onChange={onToggle} />}
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span
-          className={cn("truncate text-sm", checked ? "text-text-bright" : "text-text-dimmed")}
-        >
+        <span className={cn("truncate text-sm", checked ? "text-text-bright" : "text-text-dimmed")}>
           {col.def.label}
         </span>
         {isSmart && <BoltIcon className="size-3.5 flex-none text-text-dimmed" />}

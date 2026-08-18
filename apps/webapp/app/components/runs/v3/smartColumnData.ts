@@ -95,8 +95,10 @@ export function getAtPath(root: unknown, path: string): unknown {
 
     if (match[1] !== undefined) tokens.push({ kind: "dot", key: match[1] });
     else if (match[2] !== undefined) tokens.push({ kind: "index", index: Number(match[2]) });
-    else if (match[3] !== undefined) tokens.push({ kind: "key", key: unescapeBracketKey(match[3]) });
-    else if (match[4] !== undefined) tokens.push({ kind: "key", key: unescapeBracketKey(match[4]) });
+    else if (match[3] !== undefined)
+      tokens.push({ kind: "key", key: unescapeBracketKey(match[3]) });
+    else if (match[4] !== undefined)
+      tokens.push({ kind: "key", key: unescapeBracketKey(match[4]) });
   }
   if (lastIndex !== normalized.length) return undefined;
 

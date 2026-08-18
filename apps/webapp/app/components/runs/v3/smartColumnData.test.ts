@@ -1,11 +1,6 @@
 import superjson from "superjson";
 import { describe, expect, it } from "vitest";
-import {
-  extractSmartValue,
-  getAtPath,
-  labelFromPath,
-  parseSource,
-} from "./smartColumnData";
+import { extractSmartValue, getAtPath, labelFromPath, parseSource } from "./smartColumnData";
 
 describe("parseSource", () => {
   it("reports empty for missing data", () => {
