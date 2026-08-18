@@ -100,8 +100,6 @@ function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): 
   return segments.join("/");
 }
 
-;
-
 /**
  * Pass `organizationBasinName` wherever the caller has it. It mirrors the
  * organization step of {@link resolveStreamBasin}, and is what lets a

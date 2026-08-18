@@ -164,9 +164,7 @@ async function createOrganizationAccessToken({
   };
 }
 
-type CreatedOrganizationAccessToken = Awaited<
-  ReturnType<typeof createOrganizationAccessToken>
->;
+type CreatedOrganizationAccessToken = Awaited<ReturnType<typeof createOrganizationAccessToken>>;
 
 const tokenPrefix = "tr_oat_";
 

@@ -53,11 +53,7 @@ export async function startSpanWithEnv<T>(
   });
 }
 
-async function emitDebugLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
+async function emitDebugLog(logger: Logger, message: string, params: Record<string, unknown> = {}) {
   logger.emit({
     severityNumber: SeverityNumber.DEBUG,
     body: message,
@@ -65,11 +61,7 @@ async function emitDebugLog(
   });
 }
 
-async function emitInfoLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
+async function emitInfoLog(logger: Logger, message: string, params: Record<string, unknown> = {}) {
   logger.emit({
     severityNumber: SeverityNumber.INFO,
     body: message,
@@ -77,11 +69,7 @@ async function emitInfoLog(
   });
 }
 
-async function emitErrorLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
+async function emitErrorLog(logger: Logger, message: string, params: Record<string, unknown> = {}) {
   logger.emit({
     severityNumber: SeverityNumber.ERROR,
     body: message,
@@ -89,11 +77,7 @@ async function emitErrorLog(
   });
 }
 
-async function emitWarnLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
+async function emitWarnLog(logger: Logger, message: string, params: Record<string, unknown> = {}) {
   logger.emit({
     severityNumber: SeverityNumber.WARN,
     body: message,

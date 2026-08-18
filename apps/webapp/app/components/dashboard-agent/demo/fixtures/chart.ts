@@ -16,13 +16,12 @@ const SERIES: Record<string, number[]> = {
 const START_MS = Date.parse("2026-07-26T23:00:00.000Z");
 const HOUR_MS = 3_600_000;
 
-const demoChartRows: Record<string, unknown>[] = Object.entries(SERIES).flatMap(
-  ([task, points]) =>
-    points.map((failures, i) => ({
-      hour: new Date(START_MS + i * HOUR_MS).toISOString(),
-      task_identifier: task,
-      failures,
-    }))
+const demoChartRows: Record<string, unknown>[] = Object.entries(SERIES).flatMap(([task, points]) =>
+  points.map((failures, i) => ({
+    hour: new Date(START_MS + i * HOUR_MS).toISOString(),
+    task_identifier: task,
+    failures,
+  }))
 );
 
 const demoChartConfig: ChartConfiguration = {

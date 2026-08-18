@@ -16,7 +16,6 @@ import type {
 } from "@trigger.dev/database";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
-;
 
 // ============================================================================
 // Event Creation Types

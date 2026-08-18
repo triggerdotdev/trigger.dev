@@ -84,8 +84,6 @@ import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 /** The task that polls a watch. Lives in the agent project, triggered by us. */
 const WATCH_TASK_ID = "dashboard-agent-watch";
 
-;
-
 export type WatchAuthorization =
   | { ok: true; environment: AuthenticatedEnvironment }
   | { ok: false; reason: "access_revoked" };

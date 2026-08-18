@@ -70,12 +70,6 @@ import { ChartZoom } from "./ChartZoom";
 
 // Re-export types
 export type { ChartConfig, ChartState } from "./Chart";
-;
-;
-;
-;
-;
-;
 
 /**
  * Chart compound component for building flexible, composable charts.
@@ -98,9 +92,5 @@ export const Chart = {
 };
 
 // Also export individual components for direct imports
-;
 
 // Re-export context hook for advanced usage
-;
-;
-;

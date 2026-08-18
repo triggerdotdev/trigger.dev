@@ -33,10 +33,6 @@ export type {
   WatchQueueOldestAge,
   WatchRunRow,
 } from "./dashboardAgentWatchCheckBase";
-;
-;
-;
-;
 
 /**
  * The previous check's facts out of `lastResult`, which holds raw facts, the check endpoint's

@@ -50,13 +50,7 @@ function BatchStatusLabel({ status }: { status: BatchTaskRunStatus }) {
   );
 }
 
-function BatchStatusIcon({
-  status,
-  className,
-}: {
-  status: BatchTaskRunStatus;
-  className: string;
-}) {
+function BatchStatusIcon({ status, className }: { status: BatchTaskRunStatus; className: string }) {
   switch (status) {
     case "PROCESSING":
       return <Spinner className={cn(batchStatusColor(status), className)} />;

@@ -13,11 +13,7 @@ const managedIndexWorker = join(sourceDir, "entryPoints", "managed-index-worker.
 
 const unmanagedRunController = join(sourceDir, "entryPoints", "unmanaged-run-controller.js");
 const unmanagedRunWorker = join(sourceDir, "entryPoints", "unmanaged-run-worker.js");
-const unmanagedIndexController = join(
-  sourceDir,
-  "entryPoints",
-  "unmanaged-index-controller.js"
-);
+const unmanagedIndexController = join(sourceDir, "entryPoints", "unmanaged-index-controller.js");
 const unmanagedIndexWorker = join(sourceDir, "entryPoints", "unmanaged-index-worker.js");
 
 export const telemetryEntryPoint = join(sourceDir, "entryPoints", "loader.js");

@@ -313,8 +313,6 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
 // surfaces classify a code the same way. `action` is a primary button, `docs` the
 // docs button, `reference` a text link because a button would promise an action,
 // and `note` is prose for an option stated rather than offered.
-;
-
 /**
  * The recovery-watch offer. No report emits it; the card adds it. Two codes
  * because it is phrased differently when it is the only thing on offer.

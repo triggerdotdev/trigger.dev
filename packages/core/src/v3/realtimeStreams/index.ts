@@ -9,10 +9,6 @@ import type {
 // Re-export the session-scoped stream instance so the SDK's
 // `SessionOutputChannel.pipe` / `.writer` can construct it without reaching
 // into the core package's internals.
-;
-;
-;
-
 const API_NAME = "realtime-streams";
 
 const NOOP_MANAGER = new NoopRealtimeStreamsManager();

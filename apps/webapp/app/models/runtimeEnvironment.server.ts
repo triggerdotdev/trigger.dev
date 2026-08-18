@@ -499,10 +499,7 @@ export async function findEnvironmentFromRun(
   };
 }
 
-async function createNewSession(
-  environment: Pick<RuntimeEnvironment, "id">,
-  ipAddress: string
-) {
+async function createNewSession(environment: Pick<RuntimeEnvironment, "id">, ipAddress: string) {
   const session = await prisma.runtimeEnvironmentSession.create({
     data: {
       environmentId: environment.id,

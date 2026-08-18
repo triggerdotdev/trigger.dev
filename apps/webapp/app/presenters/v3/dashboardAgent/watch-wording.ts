@@ -7,33 +7,20 @@
  */
 export {
   formatWatchCadence,
-  
-  
-  
   formatWatchWindow,
   immediateWatchMessage,
   noteFor,
   presentResolvedWatch,
   WATCH_IN_CHAT_DELIVERY_LINE,
   WATCH_PRESENTATION_FALLBACK,
-  
   shortFingerprint,
   watchConditionLabel,
-  
   watchConfirmationBlockBody,
   watchDurationLabel,
-  
-  
   watchIdentityValue,
-  
   watchNoteLine,
   watchOneShotBlockBody,
-  
   watchSubjectLabel,
-  
   watchTooltipLabel,
-  
-  
   type WatchResolvedInput,
-  
 } from "@internal/dashboard-agent-contracts";

@@ -22,7 +22,7 @@ import {
  */
 
 // Re-exported so callers/tests don't reach into the underlying module.
-export { assertSafeWebhookUrl,  UnsafeWebhookUrlError };
+export { assertSafeWebhookUrl, UnsafeWebhookUrlError };
 
 const MAX_REDIRECTS = 5;
 

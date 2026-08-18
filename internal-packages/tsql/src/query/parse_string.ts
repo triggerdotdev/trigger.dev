@@ -54,10 +54,7 @@ function parseStringLiteralCtx(ctx: { getText(): string }): string {
   return parseStringLiteralText(text);
 }
 
-function parseStringTextCtx(
-  ctx: { getText(): string },
-  escapeQuotes: boolean = true
-): string {
+function parseStringTextCtx(ctx: { getText(): string }, escapeQuotes: boolean = true): string {
   /** Converts a STRING_TEXT received from antlr via ctx.getText() into a JavaScript string */
   let text = ctx.getText();
   if (escapeQuotes) {

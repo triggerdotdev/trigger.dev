@@ -200,10 +200,7 @@ export function fmtValue(value: number, unit: Unit): string {
 }
 
 /** Fill the `{token}` placeholders a message catalog leaves for the renderer. */
-function fillTokens(
-  template: string,
-  tokens: Record<string, string | number | undefined>
-): string {
+function fillTokens(template: string, tokens: Record<string, string | number | undefined>): string {
   return template.replace(/\{(\w+)\}/g, (whole, key: string) => {
     const value = tokens[key];
     if (value === undefined) return whole;

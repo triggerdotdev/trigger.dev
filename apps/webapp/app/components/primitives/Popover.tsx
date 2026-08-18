@@ -328,9 +328,6 @@ export {
   PopoverMenuItem,
   PopoverSectionHeader,
   PopoverEllipseTrigger,
-  
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 };
-
-;

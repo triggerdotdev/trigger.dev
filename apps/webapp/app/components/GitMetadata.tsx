@@ -14,11 +14,7 @@ export function GitMetadata({ git }: { git?: GitMetaLinks | null }) {
   );
 }
 
-function GitMetadataBranch({
-  git,
-}: {
-  git: Pick<GitMetaLinks, "branchUrl" | "branchName">;
-}) {
+function GitMetadataBranch({ git }: { git: Pick<GitMetaLinks, "branchUrl" | "branchName"> }) {
   return (
     <SimpleTooltip
       button={

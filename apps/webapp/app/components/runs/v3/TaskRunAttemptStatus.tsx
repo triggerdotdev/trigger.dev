@@ -12,9 +12,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TaskRunAttemptStatus } from "~/database-types";
 import { cn } from "~/utils/cn";
 
-const allTaskRunAttemptStatuses = Object.values(
-  TaskRunAttemptStatus
-) as TaskRunAttemptStatusType[];
+const allTaskRunAttemptStatuses = Object.values(TaskRunAttemptStatus) as TaskRunAttemptStatusType[];
 
 export type ExtendedTaskAttemptStatus = TaskRunAttemptStatusType | "ENQUEUED";
 
@@ -33,11 +31,7 @@ export function TaskRunAttemptStatusCombo({
   );
 }
 
-function TaskRunAttemptStatusLabel({
-  status,
-}: {
-  status: ExtendedTaskAttemptStatus | null;
-}) {
+function TaskRunAttemptStatusLabel({ status }: { status: ExtendedTaskAttemptStatus | null }) {
   return (
     // system-mono-label: System themes uncolor the label (see tailwind.css)
     <span className={cn("system-mono-label", runAttemptStatusClassNameColor(status))}>

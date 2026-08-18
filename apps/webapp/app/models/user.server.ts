@@ -64,9 +64,7 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
   }
 }
 
-async function findOrCreateMagicLinkUser({
-  email,
-}: FindOrCreateMagicLink): Promise<LoggedInUser> {
+async function findOrCreateMagicLinkUser({ email }: FindOrCreateMagicLink): Promise<LoggedInUser> {
   assertEmailAllowed(email);
 
   const existingUser = await prisma.user.findFirst({

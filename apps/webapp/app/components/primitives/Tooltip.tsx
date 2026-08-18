@@ -144,4 +144,4 @@ export function InfoIconTooltip({
   );
 }
 
-export { SimpleTooltip, Tooltip,  TooltipContent, TooltipProvider, TooltipTrigger };
+export { SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };

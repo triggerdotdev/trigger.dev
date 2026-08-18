@@ -27,9 +27,7 @@ import { getLimit } from "./platform.v3.server";
 import { timeFilters, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import parse from "parse-duration";
 import { querySchemas, QueryScopeSchema, type QueryScope } from "~/v3/querySchemas";
-
-;
-export type {  TSQLQueryResult, QueryScope };
+export type { TSQLQueryResult, QueryScope };
 
 const scopeToEnum = {
   organization: "ORGANIZATION",

@@ -360,5 +360,3 @@ export const MetricsLayout = {
   Content: MetricsLayoutContent,
   Sidebar: MetricsLayoutSidebar,
 };
-
-;
