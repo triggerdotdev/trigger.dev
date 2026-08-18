@@ -91,6 +91,8 @@ Scan your code before pushing with:
 pnpm run knip
 ```
 
+If there are false positives, edit ./knip.json so that it passes.
+
 ### Imports
 
 **Prefer static imports over dynamic imports.** Only use dynamic `import()` when:
