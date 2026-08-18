@@ -160,19 +160,17 @@ function Statuses() {
       filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
       shortcut={{ key: "s" }}
     >
-      {(matches, { shortcutsEnabled }) => (
-        <>
-          {matches?.map((item, index) => (
-            <SelectItem
-              key={item.value}
-              value={item.value}
-              shortcut={shortcutFromIndex(index, { shortcutsEnabled })}
-            >
-              <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
-            </SelectItem>
-          ))}
-        </>
-      )}
+      {(matches, { shortcutsEnabled }) =>
+        matches?.map((item, index) => (
+          <SelectItem
+            key={item.value}
+            value={item.value}
+            shortcut={shortcutFromIndex(index, { shortcutsEnabled })}
+          >
+            <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
+          </SelectItem>
+        ))
+      }
     </Select>
   );
 }
