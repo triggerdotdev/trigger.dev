@@ -34,7 +34,7 @@
     ],
     "no-empty-pattern": "off",
     "no-control-regex": "off",
-    "typescript/no-non-null-asserted-optional-chain": "off",
+    "typescript/no-non-null-asserted-optional-chain": "error",
     "no-unused-expressions": [
       "error",
       {
@@ -47,6 +47,9 @@
     "import/namespace": "off",
     "react-hooks/exhaustive-deps": "off",
     "react-hooks/rules-of-hooks": "off",
+    "guard-for-in": "error",
+    "symbol-description": "error",
+    "react/jsx-no-target-blank": "error",
     "trigger/no-thrown-unawaited-redirect": "error",
     "trigger-prisma/no-unbounded-list-filter": "error",
     "trigger-prisma/no-unbounded-list-filter-in-args-helper": "error"

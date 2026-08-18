@@ -605,7 +605,9 @@ async function waitForRetry(
 // https://stackoverflow.com/a/34491287
 export function isEmptyObj(obj: object | null | undefined): boolean {
   if (!obj) return true;
-  for (const _k in obj) return false;
+  for (const key in obj) {
+    if (Object.hasOwn(obj, key)) return false;
+  }
   return true;
 }
 
