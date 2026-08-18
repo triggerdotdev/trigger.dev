@@ -142,9 +142,9 @@ To use imperative schedules you need to do two things:
 
 ## Spreading runs with windows
 
-By default a schedule runs at its exact cron time. When many schedules share the same cron pattern — for example a daily `0 0 * * *` across thousands of users — they all fire at the same instant and create a load spike. A **window** spreads those runs out: each schedule is assigned a stable time within the window after its cron time, so the load is smoothed while each schedule keeps firing at a predictable, repeatable moment.
+By default a schedule runs at its exact cron time. When many schedules share the same cron pattern, such as a daily `0 9 * * *`, they all fire at the same time and load your downstream systems as well as ours. A **window** spreads those runs out: each schedule is assigned a stable time within the window after its cron time, so the load is smoothed while each schedule keeps firing at a predictable, repeatable moment.
 
-The assigned time is deterministic. A given schedule always lands at the same offset for a given interval, so runs don't jump around between occurrences.
+The assigned time is deterministic. A given schedule always lands at the same offset for a given interval, so runs don't jump around between occurrences. And you can always see exactly when the next run will start.
 
 Set a `window` as either:
 
