@@ -1,5 +1,5 @@
-import { containerTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
+import { containerTest } from "./index";
 
 vi.setConfig({ testTimeout: 10_000 });
 
