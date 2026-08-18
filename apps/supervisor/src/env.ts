@@ -185,6 +185,8 @@ export const Env = z
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
     KUBERNETES_STRIP_IMAGE_DIGEST: BoolEnv.default(false),
+    KUBERNETES_IMAGE_REGISTRY_REWRITE_FROM: z.string().optional(),
+    KUBERNETES_IMAGE_REGISTRY_REWRITE_TO: z.string().optional(),
     KUBERNETES_CPU_REQUEST_MIN_CORES: z.coerce.number().min(0).default(0),
     KUBERNETES_CPU_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(0.75), // Ratio of CPU limit, so 0.75 = 75% of CPU limit
     KUBERNETES_MEMORY_REQUEST_MIN_GB: z.coerce.number().min(0).default(0),
