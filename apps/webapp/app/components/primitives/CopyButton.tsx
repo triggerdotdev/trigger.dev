@@ -52,6 +52,7 @@ export function CopyButton({
           onClick={copy}
           className={cn("shrink-0", buttonClassName)}
           tooltip={showTooltip ? (copied ? "Copied!" : "Copy") : undefined}
+          aria-label={children ? undefined : copied ? "Copied" : "Copy"}
           LeadingIcon={
             copied ? (
               <ClipboardCheckIcon

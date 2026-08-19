@@ -843,6 +843,35 @@ function CopyableCell({
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(value);
 
+  // The button (with its aria-label) stays mounted at all times so keyboard users can always
+  // reach it. The Radix tooltip subtree is comparatively expensive to keep alive for every
+  // visible cell of a virtualized grid, so it's only mounted while the cell is hovered - the
+  // tooltip is a hover affordance, not required for the button's accessible name.
+  const copyButton = (
+    <button
+      type="button"
+      aria-label={copied ? "Copied" : "Copy"}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        copy();
+      }}
+      className={cn(
+        "absolute right-1 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus:opacity-100",
+        isHovered ? "opacity-100" : "pointer-events-none opacity-0",
+        copied
+          ? "text-green-500"
+          : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
+      )}
+    >
+      {copied ? (
+        <ClipboardCheckIcon className="size-3.5" />
+      ) : (
+        <ClipboardIcon className="size-3.5" />
+      )}
+    </button>
+  );
+
   return (
     <div
       className={cn(
@@ -856,36 +885,17 @@ function CopyableCell({
       onMouseLeave={() => setIsHovered(false)}
     >
       <span className="flex items-center truncate">{children}</span>
-      <SimpleTooltip
-        asChild
-        tabbable
-        button={
-          <button
-            type="button"
-            aria-label={copied ? "Copied" : "Copy"}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              copy();
-            }}
-            className={cn(
-              "absolute right-1 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus:opacity-100",
-              isHovered ? "opacity-100" : "pointer-events-none opacity-0",
-              copied
-                ? "text-green-500"
-                : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
-            )}
-          >
-            {copied ? (
-              <ClipboardCheckIcon className="size-3.5" />
-            ) : (
-              <ClipboardIcon className="size-3.5" />
-            )}
-          </button>
-        }
-        content={copied ? "Copied!" : "Copy"}
-        disableHoverableContent
-      />
+      {isHovered ? (
+        <SimpleTooltip
+          asChild
+          tabbable
+          button={copyButton}
+          content={copied ? "Copied!" : "Copy"}
+          disableHoverableContent
+        />
+      ) : (
+        copyButton
+      )}
     </div>
   );
 }
