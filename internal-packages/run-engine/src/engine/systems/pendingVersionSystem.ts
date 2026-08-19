@@ -47,7 +47,7 @@ type ExternalDeploymentWorker = {
   cliVersion?: string;
 };
 
-function readExternalDeploymentIdAnnotation(annotations: unknown): string | undefined {
+export function readExternalDeploymentIdAnnotation(annotations: unknown): string | undefined {
   if (typeof annotations !== "object" || annotations === null) {
     return undefined;
   }
