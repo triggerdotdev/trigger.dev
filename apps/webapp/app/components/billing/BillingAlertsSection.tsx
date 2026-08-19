@@ -140,14 +140,18 @@ export function BillingAlertsSection({
   );
   const maxAlerts = isPercentageMode ? MAX_PERCENTAGE_ALERTS : MAX_ABSOLUTE_ALERTS;
 
+  /* oxlint-disable react/react-compiler -- Stable derived thresholds prevent the synchronization effect from resetting local edits. */
   const savedThresholds = useMemo(
     () => storedAlertsToThresholds(alerts, billingLimitMode, effectiveLimitCents, planLimitCents),
     [alerts, billingLimitMode, effectiveLimitCents, planLimitCents]
   );
+  /* oxlint-enable react/react-compiler */
   const savedEmails = useMemo(() => alerts.emails, [alerts.emails]);
-  const hasLegacySpikes = useMemo(
-    () => hasLegacySpikeAlertLevels(alerts, billingLimitMode, effectiveLimitCents, planLimitCents),
-    [alerts, billingLimitMode, effectiveLimitCents, planLimitCents]
+  const hasLegacySpikes = hasLegacySpikeAlertLevels(
+    alerts,
+    billingLimitMode,
+    effectiveLimitCents,
+    planLimitCents
   );
 
   const nextThresholdIdRef = useRef(savedThresholds.length);

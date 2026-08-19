@@ -1430,10 +1430,7 @@ function QueueEnvMetricChart({
     [tile.id, tile.label, lineColor]
   );
 
-  const { tickFormatter, tooltipLabelFormatter } = useMemo(
-    () => buildActivityTimeAxis(data),
-    [data]
-  );
+  const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(data);
   const hasData = data.length > 0 && data.some((p) => Number(p[tile.id] ?? 0) > 0);
 
   // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty
