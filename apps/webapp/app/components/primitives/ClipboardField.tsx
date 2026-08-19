@@ -127,14 +127,7 @@ export function ClipboardField({
 
   return (
     <span className={cn(container, fullWidth ? "w-full" : "max-w-fit", className)}>
-      {icon && (
-        <span
-          onClick={() => inputIcon.current && inputIcon.current.focus()}
-          className="flex items-center pl-1"
-        >
-          {icon}
-        </span>
-      )}
+      {icon && <span className="flex items-center pl-1">{icon}</span>}
       <input
         type="text"
         ref={inputIcon}

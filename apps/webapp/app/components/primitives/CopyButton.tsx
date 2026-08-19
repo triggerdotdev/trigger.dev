@@ -46,7 +46,9 @@ export function CopyButton({
 
   const button =
     variant === "icon" ? (
-      <span
+      <button
+        type="button"
+        aria-label={copied ? "Copied" : "Copy"}
         onClick={copy}
         className={cn(
           buttonSize,
@@ -62,7 +64,7 @@ export function CopyButton({
         ) : (
           <ClipboardIcon className={iconSize} />
         )}
-      </span>
+      </button>
     ) : (
       <Button
         variant={`${buttonVariant}/${size === "extra-small" ? "small" : size}`}

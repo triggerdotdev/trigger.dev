@@ -39,7 +39,11 @@ export function CopyableText({
 
   if (resolvedVariant === "icon-right") {
     const iconButton = (
-      <span
+      <button
+        type="button"
+        aria-label={copied ? "Copied" : "Copy"}
+        onClick={copy}
+        onMouseDown={(e) => e.stopPropagation()}
         className={cn(
           "ml-1 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
           asChild && "p-1",
@@ -53,7 +57,7 @@ export function CopyableText({
         ) : (
           <ClipboardIcon className="size-3.5" />
         )}
-      </span>
+      </button>
     );
 
     return (
@@ -72,13 +76,11 @@ export function CopyableText({
           {value}
         </span>
         <span
-          onClick={copy}
-          onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute top-0 z-10 size-6 font-sans",
+            "absolute top-0 z-10 flex size-6 font-sans transition-opacity focus-within:opacity-100",
             // Truncated values reserve a right gutter, so the button sits inside it
             truncate ? "right-0" : "-right-6",
-            isHovered ? "flex" : "hidden"
+            isHovered ? "opacity-100" : "pointer-events-none opacity-0"
           )}
         >
           {hideTooltip ? (
