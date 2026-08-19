@@ -99,16 +99,16 @@ export function kindToLevel(kind: string, status: string): LogLevel {
 export function getLevelColor(level: LogLevel): string {
   switch (level) {
     case "ERROR":
-      return "text-error bg-error/10 border-error/20";
+      return "text-error bg-error/10 border-error/20 system:border-transparent system:bg-error system:text-white";
     case "WARN":
-      return "text-warning bg-warning/10 border-warning/20";
+      return "text-warning bg-warning/10 border-warning/20 system:border-transparent system:bg-warning system:text-white";
     case "TRACE":
-      return "text-log-trace bg-log-trace/10 border-log-trace/20";
+      return "text-log-trace bg-log-trace/10 border-log-trace/20 system:border-transparent system:bg-log-trace system:text-white";
     case "DEBUG":
-      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10";
+      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10 system:border-transparent system:bg-charcoal-500 system:text-white";
     case "INFO":
-      return "text-pending bg-pending/10 border-pending/20";
+      return "text-pending bg-pending/10 border-pending/20 system:border-transparent system:bg-pending system:text-white";
     default:
-      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10";
+      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10 system:border-transparent system:bg-charcoal-500 system:text-white";
   }
 }

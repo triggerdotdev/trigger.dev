@@ -15,13 +15,12 @@ export type AgentTone = "neutral" | "success" | "warning" | "error";
 // The `system:` overrides stop the Badge `small` variant tinting every chip blue.
 const TONE_BADGE: Record<AgentTone, string> = {
   neutral:
-    "border-border-bright text-text-dimmed system:border-transparent system:bg-charcoal-500/10 system:text-text-dimmed",
+    "border-border-bright text-text-dimmed system:border-transparent system:bg-charcoal-500 system:text-white",
   success:
-    "border-success/40 text-success system:border-transparent system:bg-success/10 system:text-success",
+    "border-success/40 text-success system:border-transparent system:bg-success system:text-white",
   warning:
-    "border-warning/40 text-warning system:border-transparent system:bg-warning/10 system:text-warning",
-  error:
-    "border-error/40 text-error system:border-transparent system:bg-error/10 system:text-error",
+    "border-warning/40 text-warning system:border-transparent system:bg-warning system:text-white",
+  error: "border-error/40 text-error system:border-transparent system:bg-error system:text-white",
 };
 
 export const TONE_ICON_COLOR: Record<AgentTone, string> = {

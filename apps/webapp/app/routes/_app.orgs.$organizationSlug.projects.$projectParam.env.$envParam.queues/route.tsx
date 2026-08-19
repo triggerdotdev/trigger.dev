@@ -1572,11 +1572,11 @@ function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): Queu
 
 // Tint + colored text, sized like the error status chips (see ErrorStatusBadge).
 const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
-  Paused: "bg-warning/10 text-warning",
-  "At capacity": "bg-warning/10 text-warning",
-  Backlogged: "bg-blue-500/10 text-blue-500",
-  Active: "bg-success/10 text-success",
-  Idle: "bg-charcoal-500/10 text-text-dimmed",
+  Paused: "bg-warning/10 text-warning system:bg-warning system:text-white",
+  "At capacity": "bg-warning/10 text-warning system:bg-warning system:text-white",
+  Backlogged: "bg-blue-500/10 text-blue-500 system:bg-blue-500 system:text-white",
+  Active: "bg-success/10 text-success system:bg-success system:text-white",
+  Idle: "bg-charcoal-500/10 text-text-dimmed system:bg-charcoal-500 system:text-white",
 };
 
 function QueueHealthBadge(health: QueueHealth) {
