@@ -1,6 +1,6 @@
 import { useAnimate } from "framer-motion";
 import { HourglassIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export function AnimatedHourglassIcon({
   className,
@@ -10,6 +10,7 @@ export function AnimatedHourglassIcon({
   delay?: number;
 }) {
   const [scope, animate] = useAnimate();
+  const initialDelay = useRef(delay);
 
   useEffect(() => {
     const controls = animate(
@@ -19,11 +20,11 @@ export function AnimatedHourglassIcon({
         [scope.current, { rotate: 180 }, { duration: 0.7 }],
         [scope.current, { rotate: 360 }, { duration: 0.3 }],
       ],
-      { repeat: Infinity, delay }
+      { repeat: Infinity, delay: initialDelay.current }
     );
 
     return () => controls.stop();
-  }, [animate, delay, scope]);
+  }, [animate, scope]);
 
   return <HourglassIcon ref={scope} className={className} />;
 }

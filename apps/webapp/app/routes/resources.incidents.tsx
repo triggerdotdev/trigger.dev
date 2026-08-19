@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import { useFetcher, type ShouldRevalidateFunction } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { useLatest } from "react-use";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
@@ -42,6 +43,7 @@ export function useIncidentStatus() {
   const { isManagedCloud } = useFeatures();
   const fetcher = useFetcher<typeof loader>();
   const { load, state } = fetcher;
+  const stateRef = useLatest(state);
   const hasInitiallyFetched = useRef(false);
 
   useEffect(() => {
@@ -52,16 +54,20 @@ export function useIncidentStatus() {
       hasInitiallyFetched.current = true;
       load("/resources/incidents");
     }
+  }, [isManagedCloud, load, state]);
+
+  useEffect(() => {
+    if (!isManagedCloud) return;
 
     // Poll every 60 seconds
     const interval = setInterval(() => {
-      if (state === "idle") {
+      if (stateRef.current === "idle") {
         load("/resources/incidents");
       }
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isManagedCloud, load, state]);
+  }, [isManagedCloud, load, stateRef]);
 
   return {
     status: fetcher.data?.status ?? "operational",

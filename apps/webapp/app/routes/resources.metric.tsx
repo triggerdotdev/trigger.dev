@@ -275,20 +275,7 @@ export function MetricWidget({
   // Reload periodically and on focus (onLoad: false — the useEffect below handles initial load)
   useInterval({ interval: refreshIntervalMs, callback: submit, onLoad: false });
 
-  const reloadKey = JSON.stringify({
-    query: props.query,
-    from: props.from,
-    to: props.to,
-    period: props.period,
-    scope: props.scope,
-    taskIdentifiers: props.taskIdentifiers,
-    queues: props.queues,
-    responseModels: props.responseModels,
-    promptSlugs: props.promptSlugs,
-    promptVersions: props.promptVersions,
-    operations: props.operations,
-    providers: props.providers,
-  });
+  const reloadKey = JSON.stringify(props);
 
   // Reload on mount and when query, time period, or filters change
   useEffect(() => {
