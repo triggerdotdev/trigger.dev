@@ -814,7 +814,7 @@ function TimeDropdown({
               </Label>
             </button>
             <div className="ml-8 flex flex-1 flex-col">
-              <div className="mb-2">
+              <div className="-ml-8 mb-2">
                 <DateTimePicker
                   label="From"
                   value={fromValue}
@@ -830,7 +830,7 @@ function TimeDropdown({
                   showInlineLabel
                 />
               </div>
-              <div>
+              <div className="-ml-8">
                 <DateTimePicker
                   label="To"
                   value={toValue}
