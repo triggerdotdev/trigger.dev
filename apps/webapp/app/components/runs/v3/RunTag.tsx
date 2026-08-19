@@ -113,6 +113,7 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
 
   return (
     <SimpleTooltip
+      asChild
       button={
         <button
           type="button"
@@ -160,6 +161,7 @@ function DeleteButton({
 
   return (
     <SimpleTooltip
+      asChild
       button={
         <button
           type="button"

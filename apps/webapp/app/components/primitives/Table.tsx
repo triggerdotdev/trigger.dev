@@ -487,6 +487,7 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
         >
           {children}
           <SimpleTooltip
+            asChild
             button={
               <button
                 type="button"

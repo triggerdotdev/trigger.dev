@@ -543,6 +543,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
           />
           {isGeneratingAnswer ? (
             <SimpleTooltip
+              asChild
               button={
                 <button
                   type="button"

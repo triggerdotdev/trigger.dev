@@ -60,7 +60,6 @@ const NO_AS_CHILD_BASELINE = new Set([
   "app/components/GitMetadata.tsx::LinkButton",
   "app/components/code/TSQLResultsTable.tsx::TextLink",
   "app/components/integrations/VercelLink.tsx::LinkButton",
-  "app/components/primitives/CopyButton.tsx::Button",
   "app/components/runs/v3/RunTag.tsx::Link",
   "app/components/runs/v3/TaskRunsTable.tsx::DialogTrigger",
   "app/routes/account.tokens/route.tsx::DialogTrigger",

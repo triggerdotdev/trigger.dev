@@ -97,6 +97,7 @@ export function CopyButton({
   return (
     <span className={className}>
       <SimpleTooltip
+        asChild
         button={button}
         content={copied ? "Copied!" : "Copy"}
         className="font-sans"
