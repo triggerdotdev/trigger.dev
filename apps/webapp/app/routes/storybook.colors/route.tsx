@@ -24,7 +24,7 @@ import type {
   WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
@@ -116,7 +116,7 @@ type ThemeColumn = (typeof THEME_COLUMNS)[number];
  *  crushing five columns of live UI into slivers. */
 const THEME_COLUMN_MIN = "13rem";
 
-const THEME_GRID_TEMPLATE = `repeat(5, minmax(${THEME_COLUMN_MIN}, 1fr))`;
+const themeGridTemplate = (min: string) => `repeat(5, minmax(${min}, 1fr))`;
 
 /**
  * A cell rendered in one theme's context. The four fixed columns restate the
@@ -167,11 +167,14 @@ function Audit({
   title,
   where,
   note,
+  columnMin = THEME_COLUMN_MIN,
   children,
 }: {
   title: string;
   where: string[];
   note: ReactNode;
+  /** Widen the columns for blocks holding a table rather than a single sample. */
+  columnMin?: string;
   children: ReactNode;
 }) {
   return (
@@ -191,13 +194,13 @@ function Audit({
             strip counts as a child and pushes a stray rule onto the first cell. */}
         <div
           className="grid border-b border-grid-dimmed bg-background-dimmed [&>span]:px-3 [&>span]:py-1"
-          style={{ gridTemplateColumns: THEME_GRID_TEMPLATE }}
+          style={{ gridTemplateColumns: themeGridTemplate(columnMin) }}
         >
           <ThemeColumnLabels />
         </div>
         <div
           className="grid divide-x divide-grid-dimmed"
-          style={{ gridTemplateColumns: THEME_GRID_TEMPLATE }}
+          style={{ gridTemplateColumns: themeGridTemplate(columnMin) }}
         >
           {THEME_COLUMNS.map((column) => (
             <ThemeCell key={column.key} column={column} className="p-3">
@@ -268,82 +271,76 @@ type ContrastEntry = {
 };
 
 /** Name+usage, fill, ratio, verdict - wide enough that "passes 4.5:1" doesn't wrap. */
-/* Token details on the left, then Fill / Ratio / Verdict repeated for each of
-   the four themes and once more for the preference - sixteen columns in one flat
-   grid, so a sub-column lines up with its header all the way down. Wide by
-   design: the whole point is one token against every background at once, so the
-   table scrolls sideways rather than compressing. */
-const CONTRAST_TOKEN_COL = "minmax(12rem, 1.2fr)";
-/** Fill, Ratio, Verdict. Verdict is widest - it carries "passes 4.5:1". */
-const CONTRAST_SUB_COLS = "2.25rem 3.5rem 4.25rem";
-const CONTRAST_GRID_TEMPLATE = `${CONTRAST_TOKEN_COL} repeat(5, ${CONTRAST_SUB_COLS})`;
+/* One mode's readings: token details, then Fill / Ratio / Verdict. The five
+   themes come from the Audit columns wrapping this, not from the table - each
+   column is already a `data-theme` context, so the same table measured inside it
+   reports that theme's answer. Building the themes in here as well is what
+   produced twenty-five mode blocks per table. */
+const CONTRAST_GRID = "grid grid-cols-[minmax(0,1fr)_2.5rem_3.5rem_4.75rem]";
 
-/** Left edge of each theme group, so the three readings read as one band. */
-const THEME_GROUP_EDGE = "border-l border-grid-dimmed";
+/** Wider than a component column: each of these holds four sub-columns. */
+const CONTRAST_COLUMN_MIN = "22rem";
 
 /**
- * The three readings for one token in one theme.
- *
- * `display: contents` on the themed wrapper is doing the work here: it puts
- * `data-theme` in the ancestor chain - so the tokens, the `dark:` variant and
- * the preference all resolve to that theme - while leaving the three cells as
- * direct grid items of the row, which is what keeps them aligned under their
- * headers. A wrapper with a box would nest them one level down and break the
- * grid.
+ * One measured swatch. The ratio is the sample's own computed color against the
+ * surface behind it, read off the DOM - so it follows the theme of whichever
+ * column it lands in, the contrast slider, and the preference, with no table of
+ * hard-coded values to fall out of date.
  */
-function ContrastCells({ entry, column }: { entry: ContrastEntry; column: ThemeColumn }) {
-  const fillRef = useRef<HTMLDivElement>(null);
+function ContrastRow({ entry }: { entry: ContrastEntry }) {
+  const sampleRef = useRef<HTMLSpanElement>(null);
   const revision = useThemeRevision();
-  const documentTheme = useDocumentTheme();
   const [ratio, setRatio] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!fillRef.current) return;
-    setRatio(measureTextContrast(fillRef.current));
+    if (!sampleRef.current) return;
+    setRatio(measureTextContrast(sampleRef.current));
   }, [revision, entry.token, entry.className]);
 
+  const name = entry.token ? entry.token.replace("--color-", "") : entry.className;
+  const style = entry.token ? { color: `var(${entry.token})` } : undefined;
   /* Under the 3:1 floor the value is unusable for anything, text or not - call
      it out in bold red so the failures pull the eye down a long table. The
      verdict words carry the same information, so the red is reinforcement
      rather than the signal. */
   const fails = ratio !== null && ratio < NON_TEXT_THRESHOLD;
-  const cell = "flex items-center bg-background-bright py-1";
 
   return (
     <div
-      className="contents"
-      data-theme={column.theme ?? documentTheme}
-      data-icon-contrast={column.strongerColors ? "true" : "false"}
+      className={cn(
+        CONTRAST_GRID,
+        "items-center gap-x-2 border-b border-grid-dimmed py-1 last:border-b-0"
+      )}
     >
-      {/* The fill block is also the measured sample: it carries the token as its
-          own `color`, which is what the ratio reads, and as its background,
-          which is the shape non-text contrast is judged on. For a raw utility
-          the class sets `color`, so the fill comes from currentcolor instead. */}
-      <div className={cn(cell, THEME_GROUP_EDGE, "px-1.5")}>
-        <div
-          ref={fillRef}
-          className={cn("h-4 w-full rounded-xs border border-grid-bright", entry.className)}
-          style={{
-            color: entry.token ? `var(${entry.token})` : undefined,
-            backgroundColor: entry.token ? `var(${entry.token})` : "currentcolor",
-          }}
-        />
+      {/* The name is the measured sample: rendered in the token's own color, it
+          is the text whose ratio the row reports. */}
+      <div className="min-w-0">
+        <span
+          ref={sampleRef}
+          style={style}
+          className={cn("block truncate font-mono text-xs", entry.className)}
+        >
+          {name}
+        </span>
+        <span className="block truncate text-xxs text-text-dimmed">{entry.usedBy}</span>
       </div>
+      {/* The same value as a filled block - the shape non-text contrast is
+          actually judged on. For a raw utility the class sets `color`, so the
+          fill has to come from currentcolor on this same element. */}
       <div
+        className={cn("h-5 rounded-xs border border-grid-bright", entry.className)}
+        style={{ backgroundColor: entry.token ? `var(${entry.token})` : "currentcolor" }}
+      />
+      <span
         className={cn(
-          cell,
-          "justify-end font-mono text-xs tabular-nums",
+          "text-right font-mono text-xs tabular-nums",
           fails ? "font-bold text-error" : "text-text-bright"
         )}
       >
         {ratio === null ? "\u2014" : ratio.toFixed(2)}
-      </div>
-      <div
-        className={cn(
-          cell,
-          "justify-end pr-2 text-xxs",
-          fails ? "font-bold text-error" : "text-text-dimmed"
-        )}
+      </span>
+      <span
+        className={cn("text-right text-xxs", fails ? "font-bold text-error" : "text-text-dimmed")}
       >
         {ratio === null
           ? ""
@@ -352,67 +349,25 @@ function ContrastCells({ entry, column }: { entry: ContrastEntry; column: ThemeC
             : ratio < TEXT_THRESHOLD
               ? "3:1 only"
               : "passes 4.5:1"}
-      </div>
-    </div>
-  );
-}
-
-function ContrastRow({ entry }: { entry: ContrastEntry }) {
-  const name = entry.token ? entry.token.replace("--color-", "") : entry.className;
-
-  return (
-    <div
-      className="grid items-stretch border-b border-grid-dimmed last:border-b-0"
-      style={{ gridTemplateColumns: CONTRAST_GRID_TEMPLATE }}
-    >
-      <div className="min-w-0 self-center py-1 pr-2">
-        <span className="block truncate font-mono text-xs text-text-bright">{name}</span>
-        <span className="block truncate text-xxs text-text-dimmed">{entry.usedBy}</span>
-      </div>
-      {THEME_COLUMNS.map((column) => (
-        <ContrastCells key={column.key} entry={entry} column={column} />
-      ))}
-    </div>
-  );
-}
-
-/** Two header rows on the same template: theme names spanning their three
- *  readings, then the readings themselves. */
-function ContrastHeader() {
-  return (
-    <div className="text-xxs uppercase text-text-dimmed">
-      <div className="grid" style={{ gridTemplateColumns: CONTRAST_GRID_TEMPLATE }}>
-        <span className="truncate pr-2">Token &amp; where it's used</span>
-        {THEME_COLUMNS.map((column) => (
-          <span
-            key={column.key}
-            className={cn("col-span-3 truncate px-1.5 text-text-bright", THEME_GROUP_EDGE)}
-          >
-            {column.label}
-          </span>
-        ))}
-      </div>
-      <div
-        className="grid border-b border-grid-bright pb-1"
-        style={{ gridTemplateColumns: CONTRAST_GRID_TEMPLATE }}
-      >
-        <span />
-        {THEME_COLUMNS.map((column) => (
-          <Fragment key={column.key}>
-            <span className={cn("truncate px-1.5", THEME_GROUP_EDGE)}>Fill</span>
-            <span className="truncate text-right">Ratio</span>
-            <span className="truncate pr-2 text-right">Verdict</span>
-          </Fragment>
-        ))}
-      </div>
+      </span>
     </div>
   );
 }
 
 function ContrastTable({ entries }: { entries: ContrastEntry[] }) {
   return (
-    <div className="overflow-x-auto">
-      <ContrastHeader />
+    <div>
+      <div
+        className={cn(
+          CONTRAST_GRID,
+          "gap-x-2 border-b border-grid-bright pb-1 text-xxs uppercase text-text-dimmed"
+        )}
+      >
+        <span className="truncate">Token &amp; where it's used</span>
+        <span>Fill</span>
+        <span className="text-right">Ratio</span>
+        <span className="text-right">Verdict</span>
+      </div>
       {entries.map((entry) => (
         <ContrastRow key={entry.token ?? entry.className} entry={entry} />
       ))}
@@ -836,6 +791,7 @@ export default function Story_() {
       >
         <StorySubSection title="Status & text tokens">
           <Audit
+            columnMin={CONTRAST_COLUMN_MIN}
             title="Status and text accents"
             where={["tailwind.css"]}
             note="The four status tokens carry every run, deployment, batch, waitpoint and queue state in the app, plus the timeline and trace bars."
@@ -846,6 +802,7 @@ export default function Story_() {
 
         <StorySubSection title="Environment tokens">
           <Audit
+            columnMin={CONTRAST_COLUMN_MIN}
             title="Environment accents"
             where={["tailwind.css", "EnvironmentLabel.tsx"]}
             note="Staging is the one env token that still differs per mode. Preview and its branch labels are blue in every theme now, so they read the same at both ends of the `system` setting."
@@ -856,6 +813,7 @@ export default function Story_() {
 
         <StorySubSection title="Navigation & section accents">
           <Audit
+            columnMin={CONTRAST_COLUMN_MIN}
             title="Nav icon accents"
             where={["tailwind.css", "sideMenuSections.tsx", "favoritePages.tsx"]}
             note="29 accents, one per nav section. Several land on the same hue (metrics / regions / aiMetrics are all green; concurrency / errors / apiKeys are all amber), so the accent identifies a section only in combination with its icon."
@@ -866,6 +824,7 @@ export default function Story_() {
 
         <StorySubSection title="Raw palette classes (not themed)">
           <Audit
+            columnMin={CONTRAST_COLUMN_MIN}
             title="Palette utilities used directly in components"
             where={[
               "TaskRunStatus.tsx",
@@ -884,6 +843,7 @@ export default function Story_() {
 
         <StorySubSection title="Run-status chart series">
           <Audit
+            columnMin={CONTRAST_COLUMN_MIN}
             title="Run status chart colors"
             where={["tailwind.css", "TaskRunStatus.tsx"]}
             note="17 series on one chart, deliberately spaced within three families (blues, roses, charcoals). Judged at 3:1 against the plot surface — and, separately, against each other."
@@ -894,6 +854,7 @@ export default function Story_() {
 
         <StorySubSection title="Callout accents">
           <Audit
+            columnMin={CONTRAST_COLUMN_MIN}
             title="Callout text and icon accents"
             where={["Callout.tsx", "tailwind.css"]}
             note="Measured against this card, not the callout's own tint — the real ratio inside a callout is a little lower for the text tokens and a little higher for the icons."
