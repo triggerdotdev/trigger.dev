@@ -16,12 +16,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import type {
   BatchTaskRunStatus,
   BulkActionStatus,
   BulkActionType,
   ErrorGroupStatus,
+  TaskRunAttemptStatus,
   WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
@@ -500,7 +500,18 @@ const STACK_ICON_STATUSES = ["PENDING", "PENDING_VERSION", "DEQUEUED"] as const;
    unused-code pass removed them, so they live here now. */
 const LOG_LEVELS = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"] as const;
 
-const ATTEMPT_STATUSES = Object.values(TaskRunAttemptStatus);
+/* Written out rather than derived from the Prisma enum: that package pulls in the
+   client, and a value import of it here breaks client-side navigation to this
+   page - SSR resolves it, the browser can't, and Remix falls back to a full
+   document load. A type-only import is erased, so it costs nothing. */
+const ATTEMPT_STATUSES: TaskRunAttemptStatus[] = [
+  "PENDING",
+  "EXECUTING",
+  "PAUSED",
+  "FAILED",
+  "CANCELED",
+  "COMPLETED",
+];
 
 const WAITPOINT_STATUSES: WaitpointTokenStatus[] = ["WAITING", "COMPLETED", "TIMED_OUT"];
 
