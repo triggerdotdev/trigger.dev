@@ -99,10 +99,11 @@ jobs:
           }
           echo "Pre-pulling Docker images with authenticated session..."
           pull postgres:14
+          pull postgres:17
           pull clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251
           pull redis:7.2
           pull testcontainers/ryuk:0.14.0
-          pull electricsql/electric:1.2.4
+          pull electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
           pull minio/minio:latest
           echo "Image pre-pull complete"
 

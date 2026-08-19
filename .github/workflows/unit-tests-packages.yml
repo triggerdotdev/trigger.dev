@@ -97,7 +97,6 @@ jobs:
           pull clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251
           pull redis:7.2
           pull testcontainers/ryuk:0.14.0
-          pull electricsql/electric:1.2.4
           pull otel/opentelemetry-collector-k8s:0.158.0@sha256:c09130a633196a5becee164411473a0932ecf223f94fda6dab5f22798ff9f376
           echo "Image pre-pull complete"
 
