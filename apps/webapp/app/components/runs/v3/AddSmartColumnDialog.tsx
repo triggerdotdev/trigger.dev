@@ -99,7 +99,7 @@ export function AddSmartColumnDialog({
   }, [organization.slug, project.slug, environment.slug, currentSearch, sampleFiltersKey, source]);
 
   useEffect(() => {
-    if (open && sample.state === "idle") {
+    if (open) {
       sample.load(sampleUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
