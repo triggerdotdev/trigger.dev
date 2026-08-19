@@ -23,11 +23,9 @@ export function useTypedMatchesData<T = AppData>({
   id: string;
   matches?: UIMatch[];
 }): UseDataFunctionReturn<T> | undefined {
-  if (!matches) {
-    matches = useMatches();
-  }
+  const routeMatches = useMatches();
 
-  return useTypedDataFromMatches<T>({ id, matches });
+  return useTypedDataFromMatches<T>({ id, matches: matches ?? routeMatches });
 }
 
 function useTypedMatchData<T = AppData>(
