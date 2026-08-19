@@ -27,13 +27,11 @@ export type TriggerScheduledTaskParams = {
 
 export type TriggerScheduledTaskErrorType = "QUEUE_LIMIT" | "OUT_OF_ENTITLEMENTS" | "SYSTEM_ERROR";
 
-export interface TriggerScheduledTaskCallback {
-  (params: TriggerScheduledTaskParams): Promise<{
-    success: boolean;
-    error?: string;
-    errorType?: TriggerScheduledTaskErrorType;
-  }>;
-}
+export type TriggerScheduledTaskCallback = (params: TriggerScheduledTaskParams) => Promise<{
+  success: boolean;
+  error?: string;
+  errorType?: TriggerScheduledTaskErrorType;
+}>;
 
 export interface ScheduleEngineOptions {
   logger?: Logger;
