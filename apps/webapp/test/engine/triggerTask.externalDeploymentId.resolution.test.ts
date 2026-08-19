@@ -40,19 +40,18 @@ describe("triggerTask external deployment id", () => {
 
       const worker = await setupBackgroundWorker(engine, environment, taskIdentifier);
 
-      const cache = new RecordingExternalDeploymentCache(
-        new Map([
-          [
-            "commit-cached",
-            {
-              workerId: worker.worker.id,
-              version: worker.worker.version,
-              sdkVersion: "",
-              cliVersion: "",
-            },
-          ],
-        ])
-      );
+      const cache = new RecordingExternalDeploymentCache([
+        {
+          environmentId: environment.id,
+          externalId: "commit-cached",
+          entry: {
+            workerId: worker.worker.id,
+            version: worker.worker.version,
+            sdkVersion: "",
+            cliVersion: "",
+          },
+        },
+      ]);
 
       const service = createService(prisma, engine, cache);
 
@@ -163,7 +162,19 @@ describe("triggerTask external deployment id", () => {
         },
       });
 
-      const service = createService(prisma, engine, new NoopExternalDeploymentCache());
+      const cache = new RecordingExternalDeploymentCache([
+        {
+          environmentId: otherEnvironment.id,
+          externalId: "commit-elsewhere",
+          entry: {
+            workerId: worker.worker.id,
+            version: worker.worker.version,
+            sdkVersion: "",
+            cliVersion: "",
+          },
+        },
+      ]);
+      const service = createService(prisma, engine, cache);
 
       const result = await service.call({
         taskId: taskIdentifier,
@@ -177,6 +188,12 @@ describe("triggerTask external deployment id", () => {
 
       expect(run.status).toBe("PENDING_VERSION");
       expect(run.lockedToVersionId).toBeNull();
+      expect(cache.gets).toEqual([
+        { environmentId: environment.id, externalId: "commit-elsewhere" },
+      ]);
+      expect(cache.missing).toEqual([
+        { environmentId: environment.id, externalId: "commit-elsewhere" },
+      ]);
     }
   );
 });

@@ -895,11 +895,13 @@ describe("the watch card submit", () => {
 
       // The crash state: the request record is written and the watch is live, but the
       // process died before the confirmation was appended.
-      await appendChatMessageOnce(ctx.agentDb, {
+      const requestAppended = await appendChatMessageOnce(ctx.agentDb, {
         chatId: "chat_1",
         userId: seeded.user.id,
+        organizationId: seeded.organization.id,
         message: { id: "watch-request:wreq_1", role: "user", parts: [] } as never,
       });
+      expect(requestAppended).toBe(true);
       const created = await create({ seeded, chatId: "chat_1" });
       expect(created.ok).toBe(true);
       if (!created.ok || !created.watching) return;

@@ -862,6 +862,7 @@ describe("the check endpoint", () => {
   async function activeWatch(seeded: Seeded, spec?: WatchSpec) {
     const result = await create({ seeded, spec });
     if (!result.ok) throw new Error(`watch not created: ${result.code}`);
+    if (!result.watching) throw new Error("expected an active watch");
     return result;
   }
 

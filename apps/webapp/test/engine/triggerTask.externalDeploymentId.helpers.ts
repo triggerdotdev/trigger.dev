@@ -17,35 +17,53 @@ import {
 
 export class RecordingExternalDeploymentCache implements ExternalDeploymentCache {
   readonly gets: Array<{ environmentId: string; externalId: string }> = [];
-  readonly writes: Array<{ externalId: string; entry: ExternalDeploymentCacheEntry }> = [];
+  readonly writes: Array<{
+    environmentId: string;
+    externalId: string;
+    entry: ExternalDeploymentCacheEntry;
+  }> = [];
+  readonly missing: Array<{ environmentId: string; externalId: string }> = [];
+  private readonly entries = new Map<string, ExternalDeploymentCacheEntry>();
 
-  constructor(private readonly entries = new Map<string, ExternalDeploymentCacheEntry>()) {}
-
-  readonly missing: string[] = [];
+  constructor(
+    entries: Array<{
+      environmentId: string;
+      externalId: string;
+      entry: ExternalDeploymentCacheEntry;
+    }> = []
+  ) {
+    for (const { environmentId, externalId, entry } of entries) {
+      this.entries.set(this.key(environmentId, externalId), entry);
+    }
+  }
 
   async get(environmentId: string, externalId: string) {
     this.gets.push({ environmentId, externalId });
 
-    const entry = this.entries.get(externalId);
+    const entry = this.entries.get(this.key(environmentId, externalId));
 
     if (entry) {
       return { outcome: "deployed" as const, entry };
     }
 
-    return this.missing.includes(externalId) ? { outcome: "missing" as const } : null;
+    return this.missing.some(
+      (missing) => missing.environmentId === environmentId && missing.externalId === externalId
+    )
+      ? { outcome: "missing" as const }
+      : null;
   }
 
-  async setIfNewer(
-    _environmentId: string,
-    externalId: string,
-    entry: ExternalDeploymentCacheEntry
-  ) {
-    this.writes.push({ externalId, entry });
-    this.entries.set(externalId, entry);
+  async setIfNewer(environmentId: string, externalId: string, entry: ExternalDeploymentCacheEntry) {
+    this.writes.push({ environmentId, externalId, entry });
+    this.entries.set(this.key(environmentId, externalId), entry);
   }
 
-  async setMissing(_environmentId: string, externalId: string) {
-    this.missing.push(externalId);
+  async setMissing(environmentId: string, externalId: string) {
+    this.missing.push({ environmentId, externalId });
+  }
+
+  private key(environmentId: string, externalId: string) {
+    return JSON.stringify([environmentId, externalId]);
   }
 }
 

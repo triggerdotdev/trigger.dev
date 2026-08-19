@@ -47,7 +47,7 @@ vi.mock("~/db.server", async () => {
 
 import { createPostgresContainer, replicationContainerTest } from "@internal/testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
-import { setTimeout } from "node:timers/promises";
+import { z } from "zod";
 import { CURRENT_API_VERSION } from "~/api/versions";
 import { ApiRunListPresenter } from "~/presenters/v3/ApiRunListPresenter.server";
 import { createRun, mirrorParents, seedParents } from "./helpers/apiRunListPresenterTestHelpers";
@@ -102,7 +102,23 @@ describe("ApiRunListPresenter public /runs routed read-through", () => {
           data: { id: migratedB.id },
         });
 
-        await setTimeout(1500);
+        const replicatedRunsQuery = clickhouse.reader.query({
+          name: "waitForApiRunListPresenterTaskRuns",
+          query:
+            "SELECT countDistinct(run_id) AS count FROM trigger_dev.task_runs_v2 WHERE run_id IN {run_ids:Array(String)}",
+          schema: z.object({ count: z.number() }),
+          params: z.object({ run_ids: z.array(z.string()) }),
+        });
+        await vi.waitFor(
+          async () => {
+            const [error, rows] = await replicatedRunsQuery({
+              run_ids: [legacyOnlyA.id, legacyOnlyB.id, migratedA.id, migratedB.id],
+            });
+            if (error) throw error;
+            expect(rows?.[0]?.count).toBe(4);
+          },
+          { timeout: 15_000, interval: 100 }
+        );
 
         const presenter = new ApiRunListPresenter(prisma, prisma, {
           newClient: prismaNew,
