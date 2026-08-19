@@ -453,7 +453,7 @@ export default function AdminNotificationsRoute() {
               <TableHeaderCell>Clicked</TableHeaderCell>
               <TableHeaderCell>Dismissed</TableHeaderCell>
               <TableHeaderCell>Status</TableHeaderCell>
-              <TableHeaderCell></TableHeaderCell>
+              <TableHeaderCell />
             </TableRow>
           </TableHeader>
           <TableBody>

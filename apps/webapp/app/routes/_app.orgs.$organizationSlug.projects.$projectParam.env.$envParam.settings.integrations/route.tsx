@@ -354,7 +354,7 @@ export default function IntegrationsSettingsPage() {
     <>
       <SettingsContainer className="md:mt-6">
         {githubAppEnabled && (
-          <React.Fragment>
+          <>
             <SettingsSection>
               <SettingsHeader title="Git settings" />
               <GitHubSettingsPanel
@@ -396,7 +396,7 @@ export default function IntegrationsSettingsPage() {
               />
               <BuildSettingsForm buildSettings={buildSettings ?? {}} />
             </SettingsSection>
-          </React.Fragment>
+          </>
         )}
       </SettingsContainer>
 

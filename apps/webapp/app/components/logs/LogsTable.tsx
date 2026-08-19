@@ -220,7 +220,7 @@ export function LogsTable({
 }
 
 function BlankState({ isLoading, onRefresh }: { isLoading?: boolean; onRefresh?: () => void }) {
-  if (isLoading) return <TableBlankRow colSpan={6}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={6} />;
 
   const handleRefresh = onRefresh ?? (() => window.location.reload());
 
