@@ -330,6 +330,11 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.CK_VTIME_IDLE_PART}`;
   }
 
+  // The Lua side derives this from the ckVtime key, so the two must stay in lockstep.
+  ckVtimeGatedKeyFromQueue(queue: string): string {
+    return `${this.ckVtimeKeyFromQueue(queue)}Gated`;
+  }
+
   // indexOf instead of /:ck:.+$/ (queue names are user-controlled; polynomial regex).
   // Only strips when at least one character follows ":ck:", matching the old semantics.
   baseQueueKeyFromQueue(queue: string): string {

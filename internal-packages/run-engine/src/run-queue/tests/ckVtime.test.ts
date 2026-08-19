@@ -38,6 +38,7 @@ type VtimeOverrides = {
   quantum?: number;
   scanWindowMultiplier?: number;
   stateTtlSeconds?: number;
+  gatedMemoMs?: number;
 };
 
 // vtime: overrides merged into an enabled ckVirtualTimeScheduling option, or
@@ -323,12 +324,15 @@ describe("CK virtual-time (SFQ) dequeue", () => {
 
       // Free a slot: the next serving call persists the repaired floor, so the repair
       // itself is intact, it is only the write that waits for a serve.
+      // The SREM shortcut frees capacity outside every engine command; a real release
+      // (ack/nack/dlq) also drops the gated-scan memo, so mirror that here.
       for (const ck of cks) {
         await queue.redis.srem(
           testOptions.keys.queueCurrentConcurrencyKeyFromQueue(variantName(ck)),
           "occupant"
         );
       }
+      await queue.redis.del(testOptions.keys.ckVtimeGatedKeyFromQueue(variantName("a")));
       await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
 
       const floorAfter = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
@@ -1404,15 +1408,199 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         expect(await on.redis.ttl(ckVtimeKey)).toBeGreaterThan(0);
 
         // Once the ceiling clears it serves, and from the fair pass rather than by age.
+        // The SREM shortcut frees capacity outside every engine command; a real release
+        // (ack/nack/dlq) also drops the gated-scan memo, so mirror that here.
         await on.redis.srem(
           testOptions.keys.queueCurrentConcurrencyKeyFromQueue(gatedVariant),
           "occupant"
         );
+        await on.redis.del(testOptions.keys.ckVtimeGatedKeyFromQueue(gatedVariant));
         const after = await on.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
         expect(after.map((m) => m.messageId)).toEqual(["r-gated-0"]);
       } finally {
         await off.quit();
         await on.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a gated zero-serve scan writes a memo that repeat polls trust and a vtime enqueue drops",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, { gatedMemoMs: 60_000 });
+      try {
+        const t0 = Date.now() - 100_000;
+        const enqueue = (runId: string, ck: string, ts: number) =>
+          queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId, concurrencyKey: ck, timestamp: ts }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+
+        for (let i = 0; i < 2; i++) {
+          await enqueue(`r-gated-${i}`, "gated", t0 + i);
+        }
+
+        const gatedVariant = variantName("gated");
+        const memoKey = testOptions.keys.ckVtimeGatedKeyFromQueue(gatedVariant);
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
+        await queue.redis.sadd(
+          testOptions.keys.queueCurrentConcurrencyKeyFromQueue(gatedVariant),
+          "occupant"
+        );
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+        // Zero-serve full scan: nothing comes back and the memo is written, with a TTL so
+        // it can never outlive its own deadline.
+        const first = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+        expect(first.length).toBe(0);
+        expect(await queue.redis.pttl(memoKey)).toBeGreaterThan(0);
+
+        // Repeat polls trust the memo: capacity freed outside every engine command is
+        // invisible to the fingerprint, so this dequeue returns nothing. This is the
+        // bounded-staleness tradeoff the memo makes, pinned here on purpose.
+        await queue.redis.srem(
+          testOptions.keys.queueCurrentConcurrencyKeyFromQueue(gatedVariant),
+          "occupant"
+        );
+        const blocked = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+        expect(blocked.length).toBe(0);
+
+        // A vtime enqueue drops the memo, and the next poll scans again and serves.
+        await enqueue("r-free-0", "free", t0 + 50);
+        expect(await queue.redis.exists(memoKey)).toBe(0);
+        const served = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
+        expect(served.map((m) => m.messageId).sort()).toEqual(["r-free-0", "r-gated-0"]);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "every engine path that frees per-key capacity invalidates the gated memo",
+    async ({ redisContainer }) => {
+      // The memo returns nothing without scanning, so an event that frees capacity MUST
+      // make the next dequeue scan again, immediately, not after the deadline. ack, nack
+      // and dead-letter go through vtime Lua bodies that DEL the memo key; the repair /
+      // sweeper clear path goes through shared flag-off Lua that cannot, so its TS call
+      // site DELs instead (and its cleared message may never have been claimed, in which
+      // case runningCounter does not move and the fingerprint alone would not notice).
+      // gatedMemoMs is far above the test's runtime on purpose: if any of these paths
+      // failed to invalidate, the dequeue below would return nothing and the test fails
+      // deterministically; deadline expiry cannot mask a hole.
+      const queue = createQueue(redisContainer, { gatedMemoMs: 600_000 });
+      try {
+        const t0 = Date.now() - 100_000;
+        for (const ck of ["a", "b", "c"]) {
+          for (let i = 0; i < 2; i++) {
+            await queue.enqueueMessage({
+              env: authenticatedEnvDev,
+              message: makeMessage({
+                runId: `r-${ck}-${i}`,
+                concurrencyKey: ck,
+                timestamp: t0 + i,
+              }),
+              workerQueue: authenticatedEnvDev.id,
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
+
+        const memoKey = testOptions.keys.ckVtimeGatedKeyFromQueue(variantName("a"));
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const dequeue = () => queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+
+        // Take every variant to its ceiling with REAL in-flight messages.
+        const first = await dequeue();
+        expect(first.map((m) => m.message.concurrencyKey).sort()).toEqual(["a", "b", "c"]);
+
+        const inFlight = new Map(first.map((m) => [m.message.concurrencyKey, m.messageId]));
+
+        const expectMemoThen = async (freeCapacity: () => Promise<unknown>, expectCk: string) => {
+          // All gated: a zero-serve scan writes the memo...
+          expect((await dequeue()).length).toBe(0);
+          expect(await queue.redis.exists(memoKey)).toBe(1);
+          // ...the capacity-freeing event drops it...
+          await freeCapacity();
+          expect(await queue.redis.exists(memoKey)).toBe(0);
+          // ...and the very next dequeue serves the variant that gained capacity.
+          const served = await dequeue();
+          expect(served.map((m) => m.message.concurrencyKey)).toEqual([expectCk]);
+        };
+
+        await expectMemoThen(
+          () =>
+            queue.acknowledgeMessage(authenticatedEnvDev.organization.id, inFlight.get("a")!, {
+              skipDequeueProcessing: true,
+            }),
+          "a"
+        );
+
+        await expectMemoThen(
+          () =>
+            queue.nackMessage({
+              orgId: authenticatedEnvDev.organization.id,
+              messageId: inFlight.get("b")!,
+              retryAt: Date.now() - 1000,
+              skipDequeueProcessing: true,
+            }),
+          "b"
+        );
+
+        // The sweeper/repair path: the in-flight message was never claimed off the worker
+        // queue, so it is not in currentDequeued and the clear moves no counter.
+        await expectMemoThen(
+          () =>
+            queue.clearMessageFromConcurrencySets({
+              runId: inFlight.get("c")!,
+              orgId: authenticatedEnvDev.organization.id,
+              queue: `${QUEUE}:ck:c`,
+              env: authenticatedEnvDev,
+            }),
+          "c"
+        );
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "with the memo disabled, freed capacity is picked up and no memo is ever written",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, { gatedMemoMs: 0 });
+      try {
+        const t0 = Date.now() - 100_000;
+        for (let i = 0; i < 2; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId: `r-a-${i}`, concurrencyKey: "a", timestamp: t0 + i }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
+
+        const memoKey = testOptions.keys.ckVtimeGatedKeyFromQueue(variantName("a"));
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const dequeue = () => queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+
+        const first = await dequeue();
+        expect(first.length).toBe(1);
+        expect((await dequeue()).length).toBe(0);
+        expect(await queue.redis.exists(memoKey)).toBe(0);
+
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, first[0]!.messageId, {
+          skipDequeueProcessing: true,
+        });
+        const served = await dequeue();
+        expect(served.map((m) => m.messageId)).toEqual(["r-a-1"]);
+      } finally {
+        await queue.quit();
       }
     }
   );

@@ -235,6 +235,14 @@ export type RunQueueOptions = {
      * credit is worth least. Default 10000.
      */
     idleMaxEntries?: number;
+    /**
+     * How long (ms) a dequeue may trust a gated-scan memo: after a scan that served
+     * nothing, repeat polls return immediately until the memo's fingerprint (tracked
+     * counters, effective per-key limit, window sizes) changes, a vtime write path
+     * deletes it, or this deadline passes. The deadline bounds the staleness of the
+     * few events the fingerprint cannot see. 0 disables the memo. Default 1000.
+     */
+    gatedMemoMs?: number;
   };
 };
 
@@ -325,6 +333,7 @@ export class RunQueue {
   readonly #ckVtimeWindowMultiplier: number;
   readonly #ckVtimeStateTtl: number;
   readonly #ckVtimeIdleMaxEntries: number;
+  readonly #ckVtimeGatedMemoMs: number;
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
@@ -346,6 +355,10 @@ export class RunQueue {
     this.#ckVtimeIdleMaxEntries = Math.max(
       1,
       Math.floor(options.ckVirtualTimeScheduling?.idleMaxEntries ?? 10000)
+    );
+    this.#ckVtimeGatedMemoMs = Math.max(
+      0,
+      Math.floor(options.ckVirtualTimeScheduling?.gatedMemoMs ?? 1000)
     );
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
@@ -1261,7 +1274,7 @@ export class RunQueue {
         // runningCounter stays in sync. Non-CK queues keep the original
         // release path — no counter to maintain.
         if (message.concurrencyKey) {
-          return this.redis.releaseConcurrencyTracked(
+          const released = await this.redis.releaseConcurrencyTracked(
             this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue),
             this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
             this.keys.queueCurrentDequeuedKeyFromQueue(message.queue),
@@ -1272,6 +1285,13 @@ export class RunQueue {
             this.options.redis.keyPrefix ?? "",
             String(this.counterTtlSeconds)
           );
+          if (this.#ckVtimeEnabled) {
+            // The command above is shared with the flag-off path so it cannot drop the
+            // gated-scan memo itself; the capacity it frees can make queued work
+            // servable, so drop the memo here.
+            await this.redis.del(this.keys.ckVtimeGatedKeyFromQueue(message.queue));
+          }
+          return released;
         }
 
         return this.redis.releaseConcurrency(
@@ -2660,6 +2680,7 @@ export class RunQueue {
             String(this.#ckVtimeWindowMultiplier),
             String(this.#ckVtimeStateTtl),
             String(this.#ckVtimeIdleMaxEntries),
+            String(this.#ckVtimeGatedMemoMs),
             // Must stay last: the gauge fragment reads ARGV[#ARGV].
             metricsGaugeArg
           )
@@ -3013,7 +3034,7 @@ export class RunQueue {
     });
 
     if (queue.includes(":ck:")) {
-      return this.redis.clearMessageFromConcurrencySetsTracked(
+      const cleared = await this.redis.clearMessageFromConcurrencySetsTracked(
         queueCurrentConcurrencyKey,
         envCurrentConcurrencyKey,
         queueCurrentDequeuedKey,
@@ -3024,6 +3045,17 @@ export class RunQueue {
         this.options.redis.keyPrefix ?? "",
         String(this.counterTtlSeconds)
       );
+      if (this.#ckVtimeEnabled) {
+        // The command above is shared with the flag-off path so it cannot drop the
+        // gated-scan memo itself; the capacity it frees can make queued work servable,
+        // so drop the memo here. This is the repair/sweeper path, where the cleared
+        // message may never have been claimed, in which case runningCounter does not
+        // move and the memo fingerprint alone would not notice the freed capacity.
+        // Derived via queueKey(env, queue) because this function takes the queue NAME:
+        // that is the convention under which the SREMs above hit the real variant set.
+        await this.redis.del(this.keys.ckVtimeGatedKeyFromQueue(this.keys.queueKey(env, queue)));
+      }
+      return cleared;
     }
 
     return this.redis.clearMessageFromConcurrencySets(
@@ -4360,6 +4392,9 @@ end
 -- first and the ZSCORE only on the registering call takes the common path from two ops to
 -- one. Measured saturated: 0.33 usec of Redis CPU per redis.call removed, and the pair of
 -- reductions here is ~30% of the vtime enqueue overhead.
+-- NEW: a queued message may now be servable, so drop the gated-scan memo (see the vtime
+-- dequeue command). Derived from ckVtimeKey, so it stays in the same hash slot.
+redis.call('DEL', ckVtimeKey .. 'Gated')
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
@@ -4511,6 +4546,9 @@ end
 -- first and the ZSCORE only on the registering call takes the common path from two ops to
 -- one. Measured saturated: 0.33 usec of Redis CPU per redis.call removed, and the pair of
 -- reductions here is ~30% of the vtime enqueue overhead.
+-- NEW: a queued message may now be servable, so drop the gated-scan memo (see the vtime
+-- dequeue command). Derived from ckVtimeKey, so it stays in the same hash slot.
+redis.call('DEL', ckVtimeKey .. 'Gated')
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
@@ -5352,6 +5390,7 @@ local quantum = tonumber(ARGV[7] or '1')
 local windowMultiplier = tonumber(ARGV[8] or '3')
 local stateTtl = tonumber(ARGV[9] or '86400')
 local idleMaxEntries = tonumber(ARGV[10] or '10000')
+local gatedMemoMs = tonumber(ARGV[11] or '0')
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
 
@@ -5378,6 +5417,37 @@ local actualMaxCount = math.min(maxCount, envAvailableCapacity)
 
 if actualMaxCount <= 0 then
   return __qmret(nil)
+end
+
+-- NEW: gated-scan memo. A zero-serve full scan below records that nothing in either
+-- window was servable, fingerprinted by everything that scan depended on: a validity
+-- deadline (bounded by the earliest future-scheduled head), the effective per-key limit,
+-- the window sizes, and the tracked counters. While the fingerprint holds, a repeat poll
+-- would walk the same windows and reach the same nothing, so it can return here instead.
+-- Every vtime write path that can create servability deletes the memo (enqueue, ack,
+-- nack, dead-letter, and a serving scan below); the counters catch the tracked flag-off
+-- commands a mixed deploy can still run, since those cannot be edited to delete it. The
+-- residual corners (capacity freed by the shared release/clear commands whose counter
+-- move is cancelled by a coincident claim, or writers that do not maintain the counters)
+-- are bounded by the deadline: a servable message is served late by at most gatedMemoMs,
+-- never lost.
+local ckGatedKey = ckVtimeKey .. 'Gated'
+local gatedMemo = false
+if gatedMemoMs > 0 then
+  gatedMemo = redis.call('GET', ckGatedKey)
+  if gatedMemo then
+    local mUntil, mLimit, mWindow, mPass2, mLen, mRun =
+      string.match(gatedMemo, '^([^:]+):([^:]+):([^:]+):([^:]+):([^:]+):([^:]+)$')
+    if mUntil
+      and currentTime < tonumber(mUntil)
+      and tonumber(mLimit) == queueConcurrencyLimit
+      and tonumber(mWindow) >= actualMaxCount * windowMultiplier
+      and tonumber(mPass2) >= math.max(actualMaxCount * windowMultiplier, actualMaxCount * 3)
+      and tonumber(mLen) == tonumber(redis.call('GET', lengthCounterKey) or '0')
+      and tonumber(mRun) == tonumber(redis.call('GET', runningCounterKey) or '0') then
+      return __qmret(nil)
+    end
+  end
 end
 
 local window = actualMaxCount * windowMultiplier
@@ -5624,6 +5694,34 @@ if dequeuedCount > 0 then
   redis.call('ZREMRANGEBYRANK', ckVtimeIdleKey, 0, -(idleMaxEntries + 1))
   if redis.call('EXISTS', ckVtimeKey) == 1 then
     redis.call('EXPIRE', ckVtimeKey, stateTtl)
+  end
+  -- NEW: a serve while a (stale) memo exists means the state the memo fingerprinted is
+  -- gone; drop it so a later counter coincidence cannot revalidate it. Conditional on the
+  -- GET above, so the common serving call pays nothing.
+  if gatedMemo then
+    redis.call('DEL', ckGatedKey)
+  end
+end
+
+-- NEW: write the gated-scan memo. Only after a completed zero-serve scan that actually
+-- examined candidates, and only for as long as time alone cannot change the answer: the
+-- deadline is capped by the earliest future-scheduled head in ckIndex, which is the only
+-- route to servability that no command writes through. Counters are read back here, after
+-- the scan, because a zero-serve scan can still reap expired messages above.
+if dequeuedCount == 0 and gatedMemoMs > 0 and (#vtimeCandidates > 0 or #ckQueues > 0) then
+  local validUntil = currentTime + gatedMemoMs
+  local nextReady = redis.call('ZRANGEBYSCORE', ckIndexKey, '(' .. tostring(currentTime), '+inf', 'WITHSCORES', 'LIMIT', 0, 1)
+  if #nextReady > 0 and tonumber(nextReady[2]) < validUntil then
+    validUntil = tonumber(nextReady[2])
+  end
+  local px = math.floor(validUntil - currentTime)
+  if px >= 1 then
+    redis.call('SET', ckGatedKey,
+      tostring(validUntil) .. ':' .. tostring(queueConcurrencyLimit)
+        .. ':' .. tostring(window) .. ':' .. tostring(pass2Window)
+        .. ':' .. tostring(tonumber(redis.call('GET', lengthCounterKey) or '0'))
+        .. ':' .. tostring(tonumber(redis.call('GET', runningCounterKey) or '0')),
+      'PX', px)
   end
 end
 
@@ -6191,6 +6289,10 @@ local removeFromWorkerQueue = ARGV[4]
 local ckWildcardName = ARGV[5]
 local stateTtl = tonumber(ARGV[6] or '86400')
 
+-- NEW: acking frees per-key capacity, which can make queued work servable; drop the
+-- gated-scan memo (see the vtime dequeue command).
+redis.call('DEL', ckVtimeKey .. 'Gated')
+
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
     redis.call('DECR', key)
@@ -6452,6 +6554,9 @@ end
 -- first and the ZSCORE only on the registering call takes the common path from two ops to
 -- one. Measured saturated: 0.33 usec of Redis CPU per redis.call removed, and the pair of
 -- reductions here is ~30% of the vtime enqueue overhead.
+-- NEW: a queued message may now be servable, so drop the gated-scan memo (see the vtime
+-- dequeue command). Derived from ckVtimeKey, so it stays in the same hash slot.
+redis.call('DEL', ckVtimeKey .. 'Gated')
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, messageQueueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, messageQueueName)
@@ -6582,6 +6687,10 @@ local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local ckWildcardName = ARGV[3]
 local stateTtl = tonumber(ARGV[4] or '86400')
+
+-- NEW: dead-lettering frees per-key capacity, which can make queued work servable; drop
+-- the gated-scan memo (see the vtime dequeue command).
+redis.call('DEL', ckVtimeKey .. 'Gated')
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -7410,6 +7519,7 @@ declare module "@internal/redis" {
       windowMultiplier: string,
       stateTtlSeconds: string,
       idleMaxEntries: string,
+      gatedMemoMs: string,
       metricsEnabled: string,
       callback?: Callback<[string[] | null, number[] | null]>
     ): Result<[string[] | null, number[] | null], Context>;
