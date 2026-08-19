@@ -960,11 +960,17 @@ function HeaderCellContent({
       ) : (
         <span className="min-w-0 flex-1 truncate text-left">{children}</span>
       )}
-      {/* Sort indicator */}
+      {/* The full header remains a pointer target, while this dedicated control makes sorting keyboard-accessible without nesting the tooltip or filter controls. */}
       {canSort && (
-        <span
+        <button
+          type="button"
+          aria-label="Toggle sort"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSortClick?.(event);
+          }}
           className={cn(
-            "shrink-0 transition-colors",
+            "shrink-0 rounded transition-colors focus-custom",
             sortHighlighted ? "text-text-bright" : "text-text-dimmed"
           )}
         >
@@ -975,7 +981,7 @@ function HeaderCellContent({
           ) : (
             <ChevronUpDownIcon className="size-4" />
           )}
-        </span>
+        </button>
       )}
       {onFilterClick && (
         <button
