@@ -5425,10 +5425,14 @@ local minServableTag = nil
 local results = {}
 local dequeuedCount = 0
 local attempted = {}
+local gatedPending = nil
 
 -- Per-candidate serve. Body is dequeueMessagesFromCkQueueTracked's per-candidate
--- block, verbatim, with the marked NEW lines added.
-local function tryServe(ckQueueName, mayRaiseFloor)
+-- block, verbatim, with the marked NEW lines added. knownRegistered means the caller can
+-- vouch the candidate is a ckVtime member (pass 1's scan read it out of that set, and
+-- nothing removes a member this call has not served), so the gated branch below can skip
+-- its registration check for it.
+local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
   attempted[ckQueueName] = true
   local fullQueueKey = keyPrefix .. ckQueueName
   -- NEW: the tag this call wrote back, if it served. Site A below reuses it rather than
@@ -5550,19 +5554,15 @@ local function tryServe(ckQueueName, mayRaiseFloor)
     -- held. Unregistered here means it reached ckIndex without ever passing through a
     -- vtime-aware write: a backlog queued before the flag went on, an enqueue from an
     -- instance that still has it off, or a ckVtime that expired while ckIndex lived, which
-    -- are the same cases pass 2's discovery exists to repair. NX, so a variant that is
-    -- already registered keeps the tag it earned, which is the usual case and costs one op.
-    -- The TTL only needs setting when this actually registered something, since that is the
-    -- path that can recreate a ckVtime key which expired out from under a live ckIndex.
-    -- NEW: registers at max(floor, remembered idle tag), same rule as the enqueue path, so
-    -- a variant that drained under the gate does not come back with full credit. Ordered
-    -- the same way too: the ZADD NX decides whether the idle lookup is worth doing at all.
-    if redis.call('ZADD', ckVtimeKey, 'NX', tostring(floor), ckQueueName) == 1 then
-      local gateIdle = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
-      if gateIdle and tonumber(gateIdle) > floor then
-        redis.call('ZADD', ckVtimeKey, 'XX', gateIdle, ckQueueName)
-      end
-      redis.call('EXPIRE', ckVtimeKey, stateTtl)
+    -- are the same cases pass 2's discovery exists to repair.
+    -- NEW: a knownRegistered candidate needs none of that, so its gated visit costs just
+    -- the SCARD above, same as the flag-off command. The rest are collected and resolved
+    -- after pass 2 by one variadic ZADD NX, where the rare genuinely unregistered candidate
+    -- registers at max(floor, remembered idle tag), same rule as the enqueue path, so a
+    -- variant that drained under the gate does not come back with full credit.
+    if not knownRegistered then
+      if gatedPending == nil then gatedPending = {} end
+      table.insert(gatedPending, ckQueueName)
     end
   end
 end
@@ -5586,7 +5586,7 @@ end
 local windowBudget = window
 for _, ckQueueName in ipairs(vtimeCandidates) do
   if dequeuedCount >= actualMaxCount or windowBudget <= 0 then break end
-  if tryServe(ckQueueName, true) ~= 'notReady' then
+  if tryServe(ckQueueName, true, true) ~= 'notReady' then
     windowBudget = windowBudget - 1
   end
 end
@@ -5606,7 +5606,7 @@ local discovered = nil
 for _, ckQueueName in ipairs(ckQueues) do
   if not attempted[ckQueueName] then
     if dequeuedCount < actualMaxCount then
-      tryServe(ckQueueName, false)
+      tryServe(ckQueueName, false, registered[ckQueueName])
     elseif not registered[ckQueueName] then
       -- Collected into one variadic ZADD: discovery costs at most a single op per
       -- call however many variants it registers. Skipping attempted matters:
@@ -5620,6 +5620,30 @@ for _, ckQueueName in ipairs(ckQueues) do
 end
 if discovered ~= nil then
   redis.call('ZADD', unpack(discovered))
+end
+
+-- One variadic ZADD NX settles the whole batch: it registers the genuinely unregistered
+-- and no-ops the rest, and its return value is the count it added. In the steady state
+-- that count is zero, so a fully gated scan costs exactly this one call and nothing else.
+-- The idle-tag correction is only reachable when something actually registered, which is
+-- rare, so the ZSCOREs it needs are not on the hot path. ZADD NX rather than ZMSCORE
+-- deliberately: the batched read would cost the same one call but would make this the
+-- first thing in the file to require Redis 6.2.
+if gatedPending ~= nil then
+  local gatedArgs = {ckVtimeKey, 'NX'}
+  for _, ckQueueName in ipairs(gatedPending) do
+    table.insert(gatedArgs, tostring(floor))
+    table.insert(gatedArgs, ckQueueName)
+  end
+  if redis.call('ZADD', unpack(gatedArgs)) > 0 then
+    for _, ckQueueName in ipairs(gatedPending) do
+      local gateIdle = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
+      if gateIdle and tonumber(gateIdle) > floor then
+        redis.call('ZADD', ckVtimeKey, 'XX', gateIdle, ckQueueName)
+      end
+    end
+    redis.call('EXPIRE', ckVtimeKey, stateTtl)
+  end
 end
 
 -- NEW: persist floor and refresh TTLs. A call that served nothing writes nothing: the two
