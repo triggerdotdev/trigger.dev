@@ -563,7 +563,7 @@ function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
   if (!state) {
     return <span className="text-text-dimmed">–</span>;
   }
-  return <>{state.running ?? 0}</>;
+  return state.running ?? 0;
 }
 
 function TaskTypeFilter() {

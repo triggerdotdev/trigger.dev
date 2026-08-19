@@ -342,63 +342,61 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
   );
 
   return (
-    <>
-      <Form
-        action={formAction}
-        method="post"
-        onSubmit={(e) => submitForm(e)}
-        className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden border-t border-grid-bright"
-      >
-        <input type="hidden" name="type" value={"MANUAL"} />
-        <input
-          type="hidden"
-          name="successRedirect"
-          value={`${location.pathname}${location.search}`}
+    <Form
+      action={formAction}
+      method="post"
+      onSubmit={(e) => submitForm(e)}
+      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden border-t border-grid-bright"
+    >
+      <input type="hidden" name="type" value={"MANUAL"} />
+      <input
+        type="hidden"
+        name="successRedirect"
+        value={`${location.pathname}${location.search}`}
+      />
+      <input
+        type="hidden"
+        name="failureRedirect"
+        value={`${location.pathname}${location.search}`}
+      />
+      <div className="mx-3 flex items-center gap-1">
+        <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
+        <InfoIconTooltip
+          content={
+            "This is will immediately complete this waitpoint with the payload you specify. This is useful during development for testing."
+          }
+          contentClassName="normal-case tracking-normal max-w-xs"
         />
-        <input
-          type="hidden"
-          name="failureRedirect"
-          value={`${location.pathname}${location.search}`}
-        />
-        <div className="mx-3 flex items-center gap-1">
-          <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
-          <InfoIconTooltip
-            content={
-              "This is will immediately complete this waitpoint with the payload you specify. This is useful during development for testing."
-            }
-            contentClassName="normal-case tracking-normal max-w-xs"
+      </div>
+      <div className="overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <JSONEditor
+            autoFocus
+            defaultValue={currentJson.current}
+            readOnly={false}
+            basicSetup
+            onChange={(v) => {
+              currentJson.current = v;
+            }}
+            showClearButton={false}
+            showCopyButton={false}
+            height="100%"
+            min-height="100%"
+            max-height="100%"
           />
         </div>
-        <div className="overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-          <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-            <JSONEditor
-              autoFocus
-              defaultValue={currentJson.current}
-              readOnly={false}
-              basicSetup
-              onChange={(v) => {
-                currentJson.current = v;
-              }}
-              showClearButton={false}
-              showCopyButton={false}
-              height="100%"
-              min-height="100%"
-              max-height="100%"
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed bg-background-dimmed px-2">
-          <Button
-            variant="secondary/medium"
-            type="submit"
-            disabled={isLoading}
-            LeadingIcon={isLoading ? SpinnerWhite : undefined}
-          >
-            {isLoading ? "Completing…" : "Complete waitpoint"}
-          </Button>
-        </div>
-      </Form>
-    </>
+      </div>
+      <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed bg-background-dimmed px-2">
+        <Button
+          variant="secondary/medium"
+          type="submit"
+          disabled={isLoading}
+          LeadingIcon={isLoading ? SpinnerWhite : undefined}
+        >
+          {isLoading ? "Completing…" : "Complete waitpoint"}
+        </Button>
+      </div>
+    </Form>
   );
 }
 

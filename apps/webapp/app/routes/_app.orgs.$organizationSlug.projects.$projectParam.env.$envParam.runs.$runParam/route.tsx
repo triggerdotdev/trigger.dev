@@ -1051,79 +1051,77 @@ function TasksTreeView({
               getTreeProps={getTreeProps}
               parentClassName="pl-3"
               renderNode={({ node, state, index }) => (
-                <>
-                  <div
-                    className={cn(
-                      "group/spannode flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
-                      state.selected
-                        ? "bg-grid-dimmed hover:bg-grid-bright"
-                        : "bg-transparent hover:bg-grid-dimmed"
-                    )}
-                    onClick={() => {
-                      selectNode(node.id);
-                    }}
-                  >
-                    <div className="flex h-8 items-center">
-                      {Array.from({ length: node.level }).map((_, index) => (
-                        <TaskLine
-                          key={index}
-                          isError={node.data.isError}
-                          isSelected={state.selected}
-                        />
-                      ))}
-                      <div
-                        className={cn(
-                          "flex h-8 w-4 items-center",
-                          node.hasChildren && "hover:bg-surface-control"
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (e.altKey) {
-                            if (state.expanded) {
-                              collapseAllBelowDepth(node.level);
-                            } else {
-                              expandAllBelowDepth(node.level);
-                            }
+                <div
+                  className={cn(
+                    "group/spannode flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
+                    state.selected
+                      ? "bg-grid-dimmed hover:bg-grid-bright"
+                      : "bg-transparent hover:bg-grid-dimmed"
+                  )}
+                  onClick={() => {
+                    selectNode(node.id);
+                  }}
+                >
+                  <div className="flex h-8 items-center">
+                    {Array.from({ length: node.level }).map((_, index) => (
+                      <TaskLine
+                        key={index}
+                        isError={node.data.isError}
+                        isSelected={state.selected}
+                      />
+                    ))}
+                    <div
+                      className={cn(
+                        "flex h-8 w-4 items-center",
+                        node.hasChildren && "hover:bg-surface-control"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.altKey) {
+                          if (state.expanded) {
+                            collapseAllBelowDepth(node.level);
                           } else {
-                            toggleExpandNode(node.id);
+                            expandAllBelowDepth(node.level);
                           }
-                          scrollToNode(node.id);
-                        }}
-                      >
-                        {node.hasChildren ? (
-                          state.expanded ? (
-                            <ChevronDownIcon className="h-4 w-4 text-text-dimmed" />
-                          ) : (
-                            <ChevronRightIcon className="h-4 w-4 text-text-dimmed" />
-                          )
+                        } else {
+                          toggleExpandNode(node.id);
+                        }
+                        scrollToNode(node.id);
+                      }}
+                    >
+                      {node.hasChildren ? (
+                        state.expanded ? (
+                          <ChevronDownIcon className="h-4 w-4 text-text-dimmed" />
                         ) : (
-                          <div className="h-8 w-4" />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex w-full items-center justify-between gap-2 pl-1">
-                      <div className="flex items-center gap-1.5 overflow-x-hidden">
-                        <RunIcon
-                          name={
-                            node.data.isAgentRun &&
-                            (node.data.style?.icon === "task" ||
-                              node.data.style?.icon === "task-cached")
-                              ? "agent"
-                              : node.data.style?.icon
-                          }
-                          spanName={node.data.message}
-                          className="size-5 min-h-5 min-w-5"
-                        />
-                        <NodeText node={node} />
-                        {node.data.isRoot && !rootRun && <Badge variant="extra-small">Root</Badge>}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <NodeStatusIcon node={node} />
-                      </div>
+                          <ChevronRightIcon className="h-4 w-4 text-text-dimmed" />
+                        )
+                      ) : (
+                        <div className="h-8 w-4" />
+                      )}
                     </div>
                   </div>
-                </>
+
+                  <div className="flex w-full items-center justify-between gap-2 pl-1">
+                    <div className="flex items-center gap-1.5 overflow-x-hidden">
+                      <RunIcon
+                        name={
+                          node.data.isAgentRun &&
+                          (node.data.style?.icon === "task" ||
+                            node.data.style?.icon === "task-cached")
+                            ? "agent"
+                            : node.data.style?.icon
+                        }
+                        spanName={node.data.message}
+                        className="size-5 min-h-5 min-w-5"
+                      />
+                      <NodeText node={node} />
+                      {node.data.isRoot && !rootRun && <Badge variant="extra-small">Root</Badge>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <NodeStatusIcon node={node} />
+                    </div>
+                  </div>
+                </div>
               )}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
@@ -1698,29 +1696,25 @@ function LiveReloadingStatus({
 }) {
   if (rootSpanCompleted) return null;
 
-  return (
-    <>
-      {isLiveReloading ? (
+  return isLiveReloading ? (
+    <div className="flex items-center gap-1">
+      <PulsingDot />
+      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
+        Live reloading
+      </Paragraph>
+    </div>
+  ) : (
+    <SimpleTooltip
+      content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
+      button={
         <div className="flex items-center gap-1">
-          <PulsingDot />
-          <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
-            Live reloading
+          <BoltSlashIcon className="size-3.5 text-text-dimmed" />
+          <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
+            Live reloading disabled
           </Paragraph>
         </div>
-      ) : (
-        <SimpleTooltip
-          content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
-          button={
-            <div className="flex items-center gap-1">
-              <BoltSlashIcon className="size-3.5 text-text-dimmed" />
-              <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
-                Live reloading disabled
-              </Paragraph>
-            </div>
-          }
-        />
-      )}
-    </>
+      }
+    />
   );
 }
 
@@ -1815,7 +1809,7 @@ function CurrentTimeIndicator({
               rootStartedAt.getTime() + ms + nanosecondsToMilliseconds(queuedDurationNs ?? 0)
             )
           : undefined;
-        const currentTimeComponent = currentTime ? <DateTimeShort date={currentTime} /> : <></>;
+        const currentTimeComponent = currentTime ? <DateTimeShort date={currentTime} /> : null;
 
         return (
           <div className="relative z-50 flex h-full flex-col">

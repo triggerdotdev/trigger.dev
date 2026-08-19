@@ -467,9 +467,7 @@ function Upgradable({
                         </div>
                         <ArrowDownIcon className="size-4 animate-bounce text-success" />
                       </div>
-                    ) : (
-                      <></>
-                    )}
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>

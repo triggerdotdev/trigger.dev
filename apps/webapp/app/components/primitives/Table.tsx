@@ -460,7 +460,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             {trailingContent}
           </div>
         ) : (
-          <>{children}</>
+          children
         )}
       </td>
     );

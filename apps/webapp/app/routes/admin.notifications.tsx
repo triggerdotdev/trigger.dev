@@ -1383,7 +1383,7 @@ function CliColorMarkup({ text, fallbackClass }: { text: string; fallbackClass?:
     pos = closeIdx + 1;
   }
 
-  return <>{parts}</>;
+  return parts;
 }
 
 function Badge({

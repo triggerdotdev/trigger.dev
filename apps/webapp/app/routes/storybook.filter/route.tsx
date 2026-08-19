@@ -105,7 +105,7 @@ function Menu(props: MenuProps) {
     case "environment":
       return <Environments {...props} />;
   }
-  return <></>;
+  return null;
 }
 
 function MainMenu({ searchValue, clearSearchValue, setFilterType, trigger, shortcut }: MenuProps) {

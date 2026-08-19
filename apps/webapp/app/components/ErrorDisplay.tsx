@@ -34,22 +34,16 @@ export function RouteErrorDisplay(options?: ErrorDisplayOptions) {
     );
   }
 
-  return (
-    <>
-      {isRouteErrorResponse(error) ? (
-        <ErrorDisplay
-          title={friendlyErrorDisplay(error.status, error.statusText).title}
-          message={
-            error.data.message ?? friendlyErrorDisplay(error.status, error.statusText).message
-          }
-          {...options}
-        />
-      ) : error instanceof Error ? (
-        <ErrorDisplay title={error.name} message={error.message} {...options} />
-      ) : (
-        <ErrorDisplay title="Oops" message={JSON.stringify(error)} {...options} />
-      )}
-    </>
+  return isRouteErrorResponse(error) ? (
+    <ErrorDisplay
+      title={friendlyErrorDisplay(error.status, error.statusText).title}
+      message={error.data.message ?? friendlyErrorDisplay(error.status, error.statusText).message}
+      {...options}
+    />
+  ) : error instanceof Error ? (
+    <ErrorDisplay title={error.name} message={error.message} {...options} />
+  ) : (
+    <ErrorDisplay title="Oops" message={JSON.stringify(error)} {...options} />
   );
 }
 
