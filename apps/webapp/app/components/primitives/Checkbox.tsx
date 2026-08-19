@@ -109,7 +109,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
     }, [defaultChecked]);
 
     return (
-      <div
+      <label
         className={cn(
           "group flex items-start gap-x-2 transition ",
           props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
@@ -118,11 +118,6 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           (isDisabled || props.readOnly) && isDisabledClassName,
           className
         )}
-        onClick={(e) => {
-          //returning false is not setting the state to false, it stops the event from bubbling up
-          if (isDisabled || props.readOnly === true) return false;
-          setIsChecked((c) => !c);
-        }}
       >
         <input
           {...props}
@@ -131,9 +126,8 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           value={value}
           checked={isChecked}
           onChange={(e) => {
-            //returning false is not setting the state to false, it stops the event from bubbling up
-            if (isDisabled || props.readOnly === true) return false;
-            setIsChecked(!isChecked);
+            if (isDisabled || props.readOnly === true) return;
+            setIsChecked(e.target.checked);
           }}
           disabled={isDisabled}
           className={cn(
@@ -150,17 +144,15 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
         />
         <div>
           <div className="flex items-center gap-x-2">
-            <label
-              htmlFor={id}
+            <span
               className={cn(
                 props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
                 labelClassName,
                 externalLabelClassName
               )}
-              onClick={(e) => e.preventDefault()}
             >
               {label}
-            </label>
+            </span>
             {badges && (
               <span className="-mr-2 flex gap-x-1.5">
                 {badges.map((badge) => (
@@ -175,7 +167,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
             </Paragraph>
           )}
         </div>
-      </div>
+      </label>
     );
   }
 );
