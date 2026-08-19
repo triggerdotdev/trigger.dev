@@ -577,16 +577,18 @@ export function ChartLineRenderer({
             // flips at the split; otherwise it's the series colour. The warning overlay draws its
             // own dot on top where it's active.
             activeDot={
-              gradientLine ? (
-                <ThresholdActiveDot
-                  dataKey={key}
-                  threshold={thresholdStroke!.value}
-                  aboveColor={thresholdStroke!.aboveColor}
-                  baseColor={config[key]?.color ?? "var(--color-tasks)"}
-                />
-              ) : (
-                { r: 4, fill: config[key]?.color, strokeWidth: 0 }
-              )
+              gradientLine
+                ? // oxlint-disable-next-line react/no-unstable-nested-components -- Recharts invokes this renderer with hover coordinates; an element would rely on cloneElement prop injection.
+                  (props: ActiveDotProps) => (
+                    <ThresholdActiveDot
+                      {...props}
+                      dataKey={key}
+                      threshold={thresholdStroke!.value}
+                      aboveColor={thresholdStroke!.aboveColor}
+                      baseColor={config[key]?.color ?? "var(--color-tasks)"}
+                    />
+                  )
+                : { r: 4, fill: config[key]?.color, strokeWidth: 0 }
             }
             isAnimationActive={false}
           />
