@@ -2093,7 +2093,9 @@ function VersionsTab({
         const isOverride = v.labels.includes("override");
 
         return (
-          <div
+          <button
+            type="button"
+            aria-pressed={isSelected}
             key={v.id}
             onClick={() => onSelectVersion(v.version)}
             className={cn(
@@ -2143,7 +2145,7 @@ function VersionsTab({
             <span className="shrink-0 text-xs text-text-dimmed">
               <DateTime date={v.createdAt} />
             </span>
-          </div>
+          </button>
         );
       })}
     </div>

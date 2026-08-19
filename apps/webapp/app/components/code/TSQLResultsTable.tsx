@@ -926,19 +926,8 @@ function HeaderCellContent({
   const [isFilterHovered, setIsFilterHovered] = useState(false);
 
   const sortHighlighted = isCellHovered && !isFilterHovered;
-
-  return (
-    <div
-      className={cn(
-        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-2 pl-2 pr-3",
-        "font-mono text-xs font-medium text-text-bright",
-        alignment === "right" && "justify-end",
-        canSort && "cursor-pointer select-none"
-      )}
-      onMouseEnter={() => setIsCellHovered(true)}
-      onMouseLeave={() => setIsCellHovered(false)}
-      onClick={onSortClick}
-    >
+  const headerContent = (
+    <>
       {tooltip ? (
         <div
           className={cn("flex min-w-0 flex-1 items-center gap-1 truncate", {
@@ -958,7 +947,6 @@ function HeaderCellContent({
       ) : (
         <span className="min-w-0 flex-1 truncate text-left">{children}</span>
       )}
-      {/* Sort indicator */}
       {canSort && (
         <span
           className={cn(
@@ -974,6 +962,33 @@ function HeaderCellContent({
             <ChevronUpDownIcon className="size-4" />
           )}
         </span>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      className={cn(
+        "flex w-full items-center gap-1 overflow-hidden bg-background-bright py-2 pl-2 pr-3",
+        "font-mono text-xs font-medium text-text-bright",
+        alignment === "right" && "justify-end"
+      )}
+      onMouseEnter={() => setIsCellHovered(true)}
+      onMouseLeave={() => setIsCellHovered(false)}
+    >
+      {canSort ? (
+        <button
+          type="button"
+          onClick={onSortClick}
+          className={cn(
+            "flex min-w-0 flex-1 cursor-pointer select-none items-center gap-1 overflow-hidden text-left focus-custom",
+            alignment === "right" && "justify-end"
+          )}
+        >
+          {headerContent}
+        </button>
+      ) : (
+        headerContent
       )}
       {onFilterClick && (
         <button
