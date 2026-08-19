@@ -259,8 +259,8 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
 }) {
   if (message.role === "user") {
     return (
-      <ChatTurn role="user">
-        <ChatText role="user" text={userText(message)} />
+      <ChatTurn speaker="user">
+        <ChatText speaker="user" text={userText(message)} />
       </ChatTurn>
     );
   }
