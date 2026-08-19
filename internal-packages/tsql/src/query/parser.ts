@@ -1385,7 +1385,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     }
 
     const args: Expression[] = ctx._columnArgList ? this.visitExprList(ctx._columnArgList) : [];
-    const distinct = ctx.DISTINCT() ? true : false;
+    const distinct = ctx.DISTINCT() !== undefined;
     return { expression_type: "call", name, params: parameters, args, distinct };
   }
 

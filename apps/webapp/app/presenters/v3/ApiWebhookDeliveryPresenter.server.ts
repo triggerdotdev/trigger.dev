@@ -55,9 +55,7 @@ export const ApiWebhookDeliveryListSearchParams = z.object({
     .transform((value, ctx) => {
       if (!value) return undefined;
       const statuses = value.split(",");
-      const invalid = statuses.filter(
-        (s) => !Object.prototype.hasOwnProperty.call(API_STATUS_TO_DB, s)
-      );
+      const invalid = statuses.filter((s) => !Object.hasOwn(API_STATUS_TO_DB, s));
       if (invalid.length > 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

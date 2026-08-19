@@ -653,6 +653,9 @@ export class AgentChat<TAgent = unknown> {
   private async ensureStarted(options?: { idleTimeoutInSeconds?: number }): Promise<void> {
     if (this.state.started) return;
 
+    const idleTimeoutInSeconds =
+      options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds;
+
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
         // `trigger: "preload"` mirrors the browser-mediated
@@ -672,13 +675,7 @@ export class AgentChat<TAgent = unknown> {
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
         : {}),
-      ...(options?.idleTimeoutInSeconds !== undefined ||
-      this.triggerConfigDefault?.idleTimeoutInSeconds !== undefined
-        ? {
-            idleTimeoutInSeconds:
-              options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds!,
-          }
-        : {}),
+      ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
     const created = await sessions.start({

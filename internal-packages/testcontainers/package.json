@@ -26,6 +26,7 @@
     "tinyexec": "^0.3.0"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   }
 }

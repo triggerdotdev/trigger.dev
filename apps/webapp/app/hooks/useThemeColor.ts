@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
  */
 function toRgb(color: string): string {
   const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 1;
+  canvas.width = 1;
+  canvas.height = 1;
   const ctx = canvas.getContext("2d");
   if (!ctx) return color;
   ctx.fillStyle = color;

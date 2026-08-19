@@ -172,7 +172,7 @@ export function removePrivateProperties(
 
 export function isEmptyObject(obj: object) {
   for (var prop in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, prop)) {
+    if (Object.hasOwn(obj, prop)) {
       return false;
     }
   }

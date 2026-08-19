@@ -234,17 +234,15 @@ export function TabButton({
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const ref = useRef<HTMLButtonElement>(null);
 
-  if (shortcut) {
-    useShortcutKeys({
-      shortcut: shortcut,
-      action: () => {
-        if (ref.current) {
-          ref.current.click();
-        }
-      },
-      disabled: props.disabled,
-    });
-  }
+  useShortcutKeys({
+    shortcut,
+    action: () => {
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+    disabled: props.disabled,
+  });
 
   const title = variant === "title";
 

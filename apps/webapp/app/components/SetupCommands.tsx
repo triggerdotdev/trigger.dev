@@ -1,5 +1,5 @@
 import { CheckIcon, SparklesIcon } from "@heroicons/react/20/solid";
-import { createContext, useContext, useRef, useState } from "react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
 import { useTriggerCliTag } from "~/hooks/useTriggerCliTag";
@@ -24,10 +24,13 @@ const PackageManagerContext = createContext<PackageManagerContextType | undefine
 export function PackageManagerProvider({ children }: { children: React.ReactNode }) {
   const [activePackageManager, setActivePackageManager] = useState("npm");
 
+  const contextValue = useMemo(
+    () => ({ activePackageManager, setActivePackageManager }),
+    [activePackageManager]
+  );
+
   return (
-    <PackageManagerContext.Provider value={{ activePackageManager, setActivePackageManager }}>
-      {children}
-    </PackageManagerContext.Provider>
+    <PackageManagerContext.Provider value={contextValue}>{children}</PackageManagerContext.Provider>
   );
 }
 
@@ -54,7 +57,7 @@ function useApiUrl() {
   }
 }
 
-function getApiUrlArg() {
+function useApiUrlArg() {
   const apiUrl = useApiUrl();
   return apiUrl ? `-a ${apiUrl}` : undefined;
 }
@@ -67,7 +70,7 @@ type TabsProps = {
 export function InitCommandV3({ title }: TabsProps) {
   const project = useProject();
   const projectRef = project.externalRef;
-  const apiUrlArg = getApiUrlArg();
+  const apiUrlArg = useApiUrlArg();
   const triggerCliTag = useTriggerCliTag();
 
   const initCommandParts = [`trigger.dev@${triggerCliTag}`, "init", `-p ${projectRef}`, apiUrlArg];

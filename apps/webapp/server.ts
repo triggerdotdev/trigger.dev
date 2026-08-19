@@ -37,6 +37,7 @@ function installPrimarySignalHandlers() {
 
   const forward = (signal: NodeJS.Signals) => {
     for (const id in cluster.workers) {
+      if (!Object.hasOwn(cluster.workers, id)) continue;
       const w = cluster.workers[id];
       if (w?.process?.pid) {
         try {

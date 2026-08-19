@@ -296,7 +296,7 @@ export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
 
   if (!result.foundTask) {
-    return <div></div>;
+    return <div />;
   }
 
   const params = useParams();

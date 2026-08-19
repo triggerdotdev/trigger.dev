@@ -17,6 +17,7 @@ import { getRunnerId } from "../util.js";
 import {
   nodetypeNodeSelector,
   runPodTolerations,
+  runnerSecurityContext,
   withRunnerSeccompProfile,
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
@@ -175,6 +176,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                 ],
                 resources: this.#getResourcesForMachine(opts.machine),
+                securityContext: runnerSecurityContext(
+                  env.KUBERNETES_RUNNER_SECURITY_CONTEXT,
+                  env.KUBERNETES_RUNNER_RUN_AS_USER,
+                  opts.runtime
+                ),
                 env: [
                   {
                     name: "TRIGGER_DEQUEUED_AT_MS",
@@ -363,6 +369,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       ...(env.KUBERNETES_SCHEDULER_NAME
         ? {
             schedulerName: env.KUBERNETES_SCHEDULER_NAME,
+          }
+        : {}),
+      ...(env.KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME
+        ? {
+            priorityClassName: env.KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME,
           }
         : {}),
       ...nodetypeNodeSelector(env.KUBERNETES_WORKER_NODETYPE_LABEL),

@@ -156,7 +156,7 @@ export default function Story() {
 
       {/* The main body */}
       <div className="grid grid-cols-[100px_1fr]">
-        <div></div>
+        <div />
         <div className="overflow-x-auto border-l border-grid-dimmed bg-background-bright">
           <div className="pr-6">
             <Timeline.Root

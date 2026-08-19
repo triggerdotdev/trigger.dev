@@ -172,8 +172,8 @@ export function sanitizeUnknownInPlace(value: unknown): { value: unknown; fixed:
 export function sanitizeRows<T extends object>(rows: T[]): SanitizeResult {
   const result: SanitizeResult = { rowsTouched: 0, fieldsSanitized: 0 };
 
-  for (let i = 0; i < rows.length; i++) {
-    const { fixed } = sanitizeUnknownInPlace(rows[i]);
+  for (const row of rows) {
+    const { fixed } = sanitizeUnknownInPlace(row);
     if (fixed > 0) {
       result.rowsTouched++;
       result.fieldsSanitized += fixed;
