@@ -2,23 +2,25 @@ import { NODE_RUNTIME_UPDATE_MAJOR, nodeMajor } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import { prisma } from "~/db.server";
 
-type Options = {
-  organizationId?: string;
-  userId?: string;
-};
+/**
+ * The scope is required and exactly one of the two applies: without it the `where` below would
+ * collapse to every V3 project on the instance, so a scopeless call must not typecheck.
+ */
+type Scope =
+  | { organizationId: string; userId?: never }
+  | { userId: string; organizationId?: never };
 
-export async function listCurrentProductionProjectRuntimes({ organizationId, userId }: Options) {
+export async function listCurrentProductionProjectRuntimes(scope: Scope) {
   const projects = await prisma.project.findMany({
     where: {
-      ...(organizationId ? { organizationId } : {}),
-      ...(userId
-        ? {
+      ...(scope.organizationId !== undefined
+        ? { organizationId: scope.organizationId }
+        : {
             organization: {
               deletedAt: null,
-              members: { some: { userId } },
+              members: { some: { userId: scope.userId } },
             },
-          }
-        : {}),
+          }),
       version: "V3",
       deletedAt: null,
     },

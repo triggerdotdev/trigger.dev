@@ -14,7 +14,7 @@ export const loader = dashboardLoader(
   {
     params: OrganizationParamsSchema,
     // Membership-scoped resolve, like the Team settings loader: the RBAC gate below enforces the
-    // role, this is the tenant floor. An unresolved org yields no scope, which fails closed.
+    // role, this is the tenant floor. An unresolved org yields no scope, which the loader rejects.
     context: async (params, request) => {
       const userId = await getUserId(request);
       if (!userId) return {};
@@ -28,9 +28,12 @@ export const loader = dashboardLoader(
     },
   },
   async ({ context, params }) => {
-    const runtimes = await listCurrentProductionProjectRuntimes({
-      organizationId: context.organizationId,
-    });
+    const organizationId = context.organizationId;
+    if (!organizationId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const runtimes = await listCurrentProductionProjectRuntimes({ organizationId });
 
     const needsUpdate: ProjectRuntimeRow[] = [];
     const otherProjects: ProjectRuntimeRow[] = [];
