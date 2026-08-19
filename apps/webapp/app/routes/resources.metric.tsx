@@ -219,6 +219,7 @@ export function MetricWidget({
     },
   });
 
+  /* oxlint-disable react/react-compiler -- These ref objects are stable callback inputs. */
   const submit = useCallback(() => {
     if (!isVisibleRef.current) {
       isDirtyRef.current = true;
@@ -263,6 +264,7 @@ export function MetricWidget({
         }
       });
   }, [isVisibleRef]);
+  /* oxlint-enable react/react-compiler */
   submitRef.current = submit;
 
   // Clean up on unmount

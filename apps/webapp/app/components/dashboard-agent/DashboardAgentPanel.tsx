@@ -194,7 +194,7 @@ export function DashboardAgentPanel({
           toast.error("We couldn't load your previous chats. Try again in a moment.");
         }
       }),
-    [actionPath, organization.id, toast]
+    [actionPath, organization.id, toast, justRead, visibleChatId]
   );
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
