@@ -52,8 +52,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     runId: filters.runId,
     bulkId: filters.bulkId,
     queues: filters.queues,
+    regions: filters.regions,
     machines: filters.machines,
     errorId: filters.errorId,
+    taskKinds: filters.sources,
     runSelect: deriveRunSelect([], [source]),
     page: { size: SAMPLE_RUN_COUNT },
   });
