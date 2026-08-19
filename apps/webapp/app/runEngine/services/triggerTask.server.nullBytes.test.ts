@@ -50,7 +50,7 @@ function buildService(engine: any, prisma: any) {
 
 describe("RunEngineTriggerTaskService null-byte sanitization", () => {
   containerTest(
-    "strips a NUL from idempotencyKeyOptions.key so the jsonb insert does not 22P05",
+    "sanitizes NUL-containing idempotency and debounce keys before the jsonb insert",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
 
@@ -59,41 +59,13 @@ describe("RunEngineTriggerTaskService null-byte sanitization", () => {
         const service = buildService(engine, prisma);
 
         const result = await service.call({
-          taskId: "nul-idem-task",
+          taskId: "nul-keys-task",
           environment,
           body: {
-            payload: { kind: "idem" },
+            payload: { kind: "nul-keys" },
             options: {
               idempotencyKey: "a".repeat(64),
               idempotencyKeyOptions: { key: `acme${NUL}inc`, scope: "run" },
-            },
-          },
-        });
-        assertNonNullable(result);
-
-        const row = await prisma.taskRun.findUniqueOrThrow({ where: { id: result.run.id } });
-        expect(row.idempotencyKeyOptions).toEqual({ key: "acmeinc", scope: "run" });
-      } finally {
-        await engine.quit();
-      }
-    }
-  );
-
-  containerTest(
-    "strips a NUL from debounce.key so the jsonb insert does not 22P05",
-    async ({ prisma, redisOptions }) => {
-      const engine = buildEngine(prisma, redisOptions);
-
-      try {
-        const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-        const service = buildService(engine, prisma);
-
-        const result = await service.call({
-          taskId: "nul-debounce-task",
-          environment,
-          body: {
-            payload: { kind: "debounce" },
-            options: {
               debounce: { key: `grp${NUL}1`, delay: "1s" },
             },
           },
@@ -101,7 +73,8 @@ describe("RunEngineTriggerTaskService null-byte sanitization", () => {
         assertNonNullable(result);
 
         const row = await prisma.taskRun.findUniqueOrThrow({ where: { id: result.run.id } });
-        expect((row.debounce as { key: string }).key).toBe("grp1");
+        expect(row.idempotencyKeyOptions).toEqual({ key: "acmeinc", scope: "run" });
+        expect(row.debounce).toMatchObject({ key: "grp1", delay: "1s" });
       } finally {
         await engine.quit();
       }
