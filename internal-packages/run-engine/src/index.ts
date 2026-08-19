@@ -5,6 +5,7 @@ export {
   ServiceValidationError as EngineServiceValidationError,
 } from "./engine/errors.js";
 export type { EventBusEventArgs, EventBusEvents } from "./engine/eventBus.js";
+export { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "./engine/systems/pendingVersionSystem.js";
 export type { AuthenticatedEnvironment } from "./shared/index.js";
 export type {
   PendingVersionRunIdLookup,

@@ -6,3 +6,4 @@ export * from "./queueName.js";
 export * from "./consts.js";
 export * from "./traceContext.js";
 export * from "./dates.js";
+export * from "./deploymentVersions.js";

@@ -23,6 +23,7 @@ import {
   lifecycleHooks,
   makeIdempotencyKey,
   packetRequiresOffloading,
+  resolveExternalDeploymentId,
   parsePacket,
   RateLimitError,
   resourceCatalog,
@@ -123,6 +124,14 @@ function scopedEnvVar(name: string): string | undefined {
   const scope = sdkScope.getStore();
   if (scope && !scope.inheritContext) return undefined;
   return getEnvVar(name);
+}
+
+function resolveTriggerExternalDeploymentId(explicit?: string): string | undefined {
+  return resolveExternalDeploymentId({
+    explicit,
+    clientConfig: apiClientManager.externalDeploymentId,
+    read: scopedEnvVar,
+  });
 }
 
 export function queue(options: QueueOptions): Queue {
@@ -737,6 +746,9 @@ export async function batchTriggerById<TTask extends AnyTask>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            externalDeploymentId: resolveTriggerExternalDeploymentId(
+              item.options?.externalDeploymentId
+            ),
             debounce: item.options?.debounce,
           },
         } satisfies BatchItemNDJSON;
@@ -1259,6 +1271,9 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            externalDeploymentId: resolveTriggerExternalDeploymentId(
+              item.options?.externalDeploymentId
+            ),
             debounce: item.options?.debounce,
           },
         } satisfies BatchItemNDJSON;
@@ -2007,6 +2022,9 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(
+          item.options?.externalDeploymentId
+        ),
         debounce: item.options?.debounce,
       },
     } satisfies BatchItemNDJSON;
@@ -2110,6 +2128,9 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(
+          item.options?.externalDeploymentId
+        ),
         debounce: item.options?.debounce,
       },
     } satisfies BatchItemNDJSON;
@@ -2214,6 +2235,9 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(
+          item.options?.externalDeploymentId
+        ),
         debounce: item.options?.debounce,
       },
     } satisfies BatchItemNDJSON;
@@ -2327,6 +2351,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         priority: options?.priority,
         region: options?.region,
         lockToVersion: options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(options?.externalDeploymentId),
         debounce: options?.debounce,
       },
     },
@@ -2413,6 +2438,9 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            externalDeploymentId: resolveTriggerExternalDeploymentId(
+              item.options?.externalDeploymentId
+            ),
             debounce: item.options?.debounce,
           },
         } satisfies BatchItemNDJSON;

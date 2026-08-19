@@ -465,8 +465,12 @@ describe("pendingVersionSystem store routing (cross-version / cross-DB)", () => 
       expect(oldHydrate.map((r) => r.id)).toEqual(oldIds);
 
       // Promotion flips identically across versions.
-      const newPromote = await newStore.promotePendingVersionRuns(newIds[0], prisma17 as any);
-      const oldPromote = await legacyStore.promotePendingVersionRuns(oldIds[0], prisma14 as any);
+      const newPromote = await newStore.promotePendingVersionRuns(newIds[0], undefined, prisma17);
+      const oldPromote = await legacyStore.promotePendingVersionRuns(
+        oldIds[0],
+        undefined,
+        prisma14
+      );
       expect(newPromote.count).toBe(oldPromote.count);
       expect(newPromote.count).toBe(1);
 
@@ -518,7 +522,7 @@ describe("pendingVersionSystem store routing (cross-version / cross-DB)", () => 
       expect(hydrated.map((r) => r.id)).toEqual([newId]);
 
       // Promote on NEW.
-      const promote = await newStore.promotePendingVersionRuns(newId, prisma17 as any);
+      const promote = await newStore.promotePendingVersionRuns(newId, undefined, prisma17);
       expect(promote.count).toBe(1);
 
       // NEW flipped; LEGACY row untouched.
