@@ -970,6 +970,7 @@ export function PurchaseSeatsModal({
 
   const [amountValue, setAmountValue] = useState(extraSeats);
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- The authoritative seat count intentionally resets this modal draft.
     setAmountValue(extraSeats);
   }, [extraSeats]);
   const isLoading = fetcher.state !== "idle";

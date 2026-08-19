@@ -610,6 +610,7 @@ function LogsDisplay({
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
 

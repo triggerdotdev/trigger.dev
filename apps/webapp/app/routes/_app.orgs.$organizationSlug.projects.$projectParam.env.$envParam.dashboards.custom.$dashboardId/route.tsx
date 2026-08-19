@@ -683,6 +683,7 @@ function RenameDashboardDialog({ title }: { title: string }) {
 
   // Sync newTitle state when title changes (after successful rename)
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- A completed rename intentionally resets this editable title draft.
     setNewTitle(title);
   }, [title]);
 
