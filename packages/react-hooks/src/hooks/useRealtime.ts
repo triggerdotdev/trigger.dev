@@ -750,33 +750,29 @@ export function useRealtimeStream<TPart>(
   streamKeyOrOptionsOrRunId?: string | UseRealtimeStreamOptions<TPart>,
   options?: UseRealtimeStreamOptions<TPart>
 ): UseRealtimeStreamInstance<TPart> {
+  let runId: string;
+  let streamKey: string;
+  let resolvedOptions: UseRealtimeStreamOptions<TPart> | undefined;
+
   if (typeof runIdOrDefinedStream === "string") {
-    if (typeof streamKeyOrOptionsOrRunId === "string") {
-      return useRealtimeStreamImplementation(
-        runIdOrDefinedStream,
-        streamKeyOrOptionsOrRunId,
-        options
-      );
-    } else {
-      return useRealtimeStreamImplementation(
-        runIdOrDefinedStream,
-        "default",
-        streamKeyOrOptionsOrRunId
-      );
-    }
+    runId = runIdOrDefinedStream;
+    streamKey =
+      typeof streamKeyOrOptionsOrRunId === "string" ? streamKeyOrOptionsOrRunId : "default";
+    resolvedOptions =
+      typeof streamKeyOrOptionsOrRunId === "string" ? options : streamKeyOrOptionsOrRunId;
   } else {
-    if (typeof streamKeyOrOptionsOrRunId === "string") {
-      return useRealtimeStreamImplementation(
-        streamKeyOrOptionsOrRunId,
-        runIdOrDefinedStream.id,
-        options
-      );
-    } else {
+    if (typeof streamKeyOrOptionsOrRunId !== "string") {
       throw new Error(
         "Invalid second argument to useRealtimeStream. When using a defined stream instance, the second argument to useRealtimeStream must be a run ID."
       );
     }
+
+    runId = streamKeyOrOptionsOrRunId;
+    streamKey = runIdOrDefinedStream.id;
+    resolvedOptions = options;
   }
+
+  return useRealtimeStreamImplementation(runId, streamKey, resolvedOptions);
 }
 
 function useRealtimeStreamImplementation<TPart>(

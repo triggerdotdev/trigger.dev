@@ -295,15 +295,11 @@ export const handle: Handle = {
 export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
 
-  if (!result.foundTask) {
-    return <div />;
-  }
-
   const params = useParams();
   const queueFetcher = useFetcher<typeof queuesLoader>();
 
   useEffect(() => {
-    if (params.organizationSlug && params.projectParam && params.envParam) {
+    if (result.foundTask && params.organizationSlug && params.projectParam && params.envParam) {
       const searchParams = new URLSearchParams();
       searchParams.set("type", "custom");
       searchParams.set("per_page", "100");
@@ -314,9 +310,9 @@ export default function Page() {
         }/queues?${searchParams.toString()}`
       );
     }
-  }, [params.organizationSlug, params.projectParam, params.envParam]);
+  }, [result.foundTask, params.organizationSlug, params.projectParam, params.envParam]);
 
-  const defaultTaskQueue = "queue" in result ? result.queue : undefined;
+  const defaultTaskQueue = result.foundTask && "queue" in result ? result.queue : undefined;
   const queues = useMemo(() => {
     const customQueues = queueFetcher.data?.queues ?? [];
 
@@ -324,6 +320,10 @@ export default function Page() {
       ? [defaultTaskQueue, ...customQueues]
       : customQueues;
   }, [queueFetcher.data?.queues, defaultTaskQueue]);
+
+  if (!result.foundTask) {
+    return <div />;
+  }
 
   const { triggerSource } = result;
 
