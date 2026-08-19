@@ -36,6 +36,39 @@ export function LiveTimer({
   );
 }
 
+/* Kept for the design-system storybook, which is its only consumer. Removed by
+   #4654's unused-code pass and restored deliberately - see PR #4547. */
+export function LiveCountUp({
+  lastUpdated,
+  updateInterval = 250,
+  className,
+}: {
+  lastUpdated: Date;
+  updateInterval?: number;
+  className?: string;
+}) {
+  const [now, setNow] = useState<Date>();
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const date = new Date();
+      setNow(date);
+    }, updateInterval);
+
+    return () => clearInterval(interval);
+  }, [lastUpdated]);
+
+  return (
+    <>
+      {formatDuration(lastUpdated, now, {
+        style: "short",
+        maxDecimalPoints: 0,
+        units: ["m", "s"],
+      })}
+    </>
+  );
+}
+
 export function LiveCountdown({
   endTime,
   updateInterval = 100,

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AnimatedNumber } from "~/components/primitives/AnimatedNumber";
+import { AnimatingArrow, themes as arrowThemes } from "~/components/primitives/AnimatingArrow";
 import { Button } from "~/components/primitives/Buttons";
 import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -10,7 +11,12 @@ export default function Story_() {
 
   return (
     <StoryPage
-      componentNames={["PulsingDot.tsx", "StepNumber.tsx", "AnimatedNumber.tsx"]}
+      componentNames={[
+        "PulsingDot.tsx",
+        "StepNumber.tsx",
+        "AnimatedNumber.tsx",
+        "AnimatingArrow.tsx",
+      ]}
       title="Indicators"
       description="Small animated affordances: pulsing dots, step numbers, animated numbers and arrows."
     >
@@ -60,6 +66,38 @@ export default function Story_() {
             2 decimal places: <AnimatedNumber value={number / 1000} decimalPlaces={2} />
           </span>
         </div>
+      </StorySection>
+
+      <StorySection
+        title="AnimatingArrow"
+        description="Hover each cell — the arrow extends on group hover."
+      >
+        <StoryGrid min="11rem">
+          {(["small", "medium", "large", "extra-large"] as const).map((variant) => (
+            <Story key={variant} label={`${variant} / dimmed`}>
+              <span className="group">
+                <AnimatingArrow variant={variant} theme="dimmed" />
+              </span>
+            </Story>
+          ))}
+          {(Object.keys(arrowThemes) as Array<keyof typeof arrowThemes>).map((theme) => (
+            <Story key={theme} label={`medium / ${theme}`}>
+              <span className="group">
+                <AnimatingArrow variant="medium" theme={theme} />
+              </span>
+            </Story>
+          ))}
+          <Story label="direction left">
+            <span className="group">
+              <AnimatingArrow direction="left" theme="bright" />
+            </span>
+          </Story>
+          <Story label="direction topRight">
+            <span className="group">
+              <AnimatingArrow direction="topRight" theme="bright" />
+            </span>
+          </Story>
+        </StoryGrid>
       </StorySection>
     </StoryPage>
   );

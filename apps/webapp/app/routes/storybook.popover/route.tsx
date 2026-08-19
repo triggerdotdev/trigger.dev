@@ -9,6 +9,7 @@ import {
   PopoverEllipseTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
+  PopoverSideMenuTrigger,
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
@@ -106,6 +107,13 @@ export default function Story_() {
                   <Cog8ToothIcon className="size-4" />
                   Custom trigger
                 </PopoverCustomTrigger>
+              )}
+            </PopoverSample>
+          </Story>
+          <Story label="PopoverSideMenuTrigger">
+            <PopoverSample>
+              {(isOpen) => (
+                <PopoverSideMenuTrigger isOpen={isOpen}>Side menu trigger</PopoverSideMenuTrigger>
               )}
             </PopoverSample>
           </Story>

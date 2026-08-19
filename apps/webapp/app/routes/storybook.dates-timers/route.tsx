@@ -4,8 +4,10 @@ import {
   DateTimeAccurate,
   DateTimeShort,
   RelativeDateTime,
+  SmartDateTime,
 } from "~/components/primitives/DateTime";
-import { LiveCountdown, LiveTimer } from "~/components/runs/v3/LiveTimer";
+import { PrettyDuration } from "~/components/primitives/PrettyDuration";
+import { LiveCountdown, LiveCountUp, LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
 
 /* A fixed moment so the formatting variants are comparable at a glance. */
@@ -20,6 +22,7 @@ export default function Story_() {
 
   return (
     <StoryPage
+      componentNames={["DateTime.tsx", "PrettyDuration.tsx", "LiveTimer.tsx"]}
       title="Dates & timers"
       description="Every date formatting component, plus the live-updating timers used on run rows."
     >
@@ -51,8 +54,28 @@ export default function Story_() {
           <Story label="DateTimeShort">
             <DateTimeShort date={SAMPLE} />
           </Story>
+          <Story label="SmartDateTime (same day as previous)">
+            <SmartDateTime date={SAMPLE} previousDate={SAMPLE_EARLIER} />
+          </Story>
+          <Story label="SmartDateTime (new day)">
+            <SmartDateTime date={SAMPLE} previousDate={SAMPLE_PREVIOUS_DAY} />
+          </Story>
           <Story label="RelativeDateTime">
             <RelativeDateTime date={SAMPLE_PREVIOUS_DAY} />
+          </Story>
+        </StoryGrid>
+      </StorySection>
+
+      <StorySection title="PrettyDuration">
+        <StoryGrid min="16rem">
+          <Story label="22.4s">
+            <PrettyDuration startAt={SAMPLE_EARLIER} endAt={SAMPLE} />
+          </Story>
+          <Story label="11h 14m">
+            <PrettyDuration startAt={SAMPLE_PREVIOUS_DAY} endAt={SAMPLE} />
+          </Story>
+          <Story label="Missing dates → fallback">
+            <PrettyDuration startAt={null} endAt={null} fallback="Not started" />
           </Story>
         </StoryGrid>
       </StorySection>
@@ -67,6 +90,9 @@ export default function Story_() {
           </Story>
           <Story label="LiveTimer (ended)">
             <LiveTimer startTime={SAMPLE_EARLIER} endTime={SAMPLE} />
+          </Story>
+          <Story label="LiveCountUp">
+            <LiveCountUp lastUpdated={mountedAt} />
           </Story>
           <Story label="LiveCountdown">
             <LiveCountdown endTime={countdownEnd} />

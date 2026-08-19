@@ -67,6 +67,8 @@ const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
 );
 SheetHeader.displayName = "SheetHeader";
 
+/* Kept for the design-system storybook, which is its only consumer. Unexported by
+   #4654's unused-code pass and re-exported deliberately - see PR #4547. */
 export const SheetFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
@@ -95,6 +97,8 @@ const SheetTitle = React.forwardRef<
 ));
 SheetTitle.displayName = SheetPrimitive.Title.displayName;
 
+/* Kept for the design-system storybook, which is its only consumer. Unexported by
+   #4654's unused-code pass and re-exported deliberately - see PR #4547. */
 export const SheetDescription = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
