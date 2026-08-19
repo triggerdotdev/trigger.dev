@@ -2288,6 +2288,7 @@ model WorkerDeployment {
   triggeredById String?
   triggeredVia  String?
   commitSHA     String?
+  externalId    String?
 
   startedAt   DateTime?
   installedAt DateTime?
@@ -2316,6 +2317,7 @@ model WorkerDeployment {
   @@index([commitSHA])
   @@index([environmentId, createdAt])
   @@index([environmentId, status, id])
+  @@index([environmentId, externalId])
 }
 
 enum WorkerDeploymentStatus {
