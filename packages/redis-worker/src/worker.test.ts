@@ -577,7 +577,6 @@ describe("Worker", () => {
       await observer.ping();
 
       const baselineConnections = await connectedClientCount(observer);
-      const baselineTimeouts = activeTimeoutCount();
       const worker = new Worker({
         name: "shutdown-lifecycle-worker",
         redisOptions,
@@ -604,6 +603,7 @@ describe("Worker", () => {
 
         // Let the worker enter its polling loop so the loop, rather than the deadline, wins shutdown.
         await new Promise((resolve) => setTimeout(resolve, 50));
+        const baselineTimeouts = activeTimeoutCount();
         await worker.stop();
 
         await expect.poll(() => connectedClientCount(observer)).toBe(baselineConnections);
