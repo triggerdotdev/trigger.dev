@@ -1439,9 +1439,10 @@ export class PostgresRunStore implements RunStore {
           executionSnapshots: {
             create: {
               engine: "V2",
-              executionStatus: "DELAYED",
-              description: "Delayed run was rescheduled to a future date",
-              runStatus: "DELAYED",
+              executionStatus: data.snapshot.executionStatus ?? "DELAYED",
+              description:
+                data.snapshot.description ?? "Delayed run was rescheduled to a future date",
+              runStatus: data.snapshot.runStatus ?? "DELAYED",
               environmentId: data.snapshot.environmentId,
               environmentType: data.snapshot.environmentType,
               projectId: data.snapshot.projectId,

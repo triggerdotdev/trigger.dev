@@ -5,6 +5,7 @@ import {
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
+import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
 import { boundedIn } from "@trigger.dev/database";
@@ -28,6 +29,7 @@ export type PendingVersionSystemOptions = {
    */
   lagMaxRetries?: number;
   externalDeploymentParkDeadlineMs?: number;
+  executionSnapshotSystem: ExecutionSnapshotSystem;
 };
 
 const DEFAULT_LAG_RETRY_DELAY_MS = 5_000;
@@ -60,10 +62,12 @@ export function readExternalDeploymentIdAnnotation(annotations: unknown): string
 export class PendingVersionSystem {
   private readonly $: SystemResources;
   private readonly enqueueSystem: EnqueueSystem;
+  private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
 
   constructor(private readonly options: PendingVersionSystemOptions) {
     this.$ = options.resources;
     this.enqueueSystem = options.enqueueSystem;
+    this.executionSnapshotSystem = options.executionSnapshotSystem;
   }
 
   async enqueueRunsForBackgroundWorker(backgroundWorkerId: string, attempt: number = 0) {
@@ -231,6 +235,20 @@ export class PendingVersionSystem {
         }
 
         if (stillDelayed) {
+          await this.executionSnapshotSystem.createExecutionSnapshot(
+            tx,
+            {
+              run: { id: run.id, status: "DELAYED" },
+              snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
+              batchId: run.batchId ?? undefined,
+              environmentId: backgroundWorker.runtimeEnvironment.id,
+              environmentType: backgroundWorker.runtimeEnvironment.type,
+              projectId: backgroundWorker.runtimeEnvironment.project.id,
+              organizationId: backgroundWorker.runtimeEnvironment.organization.id,
+            },
+            store
+          );
+
           return true;
         }
 
@@ -470,6 +488,22 @@ export class PendingVersionSystem {
       );
     }
 
+    if (run.delayUntil && run.delayUntil > new Date()) {
+      this.$.logger.info(
+        "expireParkedExternalDeploymentRun: run is not due yet, re-arming the park deadline",
+        { runId, externalDeploymentId, delayUntil: run.delayUntil }
+      );
+
+      await this.scheduleExternalDeploymentParkDeadline({
+        runId,
+        externalDeploymentId,
+        ttl: run.ttl,
+        delayUntil: run.delayUntil,
+      });
+
+      return;
+    }
+
     const error: TaskRunError = {
       type: "STRING_ERROR",
       raw: `Run expired because no deployment with external id '${externalDeploymentId}' became available`,
@@ -574,6 +608,20 @@ export class PendingVersionSystem {
       }
 
       if (stillDelayed) {
+        await this.executionSnapshotSystem.createExecutionSnapshot(
+          tx,
+          {
+            run: { id: run.id, status: "DELAYED" },
+            snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
+            batchId: run.batchId ?? undefined,
+            environmentId: env.id,
+            environmentType: env.type,
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+          },
+          store
+        );
+
         return true;
       }
 

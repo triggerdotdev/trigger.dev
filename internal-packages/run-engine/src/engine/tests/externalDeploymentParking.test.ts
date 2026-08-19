@@ -567,6 +567,207 @@ describe("RunEngine external deployment parking", () => {
   );
 
   containerTest(
+    "a run released while still delayed records a DELAYED snapshot and no longer reports as parked",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const taskIdentifier = "test-task";
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t1234",
+            spanId: "s1234",
+            queue: `task/${taskIdentifier}`,
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 60 * 60 * 1000),
+            annotations: {
+              triggerSource: "sdk",
+              triggerAction: "trigger",
+              rootTriggerSource: "sdk",
+              externalDeploymentId: "commit-released",
+            },
+            parkedOnExternalDeploymentId: "commit-released",
+          },
+          prisma
+        );
+
+        const worker = await setupBackgroundWorker(
+          engine,
+          authenticatedEnvironment,
+          taskIdentifier
+        );
+        await nameDeploymentWithExternalId(prisma, worker.worker.id, "commit-released");
+
+        await engine.pendingVersionSystem.enqueueRunsForBackgroundWorker(worker.worker.id);
+
+        const released = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
+        expect(released.status).toBe("DELAYED");
+        expect(released.lockedToVersionId).toBe(worker.worker.id);
+
+        const afterRelease = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id },
+          orderBy: { createdAt: "asc" },
+          select: { executionStatus: true, runStatus: true },
+        });
+
+        expect(afterRelease.at(-1)?.runStatus).toBe("DELAYED");
+        expect(afterRelease.at(-1)?.executionStatus).toBe("DELAYED");
+
+        // A later debounce push must not re-label an already-released run as parked.
+        await engine.delayedRunSystem.rescheduleDelayedRun({
+          runId: run.id,
+          delayUntil: new Date(Date.now() + 2 * 60 * 60 * 1000),
+          tx: prisma,
+        });
+
+        const afterPush = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id },
+          orderBy: { createdAt: "asc" },
+          select: { executionStatus: true, runStatus: true },
+        });
+
+        expect(afterPush.at(-1)?.runStatus).toBe("DELAYED");
+        expect(afterPush.at(-1)?.executionStatus).toBe("DELAYED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a debounce push on a parked run keeps the snapshot parked instead of reporting it delayed",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const taskIdentifier = "test-task";
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t1234",
+            spanId: "s1234",
+            queue: `task/${taskIdentifier}`,
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 60 * 1000),
+            annotations: {
+              triggerSource: "sdk",
+              triggerAction: "trigger",
+              rootTriggerSource: "sdk",
+              externalDeploymentId: "commit-snapshot",
+            },
+            parkedOnExternalDeploymentId: "commit-snapshot",
+          },
+          prisma
+        );
+
+        await engine.delayedRunSystem.rescheduleDelayedRun({
+          runId: run.id,
+          delayUntil: new Date(Date.now() + 10 * 60 * 1000),
+          tx: prisma,
+        });
+
+        const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id },
+          orderBy: { createdAt: "asc" },
+          select: { executionStatus: true, runStatus: true },
+        });
+
+        const latest = snapshots.at(-1);
+
+        assertNonNullable(latest);
+        expect(latest.runStatus).toBe("PENDING_VERSION");
+        expect(latest.executionStatus).toBe("RUN_CREATED");
+
+        const stillParked = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
+        expect(stillParked.status).toBe("PENDING_VERSION");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "the parking deadline re-arms instead of expiring a run whose delay was pushed past it",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const taskIdentifier = "test-task";
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t1234",
+            spanId: "s1234",
+            queue: `task/${taskIdentifier}`,
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 60 * 1000),
+            annotations: {
+              triggerSource: "sdk",
+              triggerAction: "trigger",
+              rootTriggerSource: "sdk",
+              externalDeploymentId: "commit-pushed",
+            },
+            parkedOnExternalDeploymentId: "commit-pushed",
+          },
+          prisma
+        );
+
+        // Stand in for a debounce push: the run's delay moves out, but nothing re-arms the
+        // deadline that was computed when the run was first parked.
+        const pushedDelayUntil = new Date(Date.now() + 60 * 60 * 1000);
+        await prisma.taskRun.update({
+          where: { id: run.id },
+          data: { delayUntil: pushedDelayUntil },
+        });
+
+        await engine.pendingVersionSystem.expireParkedExternalDeploymentRun({
+          runId: run.id,
+          externalDeploymentId: "commit-pushed",
+        });
+
+        const stillParked = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
+
+        expect(stillParked.status).toBe("PENDING_VERSION");
+        expect(stillParked.statusReason).toBe("EXTERNAL_DEPLOYMENT_PENDING");
+        expect(stillParked.expiredAt).toBeNull();
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "the parking deadline expires a run whose deployment never arrived",
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
