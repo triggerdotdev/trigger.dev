@@ -190,7 +190,7 @@ export function Select<TValue extends string | string[], TItem>({
     }
 
     return matchSorter(items, searchValue, filter);
-  }, [searchValue, items]);
+  }, [searchValue, items, filter]);
 
   const enableItemShortcuts = allowItemShortcuts && matches.length === items?.length;
 

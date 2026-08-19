@@ -65,7 +65,7 @@ export function AnimatedNumber({
       duration,
       ease: "easeInOut",
     });
-  }, [value, duration]);
+  }, [motionValue, value, duration]);
 
   return <motion.span>{display}</motion.span>;
 }

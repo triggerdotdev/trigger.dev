@@ -149,10 +149,13 @@ const statuses = allTaskRunStatuses.map((status) => ({
 function Statuses({ trigger, clearSearchValue, shortcut, searchValue, setFilterType }: MenuProps) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = useCallback((values: string[]) => {
-    clearSearchValue();
-    replace({ status: values });
-  }, []);
+  const handleChange = useCallback(
+    (values: string[]) => {
+      clearSearchValue();
+      replace({ status: values });
+    },
+    [clearSearchValue, replace]
+  );
 
   const filtered = useMemo(() => {
     return statuses.filter((item) => item.title.toLowerCase().includes(searchValue.toLowerCase()));
@@ -205,10 +208,13 @@ function Environments({
 }: MenuProps) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = useCallback((values: string[]) => {
-    clearSearchValue();
-    replace({ environment: values });
-  }, []);
+  const handleChange = useCallback(
+    (values: string[]) => {
+      clearSearchValue();
+      replace({ environment: values });
+    },
+    [clearSearchValue, replace]
+  );
 
   const filtered = useMemo(() => {
     return environments.filter((item) =>

@@ -20,7 +20,7 @@ export function useReplaceSearchParams() {
         return s;
       }, navigateOpts);
     },
-    [searchParams]
+    [setSearchParams]
   );
 
   return { searchParams, setSearchParams, replaceSearchParam };

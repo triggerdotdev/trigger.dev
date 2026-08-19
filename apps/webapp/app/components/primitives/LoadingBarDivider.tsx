@@ -39,7 +39,7 @@ function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
 
       exitAnimation();
     }
-  }, [isPresent, isLoading]);
+  }, [animate, isPresent, isLoading, safeToRemove, scope]);
 
   return (
     <AnimatePresence>

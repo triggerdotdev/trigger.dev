@@ -63,6 +63,25 @@ export function AIPayloadTabContent({
 
   const submitGeneration = useCallback(
     async (queryPrompt: string) => {
+      const processStreamEvent = (event: StreamEventType) => {
+        switch (event.type) {
+          case "thinking":
+            setThinking((prev) => prev + event.content);
+            break;
+          case "result":
+            if (event.success) {
+              onPayloadGenerated(event.payload);
+              setLastPayload(event.payload);
+              setPrompt("");
+              setLastResult("success");
+            } else {
+              setError(event.error);
+              setLastResult("error");
+            }
+            break;
+        }
+      };
+
       if (!queryPrompt.trim() || isLoadingRef.current) return;
 
       isLoadingRef.current = true;
@@ -168,29 +187,8 @@ export function AIPayloadTabContent({
       isAgent,
       payloadKind,
       providerSource,
+      onPayloadGenerated,
     ]
-  );
-
-  const processStreamEvent = useCallback(
-    (event: StreamEventType) => {
-      switch (event.type) {
-        case "thinking":
-          setThinking((prev) => prev + event.content);
-          break;
-        case "result":
-          if (event.success) {
-            onPayloadGenerated(event.payload);
-            setLastPayload(event.payload);
-            setPrompt("");
-            setLastResult("success");
-          } else {
-            setError(event.error);
-            setLastResult("error");
-          }
-          break;
-      }
-    },
-    [onPayloadGenerated]
   );
 
   const handleSubmit = useCallback(

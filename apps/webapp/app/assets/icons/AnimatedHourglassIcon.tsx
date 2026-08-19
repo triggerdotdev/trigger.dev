@@ -12,7 +12,7 @@ export function AnimatedHourglassIcon({
   const [scope, animate] = useAnimate();
 
   useEffect(() => {
-    animate(
+    const controls = animate(
       [
         [scope.current, { rotate: 0 }, { duration: 0.7 }],
         [scope.current, { rotate: 180 }, { duration: 0.3 }],
@@ -21,7 +21,9 @@ export function AnimatedHourglassIcon({
       ],
       { repeat: Infinity, delay }
     );
-  }, []);
+
+    return () => controls.stop();
+  }, [animate, delay, scope]);
 
   return <HourglassIcon ref={scope} className={className} />;
 }

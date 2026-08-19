@@ -70,7 +70,7 @@ export function Feedback({
     ) {
       setOpen(false);
     }
-  }, [navigation.formAction, navigation.state, form.allErrors]);
+  }, [navigation.formAction, navigation.state, form.allErrors, setOpen]);
 
   // Handle URL param functionality
   useEffect(() => {
@@ -83,7 +83,7 @@ export function Feedback({
       next.delete("feedbackPanel");
       setSearchParams(next);
     }
-  }, [searchParams]);
+  }, [searchParams, setOpen, setSearchParams]);
 
   // Reset the topic to the default once the dialog closes, so reopening always starts fresh. The
   // dialog is now persistently mounted (hosted outside the popover), so without this it would keep

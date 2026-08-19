@@ -285,7 +285,13 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [eventStream?.s2?.basin, eventStream?.s2?.stream, eventStream?.s2?.accessToken, isPending]);
+  }, [
+    eventStream?.s2?.basin,
+    eventStream?.s2?.stream,
+    eventStream?.s2?.accessToken,
+    isPending,
+    logsDisabled,
+  ]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">

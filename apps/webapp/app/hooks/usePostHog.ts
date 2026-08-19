@@ -38,7 +38,7 @@ export const usePostHog = (
       },
     });
     postHogInitialized.current = true;
-  }, [apiKey, uiHost, logging, user]);
+  }, [apiKey, uiHost, logging, debug, user]);
 
   useUserChanged((user) => {
     if (postHogInitialized.current === false) return;

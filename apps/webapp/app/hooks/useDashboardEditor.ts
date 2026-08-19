@@ -206,6 +206,8 @@ export function useDashboardEditor({
   const layoutDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(initialData.layout));
+  const initialDataRef = useRef(initialData);
+  initialDataRef.current = initialData;
 
   // Sync queue to prevent race conditions
   const syncQueueRef = useRef<SyncTask[]>([]);
@@ -217,6 +219,8 @@ export function useDashboardEditor({
     widgets: initialData.widgets,
   });
   useEffect(() => {
+    const { layout, widgets } = initialDataRef.current;
+
     // Cancel any pending layout save
     if (layoutDebounceRef.current) {
       clearTimeout(layoutDebounceRef.current);
@@ -229,11 +233,11 @@ export function useDashboardEditor({
     // Reset state to new initial data
     dispatch({
       type: "RESET_STATE",
-      payload: { layout: initialData.layout, widgets: initialData.widgets },
+      payload: { layout, widgets },
     });
 
     // Update refs
-    currentLayoutJsonRef.current = JSON.stringify(initialData.layout);
+    currentLayoutJsonRef.current = JSON.stringify(layout);
     isInitializedRef.current = false;
 
     // Allow saves after a short delay to skip initial mount callbacks

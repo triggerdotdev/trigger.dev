@@ -202,11 +202,22 @@ export function MetricWidget({
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isDirtyRef = useRef(false);
+  const submitRef = useRef<() => void>(() => {});
 
   // Track the latest props so the submit callback always uses fresh values
   // without needing to be recreated (which would cause useInterval to re-register listeners).
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  // Track visibility so we only fetch for on-screen widgets.
+  // When a widget scrolls into view and has no data yet, trigger a load.
+  const { ref: visibilityRef, isVisibleRef } = useElementVisibility({
+    onVisibilityChange: (visible) => {
+      if (visible && (!response || isDirtyRef.current)) {
+        submitRef.current();
+      }
+    },
+  });
 
   const submit = useCallback(() => {
     if (!isVisibleRef.current) {
@@ -251,17 +262,8 @@ export function MetricWidget({
           setIsLoading(false);
         }
       });
-  }, []);
-
-  // Track visibility so we only fetch for on-screen widgets.
-  // When a widget scrolls into view and has no data yet, trigger a load.
-  const { ref: visibilityRef, isVisibleRef } = useElementVisibility({
-    onVisibilityChange: (visible) => {
-      if (visible && (!response || isDirtyRef.current)) {
-        submit();
-      }
-    },
-  });
+  }, [isVisibleRef]);
+  submitRef.current = submit;
 
   // Clean up on unmount
   useEffect(() => {
@@ -273,24 +275,25 @@ export function MetricWidget({
   // Reload periodically and on focus (onLoad: false — the useEffect below handles initial load)
   useInterval({ interval: refreshIntervalMs, callback: submit, onLoad: false });
 
+  const reloadKey = JSON.stringify({
+    query: props.query,
+    from: props.from,
+    to: props.to,
+    period: props.period,
+    scope: props.scope,
+    taskIdentifiers: props.taskIdentifiers,
+    queues: props.queues,
+    responseModels: props.responseModels,
+    promptSlugs: props.promptSlugs,
+    promptVersions: props.promptVersions,
+    operations: props.operations,
+    providers: props.providers,
+  });
+
   // Reload on mount and when query, time period, or filters change
   useEffect(() => {
     submit();
-  }, [
-    submit,
-    props.query,
-    props.from,
-    props.to,
-    props.period,
-    props.scope,
-    JSON.stringify(props.taskIdentifiers),
-    JSON.stringify(props.queues),
-    JSON.stringify(props.responseModels),
-    JSON.stringify(props.promptSlugs),
-    JSON.stringify(props.promptVersions),
-    JSON.stringify(props.operations),
-    JSON.stringify(props.providers),
-  ]);
+  }, [submit, reloadKey]);
 
   const data = response?.success
     ? { rows: response.data.rows, columns: response.data.columns }

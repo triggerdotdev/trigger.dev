@@ -155,7 +155,7 @@ export function TaskRunsTable({
         }
       }
     },
-    [checkboxes, runs]
+    [checkboxes, runs, select]
   );
 
   return (

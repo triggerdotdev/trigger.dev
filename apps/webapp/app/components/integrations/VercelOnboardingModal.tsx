@@ -46,7 +46,7 @@ import {
   vercelResourcePath,
 } from "~/utils/pathBuilder";
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { usePostHogTracking } from "~/hooks/usePostHog";
 import { TextLink } from "../primitives/TextLink";
 
@@ -126,9 +126,15 @@ export function VercelOnboardingModal({
   const origin = searchParams.get("origin");
   const fromMarketplaceContext = origin === "marketplace";
 
-  const availableProjects = onboardingData?.availableProjects || [];
+  const availableProjects = useMemo(
+    () => onboardingData?.availableProjects ?? [],
+    [onboardingData?.availableProjects]
+  );
   const _hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
-  const customEnvironments = onboardingData?.customEnvironments || [];
+  const customEnvironments = useMemo(
+    () => onboardingData?.customEnvironments ?? [],
+    [onboardingData?.customEnvironments]
+  );
   const envVars = onboardingData?.environmentVariables || [];
   const existingVars = onboardingData?.existingVariables || {};
   const hasCustomEnvs = customEnvironments.length > 0 && hasStagingEnvironment;

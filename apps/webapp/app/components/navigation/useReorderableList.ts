@@ -1,5 +1,5 @@
 import { useFetcher } from "@remix-run/react";
-import { type Ref, useCallback, useEffect, useMemo, useState } from "react";
+import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Layout, useContainerWidth } from "react-grid-layout";
 
 /**
@@ -33,9 +33,13 @@ export function useReorderableList<T>({
   const orderFetcher = useFetcher();
 
   const [order, setOrder] = useState<string[]>(() => initialOrder ?? items.map(itemKey));
+  const resetOrderRef = useRef({ initialOrder, items, itemKey });
+  resetOrderRef.current = { initialOrder, items, itemKey };
 
-  // Sync order when organizationId changes (component may not remount)
+  // Only an organization switch resets user-managed order. Keep the latest inputs in a ref so
+  // ordinary item or callback identity changes don't discard a drag reorder.
   useEffect(() => {
+    const { initialOrder, items, itemKey } = resetOrderRef.current;
     setOrder(initialOrder ?? items.map(itemKey));
   }, [organizationId]);
 

@@ -476,6 +476,7 @@ export function DashboardAgentPanel({
     watchCard.requestId,
     active?.chatId,
     actionPath,
+    organization.id,
     claimChatSlot,
     loadHistory,
   ]);

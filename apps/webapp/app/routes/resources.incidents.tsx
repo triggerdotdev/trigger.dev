@@ -41,26 +41,27 @@ const POLL_INTERVAL_MS = 60_000;
 export function useIncidentStatus() {
   const { isManagedCloud } = useFeatures();
   const fetcher = useFetcher<typeof loader>();
+  const { load, state } = fetcher;
   const hasInitiallyFetched = useRef(false);
 
   useEffect(() => {
     if (!isManagedCloud) return;
 
     // Initial fetch on mount
-    if (!hasInitiallyFetched.current && fetcher.state === "idle") {
+    if (!hasInitiallyFetched.current && state === "idle") {
       hasInitiallyFetched.current = true;
-      fetcher.load("/resources/incidents");
+      load("/resources/incidents");
     }
 
     // Poll every 60 seconds
     const interval = setInterval(() => {
-      if (fetcher.state === "idle") {
-        fetcher.load("/resources/incidents");
+      if (state === "idle") {
+        load("/resources/incidents");
       }
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isManagedCloud]);
+  }, [isManagedCloud, load, state]);
 
   return {
     status: fetcher.data?.status ?? "operational",

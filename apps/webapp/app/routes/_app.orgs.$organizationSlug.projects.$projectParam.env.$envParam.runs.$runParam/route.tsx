@@ -22,7 +22,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
 import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
@@ -1966,10 +1966,10 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     onChange(text);
   }, 250);
 
-  const updateValue = useCallback((next: string) => {
+  const updateValue = (next: string) => {
     setValue(next);
     updateFilterText(next);
-  }, []);
+  };
 
   return <SearchInput placeholder="Search logs…" value={value} onValueChange={updateValue} />;
 }

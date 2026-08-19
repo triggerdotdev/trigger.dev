@@ -1077,6 +1077,7 @@ export function GitHubSettingsPanel({
   layout?: "settings" | "compact";
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const location = useLocation();
 
   // Preserve current search params (e.g. origin=marketplace, next=...) but strip
@@ -1088,8 +1089,8 @@ export function GitHubSettingsPanel({
     return search ? `${location.pathname}?${search}` : location.pathname;
   })();
   useEffect(() => {
-    fetcher.load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
-  }, [organizationSlug, projectSlug, environmentSlug]);
+    load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
+  }, [organizationSlug, projectSlug, environmentSlug, load]);
 
   const data = fetcher.data;
 

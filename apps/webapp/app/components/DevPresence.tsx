@@ -80,7 +80,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
   // Calculate isConnected and memoize the context value
   const contextValue = useMemo(() => {
     return { isConnected };
-  }, [isConnected, enabled]);
+  }, [isConnected]);
 
   return <DevPresenceContext.Provider value={contextValue}>{children}</DevPresenceContext.Provider>;
 }

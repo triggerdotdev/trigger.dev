@@ -7,20 +7,24 @@ export function useChanged<T extends { id: string }>(
   sendInitialUndefined = true
 ) {
   const previousItemId = useRef<string | undefined>();
+  const isInitialRender = useRef(true);
+  const actionRef = useRef(action);
+  const itemRef = useRef<T | undefined>();
   const item = getItem();
+  const itemId = item?.id;
 
-  //when the value changes, call the action
+  actionRef.current = action;
+  itemRef.current = item;
+
   useEffect(() => {
-    if (previousItemId.current !== item?.id) {
-      action(item);
+    const shouldSendInitialUndefined =
+      isInitialRender.current && itemId === undefined && sendInitialUndefined;
+
+    if (previousItemId.current !== itemId || shouldSendInitialUndefined) {
+      actionRef.current(itemRef.current);
     }
 
-    previousItemId.current = item?.id;
-  }, [item]);
-
-  //if sendInitialUndefined is true, call the action when the component first renders
-  useEffect(() => {
-    if (item !== undefined || sendInitialUndefined === false) return;
-    action(item);
-  }, []);
+    previousItemId.current = itemId;
+    isInitialRender.current = false;
+  }, [itemId, sendInitialUndefined]);
 }
