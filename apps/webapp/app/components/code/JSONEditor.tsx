@@ -94,6 +94,7 @@ export function JSONEditor(opts: JSONEditorProps) {
   const editor = useRef<HTMLDivElement>(null);
   const settings: Omit<UseCodeMirror, "onBlur"> = {
     ...opts,
+    // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
     container: editor.current,
     extensions,
     editable: !readOnly,

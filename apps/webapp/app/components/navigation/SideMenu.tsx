@@ -532,6 +532,7 @@ export function SideMenu({
   // object each render, so depending on it would fire the cleanup (flushing the debounce) every
   // render — and drags re-render constantly — instead of only on unmount.
   const flushPendingPreferencesRef = useRef<() => void>();
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   flushPendingPreferencesRef.current = () => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);

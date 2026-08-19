@@ -56,6 +56,7 @@ export function FeatureFlagsDialog({
   const saveFetcher = useFetcher<ActionData>();
   const loadFeatureFlags = loadFetcher.load;
   const onOpenChangeRef = useRef(onOpenChange);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   onOpenChangeRef.current = onOpenChange;
 
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});

@@ -55,6 +55,7 @@ export function useZoomSelection(): UseZoomSelectionReturn {
   const stateRef = useRef<ZoomSelectionState>(state);
 
   // Keep ref in sync with state
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   stateRef.current = state;
 
   const startSelection = useCallback((label: string) => {

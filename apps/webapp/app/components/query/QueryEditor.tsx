@@ -505,6 +505,7 @@ export function QueryEditor({
 
   // Use a ref so the effect can read chartConfig without re-firing on every config tweak
   const chartConfigRef = useRef(chartConfig);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   chartConfigRef.current = chartConfig;
 
   // Reset chart config only when a column referenced by the current config is no
@@ -562,6 +563,7 @@ export function QueryEditor({
   }, []);
 
   // Compute current save data for the save render prop
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   const currentQuery = editorRef.current?.getQuery() ?? "";
   const saveData: QueryEditorSaveData = {
     title: queryTitle ?? "Untitled Query",
@@ -790,6 +792,7 @@ export function QueryEditor({
                                 onRename={handleRenameTitle}
                               />
                             }
+                            // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
                             query={editorRef.current?.getQuery() ?? defaultQuery}
                             data={{
                               rows: results.rows,
@@ -844,6 +847,7 @@ export function QueryEditor({
                         <ResultsChart
                           rows={results.rows}
                           columns={results.columns}
+                          // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
                           chartConfig={chartConfig}
                           onChartConfigChange={handleChartConfigChange}
@@ -893,6 +897,7 @@ export function QueryEditor({
                         <ResultsBigNumber
                           rows={results.rows}
                           columns={results.columns}
+                          // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
                           bigNumberConfig={bigNumberConfig}
                           onBigNumberConfigChange={setBigNumberConfig}
@@ -955,6 +960,7 @@ export function QueryEditor({
       {mode.type === "standalone" && (
         <SaveToDashboardDialog
           title={queryTitle ?? "Untitled Query"}
+          // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
           query={editorRef.current?.getQuery() ?? ""}
           config={
             resultsView === "table"

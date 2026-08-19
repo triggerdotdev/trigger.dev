@@ -174,6 +174,7 @@ export function DashboardAgentPanel({
 
   const loadHistory = useMemo(
     () =>
+      // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
       createCoalescedReload(async () => {
         try {
           const res = await fetch(actionPath);

@@ -81,6 +81,7 @@ export function DateField({
   });
 
   const stateValueRef = useRef(state.value);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   stateValueRef.current = state.value;
 
   // Sync only when the passed value or timezone mode changes. Depending on state.value directly
