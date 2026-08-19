@@ -403,6 +403,7 @@ export class RunEngine {
     this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
+      executionSnapshotSystem: this.executionSnapshotSystem,
       queueRunsPendingVersionBatchSize: options.queueRunsWaitingForWorkerBatchSize,
       lagRetryDelayMs: options.pendingVersionLagRetryDelayMs,
       lagMaxRetries: options.pendingVersionLagMaxRetries,

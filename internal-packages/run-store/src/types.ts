@@ -79,6 +79,9 @@ export type RescheduleSnapshotInput = {
   environmentType: RuntimeEnvironmentType;
   projectId: string;
   organizationId: string;
+  executionStatus?: TaskRunExecutionStatus;
+  runStatus?: TaskRunStatus;
+  description?: string;
 };
 
 export type LockSnapshotInput = {
