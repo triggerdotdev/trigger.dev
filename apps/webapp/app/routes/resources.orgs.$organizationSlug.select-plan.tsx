@@ -43,6 +43,10 @@ import { sendToPlain } from "~/utils/plain.server";
 import { formatCurrency } from "~/utils/numberFormatter";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 
+function WhiteSpinnerIcon() {
+  return <Spinner color="white" />;
+}
+
 const Params = z.object({
   organizationSlug: z.string(),
 });
@@ -399,7 +403,7 @@ export function TierFree({
                 <Button
                   variant="danger/medium"
                   disabled={isLoading}
-                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                  LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
                   type="submit"
                 >
                   Downgrade plan
@@ -527,7 +531,7 @@ export function TierHobby({
                 <Button
                   variant="secondary/medium"
                   disabled={isLoading}
-                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                  LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
                   form="subscribe-hobby"
                 >
                   {`Downgrade to ${plan.title}`}
@@ -670,7 +674,7 @@ export function TierPro({
                   <Button
                     variant="primary/medium"
                     disabled={isLoading}
-                    LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                    LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
                     form="subscribe-pro"
                   >
                     {`Upgrade to ${plan.title}`}

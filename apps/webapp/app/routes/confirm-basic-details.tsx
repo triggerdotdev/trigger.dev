@@ -207,6 +207,10 @@ const HandIcon = forwardRef<HTMLDivElement, {}>(({}, ref) => {
 });
 const MotionHand = motion(HandIcon);
 
+function renderRole(value: string) {
+  return value ? <span className="text-text-bright">{value}</span> : undefined;
+}
+
 export default function Page() {
   const user = useUser();
   const lastSubmission = useActionData();
@@ -390,7 +394,7 @@ export default function Page() {
                       icon={<UserGroupIcon className="mr-1 size-4.5 text-text-dimmed" />}
                       items={shuffledRoles}
                       className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
-                      text={(v) => (v ? <span className="text-text-bright">{v}</span> : undefined)}
+                      text={renderRole}
                     >
                       {(items) =>
                         items.map((item) => (
