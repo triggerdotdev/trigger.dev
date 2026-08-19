@@ -114,6 +114,7 @@ export class RunEngine {
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
   private workerQueueObserverAbortController?: AbortController;
+  private quitPromise?: Promise<void>;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -2312,24 +2313,55 @@ export class RunEngine {
     }
   }
 
-  async quit() {
-    try {
-      this.workerQueueObserverAbortController?.abort();
+  quit(): Promise<void> {
+    this.quitPromise ??= this.#quit();
+    return this.quitPromise;
+  }
 
-      await this.runQueue.quit();
-      await this.worker.stop();
-      await this.ttlWorker.stop();
-      await this.runLock.quit();
+  async #quit(): Promise<void> {
+    this.workerQueueObserverAbortController?.abort();
 
-      // This is just a failsafe
-      await this.runLockRedis.quit();
+    // Stop resources that actively process work before closing support resources they may use.
+    const processingResults = await Promise.allSettled([
+      this.runQueue.quit(),
+      this.worker.stop(),
+      this.ttlWorker.stop(),
+      this.batchQueue.close(),
+    ]);
+    this.#logShutdownFailures(
+      ["runQueue.quit", "worker.stop", "ttlWorker.stop", "batchQueue.close"],
+      processingResults
+    );
 
-      await this.batchQueue.close();
+    const supportResults = await Promise.allSettled([
+      this.runLock.quit(),
+      this.debounceSystem.quit(),
+    ]);
+    this.#logShutdownFailures(["runLock.quit", "debounceSystem.quit"], supportResults);
 
-      await this.debounceSystem.quit();
-    } catch (_error) {
-      // Best-effort shutdown; ignore quit/close errors.
+    // RunLocker/Redlock owns this client and normally closes it. Do not send a second QUIT,
+    // but force-disconnect if Redlock failed to leave the connection in its terminal state.
+    if (this.runLockRedis.status !== "end") {
+      try {
+        this.runLockRedis.disconnect();
+      } catch (error) {
+        this.logger.error("RunEngine shutdown operation failed", {
+          operation: "runLockRedis.disconnect",
+          error,
+        });
+      }
     }
+  }
+
+  #logShutdownFailures(operations: string[], results: PromiseSettledResult<unknown>[]): void {
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        this.logger.error("RunEngine shutdown operation failed", {
+          operation: operations[index],
+          error: result.reason,
+        });
+      }
+    });
   }
 
   async repairEnvironment(environment: AuthenticatedEnvironment, dryRun: boolean) {
