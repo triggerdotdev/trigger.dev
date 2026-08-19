@@ -24,6 +24,7 @@
     "db:seed:webhooks": "tsx seed-webhook-deliveries.ts",
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",
+    "test:perf": "vitest --config ./vitest.perf.config.ts --run",
     "eval:dev": "evalite watch"
   },
   "dependencies": {

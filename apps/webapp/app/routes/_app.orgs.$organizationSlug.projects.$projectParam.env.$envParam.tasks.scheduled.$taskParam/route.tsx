@@ -205,6 +205,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tasks: [task.slug],
       page: schedulesPage,
       pageSize: 25,
+      includeLastRun: true,
     })
     .catch(() => null);
 
