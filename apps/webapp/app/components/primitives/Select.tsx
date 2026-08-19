@@ -413,19 +413,20 @@ function SelectGroupedRenderer<TItem>({
   ) => React.ReactNode;
   enableItemShortcuts: boolean;
 }) {
-  let count = 0;
   return (
     <>
       {items.map((section, index) => {
-        const previousItem = items.at(index - 1);
-        count += previousItem ? previousItem.items.length : 0;
+        const startIndex = items
+          .slice(0, index)
+          .reduce((count, previousSection) => count + previousSection.items.length, 0);
+
         return (
           <Fragment key={index}>
             {children(section.items as ItemFromSection<TItem>[], {
               shortcutsEnabled: enableItemShortcuts,
               section: {
                 title: section.title,
-                startIndex: count - 1,
+                startIndex,
                 count: section.items.length,
               },
             })}
