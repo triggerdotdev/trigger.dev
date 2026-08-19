@@ -541,6 +541,14 @@ function VercelAppInstalledRow() {
   );
 }
 
+function VercelLeadingIcon() {
+  return <VercelLogo className="-mx-1 size-3.5 text-text-bright" />;
+}
+
+function VercelLoadingIcon() {
+  return <Spinner color="blue" className="size-4" />;
+}
+
 function VercelSettingsRows({
   organizationSlug,
   projectSlug,
@@ -577,7 +585,7 @@ function VercelSettingsRows({
               noPermissionTooltip={noPermissionTooltip}
               to={vercelAppInstallPath(organizationSlug, projectSlug)}
               variant="secondary/small"
-              LeadingIcon={() => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />}
+              LeadingIcon={VercelLeadingIcon}
             >
               Install Vercel app
             </PermissionLink>
@@ -595,11 +603,7 @@ function VercelSettingsRows({
               onClick={() => onOpenModal?.()}
               disabled={isLoadingProjects || !onOpenModal || !canManageVercel}
               tooltip={canManageVercel ? undefined : noPermissionTooltip}
-              LeadingIcon={
-                isLoadingProjects
-                  ? () => <Spinner color="blue" className="size-4" />
-                  : () => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />
-              }
+              LeadingIcon={isLoadingProjects ? VercelLoadingIcon : VercelLeadingIcon}
             >
               {isLoadingProjects ? "Loading projects…" : "Connect Vercel project"}
             </Button>

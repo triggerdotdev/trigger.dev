@@ -4,7 +4,16 @@ import { Form, useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import {
   Bar,
   BarChart,
@@ -628,6 +637,17 @@ function ErrorGroupRow({
   );
 }
 
+function renderErrorActionsPopoverContent(props: ComponentProps<typeof ErrorStatusMenuItems>) {
+  return (
+    <>
+      <PopoverSectionHeader title="Mark error as…" />
+      <div className="flex flex-col gap-1 p-1">
+        <ErrorStatusMenuItems {...props} />
+      </div>
+    </>
+  );
+}
+
 function ErrorActionsCell({
   errorGroup,
   organizationSlug,
@@ -664,26 +684,21 @@ function ErrorActionsCell({
     <>
       <TableCellMenu
         isSticky
-        popoverContent={(close) => (
-          <>
-            <PopoverSectionHeader title="Mark error as…" />
-            <div className="flex flex-col gap-1 p-1">
-              <ErrorStatusMenuItems
-                status={errorGroup.status}
-                taskIdentifier={errorGroup.taskIdentifier}
-                onAction={(data) => {
-                  close();
-                  pendingToast.current = statusActionToastMessage(data);
-                  fetcher.submit(data, { method: "post", action: actionUrl });
-                }}
-                onCustomIgnore={() => {
-                  close();
-                  setCustomIgnoreOpen(true);
-                }}
-              />
-            </div>
-          </>
-        )}
+        popoverContent={(close) =>
+          renderErrorActionsPopoverContent({
+            status: errorGroup.status,
+            taskIdentifier: errorGroup.taskIdentifier,
+            onAction: (data) => {
+              close();
+              pendingToast.current = statusActionToastMessage(data);
+              fetcher.submit(data, { method: "post", action: actionUrl });
+            },
+            onCustomIgnore: () => {
+              close();
+              setCustomIgnoreOpen(true);
+            },
+          })
+        }
       />
       <CustomIgnoreDialog
         open={customIgnoreOpen}

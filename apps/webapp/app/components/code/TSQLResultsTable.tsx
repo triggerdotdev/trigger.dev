@@ -241,6 +241,7 @@ const DebouncedInput = forwardRef<
 interface ColumnMeta {
   outputColumn: OutputColumnMetadata;
   alignment: "left" | "right";
+  prettyFormatting: boolean;
 }
 
 /**
@@ -489,6 +490,19 @@ function CellValueWrapper({
 /**
  * Render a cell value based on its type and optional customRenderType
  */
+function TSQLResultsCell(info: CellContext<RowData, unknown>) {
+  const meta = info.column.columnDef.meta as ColumnMeta;
+
+  return (
+    <CellValueWrapper
+      value={info.getValue()}
+      column={meta.outputColumn}
+      prettyFormatting={meta.prettyFormatting}
+      row={info.row.original}
+    />
+  );
+}
+
 function CellValue({
   value,
   column,
@@ -1053,17 +1067,11 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
         id: col.name,
         accessorKey: col.name,
         header: () => col.name,
-        cell: (info: CellContext<RowData, unknown>) => (
-          <CellValueWrapper
-            value={info.getValue()}
-            column={col}
-            prettyFormatting={prettyFormatting}
-            row={info.row.original}
-          />
-        ),
+        cell: TSQLResultsCell,
         meta: {
           outputColumn: col,
           alignment: isRightAlignedColumn(col) ? "right" : "left",
+          prettyFormatting,
         } as ColumnMeta,
         size: calculateColumnWidth(col.name, rows, col),
         filterFn: fuzzyFilter,

@@ -124,6 +124,22 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
 const startingJson = "{\n\n}";
 const machinePresets = Object.values(MachinePresetName.enum);
 
+type ReplayEnvironment = UseDataFunctionReturn<typeof loader>["environments"][number];
+
+function renderReplayEnvironment(
+  environments: ReplayEnvironment[],
+  value: string
+): React.ReactNode {
+  const environment = environments.find((environment) => environment.id === value);
+  if (!environment) return;
+
+  return (
+    <div className="flex items-center pl-1 pr-2">
+      <EnvironmentCombo environment={environment} />
+    </div>
+  );
+}
+
 function ReplayForm({
   failedRedirect,
   runFriendlyId,
@@ -572,14 +588,7 @@ function ReplayForm({
                   (item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? "",
                 ],
               }}
-              text={(value) => {
-                const env = replayData.environments.find((env) => env.id === value)!;
-                return (
-                  <div className="flex items-center pl-1 pr-2">
-                    <EnvironmentCombo environment={env} />
-                  </div>
-                );
-              }}
+              text={(value) => renderReplayEnvironment(replayData.environments, value)}
             >
               {(matches) =>
                 matches.map((env) => (

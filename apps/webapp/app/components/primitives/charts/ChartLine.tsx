@@ -577,17 +577,16 @@ export function ChartLineRenderer({
             // flips at the split; otherwise it's the series colour. The warning overlay draws its
             // own dot on top where it's active.
             activeDot={
-              gradientLine
-                ? (props: ActiveDotProps) => (
-                    <ThresholdActiveDot
-                      {...props}
-                      dataKey={key}
-                      threshold={thresholdStroke!.value}
-                      aboveColor={thresholdStroke!.aboveColor}
-                      baseColor={config[key]?.color ?? "var(--color-tasks)"}
-                    />
-                  )
-                : { r: 4, fill: config[key]?.color, strokeWidth: 0 }
+              gradientLine ? (
+                <ThresholdActiveDot
+                  dataKey={key}
+                  threshold={thresholdStroke!.value}
+                  aboveColor={thresholdStroke!.aboveColor}
+                  baseColor={config[key]?.color ?? "var(--color-tasks)"}
+                />
+              ) : (
+                { r: 4, fill: config[key]?.color, strokeWidth: 0 }
+              )
             }
             isAnimationActive={false}
           />
