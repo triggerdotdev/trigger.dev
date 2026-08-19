@@ -288,10 +288,15 @@ function ContrastRow({ entry }: { entry: ContrastEntry }) {
   const sampleRef = useRef<HTMLSpanElement>(null);
   const revision = useThemeRevision();
   const [ratio, setRatio] = useState<number | null>(null);
+  const [resolved, setResolved] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sampleRef.current) return;
     setRatio(measureTextContrast(sampleRef.current));
+    /* What the variable actually resolves to in this column, for the swatch
+       tooltip - the whole point being that one token is five different values
+       across the row. */
+    setResolved(getComputedStyle(sampleRef.current).color);
   }, [revision, entry.token, entry.className]);
 
   const name = entry.token ? entry.token.replace("--color-", "") : entry.className;
@@ -323,10 +328,15 @@ function ContrastRow({ entry }: { entry: ContrastEntry }) {
       </div>
       {/* The same value as a filled block - the shape non-text contrast is
           actually judged on. For a raw utility the class sets `color`, so the
-          fill has to come from currentcolor on this same element. */}
+          fill has to come from currentcolor on this same element.
+
+          The tooltip is a plain `title`: there are five of these per row across
+          sixty-odd rows, and mounting a few hundred Radix tooltips to name a
+          variable isn't worth it. */}
       <div
         className={cn("h-5 rounded-xs border border-grid-bright", entry.className)}
         style={{ backgroundColor: entry.token ? `var(${entry.token})` : "currentcolor" }}
+        title={[entry.token ?? entry.className, resolved].filter(Boolean).join(" — ")}
       />
       <span
         className={cn(
@@ -524,11 +534,23 @@ const BULK_ACTION_STATUSES: BulkActionStatus[] = ["PENDING", "COMPLETED", "ABORT
 /** The queue health labels from the Queues route. Paused and At capacity share
  *  one tint, so color alone can't separate them even before contrast. */
 const QUEUE_HEALTH = [
-  { label: "Paused", className: "bg-warning/10 text-warning" },
-  { label: "At capacity", className: "bg-warning/10 text-warning" },
-  { label: "Backlogged", className: "bg-blue-500/10 text-blue-500" },
-  { label: "Active", className: "bg-success/10 text-success" },
-  { label: "Idle", className: "bg-charcoal-500/10 text-text-dimmed" },
+  {
+    label: "Paused",
+    className: "bg-warning/10 text-warning system:bg-warning system:text-white",
+  },
+  {
+    label: "At capacity",
+    className: "bg-warning/10 text-warning system:bg-warning system:text-white",
+  },
+  {
+    label: "Backlogged",
+    className: "bg-blue-500/10 text-blue-500 system:bg-blue-500 system:text-white",
+  },
+  { label: "Active", className: "bg-success/10 text-success system:bg-success system:text-white" },
+  {
+    label: "Idle",
+    className: "bg-charcoal-500/10 text-text-dimmed system:bg-charcoal-500 system:text-white",
+  },
 ];
 
 /** Copied from the Queues route so the chip can be shown here without exporting
@@ -1717,10 +1739,12 @@ export default function Story_() {
         <Audit
           title="Diffs and change previews"
           where={["admin.feature-flags.tsx", "QueryEditor.tsx"]}
-          note="Added and removed lines are green-400 and red-400 with a +/- prefix. Admin-only, and the prefix carries the meaning — but the raw palette values don't move for the light themes."
+          note="Added and removed lines are green-400 and red-400 with a +/- prefix. Admin-only, and the prefix carries the meaning. Under the preference the added line drops to green-700, which is the first stop clearing 4.5:1 on white — green-400 measures 1.78:1 there. The removed line still doesn't move."
         >
           <Stack>
-            <span className="font-mono text-xs text-green-400">+ maxConcurrency: 40</span>
+            <span className="font-mono text-xs text-green-400 system:text-green-700">
+              + maxConcurrency: 40
+            </span>
             <span className="font-mono text-xs text-red-400">- maxConcurrency: 20</span>
           </Stack>
         </Audit>
