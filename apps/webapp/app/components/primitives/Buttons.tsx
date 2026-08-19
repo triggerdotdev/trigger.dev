@@ -318,7 +318,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
                 {text}
               </span>
             ) : (
-              <>{text}</>
+              text
             ))}
 
           {shortcut &&

@@ -352,15 +352,13 @@ export default function Page() {
                       }
                       text={(value) => renderSlackChannel(slack.channels, value)}
                     >
-                      {(matches) => (
-                        <>
-                          {matches?.map((channel) => (
-                            <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
-                              <SlackChannelTitle {...channel} />
-                            </SelectItem>
-                          ))}
-                        </>
-                      )}
+                      {(matches) =>
+                        matches?.map((channel) => (
+                          <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
+                            <SlackChannelTitle {...channel} />
+                          </SelectItem>
+                        ))
+                      }
                     </Select>
                     {selectedSlackChannel && selectedSlackChannel.is_private && (
                       <Callout

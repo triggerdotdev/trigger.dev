@@ -513,7 +513,7 @@ export default function Page() {
               </Fieldset>
             </Form>
           </div>
-          <Feedback button={<></>} />
+          <Feedback />
         </MainCenteredContainer>
       </BackgroundWrapper>
     </AppContainer>
