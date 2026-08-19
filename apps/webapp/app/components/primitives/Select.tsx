@@ -572,17 +572,20 @@ export interface SelectButtonItemProps extends Omit<Ariakit.SelectItemProps, "on
   icon?: React.ReactNode;
   checkIcon?: React.ReactNode;
   shortcut?: ShortcutDefinition;
+  accessibleLabel: string;
   onClick: React.ComponentProps<"button">["onClick"];
 }
 
 export function SelectButtonItem({
   checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  accessibleLabel,
   onClick,
   ...props
 }: SelectButtonItemProps) {
   const render = (
     <button
       type="button"
+      aria-label={accessibleLabel}
       onClick={onClick}
       className={cn("block w-full text-left", selectItemClasses, props.className)}
     />
