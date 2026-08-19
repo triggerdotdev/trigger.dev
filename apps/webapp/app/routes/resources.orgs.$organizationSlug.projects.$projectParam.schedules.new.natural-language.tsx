@@ -59,6 +59,7 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
   const fetcher = useFetcher<typeof action>();
   const [text, setText] = useState<string>("");
   const onSuccessRef = useRef(onSuccess);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   onSuccessRef.current = onSuccess;
   const organization = useOrganization();
   const project = useProject();
