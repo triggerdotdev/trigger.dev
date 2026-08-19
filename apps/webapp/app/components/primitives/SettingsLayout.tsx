@@ -3,6 +3,7 @@ import { type ReactNode } from "react";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { cn } from "~/utils/cn";
 import { Header2, Header3 } from "./Headers";
+import { labelVariants } from "./Label";
 import { Paragraph } from "./Paragraph";
 
 // A composable layout system for settings pages: a centered container holds
@@ -82,7 +83,7 @@ export function SettingsHeader({
         className
       )}
     >
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         <Heading>{title}</Heading>
         {description ? <Paragraph variant="small">{description}</Paragraph> : null}
       </div>
@@ -101,10 +102,7 @@ export function SettingsRowTitle({
   htmlFor?: string;
   className?: string;
 }) {
-  const classes = cn(
-    "block font-sans text-sm font-semibold leading-tight text-text-bright",
-    className
-  );
+  const classes = cn(labelVariants.medium.text, className);
   return htmlFor ? (
     <label htmlFor={htmlFor} className={classes}>
       {children}
@@ -123,7 +121,7 @@ export function SettingsRowDescription({
   className?: string;
 }) {
   return (
-    <Paragraph variant="small" className={className}>
+    <Paragraph variant="extra-small" className={className}>
       {children}
     </Paragraph>
   );
@@ -170,7 +168,7 @@ export function SettingsRow({
       )}
     >
       {children ?? (
-        <div className="flex-1 space-y-1">
+        <div className="flex-1 space-y-0.5">
           {title ? (
             <SettingsRowTitle htmlFor={htmlFor} className={titleClassName}>
               {title}
@@ -229,7 +227,7 @@ export function SettingsAlertRow({
 
   return (
     <SettingsRow action={action}>
-      <div className="flex-1 space-y-1">
+      <div className="flex-1 space-y-0.5">
         <div className="flex items-center gap-1.5">
           <Icon className={cn("size-4 shrink-0", color)} />
           <SettingsRowTitle className={color}>{title}</SettingsRowTitle>

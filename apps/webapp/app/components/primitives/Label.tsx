@@ -2,7 +2,8 @@ import * as React from "react";
 import { cn } from "~/utils/cn";
 import { InfoIconTooltip } from "./Tooltip";
 
-const variants = {
+// Non-form labels (e.g. settings row titles) share this typography, so it is exported.
+export const labelVariants = {
   small: {
     text: "font-sans text-[0.8125rem] font-normal text-text-bright leading-tight flex items-center gap-1",
   },
@@ -13,6 +14,8 @@ const variants = {
     text: "font-sans text-base font-medium text-text-bright leading-tight flex items-center gap-1",
   },
 };
+
+const variants = labelVariants;
 
 type LabelProps = React.AllHTMLAttributes<HTMLLabelElement> & {
   className?: string;

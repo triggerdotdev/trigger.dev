@@ -142,7 +142,9 @@ export function ClipboardField({
         readOnly={true}
         className={cn(
           "shrink grow select-all overflow-x-auto",
-          fullWidth ? "w-full" : "max-w-fit",
+          // Without min-w-0 the input's intrinsic min-width pushes the copy button past the
+          // container's right edge; letting it shrink scrolls the value instead.
+          fullWidth ? "w-full min-w-0" : "max-w-fit",
           input
         )}
         onFocus={(e) => {
