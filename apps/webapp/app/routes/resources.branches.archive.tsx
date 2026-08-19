@@ -35,7 +35,6 @@ export async function action({ request }: ActionFunctionArgs) {
     return redirectWithErrorMessage("/", request, "Invalid form data");
   }
 
-  // Keep the post-action redirect same-origin.
   const redirectPath = sanitizeRedirectPath(submission.value.redirectPath);
 
   const archiveBranchService = new ArchiveBranchService();
@@ -48,8 +47,6 @@ export async function action({ request }: ActionFunctionArgs) {
   );
 
   if (result.success) {
-    // Back to the exact list page the archive was started from, so pagination,
-    // filters and search survive.
     return redirectWithSuccessMessage(
       redirectPath,
       request,
