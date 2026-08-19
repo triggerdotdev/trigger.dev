@@ -344,6 +344,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
           >
             {availableTabs.map((tab) => (
               <button
+                type="button"
                 key={tab}
                 onClick={() => handleTabClick(tab)}
                 className={`px-2.5 py-1 text-[11px] capitalize transition-colors ${

@@ -374,6 +374,7 @@ type ButtonPropsType = Pick<
 > &
   React.ComponentProps<typeof ButtonContent>;
 
+/* oxlint-disable react/button-has-type -- Callers can select button, reset, or submit semantics. */
 export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, autoFocus, onClick, "aria-label": ariaLabel, ...props }, ref) => {
     const innerRef = useRef<HTMLButtonElement>(null);
@@ -435,6 +436,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     return buttonElement;
   }
 );
+/* oxlint-enable react/button-has-type */
 
 type LinkPropsType = Pick<
   LinkProps,

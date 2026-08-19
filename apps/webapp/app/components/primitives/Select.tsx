@@ -582,6 +582,7 @@ export function SelectButtonItem({
 }: SelectButtonItemProps) {
   const render = (
     <button
+      type="button"
       onClick={onClick}
       className={cn("block w-full text-left", selectItemClasses, props.className)}
     />

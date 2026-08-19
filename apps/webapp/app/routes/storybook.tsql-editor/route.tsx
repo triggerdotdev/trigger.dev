@@ -164,6 +164,7 @@ export default function Story() {
         <div className="flex flex-wrap gap-2">
           {exampleQueries.map((example) => (
             <button
+              type="button"
               key={example.name}
               onClick={() => setQuery(example.query)}
               className="rounded bg-background-raised px-3 py-1.5 text-sm text-text-dimmed transition hover:bg-surface-control hover:text-text-bright"
