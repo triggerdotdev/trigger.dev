@@ -340,10 +340,7 @@ export default function Page() {
                             {hasVercelIntegration && (
                               <TableCell isSelected={isSelected}>
                                 {deployment.vercelDeploymentUrl ? (
-                                  <div
-                                    className="-ml-1 flex items-center"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
+                                  <div className="-ml-1 flex items-center">
                                     <VercelLink
                                       vercelDeploymentUrl={deployment.vercelDeploymentUrl}
                                     />
