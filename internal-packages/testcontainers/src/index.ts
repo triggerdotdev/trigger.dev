@@ -314,10 +314,44 @@ const prismaFromContainer = async (
   }
 };
 
-export const postgresTest = test.extend<PostgresTestContext>({
-  postgresContainer: clonedPostgresContainer,
-  prisma: prismaFromContainer,
-});
+const CONTAINER_WARMUP_TIMEOUT_MS = 300_000;
+
+type WarmableTestApi = {
+  beforeAll: (fn: (context: any) => Promise<void>, timeout?: number) => void;
+};
+
+const withWarmup = <T extends WarmableTestApi>(
+  api: T,
+  warmUp: (context: any) => Promise<void>
+): T => {
+  const register = () => {
+    api.beforeAll(warmUp, CONTAINER_WARMUP_TIMEOUT_MS);
+  };
+
+  return new Proxy(api, {
+    apply(target, thisArg, args) {
+      register();
+      return Reflect.apply(target as unknown as (...a: unknown[]) => unknown, thisArg, args);
+    },
+    get(target, prop, receiver) {
+      if (prop !== "then") {
+        // awaiting the module is not use
+        register();
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  }) as T;
+};
+
+export const postgresTest = withWarmup(
+  test.extend<PostgresTestContext>({
+    postgresContainer: clonedPostgresContainer,
+    prisma: prismaFromContainer,
+  }),
+  async () => {
+    await getWorkerPostgresContainer();
+  }
+);
 
 type HeteroPostgresTestContext = {
   // PG14 (legacy / control-plane DB analog)
@@ -609,11 +643,16 @@ type RedisTestContext = {
 
 // Worker-scoped redis (boots once, FLUSHALL between tests). Use isolatedRedisTest for tests that run
 // background redis work (redis-worker Workers, BatchQueue) past the test body - see its note + README.
-export const redisTest = test.extend<RedisTestContext>({
-  redisContainer: [bootWorkerRedis, { scope: "worker" }],
-  resetRedis: [flushRedis, { auto: true }],
-  redisOptions,
-});
+export const redisTest = withWarmup(
+  test.extend<RedisTestContext>({
+    redisContainer: [bootWorkerRedis, { scope: "worker" }],
+    resetRedis: [flushRedis, { auto: true }],
+    redisOptions,
+  }),
+  async ({ redisContainer }) => {
+    void redisContainer;
+  }
+);
 
 // Per-test redis for tests with background redis work (redis-worker Workers, BatchQueue) that can
 // outlive the test body - a shared redis would let leaked work hit a closed connection / next test
@@ -723,11 +762,16 @@ const scopedClickhouseClient = async (
   }
 };
 
-export const clickhouseTest = test.extend<ClickhouseTestContext>({
-  clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
-  resetClickhouse: [truncateClickhouseFixture, { auto: true }],
-  clickhouseClient: scopedClickhouseClient,
-});
+export const clickhouseTest = withWarmup(
+  test.extend<ClickhouseTestContext>({
+    clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
+    resetClickhouse: [truncateClickhouseFixture, { auto: true }],
+    clickhouseClient: scopedClickhouseClient,
+  }),
+  async ({ clickhouseContainer }) => {
+    void clickhouseContainer;
+  }
+);
 
 // NOTE: per-test containers (not worker-scoped) - the replication package does logical replication
 // (slots/publications/REPLICA IDENTITY), which doesn't play nicely with a shared container +
@@ -755,17 +799,24 @@ type ContainerTestContext = {
 // The workhorse fixture (~36 files). Postgres (template-clone), Redis (FLUSHALL) and ClickHouse
 // (truncate) all boot once per worker - no per-test container boots. Use containerTestWithIsolatedRedis
 // for tests that run background redis work (BatchQueue, redis-worker Workers) past the test body.
-export const containerTest = test.extend<ContainerTestContext>({
-  postgresContainer: clonedPostgresContainer,
-  prisma: prismaFromContainer,
-  schemaOnlyPrisma: schemaOnlyPrismaFixture,
-  redisContainer: [bootWorkerRedis, { scope: "worker" }],
-  resetRedis: [flushRedis, { auto: true }],
-  redisOptions,
-  clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
-  resetClickhouse: [truncateClickhouseFixture, { auto: true }],
-  clickhouseClient: scopedClickhouseClient,
-});
+export const containerTest = withWarmup(
+  test.extend<ContainerTestContext>({
+    postgresContainer: clonedPostgresContainer,
+    prisma: prismaFromContainer,
+    schemaOnlyPrisma: schemaOnlyPrismaFixture,
+    redisContainer: [bootWorkerRedis, { scope: "worker" }],
+    resetRedis: [flushRedis, { auto: true }],
+    redisOptions,
+    clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
+    resetClickhouse: [truncateClickhouseFixture, { auto: true }],
+    clickhouseClient: scopedClickhouseClient,
+  }),
+  async ({ redisContainer, clickhouseContainer }) => {
+    void redisContainer;
+    void clickhouseContainer;
+    await getWorkerPostgresContainer();
+  }
+);
 
 type ContainerWithIsolatedRedisContext = {
   network: StartedNetwork;
@@ -780,16 +831,22 @@ type ContainerWithIsolatedRedisContext = {
 
 // Same as containerTest but Redis is PER-TEST - for tests whose background redis work (BatchQueue,
 // Workers) outlives the test body and would otherwise hit a closed/shared connection.
-export const containerTestWithIsolatedRedis = test.extend<ContainerWithIsolatedRedisContext>({
-  network,
-  postgresContainer: clonedPostgresContainer,
-  prisma: prismaFromContainer,
-  redisContainer,
-  redisOptions,
-  clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
-  resetClickhouse: [truncateClickhouseFixture, { auto: true }],
-  clickhouseClient: scopedClickhouseClient,
-});
+export const containerTestWithIsolatedRedis = withWarmup(
+  test.extend<ContainerWithIsolatedRedisContext>({
+    network,
+    postgresContainer: clonedPostgresContainer,
+    prisma: prismaFromContainer,
+    redisContainer,
+    redisOptions,
+    clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
+    resetClickhouse: [truncateClickhouseFixture, { auto: true }],
+    clickhouseClient: scopedClickhouseClient,
+  }),
+  async ({ clickhouseContainer }) => {
+    void clickhouseContainer;
+    await getWorkerPostgresContainer();
+  }
+);
 
 type ContainerWithIsolatedRedisNoClickhouseContext = {
   network: StartedNetwork;
@@ -801,14 +858,18 @@ type ContainerWithIsolatedRedisNoClickhouseContext = {
 
 // Like containerTestWithIsolatedRedis (template-clone Postgres + per-test Redis) but with no
 // ClickHouse - for suites that touch Postgres + Redis but never ClickHouse, avoiding its boot+migrate.
-export const containerTestWithIsolatedRedisNoClickhouse =
+export const containerTestWithIsolatedRedisNoClickhouse = withWarmup(
   test.extend<ContainerWithIsolatedRedisNoClickhouseContext>({
     network,
     postgresContainer: clonedPostgresContainer,
     prisma: prismaFromContainer,
     redisContainer,
     redisOptions,
-  });
+  }),
+  async () => {
+    await getWorkerPostgresContainer();
+  }
+);
 
 // For tests that exercise the Postgres -> ClickHouse logical-replication pipeline (WAL slots,
 // publications, REPLICA IDENTITY). These need a dedicated Postgres per test - the worker-scoped +
@@ -887,11 +948,16 @@ type MinioTestContext = {
   minioConfig: MinIOConnectionConfig;
 };
 
-export const minioTest = test.extend<MinioTestContext>({
-  minioContainer: [bootWorkerMinio, { scope: "worker" }],
-  resetMinio: [minioReset, { auto: true }],
-  minioConfig,
-});
+export const minioTest = withWarmup(
+  test.extend<MinioTestContext>({
+    minioContainer: [bootWorkerMinio, { scope: "worker" }],
+    resetMinio: [minioReset, { auto: true }],
+    minioConfig,
+  }),
+  async ({ minioContainer }) => {
+    void minioContainer;
+  }
+);
 
 type PostgresAndMinioTestContext = {
   postgresContainer: StartedPostgreSqlContainer;
@@ -901,10 +967,16 @@ type PostgresAndMinioTestContext = {
   minioConfig: MinIOConnectionConfig;
 };
 
-export const postgresAndMinioTest = test.extend<PostgresAndMinioTestContext>({
-  postgresContainer: clonedPostgresContainer,
-  prisma: prismaFromContainer,
-  minioContainer: [bootWorkerMinio, { scope: "worker" }],
-  resetMinio: [minioReset, { auto: true }],
-  minioConfig,
-});
+export const postgresAndMinioTest = withWarmup(
+  test.extend<PostgresAndMinioTestContext>({
+    postgresContainer: clonedPostgresContainer,
+    prisma: prismaFromContainer,
+    minioContainer: [bootWorkerMinio, { scope: "worker" }],
+    resetMinio: [minioReset, { auto: true }],
+    minioConfig,
+  }),
+  async ({ minioContainer }) => {
+    void minioContainer;
+    await getWorkerPostgresContainer();
+  }
+);
