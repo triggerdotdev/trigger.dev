@@ -42,6 +42,7 @@ overrides:
   picomatch@>=4 <4.0.4: ^4.0.4
   minimatch@>=3 <3.1.3: ^3.1.3
   protobufjs@>=7 <7.6.5: ^7.6.5
+  '@grpc/grpc-js@>=1.12.0 <1.12.7': 1.12.7
   fast-xml-parser@>=4 <4.5.5: ^4.5.5
   fast-xml-parser@>=5 <5.7.0: ^5.7.0
   path-to-regexp@>=0.1 <0.1.13: ^0.1.13
@@ -4289,8 +4290,8 @@ packages:
     peerDependencies:
       graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
 
-  '@grpc/grpc-js@1.12.6':
-    resolution: {integrity: sha512-JXUj6PI0oqqzTGvKtzOkxtpsyPRNsrmhh41TtIz/zEB6J+AUiZZ0dxWzcMwO9Ns5rmSPuMdghlTbUuqIM48d3Q==}
+  '@grpc/grpc-js@1.12.7':
+    resolution: {integrity: sha512-Tugep4V4GCsN9dSAVkXoBWqJXDoH+NSXd50kFGsm7ZG1tBXFEAnLoxzkGUIksTrDjiaMwlpsbC24oWbESGHpIQ==}
     engines: {node: '>=12.10.0'}
 
   '@grpc/proto-loader@0.7.13':
@@ -18059,7 +18060,7 @@ snapshots:
     dependencies:
       graphql: 16.14.2
 
-  '@grpc/grpc-js@1.12.6':
+  '@grpc/grpc-js@1.12.7':
     dependencies:
       '@grpc/proto-loader': 0.7.13
       '@js-sdsl/ordered-map': 4.4.2
@@ -23837,7 +23838,7 @@ snapshots:
   dockerode@4.0.10:
     dependencies:
       '@balena/dockerignore': 1.0.2
-      '@grpc/grpc-js': 1.12.6
+      '@grpc/grpc-js': 1.12.7
       '@grpc/proto-loader': 0.7.13
       docker-modem: 5.0.7
       protobufjs: 7.6.5
@@ -23849,7 +23850,7 @@ snapshots:
   dockerode@4.0.6:
     dependencies:
       '@balena/dockerignore': 1.0.2
-      '@grpc/grpc-js': 1.12.6
+      '@grpc/grpc-js': 1.12.7
       '@grpc/proto-loader': 0.7.13
       docker-modem: 5.0.6
       protobufjs: 7.6.5
@@ -27043,7 +27044,7 @@ snapshots:
 
   node-abi@3.89.0:
     dependencies:
-      semver: 7.8.1
+      semver: 7.8.5
     optional: true
 
   node-abort-controller@3.1.1: {}
