@@ -5643,6 +5643,13 @@ if gatedPending ~= nil then
       end
     end
     redis.call('EXPIRE', ckVtimeKey, stateTtl)
+    -- This is the one write path that touches ckVtime without going through the
+    -- floor-persist block below, which only runs when the call served something. Left
+    -- alone, a queue whose variants are all gated refreshes ckVtime's TTL here on every
+    -- poll while the floor's runs down, and once the floor expires out from under a live
+    -- ckVtime the next registration reads it back as 0 and starts a brand-new variant
+    -- below every established tag.
+    redis.call('SET', ckVtimeFloorKey, tostring(floor), 'EX', stateTtl)
   end
 end
 
