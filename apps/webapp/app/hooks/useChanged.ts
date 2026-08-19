@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 /** Call a function when the id of the item changes */
 export function useChanged<T extends { id: string }>(
-  getItem: () => T | undefined,
+  item: T | undefined,
   action: (item: T | undefined) => void,
   sendInitialUndefined = true
 ) {
@@ -10,7 +10,6 @@ export function useChanged<T extends { id: string }>(
   const isInitialRender = useRef(true);
   const actionRef = useRef(action);
   const itemRef = useRef<T | undefined>();
-  const item = getItem();
   const itemId = item?.id;
 
   actionRef.current = action;

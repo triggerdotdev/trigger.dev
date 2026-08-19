@@ -1,6 +1,7 @@
 import * as Ariakit from "@ariakit/react";
 import { type SelectProps as AriaSelectProps } from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
+import { useStoreState } from "@ariakit/react-core/utils/store";
 import { Link } from "@remix-run/react";
 import * as React from "react";
 import { Fragment, useMemo, useState } from "react";
@@ -484,7 +485,7 @@ export function SelectItem({
   const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : props.render;
   const ref = React.useRef<HTMLDivElement>(null);
   const select = Ariakit.useSelectContext();
-  const selectValue = select?.useState("value");
+  const selectValue = useStoreState(select, "value");
 
   const isChecked = React.useMemo(() => {
     if (!props.value || selectValue == null) return false;
@@ -692,8 +693,8 @@ export function ComboBox({
   ...props
 }: ComboBoxProps) {
   const combobox = Ariakit.useComboboxContext();
-  const open = combobox?.useState("open");
-  const input = combobox?.useState("baseElement");
+  const open = useStoreState(combobox, "open");
+  const input = useStoreState(combobox, "baseElement");
 
   React.useEffect(() => {
     if (!open || !input) return;

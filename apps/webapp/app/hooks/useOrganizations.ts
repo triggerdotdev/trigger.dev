@@ -43,7 +43,8 @@ export function useOrganization(matches?: UIMatch[]) {
 }
 
 export const useOrganizationChanged = (action: (org: MatchedOrganization | undefined) => void) => {
-  useChanged(useOptionalOrganization, action);
+  const organization = useOptionalOrganization();
+  useChanged(organization, action);
 };
 
 export function useIsImpersonating(matches?: UIMatch[]) {
