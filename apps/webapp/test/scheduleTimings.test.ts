@@ -266,23 +266,26 @@ describe("resolveScheduleTimings", () => {
     expect(fresh.lastRun).toEqual(new Date("2024-06-15T00:00:00.000Z"));
   });
 
-  it("degrades to undefined lastRun for a malformed expression rather than throwing", () => {
-    const rows = [input({ cron: "0 0 * * *" }), input({ cron: "not a cron" })];
+  it("throws for a malformed expression, matching the previous behaviour", () => {
+    for (const includeLastRun of [false, true]) {
+      expect(() =>
+        resolveScheduleTimings([input({ cron: "not a cron" })], {
+          phaseSecret: PHASE_SECRET,
+          includeLastRun,
+          now,
+        })
+      ).toThrow();
+    }
+  });
 
-    expect(() =>
-      resolveScheduleTimings([rows[1]], {
-        phaseSecret: PHASE_SECRET,
-        includeLastRun: false,
-        now,
-      })
-    ).toThrow();
-
-    const [valid] = resolveScheduleTimings([rows[0]], {
+  it("resolves lastRun for a valid expression", () => {
+    const [valid] = resolveScheduleTimings([input({ cron: "0 0 * * *" })], {
       phaseSecret: PHASE_SECRET,
       includeLastRun: true,
       now,
     });
-    expect(valid.lastRun).toBeDefined();
+
+    expect(valid.lastRun).toEqual(new Date("2024-06-15T00:00:00.000Z"));
   });
 
   it("honours a caller-supplied schedulePhase over the derived one", () => {
