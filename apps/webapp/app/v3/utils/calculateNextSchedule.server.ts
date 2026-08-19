@@ -36,23 +36,26 @@ export function previousScheduledTimestamp(
     .toDate();
 }
 
+/**
+ * Steps one parsed expression `count` times, rather than re-parsing and
+ * re-walking the calendar from scratch for every step.
+ */
 export function nextScheduledTimestamps(
   cron: string,
   timezone: string | null,
   lastScheduledTimestamp: Date,
   count: number = 1
 ) {
+  const interval = parseExpression(cron, {
+    currentDate: lastScheduledTimestamp,
+    utc: timezone === null,
+    tz: timezone ?? undefined,
+  });
+
   const result: Array<Date> = [];
-  let nextScheduledTimestamp = lastScheduledTimestamp;
 
   for (let i = 0; i < count; i++) {
-    nextScheduledTimestamp = calculateNextScheduledTimestamp(
-      cron,
-      timezone,
-      nextScheduledTimestamp
-    );
-
-    result.push(nextScheduledTimestamp);
+    result.push(interval.next().toDate());
   }
 
   return result;
