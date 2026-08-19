@@ -99,7 +99,6 @@ jobs:
         run: echo "DockerHub login skipped because secrets are not available."
 
       - name: 🐳 Pre-pull testcontainer images
-        if: ${{ env.DOCKERHUB_USERNAME }}
         run: |
           docker pull postgres:14
           docker pull redis:7.2
