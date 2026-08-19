@@ -480,8 +480,8 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
 
     // The button (with its aria-label) always sits in the same position in the tree, wrapped by
     // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
-    // keyboard focus). Only the tooltip's open state, not its mounted tree, follows hover; Radix
-    // still only renders the tooltip content into the DOM while `open` is true.
+    // keyboard focus). The tooltip is left uncontrolled so Radix opens it only when the pointer
+    // or keyboard focus is actually on the button, not whenever the pointer is anywhere in the cell.
     const copyButton = (
       <button
         type="button"
@@ -518,7 +518,6 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
           <SimpleTooltip
             asChild
             tabbable
-            open={isHovered}
             button={copyButton}
             content={copied ? "Copied!" : "Copy"}
             disableHoverableContent

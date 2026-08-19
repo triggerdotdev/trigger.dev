@@ -845,9 +845,9 @@ function CopyableCell({
 
   // The button (with its aria-label) always sits in the same position in the tree, wrapped by
   // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
-  // keyboard focus). Only the tooltip's open state, not its mounted tree, follows hover; Radix
-  // still only renders the (comparatively expensive) tooltip content into the DOM of this
-  // virtualized grid while `open` is true.
+  // keyboard focus). The tooltip is left uncontrolled so Radix opens it only when the pointer or
+  // keyboard focus is actually on the button, not whenever the pointer is anywhere in this
+  // virtualized grid's cell.
   const copyButton = (
     <button
       type="button"
@@ -889,7 +889,6 @@ function CopyableCell({
       <SimpleTooltip
         asChild
         tabbable
-        open={isHovered}
         button={copyButton}
         content={copied ? "Copied!" : "Copy"}
         disableHoverableContent
