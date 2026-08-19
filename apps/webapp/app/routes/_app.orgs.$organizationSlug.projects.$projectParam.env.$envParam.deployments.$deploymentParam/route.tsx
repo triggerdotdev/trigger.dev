@@ -199,6 +199,7 @@ export default function Page() {
 
     const abortController = new AbortController();
 
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setLogs([]);
     setStreamError(null);
     setIsStreaming(true);

@@ -442,6 +442,7 @@ export function ConnectGitHubRepoModal({
     const params = new URLSearchParams(searchParams);
 
     if (params.get("openGithubRepoModal") === "1") {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(true);
       params.delete("openGithubRepoModal");
       setSearchParams(params);
@@ -450,6 +451,7 @@ export function ConnectGitHubRepoModal({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(false);
     }
   }, [lastSubmission]);
@@ -810,6 +812,7 @@ export function ConnectedGitHubRepoForm({
       gitSettingsValues.stagingBranch !==
         (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
       gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasGitSettingsChanges(hasChanges);
   }, [gitSettingsValues, connectedGitHubRepo]);
 

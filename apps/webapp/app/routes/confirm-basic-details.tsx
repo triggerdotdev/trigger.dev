@@ -228,6 +228,7 @@ export default function Page() {
 
   useEffect(() => {
     const nonOtherReferral = referralSourceOptions.filter((r) => r !== "Other");
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setShuffledReferralSources([...shuffleArray(nonOtherReferral), "Other"]);
 
     const nonOtherRoles = roleOptions.filter((r) => r !== "Other");
