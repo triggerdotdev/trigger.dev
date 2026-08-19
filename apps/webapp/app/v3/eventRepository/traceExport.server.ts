@@ -199,7 +199,7 @@ const FORMATS: Record<TraceExportFormatName, TraceExportFormat> = {
 
 /** Resolve a `?format=` value to a format, defaulting to `log`. */
 export function getTraceExportFormat(name: string | null | undefined): TraceExportFormat {
-  if (name && Object.prototype.hasOwnProperty.call(FORMATS, name)) {
+  if (name && Object.hasOwn(FORMATS, name)) {
     return FORMATS[name as TraceExportFormatName];
   }
   return logFormat;
