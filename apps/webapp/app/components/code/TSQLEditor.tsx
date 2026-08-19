@@ -264,6 +264,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
 
   const showButtons = showClearButton || showCopyButton || showFormatButton || additionalActions;
 
+  /* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The CodeMirror mount forwards pointer focus to CodeMirror's own keyboard-accessible editor. */
   return (
     <div
       className={cn("relative flex h-full flex-col", opts.className)}
@@ -337,6 +338,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     </div>
   );
 }
+/* oxlint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 
 // SQL keywords that legitimately appear before parentheses with a space
 const SQL_KEYWORDS_BEFORE_PAREN = new Set([

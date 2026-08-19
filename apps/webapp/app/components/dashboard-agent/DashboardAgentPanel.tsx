@@ -581,6 +581,7 @@ export function DashboardAgentPanel({
   // Not filtered to active: the wake banner needs watches that already fired.
   const chatWatches = activeChat?.watches ?? [];
 
+  /* oxlint-disable jsx-a11y/no-static-element-interactions -- Escape handling intentionally bubbles from focused controls inside the panel. */
   return (
     <div
       ref={panelRef}
@@ -667,3 +668,4 @@ export function DashboardAgentPanel({
     </div>
   );
 }
+/* oxlint-enable jsx-a11y/no-static-element-interactions */

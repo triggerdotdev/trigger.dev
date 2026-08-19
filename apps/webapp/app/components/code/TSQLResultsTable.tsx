@@ -14,6 +14,7 @@ import {
   type ColumnFiltersState,
   type ColumnResizeMode,
   type FilterFn,
+  type Header,
   type SortDirection,
   type SortingState,
 } from "@tanstack/react-table";
@@ -1045,6 +1046,24 @@ function FilterCell({
   );
 }
 
+/* oxlint-disable jsx-a11y/no-static-element-interactions -- Column resizing is a pointer-drag interaction provided by TanStack Table. */
+function ColumnResizeHandle({ header }: { header: Header<RowData, unknown> }) {
+  return (
+    <div
+      onDoubleClick={() => header.column.resetSize()}
+      onMouseDown={header.getResizeHandler()}
+      onTouchStart={header.getResizeHandler()}
+      className={cn(
+        "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
+        "opacity-0 group-hover/header:opacity-100",
+        "bg-surface-control hover:bg-indigo-500",
+        header.column.getIsResizing() && "bg-indigo-500 opacity-100"
+      )}
+    />
+  );
+}
+/* oxlint-enable jsx-a11y/no-static-element-interactions */
+
 export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,
@@ -1237,18 +1256,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </HeaderCellContent>
-                    {/* Column resizer */}
-                    <div
-                      onDoubleClick={() => header.column.resetSize()}
-                      onMouseDown={header.getResizeHandler()}
-                      onTouchStart={header.getResizeHandler()}
-                      className={cn(
-                        "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
-                        "opacity-0 group-hover/header:opacity-100",
-                        "bg-surface-control hover:bg-indigo-500",
-                        header.column.getIsResizing() && "bg-indigo-500 opacity-100"
-                      )}
-                    />
+                    <ColumnResizeHandle header={header} />
                   </th>
                 );
               })}
