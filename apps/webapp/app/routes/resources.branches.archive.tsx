@@ -25,6 +25,11 @@ const schema = ArchiveBranchOptions.and(
   })
 );
 
+// Only same-origin paths are safe to redirect to, since redirectPath comes from the form.
+function internalRedirectPath(path: string): string | undefined {
+  return path.startsWith("/") && !path.startsWith("//") ? path : undefined;
+}
+
 export async function action({ request }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
 
@@ -45,16 +50,24 @@ export async function action({ request }: ActionFunctionArgs) {
   );
 
   if (result.success) {
-    return redirectWithSuccessMessage(
+    const listPath =
       result.branch.type === "DEVELOPMENT"
         ? branchesDevPath(result.organization, result.project, result.branch)
-        : branchesPath(result.organization, result.project, result.branch),
+        : branchesPath(result.organization, result.project, result.branch);
+
+    // Return to the page the user archived from, so filters and pagination survive.
+    return redirectWithSuccessMessage(
+      internalRedirectPath(submission.value.redirectPath) ?? listPath,
       request,
       `Branch "${result.branch.branchName}" archived`
     );
   }
 
-  return redirectWithErrorMessage(submission.value.redirectPath, request, result.error);
+  return redirectWithErrorMessage(
+    internalRedirectPath(submission.value.redirectPath) ?? "/",
+    request,
+    result.error
+  );
 }
 
 export function ArchiveButton({

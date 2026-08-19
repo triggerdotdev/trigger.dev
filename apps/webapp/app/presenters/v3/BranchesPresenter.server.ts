@@ -180,6 +180,10 @@ export class BranchesPresenter {
       },
     });
 
+    // Archiving shrinks the list, so a restored page number can point past the end.
+    const totalPages = Math.ceil(visibleCount / BRANCHES_PER_PAGE);
+    const currentPage = totalPages > 0 ? Math.min(page, totalPages) : 1;
+
     const limits = await checkBranchLimit({
       prisma: this.#prismaClient,
       organizationId: project.organizationId,
@@ -222,7 +226,7 @@ export class BranchesPresenter {
       orderBy: {
         branchName: "asc",
       },
-      skip: (page - 1) * BRANCHES_PER_PAGE,
+      skip: (currentPage - 1) * BRANCHES_PER_PAGE,
       take: BRANCHES_PER_PAGE,
     });
 
@@ -252,8 +256,8 @@ export class BranchesPresenter {
 
     return {
       branchableEnvironment,
-      currentPage: page,
-      totalPages: Math.ceil(visibleCount / BRANCHES_PER_PAGE),
+      currentPage,
+      totalPages,
       hasBranches: totalBranches > 0,
       branches: branchesSorted,
       hasFilters,
