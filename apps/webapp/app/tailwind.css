@@ -979,6 +979,29 @@
   --color-run-timed-out: #ed5f74;
 }
 
+/*
+  Neutral run statuses on the light themes, with Stronger colors on. Queued,
+  Delayed, Waiting, Canceled and Expired are pale greys chosen to sit quietly on
+  a white plot, which puts all five between 1.32:1 and 1.66:1 - under the 3:1 a
+  chart series needs.
+
+  charcoal-400 is the first stop on the ramp that clears it (3.36:1); charcoal-300
+  is still 1.98:1. They all land on the same stop, which sounds worse than it is:
+  the five were already within 1.05:1 of each other, so nothing was
+  distinguishable between them to lose. If they ever need to be told apart, that's
+  a separate decision about spreading them down the ramp - it can't be done
+  without pushing four of them darker than the floor requires.
+
+  The dark themes are untouched: their greys already clear 3:1 against a dark plot.
+*/
+[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"]) {
+  --color-run-pending: var(--color-charcoal-400);
+  --color-run-delayed: var(--color-charcoal-400);
+  --color-run-waiting-to-resume: var(--color-charcoal-400);
+  --color-run-canceled: var(--color-charcoal-400);
+  --color-run-expired: var(--color-charcoal-400);
+}
+
 /* Streamdown's muted surface has no semantic token (charcoal-775); theme it here */
 :is([data-theme="light"], [data-theme="white"]) .streamdown-container {
   --muted: #eceef1;
