@@ -478,9 +478,10 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
     const [isHovered, setIsHovered] = useState(false);
     const { copy, copied } = useCopy(value);
 
-    // The button (with its aria-label) stays mounted at all times so keyboard users can always
-    // reach it. The Radix tooltip subtree is only mounted while the cell is hovered - the
-    // tooltip is a hover affordance, not required for the button's accessible name.
+    // The button (with its aria-label) always sits in the same position in the tree, wrapped by
+    // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
+    // keyboard focus). Only the tooltip's open state, not its mounted tree, follows hover; Radix
+    // still only renders the tooltip content into the DOM while `open` is true.
     const copyButton = (
       <button
         type="button"
@@ -514,17 +515,14 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
           onMouseLeave={() => setIsHovered(false)}
         >
           {children}
-          {isHovered ? (
-            <SimpleTooltip
-              asChild
-              tabbable
-              button={copyButton}
-              content={copied ? "Copied!" : "Copy"}
-              disableHoverableContent
-            />
-          ) : (
-            copyButton
-          )}
+          <SimpleTooltip
+            asChild
+            tabbable
+            open={isHovered}
+            button={copyButton}
+            content={copied ? "Copied!" : "Copy"}
+            disableHoverableContent
+          />
         </div>
       </TableCell>
     );

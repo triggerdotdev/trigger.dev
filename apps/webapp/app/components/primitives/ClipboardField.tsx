@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { cn } from "~/utils/cn";
 import { CopyButton } from "./CopyButton";
 
@@ -116,7 +116,7 @@ export function ClipboardField({
   fullWidth = true,
 }: ClipboardFieldProps) {
   const [isSecure, setIsSecure] = useState(secure !== undefined && secure);
-  const inputIcon = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const { container, input, buttonVariant, button, size } = variants[variant];
 
   useEffect(() => {
@@ -127,10 +127,14 @@ export function ClipboardField({
 
   return (
     <span className={cn(container, fullWidth ? "w-full" : "max-w-fit", className)}>
-      {icon && <span className="flex items-center pl-1">{icon}</span>}
+      {icon && (
+        <label htmlFor={inputId} className="flex items-center pl-1">
+          {icon}
+        </label>
+      )}
       <input
+        id={inputId}
         type="text"
-        ref={inputIcon}
         value={isSecure ? maskedValue : value}
         readOnly={true}
         className={cn(
