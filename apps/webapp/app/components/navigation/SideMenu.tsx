@@ -366,25 +366,32 @@ export function SideMenu({
   const rafRef = useRef<number | null>(null);
   // Mirror of `isCollapsed` for the drag handlers (outside React's render cycle; no stale closures).
   const isCollapsedRef = useRef(isCollapsed);
+  // Freeze first-paint values so React never fights the imperative width writes after hydration.
+  const [initialVisual] = useState(() => {
+    const collapsed = user.dashboardPreferences.sideMenu?.isCollapsed ?? false;
+    const expandedWidth = clamp(
+      user.dashboardPreferences.sideMenu?.width ?? DEFAULT_WIDTH,
+      DEFAULT_WIDTH,
+      MAX_WIDTH
+    );
+    const width = collapsed ? COLLAPSED_WIDTH : expandedWidth;
+    const progress = collapsed ? 1 : 0;
+
+    return {
+      expandedWidth,
+      width,
+      progress,
+      style: {
+        width,
+        "--sm-collapse": String(progress),
+        "--sm-label-opacity": String(progressToLabelOpacity(progress)),
+      } as CSSProperties,
+    };
+  });
   // The last-committed expanded width; animation targets and re-expansion read from here.
-  const expandedWidthRef = useRef(
-    clamp(user.dashboardPreferences.sideMenu?.width ?? DEFAULT_WIDTH, DEFAULT_WIDTH, MAX_WIDTH)
-  );
-  // Frozen first-paint width; never changes, so React never fights the imperative width writes.
-  const initialWidthRef = useRef(
-    (user.dashboardPreferences.sideMenu?.isCollapsed ?? false)
-      ? COLLAPSED_WIDTH
-      : expandedWidthRef.current
-  );
-  const widthRef = useRef(initialWidthRef.current);
-  const progressRef = useRef((user.dashboardPreferences.sideMenu?.isCollapsed ?? false) ? 1 : 0);
-  // Frozen initial style (incl. CSS vars) so the SSR HTML has the right collapsed/expanded visuals
-  // (no pre-hydration flash). Stable identity, so React never rewrites it after writeVisual.
-  const initialStyleRef = useRef<CSSProperties>({
-    width: initialWidthRef.current,
-    "--sm-collapse": String(progressRef.current),
-    "--sm-label-opacity": String(progressToLabelOpacity(progressRef.current)),
-  } as CSSProperties);
+  const expandedWidthRef = useRef(initialVisual.expandedWidth);
+  const widthRef = useRef(initialVisual.width);
+  const progressRef = useRef(initialVisual.progress);
   // Removes an in-flight drag's window listeners (set on pointerdown; cleared on finish/unmount).
   const dragCleanupRef = useRef<(() => void) | null>(null);
 
@@ -1066,7 +1073,7 @@ export function SideMenu({
   return (
     <div
       ref={rootRef}
-      style={initialStyleRef.current}
+      style={initialVisual.style}
       className={cn(
         "relative h-full border-r bg-background-bright",
         // The accent is the loudest "you are not this user" tell, so "view as user" drops it too —

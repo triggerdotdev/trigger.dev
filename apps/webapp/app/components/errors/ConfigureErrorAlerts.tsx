@@ -103,11 +103,11 @@ export function ConfigureErrorAlerts({
     }
   }, [fetcher.state, fetcher.data, closeHref, navigate, toast]);
 
-  const emailFieldValues = useRef<string[]>(
+  const [emailFieldValues, setEmailFieldValues] = useState<string[]>(() =>
     existingEmails.length > 0 ? [...existingEmails.map((e) => e.email), ""] : [""]
   );
 
-  const webhookFieldValues = useRef<string[]>(
+  const [webhookFieldValues, setWebhookFieldValues] = useState<string[]>(() =>
     existingWebhooks.length > 0 ? [...existingWebhooks.map((w) => w.url), ""] : [""]
   );
 
@@ -118,8 +118,8 @@ export function ConfigureErrorAlerts({
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
-      emails: emailFieldValues.current,
-      webhooks: webhookFieldValues.current,
+      emails: emailFieldValues,
+      webhooks: webhookFieldValues,
     },
   });
   const { emails, webhooks, slackChannel, slackIntegrationId } = fields;
@@ -167,10 +167,12 @@ export function ConfigureErrorAlerts({
                         placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                         icon={EnvelopeIcon}
                         onChange={(e) => {
-                          emailFieldValues.current[index] = e.target.value;
+                          const nextValues = [...emailFieldValues];
+                          nextValues[index] = e.target.value;
+                          setEmailFieldValues(nextValues);
                           if (
-                            emailFields.length === emailFieldValues.current.length &&
-                            emailFieldValues.current.every((v) => v !== "")
+                            emailFields.length === nextValues.length &&
+                            nextValues.every((value) => value !== "")
                           ) {
                             form.insert({ name: emails.name });
                           }
@@ -321,10 +323,12 @@ export function ConfigureErrorAlerts({
                       }
                       icon={GlobeLinesIcon}
                       onChange={(e) => {
-                        webhookFieldValues.current[index] = e.target.value;
+                        const nextValues = [...webhookFieldValues];
+                        nextValues[index] = e.target.value;
+                        setWebhookFieldValues(nextValues);
                         if (
-                          webhookFields.length === webhookFieldValues.current.length &&
-                          webhookFieldValues.current.every((v) => v !== "")
+                          webhookFields.length === nextValues.length &&
+                          nextValues.every((value) => value !== "")
                         ) {
                           form.insert({ name: webhooks.name });
                         }
