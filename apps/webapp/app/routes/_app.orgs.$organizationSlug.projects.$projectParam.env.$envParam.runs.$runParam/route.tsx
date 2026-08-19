@@ -1075,8 +1075,13 @@ function TasksTreeView({
                     <button
                       type="button"
                       tabIndex={-1}
-                      aria-disabled={!node.hasChildren}
-                      aria-label={state.expanded ? "Collapse task" : "Expand task"}
+                      aria-label={
+                        node.hasChildren
+                          ? state.expanded
+                            ? "Collapse task"
+                            : "Expand task"
+                          : "Select task"
+                      }
                       className={cn(
                         "flex h-8 w-4 items-center focus-custom",
                         node.hasChildren && "hover:bg-surface-control"
@@ -1091,6 +1096,8 @@ function TasksTreeView({
                           }
                         } else if (node.hasChildren) {
                           toggleExpandNode(node.id);
+                        } else {
+                          selectNode(node.id, false);
                         }
                         scrollToNode(node.id);
                         parentRef.current?.focus({ preventScroll: true });
