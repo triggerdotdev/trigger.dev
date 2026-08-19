@@ -843,6 +843,37 @@ function CopyableCell({
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(value);
 
+  // The button (with its aria-label) always sits in the same position in the tree, wrapped by
+  // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
+  // keyboard focus). The tooltip is left uncontrolled so Radix opens it only when the pointer or
+  // keyboard focus is actually on the button, not whenever the pointer is anywhere in this
+  // virtualized grid's cell. `focus-visible:` (not `focus:`) ensures keyboard focus reveals the
+  // button without leaving it visible after a mouse click moves outside the cell.
+  const copyButton = (
+    <button
+      type="button"
+      aria-label={copied ? "Copied" : "Copy"}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        copy();
+      }}
+      className={cn(
+        "absolute right-1 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
+        isHovered ? "opacity-100" : "pointer-events-none opacity-0",
+        copied
+          ? "text-green-500"
+          : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
+      )}
+    >
+      {copied ? (
+        <ClipboardCheckIcon className="size-3.5" />
+      ) : (
+        <ClipboardIcon className="size-3.5" />
+      )}
+    </button>
+  );
+
   return (
     <div
       className={cn(
@@ -856,37 +887,13 @@ function CopyableCell({
       onMouseLeave={() => setIsHovered(false)}
     >
       <span className="flex items-center truncate">{children}</span>
-      {isHovered && (
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            copy();
-          }}
-          className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
-        >
-          <SimpleTooltip
-            button={
-              <span
-                className={cn(
-                  "flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
-                  copied
-                    ? "text-green-500"
-                    : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
-                )}
-              >
-                {copied ? (
-                  <ClipboardCheckIcon className="size-3.5" />
-                ) : (
-                  <ClipboardIcon className="size-3.5" />
-                )}
-              </span>
-            }
-            content={copied ? "Copied!" : "Copy"}
-            disableHoverableContent
-          />
-        </span>
-      )}
+      <SimpleTooltip
+        asChild
+        tabbable
+        button={copyButton}
+        content={copied ? "Copied!" : "Copy"}
+        disableHoverableContent
+      />
     </div>
   );
 }
