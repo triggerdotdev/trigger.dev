@@ -223,12 +223,13 @@ export default function AdminLlmModelsRoute() {
 
         {/* Model tester */}
         <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-2">
-          <label className="text-xs font-medium text-text-dimmed">
+          <label htmlFor="modelString" className="text-xs font-medium text-text-dimmed">
             Test model string — paste a model name to see which pricing model matches
           </label>
           <testFetcher.Form method="post" className="flex items-center gap-2">
             <input type="hidden" name="_action" value="test" />
             <Input
+              id="modelString"
               name="modelString"
               placeholder="e.g. anthropic/claude-haiku-4-5-20251001, gpt-4o-mini, mistral/mistral-large-3"
               variant="medium"

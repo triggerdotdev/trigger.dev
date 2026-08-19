@@ -160,6 +160,7 @@ function createRunEngine() {
     },
     retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
     pendingVersionRunIdLookup: runEnginePendingVersionLookup,
+    externalDeploymentParkDeadlineMs: env.EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS,
     billing: {
       getCurrentPlan: async (orgId: string) => {
         const plan = await getCurrentPlan(orgId);

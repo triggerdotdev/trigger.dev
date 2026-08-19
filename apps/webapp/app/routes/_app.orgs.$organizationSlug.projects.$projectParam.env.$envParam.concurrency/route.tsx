@@ -436,6 +436,7 @@ function Upgradable({
                             <span>
                               Save your changes or{" "}
                               <button
+                                type="button"
                                 className="inline text-indigo-500 hover:text-indigo-300"
                                 onClick={() => {
                                   setAllocation(initialAllocation(environments));
@@ -467,9 +468,7 @@ function Upgradable({
                         </div>
                         <ArrowDownIcon className="size-4 animate-bounce text-success" />
                       </div>
-                    ) : (
-                      <></>
-                    )}
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>

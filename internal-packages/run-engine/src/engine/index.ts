@@ -77,7 +77,10 @@ import {
   getExecutionSnapshotsSince,
   getLatestExecutionSnapshot,
 } from "./systems/executionSnapshotSystem.js";
-import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
+import {
+  PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON,
+  PendingVersionSystem,
+} from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
@@ -287,6 +290,12 @@ export class RunEngine {
             payload.attempt
           );
         },
+        expireParkedExternalDeploymentRun: async ({ payload }) => {
+          await this.pendingVersionSystem.expireParkedExternalDeploymentRun({
+            runId: payload.runId,
+            externalDeploymentId: payload.externalDeploymentId,
+          });
+        },
         tryCompleteBatch: async ({ payload }) => {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
         },
@@ -395,9 +404,11 @@ export class RunEngine {
     this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
+      executionSnapshotSystem: this.executionSnapshotSystem,
       queueRunsPendingVersionBatchSize: options.queueRunsWaitingForWorkerBatchSize,
       lagRetryDelayMs: options.pendingVersionLagRetryDelayMs,
       lagMaxRetries: options.pendingVersionLagMaxRetries,
+      externalDeploymentParkDeadlineMs: options.externalDeploymentParkDeadlineMs,
     });
 
     this.waitpointSystem = new WaitpointSystem({
@@ -856,6 +867,7 @@ export class RunEngine {
       streamBasinName,
       debounce,
       annotations,
+      parkedOnExternalDeploymentId,
       onDebounced,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
@@ -947,7 +959,11 @@ export class RunEngine {
           }
         }
 
-        const status = delayUntil ? "DELAYED" : "PENDING";
+        const status = parkedOnExternalDeploymentId
+          ? "PENDING_VERSION"
+          : delayUntil
+            ? "DELAYED"
+            : "PENDING";
 
         // Apply defaultMaxTtl: use as default when no TTL is provided, clamp when larger
         const resolvedTtl = this.#resolveMaxTtl(ttl);
@@ -967,6 +983,9 @@ export class RunEngine {
                 id: taskRunId,
                 engine: "V2",
                 status,
+                statusReason: parkedOnExternalDeploymentId
+                  ? PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON
+                  : undefined,
                 friendlyId,
                 runtimeEnvironmentId: environment.id,
                 environmentType: environment.type,
@@ -1042,8 +1061,16 @@ export class RunEngine {
               snapshot: {
                 id: initialSnapshotId,
                 engine: "V2",
-                executionStatus: delayUntil ? "DELAYED" : QUEUED_SNAPSHOT_STATUS,
-                description: delayUntil ? "Run is delayed" : QUEUED_SNAPSHOT_DESCRIPTION,
+                executionStatus: parkedOnExternalDeploymentId
+                  ? "RUN_CREATED"
+                  : delayUntil
+                    ? "DELAYED"
+                    : QUEUED_SNAPSHOT_STATUS,
+                description: parkedOnExternalDeploymentId
+                  ? `Run is waiting for a deployment of '${parkedOnExternalDeploymentId}'`
+                  : delayUntil
+                    ? "Run is delayed"
+                    : QUEUED_SNAPSHOT_DESCRIPTION,
                 runStatus: status,
                 environmentId: environment.id,
                 environmentType: environment.type,
@@ -1131,7 +1158,44 @@ export class RunEngine {
           }
         }
 
-        if (taskRun.delayUntil) {
+        if (parkedOnExternalDeploymentId) {
+          await this.pendingVersionSystem.scheduleExternalDeploymentParkDeadline({
+            runId: taskRun.id,
+            externalDeploymentId: parkedOnExternalDeploymentId,
+            ttl: taskRun.ttl,
+            delayUntil: taskRun.delayUntil,
+          });
+
+          this.eventBus.emit("executionSnapshotCreated", {
+            time: new Date(),
+            run: {
+              id: taskRun.id,
+            },
+            snapshot: {
+              id: initialSnapshotId,
+              executionStatus: "RUN_CREATED",
+              description: `Run is waiting for a deployment of '${parkedOnExternalDeploymentId}'`,
+              runStatus: taskRun.status,
+              attemptNumber: taskRun.attemptNumber ?? null,
+              checkpointId: null,
+              workerId: workerId ?? null,
+              runnerId: runnerId ?? null,
+              isValid: true,
+              error: null,
+              completedWaitpointIds: [],
+            },
+          });
+
+          if (debounce) {
+            await this.#registerDebouncedRun({
+              taskRun,
+              environmentId: environment.id,
+              taskIdentifier,
+              debounce,
+              debounceClaimId,
+            });
+          }
+        } else if (taskRun.delayUntil) {
           // Schedule the run to be enqueued at the delayUntil time
           await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
             runId: taskRun.id,
@@ -1140,23 +1204,13 @@ export class RunEngine {
 
           // Register debounced run in Redis for future lookups
           if (debounce) {
-            const registered = await this.debounceSystem.registerDebouncedRun({
-              runId: taskRun.id,
+            await this.#registerDebouncedRun({
+              taskRun,
               environmentId: environment.id,
               taskIdentifier,
-              debounceKey: debounce.key,
-              delayUntil: taskRun.delayUntil,
-              claimId: debounceClaimId,
+              debounce,
+              debounceClaimId,
             });
-
-            if (!registered) {
-              // We lost the claim - this shouldn't normally happen, but log it
-              this.logger.warn("trigger: lost debounce claim after creating run", {
-                runId: taskRun.id,
-                debounceKey: debounce.key,
-                claimId: debounceClaimId,
-              });
-            }
           }
         } else {
           try {
@@ -2957,6 +3011,41 @@ export class RunEngine {
    * - No TTL on the run → use the max as the default.
    * - Both exist → clamp to the smaller value.
    */
+  async #registerDebouncedRun({
+    taskRun,
+    environmentId,
+    taskIdentifier,
+    debounce,
+    debounceClaimId,
+  }: {
+    taskRun: { id: string; delayUntil: Date | null };
+    environmentId: string;
+    taskIdentifier: string;
+    debounce: { key: string };
+    debounceClaimId: string | undefined;
+  }) {
+    if (!taskRun.delayUntil) {
+      return;
+    }
+
+    const registered = await this.debounceSystem.registerDebouncedRun({
+      runId: taskRun.id,
+      environmentId,
+      taskIdentifier,
+      debounceKey: debounce.key,
+      delayUntil: taskRun.delayUntil,
+      claimId: debounceClaimId,
+    });
+
+    if (!registered) {
+      this.logger.warn("trigger: lost debounce claim after creating run", {
+        runId: taskRun.id,
+        debounceKey: debounce.key,
+        claimId: debounceClaimId,
+      });
+    }
+  }
+
   #resolveMaxTtl(ttl: string | undefined): string | undefined {
     const maxTtl = this.options.defaultMaxTtl;
 

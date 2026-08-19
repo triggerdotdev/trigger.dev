@@ -225,7 +225,7 @@ export function Select<TValue extends string | string[], TItem>({
         {...props}
       />
       <SelectPopover className={popoverClassName}>
-        {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
+        {!searchable && showHeading && heading && <SelectHeading render={<span>{heading}</span>} />}
         {searchable && <ComboBox placeholder={heading} shortcut={shortcut} value={searchValue} />}
 
         <SelectList>
@@ -313,22 +313,20 @@ export function SelectTrigger({
     content = children;
   } else if (text !== undefined) {
     if (typeof text === "function") {
-      content = <SelectValue>{(value) => <>{text(value) ?? placeholder}</>}</SelectValue>;
+      content = <SelectValue>{(value) => text(value) ?? placeholder}</SelectValue>;
     } else {
       content = text;
     }
   } else {
     content = (
       <SelectValue>
-        {(value) => (
-          <>
-            {typeof value === "string"
-              ? (value ?? placeholder)
-              : value.length === 0
-                ? placeholder
-                : value.join(", ")}
-          </>
-        )}
+        {(value) =>
+          typeof value === "string"
+            ? (value ?? placeholder)
+            : value.length === 0
+              ? placeholder
+              : value.join(", ")
+        }
       </SelectValue>
     );
   }
@@ -574,16 +572,20 @@ export interface SelectButtonItemProps extends Omit<Ariakit.SelectItemProps, "on
   icon?: React.ReactNode;
   checkIcon?: React.ReactNode;
   shortcut?: ShortcutDefinition;
+  accessibleLabel: string;
   onClick: React.ComponentProps<"button">["onClick"];
 }
 
 export function SelectButtonItem({
   checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  accessibleLabel,
   onClick,
   ...props
 }: SelectButtonItemProps) {
   const render = (
     <button
+      type="button"
+      aria-label={accessibleLabel}
       onClick={onClick}
       className={cn("block w-full text-left", selectItemClasses, props.className)}
     />

@@ -95,6 +95,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const inputClassName = variants[variant].input;
     const variantIconClassName = variants[variant].iconSize;
 
+    /* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The wrapper only forwards pointer focus to its nested input. */
     return (
       <div
         className={cn(
@@ -125,6 +126,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     );
   }
 );
+/* oxlint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 Input.displayName = "Input";
 
 export { Input };

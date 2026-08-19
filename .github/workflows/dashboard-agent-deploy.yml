@@ -3,9 +3,19 @@ name: "🤖 Deploy dashboard agent"
 # Deploys the @internal/dashboard-agent chat.agent to its Trigger.dev project
 # with --skip-promotion, so a deploy never becomes "current" on its own. The
 # consuming app cuts over by pinning DASHBOARD_AGENT_VERSION to the new version.
-# Runs a leg per environment (staging + prod), each gated by its own environment;
-# a push to main that touches the agent or its store triggers both. Version
-# numbers are per-environment, so pin each environment to its own leg's version.
+# Runs a leg per environment (staging + prod); a push to main that touches the
+# agent or its store deploys both. Version numbers are per-environment, so pin
+# each environment to its own leg's version.
+#
+# The deploy lands dormant, so it doesn't need a reviewer gate: nothing goes live
+# until DASHBOARD_AGENT_VERSION is flipped. The `environment:` below is kept only
+# to scope the deploy token per environment; its required-reviewers rule is
+# removed in repo settings so pushes deploy unattended. workflow_dispatch takes an
+# optional ref (SHA, branch, or tag) to deploy a specific commit instead of head.
+#
+# The deployed ref must be an ancestor of main, so only reviewed, merged code ever
+# runs with the deploy token (the checked-out build + trigger.config.ts execute
+# with it). A push is always on main; a dispatched ref is checked before deploy.
 
 on:
   push:
@@ -14,6 +24,11 @@ on:
       - "internal-packages/dashboard-agent/**"
       - "internal-packages/dashboard-agent-db/**"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA, branch, or tag to deploy. Defaults to the ref the workflow runs from."
+        required: false
+        type: string
 
 permissions: {}
 
@@ -27,9 +42,15 @@ jobs:
       max-parallel: 1
       matrix:
         environment: [staging, prod]
-    # Per-environment reviewer gate + source of the scoped deploy PAT.
+    # Kept to scope the deploy token per environment. The required-reviewers rule
+    # on these environments is removed in repo settings, so this no longer gates.
     environment: dashboard-agent-${{ matrix.environment }}
     concurrency:
+      # Queue a superseding deploy behind an in-flight one; do NOT cancel it.
+      # Cancelling the runner wouldn't stop the remote build (it finishes
+      # server-side), and a second concurrent deploy of the same project would
+      # race the indexer. Deploys are short now the gate is gone, so a brief queue
+      # is fine and can't pile up.
       group: dashboard-agent-deploy-${{ matrix.environment }}
       cancel-in-progress: false
     permissions:
@@ -41,7 +62,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          # push: the pushed commit. workflow_dispatch: the input ref if given,
+          # otherwise the head of the ref the run was launched from.
+          ref: ${{ github.event.inputs.ref || github.sha }}
+          # Full history so the ancestor-of-main check below can find a merge base.
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Require the ref to be an ancestor of main
+        # The deploy token runs the checked-out code, so refuse anything that
+        # hasn't landed on main. A push is main's tip (ancestor of itself); this
+        # only ever rejects a dispatched, unmerged ref.
+        #
+        # NOTE: this in-file check only constrains WHICH commit is deployed. It
+        # can't protect the token on its own, because workflow_dispatch runs the
+        # workflow file from the selected ref. The real guard is the deployment
+        # branch policy on the dashboard-agent-* environments (main only), set in
+        # repo settings, which GitHub enforces server-side against GITHUB_REF.
+        run: |
+          set -euo pipefail
+          # An explicit `ref:` checkout doesn't create remote-tracking branches,
+          # so fetch main before comparing against it.
+          git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Refusing to deploy $(git rev-parse HEAD): not an ancestor of origin/main. Only merged code can be deployed."
+            exit 1
+          fi
+          echo "$(git rev-parse --short HEAD) is an ancestor of origin/main"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0

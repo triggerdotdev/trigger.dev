@@ -42,6 +42,19 @@ export const ErrorAlertsFormSchema = z.object({
   }, z.string().url().array()),
 });
 
+type SlackChannel = { id?: string; name?: string; is_private?: boolean };
+
+function renderSlackChannel(channels: SlackChannel[], value: string) {
+  const channel = channels.find((channel) => value === `${channel.id}/${channel.name}`);
+  if (!channel) return;
+
+  return (
+    <span className="text-text-bright">
+      <SlackChannelTitle {...channel} />
+    </span>
+  );
+}
+
 type ConfigureErrorAlertsProps = ErrorAlertChannelData & {
   connectToSlackHref?: string;
   formAction: string;
@@ -196,15 +209,7 @@ export function ConfigureErrorAlerts({
                       filter={(channel, search) =>
                         channel.name?.toLowerCase().includes(search.toLowerCase()) ?? false
                       }
-                      text={(value) => {
-                        const channel = slack.channels.find((s) => value === `${s.id}/${s.name}`);
-                        if (!channel) return;
-                        return (
-                          <span className="text-text-bright">
-                            <SlackChannelTitle {...channel} />
-                          </span>
-                        );
-                      }}
+                      text={(value) => renderSlackChannel(slack.channels, value)}
                     >
                       {(matches) => (
                         <>

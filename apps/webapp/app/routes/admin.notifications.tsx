@@ -434,8 +434,11 @@ export default function AdminNotificationsRoute() {
           <Paragraph className="text-text-dimmed">
             {total} notifications (page {page} of {pageCount || 1})
           </Paragraph>
-          <label className="flex items-center gap-2 text-xs text-text-dimmed">
-            <Checkbox checked={hideInactive} onChange={toggleHideInactive} />
+          <label
+            htmlFor="hideInactive"
+            className="flex items-center gap-2 text-xs text-text-dimmed"
+          >
+            <Checkbox id="hideInactive" checked={hideInactive} onChange={toggleHideInactive} />
             Hide inactive
           </label>
         </div>
@@ -1383,7 +1386,7 @@ function CliColorMarkup({ text, fallbackClass }: { text: string; fallbackClass?:
     pos = closeIdx + 1;
   }
 
-  return <>{parts}</>;
+  return parts;
 }
 
 function Badge({

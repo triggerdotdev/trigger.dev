@@ -1034,9 +1034,9 @@ function PlaygroundSidebar({
                 {runFriendlyId && <SessionField label="Run ID" value={runFriendlyId} />}
                 <SessionField label="Messages" value={String(messageCount)} />
                 <div>
-                  <label className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
+                  <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
                     Status
-                  </label>
+                  </span>
                   <span className="flex items-center gap-1.5 text-xs">
                     <span
                       className={cn(
@@ -1353,9 +1353,9 @@ function safeParseJson(json: string): Record<string, unknown> {
 function SessionField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <label className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
+      <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
         {label}
-      </label>
+      </span>
       <code className="block truncate text-xs text-text-bright">{value}</code>
     </div>
   );

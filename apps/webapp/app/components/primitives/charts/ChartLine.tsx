@@ -578,7 +578,8 @@ export function ChartLineRenderer({
             // own dot on top where it's active.
             activeDot={
               gradientLine
-                ? (props: ActiveDotProps) => (
+                ? // oxlint-disable-next-line react/no-unstable-nested-components -- Recharts invokes this renderer with hover coordinates; an element would rely on cloneElement prop injection.
+                  (props: ActiveDotProps) => (
                     <ThresholdActiveDot
                       {...props}
                       dataKey={key}

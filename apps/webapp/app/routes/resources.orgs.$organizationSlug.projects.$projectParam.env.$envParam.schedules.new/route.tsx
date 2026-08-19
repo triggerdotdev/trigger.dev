@@ -304,15 +304,13 @@ export function UpsertScheduleForm({
                     dropdownIcon
                     variant="tertiary/medium"
                   >
-                    {(matches) => (
-                      <>
-                        {matches?.map((task) => (
-                          <SelectItem key={task} value={task}>
-                            {task}
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
+                    {(matches) =>
+                      matches?.map((task) => (
+                        <SelectItem key={task} value={task}>
+                          {task}
+                        </SelectItem>
+                      ))
+                    }
                   </Select>
                   <FormError id={taskIdentifier.errorId}>{taskIdentifier.errors}</FormError>
                 </InputGroup>

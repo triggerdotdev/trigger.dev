@@ -48,6 +48,14 @@ import {
 } from "~/v3/services/alerts/safeWebhookUrl.server";
 import { pageMeta } from "~/utils/pageTitle";
 
+type SlackChannel = { id?: string; name?: string; is_private?: boolean };
+
+function renderSlackChannel(channels: SlackChannel[], value: string | string[]) {
+  if (typeof value !== "string") return;
+  const channel = channels.find((channel) => value === `${channel.id}/${channel.name}`);
+  return channel ? <SlackChannelTitle {...channel} /> : undefined;
+}
+
 export const meta = pageMeta("New alert");
 
 const FormSchema = z
@@ -342,21 +350,15 @@ export default function Page() {
                       filter={(channel, search) =>
                         channel.name?.toLowerCase().includes(search.toLowerCase()) ?? false
                       }
-                      text={(value) => {
-                        const channel = slack.channels.find((s) => value === `${s.id}/${s.name}`);
-                        if (!channel) return;
-                        return <SlackChannelTitle {...channel} />;
-                      }}
+                      text={(value) => renderSlackChannel(slack.channels, value)}
                     >
-                      {(matches) => (
-                        <>
-                          {matches?.map((channel) => (
-                            <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
-                              <SlackChannelTitle {...channel} />
-                            </SelectItem>
-                          ))}
-                        </>
-                      )}
+                      {(matches) =>
+                        matches?.map((channel) => (
+                          <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
+                            <SlackChannelTitle {...channel} />
+                          </SelectItem>
+                        ))
+                      }
                     </Select>
                     {selectedSlackChannel && selectedSlackChannel.is_private && (
                       <Callout

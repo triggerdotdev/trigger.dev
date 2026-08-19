@@ -51,6 +51,7 @@ function PopoverSectionHeader({
   );
 }
 
+/* oxlint-disable react/button-has-type -- The trigger supports form button semantics. */
 const PopoverMenuItem = React.forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
   {
@@ -141,6 +142,7 @@ const PopoverMenuItem = React.forwardRef<
   }
 );
 PopoverMenuItem.displayName = "PopoverMenuItem";
+/* oxlint-enable react/button-has-type */
 
 function PopoverCustomTrigger({
   isOpen,

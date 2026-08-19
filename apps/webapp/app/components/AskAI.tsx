@@ -543,8 +543,12 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
           />
           {isGeneratingAnswer ? (
             <SimpleTooltip
+              asChild
+              tabbable
               button={
-                <span
+                <button
+                  type="button"
+                  aria-label="Stop generating"
                   onClick={() => stopGeneration()}
                   className="group relative z-10 flex size-10 min-w-10 cursor-pointer items-center justify-center"
                 >
@@ -553,7 +557,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
                     className="absolute inset-0 animate-spin"
                     hoverEffect
                   />
-                </span>
+                </button>
               }
               content="Stop generating"
             />

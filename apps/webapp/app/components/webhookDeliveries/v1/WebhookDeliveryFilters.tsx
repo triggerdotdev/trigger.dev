@@ -165,6 +165,7 @@ function MainMenu({ trigger, clearSearchValue, setFilterType }: MenuProps) {
           {filterTypes.map((type, index) => (
             <SelectButtonItem
               key={type.name}
+              accessibleLabel={type.title}
               onClick={() => {
                 clearSearchValue();
                 setFilterType(type.name);

@@ -86,6 +86,12 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
   ) => {
     const [isChecked, setIsChecked] = useState<boolean>(defaultChecked ?? false);
     const [isDisabled, setIsDisabled] = useState<boolean>(disabled ?? false);
+    const generatedId = React.useId();
+    const inputId = id ?? generatedId;
+    const labelId = `${inputId}-label`;
+    const descriptionId = `${inputId}-description`;
+    const ariaLabelledBy =
+      props["aria-label"] || props["aria-labelledby"] ? props["aria-labelledby"] : labelId;
 
     const buttonClassName = variants[variant].button;
     const labelClassName = variants[variant].label;
@@ -109,7 +115,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
     }, [defaultChecked]);
 
     return (
-      <div
+      <label
         className={cn(
           "group flex items-start gap-x-2 transition ",
           props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
@@ -118,11 +124,6 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           (isDisabled || props.readOnly) && isDisabledClassName,
           className
         )}
-        onClick={(e) => {
-          //returning false is not setting the state to false, it stops the event from bubbling up
-          if (isDisabled || props.readOnly === true) return false;
-          setIsChecked((c) => !c);
-        }}
       >
         <input
           {...props}
@@ -130,10 +131,14 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           type="checkbox"
           value={value}
           checked={isChecked}
+          aria-labelledby={ariaLabelledBy}
+          aria-describedby={
+            props["aria-describedby"] ??
+            (variant === "description" && description ? descriptionId : undefined)
+          }
           onChange={(e) => {
-            //returning false is not setting the state to false, it stops the event from bubbling up
-            if (isDisabled || props.readOnly === true) return false;
-            setIsChecked(!isChecked);
+            if (isDisabled || props.readOnly === true) return;
+            setIsChecked(e.target.checked);
           }}
           disabled={isDisabled}
           className={cn(
@@ -145,22 +150,21 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
             (isDisabled || props.readOnly) &&
               "bg-background-raised! checked:bg-background-raised! checked:group-hover:bg-background-raised! group-hover:bg-background-raised!"
           )}
-          id={id}
+          id={inputId}
           ref={ref}
         />
         <div>
           <div className="flex items-center gap-x-2">
-            <label
-              htmlFor={id}
+            <span
+              id={labelId}
               className={cn(
                 props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
                 labelClassName,
                 externalLabelClassName
               )}
-              onClick={(e) => e.preventDefault()}
             >
               {label}
-            </label>
+            </span>
             {badges && (
               <span className="-mr-2 flex gap-x-1.5">
                 {badges.map((badge) => (
@@ -170,12 +174,16 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
             )}
           </div>
           {variant === "description" && (
-            <Paragraph variant="small" className={cn("mt-0.5", descriptionClassName)}>
+            <Paragraph
+              id={descriptionId}
+              variant="small"
+              className={cn("mt-0.5", descriptionClassName)}
+            >
               {description}
             </Paragraph>
           )}
         </div>
-      </div>
+      </label>
     );
   }
 );

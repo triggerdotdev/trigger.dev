@@ -76,6 +76,17 @@ function shuffleArray<T>(arr: T[]): T[] {
   return shuffled;
 }
 
+function renderMultiSelectValue(value: string[]) {
+  if (value.length === 0) return;
+
+  return (
+    <span className="flex min-w-0 items-center text-text-bright">
+      <span className="truncate">{value.slice(0, 2).join(", ")}</span>
+      {value.length > 2 && <span className="ml-1 flex-none">+{value.length - 2} more</span>}
+    </span>
+  );
+}
+
 function MultiSelectField({
   value,
   setValue,
@@ -97,14 +108,7 @@ function MultiSelectField({
       icon={icon}
       items={items}
       className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
-      text={(v) =>
-        v.length === 0 ? undefined : (
-          <span className="flex min-w-0 items-center text-text-bright">
-            <span className="truncate">{v.slice(0, 2).join(", ")}</span>
-            {v.length > 2 && <span className="ml-1 flex-none">+{v.length - 2} more</span>}
-          </span>
-        )
-      }
+      text={renderMultiSelectValue}
     >
       {(items) =>
         items.map((item) => (
@@ -509,7 +513,7 @@ export default function Page() {
               </Fieldset>
             </Form>
           </div>
-          <Feedback button={<></>} />
+          <Feedback />
         </MainCenteredContainer>
       </BackgroundWrapper>
     </AppContainer>

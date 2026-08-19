@@ -70,6 +70,15 @@ function themeIcon(value: ThemePreference) {
   }
 }
 
+function renderTheme(value: ThemePreference) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {themeIcon(value)}
+      {themeLabel(value)}
+    </span>
+  );
+}
+
 export const meta = pageMeta("Your profile");
 
 function createSchema(
@@ -320,12 +329,7 @@ export default function Page() {
                   variant="secondary/small"
                   dropdownIcon
                   items={["classic", "system", "dark", "light"]}
-                  text={(value) => (
-                    <span className="flex items-center gap-1.5">
-                      {themeIcon(value)}
-                      {themeLabel(value)}
-                    </span>
-                  )}
+                  text={renderTheme}
                   className="w-44"
                 >
                   {(items) =>

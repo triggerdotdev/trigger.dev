@@ -668,16 +668,18 @@ function TimeDropdown({
       >
         <div className="flex flex-col gap-4 p-3">
           {/* Duration section */}
-          <div
-            onClick={() => {
-              setActiveSection("duration");
-              setValidationError(null);
-              setSelectedQuickDate(null);
-            }}
-            className="flex cursor-pointer gap-3 rounded-md pb-3"
-          >
-            <RadioButtonCircle checked={activeSection === "duration"} />
-            <div className="flex flex-1 flex-col gap-1">
+          <div className="flex flex-col rounded-md pb-3">
+            <button
+              type="button"
+              aria-pressed={activeSection === "duration"}
+              onClick={() => {
+                setActiveSection("duration");
+                setValidationError(null);
+                setSelectedQuickDate(null);
+              }}
+              className="flex w-full cursor-pointer gap-3 text-left focus-custom"
+            >
+              <RadioButtonCircle checked={activeSection === "duration"} />
               <Label
                 className={cn(
                   "mb-2 transition-colors",
@@ -686,6 +688,8 @@ function TimeDropdown({
               >
                 {labelName} in the last
               </Label>
+            </button>
+            <div className="ml-8 flex flex-1 flex-col gap-1">
               <div className="grid grid-cols-4 gap-2">
                 {/* Custom duration row */}
                 <div
@@ -699,7 +703,6 @@ function TimeDropdown({
                       selectedPeriod === "custom" &&
                       "border-error"
                   )}
-                  onClick={(e) => e.stopPropagation()}
                 >
                   <input
                     type="number"
@@ -782,15 +785,17 @@ function TimeDropdown({
           </div>
 
           {/* Date range section */}
-          <div
-            onClick={() => {
-              setActiveSection("dateRange");
-              setValidationError(null);
-            }}
-            className="flex cursor-pointer gap-3"
-          >
-            <RadioButtonCircle checked={activeSection === "dateRange"} />
-            <div className="flex flex-1 flex-col">
+          <div className="flex flex-col">
+            <button
+              type="button"
+              aria-pressed={activeSection === "dateRange"}
+              onClick={() => {
+                setActiveSection("dateRange");
+                setValidationError(null);
+              }}
+              className="flex w-full cursor-pointer gap-3 text-left focus-custom"
+            >
+              <RadioButtonCircle checked={activeSection === "dateRange"} />
               <Label
                 className={cn(
                   "mb-3 transition-colors",
@@ -807,7 +812,9 @@ function TimeDropdown({
                   (in local time)
                 </span>
               </Label>
-              <div className="-ml-8 mb-2" onClick={(e) => e.stopPropagation()}>
+            </button>
+            <div className="ml-8 flex flex-1 flex-col">
+              <div className="-ml-8 mb-2">
                 <DateTimePicker
                   label="From"
                   value={fromValue}
@@ -823,7 +830,7 @@ function TimeDropdown({
                   showInlineLabel
                 />
               </div>
-              <div onClick={(e) => e.stopPropagation()} className="-ml-8">
+              <div className="-ml-8">
                 <DateTimePicker
                   label="To"
                   value={toValue}
@@ -840,7 +847,7 @@ function TimeDropdown({
                 />
               </div>
               {/* Quick select date ranges */}
-              <div className="mt-2 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <QuickDateButton
                   label="Yesterday"
                   isActive={selectedQuickDate === "yesterday"}
@@ -866,7 +873,7 @@ function TimeDropdown({
                   }}
                 />
               </div>
-              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-3 gap-2">
                 <QuickDateButton
                   label="This week"
                   isActive={selectedQuickDate === "thisWeek"}
