@@ -420,15 +420,18 @@ function QueuesWithMetricsView() {
   // Empty rows (quiet env, or the very first fetch still in flight) fall back to the loader values,
   // so we never flash a stale 0. Fixed 15m window, env-wide (no queue filter), CH-only recurring
   // load; pauses while the tab is hidden (handled inside the hook).
-  const { rows: liveBlockRows } = useMetricResourceQuery(QUEUE_LIVE_BLOCKS_QUERY, {
-    organizationId: organization.id,
-    projectId: project.id,
-    environmentId: env.id,
-    timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
-    defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
-    fillGaps: false,
-    refreshIntervalMs: 15_000,
-  });
+  const { rows: liveBlockRows, responseReceivedAt } = useMetricResourceQuery(
+    QUEUE_LIVE_BLOCKS_QUERY,
+    {
+      organizationId: organization.id,
+      projectId: project.id,
+      environmentId: env.id,
+      timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
+      defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
+      fillGaps: false,
+      refreshIntervalMs: 15_000,
+    }
+  );
   const lastLiveBlockRow =
     liveBlockRows.length > 0 ? liveBlockRows[liveBlockRows.length - 1] : null;
   // Only trust the gauge while its newest bucket is fresh. A row painted from the hook's cache on
@@ -436,9 +439,10 @@ function QueuesWithMetricsView() {
   // not override the loader's Redis-exact live values with a stale count.
   const lastLiveBucketMs = lastLiveBlockRow ? tileTimeToMs(lastLiveBlockRow.t) : NaN;
   const freshLiveBlockRow =
+    responseReceivedAt !== null &&
     lastLiveBlockRow &&
     Number.isFinite(lastLiveBucketMs) &&
-    Date.now() - lastLiveBucketMs < LIVE_GAUGE_FRESH_MS
+    responseReceivedAt - lastLiveBucketMs < LIVE_GAUGE_FRESH_MS
       ? lastLiveBlockRow
       : null;
   const envQueuedLive = freshLiveBlockRow

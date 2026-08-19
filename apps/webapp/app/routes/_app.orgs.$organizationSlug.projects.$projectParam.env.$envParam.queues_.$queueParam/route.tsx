@@ -1121,7 +1121,7 @@ function QueueStats({
   // Latest gauges from ClickHouse, polled every 15s so the live blocks keep ticking after first
   // paint. Read the newest bucket (largest t); until the first poll lands liveRows is empty and the
   // *Live values stay null, so the blocks show the loader values instead of flashing 0.
-  const { rows: liveRows } = useQueueMetric(
+  const { rows: liveRows, responseReceivedAt } = useQueueMetric(
     `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit, max(max_ck_wait_ms) AS ck_wait FROM queue_metrics GROUP BY t ORDER BY t`,
     {
       ids,
@@ -1138,7 +1138,9 @@ function QueueStats({
   const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
   const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
   const liveFresh =
-    Number.isFinite(latestBucketMs) && Date.now() - latestBucketMs < LIVE_GAUGE_FRESH_MS;
+    responseReceivedAt !== null &&
+    Number.isFinite(latestBucketMs) &&
+    responseReceivedAt - latestBucketMs < LIVE_GAUGE_FRESH_MS;
   const fresh = latest && liveFresh ? latest : undefined;
   const runningLive = fresh ? toNumber(fresh.running) : null;
   const queuedLive = fresh ? toNumber(fresh.queued) : null;
