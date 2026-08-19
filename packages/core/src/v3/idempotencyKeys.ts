@@ -292,6 +292,10 @@ export async function resetIdempotencyKey(
   try {
     return await client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
   } catch (error) {
+    if (!(error instanceof NotFoundError)) {
+      throw error;
+    }
+
     try {
       return await client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
     } catch (fallbackError) {

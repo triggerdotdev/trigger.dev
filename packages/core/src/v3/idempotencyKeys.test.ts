@@ -193,27 +193,12 @@ describe("resetIdempotencyKey", () => {
     expect(resetKeys).toEqual([digestShapedKey]);
   });
 
-  it("falls back to the derived hash when the verbatim attempt fails with a 503", async () => {
+  it("does not reset the derived run when the verbatim attempt fails transiently", async () => {
     const created = await createIdempotencyKey(digestShapedKey, { scope: "global" });
 
     resetIdempotencyKeyCatalog();
     statusByKey.set(digestShapedKey, 503);
     existingKeys = new Set([created]);
-
-    await resetIdempotencyKey(
-      "my-task",
-      digestShapedKey,
-      { scope: "global" },
-      { retry: { maxAttempts: 1 } }
-    );
-
-    expect(resetKeys).toEqual([digestShapedKey, created]);
-  });
-
-  it("surfaces the verbatim attempt's error when it fails with a 503 and the fallback finds nothing", async () => {
-    const derived = await digestSHA256(digestShapedKey);
-    statusByKey.set(digestShapedKey, 503);
-    existingKeys = new Set();
 
     await expect(
       resetIdempotencyKey(
@@ -224,7 +209,7 @@ describe("resetIdempotencyKey", () => {
       )
     ).rejects.toMatchObject({ status: 503 });
 
-    expect(resetKeys).toEqual([digestShapedKey, derived]);
+    expect(resetKeys).toEqual([digestShapedKey]);
   });
 
   it("surfaces the fallback's error when it fails with something other than a 404", async () => {
