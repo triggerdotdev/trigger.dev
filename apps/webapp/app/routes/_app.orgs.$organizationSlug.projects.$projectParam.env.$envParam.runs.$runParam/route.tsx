@@ -968,6 +968,14 @@ function TasksTreeView({
     },
   });
 
+  const getInteractiveNodeProps = useCallback(
+    (id: string) => ({
+      ...getNodeProps(id),
+      onClick: () => selectNode(id),
+    }),
+    [getNodeProps, selectNode]
+  );
+
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-1.5">
@@ -1047,7 +1055,7 @@ function TasksTreeView({
               autoFocus
               tree={events}
               nodes={nodes}
-              getNodeProps={getNodeProps}
+              getNodeProps={getInteractiveNodeProps}
               getTreeProps={getTreeProps}
               parentClassName="pl-3"
               renderNode={({ node, state, index }) => (
@@ -1058,9 +1066,6 @@ function TasksTreeView({
                       ? "bg-grid-dimmed hover:bg-grid-bright"
                       : "bg-transparent hover:bg-grid-dimmed"
                   )}
-                  onClick={() => {
-                    selectNode(node.id);
-                  }}
                 >
                   <div className="flex h-8 items-center">
                     {Array.from({ length: node.level }).map((_, index) => (
@@ -1070,9 +1075,12 @@ function TasksTreeView({
                         isSelected={state.selected}
                       />
                     ))}
-                    <div
+                    <button
+                      type="button"
+                      disabled={!node.hasChildren}
+                      aria-label={state.expanded ? "Collapse task" : "Expand task"}
                       className={cn(
-                        "flex h-8 w-4 items-center",
+                        "flex h-8 w-4 items-center focus-custom",
                         node.hasChildren && "hover:bg-surface-control"
                       )}
                       onClick={(e) => {
@@ -1098,7 +1106,7 @@ function TasksTreeView({
                       ) : (
                         <div className="h-8 w-4" />
                       )}
-                    </div>
+                    </button>
                   </div>
 
                   <div className="flex w-full items-center justify-between gap-2 pl-1">
