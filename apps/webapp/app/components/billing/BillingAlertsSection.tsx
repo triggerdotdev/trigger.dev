@@ -119,6 +119,7 @@ export function BillingAlertsSection({
       return;
     }
 
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setShowResetBanner(true);
 
     if (searchParams.get("alertsReset") !== "1") {
@@ -189,6 +190,7 @@ export function BillingAlertsSection({
 
   useEffect(() => {
     nextThresholdIdRef.current = savedThresholds.length;
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setThresholdRows(toThresholdRows(savedThresholds));
     setEmailValues(savedEmails.length > 0 ? [...savedEmails, ""] : [""]);
   }, [savedThresholds, savedEmails]);

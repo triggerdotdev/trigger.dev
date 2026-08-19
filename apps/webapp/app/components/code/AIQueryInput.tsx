@@ -61,6 +61,7 @@ export function AIQueryInput({
   // If mode is edit but there's no current query, switch to new
   useEffect(() => {
     if (mode === "edit" && !canEdit) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setMode("new");
     }
   }, [mode, canEdit]);

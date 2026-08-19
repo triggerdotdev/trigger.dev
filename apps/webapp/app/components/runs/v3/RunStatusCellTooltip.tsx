@@ -144,6 +144,7 @@ function useChildRunStatusesTooltip({
     const entry = fetcher.data.runs.find((run) => run.friendlyId === friendlyId);
     if (!entry) return;
 
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setChildStatuses((previous) =>
       areChildStatusesEqual(previous, entry.statuses) ? previous : entry.statuses
     );
@@ -169,6 +170,7 @@ function useChildRunStatusesTooltip({
   useEffect(() => {
     prevHasFinishedRef.current = hasFinished;
     stopPolling();
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setChildStatuses(undefined);
     if (isOpenRef.current) {
       loadChildStatuses();

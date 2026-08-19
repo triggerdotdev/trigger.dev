@@ -88,6 +88,7 @@ export function SaveToDashboardDialog({
   useEffect(() => {
     if (customDashboards.length > 0 && !selectedDashboardId) {
       const available = customDashboards.find((d) => d.widgetCount < widgetLimit);
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSelectedDashboardId(available?.friendlyId ?? customDashboards[0].friendlyId);
     }
   }, [customDashboards, selectedDashboardId, widgetLimit]);
