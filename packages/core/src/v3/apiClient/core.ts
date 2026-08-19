@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { fromZodError, ValidationError } from "zod-validation-error";
+import { fromZodError } from "zod-validation-error";
 import type { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
@@ -272,9 +272,6 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
-    }
-
-    if (error instanceof ValidationError) {
     }
 
     if (options?.retry) {
