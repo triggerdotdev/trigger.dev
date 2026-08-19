@@ -1,8 +1,9 @@
 import { NODE_RUNTIME_UPDATE_MAJOR } from "@trigger.dev/core/v3";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { listCurrentProductionProjectRuntimes } from "~/services/projectRuntimeUpdates.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { getUserId } from "~/services/session.server";
 import { pageMeta } from "~/utils/pageTitle";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 import { type ProjectRuntimeRow, RuntimeUpdatesPage } from "./RuntimeUpdatesPage";
@@ -12,8 +13,12 @@ export const meta = pageMeta("Projects");
 export const loader = dashboardLoader(
   {
     params: OrganizationParamsSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+    // Membership-scoped resolve, like the Team settings loader: the RBAC gate below enforces the
+    // role, this is the tenant floor. An unresolved org yields no scope, which fails closed.
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const organizationId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return organizationId ? { organizationId } : {};
     },
     authorization: {

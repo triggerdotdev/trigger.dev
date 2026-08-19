@@ -10,7 +10,7 @@ import {
   OrganizationSettingsSideMenu,
 } from "~/components/navigation/OrganizationSettingsSideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { organizationHasProjectRuntimeUpdate } from "~/services/projectRuntimeUpdates.server";
 import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
@@ -29,7 +29,8 @@ async function canReadDeployments({
   userId: string;
   organizationSlug: string;
 }) {
-  const organizationId = await resolveOrgIdFromSlug(organizationSlug);
+  // Membership-scoped so the dot is never computed against an org the user is not in.
+  const organizationId = await resolveOrgIdFromSlugForUser(organizationSlug, userId);
   if (!organizationId) {
     return false;
   }
