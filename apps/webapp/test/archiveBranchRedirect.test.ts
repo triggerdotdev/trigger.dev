@@ -2,7 +2,7 @@
 // paginated or filtered branches list must land back on that exact page instead
 // of a bare branches path that resets the list to page 1.
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { action } from "~/routes/resources.branches.archive";
 
 vi.mock("~/services/session.server", () => ({
@@ -37,6 +37,10 @@ async function archive(redirectPath: string) {
 }
 
 describe("archiving a branch returns to the page it was started from", () => {
+  beforeEach(() => {
+    archiveSucceeds.value = true;
+  });
+
   it("preserves the query string on success", async () => {
     const response = await archive(LIST_PATH);
 
@@ -45,8 +49,8 @@ describe("archiving a branch returns to the page it was started from", () => {
 
   it("preserves the query string on failure", async () => {
     archiveSucceeds.value = false;
+
     const response = await archive(LIST_PATH);
-    archiveSucceeds.value = true;
 
     expect(response.headers.get("Location")).toBe(LIST_PATH);
   });
