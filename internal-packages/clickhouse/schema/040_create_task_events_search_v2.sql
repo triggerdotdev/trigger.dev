@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.task_events_search_v2
 
   INDEX idx_run_id run_id TYPE bloom_filter(0.001) GRANULARITY 1,
   INDEX idx_search_text search_text
-    TYPE text(tokenizer = 'ngrams')
+    TYPE text(tokenizer = 'ngrams', preprocessor = lowerUTF8(search_text))
 )
 ENGINE = ReplacingMergeTree
 PARTITION BY toDate(inserted_at)
