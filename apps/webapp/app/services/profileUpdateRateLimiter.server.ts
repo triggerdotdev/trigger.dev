@@ -10,16 +10,14 @@ import { singleton } from "~/utils/singleton";
 // global apiRateLimiter doesn't cover it. Hence a per-user cap here.
 //
 // Exported so the policy is asserted in tests rather than re-encoded.
-export const PROFILE_UPDATE_RATE_LIMIT_ATTEMPTS = 20;
-export const PROFILE_UPDATE_RATE_LIMIT_WINDOW = "1 m" as const;
+const PROFILE_UPDATE_RATE_LIMIT_ATTEMPTS = 20;
+const PROFILE_UPDATE_RATE_LIMIT_WINDOW = "1 m" as const;
 
 /**
  * Build the profile-update per-user rate limiter. Production uses the
  * env-derived rate-limit Redis; tests inject a container Redis.
  */
-export function createProfileUpdateRateLimiter(
-  redisOptions?: RedisWithClusterOptions
-): RateLimiter {
+function createProfileUpdateRateLimiter(redisOptions?: RedisWithClusterOptions): RateLimiter {
   return new RateLimiter({
     ...(redisOptions ? { redisClient: createRedisRateLimitClient(redisOptions) } : {}),
     keyPrefix: "account.profile-update",

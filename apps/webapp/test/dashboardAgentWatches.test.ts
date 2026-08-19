@@ -30,11 +30,10 @@ import {
   type DashboardAgentDbClient,
   type Watch,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import type { WatchDraft, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, vi } from "vitest";
 import {
   previousCheckFacts,
@@ -144,26 +143,11 @@ const { findProjectBySlug } = await import("~/models/project.server");
 const { DASHBOARD_AGENT_WATCH_ALERT_TYPE, subscribeUserToWatchAlerts } =
   await import("~/services/dashboardAgentWatchAlerts.server");
 
-/** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
-async function applyAgentSchema(prisma: PrismaClient) {
-  const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-  const migrations = readdirSync(folder)
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
-  for (const name of migrations) {
-    const sql = readFileSync(path.join(folder, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
-
 let agentDbClient: DashboardAgentDbClient | undefined;
 
 async function boot(prisma: PrismaClient, connectionUri: string) {
   ctx.prisma = prisma;
-  await applyAgentSchema(prisma);
+  await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
   // A pool, not a single connection: the concurrent-create test needs the advisory lock to span connections.
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 8 });
   ctx.agentDb = agentDbClient.db;
@@ -1305,80 +1289,6 @@ describe("the watch sweep", () => {
       expect(
         await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }))
       ).toMatchObject({ overdue: 1, expired: 1 });
-    }
-  );
-
-  postgresTest(
-    "retention drops long-terminal rows and nothing else",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-      const seeded = await seed(prisma, "sweep");
-      await seedChat(seeded);
-      await seedChat(seeded, "chat_2");
-      await seedChat(seeded, "chat_3");
-
-      const old = await overdueWatch(seeded, "chat_1");
-      const recent = await overdueWatch(seeded, "chat_2");
-      await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
-      await ctx.prisma.$executeRawUnsafe(
-        `update trigger_dashboard_agent.watches
-         set delivery_status = 'delivered', delivered_at = now()
-         where id in ($1, $2)`,
-        old,
-        recent
-      );
-
-      const active = await create({ seeded, chatId: "chat_3" });
-      if (!active.ok || !active.watching) throw new Error("expected an active watch");
-
-      // Backdate every timestamp the age is measured from, so `greatest(...)` really is old.
-      await ctx.prisma.$executeRawUnsafe(
-        `update trigger_dashboard_agent.watches
-         set created_at = now() - interval '30 days',
-             fired_at = now() - interval '30 days',
-             last_checked_at = now() - interval '30 days',
-             delivered_at = now() - interval '30 days'
-         where id = $1`,
-        old
-      );
-      await ctx.prisma.$executeRawUnsafe(
-        `update trigger_dashboard_agent.watches set created_at = now() - interval '30 days' where id = $1`,
-        active.watchId
-      );
-
-      expect(await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }))).toMatchObject({
-        purged: 1,
-        failed: 0,
-      });
-      expect(await getWatch(ctx.agentDb, { id: old })).toBeNull();
-      expect(await getWatch(ctx.agentDb, { id: recent })).not.toBeNull();
-      expect(await getWatch(ctx.agentDb, { id: active.watchId })).not.toBeNull();
-    }
-  );
-
-  postgresTest(
-    "retention never takes a row whose wake is still owed",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-      const seeded = await seed(prisma, "sweep");
-      await seedChat(seeded);
-      const watchId = await overdueWatch(seeded);
-
-      await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
-      await ctx.prisma.$executeRawUnsafe(
-        `update trigger_dashboard_agent.watches
-         set delivery_status = 'pending',
-             created_at = now() - interval '30 days',
-             fired_at = now() - interval '30 days',
-             last_checked_at = now() - interval '30 days'
-         where id = $1`,
-        watchId
-      );
-
-      expect(await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }))).toMatchObject({
-        purged: 0,
-      });
-      expect(await getWatch(ctx.agentDb, { id: watchId })).not.toBeNull();
     }
   );
 });

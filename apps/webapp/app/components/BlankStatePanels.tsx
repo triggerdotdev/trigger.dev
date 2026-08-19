@@ -3,15 +3,11 @@ import {
   BellAlertIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
-  ClockIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
-  RectangleGroupIcon,
-  RectangleStackIcon,
   SparklesIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
-import { useLocation } from "react-use";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -33,7 +29,6 @@ import {
   v3CreateBulkActionPath,
   v3EnvironmentPath,
   v3NewProjectAlertPath,
-  v3NewSchedulePath,
 } from "~/utils/pathBuilder";
 import { AskAgentButton } from "./dashboard-agent/AskAgentButton";
 import { CodeBlock } from "./code/CodeBlock";
@@ -63,7 +58,6 @@ import {
   TriggerDevStepV3,
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
-import { V4Badge } from "./V4Badge";
 
 /**
  * What the agent is asked when it's opened from a deployment setup panel. The panel is the docs
@@ -212,71 +206,6 @@ export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string 
 
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
   return <DeploymentOnboardingSteps />;
-}
-
-export function SchedulesNoPossibleTaskPanel() {
-  return (
-    <InfoPanel
-      title="Create your first scheduled task"
-      icon={ClockIcon}
-      iconClassName="text-schedules"
-      panelClassName="max-w-full"
-      accessory={
-        <LinkButton
-          to={docsPath("v3/tasks-scheduled")}
-          variant="docs/small"
-          LeadingIcon={BookOpenIcon}
-        >
-          How to schedule tasks
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        You have no scheduled tasks in your project. Before you can schedule a task you need to
-        create a <InlineCode>schedules.task</InlineCode>.
-      </Paragraph>
-    </InfoPanel>
-  );
-}
-
-export function SchedulesNoneAttached() {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const location = useLocation();
-
-  return (
-    <InfoPanel
-      title="Attach your first schedule"
-      icon={ClockIcon}
-      iconClassName="text-schedules"
-      panelClassName="max-w-full"
-    >
-      <Paragraph spacing variant="small">
-        Scheduled tasks will only run automatically if you connect a schedule to them, you can do
-        this in the dashboard or using the SDK.
-      </Paragraph>
-      <div className="flex gap-2">
-        <LinkButton
-          to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-          variant="secondary/medium"
-          LeadingIcon={RectangleGroupIcon}
-          className="inline-flex"
-          leadingIconClassName="text-blue-500"
-        >
-          Use the dashboard
-        </LinkButton>
-        <LinkButton
-          to={docsPath("v3/tasks-scheduled")}
-          variant="docs/medium"
-          LeadingIcon={BookOpenIcon}
-          className="inline-flex"
-        >
-          Use the SDK
-        </LinkButton>
-      </div>
-    </InfoPanel>
-  );
 }
 
 export function BatchesNone() {
@@ -475,36 +404,6 @@ export function AlertsNoneDeployed() {
   );
 }
 
-export function QueuesHasNoTasks() {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
-  return (
-    <InfoPanel
-      title="You don't have any queues"
-      icon={RectangleStackIcon}
-      iconClassName="text-queues"
-      panelClassName="max-w-md"
-      accessory={
-        <LinkButton
-          to={v3EnvironmentPath(organization, project, environment)}
-          variant="primary/small"
-        >
-          Create a task
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        Queues will appear here when you have created a task in this environment. Follow the
-        instructions on the{" "}
-        <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
-        to create a task, then return here to see its queue.
-      </Paragraph>
-    </InfoPanel>
-  );
-}
-
 export function NoWaitpointTokens() {
   return (
     <InfoPanel
@@ -567,13 +466,9 @@ export function BranchesNoBranchableEnvironment({ showSelfServe }: { showSelfSer
         )
       }
     >
-      <Paragraph spacing variant="small">
+      <Paragraph variant="small">
         Preview branches in Trigger.dev create isolated environments for testing new features before
         production.
-      </Paragraph>
-      <Paragraph variant="small">
-        You must be on <V4Badge inline /> to access preview branches. Read our{" "}
-        <TextLink to={docsPath("upgrade-to-v4")}>upgrade to v4 guide</TextLink> to learn more.
       </Paragraph>
     </InfoPanel>
   );
@@ -648,19 +543,15 @@ export function BranchesNoBranches({
         />
       }
     >
-      <Paragraph spacing variant="small">
+      <Paragraph variant="small">
         Branches are a way to test new features in isolation before merging them into the main
         environment.
-      </Paragraph>
-      <Paragraph spacing variant="small">
-        Branches are only available when using <V4Badge inline /> or above. Read our{" "}
-        <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
       </Paragraph>
     </InfoPanel>
   );
 }
 
-export function SwitcherPanel({ title = "Switch to a deployed environment" }: { title?: string }) {
+function SwitcherPanel({ title = "Switch to a deployed environment" }: { title?: string }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();

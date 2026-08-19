@@ -45,7 +45,25 @@ describe("loadConfig runtime", () => {
     await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: expected });
   });
 
-  it("keeps node as the default", async () => {
+  it("tracks whether runtime was explicitly configured", async () => {
+    const cwd = await createProject("node-22");
+
+    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({
+      runtime: "node-22",
+      runtimeWasExplicit: true,
+    });
+  });
+
+  it("tracks an omitted runtime separately from the legacy default", async () => {
+    const cwd = await createProject();
+
+    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({
+      runtime: "node",
+      runtimeWasExplicit: false,
+    });
+  });
+
+  it("keeps node as the legacy default when runtime is omitted", async () => {
     const cwd = await createProject();
 
     await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: "node" });

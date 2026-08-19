@@ -7,10 +7,8 @@ import {
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
-import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect } from "vitest";
 
 // A group larger than the batch cap must rotate: the same prefix winning every tick would
@@ -18,19 +16,6 @@ import { afterEach, describe, expect } from "vitest";
 
 let agentDbClient: DashboardAgentDbClient | undefined;
 let agentDb: DashboardAgentDb;
-
-async function applyAgentSchema(prisma: PrismaClient) {
-  const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-  for (const name of readdirSync(folder)
-    .filter((file) => file.endsWith(".sql"))
-    .sort()) {
-    const sql = readFileSync(path.join(folder, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
 
 const ENVIRONMENT_ID = "env_batch_fairness";
 const CADENCE = 5;
@@ -88,7 +73,7 @@ describe("the batch group's fairness", () => {
   postgresTest(
     "checks every watch of an over-cap group within a bounded number of ticks",
     async ({ prisma, postgresContainer }) => {
-      await applyAgentSchema(prisma);
+      await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
       agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 4 });
       agentDb = agentDbClient.db;
 
@@ -110,7 +95,7 @@ describe("the batch group's fairness", () => {
   postgresTest(
     "a watch whose window closes within a cadence is never deferred by the cap",
     async ({ prisma, postgresContainer }) => {
-      await applyAgentSchema(prisma);
+      await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
       agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 4 });
       agentDb = agentDbClient.db;
 

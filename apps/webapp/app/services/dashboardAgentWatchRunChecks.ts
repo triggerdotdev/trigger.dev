@@ -35,18 +35,18 @@ const FINAL_STATUSES = new Set([
  */
 const STALE_QUEUED_AT_STATUSES = new Set(["WAITING_TO_RESUME", "RETRYING_AFTER_FAILURE", "PAUSED"]);
 
-export function isTerminalRunStatus(status: string): boolean {
+function isTerminalRunStatus(status: string): boolean {
   return FINAL_STATUSES.has(status);
 }
 
 /** Which timestamp a wait was measured from. */
-export type WatchWaitBasis = "queued_at" | "delay_until" | "created_at";
+type WatchWaitBasis = "queued_at" | "delay_until" | "created_at";
 
 /**
  * The wait a run has accumulated, labelled with what the data supports. A resumed, retried or
  * paused run's stale `queuedAt` is never measured from.
  */
-export function describeRunWait(
+function describeRunWait(
   run: WatchRunRow,
   now: Date
 ): {

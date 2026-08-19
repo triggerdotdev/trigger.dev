@@ -1,11 +1,8 @@
 import type {
   BackgroundWorker,
-  BackgroundWorkerTask,
   Prisma,
   PrismaClient,
   RuntimeEnvironmentType,
-  TaskQueue,
-  WorkerDeployment,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
@@ -51,23 +48,111 @@ export type ResolvedEngineEnv = {
  */
 export type ResolvedAuthenticatedEnv = AuthenticatedEnvironment & { git: Prisma.JsonValue | null };
 
+/**
+ * The BackgroundWorkerTask columns the dequeue resolve path actually reads. The worker's
+ * whole task set (~73 rows) is fetched for one matched task, so pulling the unread heavy
+ * JSON columns (`payloadSchema`, `config`, `queueConfig`, `description`) shipped ~62KB/query
+ * on the hottest control-plane read. `machineConfig`/`retryConfig` are read at dequeue and stay.
+ */
+export type ResolvedWorkerTask = {
+  id: string;
+  slug: string;
+  machineConfig: Prisma.JsonValue | null;
+  retryConfig: Prisma.JsonValue | null;
+  maxDurationInSeconds: number | null;
+};
+
+/** The `select` that yields a `ResolvedWorkerTask`. */
+const resolvedWorkerTaskSelect = {
+  id: true,
+  slug: true,
+  machineConfig: true,
+  retryConfig: true,
+  maxDurationInSeconds: true,
+} satisfies Prisma.BackgroundWorkerTaskSelect;
+
+/**
+ * The TaskQueue columns the dequeue resolve path uses: `id` and `name` (the matcher keys on
+ * `lockedQueueId`/`name`). Drops the unread `rateLimit` JSON and the concurrency/type scalars.
+ */
+export type ResolvedTaskQueue = {
+  id: string;
+  name: string;
+};
+
+/** The `select` that yields a `ResolvedTaskQueue`. */
+const resolvedTaskQueueSelect = {
+  id: true,
+  name: true,
+} satisfies Prisma.TaskQueueSelect;
+
+/**
+ * The WorkerDeployment columns the dequeue resolve path reads: `id`, `friendlyId`,
+ * `imageReference`, `imagePlatform`. Drops the unread heavy JSON columns (`externalBuildData`,
+ * `buildServerMetadata`, `errorData`, `git`) that this single-row read otherwise ships.
+ */
+export type ResolvedWorkerDeployment = {
+  id: string;
+  friendlyId: string;
+  imageReference: string | null;
+  imagePlatform: string;
+};
+
+/** The `select` that yields a `ResolvedWorkerDeployment`. */
+const resolvedWorkerDeploymentSelect = {
+  id: true,
+  friendlyId: true,
+  imageReference: true,
+  imagePlatform: true,
+} satisfies Prisma.WorkerDeploymentSelect;
+
 /** Identical to dequeue's `WorkerDeploymentWithWorkerTasks`. */
 export type ResolvedWorkerVersion = {
   worker: BackgroundWorker;
-  tasks: BackgroundWorkerTask[];
-  queues: TaskQueue[];
-  deployment: WorkerDeployment | null;
+  tasks: ResolvedWorkerTask[];
+  queues: ResolvedTaskQueue[];
+  deployment: ResolvedWorkerDeployment | null;
+};
+
+/**
+ * Optional dispatch filter threaded from the dequeue consumer. When present, the resolve fetches
+ * ONLY the task matching `taskIdentifier` and the queue matching `queue` (index point-lookups via
+ * `@@unique([workerId, slug])` / `@@unique([runtimeEnvironmentId, name])`) instead of the worker's
+ * whole task/queue set. Absent (any non-dequeue caller) keeps the full-set behaviour.
+ */
+export type WorkerVersionDispatchFilter = {
+  taskIdentifier?: string;
+  queue?: { lockedQueueId?: string | null; name: string };
 };
 
 export interface ControlPlaneResolver {
   resolveEnv(environmentId: string): Promise<ResolvedEngineEnv | null>;
   resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null>;
-  resolveWorkerVersion(args: {
-    environmentId: string;
-    type: RuntimeEnvironmentType;
-    workerId?: string;
-  }): Promise<ResolvedWorkerVersion | null>;
+  resolveWorkerVersion(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null>;
   assertEnvExists(environmentId: string): Promise<void>;
+}
+
+type WorkerVersionWheres = {
+  taskWhere: { slug: string } | undefined;
+  queueWhere: { id: string } | { name: string } | undefined;
+};
+
+/** Build the nested-include `where`s for a dispatch filter (undefined = fetch the whole set). */
+function workerVersionWheres(filter: WorkerVersionDispatchFilter): WorkerVersionWheres {
+  return {
+    taskWhere: filter.taskIdentifier ? { slug: filter.taskIdentifier } : undefined,
+    queueWhere: filter.queue
+      ? filter.queue.lockedQueueId
+        ? { id: filter.queue.lockedQueueId }
+        : { name: filter.queue.name }
+      : undefined,
+  };
 }
 
 export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
@@ -185,31 +270,39 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     // no cross-seam FK to replace (matches main, which dropped the TaskRun env FK).
   }
 
-  async resolveWorkerVersion(args: {
-    environmentId: string;
-    type: RuntimeEnvironmentType;
-    workerId?: string;
-  }): Promise<ResolvedWorkerVersion | null> {
+  async resolveWorkerVersion(
+    args: {
+      environmentId: string;
+      type: RuntimeEnvironmentType;
+      workerId?: string;
+    } & WorkerVersionDispatchFilter
+  ): Promise<ResolvedWorkerVersion | null> {
     const { environmentId, type, workerId } = args;
+    const wheres = workerVersionWheres(args);
 
     if (type === "DEVELOPMENT") {
-      return workerId ? this.#getWorkerById(workerId) : this.#getMostRecentWorker(environmentId);
+      return workerId
+        ? this.#getWorkerById(workerId, wheres)
+        : this.#getMostRecentWorker(environmentId, wheres);
     }
 
     return workerId
-      ? this.#getWorkerDeploymentFromWorker(workerId)
-      : this.#getManagedWorkerFromCurrentlyPromotedDeployment(environmentId);
+      ? this.#getWorkerDeploymentFromWorker(workerId, wheres)
+      : this.#getManagedWorkerFromCurrentlyPromotedDeployment(environmentId, wheres);
   }
 
-  async #getWorkerDeploymentFromWorker(workerId: string): Promise<ResolvedWorkerVersion | null> {
+  async #getWorkerDeploymentFromWorker(
+    workerId: string,
+    wheres: WorkerVersionWheres
+  ): Promise<ResolvedWorkerVersion | null> {
     const worker = await this.#prisma.backgroundWorker.findFirst({
       where: {
         id: workerId,
       },
       include: {
-        deployment: true,
-        tasks: true,
-        queues: true,
+        deployment: { select: resolvedWorkerDeploymentSelect },
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
       },
     });
 
@@ -225,14 +318,17 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     };
   }
 
-  async #getMostRecentWorker(environmentId: string): Promise<ResolvedWorkerVersion | null> {
+  async #getMostRecentWorker(
+    environmentId: string,
+    wheres: WorkerVersionWheres
+  ): Promise<ResolvedWorkerVersion | null> {
     const worker = await this.#prisma.backgroundWorker.findFirst({
       where: {
         runtimeEnvironmentId: environmentId,
       },
       include: {
-        tasks: true,
-        queues: true,
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
@@ -244,15 +340,18 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     return { worker, tasks: worker.tasks, queues: worker.queues, deployment: null };
   }
 
-  async #getWorkerById(workerId: string): Promise<ResolvedWorkerVersion | null> {
+  async #getWorkerById(
+    workerId: string,
+    wheres: WorkerVersionWheres
+  ): Promise<ResolvedWorkerVersion | null> {
     const worker = await this.#prisma.backgroundWorker.findFirst({
       where: {
         id: workerId,
       },
       include: {
-        deployment: true,
-        tasks: true,
-        queues: true,
+        deployment: { select: resolvedWorkerDeploymentSelect },
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
       },
     });
 
@@ -269,7 +368,8 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
   }
 
   async #getManagedWorkerFromCurrentlyPromotedDeployment(
-    environmentId: string
+    environmentId: string,
+    wheres: WorkerVersionWheres
   ): Promise<ResolvedWorkerVersion | null> {
     const promotion = await this.#prisma.workerDeploymentPromotion.findFirst({
       where: {
@@ -278,11 +378,13 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       },
       include: {
         deployment: {
-          include: {
+          select: {
+            ...resolvedWorkerDeploymentSelect,
+            type: true,
             worker: {
               include: {
-                tasks: true,
-                queues: true,
+                tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+                queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
               },
             },
           },
@@ -296,11 +398,17 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
 
     if (promotion.deployment.type === "MANAGED") {
       // This is a run engine v2 deployment, so return it
+      const { worker } = promotion.deployment;
       return {
-        worker: promotion.deployment.worker,
-        tasks: promotion.deployment.worker.tasks,
-        queues: promotion.deployment.worker.queues,
-        deployment: promotion.deployment,
+        worker,
+        tasks: worker.tasks,
+        queues: worker.queues,
+        deployment: {
+          id: promotion.deployment.id,
+          friendlyId: promotion.deployment.friendlyId,
+          imageReference: promotion.deployment.imageReference,
+          imagePlatform: promotion.deployment.imagePlatform,
+        },
       };
     }
 
@@ -311,11 +419,12 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         type: "MANAGED",
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      include: {
+      select: {
+        ...resolvedWorkerDeploymentSelect,
         worker: {
           include: {
-            tasks: true,
-            queues: true,
+            tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+            queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
           },
         },
       },
@@ -329,7 +438,12 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       worker: latestV2Deployment.worker,
       tasks: latestV2Deployment.worker.tasks,
       queues: latestV2Deployment.worker.queues,
-      deployment: latestV2Deployment,
+      deployment: {
+        id: latestV2Deployment.id,
+        friendlyId: latestV2Deployment.friendlyId,
+        imageReference: latestV2Deployment.imageReference,
+        imagePlatform: latestV2Deployment.imagePlatform,
+      },
     };
   }
 }

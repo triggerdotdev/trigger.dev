@@ -1,5 +1,6 @@
 import { describe, expect } from "vitest";
 import { redisTest } from "@internal/testcontainers";
+import { createRedisClient } from "@internal/redis";
 import { ConcurrencyManager } from "../concurrency.js";
 import { DefaultFairQueueKeyProducer } from "../keyProducer.js";
 import type { FairQueueKeyProducer, QueueDescriptor } from "../types.js";
@@ -733,6 +734,127 @@ describe("ConcurrencyManager", () => {
         expect(current).toBe(0);
 
         await manager.close();
+      }
+    );
+  });
+
+  describe("reserve idempotency", () => {
+    redisTest(
+      "should re-admit a message that already holds its own slot at capacity",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queue: QueueDescriptor = { id: "queue-1", tenantId: "t1", metadata: {} };
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+
+        try {
+          await redis.sadd(concurrencyKey, "m1");
+
+          expect(await manager.reserve(queue, "m1")).toBe(true);
+          expect(await redis.scard(concurrencyKey)).toBe(1);
+
+          expect(await manager.reserve(queue, "m2")).toBe(false);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await manager.close();
+        }
+      }
+    );
+  });
+
+  describe("orphaned slot sweep", () => {
+    redisTest(
+      "should remove only members without an in-flight record",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+        const inflightDataKey = keys.inflightDataKey(0);
+
+        try {
+          const orphans = Array.from({ length: 1200 }, (_, i) => `orphan-${i}`);
+          await redis.sadd(concurrencyKey, ...orphans, "active-1", "active-2");
+          await redis.hset(inflightDataKey, "active-1", "{}");
+          await redis.hset(inflightDataKey, "active-2", "{}");
+
+          const result = await manager.sweepOrphanedSlots([inflightDataKey]);
+
+          expect(result.removed.sort()).toEqual(orphans.sort());
+          expect((await redis.smembers(concurrencyKey)).sort()).toEqual(["active-1", "active-2"]);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.del(inflightDataKey);
+          await redis.quit();
+          await manager.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should refuse to sweep when given no in-flight data keys",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new ConcurrencyManager({
+          redis: redisOptions,
+          keys,
+          groups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+
+        try {
+          await redis.sadd(concurrencyKey, "active-1", "active-2");
+
+          const result = await manager.sweepOrphanedSlots([]);
+
+          expect(result.removed).toEqual([]);
+          expect((await redis.smembers(concurrencyKey)).sort()).toEqual(["active-1", "active-2"]);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await manager.close();
+        }
       }
     );
   });

@@ -22,24 +22,14 @@ import {
  * `watchBatchTick` for a group. The webapp evaluates conditions; a tick records them.
  */
 
-export type {
-  WatchDeliveryDeps,
-  WatchTickOutcome,
-  WatchTickResult,
-  WatchTickStore,
-} from "./watch-delivery";
-export { expiredFacts, resolveAndDeliver } from "./watch-delivery";
-export type { CheckOutcome, WatchLifecycleDeps } from "./watch-lifecycle";
-export { runWatchLifecycle } from "./watch-lifecycle";
+export type { WatchTickResult, WatchTickStore } from "./watch-delivery";
 export type {
   WatchBatchCheckEntry,
   WatchBatchCheckResponse,
   WatchBatchTickDeps,
   WatchBatchTickPayload,
-  WatchBatchTickResult,
 } from "./watch-batch";
 export { runWatchBatchTick } from "./watch-batch";
-export { appendWakeToSession, getWatchDb } from "./watch-task-adapters";
 
 export type WatchTickPayload = {
   watchId: string;

@@ -3,8 +3,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "~/utils/cn";
-import { XMarkIcon } from "@heroicons/react/24/solid";
-import { ShortcutKey } from "./ShortcutKey";
+import { ModalCloseButton } from "./ModalCloseButton";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -56,18 +55,10 @@ const DialogContent = React.forwardRef<
     >
       <hr className="absolute left-0 top-11 w-full" />
       {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground group absolute right-2 top-2.25 flex items-center gap-1 rounded-sm p-1 py-1 pl-0 pr-1 opacity-70 transition focus-custom hover:bg-background-hover hover:opacity-100 focus-visible:focus-custom disabled:pointer-events-none">
-          <ShortcutKey
-            shortcut={{
-              key: "esc",
-            }}
-            variant="medium"
-          />
-          <XMarkIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      )}
+      {/* The default size-7 is the height this button had when it rendered the esc key alongside the
+          icon, so the vertical geometry dialogs align against (the top-11 divider, absolutely
+          positioned titles) is unchanged — it only gets narrower. */}
+      {showCloseButton && <ModalCloseButton className="absolute right-2 top-2.25" />}
     </DialogPrimitive.Content>
   </DialogPortal>
 ));
@@ -121,6 +112,4 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-  DialogPortal,
-  DialogOverlay,
 };

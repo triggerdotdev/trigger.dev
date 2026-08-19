@@ -542,7 +542,9 @@ function Upgradable({
                     </div>
                   </TableCell>
                   <TableCell alignment="right">
-                    {environment.planConcurrencyLimit + (allocation.get(environment.id) ?? 0)}
+                    {environment.type === "DEVELOPMENT"
+                      ? environment.maximumConcurrencyLimit
+                      : environment.planConcurrencyLimit + (allocation.get(environment.id) ?? 0)}
                   </TableCell>
                 </TableRow>
               ))}

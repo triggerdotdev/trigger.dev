@@ -14,6 +14,9 @@ export type SearchInputProps = {
   /** Additional URL params to reset when searching or clearing (e.g. pagination). Defaults to ["cursor", "direction"]. */
   resetParams?: string[];
   autoFocus?: boolean;
+  minLength?: number;
+  /** Normalize the submitted value before applying minLength validation. */
+  normalizeForValidation?: (value: string) => string;
   /**
    * Controlled value. When provided alongside `onValueChange`, the input
    * skips URL params entirely and acts as a controlled component — useful
@@ -34,6 +37,8 @@ export function SearchInput({
   paramName = "search",
   resetParams = ["cursor", "direction"],
   autoFocus,
+  minLength,
+  normalizeForValidation,
   value: controlledValue,
   onValueChange,
 }: SearchInputProps) {
@@ -70,6 +75,7 @@ export function SearchInput({
   }, [isControlled, controlledValue, value, isFocused, paramName]);
 
   const updateText = (next: string) => {
+    inputRef.current?.setCustomValidity("");
     setText(next);
     if (isControlled) {
       onValueChange?.(next);
@@ -77,13 +83,25 @@ export function SearchInput({
   };
 
   const handleSubmit = () => {
+    const trimmedText = text.trim();
+    const validationText = normalizeForValidation?.(trimmedText) ?? trimmedText;
+    if (
+      minLength !== undefined &&
+      trimmedText.length > 0 &&
+      [...validationText].length < minLength
+    ) {
+      inputRef.current?.setCustomValidity(`Enter at least ${minLength} characters`);
+      inputRef.current?.reportValidity();
+      return;
+    }
+    inputRef.current?.setCustomValidity("");
     if (isControlled) {
       // Live updates already fired through onValueChange; submit is a no-op.
       return;
     }
     const resetValues = Object.fromEntries(resetParams.map((p) => [p, undefined]));
-    if (text.trim()) {
-      replace({ [paramName]: text.trim(), ...resetValues });
+    if (trimmedText) {
+      replace({ [paramName]: trimmedText, ...resetValues });
     } else {
       del([paramName, ...resetParams]);
     }
@@ -116,7 +134,10 @@ export function SearchInput({
           variant="secondary-small"
           placeholder={placeholder}
           value={text}
-          onChange={(e) => updateText(e.target.value)}
+          onChange={(e) => {
+            e.currentTarget.setCustomValidity("");
+            updateText(e.target.value);
+          }}
           fullWidth
           autoFocus={autoFocus}
           className={cn("", isFocused && "placeholder:text-text-dimmed/70")}

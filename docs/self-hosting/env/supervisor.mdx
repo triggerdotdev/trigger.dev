@@ -48,6 +48,7 @@ mode: "wide"
 | `KUBERNETES_NAMESPACE`                      | No       | default     | The namespace that runs should be in.                       |
 | `KUBERNETES_WORKER_NODETYPE_LABEL`          | No       | v4-worker   | Nodes for runs need `nodetype=<this>`. Empty: any node.     |
 | `KUBERNETES_RUNNER_TOLERATIONS`             | No       | —           | Run pod tolerations. CSV: `key=value:effect`/`key:effect`.  |
+| `KUBERNETES_ORG_PLACEMENT_OVERRIDES`        | No       | —           | Per-org run pod placement. JSON keyed by internal org ID.   |
 | `KUBERNETES_IMAGE_PULL_SECRETS`             | No       | —           | Image pull secrets (CSV).                                   |
 | `KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT`   | No       | 10Gi        | Ephemeral storage size limit. Applies to all runs.          |
 | `KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST` | No       | 2Gi         | Ephemeral storage size request. Applies to all runs.        |

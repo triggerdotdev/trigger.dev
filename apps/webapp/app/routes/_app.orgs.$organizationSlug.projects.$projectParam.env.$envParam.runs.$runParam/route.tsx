@@ -1,6 +1,7 @@
 import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
+  BookOpenIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -106,10 +107,12 @@ import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
 import { lerp } from "~/utils/lerp";
 import {
+  docsPath,
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
@@ -520,6 +523,11 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+          <WhenAgentUnavailable>
+            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/runs")}>
+              Run docs
+            </LinkButton>
+          </WhenAgentUnavailable>
           <Dialog key={`replay-${run.friendlyId}`}>
             <DialogTrigger asChild>
               <Button
@@ -1715,7 +1723,7 @@ function LiveReloadingStatus({
               </Paragraph>
             </div>
           }
-        ></SimpleTooltip>
+        />
       )}
     </>
   );

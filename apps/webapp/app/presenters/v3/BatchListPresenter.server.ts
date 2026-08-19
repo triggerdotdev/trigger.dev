@@ -26,8 +26,6 @@ export type BatchListOptions = {
 const DEFAULT_PAGE_SIZE = 25;
 
 export type BatchList = Awaited<ReturnType<BatchListPresenter["call"]>>;
-export type BatchListItem = BatchList["batches"][0];
-export type BatchListAppliedFilters = BatchList["filters"];
 
 // The row shape of the raw BatchTaskRun keyset scan. Extracted to a named type so the
 // store-selected scan closure and the keyset merge in `#scanBatchTaskRun` can reference it.
@@ -200,6 +198,7 @@ export class BatchListPresenter extends BasePresenter {
       select: {
         id: true,
         environments: {
+          where: { id: environmentId },
           select: {
             id: true,
             type: true,

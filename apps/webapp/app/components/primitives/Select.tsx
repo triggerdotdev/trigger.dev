@@ -623,12 +623,6 @@ export function shortcutFromIndex(
   return { key: String(adjustedIndex + 1) };
 }
 
-export interface SelectSeparatorProps extends React.ComponentProps<"div"> {}
-
-export function SelectSeparator(props: SelectSeparatorProps) {
-  return <div {...props} className={cn("h-px bg-background-raised", props.className)} />;
-}
-
 export interface SelectGroupProps extends Ariakit.SelectGroupProps {}
 
 export function SelectGroup(props: SelectGroupProps) {
@@ -649,8 +643,8 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
   );
 }
 
-export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
-export function SelectHeading({ render, ...props }: SelectHeadingProps) {
+interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
+function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
     <div className="flex h-5.5 flex-none cursor-default items-center gap-2 border-b border-grid-bright bg-background-hover px-2.5 text-xxs uppercase text-text-bright">
       <Ariakit.SelectHeading render={render} />
@@ -684,9 +678,9 @@ export function SelectPopover({
   );
 }
 
-export interface SelectLabelProps extends Ariakit.SelectLabelProps {}
+interface SelectLabelProps extends Ariakit.SelectLabelProps {}
 //currently unstyled
-export function SelectLabel(props: SelectLabelProps) {
+function SelectLabel(props: SelectLabelProps) {
   return <Ariakit.SelectLabel {...props} />;
 }
 

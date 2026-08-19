@@ -16,6 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { TaskRunAttemptStatus } from "@trigger.dev/database";
 import type {
   BatchTaskRunStatus,
   BulkActionStatus,
@@ -50,10 +51,7 @@ import { allBatchStatuses, BatchStatusCombo } from "~/components/runs/v3/BatchSt
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { deploymentStatuses, DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import {
-  allTaskRunAttemptStatuses,
-  TaskRunAttemptStatusCombo,
-} from "~/components/runs/v3/TaskRunAttemptStatus";
+import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
   allTaskRunStatuses,
   runStatusTitle,
@@ -66,7 +64,6 @@ import {
   sessionStatusTitle,
 } from "~/components/sessions/v1/SessionStatus";
 import { cn } from "~/utils/cn";
-import { validLogLevels } from "~/utils/logUtils";
 import { StoryGrid, StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
 import { measureTextContrast, NON_TEXT_THRESHOLD, TEXT_THRESHOLD } from "./contrast";
 import { useDocumentIconContrast, useDocumentTheme, useThemeRevision } from "./useThemeRevision";
@@ -498,6 +495,12 @@ const ENVIRONMENTS = [
 
 /** The three run statuses that share RectangleStackIcon. */
 const STACK_ICON_STATUSES = ["PENDING", "PENDING_VERSION", "DEQUEUED"] as const;
+
+/* These two were exported from the components purely for this audit. Main's
+   unused-code pass removed them, so they live here now. */
+const LOG_LEVELS = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"] as const;
+
+const ATTEMPT_STATUSES = Object.values(TaskRunAttemptStatus);
 
 const WAITPOINT_STATUSES: WaitpointTokenStatus[] = ["WAITING", "COMPLETED", "TIMED_OUT"];
 
@@ -1064,7 +1067,7 @@ export default function Story_() {
         >
           <Stack>
             <Row>
-              {validLogLevels.map((level) => (
+              {LOG_LEVELS.map((level) => (
                 <LogLevel key={level} level={level} />
               ))}
             </Row>
@@ -1243,7 +1246,7 @@ export default function Story_() {
         >
           <Stack>
             <TaskRunAttemptStatusCombo status={null} />
-            {allTaskRunAttemptStatuses.map((status) => (
+            {ATTEMPT_STATUSES.map((status) => (
               <TaskRunAttemptStatusCombo key={status} status={status} />
             ))}
           </Stack>

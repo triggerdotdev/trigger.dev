@@ -7,24 +7,18 @@ import {
 } from "@heroicons/react/20/solid";
 import { DateTime } from "~/components/primitives/DateTime";
 import { DetailCell } from "~/components/primitives/DetailCell";
-import { LabelValueStack } from "~/components/primitives/LabelValueStack";
 import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import * as Property from "~/components/primitives/PropertyTable";
-import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
+import { StoryPage, StorySection } from "../storybook/StoryKit";
 
 const SAMPLE_DATE = new Date("2026-08-12T09:24:03.000Z");
 
 export default function Story_() {
   return (
     <StoryPage
-      componentNames={[
-        "DetailCell.tsx",
-        "PropertyTable.tsx",
-        "LabelValueStack.tsx",
-        "MiddleTruncate.tsx",
-      ]}
+      componentNames={["DetailCell.tsx", "PropertyTable.tsx", "MiddleTruncate.tsx"]}
       title="Cells & key-value"
-      description="Detail cells, property tables, label/value stacks and middle truncation."
+      description="Detail cells, property tables and middle truncation."
     >
       <StorySection title="DetailCell">
         <div className="flex max-w-xl flex-col items-start gap-y-4">
@@ -82,27 +76,6 @@ export default function Story_() {
             </Property.Item>
           </Property.Table>
         </div>
-      </StorySection>
-
-      <StorySection title="LabelValueStack">
-        <StoryGrid min="16rem">
-          <Story label="vertical / primary">
-            <LabelValueStack label="Queue" value="task/hello-world" variant="primary" />
-          </Story>
-          <Story label="vertical / secondary">
-            <LabelValueStack label="Queue" value="task/hello-world" variant="secondary" />
-          </Story>
-          <Story label="horizontal">
-            <LabelValueStack label="Queue" value="task/hello-world" layout="horizontal" />
-          </Story>
-          <Story label="With href">
-            <LabelValueStack
-              label="Docs"
-              value="trigger.dev/docs"
-              href="https://trigger.dev/docs"
-            />
-          </Story>
-        </StoryGrid>
       </StorySection>
 
       <StorySection

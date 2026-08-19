@@ -20,13 +20,6 @@ export const SIDE_MENU_POPOVER_ITEM_ICON = "h-5 w-5 text-text-dimmed";
 export const SIDE_MENU_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
 
 /** Default top-to-bottom order of the customizable side menu sections. */
-export const DEFAULT_SECTION_ORDER: SideMenuSectionId[] = [
-  "favorites",
-  "ai",
-  "metrics",
-  "deployments",
-  "manage",
-];
 
 /**
  * Order entries by a saved preference. Entries missing from the saved order (e.g. a section or

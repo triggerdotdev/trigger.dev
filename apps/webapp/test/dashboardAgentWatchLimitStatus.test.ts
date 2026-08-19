@@ -3,10 +3,9 @@ import {
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect, vi } from "vitest";
 import type * as WatchLimitsModule from "~/services/dashboardAgentWatchLimits.server";
 
@@ -60,20 +59,6 @@ process.env.DASHBOARD_AGENT_SECRET_KEY = "test-dashboard-agent-secret";
 
 const { action } =
   await import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent");
-
-/** Replays every migration in order, so a new migration can't leave the suite on a stale schema. */
-async function applyAgentSchema(prisma: PrismaClient) {
-  const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-  for (const name of readdirSync(folder)
-    .filter((file) => file.endsWith(".sql"))
-    .sort()) {
-    const sql = readFileSync(path.join(folder, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
 
 let agentDbClient: DashboardAgentDbClient | undefined;
 
@@ -143,7 +128,7 @@ describe("the watch card submit's status for a plan-limit refusal", () => {
     "answers 409, not 500, when the window is longer than the plan allows",
     async ({ prisma, postgresContainer }) => {
       ctx.prisma = prisma;
-      await applyAgentSchema(prisma);
+      await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
       agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 4 });
       ctx.agentDb = agentDbClient.db;
 

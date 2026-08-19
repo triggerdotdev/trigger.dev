@@ -1,6 +1,9 @@
 import { LogLevel } from "~/components/logs/LogLevel";
+import type { LogLevel as LogLevelValue } from "~/presenters/v3/LogsListPresenter.server";
+
+/** Was exported from logUtils; kept here now that only the storybook needs it. */
+const validLogLevels: LogLevelValue[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { validLogLevels } from "~/utils/logUtils";
 import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
 
 const SAMPLE_ROWS: { level: (typeof validLogLevels)[number]; message: string }[] = [

@@ -5,12 +5,10 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
+import { calculateNextScheduleRunTimes, formatScheduleWindow } from "~/v3/scheduleWindow.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
-import {
-  calculateNextScheduledTimestampFromNow,
-  previousScheduledTimestamp,
-} from "~/v3/utils/calculateNextSchedule.server";
+import { previousScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
+import { env } from "~/env.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type ScheduleListOptions = {
@@ -22,7 +20,7 @@ type ScheduleListOptions = {
 
 const DEFAULT_PAGE_SIZE = 20;
 
-export type ScheduleListItem = {
+type ScheduleListItem = {
   id: string;
   type: ScheduleType;
   friendlyId: string;
@@ -35,6 +33,7 @@ export type ScheduleListItem = {
   window?: string;
   externalId: string | null;
   nextRun: Date;
+  nextRunEffectiveAt: Date;
   lastRun: Date | undefined;
   active: boolean;
   environments: {
@@ -44,8 +43,6 @@ export type ScheduleListItem = {
     branchName?: string;
   }[];
 };
-export type ScheduleList = Awaited<ReturnType<ScheduleListPresenter["call"]>>;
-export type ScheduleListAppliedFilters = ScheduleList["filters"];
 
 export class ScheduleListPresenter extends BasePresenter {
   public async call({
@@ -223,6 +220,7 @@ export class ScheduleListPresenter extends BasePresenter {
         instances: {
           select: {
             environmentId: true,
+            schedulePhase: true,
           },
         },
         active: true,
@@ -300,6 +298,23 @@ export class ScheduleListPresenter extends BasePresenter {
         }
       }
 
+      const instance = schedule.instances.find(
+        (instance) => instance.environmentId === environmentId
+      );
+      if (!instance) {
+        throw new Error(`Schedule instance not found for environment: ${environmentId}`);
+      }
+      const [nextRun] = calculateNextScheduleRunTimes({
+        cron: schedule.generatorExpression,
+        timezone: schedule.timezone,
+        deduplicationKey: schedule.deduplicationKey,
+        environmentId,
+        schedulePhase: instance.schedulePhase,
+        phaseSecret: env.ENCRYPTION_KEY,
+        windowDurationSeconds: schedule.windowDurationSeconds,
+        windowPercentage: schedule.windowPercentage,
+      });
+
       return {
         id: schedule.id,
         type: schedule.type,
@@ -314,10 +329,8 @@ export class ScheduleListPresenter extends BasePresenter {
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun,
-        nextRun: calculateNextScheduledTimestampFromNow(
-          schedule.generatorExpression,
-          schedule.timezone
-        ),
+        nextRun: nextRun.nominalAt,
+        nextRunEffectiveAt: nextRun.effectiveAt,
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {

@@ -61,7 +61,7 @@ function inferProvider(modelName: string): string {
 }
 
 /** Format a model as provider:name (e.g. "openai:gpt-5"). */
-export function formatModelId(provider: string, modelName: string): string {
+function formatModelId(provider: string, modelName: string): string {
   return `${provider}:${modelName}`;
 }
 
@@ -138,7 +138,7 @@ export type ModelCatalogItem = {
   variants: ModelVariant[];
 };
 
-export type ModelVariant = {
+type ModelVariant = {
   friendlyId: string;
   modelName: string;
   displayId: string;

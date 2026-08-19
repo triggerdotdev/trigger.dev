@@ -439,12 +439,12 @@ function Chrome({ title }: { title?: string }) {
       <div className="flex items-center justify-center">
         <div className={cn("rounded-sm px-3 py-0.5 text-xs text-text-faint")}>{title}</div>
       </div>
-      <div></div>
+      <div />
     </div>
   );
 }
 
-export function TitleRow({ title }: { title: ReactNode }) {
+function TitleRow({ title }: { title: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-3">
       <Paragraph variant="small/bright" className="w-full border-b border-grid-dimmed py-2">

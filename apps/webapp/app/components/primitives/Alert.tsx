@@ -87,7 +87,7 @@ const AlertDescription = React.forwardRef<
 ));
 AlertDescription.displayName = AlertDialogPrimitive.Description.displayName;
 
-const AlertAction = React.forwardRef<
+export const AlertAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
 >(({ className, ...props }, ref) => (
@@ -111,6 +111,5 @@ export {
   AlertFooter,
   AlertTitle,
   AlertDescription,
-  AlertAction,
   AlertCancel,
 };

@@ -104,7 +104,7 @@ export class CreateAlertChannelService extends BaseService {
         properties: await this.#createProperties(options.channel),
         enabled: true,
         deduplicationKey: options.deduplicationKey,
-        userProvidedDeduplicationKey: options.deduplicationKey ? true : false,
+        userProvidedDeduplicationKey: Boolean(options.deduplicationKey),
         environmentTypes,
       },
     });

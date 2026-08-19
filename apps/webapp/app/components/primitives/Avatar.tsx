@@ -9,6 +9,7 @@ import {
   StarIcon,
 } from "@heroicons/react/20/solid";
 import type { Prisma } from "@trigger.dev/database";
+import { useCallback, useState } from "react";
 import { z } from "zod";
 import { cn } from "~/utils/cn";
 
@@ -33,8 +34,8 @@ export const AvatarData = z.discriminatedUnion("type", [
 
 export type Avatar = z.infer<typeof AvatarData>;
 export type IconAvatar = Extract<Avatar, { type: "icon" }>;
-export type ImageAvatar = Extract<Avatar, { type: "image" }>;
-export type LettersAvatar = Extract<Avatar, { type: "letters" }>;
+type ImageAvatar = Extract<Avatar, { type: "image" }>;
+type LettersAvatar = Extract<Avatar, { type: "letters" }>;
 
 export function parseAvatar(json: Prisma.JsonValue, defaultAvatar: Avatar): Avatar {
   if (!json || typeof json !== "object") {
@@ -76,7 +77,7 @@ export function Avatar({
         />
       );
     case "image":
-      return <AvatarImage avatar={avatar} size={size} />;
+      return <AvatarImage key={avatar.url} avatar={avatar} size={size} />;
   }
 }
 
@@ -215,20 +216,36 @@ function AvatarIcon({
 }
 
 function AvatarImage({ avatar, size }: { avatar: ImageAvatar; size: number }) {
-  if (!avatar.url) {
+  const [failed, setFailed] = useState(false);
+
+  // A server-rendered image can finish failing before hydration, so onError never fires.
+  const detectFailedLoad = useCallback((node: HTMLImageElement | null) => {
+    if (node && node.complete && node.naturalWidth === 0) {
+      setFailed(true);
+    }
+  }, []);
+
+  if (!avatar.url || failed) {
     return (
-      <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
+      <span
+        role="img"
+        aria-label="Organization avatar"
+        className="grid shrink-0 place-items-center overflow-hidden"
+        style={styleFromSize(size)}
+      >
         <GlobeLinesIcon className="size-[90%] text-text-dimmed" />
       </span>
     );
   }
 
   return (
-    <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
+    <span className="grid shrink-0 place-items-center overflow-hidden" style={styleFromSize(size)}>
       <img
+        ref={detectFailedLoad}
         src={avatar.url}
         alt="Organization avatar"
         className="size-full rounded-[10%] object-contain"
+        onError={() => setFailed(true)}
       />
     </span>
   );

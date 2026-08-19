@@ -4,7 +4,7 @@ import { env } from "~/env.server";
 // Carries a promo code from the landing page through signup to first-org
 // creation. httpOnly + sameSite=lax so it survives the OAuth round-trip,
 // matching the existing redirect-to cookie.
-export const promoCodeCookie = createCookie("promo-code", {
+const promoCodeCookie = createCookie("promo-code", {
   maxAge: 60 * 60, // 1 hour — enough to complete signup
   httpOnly: true,
   sameSite: "lax",

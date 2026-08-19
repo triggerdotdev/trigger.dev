@@ -77,8 +77,6 @@ describe("chat-layout enforcement", () => {
         "ChatText",
         "ChatCardSlot",
         "ChatProgress",
-        "ChatToolRow",
-        "ChatNote",
         "ChatStatusLine",
         "ChatWakeSlot",
         "ChatActionsRow",

@@ -170,7 +170,10 @@
   --color-background-dimmed: var(--color-charcoal-850);
   --color-background-bright: var(--color-charcoal-800);
   --color-background-hover: var(--color-charcoal-750);
+  --color-surface-hover-subtle: var(--color-charcoal-750);
   --color-background-raised: var(--color-charcoal-700);
+  --color-surface-selected: var(--color-charcoal-650);
+  --color-surface-selected-hover: var(--color-charcoal-600);
   --color-surface-control: var(--color-charcoal-600);
   --color-surface-control-hover: var(--color-charcoal-550);
   --color-surface-control-active: var(--color-charcoal-500);
@@ -179,6 +182,9 @@
   /* Borders, from subtlest to most visible */
   --color-grid-dimmed: var(--color-charcoal-750);
   --color-grid-bright: var(--color-charcoal-700);
+  /* Blend of border-bright over the selected card, so it tracks whatever ramp
+     border-bright is on - the dark themes need no contrast entry of their own */
+  --color-border-selected: color-mix(in srgb, var(--color-border-bright) 50%, var(--color-surface-selected));
   --color-border-bright: var(--color-charcoal-600);
   --color-border-brighter: var(--color-charcoal-550);
   --color-border-brightest: var(--color-charcoal-500);
@@ -223,6 +229,7 @@
   --color-aiMetrics: var(--color-green-500);
   --color-errors: var(--color-amber-500);
   --color-agents: var(--color-purple-500);
+  --color-webhooks: var(--color-teal-500);
   --color-sessions: var(--color-pink-500);
   --color-playgrounds: var(--color-fuchsia-500);
   --color-models: var(--color-violet-500);
@@ -822,14 +829,21 @@
   --color-background-dimmed: #fbfbfc;
   --color-background-bright: #ffffff;
   --color-background-hover: #f2f3f5;
+  /* Cards on white need a gentler hover than the app-wide surfaces */
+  --color-surface-hover-subtle: #f7f8f9;
   --color-background-raised: #e9eaee;
   --color-surface-control: #dcdee3;
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
+  /* Selection sits lighter than the controls here - on white a soft grey is
+     already enough to read as selected */
+  --color-surface-selected: #eff0f2;
+  --color-surface-selected-hover: #e7e9ec;
 
   /* Borders */
   --color-grid-dimmed: #eceef1;
   --color-grid-bright: #e2e4e9;
+  --color-border-selected: #e0e2e6;
   --color-border-bright: #d2d5db;
   --color-border-brighter: #b9bdc7;
   --color-border-brightest: #9ba1ad;
@@ -1044,6 +1058,8 @@
   --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), var(--color-charcoal-950) calc(var(--theme-contrast, 0) * 100%));
   --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
   --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
+  /* Mirrors background-hover, as it does at contrast 0 */
+  --color-surface-hover-subtle: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
   --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), var(--color-charcoal-775) calc(var(--theme-contrast, 0) * 100%));
   --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
 
@@ -1124,6 +1140,8 @@
      the page (grid-bright 1.65:1, grid-dimmed 1.25:1 at 100%). */
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #cfd2d9 calc(var(--theme-contrast, 0) * 100%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  /* Steeper than border-bright so the selected card stays the loudest edge */
+  --color-border-selected: color-mix(in srgb, #e0e2e6, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
   --color-border-bright: color-mix(in srgb, #d2d5db, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
   --color-border-brighter: color-mix(in srgb, #b9bdc7, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
   --color-border-brightest: color-mix(in srgb, #9ba1ad, var(--color-charcoal-550) calc(var(--theme-contrast, 0) * 100%));

@@ -6,9 +6,12 @@
  */
 
 /**
- * Always allowed: own origin, inline data, object URLs, the SSO avatar hosts, and the
- * favicon endpoint org avatars are stored as (see `utils/favicon.ts`). The path pins
- * that one endpoint — CSP matches the path and ignores the query string.
+ * Always allowed: own origin, inline data, object URLs, the SSO avatar hosts, the
+ * favicon endpoint org avatars are stored as (see `utils/favicon.ts`), and our own
+ * changelog images. The path pins each endpoint — CSP matches the path and ignores the
+ * query string. The favicon endpoint 302s to a `tN.gstatic.com` shard and CSP re-checks
+ * only the host on a redirect, so the shards are listed too; their path pin limits
+ * direct loads only. A trailing "/" matches by prefix.
  */
 export const BASE_IMG_SRC_SOURCES = [
   "'self'",
@@ -17,9 +20,14 @@ export const BASE_IMG_SRC_SOURCES = [
   "https://avatars.githubusercontent.com",
   "https://lh3.googleusercontent.com",
   "https://www.google.com/s2/favicons",
+  "https://t0.gstatic.com/faviconV2",
+  "https://t1.gstatic.com/faviconV2",
+  "https://t2.gstatic.com/faviconV2",
+  "https://t3.gstatic.com/faviconV2",
+  "https://trigger.dev/changelog/",
 ] as const;
 
-export type RejectedOrigin = { value: string; reason: string };
+type RejectedOrigin = { value: string; reason: string };
 
 export type ParsedImageOrigins = {
   /** Accepted, canonicalised (`scheme://host[:port]`) and deduplicated. */

@@ -5,7 +5,6 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableCellMenu,
   TableHeader,
   TableHeaderCell,
@@ -111,7 +110,6 @@ export default function Story_() {
                 <TableCell alignment="right" className="tabular-nums">
                   {(index + 1) * 1.4}s
                 </TableCell>
-                <TableCellChevron to="#" />
                 <TableCellMenu isSticky />
               </TableRow>
             ))}

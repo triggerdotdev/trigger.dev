@@ -36,7 +36,7 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
 /** Dark's palette at contrast 0 is exactly the palette the Classic theme
  *  shipped, so 0 is the default: anyone arriving from Classic sees no change,
  *  and the slider only ever adds contrast on top. */
-export const DEFAULT_THEME_CONTRAST = 0;
+const DEFAULT_THEME_CONTRAST = 0;
 
 /** The "Distinguish without color" accessibility preference: on swaps the
  *  default accents for the high-contrast set (solid badges, monochrome nav

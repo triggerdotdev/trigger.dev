@@ -7,10 +7,8 @@ import {
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
-import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect } from "vitest";
 
 // What the environment layout loader hands the browser. An active watch has to be part of it:
@@ -18,19 +16,6 @@ import { afterEach, describe, expect } from "vitest";
 
 let agentDbClient: DashboardAgentDbClient | undefined;
 let agentDb: DashboardAgentDb;
-
-async function applyAgentSchema(prisma: PrismaClient) {
-  const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-  for (const name of readdirSync(folder)
-    .filter((file) => file.endsWith(".sql"))
-    .sort()) {
-    const sql = readFileSync(path.join(folder, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
 
 const SCOPE = { organizationId: "org_1", userId: "user_1" };
 
@@ -58,7 +43,7 @@ describe("the page load's wake activity", () => {
   postgresTest(
     "reports an active watch that has never woken anyone",
     async ({ prisma, postgresContainer }) => {
-      await applyAgentSchema(prisma);
+      await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
       agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
       agentDb = agentDbClient.db;
 

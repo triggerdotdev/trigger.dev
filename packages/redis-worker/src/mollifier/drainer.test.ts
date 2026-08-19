@@ -1310,7 +1310,7 @@ describe("MollifierDrainer per-tick org cap", () => {
     // Cursor advances by 1 each tick. Over envs.length ticks every env
     // appears in exactly `sliceSize` of them (slices overlap — intentional,
     // see the head-of-line fairness test below).
-    for (let i = 0; i < allEnvs.length; i++) {
+    for (const _ of allEnvs) {
       await drainer.runOnce();
     }
 
@@ -1356,7 +1356,7 @@ describe("MollifierDrainer per-tick org cap", () => {
       logger: new Logger("test-drainer", "log"),
     });
 
-    for (let tick = 0; tick < allEnvs.length; tick++) {
+    for (const _ of allEnvs) {
       currentTick = [];
       await drainer.runOnce();
       currentTick.forEach((env, position) => {

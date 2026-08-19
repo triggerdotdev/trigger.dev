@@ -1,4 +1,5 @@
 import {
+  BookOpenIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   KeyIcon,
@@ -74,8 +75,9 @@ import {
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -340,6 +342,16 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/v3/apikeys")}
+            >
+              API keys docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -392,9 +404,7 @@ export default function Page() {
                     <ApiKeyAccess label="No restrictions" />
                   </TableCell>
                   <TableCell>–</TableCell>
-                  <TableCell>
-                    <DateTime date={rootApiKey.createdAt} />
-                  </TableCell>
+                  <TableCell>–</TableCell>
                   <TableCell>–</TableCell>
                   <TableCellMenu
                     isSticky
@@ -1016,7 +1026,7 @@ function PresetOptions({
             id={`api-key-access-${preset.id}`}
             value={preset.id}
             variant="description"
-            className="h-full min-h-[3.5rem] items-start border-grid-bright bg-background-bright p-3 shadow-none [&_p]:mt-0.5 [&_p]:text-xs [&_p]:leading-snug hover:border-border-bright hover:bg-background-hover data-[state=checked]:border-indigo-500/70 data-[state=checked]:bg-indigo-500/10"
+            className="h-full min-h-[3.5rem] items-start border-grid-bright bg-background-bright p-3 shadow-none [&_p]:mt-0.5 [&_p]:text-xs [&_p]:leading-snug hover:border-border-bright hover:bg-background-hover data-[state=checked]:border-indigo-500/70 data-[state=checked]:bg-indigo-500/10 hover:data-[state=checked]:bg-indigo-500/15"
             label={
               preset.id === "FULL_ACCESS" ? (
                 <span className="flex items-center gap-2">

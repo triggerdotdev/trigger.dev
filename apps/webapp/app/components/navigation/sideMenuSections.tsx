@@ -50,7 +50,7 @@ import { type SideMenuSectionId } from "./sideMenuTypes";
 // Lives outside SideMenu so the profile page can build the same list for the "Customize sidebar"
 // modal - it has no side menu of its own to read them from.
 
-export type SideMenuItemConfig = {
+type SideMenuItemConfig = {
   /** Stable id used for hidden/order preferences; never rename once shipped. */
   id: string;
   name: string;

@@ -8,16 +8,13 @@ import {
 /** Which theme `system` lands on at each end of the OS setting. */
 export type SystemThemes = { light: SystemLightTheme; dark: SystemDarkTheme };
 
-export const DEFAULT_SYSTEM_THEMES: SystemThemes = { light: "light", dark: "dark" };
+const DEFAULT_SYSTEM_THEMES: SystemThemes = { light: "light", dark: "dark" };
 
 /** Which end of the scale a theme sits on. Classic and Black are dark; White is
  *  light; `system` follows the OS. */
 export type ThemeAppearance = "dark" | "light";
 
-export function themeAppearance(
-  preference: ThemePreference,
-  prefersDark: boolean
-): ThemeAppearance {
+function themeAppearance(preference: ThemePreference, prefersDark: boolean): ThemeAppearance {
   if (preference === "system") return prefersDark ? "dark" : "light";
   return preference === "light" || preference === "white" ? "light" : "dark";
 }

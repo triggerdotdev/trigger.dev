@@ -19,7 +19,6 @@ import { Bar, Cell, type TooltipProps } from "recharts";
 import {
   REPORT_LABELS,
   reportFooterStyle,
-  type ReportFooterStyle,
   type ReportTone,
 } from "~/presenters/v3/reports/report-layout";
 import { ActivityBarChart } from "~/components/metrics/ActivityBarChart";
@@ -39,7 +38,7 @@ export type ReportSeverityKey = "ok" | "warn" | "crit";
 // Semantic tokens, not raw palette classes: only these are remapped by the theme
 // layer (see tailwind.css). Keyed by tone, so a genuinely-unknown state can't
 // borrow a verdict's colour.
-export const SEVERITY_TEXT: Record<ReportTone, string> = {
+const SEVERITY_TEXT: Record<ReportTone, string> = {
   ok: "text-success",
   warn: "text-warning",
   crit: "text-error",
@@ -313,14 +312,11 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
 // surfaces classify a code the same way. `action` is a primary button, `docs` the
 // docs button, `reference` a text link because a button would promise an action,
 // and `note` is prose for an option stated rather than offered.
-export { reportFooterStyle, type ReportFooterStyle };
-
 /**
  * The recovery-watch offer. No report emits it; the card adds it. Two codes
  * because it is phrased differently when it is the only thing on offer.
  */
 export const FOOTER_WATCH_CODE = "watch_recovery";
-export const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
 
 /** A dimmed line that accompanies a row entry. */
 const FOOTER_NOTE_LINES: Record<string, string> = {
@@ -502,7 +498,7 @@ function ReportSparkTooltip({
  * at full strength and the rest recede to a tint of the same colour, so the breach
  * reads as one chart changing intensity rather than a second series.
  */
-export function ReportSparkline({
+function ReportSparkline({
   points,
   severity,
   /** Minutes the whole series covers. Turns a bar into its tooltip time. */
@@ -590,21 +586,6 @@ const LABEL_CLASS = "text-xs uppercase leading-tight tracking-wide text-text-dim
 
 /** A metric's movement against its baseline. Direction is always an arrow. */
 export type ReportDelta = { text: string; dir: "up" | "down" | "flat" };
-
-/**
- * A view model `Delta` as the row's arrow. A multiplier only reads as movement
- * once it rounds past 1×; below that a metric with a baseline is flat, and one
- * without a baseline has nothing to compare against.
- */
-export function reportDelta(
-  delta: { dir: "up" | "down" | "flat"; mult?: number } | undefined,
-  hasBaseline: boolean
-): ReportDelta | undefined {
-  if (delta && delta.mult !== undefined && delta.mult > 1 && delta.dir !== "flat") {
-    return { text: `${delta.dir === "up" ? "↑" : "↓"} ${delta.mult}×`, dir: delta.dir };
-  }
-  return hasBaseline ? { text: "→ flat", dir: "flat" } : undefined;
-}
 
 export function ReportMetricRow({
   label,

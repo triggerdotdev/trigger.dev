@@ -17,7 +17,7 @@ import {
 
 const pageSize = 20;
 
-export type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
+type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
 export type DeploymentListItem = DeploymentList["deployments"][0];
 
 export class DeploymentListPresenter {
@@ -43,24 +43,6 @@ export class DeploymentListPresenter {
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
         id: true,
-        environments: {
-          select: {
-            id: true,
-            type: true,
-            slug: true,
-            orgMember: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
         connectedGithubRepository: {
           select: {
             branchTracking: true,

@@ -22,7 +22,7 @@ import {
 } from "~/db.server";
 import { ownerEngine, UnclassifiableRunId } from "@trigger.dev/core/v3/isomorphic";
 
-export type SeamReadDeps = {
+type SeamReadDeps = {
   /**
    * Resolved boot constant. REQUIRED here — the caller resolves it once per
    * request via `isSplitEnabled()`; this adapter never awaits it itself.

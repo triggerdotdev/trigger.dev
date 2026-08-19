@@ -128,7 +128,7 @@ export function makeResolveMollifierFlag(): (inputs: GateInputs) => Promise<bool
 
 const resolveMollifierFlag = makeResolveMollifierFlag();
 
-export const defaultGateDependencies: GateDependencies = {
+const defaultGateDependencies: GateDependencies = {
   isMollifierEnabled: () => env.TRIGGER_MOLLIFIER_ENABLED === "1",
   isShadowModeOn: () => env.TRIGGER_MOLLIFIER_SHADOW_MODE === "1",
   resolveOrgFlag: resolveMollifierFlag,

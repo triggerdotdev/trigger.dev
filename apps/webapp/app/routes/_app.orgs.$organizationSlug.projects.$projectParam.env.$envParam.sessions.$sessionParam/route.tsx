@@ -1,5 +1,5 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
-import { CheckIcon } from "@heroicons/react/24/solid";
+import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -21,7 +21,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
@@ -65,8 +65,15 @@ import { requireUserId } from "~/services/session.server";
 import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
 import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
-import { EnvironmentParamSchema, v3RunPath, v3RunsPath, v3SessionsPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  v3RunPath,
+  v3RunsPath,
+  v3SessionsPath,
+} from "~/utils/pathBuilder";
 import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 import { pageMeta } from "~/utils/pageTitle";
@@ -139,6 +146,17 @@ export default function Page() {
             </span>
           }
         />
+        <PageAccessories>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/ai-chat/sessions")}
+            >
+              Sessions docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">

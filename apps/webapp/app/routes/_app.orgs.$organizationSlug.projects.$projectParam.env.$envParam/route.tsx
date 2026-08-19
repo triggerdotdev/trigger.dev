@@ -40,6 +40,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       externalRef: true,
       organization: { select: { id: true, featureFlags: true } },
       environments: {
+        where: { slug: envParam },
         select: {
           id: true,
           type: true,

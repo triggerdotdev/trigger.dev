@@ -10,7 +10,7 @@ import {
 } from "./terminal.js";
 
 /** First line of every comment this job posts, so the upsert step can find its own comment again. */
-export const MARKER = "<!-- observability-map-report -->";
+const MARKER = "<!-- observability-map-report -->";
 
 /**
  * The commit a comment was rendered for. Data rather than something the renderers read for themselves,

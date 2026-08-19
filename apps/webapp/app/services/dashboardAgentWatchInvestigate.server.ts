@@ -30,7 +30,7 @@ export function watchWantsInvestigation(watch: Watch): boolean {
 }
 
 /** The action the agent receives. Stable id, so a retried kick is a no-op. */
-export function watchInvestigateAction(watch: Watch): WatchInvestigateAction {
+function watchInvestigateAction(watch: Watch): WatchInvestigateAction {
   return {
     type: "watch.investigate" as const,
     id: `watch:${watch.id}:${watch.status}:investigate`,

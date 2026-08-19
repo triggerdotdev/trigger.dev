@@ -1,6 +1,7 @@
 import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
+import { webhookPrisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -9,7 +10,7 @@ import {
 } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
+import { syncDeclarativeSchedules, syncDeclarativeWebhooks } from "./createBackgroundWorker.server";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
@@ -217,5 +218,12 @@ export class ChangeCurrentDeploymentService extends BaseService {
     }
 
     await syncDeclarativeSchedules(parsed.data.tasks, worker, environment, this._prisma);
+    await syncDeclarativeWebhooks(
+      parsed.data.webhooks,
+      worker,
+      environment,
+      this._prisma,
+      webhookPrisma
+    );
   }
 }

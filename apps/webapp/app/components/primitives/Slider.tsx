@@ -54,7 +54,7 @@ export type SliderProps = ComponentProps<typeof RadixSlider.Root> & {
   marks?: SliderMark[];
 };
 
-export type SliderMark = {
+type SliderMark = {
   value: number;
   /** Tooltip on hover, and the accessible name once `onSelect` is set. */
   label?: string;

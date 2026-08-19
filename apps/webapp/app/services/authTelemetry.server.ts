@@ -12,7 +12,7 @@ import { authFeatureControls } from "~/services/authFeatureControls.server";
 import { rbac } from "~/services/rbac.server";
 import { singleton } from "~/utils/singleton";
 
-export type ApiAuthResult = "success" | "invalid" | "forbidden" | "disabled" | "error";
+type ApiAuthResult = "success" | "invalid" | "forbidden" | "disabled" | "error";
 
 const telemetry = singleton("apiAuthTelemetry", () => {
   const meter = getMeter("api-auth");

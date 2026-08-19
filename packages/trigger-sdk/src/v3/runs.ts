@@ -70,7 +70,6 @@ export const runs = {
   fetchStream,
 };
 
-export type ListRunsItem = ListRunResponseItem;
 export type BulkAction = BulkActionObject;
 
 function listRuns(
@@ -457,8 +456,6 @@ function rescheduleRun(
   return apiClient.rescheduleRun(runId, body, $requestOptions);
 }
 
-export type PollOptions = { pollIntervalMs?: number };
-
 const MAX_POLL_ATTEMPTS = 500;
 
 async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
@@ -485,7 +482,7 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
   );
 }
 
-export type SubscribeToRunOptions = {
+type SubscribeToRunOptions = {
   /**
    * Whether to close the subscription when the run completes
    *
@@ -563,7 +560,7 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   });
 }
 
-export type SubscribeToRunsFilterOptions = {
+type SubscribeToRunsFilterOptions = {
   /**
    * Filter runs by the time they were created. You must specify the duration string like "1h", "10s", "30m", etc.
    *

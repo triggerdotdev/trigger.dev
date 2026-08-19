@@ -11,9 +11,9 @@ import {
   demoSpanUri,
 } from "../ids";
 
-export type DemoHypothesisVerdict = "testing" | "validated" | "invalidated";
+type DemoHypothesisVerdict = "testing" | "validated" | "invalidated";
 
-export type DemoHypothesis = {
+type DemoHypothesis = {
   id: string;
   statement: string;
   verdict: DemoHypothesisVerdict;
@@ -21,11 +21,11 @@ export type DemoHypothesis = {
   evidence: Evidence[];
 };
 
-export type DemoInvestigationOutcome = "in_progress" | "concluded" | "inconclusive";
+type DemoInvestigationOutcome = "in_progress" | "concluded" | "inconclusive";
 
-export type DemoInvestigationSeverity = "info" | "warn" | "crit";
+type DemoInvestigationSeverity = "info" | "warn" | "crit";
 
-export type DemoInvestigationCaveat = {
+type DemoInvestigationCaveat = {
   kind: "dirty_commit";
   message: string;
 };
@@ -142,7 +142,7 @@ export const demoInvestigationStreamingRev0: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:06.000Z",
 };
 
-export const demoInvestigationEarly: DemoInvestigation = {
+const demoInvestigationEarly: DemoInvestigation = {
   investigationId: demoId("investigation-order-receipt-early"),
   revision: 0,
   outcome: "in_progress",
@@ -249,7 +249,7 @@ export const demoInvestigationConcluded: DemoInvestigation = {
   updatedAt: "2026-07-27T10:14:24.000Z",
 };
 
-export const demoInvestigationConcludedNoCode: DemoInvestigation = {
+const demoInvestigationConcludedNoCode: DemoInvestigation = {
   investigationId: demoId("investigation-queue-saturation"),
   revision: 2,
   outcome: "concluded",
@@ -361,7 +361,7 @@ export const demoInvestigationInconclusive: DemoInvestigation = {
   updatedAt: "2026-07-27T09:41:38.000Z",
 };
 
-export const demoInvestigationDegraded: DemoInvestigation = {
+const demoInvestigationDegraded: DemoInvestigation = {
   investigationId: demoId("investigation-order-receipt-degraded"),
   revision: 1,
   outcome: "inconclusive",

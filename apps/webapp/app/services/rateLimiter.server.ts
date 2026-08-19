@@ -6,13 +6,7 @@ import {
   type RateLimiterRedisClient,
 } from "./rateLimiterCore.server";
 
-export {
-  createRedisRateLimitClient,
-  type Duration,
-  type Limiter,
-  type RateLimitResponse,
-  type RateLimiterRedisClient,
-} from "./rateLimiterCore.server";
+export { createRedisRateLimitClient, type Duration, type Limiter } from "./rateLimiterCore.server";
 
 type Options = {
   redis?: RedisWithClusterOptions;

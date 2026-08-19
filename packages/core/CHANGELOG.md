@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- The current-worker API now reports each task's queue, so you can see which tasks write to a given queue. ([#4525](https://github.com/triggerdotdev/trigger.dev/pull/4525))
+
 ## 4.5.10
 
 ### Patch Changes

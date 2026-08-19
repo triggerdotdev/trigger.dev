@@ -18,22 +18,20 @@ export default function Project() {
   const isImpersonating = useIsImpersonating();
 
   return (
-    <>
-      <div className="grid grid-cols-[auto_1fr] overflow-hidden">
-        <DevPresenceProvider enabled={environment.type === "DEVELOPMENT"}>
-          <SideMenu
-            user={{ ...user, isImpersonating }}
-            project={project}
-            environment={environment}
-            organization={organization}
-            organizations={organizations}
-          />
-          <MainBody>
-            <Outlet />
-          </MainBody>
-        </DevPresenceProvider>
-      </div>
-    </>
+    <div className="grid grid-cols-[auto_1fr] overflow-hidden">
+      <DevPresenceProvider enabled={environment.type === "DEVELOPMENT"}>
+        <SideMenu
+          user={{ ...user, isImpersonating }}
+          project={project}
+          environment={environment}
+          organization={organization}
+          organizations={organizations}
+        />
+        <MainBody>
+          <Outlet />
+        </MainBody>
+      </DevPresenceProvider>
+    </div>
   );
 }
 

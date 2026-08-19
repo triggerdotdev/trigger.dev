@@ -24,7 +24,7 @@ import { logBuildWorkerStart } from "./buildWorkerLogging.js";
 import { SdkVersionExtractor } from "./plugins.js";
 import { spinner } from "../utilities/windows.js";
 
-export type BuildWorkerEventListener = {
+type BuildWorkerEventListener = {
   onBundleStart?: () => void;
   onBundleComplete?: (result: BundleResult) => void;
 };
@@ -142,6 +142,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
   return buildManifest;
 }
 
+/** @knipignore Exported for the CLI end-to-end suite. */
 export function rewriteBuildManifestPaths(
   buildManifest: BuildManifest,
   destinationDir: string

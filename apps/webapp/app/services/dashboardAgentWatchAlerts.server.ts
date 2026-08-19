@@ -68,7 +68,7 @@ export async function enqueueWatchFiredAlert(
   });
 }
 
-export type DashboardAgentAlertDenyReason =
+type DashboardAgentAlertDenyReason =
   /** The user can't use the dashboard agent, so its watches can't alert either. */
   | "dashboard_agent_disabled"
   /** This installation has no alert email transport configured. */

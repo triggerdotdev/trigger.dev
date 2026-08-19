@@ -1,6 +1,7 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -13,7 +14,6 @@ import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { BranchesNoBranchableEnvironment, BranchesNoBranches } from "~/components/BlankStatePanels";
 import { Feedback } from "~/components/Feedback";
 import { GitMetadata } from "~/components/GitMetadata";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -66,6 +66,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   branchesPath,
+  docsPath,
   EnvironmentParamSchema,
   ProjectParamSchema,
   v3BillingPath,
@@ -78,6 +79,7 @@ import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -228,7 +230,7 @@ export default function Page() {
     return (
       <PageContainer>
         <NavBar>
-          <PageTitle title={<V4Title>Preview branches</V4Title>} />
+          <PageTitle title="Preview branches" />
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-md">
@@ -242,7 +244,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Preview branches</V4Title>} />
+        <PageTitle title="Preview branches" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -256,6 +258,17 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
+
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("deployment/preview-branches")}
+            >
+              Branches docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+
           {limits.isAtLimit ? (
             <UpgradePanel
               limits={limits}

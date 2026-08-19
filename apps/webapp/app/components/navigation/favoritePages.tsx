@@ -40,6 +40,7 @@ import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useOptionalUser } from "~/hooks/useUser";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
@@ -71,6 +72,7 @@ const FAVORITE_PAGE_ICONS: Record<
   "task-agent": { icon: CubeSparkleIcon, activeColor: "text-agents" },
   runs: { icon: RunsIcon, activeColor: "text-runs" },
   sessions: { icon: AIChatIcon, activeColor: "text-sessions" },
+  webhooks: { icon: WebhookIcon, activeColor: "text-webhooks" },
   prompts: { icon: AIPenIcon, activeColor: "text-aiPrompts" },
   models: { icon: Box3DIcon, activeColor: "text-models" },
   logs: { icon: LogsIcon, activeColor: "text-logs" },
@@ -213,6 +215,7 @@ const ENV_PAGE_META: Record<string, PageMeta> = {
   "": { icon: "tasks", name: "Tasks", singular: "Task" },
   runs: { icon: "runs", name: "Runs", singular: "Run" },
   sessions: { icon: "sessions", name: "Sessions", singular: "Session" },
+  webhooks: { icon: "webhooks", name: "Webhook deliveries" },
   prompts: { icon: "prompts", name: "Prompts", singular: "Prompt" },
   models: { icon: "models", name: "Models", singular: "Model" },
   logs: { icon: "logs", name: "Logs" },

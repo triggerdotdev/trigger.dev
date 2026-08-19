@@ -7,10 +7,9 @@ import {
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   agentTurnCountsAgainstQuota,
@@ -27,27 +26,13 @@ import { limitValueAllowingZero } from "~/services/platform.v3.server";
  * absent (self-hosted) or the counter read throws.
  */
 
-const MIGRATIONS = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-
-async function applyAgentSchema(prisma: PrismaClient) {
-  for (const name of readdirSync(MIGRATIONS)
-    .filter((file) => file.endsWith(".sql"))
-    .sort()) {
-    const sql = readFileSync(path.join(MIGRATIONS, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
-
 const ORG = "org_quota";
 const USER = "user_quota";
 
 let agentDbClient: DashboardAgentDbClient | undefined;
 
 async function boot(prisma: PrismaClient, connectionUri: string): Promise<DashboardAgentDb> {
-  await applyAgentSchema(prisma);
+  await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 4 });
   return agentDbClient.db;
 }

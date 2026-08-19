@@ -187,72 +187,60 @@ function ChartBarLoadingBackground() {
   );
 }
 
-function ChartLineLoadingBackground() {
-  // Generate line points with configurable starting position and constraints
-  const generateLinePoints = (startY: number, minY: number, maxY: number) => {
-    const numPoints = 10;
-    const points = [];
-    let lastY = startY;
+type ChartPoint = { x: number; y: number };
 
-    for (let i = 0; i < numPoints; i++) {
-      // Calculate x value that spreads points across the full width
-      const x = i * (9 / (numPoints - 1));
+function generateLinePoints(startY: number, minY: number, maxY: number): ChartPoint[] {
+  const numPoints = 10;
+  const points = [];
+  let lastY = startY;
 
-      // Create less extreme variations that move smoothly
-      const change = Math.random() * 6 - 3; // Range from -3 to +3
-      const y = Math.max(minY, Math.min(maxY, lastY + change)); // Apply constraints
+  for (let i = 0; i < numPoints; i++) {
+    const x = i * (9 / (numPoints - 1));
+    const change = Math.random() * 6 - 3;
+    const y = Math.max(minY, Math.min(maxY, lastY + change));
 
-      points.push({ x, y });
-      lastY = y;
-    }
+    points.push({ x, y });
+    lastY = y;
+  }
 
-    return points;
-  };
+  return points;
+}
 
-  // Generate points for both lines
-  const points = useMemo(() => generateLinePoints(30, 10, 90), []);
-  const secondPoints = useMemo(() => generateLinePoints(40, 30, 90), []);
+function generateSmoothPath(points: ChartPoint[]) {
+  if (points.length < 2) return "";
 
-  const generateSmoothPath = (points: Array<{ x: number; y: number }>) => {
-    if (points.length < 2) return "";
+  let path = `M0,${50 - points[0].y}`;
 
-    let path = `M0,${50 - points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const x1 = points[i].x;
+    const y1 = 50 - points[i].y;
+    const x2 = points[i + 1].x;
+    const y2 = 50 - points[i + 1].y;
+    const cx1 = (x1 + x2) / 2;
+    const cy1 = y1;
+    const cx2 = (x1 + x2) / 2;
+    const cy2 = y2;
 
-    // Use curve command for smooth lines
-    for (let i = 0; i < points.length - 1; i++) {
-      const x1 = points[i].x;
-      const y1 = 50 - points[i].y;
-      const x2 = points[i + 1].x;
-      const y2 = 50 - points[i + 1].y;
+    path += ` C${cx1},${cy1} ${cx2},${cy2} ${x2},${y2}`;
+  }
 
-      // Bezier control points (create smooth curve)
-      const cx1 = (x1 + x2) / 2;
-      const cy1 = y1;
-      const cx2 = (x1 + x2) / 2;
-      const cy2 = y2;
+  return path;
+}
 
-      path += ` C${cx1},${cy1} ${cx2},${cy2} ${x2},${y2}`;
-    }
+function generateAreaPath(points: ChartPoint[]) {
+  return `${generateSmoothPath(points)} L9,50 L0,50 Z`;
+}
 
-    return path;
-  };
-
-  const generateAreaPath = (points: Array<{ x: number; y: number }>) => {
-    const curvePath = generateSmoothPath(points);
-    const lastX = 9;
-    return `${curvePath} L${lastX},50 L0,50 Z`;
-  };
-
-  // Component to render a line with area fill and animation
-  const AnimatedLine = ({
-    points,
-    gradientId,
-    delay = 0,
-  }: {
-    points: Array<{ x: number; y: number }>;
-    gradientId: string;
-    delay?: number;
-  }) => (
+function AnimatedLine({
+  points,
+  gradientId,
+  delay = 0,
+}: {
+  points: ChartPoint[];
+  gradientId: string;
+  delay?: number;
+}) {
+  return (
     <>
       <motion.path
         d={generateAreaPath(points)}
@@ -275,6 +263,11 @@ function ChartLineLoadingBackground() {
       />
     </>
   );
+}
+
+function ChartLineLoadingBackground() {
+  const points = useMemo(() => generateLinePoints(30, 10, 90), []);
+  const secondPoints = useMemo(() => generateLinePoints(40, 30, 90), []);
 
   return (
     <motion.div

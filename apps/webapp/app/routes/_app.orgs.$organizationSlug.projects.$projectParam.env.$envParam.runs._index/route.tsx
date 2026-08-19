@@ -79,6 +79,7 @@ import {
   shouldRevalidateRunsList,
 } from "./shouldRevalidateRunsList";
 import { useRunsLiveReload } from "./useRunsLiveReload";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { pageMeta } from "~/utils/pageTitle";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
@@ -165,18 +166,24 @@ export default function Page() {
   const { data, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
     useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
-  const project = useProject();
   const environment = useEnvironment();
 
   return (
     <>
       <NavBar>
         <PageTitle title="Runs" accessory={<RunsHelpTooltip />} />
-        {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-          <DevDisconnectedBanner isConnected={isConnected} />
-        )}
+        {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/runs-and-attempts")}
+            >
+              Runs docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

@@ -1,7 +1,7 @@
 import { type Path } from "@remix-run/react";
 import { ENV_PAGE_TARGETS } from "./deeplinkPages";
 
-export const PORTABLE_PAGE_PARAM = "page";
+const PORTABLE_PAGE_PARAM = "page";
 
 export const ENVIRONMENT_MATCH_ID =
   "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam";

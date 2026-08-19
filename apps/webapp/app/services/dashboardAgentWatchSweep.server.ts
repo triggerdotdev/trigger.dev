@@ -6,8 +6,6 @@
 import {
   cancelWatch,
   claimWatchAlertDispatch,
-  deleteTerminalWatchesOlderThan,
-  deleteWatchSubmissionsOlderThan,
   listExpiredActiveWatches,
   listWatchBatchGroupsToArm,
   listWatchesAwaitingDelivery,
@@ -57,12 +55,6 @@ export const WATCH_DELIVERY_GRACE_MS = 5 * 60 * 1000;
 /** Per-run cap for each half of the sweep. Oldest first, so the rest land next run. */
 const SWEEP_BATCH_LIMIT = 100;
 
-/** How long a terminal watch is kept. Its outcome also lives in the chat transcript. */
-export const WATCH_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** Higher than the other caps: retention is one statement, not a row-at-a-time loop. */
-const RETENTION_BATCH_LIMIT = 500;
-
 /**
  * How many rows one sweep handles at once. An incident expires a whole group together, and a
  * bound is what stops one slow tenant spending the entire visibility window.
@@ -70,7 +62,7 @@ const RETENTION_BATCH_LIMIT = 500;
 const SWEEP_CONCURRENCY = 8;
 
 /** What one finalization did. */
-export type WatchFinalizeOutcome =
+type WatchFinalizeOutcome =
   | "fired"
   | "expired"
   /** The user lost access: cancelled, and deliberately not narrated. */
@@ -91,10 +83,6 @@ export type WatchSweepResult = {
   redelivered: number;
   /** Decided but not handed over, with no agent project. They stay owed. */
   deliveryDeferred: number;
-  /** Long-terminal rows dropped by retention. */
-  purged: number;
-  /** Ledger rows dropped by retention. */
-  purgedSubmissions: number;
   failed: number;
 };
 
@@ -113,10 +101,6 @@ export type WatchSweepDeps = {
   deliver?: (watch: Watch) => Promise<void>;
   /** Gates the delivery half only. Finalization never depends on it. */
   configured?: () => boolean;
-  /** Drop terminal rows older than `before`. Returns how many went. */
-  purgeTerminal?: (params: { before: Date; limit: number }) => Promise<number>;
-  /** Drop submission-ledger rows older than `before`. */
-  purgeSubmissions?: (params: { before: Date; limit: number }) => Promise<number>;
   /** How many rows are handled at once. */
   concurrency?: number;
 };
@@ -236,7 +220,7 @@ function resolutionFor(
  * Finalize one overdue watch. Re-authorization comes first, before the final check reads
  * anything; `canDeliver: false` stops at the resolution, leaving the wake owed.
  */
-export async function finalizeOverdueWatch(
+async function finalizeOverdueWatch(
   watch: Watch,
   deps: WatchSweepDeps & { canDeliver?: boolean } = {}
 ): Promise<WatchFinalizeOutcome> {
@@ -312,7 +296,7 @@ export async function finalizeOverdueWatch(
  * Recover one owed wake, unconditionally: this sweep can't tell whether the user was already
  * told. Whether the wake needs prose is decided where the transcript can be read.
  */
-export async function recoverWatchDelivery(watch: Watch, deps: WatchSweepDeps = {}): Promise<void> {
+async function recoverWatchDelivery(watch: Watch, deps: WatchSweepDeps = {}): Promise<void> {
   const deliver = deps.deliver ?? scheduleWatchDelivery;
   await deliver(watch);
 }
@@ -332,11 +316,6 @@ export async function sweepDashboardAgentWatches(
   const listAwaitingDelivery =
     deps.listAwaitingDelivery ??
     ((params) => listWatchesAwaitingDelivery(dashboardAgentDb, params));
-  const purgeTerminal =
-    deps.purgeTerminal ?? ((params) => deleteTerminalWatchesOlderThan(dashboardAgentDb, params));
-  const purgeSubmissions =
-    deps.purgeSubmissions ??
-    ((params) => deleteWatchSubmissionsOlderThan(dashboardAgentDb, params));
 
   const result: WatchSweepResult = {
     overdue: 0,
@@ -347,8 +326,6 @@ export async function sweepDashboardAgentWatches(
     undelivered: 0,
     redelivered: 0,
     deliveryDeferred: 0,
-    purged: 0,
-    purgedSubmissions: 0,
     failed: 0,
   };
 
@@ -433,18 +410,6 @@ export async function sweepDashboardAgentWatches(
       if (ok) result.redelivered++;
       else result.failed++;
     }
-  }
-
-  // Retention runs last, over rows both halves are finished with. Its own try/catch so a
-  // lost retention pass can't mask the other failures.
-  try {
-    const before = new Date(now.getTime() - WATCH_RETENTION_MS);
-    result.purged = await purgeTerminal({ before, limit: RETENTION_BATCH_LIMIT });
-    // The ledger's rows age out on the same window: past it no client is still retrying.
-    result.purgedSubmissions = await purgeSubmissions({ before, limit: RETENTION_BATCH_LIMIT });
-  } catch (error) {
-    result.failed++;
-    logger.error("Dashboard agent watch sweep: failed to purge terminal watches", { error });
   }
 
   if (result.failed > 0) {

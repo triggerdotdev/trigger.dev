@@ -1172,6 +1172,7 @@ export function createTaskMetadataFailedErrorStack(
   const groupedIssues = groupTaskMetadataIssuesByTask(data.tasks, data.zodIssues);
 
   for (const key in groupedIssues) {
+    if (!Object.hasOwn(groupedIssues, key)) continue;
     const taskWithIssues = groupedIssues[key];
 
     if (!taskWithIssues) {

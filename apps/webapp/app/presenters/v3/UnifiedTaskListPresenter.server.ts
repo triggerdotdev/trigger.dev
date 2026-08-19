@@ -14,7 +14,7 @@ import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.s
 import { agentListPresenter, type AgentActiveState } from "./AgentListPresenter.server";
 import { taskListPresenter, type TaskListItem } from "./TaskListPresenter.server";
 
-export type UnifiedTaskKind = "STANDARD" | "SCHEDULED" | "AGENT";
+export type UnifiedTaskKind = "STANDARD" | "SCHEDULED" | "AGENT" | "WEBHOOK";
 
 export type UnifiedTaskListItem = {
   kind: UnifiedTaskKind;
@@ -34,7 +34,7 @@ export type UnifiedRunningStates = Record<string, UnifiedRunningState>;
 
 /** One hour bucket: the bucket start date, a total count for axis scaling,
  *  and per-status counts (sparse — only statuses that occurred are present). */
-export type HourlyTaskActivityBucket = {
+type HourlyTaskActivityBucket = {
   date: Date;
   total: number;
 } & Partial<Record<TaskRunStatus, number>>;
@@ -42,7 +42,7 @@ export type HourlyTaskActivityBucket = {
 /** 24h hourly stacked-by-status series keyed by task slug. */
 export type HourlyTaskActivity = Record<string, HourlyTaskActivityBucket[]>;
 
-export class UnifiedTaskListPresenter {
+class UnifiedTaskListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call(args: {
@@ -224,7 +224,12 @@ function toUnifiedItems(
 
   for (const task of tasks) {
     items.push({
-      kind: task.triggerSource === "SCHEDULED" ? "SCHEDULED" : "STANDARD",
+      kind:
+        task.triggerSource === "SCHEDULED"
+          ? "SCHEDULED"
+          : task.triggerSource === "WEBHOOK"
+            ? "WEBHOOK"
+            : "STANDARD",
       slug: task.slug,
       filePath: task.filePath,
       triggerSource: task.triggerSource,

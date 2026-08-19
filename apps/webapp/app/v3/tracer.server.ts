@@ -24,7 +24,7 @@ import {
   W3CTraceContextPropagator,
 } from "@opentelemetry/core";
 import sentryRemix from "@sentry/remix";
-import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+import { logs } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
@@ -65,12 +65,11 @@ import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
 import { CompactMetricExporter } from "./telemetry/compactMetricExporter.server";
 import { logger } from "~/services/logger.server";
-import { flattenAttributes } from "@trigger.dev/core/v3";
 import { metricsRegister } from "~/metrics.server";
 import { collectDatabaseClientMetrics } from "~/utils/databaseMetrics.server";
 import { performance } from "node:perf_hooks";
 
-export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
 export const DATASOURCE_CONTEXT_KEY = createContextKey("trigger.db.datasource");
 
@@ -150,12 +149,9 @@ class NonInheritingTraceContextPropagator implements TextMapPropagator {
   }
 }
 
-export const {
-  tracer,
-  logger: otelLogger,
-  provider,
-  meter,
-} = singleton("opentelemetry", setupTelemetry);
+const telemetry = singleton("opentelemetry", setupTelemetry);
+
+export const { tracer, provider, meter } = telemetry;
 
 export async function startActiveSpan<T>(
   name: string,
@@ -185,38 +181,6 @@ export async function startActiveSpan<T>(
     } finally {
       span.end();
     }
-  });
-}
-
-export async function emitDebugLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.DEBUG,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitInfoLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.INFO,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitErrorLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.ERROR,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitWarnLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.WARN,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
   });
 }
 

@@ -20,7 +20,7 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
@@ -38,12 +38,14 @@ import {
 } from "~/utils/pathBuilder";
 import {
   ArrowTopRightOnSquareIcon,
+  BookOpenIcon,
   CommandLineIcon,
   DocumentTextIcon,
   PencilSquareIcon,
   SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { textLinkClassName } from "~/components/primitives/TextLink";
 import { cn } from "~/utils/cn";
 import { pageMeta } from "~/utils/pageTitle";
@@ -325,11 +327,7 @@ output "endpoint_service_name" {
               )}
             </div>
           ))}
-          <button
-            type="button"
-            onClick={addPort}
-            className={cn(textLinkClassName(), "text-xs")}
-          >
+          <button type="button" onClick={addPort} className={cn(textLinkClassName(), "text-xs")}>
             + Add port
           </button>
         </div>
@@ -471,11 +469,7 @@ After creating everything, give me the VPC Endpoint Service name (it looks like 
               )}
             </div>
           ))}
-          <button
-            type="button"
-            onClick={addPort}
-            className={cn(textLinkClassName(), "text-xs")}
-          >
+          <button type="button" onClick={addPort} className={cn(textLinkClassName(), "text-xs")}>
             + Add port
           </button>
         </div>
@@ -554,6 +548,17 @@ export default function Page() {
             text: "Private Connections",
           }}
         />
+        <PageAccessories>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("private-networking/overview")}
+            >
+              Private connection docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
         <MainHorizontallyCenteredContainer className="max-w-3xl">

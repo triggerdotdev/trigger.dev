@@ -46,6 +46,7 @@ export class SelectBestEnvironmentPresenter {
         include: {
           organization: true,
           environments: {
+            where: { archivedAt: null },
             select: {
               id: true,
               type: true,
@@ -71,6 +72,7 @@ export class SelectBestEnvironmentPresenter {
       include: {
         organization: true,
         environments: {
+          where: { archivedAt: null },
           select: {
             id: true,
             type: true,

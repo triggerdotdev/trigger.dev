@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 
 // Marker on the thrown 403 body so the error boundary can tell a
 // permission denial apart from any other route error.
-export const PERMISSION_DENIED_MARKER = "rbac-permission-denied";
+const PERMISSION_DENIED_MARKER = "rbac-permission-denied";
 
 const DEFAULT_PERMISSION_DENIED_MESSAGE = "You don't have permission to access this page.";
 

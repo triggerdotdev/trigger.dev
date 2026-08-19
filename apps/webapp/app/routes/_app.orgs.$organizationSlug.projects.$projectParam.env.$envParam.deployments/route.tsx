@@ -1,4 +1,9 @@
-import { ArrowPathIcon, ArrowUturnLeftIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
+  BookOpenIcon,
+  NoSymbolIcon,
+} from "@heroicons/react/20/solid";
 import { Form, Outlet, useLocation, useNavigate, useNavigation, useParams } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -26,7 +31,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "~/components/primitives/Dialog";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -66,6 +71,7 @@ import { titleCase } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
+  docsPath,
   v3DeploymentPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
@@ -75,6 +81,7 @@ import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { deploymentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -200,6 +207,17 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Deployments" />
+        <PageAccessories>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/cli-deploy")}
+            >
+              Deployments docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">

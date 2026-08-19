@@ -81,7 +81,7 @@ export function TabContainer({
   return <div className={cn(`flex`, className)}>{children}</div>;
 }
 
-export function TabLink({
+function TabLink({
   to,
   children,
   layoutId,
@@ -234,17 +234,15 @@ export function TabButton({
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const ref = useRef<HTMLButtonElement>(null);
 
-  if (shortcut) {
-    useShortcutKeys({
-      shortcut: shortcut,
-      action: () => {
-        if (ref.current) {
-          ref.current.click();
-        }
-      },
-      disabled: props.disabled,
-    });
-  }
+  useShortcutKeys({
+    shortcut,
+    action: () => {
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+    disabled: props.disabled,
+  });
 
   const title = variant === "title";
 

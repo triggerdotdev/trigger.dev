@@ -1,4 +1,4 @@
-import { Link, type LinkProps, NavLink, type NavLinkProps } from "@remix-run/react";
+import { Link, type LinkProps } from "@remix-run/react";
 import React, {
   forwardRef,
   type ReactNode,
@@ -533,24 +533,6 @@ export const LinkButton = ({
       </Link>
     );
   }
-};
-
-type NavLinkPropsType = Pick<NavLinkProps, "to" | "target"> &
-  Omit<React.ComponentProps<typeof ButtonContent>, "className"> & {
-    className?: (props: { isActive: boolean; isPending: boolean }) => string | undefined;
-  };
-export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsType) => {
-  return (
-    <NavLink
-      to={to}
-      className={cn("group/button outline-hidden block", props.fullWidth ? "w-full" : "")}
-      target={target}
-    >
-      {({ isActive, isPending }) => (
-        <ButtonContent className={className && className({ isActive, isPending })} {...props} />
-      )}
-    </NavLink>
-  );
 };
 
 type ExtLinkProps = JSX.IntrinsicElements["a"] & {

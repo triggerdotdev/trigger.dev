@@ -284,7 +284,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
         }}
       />
       {showButtons && (
-        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-background-deep/80 light:bg-transparent p-1.5">
+        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-background-deep/80 light:bg-white/80 p-1.5">
           {additionalActions && additionalActions}
           {showFormatButton && (
             <Button

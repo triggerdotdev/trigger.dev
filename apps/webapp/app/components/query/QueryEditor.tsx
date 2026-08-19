@@ -99,7 +99,7 @@ type QueryActionResponse = {
   maxQueryPeriod?: number;
 };
 
-export type QueryEditorMode =
+type QueryEditorMode =
   | { type: "standalone" }
   | { type: "dashboard-add"; dashboardId: string; dashboardName: string }
   | {
@@ -1187,38 +1187,36 @@ function ResultsChart({
   accessory?: ReactNode;
 }) {
   return (
-    <>
-      <ResizablePanelGroup className="overflow-hidden">
-        <ResizablePanel id="chart-results">
-          <div className="h-full overflow-hidden bg-background-bright">
-            <QueryWidget
-              className="border-0"
-              title={
-                <QueryTitle
-                  isTitleLoading={isTitleLoading}
-                  title={queryTitle}
-                  onRename={onRenameTitle}
-                />
-              }
-              query={query}
-              data={{
-                rows,
-                columns,
-              }}
-              config={{
-                type: "chart",
-                ...chartConfig,
-              }}
-              accessory={accessory}
-            />
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id="chart-split" />
-        <ResizablePanel id="chart-config" min="50px" default="200px">
-          <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </>
+    <ResizablePanelGroup className="overflow-hidden">
+      <ResizablePanel id="chart-results">
+        <div className="h-full overflow-hidden bg-background-bright">
+          <QueryWidget
+            className="border-0"
+            title={
+              <QueryTitle
+                isTitleLoading={isTitleLoading}
+                title={queryTitle}
+                onRename={onRenameTitle}
+              />
+            }
+            query={query}
+            data={{
+              rows,
+              columns,
+            }}
+            config={{
+              type: "chart",
+              ...chartConfig,
+            }}
+            accessory={accessory}
+          />
+        </div>
+      </ResizablePanel>
+      <ResizableHandle id="chart-split" />
+      <ResizablePanel id="chart-config" min="50px" default="200px">
+        <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
 
@@ -1266,42 +1264,40 @@ function ResultsBigNumber({
   }, [columns]);
 
   return (
-    <>
-      <ResizablePanelGroup className="overflow-hidden">
-        <ResizablePanel id="bignumber-results">
-          <div className="h-full overflow-hidden bg-background-bright">
-            <QueryWidget
-              className="border-0"
-              title={
-                <QueryTitle
-                  isTitleLoading={isTitleLoading}
-                  title={queryTitle}
-                  onRename={onRenameTitle}
-                />
-              }
-              query={query}
-              data={{
-                rows,
-                columns,
-              }}
-              config={{
-                type: "bignumber",
-                ...bigNumberConfig,
-              }}
-              accessory={accessory}
-            />
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id="bignumber-split" />
-        <ResizablePanel id="bignumber-config" min="50px" default="200px">
-          <BigNumberConfigPanel
-            columns={columns}
-            config={bigNumberConfig}
-            onChange={onBigNumberConfigChange}
+    <ResizablePanelGroup className="overflow-hidden">
+      <ResizablePanel id="bignumber-results">
+        <div className="h-full overflow-hidden bg-background-bright">
+          <QueryWidget
+            className="border-0"
+            title={
+              <QueryTitle
+                isTitleLoading={isTitleLoading}
+                title={queryTitle}
+                onRename={onRenameTitle}
+              />
+            }
+            query={query}
+            data={{
+              rows,
+              columns,
+            }}
+            config={{
+              type: "bignumber",
+              ...bigNumberConfig,
+            }}
+            accessory={accessory}
           />
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </>
+        </div>
+      </ResizablePanel>
+      <ResizableHandle id="bignumber-split" />
+      <ResizablePanel id="bignumber-config" min="50px" default="200px">
+        <BigNumberConfigPanel
+          columns={columns}
+          config={bigNumberConfig}
+          onChange={onBigNumberConfigChange}
+        />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
 

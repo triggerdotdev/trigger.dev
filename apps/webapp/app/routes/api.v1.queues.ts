@@ -8,6 +8,7 @@ import {
 import { toOffsetLimitQueueListPagination } from "~/presenters/v3/queueListPagination.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 const SearchParamsSchema = z.object({
@@ -30,14 +31,19 @@ export const loader = createLoaderApiRoute(
     const service = new QueueListPresenter(searchParams.perPage);
 
     try {
+      // v3 (engine V1) has no V2 queues to list, so old clients get a clean 400.
+      const engineVersion = await determineEngineVersion({
+        environment: authentication.environment,
+      });
+
+      if (engineVersion === "V1") {
+        return json({ error: "engine-version" }, { status: 400 });
+      }
+
       const result = await service.call({
         environment: authentication.environment,
         page: searchParams.page ?? 1,
       });
-
-      if (!result.success) {
-        return json({ error: result.code }, { status: 400 });
-      }
 
       const queues: QueueItem[] = result.queues;
       return json(

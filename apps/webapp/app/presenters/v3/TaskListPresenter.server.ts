@@ -20,7 +20,7 @@ export type TaskListItem = {
   triggerSource: TaskTriggerSource;
 };
 
-export class TaskListPresenter {
+class TaskListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({

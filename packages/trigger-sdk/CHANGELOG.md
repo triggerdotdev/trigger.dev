@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- Watch-mode chat streams now survive quiet windows and page reloads, and a reply cut off by a lost connection shows an error instead of appearing finished. Aborting a resumed subscription only closes your local stream — call `stopGeneration(chatId)` or pass `stopOnAbort: true` to stop the run. Also fixed a race where quickly restarting a stream could break stop and reconnect, and stopping a chat now hands it back to your other tabs instead of leaving them read-only. ([#4516](https://github.com/triggerdotdev/trigger.dev/pull/4516))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+
 ## 4.5.10
 
 ### Patch Changes

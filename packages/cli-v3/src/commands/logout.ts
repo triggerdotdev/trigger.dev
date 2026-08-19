@@ -25,13 +25,13 @@ export function configureLogoutCommand(program: Command) {
   );
 }
 
-export async function logoutCommand(options: unknown) {
+async function logoutCommand(options: unknown) {
   return await wrapCommandAction("logoutCommand", LogoutCommandOptions, options, async (opts) => {
     return await logout(opts);
   });
 }
 
-export async function logout(options: LogoutCommandOptions) {
+async function logout(options: LogoutCommandOptions) {
   const config = readAuthConfigProfile(options.profile);
 
   if (!config?.accessToken) {
