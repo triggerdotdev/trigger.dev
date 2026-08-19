@@ -4,7 +4,7 @@ import {
   FolderOpenIcon,
   MagnifyingGlassIcon,
 } from "@heroicons/react/20/solid";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import type { Tree } from "~/components/primitives/TreeView/TreeView";
@@ -177,13 +177,10 @@ function TreeViewParent({
     },
   });
 
-  const getInteractiveNodeProps = useCallback(
-    (id: string) => ({
-      ...getNodeProps(id),
-      onClick: () => toggleNodeSelection(id),
-    }),
-    [getNodeProps, toggleNodeSelection]
-  );
+  const getInteractiveNodeProps = (id: string) => ({
+    ...getNodeProps(id),
+    onClick: () => toggleNodeSelection(id),
+  });
 
   return (
     <div className="flex w-72 flex-col items-start gap-y-4 p-4">
@@ -226,6 +223,7 @@ function TreeViewParent({
           >
             <button
               type="button"
+              tabIndex={-1}
               aria-label={
                 node.hasChildren
                   ? state.expanded
@@ -238,6 +236,7 @@ function TreeViewParent({
                 e.stopPropagation();
                 toggleExpandNode(node.id);
                 selectNode(node.id, true);
+                parentRef.current?.focus();
               }}
             >
               {node.hasChildren ? (

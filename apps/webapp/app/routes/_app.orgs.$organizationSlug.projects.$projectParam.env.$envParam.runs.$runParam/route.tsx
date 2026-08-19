@@ -968,13 +968,10 @@ function TasksTreeView({
     },
   });
 
-  const getInteractiveNodeProps = useCallback(
-    (id: string) => ({
-      ...getNodeProps(id),
-      onClick: () => selectNode(id),
-    }),
-    [getNodeProps, selectNode]
-  );
+  const getInteractiveNodeProps = (id: string) => ({
+    ...getNodeProps(id),
+    onClick: () => selectNode(id),
+  });
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
@@ -1077,6 +1074,7 @@ function TasksTreeView({
                     ))}
                     <button
                       type="button"
+                      tabIndex={-1}
                       disabled={!node.hasChildren}
                       aria-label={state.expanded ? "Collapse task" : "Expand task"}
                       className={cn(
@@ -1095,6 +1093,7 @@ function TasksTreeView({
                           toggleExpandNode(node.id);
                         }
                         scrollToNode(node.id);
+                        parentRef.current?.focus();
                       }}
                     >
                       {node.hasChildren ? (
