@@ -46,7 +46,7 @@
     "import/no-duplicates": "error",
     "import/namespace": "off",
     "react-hooks/exhaustive-deps": "off",
-    "react-hooks/rules-of-hooks": "off",
+    "react/rules-of-hooks": "off",
     "guard-for-in": "error",
     "symbol-description": "error",
     "no-unneeded-ternary": "error",
@@ -115,8 +115,15 @@
     {
       "files": ["apps/webapp/app/**/*.ts", "apps/webapp/app/**/*.tsx"],
       "rules": {
+        "react/rules-of-hooks": "error",
         "trigger-runops/no-control-plane-run-graph-access": "error",
         "trigger-runops/no-control-plane-in-runops-slot": "error"
+      }
+    },
+    {
+      "files": ["packages/react-hooks/src/**/*.ts", "packages/react-hooks/src/**/*.tsx"],
+      "rules": {
+        "react/rules-of-hooks": "error"
       }
     },
     {

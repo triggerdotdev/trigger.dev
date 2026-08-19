@@ -46,16 +46,14 @@ export function TextLink({
   const innerRef = useRef<HTMLAnchorElement>(null);
   const classes = variations[variant];
 
-  if (shortcut) {
-    useShortcutKeys({
-      shortcut: shortcut,
-      action: () => {
-        if (innerRef.current) {
-          innerRef.current.click();
-        }
-      },
-    });
-  }
+  useShortcutKeys({
+    shortcut,
+    action: () => {
+      if (innerRef.current) {
+        innerRef.current.click();
+      }
+    },
+  });
 
   const renderShortcutKey = () =>
     shortcut &&

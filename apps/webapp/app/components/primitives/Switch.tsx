@@ -68,17 +68,15 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
 
     const { container, root, thumb, text } = variations[variant];
 
-    if (props.shortcut) {
-      useShortcutKeys({
-        shortcut: props.shortcut,
-        action: () => {
-          if (innerRef.current) {
-            innerRef.current.click();
-          }
-        },
-        disabled: props.disabled,
-      });
-    }
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: () => {
+        if (innerRef.current) {
+          innerRef.current.click();
+        }
+      },
+      disabled: props.disabled,
+    });
 
     const labelElement = label ? (
       <label

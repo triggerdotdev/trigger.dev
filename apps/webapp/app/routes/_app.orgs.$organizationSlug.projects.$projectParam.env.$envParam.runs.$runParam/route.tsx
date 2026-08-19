@@ -602,12 +602,11 @@ function shouldLiveReload({
   return true;
 }
 
-function TraceView({
-  run,
-  trace,
-  maximumLiveReloadingSetting,
-  resizable,
-}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting" | "resizable">) {
+type TraceViewProps = Pick<LoaderData, "run" | "maximumLiveReloadingSetting" | "resizable"> & {
+  trace: NonNullable<LoaderData["trace"]>;
+};
+
+function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: TraceViewProps) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -615,10 +614,6 @@ function TraceView({
   const selectedSpanId = searchParams.get("span") ?? undefined;
   const frozenSpanId = useFrozenValue(selectedSpanId);
   const displaySpanId = selectedSpanId ?? frozenSpanId;
-
-  if (!trace) {
-    return <></>;
-  }
 
   const {
     events,
