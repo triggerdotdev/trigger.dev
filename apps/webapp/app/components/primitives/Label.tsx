@@ -15,12 +15,10 @@ export const labelVariants = {
   },
 };
 
-const variants = labelVariants;
-
 type LabelProps = React.AllHTMLAttributes<HTMLLabelElement> & {
   className?: string;
   children: React.ReactNode;
-  variant?: keyof typeof variants;
+  variant?: keyof typeof labelVariants;
   required?: boolean;
   tooltip?: React.ReactNode;
 };
@@ -33,7 +31,7 @@ export function Label({
   tooltip,
   ...props
 }: LabelProps) {
-  const variation = variants[variant];
+  const variation = labelVariants[variant];
   return (
     <label className={cn(variation.text, className)} {...props}>
       {children}

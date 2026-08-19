@@ -45,11 +45,11 @@ export type ProjectRuntimeRow = {
 export function RuntimeUpdatesPage({
   organizationSlug,
   needsUpdate,
-  upToDate,
+  otherProjects,
 }: {
   organizationSlug: string;
   needsUpdate: ProjectRuntimeRow[];
-  upToDate: ProjectRuntimeRow[];
+  otherProjects: ProjectRuntimeRow[];
 }) {
   const count = needsUpdate.length;
 
@@ -122,14 +122,14 @@ export function RuntimeUpdatesPage({
 
           <SettingsSection>
             <SettingsHeader title="Projects" />
-            {upToDate.length === 0 ? (
+            {otherProjects.length === 0 ? (
               <SettingsBlock>
                 <Paragraph variant="small">
                   {count === 0 ? "This organization has no projects yet." : "No other projects."}
                 </Paragraph>
               </SettingsBlock>
             ) : (
-              upToDate.map((project) => (
+              otherProjects.map((project) => (
                 <ProjectRow
                   key={project.ref}
                   organizationSlug={organizationSlug}
@@ -166,6 +166,7 @@ function ProjectRow({
               0
             )}
             variant="secondary/small"
+            aria-label={`View deployment for ${project.name}`}
           >
             View deployment
           </LinkButton>
@@ -173,6 +174,7 @@ function ProjectRow({
           <LinkButton
             to={v3ProjectPath({ slug: organizationSlug }, { slug: project.slug })}
             variant="secondary/small"
+            aria-label={`View project ${project.name}`}
           >
             View project
           </LinkButton>

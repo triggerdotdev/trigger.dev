@@ -142,8 +142,7 @@ export function ClipboardField({
         readOnly={true}
         className={cn(
           "shrink grow select-all overflow-x-auto",
-          // Without min-w-0 the input's intrinsic min-width pushes the copy button past the
-          // container's right edge; letting it shrink scrolls the value instead.
+          // min-w-0 stops the input's intrinsic min-width pushing the copy button out of the row.
           fullWidth ? "w-full min-w-0" : "max-w-fit",
           input
         )}

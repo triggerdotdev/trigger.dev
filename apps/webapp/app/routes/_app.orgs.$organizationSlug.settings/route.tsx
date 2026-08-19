@@ -10,12 +10,37 @@ import {
   OrganizationSettingsSideMenu,
 } from "~/components/navigation/OrganizationSettingsSideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { organizationHasProjectRuntimeUpdate } from "~/services/projectRuntimeUpdates.server";
 import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { ssoController } from "~/services/sso.server";
 
 const SETTINGS_ROUTE_ID = "routes/_app.orgs.$organizationSlug.settings";
+
+// The side-menu dot links to the Projects settings page, which requires `read` on
+// `deployments`, so gate the dot on the same ability the page checks.
+async function canReadDeployments({
+  request,
+  userId,
+  organizationSlug,
+}: {
+  request: Request;
+  userId: string;
+  organizationSlug: string;
+}) {
+  const organizationId = await resolveOrgIdFromSlug(organizationSlug);
+  if (!organizationId) {
+    return false;
+  }
+
+  const auth = await rbac.authenticateAuthorizeSession(
+    request,
+    { userId, organizationId },
+    { action: "read", resource: { type: "deployments" } }
+  );
+  return auth.ok;
+}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -25,7 +50,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     rbac.isUsingPlugin(),
     ssoController.isUsingPlugin(),
     organizationSlug
-      ? organizationHasProjectRuntimeUpdate({ organizationSlug, userId })
+      ? canReadDeployments({ request, userId, organizationSlug }).then((canRead) =>
+          canRead ? organizationHasProjectRuntimeUpdate({ organizationSlug, userId }) : false
+        )
       : Promise.resolve(false),
   ]);
   return typedjson({

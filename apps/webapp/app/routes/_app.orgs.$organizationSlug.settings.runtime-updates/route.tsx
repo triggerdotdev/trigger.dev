@@ -19,7 +19,7 @@ export const loader = dashboardLoader(
     authorization: {
       action: "read",
       resource: { type: "deployments" },
-      message: "With your current role, you can't view runtime updates.",
+      message: "With your current role, you can't view project deployments.",
     },
   },
   async ({ context, params }) => {
@@ -28,7 +28,7 @@ export const loader = dashboardLoader(
     });
 
     const needsUpdate: ProjectRuntimeRow[] = [];
-    const upToDate: ProjectRuntimeRow[] = [];
+    const otherProjects: ProjectRuntimeRow[] = [];
 
     for (const { project, environment, deployment } of runtimes) {
       const row: ProjectRuntimeRow = {
@@ -49,26 +49,26 @@ export const loader = dashboardLoader(
       if (deployment?.nodeMajor === NODE_RUNTIME_UPDATE_MAJOR) {
         needsUpdate.push(row);
       } else {
-        upToDate.push(row);
+        otherProjects.push(row);
       }
     }
 
     return typedjson({
       organizationSlug: params.organizationSlug,
       needsUpdate,
-      upToDate,
+      otherProjects,
     });
   }
 );
 
 export default function Page() {
-  const { organizationSlug, needsUpdate, upToDate } = useTypedLoaderData<typeof loader>();
+  const { organizationSlug, needsUpdate, otherProjects } = useTypedLoaderData<typeof loader>();
 
   return (
     <RuntimeUpdatesPage
       organizationSlug={organizationSlug}
       needsUpdate={needsUpdate}
-      upToDate={upToDate}
+      otherProjects={otherProjects}
     />
   );
 }
