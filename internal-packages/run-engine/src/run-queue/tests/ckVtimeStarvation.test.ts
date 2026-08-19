@@ -61,7 +61,9 @@ function createQueue(
     masterQueueConsumersDisabled: true,
     workerOptions: { disabled: true },
     ...(vtimeEnabled
-      ? { ckVirtualTimeScheduling: { enabled: true, ...(idleMaxEntries ? { idleMaxEntries } : {}) } }
+      ? {
+          ckVirtualTimeScheduling: { enabled: true, ...(idleMaxEntries ? { idleMaxEntries } : {}) },
+        }
       : {}),
     queueSelectionStrategy: new FairQueueSelectionStrategy({
       redis: { keyPrefix, host: redisContainer.getHost(), port: redisContainer.getPort() },
