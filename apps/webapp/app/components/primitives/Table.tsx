@@ -482,6 +482,8 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
     // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
     // keyboard focus). The tooltip is left uncontrolled so Radix opens it only when the pointer
     // or keyboard focus is actually on the button, not whenever the pointer is anywhere in the cell.
+    // `focus-visible:` reveals keyboard focus without leaving the button visible after a mouse click
+    // moves outside the cell.
     const copyButton = (
       <button
         type="button"
@@ -492,7 +494,7 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
           copy();
         }}
         className={cn(
-          "absolute -right-2 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus:opacity-100",
+          "absolute -right-2 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
           isHovered ? "opacity-100" : "pointer-events-none opacity-0",
           copied
             ? "text-green-500"

@@ -122,7 +122,7 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
           onClick={copy}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover transition-opacity focus:opacity-100",
+            "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
             isHovered ? "opacity-100" : "pointer-events-none opacity-0",
             copied
               ? "text-green-500"
@@ -171,7 +171,7 @@ function DeleteButton({
           onClick={handleDelete}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover transition-opacity focus:opacity-100",
+            "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
             isHovered ? "opacity-100" : "pointer-events-none opacity-0",
             "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-rose-400"
           )}

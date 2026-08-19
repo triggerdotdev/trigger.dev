@@ -847,7 +847,8 @@ function CopyableCell({
   // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
   // keyboard focus). The tooltip is left uncontrolled so Radix opens it only when the pointer or
   // keyboard focus is actually on the button, not whenever the pointer is anywhere in this
-  // virtualized grid's cell.
+  // virtualized grid's cell. `focus-visible:` (not `focus:`) ensures keyboard focus reveals the
+  // button without leaving it visible after a mouse click moves outside the cell.
   const copyButton = (
     <button
       type="button"
@@ -858,7 +859,7 @@ function CopyableCell({
         copy();
       }}
       className={cn(
-        "absolute right-1 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus:opacity-100",
+        "absolute right-1 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
         isHovered ? "opacity-100" : "pointer-events-none opacity-0",
         copied
           ? "text-green-500"

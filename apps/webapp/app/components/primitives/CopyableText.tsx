@@ -77,7 +77,7 @@ export function CopyableText({
         </span>
         <span
           className={cn(
-            "absolute top-0 z-10 flex size-6 font-sans transition-opacity focus-within:opacity-100",
+            "absolute top-0 z-10 flex size-6 font-sans transition-opacity has-focus-visible:pointer-events-auto has-focus-visible:opacity-100",
             // Truncated values reserve a right gutter, so the button sits inside it
             truncate ? "right-0" : "-right-6",
             isHovered ? "opacity-100" : "pointer-events-none opacity-0"
