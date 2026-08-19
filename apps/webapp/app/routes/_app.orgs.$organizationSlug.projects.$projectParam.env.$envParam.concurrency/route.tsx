@@ -436,6 +436,7 @@ function Upgradable({
                             <span>
                               Save your changes or{" "}
                               <button
+                                type="button"
                                 className="inline text-indigo-500 hover:text-indigo-300"
                                 onClick={() => {
                                   setAllocation(initialAllocation(environments));

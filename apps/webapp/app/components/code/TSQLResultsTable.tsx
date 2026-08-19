@@ -970,6 +970,7 @@ function HeaderCellContent({
       )}
       {onFilterClick && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onFilterClick();
