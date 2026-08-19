@@ -3,8 +3,6 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -20,17 +18,11 @@ function DemoSheet({ side }: { side: "top" | "bottom" | "left" | "right" }) {
       <SheetContent side={side} className="p-4">
         <SheetHeader>
           <SheetTitle>Sheet from the {side}</SheetTitle>
-          <SheetDescription>
-            A panel that slides in over the page. Press Escape or click outside to dismiss.
-          </SheetDescription>
         </SheetHeader>
         <Paragraph variant="small" className="py-4">
           Sheets host secondary flows that don't warrant a navigation — inspecting a row, editing a
           setting, or a short form.
         </Paragraph>
-        <SheetFooter>
-          <Button variant="primary/medium">Confirm</Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

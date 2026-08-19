@@ -1,12 +1,7 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { Input } from "~/components/primitives/Input";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSeparator,
-  InputOTPSlot,
-} from "~/components/primitives/InputOTP";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "~/components/primitives/InputOTP";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
@@ -45,7 +40,6 @@ export default function Story_() {
                   <InputOTPSlot key={i} index={i} variant="default" />
                 ))}
               </InputOTPGroup>
-              <InputOTPSeparator />
               <InputOTPGroup>
                 {[3, 4, 5].map((i) => (
                   <InputOTPSlot key={i} index={i} variant="default" />

@@ -6,12 +6,10 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Link } from "@remix-run/react";
 import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ButtonContent, type ButtonContentPropsType } from "./Buttons";
 import { type RenderIcon } from "./Icon";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
-import { ShortcutKey } from "./ShortcutKey";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -163,50 +161,6 @@ function PopoverCustomTrigger({
   );
 }
 
-/* Kept for the design-system storybook, which is its only consumer. Removed by
-   #4654's unused-code pass and restored deliberately - see PR #4547. */
-function PopoverSideMenuTrigger({
-  isOpen,
-  children,
-  className,
-  shortcut,
-  hideShortcutKey = false,
-  ...props
-}: {
-  isOpen?: boolean;
-  shortcut?: useShortcutKeys.ShortcutDefinition;
-  hideShortcutKey?: boolean;
-} & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
-  const ref = React.useRef<HTMLButtonElement>(null);
-  useShortcutKeys.useShortcutKeys({
-    shortcut: shortcut,
-    action: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (ref.current) {
-        ref.current.click();
-      }
-    },
-  });
-
-  return (
-    <PopoverTrigger
-      {...props}
-      ref={ref}
-      className={cn(
-        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-background-hover",
-        shortcut && !hideShortcutKey ? "justify-between gap-x-1.5" : "",
-        className
-      )}
-    >
-      {children}
-      {shortcut && !hideShortcutKey && (
-        <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant={"small"} />
-      )}
-    </PopoverTrigger>
-  );
-}
-
 const popoverArrowTriggerVariants = {
   minimal: {
     trigger: "text-text-dimmed hover:bg-background-raised hover:text-text-bright",
@@ -330,7 +284,6 @@ export {
   PopoverMenuItem,
   PopoverSectionHeader,
   PopoverEllipseTrigger,
-  PopoverSideMenuTrigger,
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 };

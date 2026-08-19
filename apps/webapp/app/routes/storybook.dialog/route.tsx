@@ -1,6 +1,5 @@
 import {
   Alert,
-  AlertAction,
   AlertCancel,
   AlertContent,
   AlertDescription,
@@ -69,9 +68,6 @@ export default function Story_() {
                   <AlertCancel asChild>
                     <Button variant="tertiary/medium">Cancel</Button>
                   </AlertCancel>
-                  <AlertAction asChild>
-                    <Button variant="danger/medium">Delete</Button>
-                  </AlertAction>
                 </AlertFooter>
               </AlertContent>
             </Alert>

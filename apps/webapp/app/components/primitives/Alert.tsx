@@ -87,9 +87,7 @@ const AlertDescription = React.forwardRef<
 ));
 AlertDescription.displayName = AlertDialogPrimitive.Description.displayName;
 
-/* Kept for the design-system storybook, which is its only consumer. Unexported by
-   #4654's unused-code pass and re-exported deliberately - see PR #4547. */
-export const AlertAction = React.forwardRef<
+const AlertAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
 >(({ className, ...props }, ref) => (
