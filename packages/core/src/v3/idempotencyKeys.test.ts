@@ -122,22 +122,25 @@ describe("resetIdempotencyKey", () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it("hashes 64-character key material when an explicit scope is passed", async () => {
+  it("derives the hash for 64-character key material with an explicit scope when the verbatim key misses", async () => {
     const created = await createIdempotencyKey(digestShapedKey, { scope: "global" });
 
-    // The reset can happen in a different process from the trigger
     resetIdempotencyKeyCatalog();
+    existingKeys = new Set([created]);
 
-    expect(await resetAndCaptureKey("my-task", digestShapedKey, { scope: "global" })).toBe(created);
+    await resetIdempotencyKey("my-task", digestShapedKey, { scope: "global" });
+
+    expect(resetKeys).toEqual([digestShapedKey, created]);
   });
 
-  it("hashes 64-character key material for run scope when an explicit scope is passed", async () => {
+  it("derives the run-scoped hash for 64-character key material when the verbatim key misses", async () => {
     const parentRunId = "run_abc123";
     const expected = await digestSHA256(`${digestShapedKey}-${parentRunId}`);
+    existingKeys = new Set([expected]);
 
-    expect(
-      await resetAndCaptureKey("my-task", digestShapedKey, { scope: "run", parentRunId })
-    ).toBe(expected);
+    await resetIdempotencyKey("my-task", digestShapedKey, { scope: "run", parentRunId });
+
+    expect(resetKeys).toEqual([digestShapedKey, expected]);
   });
 
   it("sends a key created with idempotencyKeys.create() unchanged while the catalog knows it", async () => {
@@ -158,16 +161,13 @@ describe("resetIdempotencyKey", () => {
     expect(await resetAndCaptureKey("my-task", created)).toBe(created);
   });
 
-  it("falls back to the verbatim key when a created key is reset with a scope and the catalog is cold", async () => {
+  it("resolves a created key in one request when reset with a scope and the catalog is cold", async () => {
     const created = await createIdempotencyKey("my-key", { scope: "global" });
 
     resetIdempotencyKeyCatalog();
     existingKeys = new Set([created]);
 
-    await resetIdempotencyKey("my-task", created, { scope: "global" });
-
-    // The derived hash misses, so the already-hashed key is retried verbatim
-    expect(resetKeys).toEqual([await digestSHA256(created), created]);
+    expect(await resetAndCaptureKey("my-task", created, { scope: "global" })).toBe(created);
   });
 
   it("sends a 64-character key unchanged when no scope is passed", async () => {
@@ -182,38 +182,37 @@ describe("resetIdempotencyKey", () => {
     expect(await resetAndCaptureKey("my-task", digestShapedKey)).toBe(digestShapedKey);
   });
 
-  it("does not fall back when the derived hash for 64-character material matches", async () => {
+  it("resets the verbatim run when runs exist under both the verbatim key and the derived hash", async () => {
     const created = await createIdempotencyKey(digestShapedKey, { scope: "global" });
 
     resetIdempotencyKeyCatalog();
-    existingKeys = new Set([created]);
+    existingKeys = new Set([digestShapedKey, created]);
 
     await resetIdempotencyKey("my-task", digestShapedKey, { scope: "global" });
 
-    expect(resetKeys).toEqual([created]);
+    expect(resetKeys).toEqual([digestShapedKey]);
   });
 
-  it("falls back to the verbatim key when the derived hash fails with a 503", async () => {
-    // The server answers 503, not 404, when it cannot check the buffer for a miss
-    const created = await createIdempotencyKey("my-key", { scope: "global" });
+  it("falls back to the derived hash when the verbatim attempt fails with a 503", async () => {
+    const created = await createIdempotencyKey(digestShapedKey, { scope: "global" });
 
     resetIdempotencyKeyCatalog();
-    statusByKey.set(await digestSHA256(created), 503);
+    statusByKey.set(digestShapedKey, 503);
     existingKeys = new Set([created]);
 
     await resetIdempotencyKey(
       "my-task",
-      created,
+      digestShapedKey,
       { scope: "global" },
       { retry: { maxAttempts: 1 } }
     );
 
-    expect(resetKeys).toEqual([await digestSHA256(created), created]);
+    expect(resetKeys).toEqual([digestShapedKey, created]);
   });
 
-  it("surfaces the derived key's error when it fails with a 503 and the fallback finds nothing", async () => {
+  it("surfaces the verbatim attempt's error when it fails with a 503 and the fallback finds nothing", async () => {
     const derived = await digestSHA256(digestShapedKey);
-    statusByKey.set(derived, 503);
+    statusByKey.set(digestShapedKey, 503);
     existingKeys = new Set();
 
     await expect(
@@ -225,13 +224,13 @@ describe("resetIdempotencyKey", () => {
       )
     ).rejects.toMatchObject({ status: 503 });
 
-    expect(resetKeys).toEqual([derived, digestShapedKey]);
+    expect(resetKeys).toEqual([digestShapedKey, derived]);
   });
 
   it("surfaces the fallback's error when it fails with something other than a 404", async () => {
     const derived = await digestSHA256(digestShapedKey);
-    statusByKey.set(derived, 404);
-    statusByKey.set(digestShapedKey, 503);
+    statusByKey.set(digestShapedKey, 404);
+    statusByKey.set(derived, 503);
 
     await expect(
       resetIdempotencyKey(
@@ -242,18 +241,18 @@ describe("resetIdempotencyKey", () => {
       )
     ).rejects.toMatchObject({ status: 503 });
 
-    expect(resetKeys).toEqual([derived, digestShapedKey]);
+    expect(resetKeys).toEqual([digestShapedKey, derived]);
   });
 
-  it("surfaces the derived key's error when both attempts 404", async () => {
+  it("surfaces the verbatim key's error when both attempts 404", async () => {
     const derived = await digestSHA256(digestShapedKey);
     existingKeys = new Set();
 
     await expect(
       resetIdempotencyKey("my-task", digestShapedKey, { scope: "global" })
-    ).rejects.toThrow(notFoundMessage(derived));
+    ).rejects.toThrow(notFoundMessage(digestShapedKey));
 
-    expect(resetKeys).toEqual([derived, digestShapedKey]);
+    expect(resetKeys).toEqual([digestShapedKey, derived]);
   });
 
   it("hashes key material that is not 64 characters", async () => {

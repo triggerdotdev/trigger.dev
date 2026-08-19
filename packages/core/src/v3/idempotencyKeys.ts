@@ -289,12 +289,11 @@ export async function resetIdempotencyKey(
     return client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
   }
 
-  // Hashing a 64-char key is a guess, so if it fails at all, still try the key verbatim
   try {
-    return await client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
+    return await client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
   } catch (error) {
     try {
-      return await client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+      return await client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
     } catch (fallbackError) {
       throw fallbackError instanceof NotFoundError ? error : fallbackError;
     }
