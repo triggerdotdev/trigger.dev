@@ -948,7 +948,7 @@ function HeaderCellContent({
           })}
         >
           <span className="truncate text-left">{children}</span>
-          <span className="flex shrink-0">
+          <span className="flex shrink-0" onClick={(event) => event.stopPropagation()}>
             <InfoIconTooltip
               content={tooltip}
               contentClassName="normal-case tracking-normal"
