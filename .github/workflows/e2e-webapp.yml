@@ -16,8 +16,15 @@ jobs:
     name: "🧪 E2E Tests: Webapp"
     runs-on: warp-ubuntu-latest-x64-16x
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2]
+        shardTotal: [2]
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      SHARD_INDEX: ${{ matrix.shardIndex }}
+      SHARD_TOTAL: ${{ matrix.shardTotal }}
     steps:
       - name: 🔧 Disable IPv6
         run: |
@@ -130,6 +137,6 @@ jobs:
         run: cd apps/webapp && pnpm exec playwright install chromium
 
       - name: 🧪 Run Webapp E2E Tests
-        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default
+        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
         env:
           WEBAPP_TEST_VERBOSE: "1"
