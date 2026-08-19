@@ -544,6 +544,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
           {isGeneratingAnswer ? (
             <SimpleTooltip
               asChild
+              tabbable
               button={
                 <button
                   type="button"

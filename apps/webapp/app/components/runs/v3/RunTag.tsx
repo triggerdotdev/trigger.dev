@@ -114,6 +114,7 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
   return (
     <SimpleTooltip
       asChild
+      tabbable
       button={
         <button
           type="button"
@@ -162,6 +163,7 @@ function DeleteButton({
   return (
     <SimpleTooltip
       asChild
+      tabbable
       button={
         <button
           type="button"

@@ -87,11 +87,12 @@ export function CopyableText({
             iconButton
           ) : (
             <SimpleTooltip
+              asChild
+              tabbable
               button={iconButton}
               content={copied ? "Copied!" : "Copy"}
               className="font-sans"
               disableHoverableContent
-              asChild={asChild}
             />
           )}
         </span>

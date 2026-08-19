@@ -858,6 +858,7 @@ function CopyableCell({
       <span className="flex items-center truncate">{children}</span>
       <SimpleTooltip
         asChild
+        tabbable
         button={
           <button
             type="button"
