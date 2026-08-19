@@ -252,7 +252,9 @@ function CompleteDateTimeWaitpointForm({
   const project = useProject();
   const environment = useEnvironment();
 
-  const timeToComplete = waitpoint.completedAfter.getTime() - Date.now();
+  // oxlint-disable-next-line react/react-compiler -- This form intentionally snapshots wall-clock time for its deadline UI.
+  const now = Date.now();
+  const timeToComplete = waitpoint.completedAfter.getTime() - now;
   if (timeToComplete < 0) {
     return (
       <div className="flex items-center justify-center">
@@ -286,7 +288,7 @@ function CompleteDateTimeWaitpointForm({
           <div className="flex items-center gap-1">
             <AnimatedHourglassIcon
               className="text-dimmed-dimmed size-4"
-              delay={(waitpoint.completedAfter.getMilliseconds() - Date.now()) / 1000}
+              delay={(waitpoint.completedAfter.getMilliseconds() - now) / 1000}
             />
             <span className="mt-0.5 ">
               <LiveCountdown endTime={waitpoint.completedAfter} />
