@@ -257,6 +257,7 @@ export function useDashboardEditor({
   // Sync queue processor - ensures only one sync runs at a time
   // -------------------------------------------------------------------------
 
+  /* oxlint-disable react/react-compiler -- The recursive callback drains a serialized sync queue. */
   const processNextSync = useCallback(async () => {
     // If already syncing or queue is empty, do nothing
     if (isSyncingRef.current || syncQueueRef.current.length === 0) {
@@ -309,6 +310,7 @@ export function useDashboardEditor({
       processNextSync();
     }
   }, [widgetActionUrl, layoutActionUrl, onSyncError]);
+  /* oxlint-enable react/react-compiler */
 
   // -------------------------------------------------------------------------
   // Queue helpers

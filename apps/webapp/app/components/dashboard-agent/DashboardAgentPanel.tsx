@@ -416,6 +416,7 @@ export function DashboardAgentPanel({
   }, []);
 
   const dismissWatchCard = () => dispatchWatchCard({ type: "dismissed" });
+  const activeChatId = active?.chatId;
 
   const submitWatch = useCallback(async () => {
     const draft = watchCard.draft;
@@ -429,7 +430,7 @@ export function DashboardAgentPanel({
       body.set("draft", JSON.stringify(draft));
       body.set("clientRequestId", clientRequestId);
       // A watch is chat-bound: with no chat open the server creates one.
-      if (active?.chatId) body.set("chatId", active.chatId);
+      if (activeChatId) body.set("chatId", activeChatId);
 
       const res = await fetch(actionPath, { method: "POST", body });
       const data = (await res.json()) as {
@@ -446,7 +447,7 @@ export function DashboardAgentPanel({
       }
 
       const messages = data.messages;
-      if (active?.chatId === data.chatId) {
+      if (activeChatId === data.chatId) {
         setAppendedMessages((current) => ({
           chatId: data.chatId!,
           messages,
@@ -474,7 +475,7 @@ export function DashboardAgentPanel({
   }, [
     watchCard.draft,
     watchCard.requestId,
-    active?.chatId,
+    activeChatId,
     actionPath,
     organization.id,
     claimChatSlot,
