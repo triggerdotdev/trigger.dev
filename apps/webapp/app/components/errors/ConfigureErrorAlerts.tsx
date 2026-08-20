@@ -103,13 +103,15 @@ export function ConfigureErrorAlerts({
     }
   }, [fetcher.state, fetcher.data, closeHref, navigate, toast]);
 
-  const emailFieldValues = useRef<string[]>(
+  const [emailDefaultValues] = useState<string[]>(() =>
     existingEmails.length > 0 ? [...existingEmails.map((e) => e.email), ""] : [""]
   );
+  const emailFieldValues = useRef([...emailDefaultValues]);
 
-  const webhookFieldValues = useRef<string[]>(
+  const [webhookDefaultValues] = useState<string[]>(() =>
     existingWebhooks.length > 0 ? [...existingWebhooks.map((w) => w.url), ""] : [""]
   );
+  const webhookFieldValues = useRef([...webhookDefaultValues]);
 
   const [form, fields] = useForm<z.infer<typeof ErrorAlertsFormSchema>>({
     id: "configure-error-alerts",
@@ -118,8 +120,8 @@ export function ConfigureErrorAlerts({
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
-      emails: emailFieldValues.current,
-      webhooks: webhookFieldValues.current,
+      emails: emailDefaultValues,
+      webhooks: webhookDefaultValues,
     },
   });
   const { emails, webhooks, slackChannel, slackIntegrationId } = fields;
@@ -170,7 +172,7 @@ export function ConfigureErrorAlerts({
                           emailFieldValues.current[index] = e.target.value;
                           if (
                             emailFields.length === emailFieldValues.current.length &&
-                            emailFieldValues.current.every((v) => v !== "")
+                            emailFieldValues.current.every((value) => value !== "")
                           ) {
                             form.insert({ name: emails.name });
                           }
@@ -324,7 +326,7 @@ export function ConfigureErrorAlerts({
                         webhookFieldValues.current[index] = e.target.value;
                         if (
                           webhookFields.length === webhookFieldValues.current.length &&
-                          webhookFieldValues.current.every((v) => v !== "")
+                          webhookFieldValues.current.every((value) => value !== "")
                         ) {
                           form.insert({ name: webhooks.name });
                         }
