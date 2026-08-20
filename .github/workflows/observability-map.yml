@@ -55,11 +55,11 @@ jobs:
       # dying somewhere unforeseen, reads as "do not touch this pull request's comments".
       lookup: ${{ steps.comment.outputs.ok }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -164,7 +164,7 @@ jobs:
     runs-on: warp-ubuntu-latest-x64-4x
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -175,7 +175,7 @@ jobs:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
+        uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
         with:
           node-version: 24.18.0
           cache: "pnpm"
@@ -224,7 +224,7 @@ jobs:
       (needs.changes.outputs.report == 'true' || needs.changes.outputs.comment != '')
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -235,7 +235,7 @@ jobs:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
+        uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
         with:
           node-version: 24.18.0
           cache: "pnpm"
