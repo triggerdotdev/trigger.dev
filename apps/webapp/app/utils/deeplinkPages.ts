@@ -40,9 +40,6 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
 
 export const ORG_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
   ["projects", page("projects")],
-  // Alias: `/_/runtime-updates` links are already out in the wild, so keep them landing on the
-  // same page as `/_/projects`.
-  ["runtime-updates", page("projects")],
 ]);
 
 export const DEEPLINK_PATH_PREFIX = "/_";

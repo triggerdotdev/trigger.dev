@@ -172,12 +172,9 @@ describe("resolveDeeplinkPage", () => {
     expect(resolveDeeplinkPage("projects")).toBeUndefined();
   });
 
-  it("keeps the legacy runtime-updates deeplink pointing at the projects page", () => {
-    expect(ORG_PAGE_TARGETS.get("runtime-updates")).toEqual({
-      landing: "projects",
-      prefix: "projects",
-    });
-    expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBe("projects");
+  it("does not carry a runtime-updates alias", () => {
+    expect(ORG_PAGE_TARGETS.has("runtime-updates")).toBe(false);
+    expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBeUndefined();
     expect(resolveDeeplinkPage("runtime-updates")).toBeUndefined();
   });
 
