@@ -1064,6 +1064,7 @@ function ColumnResizeHandle({ header }: { header: Header<RowData, unknown> }) {
 }
 /* oxlint-enable jsx-a11y/no-static-element-interactions */
 
+// oxlint-disable-next-line react/react-compiler -- TanStack Table is not compatible with compiler memoization.
 export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,

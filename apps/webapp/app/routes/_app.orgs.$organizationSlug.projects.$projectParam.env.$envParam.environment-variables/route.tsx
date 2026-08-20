@@ -743,6 +743,7 @@ function EnvironmentVariableTableRow({
   );
 }
 
+// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 function EnvironmentVariablesVirtualTableBody({
   groupedEnvironmentVariables,
   scrollRef,

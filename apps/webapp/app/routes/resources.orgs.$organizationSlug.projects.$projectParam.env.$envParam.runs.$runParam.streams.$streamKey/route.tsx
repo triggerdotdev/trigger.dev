@@ -105,6 +105,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   );
 };
 
+// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 export function RealtimeStreamViewer({
   runId,
   streamKey,
