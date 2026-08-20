@@ -41,6 +41,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
   private seqNums = new Map<string, number>();
   private dispatchedSeqNums = new Map<string, number>();
   private unconsumedSeqNums = new Map<string, Set<number>>();
+  private cursorBarriers = new Map<string, SessionStreamRecordPredicate>();
 
   on(sessionId: string, io: SessionChannelIO, handler: Handler): { off: () => void } {
     const key = keyFor(sessionId, io);
@@ -197,6 +198,16 @@ export class TestSessionStreamManager implements SessionStreamManager {
     return this.peekRecord(sessionId, io)?.data;
   }
 
+  setCursorBarrier(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void {
+    const key = keyFor(sessionId, io);
+    if (predicate) this.cursorBarriers.set(key, predicate);
+    else this.cursorBarriers.delete(key);
+  }
+
   peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
     return this.buffer.get(keyFor(sessionId, io))?.[0];
   }
@@ -254,6 +265,16 @@ export class TestSessionStreamManager implements SessionStreamManager {
     const current = this.dispatchedSeqNums.get(key);
     if (current === undefined || seqNum > current) {
       this.dispatchedSeqNums.set(key, seqNum);
+    }
+  }
+
+  #isCursorBarrier(key: string, record: SessionStreamRecord): boolean {
+    const predicate = this.cursorBarriers.get(key);
+    if (!predicate) return true;
+    try {
+      return predicate(record);
+    } catch {
+      return true;
     }
   }
 
@@ -407,7 +428,9 @@ export class TestSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(record);
-    this.#markUnconsumedRecord(key, record.seqNum);
+    if (this.#isCursorBarrier(key, record)) {
+      this.#markUnconsumedRecord(key, record.seqNum);
+    }
     this.#drainOnceWaitersFromBuffer(key);
   }
 

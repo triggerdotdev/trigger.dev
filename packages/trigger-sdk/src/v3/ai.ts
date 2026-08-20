@@ -1563,6 +1563,23 @@ export type ChatMessages = RealtimeDefinedInputStream<ChatTaskWirePayload> & {
   next(options?: { timeoutInSeconds?: number }): Promise<ChatMessageRecord | undefined>;
 };
 
+/**
+ * Only message records hold the persisted `.in` cursor back.
+ *
+ * The `session-in-event-id` header serves two consumers with opposite needs:
+ * `findLatestSessionInCursor` reads it as a resume cursor and wants it
+ * conservative, while a client reads it to correlate its own send's
+ * turn-complete and wants it exact. Holding the cursor behind an unconsumed
+ * control record satisfies neither: resume safety does not need it (replaying a
+ * stop or a handover is benign, and a handover for a turn that never ran is
+ * discarded), while a client comparing the header against its own append
+ * sequence sees a value below its send and discards its own turn boundary.
+ * @internal
+ */
+function isChatCursorBarrier(record: { data: unknown }): boolean {
+  return (record.data as ChatInputChunk | undefined)?.kind === "message";
+}
+
 function isChatMessageRecord(record: { data: unknown }): boolean {
   return (record.data as ChatInputChunk | undefined)?.kind === "message";
 }
@@ -1997,6 +2014,31 @@ function releaseChatInputKinds(kinds: readonly string[]): void {
   const drain = locals.get(chatInputDrainKey);
   if (!drain) return;
   drain.off();
+  locals.set(chatInputDrainKey, attachUnclaimedChatInputDrain());
+}
+
+/**
+ * Narrow what holds the persisted `.in` cursor back. Sets no listener, so it is
+ * safe to call before the resume cursor is seeded.
+ * @internal
+ */
+function setChatCursorBarrier(chatId: string): void {
+  sessionStreams.setCursorBarrier(chatId, "in", isChatCursorBarrier);
+}
+
+/**
+ * Claim the kinds this boot has a consumer for and drain the rest.
+ *
+ * Attaches a `.in` listener, so it MUST run after the resume cursor is seeded;
+ * attaching first makes the subscribe open at seq 0 and replay every record the
+ * previous run already answered.
+ * @internal
+ */
+function attachChatInputDrain(payload: { trigger?: string }): void {
+  const claimed = chatClaimedKinds();
+  if (payload.trigger === "handover-prepare") {
+    for (const kind of CHAT_HANDOVER_KINDS) claimed.add(kind);
+  }
   locals.set(chatInputDrainKey, attachUnclaimedChatInputDrain());
 }
 
@@ -5527,19 +5569,13 @@ function chatCustomAgent<
       locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
+      setChatCursorBarrier(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
       // Seed the `.in` resume cursor before user code attaches any `.in`
       // listener — otherwise a continuation boot replays already-answered
       // messages into the loop's first wait.
       await seedSessionInResumeCursorForCustomLoop(payload);
-      // Claim the kinds this boot actually has a consumer for, then attach the
-      // drain for everything else. Handover kinds are only claimed on a
-      // handover-prepare boot, which is the only boot that waits for them.
-      const claimed = chatClaimedKinds();
-      if (payload.trigger === "handover-prepare") {
-        for (const kind of CHAT_HANDOVER_KINDS) claimed.add(kind);
-      }
-      locals.set(chatInputDrainKey, attachUnclaimedChatInputDrain());
+      attachChatInputDrain(payload);
       return userRun(payload, runOptions);
     },
   });
@@ -5646,6 +5682,7 @@ function chatAgent<
       locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
+      setChatCursorBarrier(payload.chatId);
 
       // Stamp `gen_ai.conversation.id` on the run-level span. Every
       // nested span inherits the same attribute via
@@ -5931,6 +5968,8 @@ function chatAgent<
           );
         }
       }
+
+      attachChatInputDrain(payload);
 
       // ── Recovery boot + chain reconstruction ────────────────────────
       if (!hydrateMessages) {
@@ -9109,6 +9148,15 @@ function createStopSignal(): {
 async function chatWriteTurnComplete(options?: {
   publicAccessToken?: string;
 }): Promise<{ lastEventId?: string; sessionInEventId?: string }> {
+  // A handover-prepare boot claims the handover kinds so a signal arriving
+  // before `waitForHandover` attaches is not drained. A loop that never calls
+  // `waitForHandover` would otherwise hold that claim for the life of the run,
+  // leaving any handover record parked at the head of the channel: it wedges
+  // `chat.messages.next()` and, before the cursor barrier narrowed, pinned the
+  // persisted cursor forever. By the time a turn completes the handover window
+  // is over either way.
+  releaseChatInputKinds(CHAT_HANDOVER_KINDS);
+
   const result = await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
   // Same cursor written to the `session-in-event-id` header inside
   // `writeTurnCompleteChunk`; surfaced here so the caller can persist it.

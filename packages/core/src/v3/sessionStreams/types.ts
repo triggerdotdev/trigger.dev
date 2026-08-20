@@ -82,6 +82,16 @@ export interface SessionStreamManager {
   /** Non-blocking peek at the head record, including its durable metadata. */
   peekRecord?(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined;
 
+  /**
+   * Narrow which buffered records hold the persisted cursor back. Absent means
+   * every record does.
+   */
+  setCursorBarrier?(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void;
+
   /** Last S2 sequence number seen on the given channel. */
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
 

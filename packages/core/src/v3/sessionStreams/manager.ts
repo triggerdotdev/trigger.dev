@@ -70,6 +70,14 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   // Kept separately from `buffer` so the committed cursor can be calculated
   // without depending on buffer traversal.
   private unconsumedSeqNums = new Map<string, Set<number>>();
+
+  /**
+   * Per-channel predicate deciding which buffered records hold the persisted
+   * cursor back. Absent means every record does, which is the conservative
+   * default. Consumers that know their record kinds narrow it so the cursor is
+   * only held behind records whose loss would matter.
+   */
+  private cursorBarriers = new Map<string, SessionStreamRecordPredicate>();
   // High-water mark of seq_nums that have been *consumed* (delivered to a
   // once() waiter or shifted off the buffer into a once() caller) on a channel.
   // Distinct from `seqNums`, which advances whenever any record is
@@ -329,6 +337,37 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
+  setCursorBarrier(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void {
+    const key = keyFor(sessionId, io);
+    if (predicate) {
+      this.cursorBarriers.set(key, predicate);
+    } else {
+      this.cursorBarriers.delete(key);
+    }
+  }
+
+  /**
+   * Fails safe: an absent or throwing predicate treats the record as a barrier,
+   * so a mistake here can only make the cursor more conservative, never skip a
+   * record.
+   */
+  #isCursorBarrier(key: string, record: SessionStreamRecord): boolean {
+    const predicate = this.cursorBarriers.get(key);
+    if (!predicate) return true;
+    try {
+      return predicate(record);
+    } catch (error) {
+      if (this.debug) {
+        console.error("[SessionStreamManager] Cursor barrier predicate error:", error);
+      }
+      return true;
+    }
+  }
+
   #markUnconsumedRecord(key: string, seqNum: number): void {
     if (!Number.isFinite(seqNum)) return;
 
@@ -423,6 +462,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.seqNums.clear();
     this.lastDispatchedSeqNums.clear();
     this.unconsumedSeqNums.clear();
+    this.cursorBarriers.clear();
     this.minTimestamps.clear();
     this.handlers.clear();
     this.reconnectAttempts.clear();
@@ -602,7 +642,9 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(record);
-    this.#markUnconsumedRecord(key, record.seqNum);
+    if (this.#isCursorBarrier(key, record)) {
+      this.#markUnconsumedRecord(key, record.seqNum);
+    }
     this.#drainOnceWaitersFromBuffer(key);
   }
 

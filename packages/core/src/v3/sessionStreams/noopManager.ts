@@ -55,6 +55,12 @@ export class NoopSessionStreamManager implements SessionStreamManager {
     return undefined;
   }
 
+  setCursorBarrier(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _predicate: SessionStreamRecordPredicate | undefined
+  ): void {}
+
   lastSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
     return undefined;
   }

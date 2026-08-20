@@ -86,6 +86,14 @@ export class SessionStreamsAPI implements SessionStreamManager {
     return manager.peekRecord(sessionId, io);
   }
 
+  public setCursorBarrier(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void {
+    this.#getManager().setCursorBarrier?.(sessionId, io, predicate);
+  }
+
   public lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
     return this.#getManager().lastSeqNum(sessionId, io);
   }
