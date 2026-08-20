@@ -1885,16 +1885,117 @@ async function waitForHandover(options: {
   spanName?: string;
 }): Promise<HandoverSignal | null> {
   if (options.payload.trigger !== "handover-prepare") return null;
-  const result = await handoverInput.waitWithIdleTimeout({
-    idleTimeoutInSeconds:
-      options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
-    timeout: options.timeout,
-    spanName: options.spanName ?? "waiting for handover signal",
-  });
-  // Non-ok = idle timeout or the warm handler crashed without signaling.
-  if (!result.ok) return null;
-  return result.output;
+  try {
+    const result = await handoverInput.waitWithIdleTimeout({
+      idleTimeoutInSeconds:
+        options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
+      timeout: options.timeout,
+      spanName: options.spanName ?? "waiting for handover signal",
+    });
+    // Non-ok = idle timeout or the warm handler crashed without signaling.
+    if (!result.ok) return null;
+    return result.output;
+  } finally {
+    // The handover window is over either way. A signal arriving after this
+    // point has no consumer, so hand it to the drain rather than letting it
+    // park at the head of the channel.
+    releaseChatInputKinds(CHAT_HANDOVER_KINDS);
+  }
 }
+
+/**
+ * Record kinds on `session.in` that some consumer on THIS boot is responsible
+ * for. `"message"` is always claimed; handover kinds are claimed only for the
+ * window in which `waitForHandover` is actually waiting for them.
+ *
+ * Anything not in this set has no consumer on this boot, so leaving it buffered
+ * would park it at the head of the channel forever — `chat.messages.next()` and
+ * `hasPending()` only ever inspect the head, so every record queued behind it
+ * becomes undeliverable with no error. The drain below discards unclaimed kinds
+ * instead.
+ * @internal
+ */
+const chatClaimedKindsKey = locals.create<Set<string>>("chat.claimedKinds");
+
+/** Kinds carried on `.in` that are not user messages. @internal */
+const CHAT_HANDOVER_KINDS = ["handover", "handover-skip"] as const;
+
+/** The run's attached drain subscription, so it can be re-offered the buffer. @internal */
+const chatInputDrainKey = locals.create<{ off: () => void }>("chat.inputDrain");
+
+function chatClaimedKinds(): Set<string> {
+  let claimed = locals.get(chatClaimedKindsKey);
+  if (!claimed) {
+    claimed = new Set<string>(["message"]);
+    locals.set(chatClaimedKindsKey, claimed);
+  }
+  return claimed;
+}
+
+/**
+ * Attach the unclaimed-control drain for this run.
+ *
+ * Consuming at dispatch (returning `true`) is what makes this safe for the
+ * resume cursor: the record is never buffered, so it leaves no unconsumed
+ * marker and `lastDispatchedSeqNum()` stays exact rather than being clamped
+ * behind a record nobody will ever take.
+ *
+ * `#dispatch` resolves a matching `once()` waiter BEFORE invoking handlers, so
+ * this can never take a record out from under a claimed consumer that is
+ * actively waiting for it.
+ *
+ * MUST be attached after `seedSessionInResumeCursorForCustomLoop`, like every
+ * other `.in` listener — attaching first would replay from seq 0.
+ * @internal
+ */
+function attachUnclaimedChatInputDrain(): { off: () => void } {
+  return getChatSession().in.on<ChatInputChunk>((chunk) => {
+    const kind = (chunk as { kind?: unknown } | undefined)?.kind;
+    // Malformed record: nothing can consume it, so don't let it wedge the head.
+    if (typeof kind !== "string") {
+      logger.warn("chat: discarded a malformed session.in record with no usable kind");
+      return true;
+    }
+    if (chatClaimedKinds().has(kind)) return undefined;
+    logger.warn("chat: discarded a session.in record that no consumer handled on this boot", {
+      kind,
+    });
+    return true;
+  });
+}
+
+/**
+ * Release claimed kinds and re-offer the buffer to the drain.
+ *
+ * Re-attaching is the sweep: `on()` re-offers every buffered record to the
+ * newly attached handler, so a record that was buffered while its kind was
+ * still claimed (the waiter-gap window between `once()` iterations) is
+ * discarded now and the cursor advances past it.
+ * @internal
+ */
+function releaseChatInputKinds(kinds: readonly string[]): void {
+  const claimed = chatClaimedKinds();
+  let changed = false;
+  for (const kind of kinds) {
+    if (claimed.delete(kind)) changed = true;
+  }
+  if (!changed) return;
+
+  const drain = locals.get(chatInputDrainKey);
+  if (!drain) return;
+  drain.off();
+  locals.set(chatInputDrainKey, attachUnclaimedChatInputDrain());
+}
+
+/**
+ * Declare that this run will consume the given `session.in` record kinds
+ * itself (via raw `session.in` reads). Claimed kinds are never discarded by
+ * the unclaimed-control drain: they stay buffered, block
+ * `chat.messages.next()` at the head of the channel, and hold the resume
+ * cursor behind them until consumed. Call `release()` when the loop stops
+ * consuming them — any still-buffered records of those kinds are then
+ * discarded and the cursor advances.
+ */
 
 /**
  * Per-turn deferred promises. Registered via `chat.defer()`, awaited
@@ -5428,6 +5529,14 @@ function chatCustomAgent<
       // listener — otherwise a continuation boot replays already-answered
       // messages into the loop's first wait.
       await seedSessionInResumeCursorForCustomLoop(payload);
+      // Claim the kinds this boot actually has a consumer for, then attach the
+      // drain for everything else. Handover kinds are only claimed on a
+      // handover-prepare boot, which is the only boot that waits for them.
+      const claimed = chatClaimedKinds();
+      if (payload.trigger === "handover-prepare") {
+        for (const kind of CHAT_HANDOVER_KINDS) claimed.add(kind);
+      }
+      locals.set(chatInputDrainKey, attachUnclaimedChatInputDrain());
       return userRun(payload, runOptions);
     },
   });
@@ -10765,6 +10874,7 @@ export const chat = {
   response: chatResponse,
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
+  /** Declare `session.in` record kinds this run consumes itself. See {@link chatClaimInputKinds}. */
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
   createStopSignal,
   /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */

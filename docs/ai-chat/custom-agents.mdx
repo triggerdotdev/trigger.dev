@@ -267,6 +267,11 @@ comes before a message, `hasPending()` stays `false` and `next()` leaves the
 control record for its own consumer. After that record is handled, the message
 becomes pending.
 
+A control record that nothing on the run consumes is discarded rather than left
+at the head of the channel. `hasPending()` and `next()` only look at the head, so
+a record parked there would make every message behind it undeliverable. This
+means `next()` returning `undefined` always means the mailbox is idle.
+
 A complete loop:
 
 ```ts trigger/my-chat-raw.ts

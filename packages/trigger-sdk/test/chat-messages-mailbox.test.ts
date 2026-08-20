@@ -64,7 +64,7 @@ describe("chat.messages mailbox", () => {
 
     await runInMockTaskContext(async (drivers) => {
       const runPromise = run(
-        { chatId, trigger: "preload" },
+        { chatId, trigger: "handover-prepare" },
         { ctx: drivers.ctx, signal: new AbortController().signal }
       );
       await ready.promise;
@@ -156,7 +156,7 @@ describe("chat.messages mailbox", () => {
 
     await runInMockTaskContext(async (drivers) => {
       const runPromise = run(
-        { chatId, trigger: "preload" },
+        { chatId, trigger: "handover-prepare" },
         { ctx: drivers.ctx, signal: new AbortController().signal }
       );
       await ready.promise;
@@ -229,7 +229,7 @@ describe("chat.messages mailbox", () => {
 
     await runInMockTaskContext(async (drivers) => {
       const runPromise = run(
-        { chatId, trigger: "preload" },
+        { chatId, trigger: "handover-prepare" },
         { ctx: drivers.ctx, signal: new AbortController().signal }
       );
       await ready.promise;
