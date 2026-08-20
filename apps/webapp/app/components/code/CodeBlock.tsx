@@ -221,35 +221,35 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const [modalCopied, setModalCopied] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isWrapped, setIsWrapped] = useState(wrap);
+    const normalizedCode = code?.trim() ?? "";
 
     const onCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
         event.stopPropagation();
-        navigator.clipboard.writeText(code);
+        navigator.clipboard.writeText(normalizedCode);
         setCopied(true);
         setTimeout(() => {
           setCopied(false);
         }, 1500);
       },
-      [code]
+      [normalizedCode]
     );
 
     const onModalCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
         event.stopPropagation();
-        navigator.clipboard.writeText(code);
+        navigator.clipboard.writeText(normalizedCode);
         setModalCopied(true);
         setTimeout(() => {
           setModalCopied(false);
         }, 1500);
       },
-      [code]
+      [normalizedCode]
     );
 
-    code = code?.trim() ?? "";
-    const lineCount = code.split("\n").length;
+    const lineCount = normalizedCode.split("\n").length;
     const maxLineWidth = lineCount.toString().length;
     let maxHeight: string | undefined = undefined;
     if (maxLines && lineCount > maxLines) {
@@ -345,7 +345,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
           {shouldHighlight ? (
             <HighlightCode
               theme={theme}
-              code={code}
+              code={normalizedCode}
               language={language}
               showLineNumbers={showLineNumbers}
               highlightLines={highlightLines}
@@ -373,7 +373,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 )}
                 dir="ltr"
               >
-                {highlightSearchText(code, searchTerm)}
+                {highlightSearchText(normalizedCode, searchTerm)}
               </pre>
             </div>
           )}
@@ -400,7 +400,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             {shouldHighlight ? (
               <HighlightCode
                 theme={theme}
-                code={code}
+                code={normalizedCode}
                 language={language}
                 showLineNumbers={showLineNumbers}
                 highlightLines={highlightLines}
@@ -415,7 +415,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
-                  {highlightSearchText(code, searchTerm)}
+                  {highlightSearchText(normalizedCode, searchTerm)}
                 </pre>
               </div>
             )}
