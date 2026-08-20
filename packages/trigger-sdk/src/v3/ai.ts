@@ -9148,15 +9148,6 @@ function createStopSignal(): {
 async function chatWriteTurnComplete(options?: {
   publicAccessToken?: string;
 }): Promise<{ lastEventId?: string; sessionInEventId?: string }> {
-  // A handover-prepare boot claims the handover kinds so a signal arriving
-  // before `waitForHandover` attaches is not drained. A loop that never calls
-  // `waitForHandover` would otherwise hold that claim for the life of the run,
-  // leaving any handover record parked at the head of the channel: it wedges
-  // `chat.messages.next()` and, before the cursor barrier narrowed, pinned the
-  // persisted cursor forever. By the time a turn completes the handover window
-  // is over either way.
-  releaseChatInputKinds(CHAT_HANDOVER_KINDS);
-
   const result = await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
   // Same cursor written to the `session-in-event-id` header inside
   // `writeTurnCompleteChunk`; surfaced here so the caller can persist it.
@@ -11009,6 +11000,17 @@ async function writeTurnCompleteChunk(
   publicAccessToken?: string
 ): Promise<StreamWriteResult> {
   const session = getChatSession();
+
+  // A handover-prepare boot claims the handover kinds so a signal arriving
+  // before `waitForHandover` attaches is not drained. Released here rather than
+  // only in `waitForHandover`, because a loop that never calls it would
+  // otherwise hold the claim for the life of the run and leave a handover
+  // record parked at the head of the channel, where it wedges
+  // `chat.messages.next()`. Every surface reaches a turn boundary through this
+  // function, including the managed agent, which does not call the public
+  // `chat.writeTurnComplete`. By the time a turn completes the handover window
+  // is over either way.
+  releaseChatInputKinds(CHAT_HANDOVER_KINDS);
 
   // 1. Write the turn-complete control record. The ack's `lastEventId` is
   //    this record's seq_num — that's the trim target for the NEXT turn.
