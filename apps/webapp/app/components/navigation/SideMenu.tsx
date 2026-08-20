@@ -589,6 +589,7 @@ export function SideMenu({
   }, []);
 
   // Animate width + progress over COLLAPSE_ANIM_MS (toggle button, ⌘B shortcut, release-snap).
+  /* oxlint-disable react/react-compiler -- The animation step is local to each callback invocation. */
   const animateTo = useCallback(
     (targetWidth: number, targetProgress: number) => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -619,6 +620,7 @@ export function SideMenu({
     },
     [writeVisual]
   );
+  /* oxlint-enable react/react-compiler */
 
   // Collapse/expand to a resting state and remember it.
   const applyCollapsed = useCallback(
@@ -637,6 +639,7 @@ export function SideMenu({
 
   // Drag runs on window-level listeners so releasing anywhere finalizes it. (Pointer capture alone
   // was unreliable: if the browser drops it mid-drag, the release never fires and the menu strands.)
+  /* oxlint-disable react/react-compiler -- Drag handlers share invocation-local state and listeners. */
   const onHandlePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -746,6 +749,7 @@ export function SideMenu({
     },
     [animateTo, applyCollapsed, persistSideMenuPreferences, writeVisual]
   );
+  /* oxlint-enable react/react-compiler */
 
   // Keep the drag handlers' collapsed mirror in sync; tear down any in-flight animation/drag on unmount.
   useEffect(() => {

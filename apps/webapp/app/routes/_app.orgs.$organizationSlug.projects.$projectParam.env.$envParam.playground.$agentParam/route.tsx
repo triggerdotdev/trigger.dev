@@ -393,6 +393,7 @@ function PlaygroundChat() {
 
   const session = transport.getSession(chatId);
 
+  /* oxlint-disable react/react-compiler -- The transport and chat ID are stable for this component's lifetime. */
   const handlePreload = useCallback(async () => {
     setPreloading(true);
     try {
@@ -403,6 +404,7 @@ function PlaygroundChat() {
       setPreloading(false);
     }
   }, [transport, chatId]);
+  /* oxlint-enable react/react-compiler */
 
   const handleNewConversation = useCallback(() => {
     // Navigate without ?conversation= so the loader returns activeConversation=null
