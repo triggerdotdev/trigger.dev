@@ -75,7 +75,9 @@ const SCOPE_REQUIRED_FK: Record<string, "userId" | "organizationId" | "projectId
 const ALL_FK_FIELDS = ["userId", "organizationId", "projectId"] as const;
 const CLI_ONLY_FIELDS = ["cliMaxDaysAfterFirstSeen", "cliMaxShowCount", "cliShowEvery"] as const;
 
-const NotificationBaseFields = {
+// Fields shared by every notification write, excluding the schedule (startsAt/endsAt).
+// Drafts reuse this set without committing to any dates.
+const NotificationContentFields = {
   title: z.string().min(1),
   payload: PayloadV1Schema,
   surface: z.enum(["WEBAPP", "CLI"]),
@@ -83,14 +85,18 @@ const NotificationBaseFields = {
   userId: z.string().optional(),
   organizationId: z.string().optional(),
   projectId: z.string().optional(),
-  endsAt: z
-    .string()
-    .datetime()
-    .transform((s) => new Date(s)),
   priority: z.number().int().default(0),
   cliMaxDaysAfterFirstSeen: z.number().int().positive().optional(),
   cliMaxShowCount: z.number().int().positive().optional(),
   cliShowEvery: z.number().int().min(2).optional(),
+};
+
+const NotificationBaseFields = {
+  ...NotificationContentFields,
+  endsAt: z
+    .string()
+    .datetime()
+    .transform((s) => new Date(s)),
 };
 
 export const CreatePlatformNotificationSchema = z
@@ -209,6 +215,59 @@ function validateEndsAt(data: { startsAt?: Date; endsAt: Date }, ctx: z.Refineme
 }
 
 export type CreatePlatformNotificationInput = z.input<typeof CreatePlatformNotificationSchema>;
+
+// A draft has no schedule yet: startsAt/endsAt are collected at publish time.
+export const CreateDraftPlatformNotificationSchema = z
+  .object({
+    ...NotificationContentFields,
+  })
+  .superRefine((data, ctx) => {
+    validateScopeForeignKeys(data, ctx);
+    validateSurfaceFields(data, ctx);
+    validatePayloadTypeForSurface(data, ctx);
+  });
+
+export type CreateDraftPlatformNotificationInput = z.input<
+  typeof CreateDraftPlatformNotificationSchema
+>;
+
+// Editing a draft keeps it a draft — content changes only, still no schedule.
+export const UpdateDraftPlatformNotificationSchema = z
+  .object({
+    ...NotificationContentFields,
+    id: z.string().min(1),
+  })
+  .superRefine((data, ctx) => {
+    validateScopeForeignKeys(data, ctx);
+    validateSurfaceFields(data, ctx);
+    validatePayloadTypeForSurface(data, ctx);
+  });
+
+export type UpdateDraftPlatformNotificationInput = z.input<
+  typeof UpdateDraftPlatformNotificationSchema
+>;
+
+// Publishing a draft is where the schedule finally becomes required and validated.
+export const PublishDraftPlatformNotificationSchema = z
+  .object({
+    id: z.string().min(1),
+    startsAt: z
+      .string()
+      .datetime()
+      .transform((s) => new Date(s)),
+    endsAt: z
+      .string()
+      .datetime()
+      .transform((s) => new Date(s)),
+  })
+  .superRefine((data, ctx) => {
+    validateStartsAt(data, ctx);
+    validateEndsAt(data, ctx);
+  });
+
+export type PublishDraftPlatformNotificationInput = z.input<
+  typeof PublishDraftPlatformNotificationSchema
+>;
 
 export const UpdatePlatformNotificationSchema = z
   .object({
