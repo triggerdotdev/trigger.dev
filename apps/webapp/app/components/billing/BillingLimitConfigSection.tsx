@@ -126,6 +126,7 @@ export function BillingLimitConfigSection({
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setMode(resetMode);
     setCustomAmount(savedCustomAmount);
     setCancelInProgressRuns(savedCancelInProgressRuns);

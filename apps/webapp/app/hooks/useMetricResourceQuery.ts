@@ -214,6 +214,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   ]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     load();
     return () => abortRef.current?.abort();
   }, [load]);

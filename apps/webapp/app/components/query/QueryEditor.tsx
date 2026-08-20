@@ -985,6 +985,7 @@ function QueryTitle({
 
   // Update rename value when title changes
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setRenameValue(title ?? "");
   }, [title]);
 

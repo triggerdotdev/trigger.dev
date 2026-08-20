@@ -48,6 +48,7 @@ export function DurationPicker({
     const newMinutes = Math.floor((controlledValue % 3600) / 60);
     const newSeconds = controlledValue % 60;
 
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setHours(newHours);
     setMinutes(newMinutes);
     setSeconds(newSeconds);

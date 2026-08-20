@@ -183,6 +183,7 @@ export function VercelOnboardingModal({
       hasSyncedStagingRef.current = false;
       hasSyncedPreviewRef.current = false;
     } else if (isOpen && state === "idle") {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState(computeInitialState());
     }
     prevIsOpenRef.current = isOpen;
@@ -262,6 +263,7 @@ export function VercelOnboardingModal({
   // Strip "stg" from build settings when the staging environment mapping is cleared
   useEffect(() => {
     if (!vercelStagingEnvironment) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setPullEnvVarsBeforeBuild((prev) => prev.filter((s) => s !== "stg"));
       setDiscoverEnvVars((prev) => prev.filter((s) => s !== "stg"));
     }
@@ -329,6 +331,7 @@ export function VercelOnboardingModal({
   useEffect(() => {
     if (!isOpen) {
       hasTriggeredMarketplaceRedirectRef.current = false;
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsRedirecting(false);
     }
   }, [isOpen]);
@@ -390,6 +393,7 @@ export function VercelOnboardingModal({
       state === "loading-projects" &&
       onboardingData?.availableProjects !== undefined
     ) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("project-selection");
     }
   }, [state, onboardingData?.availableProjects, onboardingData?.authInvalid]);
@@ -400,6 +404,7 @@ export function VercelOnboardingModal({
       state === "loading-env-vars" &&
       onboardingData?.environmentVariables
     ) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("env-var-sync");
     }
   }, [state, onboardingData?.environmentVariables, onboardingData?.authInvalid]);
@@ -415,6 +420,7 @@ export function VercelOnboardingModal({
       trackOnboarding("vercel onboarding project selected", {
         vercel_project_name: selectedVercelProject?.name,
       });
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("loading-env-mapping");
       if (onDataReload) {
         onDataReload();
@@ -437,6 +443,7 @@ export function VercelOnboardingModal({
       const hasCustomEnvs =
         (onboardingData.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
       if (hasCustomEnvs && !fromMarketplaceContext) {
+        // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
         setState("env-mapping");
       } else {
         setState("loading-env-vars");
@@ -661,6 +668,7 @@ export function VercelOnboardingModal({
         }
         return;
       }
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("completed");
     }
   }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state, state]);
@@ -675,6 +683,7 @@ export function VercelOnboardingModal({
           return;
         }
       }
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("completed");
     }
   }, [state, isGitHubConnectedForOnboarding, fromMarketplaceContext, nextUrl, trackOnboarding]);
@@ -704,6 +713,7 @@ export function VercelOnboardingModal({
       envMappingFetcher.data.success &&
       envMappingFetcher.state === "idle"
     ) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("loading-env-vars");
     }
   }, [envMappingFetcher.data, envMappingFetcher.state]);
@@ -719,12 +729,14 @@ export function VercelOnboardingModal({
         selectedEnv = stagingEnv ?? customEnvironments[0];
       }
 
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setVercelStagingEnvironment({ environmentId: selectedEnv.id, displayName: selectedEnv.slug });
     }
   }, [state, customEnvironments, vercelStagingEnvironment]);
 
   useEffect(() => {
     if (state === "project-selection" && availableProjects.length > 0 && !selectedVercelProject) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSelectedVercelProject(availableProjects[0]);
     }
   }, [state, availableProjects, selectedVercelProject]);

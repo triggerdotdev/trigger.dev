@@ -519,6 +519,7 @@ function TimeDropdown({
   // Sync state when props change
   useEffect(() => {
     const parsed = getInitialCustomDuration(period);
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setCustomValue(parsed.value);
     setCustomUnit(parsed.unit);
 

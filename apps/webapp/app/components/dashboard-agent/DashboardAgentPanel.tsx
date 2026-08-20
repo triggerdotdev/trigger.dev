@@ -168,6 +168,7 @@ export function DashboardAgentPanel({
 
   // Ordering-safe: if the new chat has not reported yet, its own report re-sets the marker.
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setThinkingChatId((previous) => markerAfterActiveChat(previous, active?.chatId));
   }, [active?.chatId]);
 
@@ -313,6 +314,7 @@ export function DashboardAgentPanel({
     void loadHistory();
     const stored = readLastChat(storageKey);
     if (stored && stored.path === location.pathname) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       void openChat(stored.chatId);
     } else {
       setLoading(false);
@@ -341,6 +343,7 @@ export function DashboardAgentPanel({
     handledOpenChatSeq.current = openChatRequest.seq;
     // Reloading the visible transcript would drop a turn in flight.
     if (openChatRequest.chatId === active?.chatId) return;
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     void openChat(openChatRequest.chatId);
     // `active` is read, not tracked: a later change must not re-run the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -357,6 +360,7 @@ export function DashboardAgentPanel({
     onChatRead?.(chatId, { leaving: false });
     visibleChatId.current = nextVisibleChat(chatId, { leaving: false });
     justRead.current.add(chatId);
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setChats((previous) => markChatListRead(previous, chatId));
     // Read again on the way out: a wake can land while the chat is open.
     return () => {
@@ -384,6 +388,7 @@ export function DashboardAgentPanel({
     if (target === "hold") return;
     handledRequestSeq.current = requestedMessage.seq;
     if (target === "new-chat") {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       void createChat(requestedMessage.text);
       return;
     }

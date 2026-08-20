@@ -438,6 +438,7 @@ export function SideMenu({
     const data = customizationFetcher.data;
     if (!data) {
       // Settled with no response body (e.g. a session-expiry redirect): fail rather than spin
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setCustomizeConfirmPending(false);
       setCustomizeError("Couldn't save your changes. Please try again.");
       return;
@@ -1488,6 +1489,7 @@ function SideMenuMoreItem({
 
   // Watch search too: navigating to a favorite can change only the search on the same pathname
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOpen(false);
   }, [navigation.location?.pathname, navigation.location?.search]);
 
@@ -1701,6 +1703,7 @@ function OrgSelector({
   const planTitle = currentPlan?.v3Subscription?.plan?.title;
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOrgMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -1979,6 +1982,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
   const navigation = useNavigation();
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -2033,6 +2037,7 @@ function ProjectSelector({
   const { urlForProject } = usePageSwitcher();
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -2154,6 +2159,7 @@ function SideMenuPopoverSubMenu({
 
   // Close the submenu on navigation (the parent popover closes too).
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 

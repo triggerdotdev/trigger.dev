@@ -76,6 +76,7 @@ export function Feedback({
   useEffect(() => {
     const open = searchParams.get("feedbackPanel");
     if (open) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setType(open as FeedbackType);
       setOpen(true);
       // Clone instead of mutating in place
