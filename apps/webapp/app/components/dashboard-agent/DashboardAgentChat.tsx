@@ -123,6 +123,7 @@ export function DashboardAgentChat({
   // The path this chat last rendered on. React never unmounts on a page teardown, so an
   // unmount whose live URL has moved is the router having navigated out from under it.
   const renderedPathRef = useRef(location.pathname);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   renderedPathRef.current = location.pathname;
 
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
@@ -209,6 +210,7 @@ export function DashboardAgentChat({
   });
 
   const orderRef = useRef(createTranscriptOrder(initialMessages));
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   const messages = orderTranscript(rawMessages, orderRef.current);
 
   // Read here, not in the panel, so it re-reads as each turn settles.
@@ -359,6 +361,7 @@ export function DashboardAgentChat({
   const navigatedRef = useRef<Set<string> | null>(null);
   if (navigatedRef.current === null) {
     navigatedRef.current = new Set();
+    // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
     pendingNavigateIntents(initialMessages, navigatedRef.current);
   }
   useEffect(() => {
@@ -374,6 +377,7 @@ export function DashboardAgentChat({
   const watchProposedRef = useRef<Set<string> | null>(null);
   if (watchProposedRef.current === null) {
     watchProposedRef.current = new Set();
+    // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
     pendingWatchIntents(initialMessages, watchProposedRef.current);
   }
   useEffect(() => {
@@ -388,6 +392,7 @@ export function DashboardAgentChat({
   }, [transport, chatId, aiStop]);
 
   const teardownRef = useRef<() => void>(() => {});
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   teardownRef.current = () => {
     if (status !== "streaming" && status !== "submitted") return;
     const reason = unmountTeardown({
@@ -401,6 +406,7 @@ export function DashboardAgentChat({
 
   // Read by the settle effect, which must not re-run when the transcript changes.
   const messagesRef = useRef(messages);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   messagesRef.current = messages;
 
   const prevStatus = useRef(status);

@@ -207,6 +207,7 @@ export function useDashboardEditor({
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(initialData.layout));
   const initialDataRef = useRef(initialData);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   initialDataRef.current = initialData;
 
   // Sync queue to prevent race conditions

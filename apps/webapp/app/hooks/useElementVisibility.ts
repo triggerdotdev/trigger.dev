@@ -8,6 +8,7 @@ export function useElementVisibility({ onVisibilityChange }: UseElementVisibilit
   const ref = useRef<HTMLDivElement>(null);
   const isVisibleRef = useRef(false);
   const callbackRef = useRef(onVisibilityChange);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   callbackRef.current = onVisibilityChange;
 
   useEffect(() => {

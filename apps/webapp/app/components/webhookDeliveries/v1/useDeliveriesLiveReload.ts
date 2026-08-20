@@ -124,6 +124,7 @@ export function useDeliveriesLiveReload({
   const location = useLocation();
   const deliveriesPollFetcher = useTypedFetcher<typeof liveDeliveriesLoader>();
   const deliveriesPollFetcherStateRef = useRef(deliveriesPollFetcher.state);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   deliveriesPollFetcherStateRef.current = deliveriesPollFetcher.state;
 
   const [visibleDeliveries, setVisibleDeliveries] = useState(deliveries);
