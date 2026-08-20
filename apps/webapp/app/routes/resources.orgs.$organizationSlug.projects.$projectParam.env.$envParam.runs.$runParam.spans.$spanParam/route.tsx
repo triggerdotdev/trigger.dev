@@ -91,6 +91,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useIsMetricResponseFresh } from "~/hooks/useMetricResourceQuery";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import {
@@ -1319,10 +1320,12 @@ function WaitingInQueueBlock({
   const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
   const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
   const now = responseReceivedAt ?? loadedAt;
-  const fresh =
-    latest && Number.isFinite(latestBucketMs) && now - latestBucketMs < LIVE_GAUGE_FRESH_MS
-      ? latest
-      : undefined;
+  const liveFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    latestBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
+  const fresh = latest && liveFresh ? latest : undefined;
 
   const key = waiting.concurrencyKey;
   const running = fresh ? toNumber(fresh.running) : waiting.running;

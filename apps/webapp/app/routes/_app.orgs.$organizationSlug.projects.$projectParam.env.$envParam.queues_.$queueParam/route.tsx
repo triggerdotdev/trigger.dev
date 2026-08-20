@@ -33,6 +33,7 @@ import {
   toNumber,
   useQueueMetric,
 } from "~/components/queues/QueueMetricCards";
+import { useIsMetricResponseFresh } from "~/hooks/useMetricResourceQuery";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
@@ -1137,10 +1138,11 @@ function QueueStats({
   // Redis/PG value instead of lingering on a stale count.
   const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
   const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
-  const liveFresh =
-    responseReceivedAt !== null &&
-    Number.isFinite(latestBucketMs) &&
-    responseReceivedAt - latestBucketMs < LIVE_GAUGE_FRESH_MS;
+  const liveFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    latestBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
   const fresh = latest && liveFresh ? latest : undefined;
   const runningLive = fresh ? toNumber(fresh.running) : null;
   const queuedLive = fresh ? toNumber(fresh.queued) : null;

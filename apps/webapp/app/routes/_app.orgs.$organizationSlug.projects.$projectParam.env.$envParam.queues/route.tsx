@@ -74,6 +74,7 @@ import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
+  useIsMetricResponseFresh,
   useMetricResourceQuery,
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
@@ -438,13 +439,12 @@ function QueuesWithMetricsView() {
   // client-side nav-back (responseCache), or a quiet env whose latest bucket is minutes old, must
   // not override the loader's Redis-exact live values with a stale count.
   const lastLiveBucketMs = lastLiveBlockRow ? tileTimeToMs(lastLiveBlockRow.t) : NaN;
-  const freshLiveBlockRow =
-    responseReceivedAt !== null &&
-    lastLiveBlockRow &&
-    Number.isFinite(lastLiveBucketMs) &&
-    responseReceivedAt - lastLiveBucketMs < LIVE_GAUGE_FRESH_MS
-      ? lastLiveBlockRow
-      : null;
+  const liveBlockIsFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    lastLiveBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
+  const freshLiveBlockRow = lastLiveBlockRow && liveBlockIsFresh ? lastLiveBlockRow : null;
   const envQueuedLive = freshLiveBlockRow
     ? tileNumber(freshLiveBlockRow.env_queued)
     : environment.queued;

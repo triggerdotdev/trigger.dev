@@ -13,6 +13,25 @@ export type MetricResourceTimeRange = {
   to: string | null;
 };
 
+export function useIsMetricResponseFresh(
+  responseReceivedAt: number | null,
+  dataTimestamp: number,
+  maxAgeMs: number
+) {
+  const expiresAt =
+    responseReceivedAt !== null && Number.isFinite(dataTimestamp) ? dataTimestamp + maxAgeMs : null;
+  const [expiredAt, setExpiredAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (expiresAt === null) return;
+
+    const timeout = setTimeout(() => setExpiredAt(expiresAt), Math.max(0, expiresAt - Date.now()));
+    return () => clearTimeout(timeout);
+  }, [expiresAt]);
+
+  return expiresAt !== null && expiredAt !== expiresAt;
+}
+
 export type MetricResourceQueryOptions = {
   organizationId: string;
   projectId: string;
