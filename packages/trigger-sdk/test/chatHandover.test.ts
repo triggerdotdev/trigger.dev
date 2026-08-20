@@ -632,4 +632,66 @@ describe("chat.handover", () => {
       await harness.close();
     }
   });
+
+  it("seeds the accumulator from headStartMessages without hydrateMessages", async () => {
+    // The hydrate variant above gets the head-start user message through
+    // `incomingMessages`. Without `hydrateMessages` it arrives only via the
+    // boot-time seed from `payload.headStartMessages`, so this is the path
+    // that keeps an app with a display-only transcript from storing an
+    // answer with no question above it.
+    //
+    // Note the shape a persisting app has to handle: by `onTurnStart` the
+    // accumulator is already ["user", "assistant"], because the warm route's
+    // partial is spliced in before the hook fires. "The incoming message is
+    // the last one" is therefore false on this path.
+    let captured: { roles: string[]; texts: string[] } | undefined;
+
+    const agent = chat.agent({
+      id: "test-handover-seed-no-hydrate",
+      onTurnComplete: async ({ uiMessages }) => {
+        captured = {
+          roles: uiMessages.map((m) => m.role),
+          texts: uiMessages.map((m) =>
+            m.parts
+              .map((p) => (p.type === "text" ? p.text : ""))
+              .join("")
+          ),
+        };
+      },
+      run: async ({ messages, signal }) =>
+        streamText({
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("should-not-run") }),
+          }),
+          messages,
+          abortSignal: signal,
+        }),
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "test-handover-seed-no-hydrate",
+      mode: "handover-prepare",
+      headStartMessages: [
+        { id: "hs-user-1", role: "user", parts: [{ type: "text", text: "say hi" }] },
+      ],
+    });
+
+    try {
+      await harness.sendHandover({
+        partialAssistantMessage: [
+          { role: "assistant", content: [{ type: "text", text: "Hi there." }] },
+        ],
+        messageId: "asst-seed-1",
+        isFinal: true,
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(captured).toBeDefined();
+      expect(captured!.roles).toEqual(["user", "assistant"]);
+      expect(captured!.texts[0]).toBe("say hi");
+    } finally {
+      await harness.close();
+    }
+  });
+
 });
