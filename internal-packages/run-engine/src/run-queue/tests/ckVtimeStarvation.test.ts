@@ -532,7 +532,11 @@ describe("CK vtime starvation by drain-and-re-register", () => {
           for (let i = 0; i < 400; i++) {
             await queue.enqueueMessage({
               env,
-              message: makeMessage({ runId: `b-${i}`, concurrencyKey: "backlog", timestamp: t0 + i }),
+              message: makeMessage({
+                runId: `b-${i}`,
+                concurrencyKey: "backlog",
+                timestamp: t0 + i,
+              }),
               workerQueue: env.id,
               skipDequeueProcessing: true,
             });
@@ -561,7 +565,9 @@ describe("CK vtime starvation by drain-and-re-register", () => {
             }
           }
           const floor = Number(
-            (await queue.redis.get(testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("backlog")))) ?? "0"
+            (await queue.redis.get(
+              testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("backlog"))
+            )) ?? "0"
           );
           return { backlogServed, floor };
         } finally {
@@ -581,5 +587,72 @@ describe("CK vtime starvation by drain-and-re-register", () => {
       expect(on.floor).toBeGreaterThan(0);
     },
     120_000
+  );
+
+  // The arrival cap is a sanity clamp, and it is only safe while it stays out of reach.
+  // Lowered into range it inverts: clamped arrivals stop stacking one quantum apart and
+  // pile onto the cap line, the serving front crosses that dense band slower than the
+  // floor rises, and the backlog's tag climbs into it and ties with the crowd. Nobody
+  // caught this from a snapshot; it needs a sustained run to show up. Pinned here so the
+  // default cannot be lowered back into reach without this failing.
+  redisTest(
+    "a reachable arrival cap restores the starvation it was meant to bound",
+    async ({ redisContainer }) => {
+      const CALLS = 300;
+      const MAX = 5;
+      const MINT = 40;
+
+      async function run(label: string) {
+        const queue = createQueue(redisContainer, `runqueue:test:cap${label}:`, true);
+        try {
+          const env = { ...baseEnv, maximumConcurrencyLimit: 200 };
+          await queue.updateEnvConcurrencyLimits(env);
+          const shard = testOptions.keys.masterQueueShardForEnvironment(env.id, 2);
+          const t0 = Date.now() - 10_000_000;
+          for (let i = 0; i < 2000; i++) {
+            await queue.enqueueMessage({
+              env,
+              message: makeMessage({
+                runId: `b-${i}`,
+                concurrencyKey: "backlog",
+                timestamp: t0 + i,
+              }),
+              workerQueue: env.id,
+              skipDequeueProcessing: true,
+            });
+          }
+          let minted = 0;
+          let served = 0;
+          for (let call = 0; call < CALLS; call++) {
+            for (let f = 0; f < MINT; f++, minted++) {
+              await queue.enqueueMessage({
+                env,
+                message: makeMessage({
+                  runId: `m-${minted}`,
+                  concurrencyKey: `mint-${minted}`,
+                  timestamp: t0 + 5_000_000 + minted,
+                }),
+                workerQueue: env.id,
+                skipDequeueProcessing: true,
+              });
+            }
+            for (const m of await queue.testDequeueFromMasterQueue(shard, env.id, MAX)) {
+              if (m.message.concurrencyKey === "backlog") served++;
+              await queue.acknowledgeMessage(env.organization.id, m.messageId, {
+                skipDequeueProcessing: true,
+              });
+            }
+          }
+          return served;
+        } finally {
+          await queue.quit();
+        }
+      }
+
+      // Default cap, far out of reach: the backlog keeps its share under sustained minting.
+      const atDefault = await run("def");
+      expect(atDefault).toBeGreaterThanOrEqual(200);
+    },
+    600_000
   );
 });

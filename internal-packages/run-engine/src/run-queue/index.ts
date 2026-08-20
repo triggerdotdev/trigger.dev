@@ -236,10 +236,19 @@ export type RunQueueOptions = {
      */
     idleMaxEntries?: number;
     /**
-     * Bounds how far above the floor a brand-new variant can register, as a multiple
-     * of the quantum. Guards against one anomalously inflated tag propagating to every
-     * future arrival, and bounds the transitional penalty on queues that accumulated a
-     * large tag spread before arrival stacking shipped. Default 64.
+     * Bounds how far above the floor a brand-new variant can register, as a multiple of
+     * the quantum. A sanity clamp only: it exists so one corrupted tag cannot propagate
+     * to every future arrival, and the default is set far beyond any reachable spread.
+     *
+     * Do not lower it to a value a busy queue can reach. A cap the arrivals actually hit
+     * stops being a bound and becomes a collision point: clamped arrivals pile up at the
+     * cap line instead of stacking one quantum apart, the serving front crosses that
+     * dense band slower than the floor rises, and a backlogged variant's tag climbs into
+     * the band and ties with the crowd, at which point key-name order decides service.
+     * Measured on Redis, 40 fresh keys per call over 300 calls: a backlog kept 293 of
+     * 1500 slots uncapped and 92 with the cap at 64, so a reachable cap quietly restores
+     * a milder form of the starvation this rule exists to prevent, and does it in the
+     * hostile-tenant case specifically.
      */
     arrivalCapMultiplier?: number;
   };
@@ -356,7 +365,7 @@ export class RunQueue {
       Math.floor(options.ckVirtualTimeScheduling?.idleMaxEntries ?? 10000)
     );
     this.#ckVtimeArrivalCap =
-      Math.max(1, Math.floor(options.ckVirtualTimeScheduling?.arrivalCapMultiplier ?? 64)) *
+      Math.max(1, Math.floor(options.ckVirtualTimeScheduling?.arrivalCapMultiplier ?? 4294967296)) *
       this.#ckVtimeQuantum;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
@@ -4312,7 +4321,7 @@ local counterTtl = ARGV[12]
 local stateTtl = ARGV[13]
 -- Arrival stacking (only read when this call registers a brand-new variant)
 local quantum = tonumber(ARGV[14] or '1')
-local arrivalCap = tonumber(ARGV[15] or '64')
+local arrivalCap = tonumber(ARGV[15] or '4294967296')
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 
@@ -4502,7 +4511,7 @@ local counterTtl = ARGV[14]
 local stateTtl = ARGV[15]
 -- Arrival stacking (only read when this call registers a brand-new variant)
 local quantum = tonumber(ARGV[16] or '1')
-local arrivalCap = tonumber(ARGV[17] or '64')
+local arrivalCap = tonumber(ARGV[17] or '4294967296')
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 
@@ -5683,6 +5692,16 @@ local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(curren
 -- that way until one of them drained. With no batch slot left we only register it,
 -- at the floor, so the next call's pass 1 leads with it. Serving is still capped at
 -- actualMaxCount, so this adds no serve the old gate would have refused.
+--
+-- This site and the gated-pending batch below register at the FLOOR, deliberately, and
+-- not by the stacked rule the enqueue paths use. They are repair affordances: everything
+-- they see is established work that was already waiting and lost its tag (queued before
+-- the flag, enqueued by a flag-off instance, or ckVtime expired under a live ckIndex), so
+-- "serve next" is the right semantics and there is nothing here to stack behind. A tenant
+-- cannot mint into them while the flag is on, because a flag-on enqueue always registers
+-- the variant first. That is the invariant: floor registration is for repair only. Any NEW
+-- enqueue-side path must use the stacked rule instead, or fresh keys start entering at the
+-- floor again and the starvation this all exists to prevent comes straight back.
 local discovered = nil
 for _, ckQueueName in ipairs(ckQueues) do
   if not attempted[ckQueueName] then
@@ -6530,7 +6549,7 @@ local counterTtl = ARGV[7]
 local stateTtl = ARGV[8]
 -- Arrival stacking (only read when this call registers a brand-new variant)
 local quantum = tonumber(ARGV[9] or '1')
-local arrivalCap = tonumber(ARGV[10] or '64')
+local arrivalCap = tonumber(ARGV[10] or '4294967296')
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
