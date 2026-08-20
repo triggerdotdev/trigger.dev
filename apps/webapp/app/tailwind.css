@@ -172,6 +172,11 @@
   --color-background-hover: var(--color-charcoal-750);
   --color-surface-hover-subtle: var(--color-charcoal-750);
   --color-background-raised: var(--color-charcoal-700);
+
+  /* Track behind a secondary segmented control. Half-strength raised is enough
+     of a step on Dark (#1e2024 over a #15171a page), but the themes that pin
+     their surfaces flat need the full value - see the overrides below. */
+  --color-segmented-track: color-mix(in srgb, var(--color-background-raised) 50%, transparent);
   --color-surface-selected: var(--color-charcoal-650);
   --color-surface-selected-hover: var(--color-charcoal-600);
   --color-surface-control: var(--color-charcoal-600);
@@ -843,6 +848,9 @@
   --color-surface-hover-subtle: #f7f8f9;
   --color-background-raised: #e9eaee;
   --color-surface-control: #dcdee3;
+  /* Half strength is invisible against a near-white page; take the full value,
+     which each of the two themes resolves to its own (#e9eaee / #ededed). */
+  --color-segmented-track: var(--color-background-raised);
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
   /* Selection sits lighter than the controls here - on white a soft grey is
@@ -1211,6 +1219,8 @@
   /* Interaction feedback still needs somewhere to go */
   --color-background-hover: #171717;
   --color-background-raised: #1f1f1f;
+  /* Half of #1f1f1f over black is #101010, which reads as nothing */
+  --color-segmented-track: var(--color-background-raised);
   /* Inputs read as part of the page; their border does the work */
   --color-input-bg: #0a0a0a;
 }

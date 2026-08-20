@@ -24,7 +24,7 @@ const theme = {
     selected: "absolute inset-0 rounded-[2px] outline-solid outline-3 outline-primary",
   },
   secondary: {
-    base: "bg-transparent dark:bg-background-raised/50",
+    base: "bg-segmented-track",
     active: "text-text-bright",
     inactive: "text-text-dimmed transition hover:text-text-bright",
     selected:
