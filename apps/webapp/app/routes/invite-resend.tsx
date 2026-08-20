@@ -1,9 +1,10 @@
 import { parseWithZod } from "@conform-to/zod";
 import { json } from "@remix-run/server-runtime";
-import { env } from "process";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { resendInvite } from "~/models/member.server";
+import { env } from "~/env.server";
+import { checkInviteRateLimit, InviteRateLimitError } from "~/services/inviteRateLimiter.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { ssoController } from "~/services/sso.server";
@@ -47,6 +48,23 @@ export const action = dashboardAction(
           { errors: { body: "Membership is managed by Directory Sync" } },
           { status: 403 }
         );
+      }
+    }
+
+    // Every resend emails the invitee, so apply the same per-org /
+    // per-inviter cap as the invite-create API. With no org scope (the
+    // inviteId lookup above found nothing), resendInvite rejects anyway.
+    if (env.LOGIN_RATE_LIMITS_ENABLED && context.organizationId) {
+      try {
+        await checkInviteRateLimit(context.organizationId, user.id, 1);
+      } catch (error) {
+        if (error instanceof InviteRateLimitError) {
+          return json(
+            { errors: { body: "Too many invites sent. Please try again later." } },
+            { status: 429 }
+          );
+        }
+        throw error;
       }
     }
 
