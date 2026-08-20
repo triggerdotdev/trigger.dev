@@ -89,25 +89,47 @@ function after(asyncId: number) {
   }
 }
 
+/**
+ * Per-async-resource blocked-loop detection. This is the expensive half: the
+ * hook fires for every async resource the process creates, and enabling any
+ * async hook also puts V8 on the slow path for promise instrumentation
+ * process-wide. On a request-heavy instance it costs roughly a seventh of all
+ * on-CPU time, which is why it is opt-in rather than on by default.
+ */
 export const eventLoopMonitor = singleton("eventLoopMonitor", () => {
   const hook = createHook({ init, before, after, destroy });
-
-  let stopEventLoopUtilizationMonitoring: () => void;
 
   return {
     enable: () => {
       console.log("🥸  Initializing event loop monitor");
 
       hook.enable();
-
-      stopEventLoopUtilizationMonitoring = startEventLoopUtilizationMonitoring();
     },
     disable: () => {
       console.log("🥸  Disabling event loop monitor");
 
       hook.disable();
+    },
+  };
+});
 
-      stopEventLoopUtilizationMonitoring?.();
+/**
+ * The cheap half: a single interval timer reading `eventLoopUtilization()`.
+ * It costs nothing per request, so it stays on by default and is what a
+ * high-traffic instance should rely on when the async hook is too expensive.
+ */
+export const eventLoopUtilizationMonitor = singleton("eventLoopUtilizationMonitor", () => {
+  let stop: (() => void) | undefined;
+
+  return {
+    enable: () => {
+      console.log("🥸  Initializing event loop utilization monitor");
+
+      stop = startEventLoopUtilizationMonitoring();
+    },
+    disable: () => {
+      stop?.();
+      stop = undefined;
     },
   };
 });
