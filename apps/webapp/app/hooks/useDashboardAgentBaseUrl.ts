@@ -1,8 +1,8 @@
 import { useTypedRouteLoaderData } from "remix-typedjson";
 import type { loader } from "../root";
 
-export function useApiOrigin() {
+export function useDashboardAgentBaseUrl() {
   const routeMatch = useTypedRouteLoaderData<typeof loader>("root");
 
-  return routeMatch!.apiOrigin;
+  return routeMatch!.dashboardAgentBaseUrl;
 }
