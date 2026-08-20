@@ -74,6 +74,12 @@ export function PurchaseSchedulesModal({
   };
 
   useEffect(() => {
+    if (!open) return;
+    // oxlint-disable-next-line react/react-compiler -- Keep the open draft aligned with authoritative billing values.
+    setBundles(Math.round(extraSchedules / stepSize));
+  }, [open, extraSchedules, stepSize]);
+
+  useEffect(() => {
     const data = fetcher.data;
     if (
       fetcher.state === "idle" &&
