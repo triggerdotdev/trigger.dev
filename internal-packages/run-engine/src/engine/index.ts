@@ -116,7 +116,9 @@ export class RunEngine {
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
+  private batchQueueConsumersEnabled: boolean;
   private workerQueueObserverAbortController?: AbortController;
+  private quitPromise?: Promise<void>;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -461,14 +463,14 @@ export class RunEngine {
       waitpointSystem: this.waitpointSystem,
     });
 
-    // Initialize BatchQueue for DRR-based batch processing (if configured)
-    const startBatchQueueConsumers = options.batchQueue?.consumerEnabled ?? true;
+    // Initialize BatchQueue for DRR-based batch processing. Consumers start lazily when the
+    // process-item callback is registered; before that they cannot perform useful work.
+    this.batchQueueConsumersEnabled = options.batchQueue?.consumerEnabled ?? true;
+    const batchQueueRedis = options.batchQueue?.redis ?? options.queue.redis;
 
     this.batchQueue = new BatchQueue({
-      redis: {
-        keyPrefix: `${options.batchQueue?.redis.keyPrefix ?? ""}batch-queue:`,
-        ...options.batchQueue?.redis,
-      },
+      // Preserve the configured namespace so existing batch state remains addressable.
+      redis: batchQueueRedis,
       drr: {
         quantum: options.batchQueue?.drr?.quantum ?? 5,
         maxDeficit: options.batchQueue?.drr?.maxDeficit ?? 50,
@@ -481,7 +483,7 @@ export class RunEngine {
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       globalRateLimiter: options.batchQueue?.globalRateLimiter,
       workerQueueMaxDepth: options.batchQueue?.workerQueueMaxDepth,
-      startConsumers: startBatchQueueConsumers,
+      startConsumers: false,
       retry: options.batchQueue?.retry,
       tracer: options.tracer,
       meter: options.meter,
@@ -491,7 +493,7 @@ export class RunEngine {
       consumerCount: options.batchQueue?.consumerCount ?? 2,
       drrQuantum: options.batchQueue?.drr?.quantum ?? 5,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
-      consumersEnabled: startBatchQueueConsumers,
+      consumersEnabled: this.batchQueueConsumersEnabled,
     });
 
     this.runAttemptSystem = new RunAttemptSystem({
@@ -1922,6 +1924,9 @@ export class RunEngine {
    */
   setBatchProcessItemCallback(callback: ProcessBatchItemCallback): void {
     this.batchQueue.onProcessItem(callback);
+    if (this.batchQueueConsumersEnabled) {
+      this.batchQueue.start();
+    }
   }
 
   /**
@@ -2366,24 +2371,55 @@ export class RunEngine {
     }
   }
 
-  async quit() {
-    try {
-      this.workerQueueObserverAbortController?.abort();
+  quit(): Promise<void> {
+    this.quitPromise ??= this.#quit();
+    return this.quitPromise;
+  }
 
-      await this.runQueue.quit();
-      await this.worker.stop();
-      await this.ttlWorker.stop();
-      await this.runLock.quit();
+  async #quit(): Promise<void> {
+    this.workerQueueObserverAbortController?.abort();
 
-      // This is just a failsafe
-      await this.runLockRedis.quit();
+    // Stop resources that actively process work before closing support resources they may use.
+    const processingResults = await Promise.allSettled([
+      this.runQueue.quit(),
+      this.worker.stop(),
+      this.ttlWorker.stop(),
+      this.batchQueue.close(),
+    ]);
+    this.#logShutdownFailures(
+      ["runQueue.quit", "worker.stop", "ttlWorker.stop", "batchQueue.close"],
+      processingResults
+    );
 
-      await this.batchQueue.close();
+    const supportResults = await Promise.allSettled([
+      this.runLock.quit(),
+      this.debounceSystem.quit(),
+    ]);
+    this.#logShutdownFailures(["runLock.quit", "debounceSystem.quit"], supportResults);
 
-      await this.debounceSystem.quit();
-    } catch (_error) {
-      // Best-effort shutdown; ignore quit/close errors.
+    // RunLocker/Redlock owns this client and normally closes it. Do not send a second QUIT,
+    // but force-disconnect if Redlock failed to leave the connection in its terminal state.
+    if (this.runLockRedis.status !== "end") {
+      try {
+        this.runLockRedis.disconnect();
+      } catch (error) {
+        this.logger.error("RunEngine shutdown operation failed", {
+          operation: "runLockRedis.disconnect",
+          error,
+        });
+      }
     }
+  }
+
+  #logShutdownFailures(operations: string[], results: PromiseSettledResult<unknown>[]): void {
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        this.logger.error("RunEngine shutdown operation failed", {
+          operation: operations[index],
+          error: result.reason,
+        });
+      }
+    });
   }
 
   async repairEnvironment(environment: AuthenticatedEnvironment, dryRun: boolean) {
