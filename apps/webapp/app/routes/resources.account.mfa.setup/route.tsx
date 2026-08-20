@@ -9,6 +9,7 @@ import {
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { requireUserId } from "~/services/session.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
 import { useMfaSetup } from "./useMfaSetup";
 import { MfaToggle } from "./MfaToggle";
 import { MfaSetupDialog } from "./MfaSetupDialog";
@@ -135,6 +136,14 @@ export async function action({ request }: ActionFunctionArgs) {
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       return redirectWithErrorMessage("/account/security", request, error.message);
+    }
+
+    if (error instanceof MfaRateLimitError) {
+      return redirectWithErrorMessage(
+        "/account/security",
+        request,
+        "Too many attempts. Please try again later."
+      );
     }
 
     // Re-throw unexpected errors

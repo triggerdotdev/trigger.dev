@@ -68,6 +68,33 @@ function initializeMagicLinkIpRateLimiter() {
   });
 }
 
+/**
+ * Canonicalize an email address for rate-limit keying so address variants
+ * that resolve to the same inbox share one bucket: lowercase, strip any
+ * `+tag` subaddress, and (for Gmail domains, which ignore dots in the local
+ * part) remove `.` from the local part. Use only for the limiter key —
+ * delivery must always use the raw submitted address.
+ */
+export function canonicalizeEmailForRateLimit(email: string): string {
+  const atIndex = email.lastIndexOf("@");
+  if (atIndex < 1) {
+    return email.toLowerCase();
+  }
+
+  const localPart = email.slice(0, atIndex).toLowerCase();
+  const domain = email.slice(atIndex + 1).toLowerCase();
+
+  const withoutTag = localPart.split("+")[0];
+
+  // Gmail (and Google Workspace on gmail.com/googlemail.com) ignores dots in
+  // the local part; other providers treat them as distinct addresses.
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    return `${withoutTag.replaceAll(".", "")}@gmail.com`;
+  }
+
+  return `${withoutTag}@${domain}`;
+}
+
 export async function checkMagicLinkEmailRateLimit(identifier: string): Promise<void> {
   const result = await magicLinkEmailRateLimiter.limit(identifier);
 
