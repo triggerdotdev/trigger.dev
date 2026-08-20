@@ -220,7 +220,14 @@ export default function IntegrationsSettingsPage() {
   const nextUrl = searchParams.get("next");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const vercelFetcher = useTypedFetcher<typeof vercelLoader>();
+  const loadVercelOnboarding = vercelFetcher.load;
   const onboardingData = vercelFetcher.data?.onboardingData ?? null;
+  const hasVercelFetcherData = vercelFetcher.data !== undefined;
+  const vercelOnboardingPath = `${vercelResourcePath(
+    organization.slug,
+    project.slug,
+    environment.slug
+  )}?vercelOnboarding=true`;
 
   // Helper to open modal and ensure query param is present
   const openVercelOnboarding = useCallback(() => {
@@ -256,15 +263,9 @@ export default function IntegrationsSettingsPage() {
         if (!isModalOpen) {
           openVercelOnboarding();
         }
-      } else if (vercelFetcher.state === "idle" && vercelFetcher.data === undefined) {
+      } else if (vercelFetcher.state === "idle" && !hasVercelFetcherData) {
         // Load onboarding data
-        vercelFetcher.load(
-          `${vercelResourcePath(
-            organization.slug,
-            project.slug,
-            environment.slug
-          )}?vercelOnboarding=true`
-        );
+        loadVercelOnboarding(vercelOnboardingPath);
       }
     } else if (!hasQueryParam && isModalOpen) {
       // Query param removed but modal is open, close modal
@@ -273,14 +274,13 @@ export default function IntegrationsSettingsPage() {
   }, [
     hasQueryParam,
     vercelIntegrationEnabled,
-    organization.slug,
-    project.slug,
-    environment.slug,
     onboardingData,
-    vercelFetcher.data,
+    hasVercelFetcherData,
     vercelFetcher.state,
     isModalOpen,
     openVercelOnboarding,
+    loadVercelOnboarding,
+    vercelOnboardingPath,
   ]);
 
   // Ensure modal stays open when query param is present (even after data reloads)
@@ -301,7 +301,7 @@ export default function IntegrationsSettingsPage() {
         openVercelOnboarding();
       }
     }
-  }, [hasQueryParam, vercelFetcher.data, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
+  }, [hasQueryParam, onboardingData, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
 
   // Track if we're waiting for data from button click (not query param)
   const waitingForButtonClickRef = useRef(false);
@@ -322,19 +322,11 @@ export default function IntegrationsSettingsPage() {
     } else {
       // Need to load data first, mark that we're waiting for button click
       waitingForButtonClickRef.current = true;
-      vercelFetcher.load(
-        `${vercelResourcePath(
-          organization.slug,
-          project.slug,
-          environment.slug
-        )}?vercelOnboarding=true`
-      );
+      loadVercelOnboarding(vercelOnboardingPath);
     }
   }, [
-    organization.slug,
-    project.slug,
-    environment.slug,
-    vercelFetcher,
+    loadVercelOnboarding,
+    vercelOnboardingPath,
     onboardingData,
     setSearchParams,
     hasQueryParam,
@@ -415,12 +407,8 @@ export default function IntegrationsSettingsPage() {
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
-            vercelFetcher.load(
-              `${vercelResourcePath(
-                organization.slug,
-                project.slug,
-                environment.slug
-              )}?vercelOnboarding=true${
+            loadVercelOnboarding(
+              `${vercelOnboardingPath}${
                 vercelEnvironmentId
                   ? `&vercelEnvironmentId=${encodeURIComponent(vercelEnvironmentId)}`
                   : ""

@@ -45,7 +45,7 @@
     "typescript/consistent-type-imports": "error",
     "import/no-duplicates": "error",
     "import/namespace": "off",
-    "react/exhaustive-deps": "off",
+    "react/exhaustive-deps": "error",
     "react/rules-of-hooks": "off",
     "guard-for-in": "error",
     "symbol-description": "error",

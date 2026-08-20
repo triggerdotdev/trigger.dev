@@ -288,6 +288,10 @@ export function AgentDotMatrix({
     typeof palette === "string" ? DOT_MATRIX_PALETTES[palette] : palette;
   const paletteKey = paletteObj.stops.join(",") + (paletteObj.glow ?? "");
   const playlistKey = playlist.join(",");
+  const paletteObjRef = useRef(paletteObj);
+  const playlistRef = useRef(playlist);
+  paletteObjRef.current = paletteObj;
+  playlistRef.current = playlist;
 
   useEffect(() => {
     activeRef.current = active;
@@ -295,6 +299,10 @@ export function AgentDotMatrix({
   }, [active]);
 
   useEffect(() => {
+    // The serialized keys restart this animation when contents change; refs avoid restarting for
+    // equivalent array/object identities while still exposing the matching current values.
+    const paletteObj = paletteObjRef.current;
+    const playlist = playlistRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;

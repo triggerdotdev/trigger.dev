@@ -178,7 +178,7 @@ export default function AdminFeatureFlagsRoute() {
     // Only track editable flags in state
     const editable: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(loaded)) {
-      if (!isLocked(key)) {
+      if (unlocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
         editable[key] = value;
       }
     }

@@ -53,7 +53,7 @@ export function AIFilterInput() {
         inputRef.current.focus();
       }
     }
-  }, [fetcher.data, navigate]);
+  }, [fetcher.data, fetcher.state, navigate]);
 
   const isLoading = fetcher.state === "submitting";
 

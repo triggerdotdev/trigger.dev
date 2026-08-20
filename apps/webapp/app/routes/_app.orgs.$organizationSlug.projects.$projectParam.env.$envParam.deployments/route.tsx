@@ -191,15 +191,24 @@ export default function Page() {
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
+  const selectedDeploymentShortCode = selectedDeployment?.shortCode;
+
   // If we have a selected deployment from the version param, show it
   useEffect(() => {
-    if (selectedDeployment && !deploymentParam) {
+    if (selectedDeploymentShortCode && !deploymentParam) {
       const searchParams = new URLSearchParams(location.search);
       searchParams.delete("version");
       searchParams.set("page", currentPage.toString());
-      navigate(`${location.pathname}/${selectedDeployment.shortCode}?${searchParams.toString()}`);
+      navigate(`${location.pathname}/${selectedDeploymentShortCode}?${searchParams.toString()}`);
     }
-  }, [selectedDeployment, deploymentParam, location.search]);
+  }, [
+    selectedDeploymentShortCode,
+    deploymentParam,
+    location.search,
+    location.pathname,
+    currentPage,
+    navigate,
+  ]);
 
   const currentDeployment = deployments.find((d) => d.isCurrent);
 

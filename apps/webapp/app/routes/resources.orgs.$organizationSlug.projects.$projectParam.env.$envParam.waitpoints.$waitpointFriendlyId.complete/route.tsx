@@ -5,7 +5,7 @@ import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
 import { stringifyIO, timeoutError } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import { z } from "zod";
 import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
@@ -321,25 +321,22 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
   const currentJson = useRef<string>("{\n\n}");
   const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/${waitpoint.id}/complete`;
 
-  const submitForm = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      const formData = new FormData(e.currentTarget);
-      const data: Record<string, string> = {
-        type: formData.get("type") as string,
-        failureRedirect: formData.get("failureRedirect") as string,
-        successRedirect: formData.get("successRedirect") as string,
-      };
+  const submitForm = (e: React.FormEvent<HTMLFormElement>) => {
+    const formData = new FormData(e.currentTarget);
+    const data: Record<string, string> = {
+      type: formData.get("type") as string,
+      failureRedirect: formData.get("failureRedirect") as string,
+      successRedirect: formData.get("successRedirect") as string,
+    };
 
-      data.payload = currentJson.current;
+    data.payload = currentJson.current;
 
-      submit(data, {
-        action: formAction,
-        method: "post",
-      });
-      e.preventDefault();
-    },
-    [currentJson]
-  );
+    submit(data, {
+      action: formAction,
+      method: "post",
+    });
+    e.preventDefault();
+  };
 
   return (
     <Form

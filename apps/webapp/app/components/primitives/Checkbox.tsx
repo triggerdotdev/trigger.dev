@@ -80,12 +80,14 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
       disabled,
       className,
       labelClassName: externalLabelClassName,
+      onChange,
       ...props
     },
     ref
   ) => {
     const [isChecked, setIsChecked] = useState<boolean>(defaultChecked ?? false);
     const [isDisabled, setIsDisabled] = useState<boolean>(disabled ?? false);
+    const onChangeRef = React.useRef(onChange);
     const generatedId = React.useId();
     const inputId = id ?? generatedId;
     const labelId = `${inputId}-label`;
@@ -105,9 +107,11 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
     }, [disabled]);
 
     useEffect(() => {
-      if (props.onChange) {
-        props.onChange(isChecked);
-      }
+      onChangeRef.current = onChange;
+    }, [onChange]);
+
+    useEffect(() => {
+      onChangeRef.current?.(isChecked);
     }, [isChecked]);
 
     useEffect(() => {

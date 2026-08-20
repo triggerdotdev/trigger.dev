@@ -229,14 +229,15 @@ export function SpanView({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
 
   useEffect(() => {
     if (spanId === undefined) return;
     const url = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
       environment.slug
     }/runs/${runParam}/spans/${spanId}${linkedRunId ? `?linkedRunId=${linkedRunId}` : ""}`;
-    fetcher.load(url);
-  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId]);
+    load(url);
+  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId, load]);
 
   if (spanId === undefined) {
     return null;

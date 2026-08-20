@@ -1,5 +1,5 @@
 import { useRevalidator } from "@remix-run/react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 type UseAutoRevalidateOptions = {
   interval?: number; // in milliseconds
@@ -10,15 +10,17 @@ type UseAutoRevalidateOptions = {
 export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
   const { interval = 5000, onFocus = true, disabled = false } = options;
   const revalidator = useRevalidator();
+  const revalidatorRef = useRef(revalidator);
+  revalidatorRef.current = revalidator;
 
   useEffect(() => {
     if (!interval || interval <= 0 || disabled) return;
 
     const intervalId = setInterval(() => {
-      if (revalidator.state === "loading") {
+      if (revalidatorRef.current.state === "loading") {
         return;
       }
-      revalidator.revalidate();
+      revalidatorRef.current.revalidate();
     }, interval);
 
     return () => clearInterval(intervalId);
@@ -28,8 +30,8 @@ export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
     if (!onFocus || disabled) return;
 
     const handleFocus = () => {
-      if (document.visibilityState === "visible" && revalidator.state !== "loading") {
-        revalidator.revalidate();
+      if (document.visibilityState === "visible" && revalidatorRef.current.state !== "loading") {
+        revalidatorRef.current.revalidate();
       }
     };
 

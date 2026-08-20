@@ -76,7 +76,7 @@ function useAskAIState() {
       next.delete(ASK_AI_DEEP_LINK_PARAM);
       setSearchParams(next);
     }
-  }, [searchParams, openAskAI]);
+  }, [searchParams, setSearchParams, openAskAI]);
 
   return { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI };
 }

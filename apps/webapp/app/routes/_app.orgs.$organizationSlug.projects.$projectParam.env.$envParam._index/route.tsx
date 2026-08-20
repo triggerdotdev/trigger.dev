@@ -214,6 +214,7 @@ const TASK_TYPE_SEGMENTS: {
 ];
 
 const PAGE_SIZE = 25;
+const TASK_FILTER_KEYS = ["slug", "filePath", "triggerSource"];
 
 export default function Page() {
   const organization = useOrganization();
@@ -266,7 +267,7 @@ export default function Page() {
 
   const { filteredItems } = useFuzzyFilter<UnifiedTaskListItem>({
     items,
-    keys: ["slug", "filePath", "triggerSource"],
+    keys: TASK_FILTER_KEYS,
     filterText: value("search") ?? "",
   });
 

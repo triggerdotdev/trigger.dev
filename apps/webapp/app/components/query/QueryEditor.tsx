@@ -377,22 +377,25 @@ export function QueryEditor({
 
   // Use defaultData as initial results, then switch to fetcher data once a query is run
   const fetcherResults = fetcher.data;
-  const results =
-    fetcherResults ??
-    (defaultData
-      ? {
-          error: null,
-          rows: defaultData.rows,
-          columns: defaultData.columns,
-          stats: null,
-          hiddenColumns: null,
-          reachedMaxRows: false,
-          explainOutput: null,
-          generatedSql: null,
-          queryId: null,
-          periodClipped: null,
-        }
-      : null);
+  const results = useMemo(
+    () =>
+      fetcherResults ??
+      (defaultData
+        ? {
+            error: null,
+            rows: defaultData.rows,
+            columns: defaultData.columns,
+            stats: null,
+            hiddenColumns: null,
+            reachedMaxRows: false,
+            explainOutput: null,
+            generatedSql: null,
+            queryId: null,
+            periodClipped: null,
+          }
+        : null),
+    [defaultData, fetcherResults]
+  );
 
   const organization = useOrganization();
   const project = useProject();
@@ -1255,13 +1258,13 @@ function ResultsBigNumber({
   accessory?: ReactNode;
 }) {
   // Auto-select first numeric column if none selected
-  const numericColumns = columns.filter((c) => isNumericColumnType(c.type));
+  const firstNumericColumn = columns.find((column) => isNumericColumnType(column.type));
 
   useEffect(() => {
-    if (!bigNumberConfig.column && numericColumns.length > 0) {
-      onBigNumberConfigChange({ ...bigNumberConfig, column: numericColumns[0].name });
+    if (!bigNumberConfig.column && firstNumericColumn) {
+      onBigNumberConfigChange({ ...bigNumberConfig, column: firstNumericColumn.name });
     }
-  }, [columns]);
+  }, [bigNumberConfig, firstNumericColumn, onBigNumberConfigChange]);
 
   return (
     <ResizablePanelGroup className="overflow-hidden">

@@ -288,8 +288,8 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
 
   // Auto-select input tab when input arrives after initial render (e.g. streaming tool calls)
   useEffect(() => {
-    if (!hasSubAgent && hasInput && activeTab === null) {
-      setActiveTab("input");
+    if (!hasSubAgent && hasInput) {
+      setActiveTab((current) => current ?? "input");
     }
   }, [hasInput, hasSubAgent]);
 

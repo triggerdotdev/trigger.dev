@@ -1,5 +1,5 @@
 import { useFetcher } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import stableStringify from "json-stable-stringify";
 import {
   Dialog,
@@ -54,6 +54,9 @@ export function FeatureFlagsDialog({
 }: FeatureFlagsDialogProps) {
   const loadFetcher = useFetcher<LoaderData>();
   const saveFetcher = useFetcher<ActionData>();
+  const loadFeatureFlags = loadFetcher.load;
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
 
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
   const [initialOverrides, setInitialOverrides] = useState<Record<string, unknown>>({});
@@ -67,9 +70,9 @@ export function FeatureFlagsDialog({
       setSaveError(null);
       setOverrides({});
       setInitialOverrides({});
-      loadFetcher.load(`/admin/api/v2/orgs/${orgId}/feature-flags`);
+      loadFeatureFlags(`/admin/api/v2/orgs/${orgId}/feature-flags`);
     }
-  }, [open, orgId]);
+  }, [loadFeatureFlags, open, orgId]);
 
   useEffect(() => {
     if (loadFetcher.data) {
@@ -81,7 +84,7 @@ export function FeatureFlagsDialog({
 
   useEffect(() => {
     if (saveFetcher.data?.success) {
-      onOpenChange(false);
+      onOpenChangeRef.current(false);
     } else if (saveFetcher.data?.error) {
       setSaveError(saveFetcher.data.error);
     }

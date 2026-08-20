@@ -65,6 +65,39 @@ export function AIQueryInput({
     }
   }, [mode, canEdit]);
 
+  const processStreamEvent = useCallback(
+    (event: StreamEventType) => {
+      switch (event.type) {
+        case "thinking":
+          setThinking((prev) => prev + event.content);
+          break;
+        case "tool_call":
+          // Tool calls are handled silently — no UI text needed
+          break;
+        case "time_filter":
+          // Apply time filter immediately when the AI sets it
+          onTimeFilterChange?.(event.filter);
+          break;
+        case "result":
+          if (event.success) {
+            // Apply time filter if included in result (backup in case time_filter event was missed)
+            if (event.timeFilter) {
+              onTimeFilterChange?.(event.timeFilter);
+            }
+            onQueryGenerated(event.query);
+            setPrompt("");
+            setLastResult("success");
+            // Keep thinking visible to show what happened
+          } else {
+            setError(event.error);
+            setLastResult("error");
+          }
+          break;
+      }
+    },
+    [onQueryGenerated, onTimeFilterChange]
+  );
+
   const submitQuery = useCallback(
     async (queryPrompt: string, submitMode: AIQueryMode = mode) => {
       if (!queryPrompt.trim() || isLoading) return;
@@ -158,40 +191,7 @@ export function AIQueryInput({
         setIsLoading(false);
       }
     },
-    [isLoading, resourcePath, mode, getCurrentQuery]
-  );
-
-  const processStreamEvent = useCallback(
-    (event: StreamEventType) => {
-      switch (event.type) {
-        case "thinking":
-          setThinking((prev) => prev + event.content);
-          break;
-        case "tool_call":
-          // Tool calls are handled silently — no UI text needed
-          break;
-        case "time_filter":
-          // Apply time filter immediately when the AI sets it
-          onTimeFilterChange?.(event.filter);
-          break;
-        case "result":
-          if (event.success) {
-            // Apply time filter if included in result (backup in case time_filter event was missed)
-            if (event.timeFilter) {
-              onTimeFilterChange?.(event.timeFilter);
-            }
-            onQueryGenerated(event.query);
-            setPrompt("");
-            setLastResult("success");
-            // Keep thinking visible to show what happened
-          } else {
-            setError(event.error);
-            setLastResult("error");
-          }
-          break;
-      }
-    },
-    [onQueryGenerated, onTimeFilterChange]
+    [getCurrentQuery, isLoading, mode, processStreamEvent, resourcePath]
   );
 
   const handleSubmit = useCallback(
