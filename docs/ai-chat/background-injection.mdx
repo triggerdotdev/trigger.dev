@@ -189,8 +189,49 @@ export const myChat = chat.agent({
 | **Source** | Backend task code | Frontend user input |
 | **Triggered by** | Your code (e.g. `onTurnComplete` + `chat.defer()`) | User sending a message during streaming |
 | **Injection point** | Start of next turn, or next `prepareStep` boundary | Next `prepareStep` boundary only |
-| **Message role** | Any (`system`, `user`, `assistant`) | Typically `user` |
+| **Message role** | Any — `system` becomes an instruction, others join the conversation (see below) | Typically `user` |
 | **Frontend visibility** | Not visible unless you write custom `data-*` chunks | Visible via `usePendingMessages` hook |
+
+## Two lanes: trusted and untrusted
+
+The role you inject with decides more than position — it decides whether the model
+treats the content as trustworthy.
+
+**`role: "system"` goes to the instructions lane.** The block is appended to the
+system instructions for subsequent inference calls, so it carries the same standing
+as your system prompt. This is the lane for context the agent should simply believe:
+entitlements, plan changes, operational notices.
+
+It has to work this way. On AI SDK 7 a system message inside `messages` is rejected
+for every provider — `standardizePrompt` throws before any provider is called, and
+its own advice is to use the instructions option. `Instructions` accepts
+`Array<SystemModelMessage>`, so the injected block is appended there rather than
+smuggled into the transcript.
+
+Two things worth knowing:
+
+- A new instruction block changes the cached prefix, so the first call carrying it
+  misses the prompt cache. Only the turns where something was actually injected pay
+  that.
+- The injected text is merged into a single instruction rather than added as a
+  second block, because AI SDK 5 rejects an array of system blocks while accepting
+  one structured block. That means a cached system prompt loses its cache entry for
+  as long as an injection is live — the prefix changed, so there is nothing to hit.
+  If you rely on prompt caching, inject sparingly and prefer facts that go stale, so
+  the injection clears.
+
+**Any other role joins the conversation, and is untrusted by construction.** A
+message injected as `user` is indistinguishable from something the user typed, and a
+well-aligned model treats it accordingly — it may say so and re-derive the answer
+from tools instead of taking it at face value:
+
+> "that text arrived embedded in your message, not from a tool I called, so I
+> verified it myself rather than trusting it"
+
+That is correct behaviour, not a bug. So inject **checkable facts** in the
+conversational lane and put **directives** in the instructions lane. A conclusion
+injected as a user message is the worst of both: the model neither trusts it nor
+ignores it, and may contradict it in front of the user.
 
 ## API reference
 

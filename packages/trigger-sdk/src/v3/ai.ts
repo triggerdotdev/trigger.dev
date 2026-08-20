@@ -46,6 +46,7 @@ import type {
   FinishReason,
   LanguageModelUsage,
   ModelMessage,
+  SystemModelMessage,
   ProviderMetadata,
   Tool,
   ToolSet,
@@ -2696,6 +2697,24 @@ function spliceHandoverPartial(
 const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
 
 /**
+ * System-role context injected mid-conversation, held for the instructions lane.
+ *
+ * Kept apart from the message queue because ai@7 rejects a system message inside
+ * `messages` for every provider — `standardizePrompt` throws upstream of any
+ * provider call, and its own advice is to use the instructions option. Instructions
+ * accept `Array<SystemModelMessage>`, so a system-role injection has a correct
+ * home: appended as another system block rather than smuggled into the transcript.
+ *
+ * This is also the only way to inject *trusted* context. A message injected as
+ * `user` is untrusted by construction, and a well-aligned model treats it that
+ * way — it will say so, and re-derive the answer from tools instead.
+ */
+const chatInjectedInstructionsKey = locals.create<SystemModelMessage[]>(
+  "chat.injectedInstructions"
+);
+
+
+/**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
  * same worker don't share state.
  * @internal
@@ -4689,6 +4708,59 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
     result.system = systemProviderOptions
       ? { role: "system", content: systemText, providerOptions: systemProviderOptions }
       : systemText;
+  }
+
+  /**
+   * Append anything injected as system context, in whichever shape the installed
+   * AI SDK accepts.
+   *
+   * `system` widened over time: on ai@5 it is `string` only, and from ai@6 it is
+   * `string | SystemModelMessage | Array<SystemModelMessage>`. This package's peer
+   * range still spans all three, so emitting an array unconditionally would break
+   * v5 consumers — for whom a system-role injection used to work, since v5 accepted
+   * a system message inside `messages` that v7 rejects.
+   *
+   * So: concatenate into one string when the base is a plain string, which every
+   * version accepts and which loses nothing (separate blocks only matter for
+   * per-block `providerOptions`). Use the array form only when the base is already
+   * a structured message — that path requires v6+ regardless, because it is how
+   * prompt caching marks the system block, and flattening it would silently throw
+   * the cache away.
+   *
+   * Either way the injected text goes last: the base prompt keeps its position for
+   * caching, and the addition reads as a later amendment. A changed prefix does
+   * cost the first call its cache hit, on turns that actually injected.
+   */
+  const injectedInstructions = locals.get(chatInjectedInstructionsKey);
+  if (injectedInstructions && injectedInstructions.length > 0) {
+    const injectedText = injectedInstructions
+      .map((block) => (typeof block.content === "string" ? block.content : ""))
+      .filter(Boolean)
+      .join("\n\n");
+
+    const base = result.system;
+
+    if (base === undefined) {
+      result.system = injectedText;
+    } else if (typeof base === "string") {
+      result.system = [base, injectedText].filter(Boolean).join("\n\n");
+    } else {
+      // Merged into the existing block rather than added as a second one. An array
+      // of system blocks would keep the base block's cache entry, but ai@5 rejects
+      // it outright ("Invalid prompt: system must be a string") while accepting a
+      // single structured block, and this package's peer range still spans v5.
+      // Choosing per version would mean resolving the installed version at runtime,
+      // which is not something to build on: `import.meta.url` is illegal in this
+      // package's CommonJS output, and a bundled task may have no resolvable `ai`
+      // to read. One shape that works everywhere beats a cache hit.
+      const baseBlock = base as SystemModelMessage;
+      result.system = {
+        ...baseBlock,
+        content: [typeof baseBlock.content === "string" ? baseBlock.content : "", injectedText]
+          .filter(Boolean)
+          .join("\n\n"),
+      };
+    }
   }
 
   // Prompt-related options (only if chat.prompt.set() was called)
@@ -9944,9 +10016,22 @@ function chatDefer(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): vo
  * ```
  */
 function injectBackgroundContext(messages: ModelMessage[]): void {
-  const queue = locals.get(chatBackgroundQueueKey) ?? [];
-  queue.push(...messages);
-  locals.set(chatBackgroundQueueKey, queue);
+  const systemBlocks = messages.filter(
+    (message): message is SystemModelMessage => message.role === "system"
+  );
+  const conversational = messages.filter((message) => message.role !== "system");
+
+  if (systemBlocks.length > 0) {
+    const instructions = locals.get(chatInjectedInstructionsKey) ?? [];
+    instructions.push(...systemBlocks);
+    locals.set(chatInjectedInstructionsKey, instructions);
+  }
+
+  if (conversational.length > 0) {
+    const queue = locals.get(chatBackgroundQueueKey) ?? [];
+    queue.push(...conversational);
+    locals.set(chatBackgroundQueueKey, queue);
+  }
 }
 
 // ---------------------------------------------------------------------------
