@@ -1307,7 +1307,11 @@ function WaitingInQueueBlock({
 }) {
   // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
   // the newest bucket only while fresh; otherwise fall back to the loader's live values.
-  const { rows: liveRows, responseReceivedAt } = useQueueMetric(
+  const {
+    rows: liveRows,
+    responseReceivedAt,
+    lastSuccessfulResponseAt,
+  } = useQueueMetric(
     `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
     {
       ids: waiting.ids,
@@ -1319,7 +1323,7 @@ function WaitingInQueueBlock({
   );
   const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
   const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
-  const now = responseReceivedAt ?? loadedAt;
+  const now = Math.max(loadedAt, lastSuccessfulResponseAt ?? loadedAt);
   const liveFresh = useIsMetricResponseFresh(
     responseReceivedAt,
     latestBucketMs,

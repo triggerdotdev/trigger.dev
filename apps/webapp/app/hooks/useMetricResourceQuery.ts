@@ -29,7 +29,12 @@ export function useIsMetricResponseFresh(
     return () => clearTimeout(timeout);
   }, [expiresAt]);
 
-  return expiresAt !== null && expiredAt !== expiresAt;
+  return (
+    expiresAt !== null &&
+    responseReceivedAt !== null &&
+    responseReceivedAt < expiresAt &&
+    expiredAt !== expiresAt
+  );
 }
 
 export type MetricResourceQueryOptions = {
@@ -122,6 +127,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [responseReceivedAt, setResponseReceivedAt] = useState<number | null>(null);
+  const [lastSuccessfulResponseAt, setLastSuccessfulResponseAt] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loadedKeyRef = useRef<string | null>(null);
 
@@ -132,6 +138,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       setRows(null);
       setFailed(false);
       setResponseReceivedAt(null);
+      setLastSuccessfulResponseAt(null);
       setIsLoading(false);
       return;
     }
@@ -147,6 +154,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       setRows(responseCache.get(cacheKey) ?? null);
       setFailed(false);
       setResponseReceivedAt(null);
+      setLastSuccessfulResponseAt(null);
     }
     setIsLoading(true);
     fetch("/resources/metric", {
@@ -172,9 +180,11 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         if (controller.signal.aborted) return;
         if (data.success) {
           cacheSet(cacheKey, data.data.rows);
+          const receivedAt = Date.now();
           setRows(data.data.rows);
           setFailed(false);
-          setResponseReceivedAt(Date.now());
+          setResponseReceivedAt(receivedAt);
+          setLastSuccessfulResponseAt(receivedAt);
         } else {
           setFailed(true);
           setResponseReceivedAt(null);
@@ -222,5 +232,6 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     showLoading: isLoading && !rows,
     failed,
     responseReceivedAt,
+    lastSuccessfulResponseAt,
   };
 }
