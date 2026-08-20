@@ -1264,6 +1264,7 @@ function TimelineView({
   const [duration, setDuration] = useState(queueAdjustedNs(totalDuration, queuedDuration));
   useEffect(() => {
     if (rootSpanStatus !== "executing" || !rootStartedAt) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setDuration(queueAdjustedNs(totalDuration, queuedDuration));
       return;
     }

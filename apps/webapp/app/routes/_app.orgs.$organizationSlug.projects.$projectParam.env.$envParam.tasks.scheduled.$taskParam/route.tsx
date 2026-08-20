@@ -651,6 +651,7 @@ function ScheduleSheet({
 
   // Always reopen in inspect mode.
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setMode("inspect");
   }, [openScheduleId]);
 
@@ -693,6 +694,7 @@ function ScheduleSheet({
     handledUpdateRef.current = data;
     if (data.ok) {
       toast.success(data.message ?? "Schedule updated");
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setMode("inspect");
       if (detailPath) loadScheduleDetail(detailPath);
       revalidator.revalidate();

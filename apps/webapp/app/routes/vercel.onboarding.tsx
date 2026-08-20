@@ -328,6 +328,7 @@ export default function VercelOnboardingPage() {
   // Reset isInstalling when navigation returns to idle (e.g. on error)
   useEffect(() => {
     if (navigation.state === "idle" && isInstalling) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsInstalling(false);
     }
   }, [navigation.state, isInstalling]);

@@ -677,6 +677,7 @@ function RenameDashboardDialog({ title }: { title: string }) {
   // Close dialog when navigation completes
   useEffect(() => {
     if (navigation.state === "idle") {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);
@@ -750,6 +751,7 @@ function DeleteDashboardDialog({ title }: { title: string }) {
   // Close dialog when navigation completes
   useEffect(() => {
     if (navigation.state === "idle") {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);

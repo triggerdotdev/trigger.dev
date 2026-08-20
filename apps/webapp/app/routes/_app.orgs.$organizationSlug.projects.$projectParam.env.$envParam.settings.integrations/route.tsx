@@ -261,6 +261,7 @@ export default function IntegrationsSettingsPage() {
       if (onboardingData && vercelFetcher.state === "idle") {
         // Data is loaded, ensure modal is open (query param takes precedence)
         if (!isModalOpen) {
+          // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
           openVercelOnboarding();
         }
       } else if (vercelFetcher.state === "idle" && !hasVercelFetcherData) {
@@ -289,6 +290,7 @@ export default function IntegrationsSettingsPage() {
     if (hasQueryParam && !isModalOpen) {
       // Query param is present but modal is closed, open it
       // This ensures the modal stays open during the onboarding flow
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       openVercelOnboarding();
     }
   }, [hasQueryParam, isModalOpen, openVercelOnboarding]);
@@ -298,6 +300,7 @@ export default function IntegrationsSettingsPage() {
     if (hasQueryParam && onboardingData && vercelFetcher.state === "idle") {
       // Data loaded and query param is present, ensure modal is open
       if (!isModalOpen) {
+        // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
         openVercelOnboarding();
       }
     }
@@ -442,6 +445,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
       buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "") ||
       buildSettingsValues.useNativeBuildServer !== nativeBuildServerEnabled;
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasBuildSettingsChanges(hasChanges);
   }, [buildSettingsValues, buildSettings, nativeBuildServerEnabled]);
 

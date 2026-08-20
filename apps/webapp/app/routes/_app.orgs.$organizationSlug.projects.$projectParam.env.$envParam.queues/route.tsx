@@ -1035,6 +1035,7 @@ function EnvironmentPauseResumeButton({
 
   useEffect(() => {
     if (navigation.state === "loading" || navigation.state === "idle") {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);

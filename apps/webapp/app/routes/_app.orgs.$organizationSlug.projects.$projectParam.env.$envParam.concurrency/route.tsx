@@ -648,6 +648,7 @@ function PurchaseConcurrencyModal({
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (purchaseSucceeded) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
       setSearchParams((s) => {
         s.delete("success");

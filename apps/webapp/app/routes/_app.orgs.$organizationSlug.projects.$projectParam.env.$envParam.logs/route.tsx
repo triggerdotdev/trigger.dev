@@ -318,6 +318,7 @@ function LogsList({
 
   // Clear accumulated logs immediately when filters change (for instant visual feedback)
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setAccumulatedLogs([]);
     setNextCursor(undefined);
     // Preserve log selection from URL param, clear if not present
@@ -327,6 +328,7 @@ function LogsList({
 
   // Populate accumulated logs when new data arrives
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setAccumulatedLogs(list.logs);
     setNextCursor(list.pagination.next);
   }, [list.logs, list.pagination.next]);

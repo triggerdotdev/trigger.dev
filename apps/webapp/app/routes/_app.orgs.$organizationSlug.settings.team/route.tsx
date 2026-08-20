@@ -985,6 +985,7 @@ export function PurchaseSeatsModal({
       "ok" in data &&
       data.ok
     ) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);
