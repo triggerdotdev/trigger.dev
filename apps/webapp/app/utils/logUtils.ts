@@ -103,7 +103,7 @@ export function getLevelColor(level: LogLevel): string {
     case "WARN":
       return "text-warning bg-warning/10 border-warning/20 system:border-transparent system:bg-warning system:text-white";
     case "TRACE":
-      return "text-log-trace bg-log-trace/10 border-log-trace/20 system:border-transparent system:bg-log-trace system:text-white";
+      return "log-level-chip-trace text-log-trace bg-log-trace/10 border-log-trace/20 system:border-transparent system:bg-log-trace system:text-white";
     case "DEBUG":
       return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10 system:border-transparent system:bg-charcoal-500 system:text-white";
     case "INFO":

@@ -191,6 +191,11 @@
   --color-success: var(--color-mint-500);
   --color-pending: var(--color-blue-500);
   --color-warning: var(--color-amber-500);
+
+  /* Log level accent for TRACE. The chip was tokenised without this ever being
+     declared, so bg-log-trace and border-log-trace generated no CSS at all and
+     the chip rendered bare. purple-500 is what the raw classes used. */
+  --color-log-trace: var(--color-purple-500);
   --color-error: var(--color-rose-600);
 
   /* Environment colors */
@@ -966,6 +971,7 @@
 
   /* Queue charts keep the base purple, one step down for white */
   --color-queues-chart: var(--color-purple-600);
+  --color-log-trace: var(--color-purple-600);
 
   /* Callout accents */
   --color-callout-docs: var(--color-blue-500);
@@ -994,6 +1000,17 @@
 
   The dark themes are untouched: their greys already clear 3:1 against a dark plot.
 */
+/* The TRACE chip is the one level that stays an outline with Stronger colors on
+   the light themes: filled purple with a white label it competes with ERROR two
+   chips along, where a dark-grey rule and label sit quieter while still clearing
+   4.5:1 (charcoal-600 is 10.71:1 on white). The other four fill solid. */
+[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"])
+  .log-level-chip-trace {
+  background-color: transparent;
+  border-color: var(--color-charcoal-600);
+  color: var(--color-charcoal-600);
+}
+
 [data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"]) {
   --color-run-pending: var(--color-charcoal-400);
   --color-run-delayed: var(--color-charcoal-400);
