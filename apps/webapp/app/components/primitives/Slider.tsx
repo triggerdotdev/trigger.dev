@@ -15,9 +15,11 @@ const variants = {
     range: "bg-transparent",
     // The secondary-button hairline+shadow keeps the dot visible on the light
     // track. Hover moves the handle off its resting tone in whichever direction
-    // reads as more prominent: brighter on the dark themes, dimmer on light.
+    // reads as more prominent: brighter on the dark themes, dimmer on light -
+    // but only one stop dimmer there, since the handle sits on white and a
+    // second stop reads as a dark blob rather than a hover.
     thumb:
-      "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm hover:bg-charcoal-200 dark:border-transparent dark:bg-charcoal-300 dark:shadow-none dark:hover:bg-charcoal-200",
+      "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm hover:bg-charcoal-100 dark:border-transparent dark:bg-charcoal-300 dark:shadow-none dark:hover:bg-charcoal-200",
     thumbSize: 18,
     // Track-coloured line, notched off the track by borders in the colour of
     // the page behind it (settings rows sit on background-dimmed).
