@@ -86,7 +86,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
     ref
   ) => {
     const [isChecked, setIsChecked] = useState<boolean>(defaultChecked ?? false);
-    const [isDisabled, setIsDisabled] = useState<boolean>(disabled ?? false);
+    const isDisabled = disabled ?? false;
     const onChangeRef = React.useRef(onChange);
     const generatedId = React.useId();
     const inputId = id ?? generatedId;
@@ -101,10 +101,6 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
     const isCheckedClassName = variants[variant].isChecked;
     const isDisabledClassName = variants[variant].isDisabled;
     const inputPositionClasses = variants[variant].inputPosition;
-
-    useEffect(() => {
-      setIsDisabled(disabled ?? false);
-    }, [disabled]);
 
     useEffect(() => {
       onChangeRef.current = onChange;

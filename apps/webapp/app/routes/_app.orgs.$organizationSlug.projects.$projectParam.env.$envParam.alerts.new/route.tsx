@@ -239,7 +239,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const [isOpen, setIsOpen] = useState(false);
   const { slack, option, emailAlertsEnabled } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
@@ -275,10 +274,6 @@ export default function Page() {
   });
 
   useEffect(() => {
-    setIsOpen(true);
-  }, []);
-
-  useEffect(() => {
     if (navigation.state !== "idle") return;
     if (lastSubmission !== undefined) return;
 
@@ -287,7 +282,7 @@ export default function Page() {
 
   return (
     <Dialog
-      open={isOpen}
+      open
       onOpenChange={(o) => {
         if (!o) {
           navigate(v3ProjectAlertsPath(organization, project, environment));
