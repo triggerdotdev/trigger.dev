@@ -75,7 +75,7 @@ export function PurchaseSchedulesModal({
 
   useEffect(() => {
     if (!open) return;
-    // oxlint-disable-next-line react/react-compiler -- Keep the open draft aligned with authoritative billing values.
+    // oxlint-disable-next-line react/set-state-in-effect -- Keep the open draft aligned with authoritative billing values.
     setBundles(Math.round(extraSchedules / stepSize));
   }, [open, extraSchedules, stepSize]);
 
@@ -88,7 +88,7 @@ export function PurchaseSchedulesModal({
       "ok" in data &&
       data.ok
     ) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);

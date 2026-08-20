@@ -285,7 +285,6 @@ function useAgentSessionMessages({
   // `scheduleFlush`. The Map *reference* changes on every flush so React
   // detects the state update and the downstream `useMemo` recomputes.
   const [messagesById, setMessagesById] = useState<Map<string, UIMessage>>(
-    // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
     () => new Map(pendingRef.current)
   );
 
@@ -295,7 +294,7 @@ function useAgentSessionMessages({
   const lastFlushAtRef = useRef<number>(0);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleFlush = useRef<() => void>(() => {});
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+
   scheduleFlush.current = () => {
     if (pendingTimerRef.current !== null) return; // already scheduled
     const now = Date.now();
@@ -672,7 +671,7 @@ function useAgentSessionMessages({
   return useMemo(() => {
     const timestamps = timestampsRef.current;
     const arr = Array.from(messagesById.values());
-    // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+
     arr.sort((a, b) => {
       const ta = timestamps.get(a.id) ?? 0;
       const tb = timestamps.get(b.id) ?? 0;

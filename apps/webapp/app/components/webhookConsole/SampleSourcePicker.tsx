@@ -46,7 +46,7 @@ export function SampleSourcePicker({
 
   useEffect(() => {
     if (!providers || providers.length === 0) return;
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setSelectedProvider((current) => {
       if (current && providers.some((p) => p.id === current)) return current;
       if (endpointSource && providers.some((p) => p.id === endpointSource)) return endpointSource;

@@ -39,7 +39,7 @@ export default function TooltipPortal({ active = true, children }: PopperPortalP
   useEffect(() => {
     const el = document.createElement("div");
     document.body.appendChild(el);
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setPortalElement(el);
     return () => el.remove();
   }, []);

@@ -56,7 +56,7 @@ export function FeatureFlagsDialog({
   const saveFetcher = useFetcher<ActionData>();
   const loadFeatureFlags = loadFetcher.load;
   const onOpenChangeRef = useRef(onOpenChange);
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   onOpenChangeRef.current = onOpenChange;
 
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
@@ -68,7 +68,7 @@ export function FeatureFlagsDialog({
 
   useEffect(() => {
     if (open && orgId) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSaveError(null);
       setOverrides({});
       setInitialOverrides({});
@@ -79,7 +79,7 @@ export function FeatureFlagsDialog({
   useEffect(() => {
     if (loadFetcher.data) {
       const loaded = loadFetcher.data.orgFlags ?? {};
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setOverrides({ ...loaded });
       setInitialOverrides({ ...loaded });
     }
@@ -89,7 +89,7 @@ export function FeatureFlagsDialog({
     if (saveFetcher.data?.success) {
       onOpenChangeRef.current(false);
     } else if (saveFetcher.data?.error) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSaveError(saveFetcher.data.error);
     }
   }, [saveFetcher.data]);

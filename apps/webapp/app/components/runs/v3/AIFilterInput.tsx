@@ -39,7 +39,7 @@ export function AIFilterInput() {
 
   useEffect(() => {
     if (fetcher.data?.success && fetcher.state === "loading") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setText("");
       setIsFocused(false);
 
@@ -185,7 +185,7 @@ function ErrorPopover({
 
   useEffect(() => {
     if (error) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsOpen(true);
     }
     if (timeout.current) {

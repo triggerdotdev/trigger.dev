@@ -49,7 +49,7 @@ export function FavoriteMenuItem({
 
   // Watch search too: navigating to a favorite can change only the search on the same pathname
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setMenuOpen(false);
   }, [navigation.location?.pathname, navigation.location?.search]);
 

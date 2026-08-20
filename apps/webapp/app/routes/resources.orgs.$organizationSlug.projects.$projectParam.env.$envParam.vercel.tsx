@@ -1118,7 +1118,7 @@ function VercelSettingsPanel({
   useEffect(() => {
     if (!data?.authInvalid && !hasError && !data && !hasFetched) {
       load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHasFetched(true);
     }
   }, [

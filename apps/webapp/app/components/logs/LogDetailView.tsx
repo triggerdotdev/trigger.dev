@@ -68,7 +68,6 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   useEffect(() => {
     if (!logId) return;
 
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setError(null);
     fetcher.load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
@@ -81,7 +80,6 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
   // Handle fetch errors
   useEffect(() => {
     if (fetcher.data && typeof fetcher.data === "object" && "error" in fetcher.data) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setError(fetcher.data.error as string);
     } else if (fetcher.state === "idle" && fetcher.data === null && !initialLog) {
       setError("Failed to load log details");

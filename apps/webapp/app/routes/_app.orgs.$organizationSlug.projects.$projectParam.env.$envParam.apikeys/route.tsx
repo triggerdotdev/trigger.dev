@@ -617,7 +617,7 @@ function NewApiKeyDialog({
     }
 
     if (actionData?.ok && actionData.action === "create") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setCreatedApiKey(actionData.apiKey);
     } else if (actionData && !actionData.ok) {
       setShowError(true);

@@ -899,7 +899,7 @@ function useConcurrencyKeys(opts: {
   }, [body]);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     load();
     return () => abortRef.current?.abort();
   }, [load]);

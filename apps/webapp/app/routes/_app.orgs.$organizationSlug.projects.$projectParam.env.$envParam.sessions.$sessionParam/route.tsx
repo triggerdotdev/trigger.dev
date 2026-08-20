@@ -261,7 +261,6 @@ const ROW_NUMBER_COL_MIN_CH = 3;
 const TIME_COL_WIDTH = "7rem";
 const TYPE_COL_WIDTH = "5rem";
 
-// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 function RawConversationView({
   inResourcePath,
   outResourcePath,
@@ -387,6 +386,7 @@ function RawConversationView({
     return () => cancelAnimationFrame(raf);
   }, [merged, isAtBottom]);
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: merged.length,
     getScrollElement: () => scrollRef.current,

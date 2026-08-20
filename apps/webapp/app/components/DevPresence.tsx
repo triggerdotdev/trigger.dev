@@ -55,7 +55,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
   useEffect(() => {
     // If disabled or no events
     if (!enabled || streamedEvents === null) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsConnected(undefined);
       return;
     }
@@ -114,7 +114,7 @@ export function useCrossEngineIsConnected({
 
   useEffect(() => {
     if (project.engine === "V2") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setCrossEngineIsConnected(isConnected);
       return;
     }

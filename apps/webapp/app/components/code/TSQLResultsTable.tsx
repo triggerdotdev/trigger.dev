@@ -224,7 +224,7 @@ const DebouncedInput = forwardRef<
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- Programmatic filter changes intentionally reset the debounced input draft.
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Programmatic filter changes intentionally reset the debounced input draft.
     setValue(initialValue);
   }, [initialValue]);
 
@@ -1065,7 +1065,6 @@ function ColumnResizeHandle({ header }: { header: Header<RowData, unknown> }) {
 }
 /* oxlint-enable jsx-a11y/no-static-element-interactions */
 
-// oxlint-disable-next-line react/react-compiler -- TanStack Table is not compatible with compiler memoization.
 export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,
@@ -1122,6 +1121,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   // Column resize mode: 'onChange' for real-time feedback, 'onEnd' for performance
   const columnResizeMode: ColumnResizeMode = "onChange";
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Table is not compatible with compiler memoization.
   const table = useReactTable({
     data: rows,
     columns: columnDefs,

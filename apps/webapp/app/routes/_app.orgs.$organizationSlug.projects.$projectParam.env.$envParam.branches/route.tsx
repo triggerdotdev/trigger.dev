@@ -652,7 +652,7 @@ function PurchaseBranchesModal({
 
   const [amountValue, setAmountValue] = useState(extraBranches);
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- The authoritative branch count intentionally resets this modal draft.
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- The authoritative branch count intentionally resets this modal draft.
     setAmountValue(extraBranches);
   }, [extraBranches]);
   const isLoading = fetcher.state !== "idle";
@@ -667,7 +667,7 @@ function PurchaseBranchesModal({
       "ok" in data &&
       data.ok
     ) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);

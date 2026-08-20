@@ -1585,7 +1585,7 @@ function RunTemplatesPopover({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsDeleteDialogOpen(false);
     }
   }, [lastSubmission]);
@@ -1773,7 +1773,7 @@ function CreateTemplateModal({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(false);
       setShowCreatedSuccessMessage(true);
       clearTimeout(successMessageTimeoutRef.current);

@@ -207,7 +207,7 @@ export function MetricWidget({
   // Track the latest props so the submit callback always uses fresh values
   // without needing to be recreated (which would cause useInterval to re-register listeners).
   const propsRef = useRef(props);
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   propsRef.current = props;
 
   // Track visibility so we only fetch for on-screen widgets.
@@ -220,7 +220,7 @@ export function MetricWidget({
     },
   });
 
-  /* oxlint-disable react/react-compiler -- These ref objects are stable callback inputs. */
+  /* oxlint-disable react/memo-dependencies -- These ref objects are stable callback inputs. */
   const submit = useCallback(() => {
     if (!isVisibleRef.current) {
       isDirtyRef.current = true;
@@ -265,8 +265,8 @@ export function MetricWidget({
         }
       });
   }, [isVisibleRef]);
-  /* oxlint-enable react/react-compiler */
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
+  /* oxlint-enable react/memo-dependencies */
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   submitRef.current = submit;
 
   // Clean up on unmount

@@ -451,7 +451,7 @@ function EnvironmentVariablesListPage({
   const [isVirtualized, setIsVirtualized] = useState(false);
 
   useLayoutEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsVirtualized(shouldVirtualize);
   }, [shouldVirtualize]);
 
@@ -744,7 +744,6 @@ function EnvironmentVariableTableRow({
   );
 }
 
-// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 function EnvironmentVariablesVirtualTableBody({
   groupedEnvironmentVariables,
   scrollRef,
@@ -758,6 +757,7 @@ function EnvironmentVariablesVirtualTableBody({
   vercelIntegration: PageVercelIntegration | null;
   columnCount: number;
 }) {
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: groupedEnvironmentVariables.length,
     getScrollElement: () => scrollRef.current,
@@ -816,7 +816,7 @@ function EditEnvironmentVariablePanel({
   // Close dialog on successful submission
   useEffect(() => {
     if (lastSubmission?.success && fetcher.state === "idle") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [lastSubmission?.success, fetcher.state]);

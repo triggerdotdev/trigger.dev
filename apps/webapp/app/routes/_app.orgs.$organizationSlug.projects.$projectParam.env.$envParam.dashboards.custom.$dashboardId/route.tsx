@@ -677,14 +677,14 @@ function RenameDashboardDialog({ title }: { title: string }) {
   // Close dialog when navigation completes
   useEffect(() => {
     if (navigation.state === "idle") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);
 
   // Sync newTitle state when title changes (after successful rename)
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- A completed rename intentionally resets this editable title draft.
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- A completed rename intentionally resets this editable title draft.
     setNewTitle(title);
   }, [title]);
 
@@ -751,7 +751,7 @@ function DeleteDashboardDialog({ title }: { title: string }) {
   // Close dialog when navigation completes
   useEffect(() => {
     if (navigation.state === "idle") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);

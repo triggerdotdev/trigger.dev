@@ -63,7 +63,7 @@ export function BillingLimitRecoveryPanel({
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- A refreshed server recommendation intentionally resets this editable amount draft.
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- A refreshed server recommendation intentionally resets this editable amount draft.
     setNewAmount(String(suggestedNewLimitDollars));
   }, [suggestedNewLimitDollars]);
 

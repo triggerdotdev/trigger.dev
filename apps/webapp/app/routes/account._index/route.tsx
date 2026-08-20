@@ -221,7 +221,7 @@ export default function Page() {
   const [contrastPreview, setContrastPreview] = useState(contrast);
   useEffect(() => {
     if (contrastFetcher.state === "idle") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setContrastPreview(contrast);
       document.documentElement.style.setProperty("--theme-contrast", String(contrast / 100));
     }

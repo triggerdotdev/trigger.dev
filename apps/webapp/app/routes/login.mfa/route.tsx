@@ -197,7 +197,7 @@ export default function LoginMfaPage() {
   // Reset hideError when a new error appears
   React.useEffect(() => {
     if (rawMfaError) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHideError(false);
     }
   }, [rawMfaError]);

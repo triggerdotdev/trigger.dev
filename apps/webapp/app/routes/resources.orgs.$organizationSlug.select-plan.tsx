@@ -327,7 +327,7 @@ export function TierFree({
   const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -494,7 +494,7 @@ export function TierHobby({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -637,7 +637,7 @@ export function TierPro({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 

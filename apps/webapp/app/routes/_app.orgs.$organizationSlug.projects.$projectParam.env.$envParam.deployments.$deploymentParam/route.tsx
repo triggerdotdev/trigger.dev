@@ -214,7 +214,7 @@ export default function Page() {
 
     const abortController = new AbortController();
 
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setLogs([]);
     setStreamError(null);
     setIsStreaming(true);
@@ -632,7 +632,7 @@ function LogsDisplay({
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- Deployment status changes intentionally reset the user-controlled collapse state.
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
 

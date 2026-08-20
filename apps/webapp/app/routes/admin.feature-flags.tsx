@@ -182,14 +182,14 @@ export default function AdminFeatureFlagsRoute() {
         editable[key] = value;
       }
     }
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setValues({ ...editable });
     setInitialValues({ ...editable });
   }, [globalFlags, unlocked]);
 
   useEffect(() => {
     if (saveFetcher.data?.success) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setSaveError(null);
       setConfirmOpen(false);
     } else if (saveFetcher.data?.error) {

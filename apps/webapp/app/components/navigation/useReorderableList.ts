@@ -34,7 +34,7 @@ export function useReorderableList<T>({
 
   const [order, setOrder] = useState<string[]>(() => initialOrder ?? items.map(itemKey));
   const resetOrderRef = useRef({ initialOrder, items, itemKey });
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   resetOrderRef.current = { initialOrder, items, itemKey };
 
   // Only an organization switch resets user-managed order. Keep the latest inputs in a ref so

@@ -249,7 +249,7 @@ function CompleteDateTimeWaitpointForm({
   const project = useProject();
   const environment = useEnvironment();
 
-  // oxlint-disable-next-line react/react-compiler -- This form intentionally snapshots wall-clock time for its deadline UI.
+  // oxlint-disable-next-line react/purity -- This form intentionally snapshots wall-clock time for its deadline UI.
   const now = Date.now();
   const timeToComplete = waitpoint.completedAfter.getTime() - now;
   if (timeToComplete < 0) {
@@ -368,7 +368,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
         <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <JSONEditor
             autoFocus
-            // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
+            // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
             defaultValue={currentJson.current}
             readOnly={false}
             basicSetup

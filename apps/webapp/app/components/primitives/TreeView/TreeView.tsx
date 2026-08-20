@@ -193,7 +193,6 @@ export type UseTreeStateOutput = {
   scrollToNode: (id: string) => void;
 };
 
-// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 export function useTree<TData, TFilterValue>({
   tree,
   selectedId,
@@ -277,6 +276,7 @@ export function useTree<TData, TFilterValue>({
     dispatch({ type: "UPDATE_FILTER", payload: { filter: latestFilterRef.current } });
   }, [serializedFilterValue]);
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const virtualizer = useVirtualizer({
     count: state.visibleNodeIds.length,
     getItemKey: (index) => state.visibleNodeIds[index],

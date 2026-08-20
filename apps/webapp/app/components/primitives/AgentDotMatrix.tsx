@@ -290,9 +290,9 @@ export function AgentDotMatrix({
   const playlistKey = playlist.join(",");
   const paletteObjRef = useRef(paletteObj);
   const playlistRef = useRef(playlist);
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   paletteObjRef.current = paletteObj;
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   playlistRef.current = playlist;
 
   useEffect(() => {
