@@ -79,27 +79,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       throw new Error("Project not found");
     }
 
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) {
+      return redirectWithErrorMessage(
+        submission.value.failureRedirect,
+        request,
+        "No waitpoint found"
+      );
+    }
+
     const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
     let waitpoint = await runStore.findWaitpoint({
       select: {
-        projectId: true,
-        environmentId: true,
+        id: true,
       },
       where: {
         id: waitpointId,
+        projectId: project.id,
+        environmentId: environment.id,
       },
     });
     if (!waitpoint) {
       // Read-your-writes: a just-minted token may not have replicated. Re-read the owning primary
       // before the auth guard / "No waitpoint found" (mirrors the token complete/callback routes).
       waitpoint = await runStore.findWaitpointOnPrimary({
-        select: { projectId: true, environmentId: true },
-        where: { id: waitpointId },
+        select: { id: true },
+        where: {
+          id: waitpointId,
+          projectId: project.id,
+          environmentId: environment.id,
+        },
       });
     }
 
-    if (waitpoint?.projectId !== project.id) {
+    if (!waitpoint) {
       return redirectWithErrorMessage(
         submission.value.failureRedirect,
         request,
@@ -154,23 +168,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               submission.value.failureRedirect,
               request,
               "Payload is too large"
-            );
-          }
-
-          const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-          if (!environment) {
-            return redirectWithErrorMessage(
-              submission.value.failureRedirect,
-              request,
-              "Environment not found"
-            );
-          }
-
-          if (environment.id !== waitpoint.environmentId) {
-            return redirectWithErrorMessage(
-              submission.value.failureRedirect,
-              request,
-              "No waitpoint found"
             );
           }
 
