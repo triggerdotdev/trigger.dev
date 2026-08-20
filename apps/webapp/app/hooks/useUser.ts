@@ -27,7 +27,8 @@ export function useUser(matches?: UIMatch[]): User {
 }
 
 export function useUserChanged(callback: (user: User | undefined) => void) {
-  useChanged(useOptionalUser, callback);
+  const user = useOptionalUser();
+  useChanged(user, callback);
 }
 
 /**
