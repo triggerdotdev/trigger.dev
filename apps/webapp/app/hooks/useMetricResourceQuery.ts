@@ -13,6 +13,30 @@ export type MetricResourceTimeRange = {
   to: string | null;
 };
 
+export function useIsMetricResponseFresh(
+  responseReceivedAt: number | null,
+  dataTimestamp: number,
+  maxAgeMs: number
+) {
+  const expiresAt =
+    responseReceivedAt !== null && Number.isFinite(dataTimestamp) ? dataTimestamp + maxAgeMs : null;
+  const [expiredAt, setExpiredAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (expiresAt === null) return;
+
+    const timeout = setTimeout(() => setExpiredAt(expiresAt), Math.max(0, expiresAt - Date.now()));
+    return () => clearTimeout(timeout);
+  }, [expiresAt]);
+
+  return (
+    expiresAt !== null &&
+    responseReceivedAt !== null &&
+    responseReceivedAt < expiresAt &&
+    expiredAt !== expiresAt
+  );
+}
+
 export type MetricResourceQueryOptions = {
   organizationId: string;
   projectId: string;
@@ -102,6 +126,8 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   );
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [responseReceivedAt, setResponseReceivedAt] = useState<number | null>(null);
+  const [lastSuccessfulResponseAt, setLastSuccessfulResponseAt] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loadedKeyRef = useRef<string | null>(null);
 
@@ -111,6 +137,8 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       loadedKeyRef.current = cacheKey;
       setRows(null);
       setFailed(false);
+      setResponseReceivedAt(null);
+      setLastSuccessfulResponseAt(null);
       setIsLoading(false);
       return;
     }
@@ -125,6 +153,8 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       loadedKeyRef.current = cacheKey;
       setRows(responseCache.get(cacheKey) ?? null);
       setFailed(false);
+      setResponseReceivedAt(null);
+      setLastSuccessfulResponseAt(null);
     }
     setIsLoading(true);
     fetch("/resources/metric", {
@@ -150,10 +180,14 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         if (controller.signal.aborted) return;
         if (data.success) {
           cacheSet(cacheKey, data.data.rows);
+          const receivedAt = Date.now();
           setRows(data.data.rows);
           setFailed(false);
+          setResponseReceivedAt(receivedAt);
+          setLastSuccessfulResponseAt(receivedAt);
         } else {
           setFailed(true);
+          setResponseReceivedAt(null);
         }
         setIsLoading(false);
       })
@@ -161,6 +195,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         if (error instanceof DOMException && error.name === "AbortError") return;
         if (!controller.signal.aborted) {
           setFailed(true);
+          setResponseReceivedAt(null);
           setIsLoading(false);
         }
       });
@@ -191,5 +226,12 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     callback: load,
   });
 
-  return { rows: rows ?? [], isLoading, showLoading: isLoading && !rows, failed };
+  return {
+    rows: rows ?? [],
+    isLoading,
+    showLoading: isLoading && !rows,
+    failed,
+    responseReceivedAt,
+    lastSuccessfulResponseAt,
+  };
 }
