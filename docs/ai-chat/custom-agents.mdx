@@ -269,8 +269,11 @@ becomes pending.
 
 A control record that nothing on the run consumes is discarded rather than left
 at the head of the channel. `hasPending()` and `next()` only look at the head, so
-a record parked there would make every message behind it undeliverable. This
-means `next()` returning `undefined` always means the mailbox is idle.
+a record parked there would make every message behind it undeliverable.
+
+`next()` still returns `undefined` whenever no message became consumable before
+the timeout, including while a control record that does have its own consumer
+sits at the head.
 
 A complete loop:
 

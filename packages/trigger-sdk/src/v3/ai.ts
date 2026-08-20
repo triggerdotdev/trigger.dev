@@ -1920,6 +1920,19 @@ const chatClaimedKindsKey = locals.create<Set<string>>("chat.claimedKinds");
 /** Kinds carried on `.in` that are not user messages. @internal */
 const CHAT_HANDOVER_KINDS = ["handover", "handover-skip"] as const;
 
+/**
+ * Every `ChatInputChunk` kind this SDK version knows about. A known kind with
+ * no active consumer on this boot is an expected, documented state; an unknown
+ * one means a newer server is sending something this worker cannot handle,
+ * which is worth surfacing.
+ * @internal
+ */
+const KNOWN_CHAT_INPUT_KINDS: ReadonlySet<string> = new Set([
+  "message",
+  "stop",
+  ...CHAT_HANDOVER_KINDS,
+]);
+
 /** The run's attached drain subscription, so it can be re-offered the buffer. @internal */
 const chatInputDrainKey = locals.create<{ off: () => void }>("chat.inputDrain");
 
@@ -1957,9 +1970,9 @@ function attachUnclaimedChatInputDrain(): { off: () => void } {
       return true;
     }
     if (chatClaimedKinds().has(kind)) return undefined;
-    logger.warn("chat: discarded a session.in record that no consumer handled on this boot", {
-      kind,
-    });
+    if (!KNOWN_CHAT_INPUT_KINDS.has(kind)) {
+      logger.warn("chat: discarded a session.in record of an unrecognised kind", { kind });
+    }
     return true;
   });
 }
@@ -1986,16 +1999,6 @@ function releaseChatInputKinds(kinds: readonly string[]): void {
   drain.off();
   locals.set(chatInputDrainKey, attachUnclaimedChatInputDrain());
 }
-
-/**
- * Declare that this run will consume the given `session.in` record kinds
- * itself (via raw `session.in` reads). Claimed kinds are never discarded by
- * the unclaimed-control drain: they stay buffered, block
- * `chat.messages.next()` at the head of the channel, and hold the resume
- * cursor behind them until consumed. Call `release()` when the loop stops
- * consuming them — any still-buffered records of those kinds are then
- * discarded and the cursor advances.
- */
 
 /**
  * Per-turn deferred promises. Registered via `chat.defer()`, awaited
@@ -10861,7 +10864,6 @@ export const chat = {
   response: chatResponse,
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
-  /** Declare `session.in` record kinds this run consumes itself. See {@link chatClaimInputKinds}. */
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
   createStopSignal,
   /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */
