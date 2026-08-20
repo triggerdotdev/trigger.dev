@@ -70,6 +70,19 @@
     "react/require-render-return": "error",
     "react/style-prop-object": "error",
     "react/void-dom-elements-no-children": "error",
+    "react/error-boundaries": "off",
+    "react/globals": "off",
+    "react/immutability": "off",
+    "react/incompatible-library": "off",
+    "react/preserve-manual-memoization": "off",
+    "react/purity": "off",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "react/set-state-in-render": "off",
+    "react/static-components": "off",
+    "react/unsupported-syntax": "off",
+    "react/use-memo": "off",
+    "react/void-use-memo": "off",
     "react/checked-requires-onchange-or-readonly": "error",
     "react/forward-ref-uses-ref": "error",
     "react/iframe-missing-sandbox": "error",
@@ -124,7 +137,22 @@
         "react/button-has-type": "error",
         "react/jsx-no-useless-fragment": "error",
         "react/no-unstable-nested-components": "error",
-        "react/react-compiler": "error",
+        "react/error-boundaries": "error",
+        "react/globals": "error",
+        "react/hooks": "error",
+        "react/immutability": "error",
+        "react/incompatible-library": "error",
+        "react/memo-dependencies": "error",
+        "react/no-deriving-state-in-effects": "error",
+        "react/preserve-manual-memoization": "error",
+        "react/purity": "error",
+        "react/refs": "error",
+        "react/set-state-in-effect": "error",
+        "react/set-state-in-render": "error",
+        "react/static-components": "error",
+        "react/unsupported-syntax": "error",
+        "react/use-memo": "error",
+        "react/void-use-memo": "error",
         "react/rules-of-hooks": "error",
         "trigger-runops/no-control-plane-run-graph-access": "error",
         "trigger-runops/no-control-plane-in-runops-slot": "error"
@@ -134,6 +162,12 @@
       "files": ["packages/react-hooks/src/**/*.ts", "packages/react-hooks/src/**/*.tsx"],
       "rules": {
         "react/rules-of-hooks": "error"
+      }
+    },
+    {
+      "files": ["**/*.ts", "**/*.tsx"],
+      "rules": {
+        "no-redeclare": "off"
       }
     },
     {

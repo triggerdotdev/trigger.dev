@@ -909,7 +909,7 @@ function OverrideDialog({
   // Reset when dialog opens
   useEffect(() => {
     if (open) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setEditedContent(content);
       setCommitMessage("");
       setModel(currentOverrideModel ?? prompt.defaultModel ?? "");
@@ -1333,7 +1333,7 @@ function GenerationsTab({
   // Append fetched rows when fetcher completes
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setGenerations((prev) => {
         const existingIds = new Set(prev.map((g) => g.span_id));
         const newRows = fetcher.data!.generations.filter((g) => !existingIds.has(g.span_id));
@@ -1424,7 +1424,7 @@ function GenerationsTab({
   const [showSpinner, setShowSpinner] = useState(false);
   useEffect(() => {
     if (!isLoadingMore) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setShowSpinner(false);
       return;
     }

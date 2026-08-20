@@ -80,8 +80,8 @@ function commentRanges(source: string, sf: ts.SourceFile): ts.CommentRange[] {
   return ranges;
 }
 
-/** One physical line of comment content per range, the `//`, `/*`, `*​/` and a jsdoc `*` prefix
- * stripped, so a multi-line block comment still matches the directive one line at a time. */
+/** One physical line of comment content per range, with comment delimiters and a jsdoc `*`
+ * prefix stripped, so a multi-line block comment still matches the directive one line at a time. */
 function commentLines(source: string, sf: ts.SourceFile): string[] {
   const lines: string[] = [];
   for (const range of commentRanges(source, sf)) {

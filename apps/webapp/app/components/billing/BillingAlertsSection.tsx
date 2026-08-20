@@ -119,7 +119,7 @@ export function BillingAlertsSection({
       return;
     }
 
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setShowResetBanner(true);
 
     if (searchParams.get("alertsReset") !== "1") {
@@ -141,12 +141,12 @@ export function BillingAlertsSection({
   );
   const maxAlerts = isPercentageMode ? MAX_PERCENTAGE_ALERTS : MAX_ABSOLUTE_ALERTS;
 
-  /* oxlint-disable react/react-compiler -- Stable derived thresholds prevent the synchronization effect from resetting local edits. */
+  /* oxlint-disable react/preserve-manual-memoization -- Stable derived thresholds prevent the synchronization effect from resetting local edits. */
   const savedThresholds = useMemo(
     () => storedAlertsToThresholds(alerts, billingLimitMode, effectiveLimitCents, planLimitCents),
     [alerts, billingLimitMode, effectiveLimitCents, planLimitCents]
   );
-  /* oxlint-enable react/react-compiler */
+  /* oxlint-enable react/preserve-manual-memoization */
   const savedEmails = useMemo(() => alerts.emails, [alerts.emails]);
   const hasLegacySpikes = hasLegacySpikeAlertLevels(
     alerts,
@@ -190,7 +190,7 @@ export function BillingAlertsSection({
 
   useEffect(() => {
     nextThresholdIdRef.current = savedThresholds.length;
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setThresholdRows(toThresholdRows(savedThresholds));
     setEmailValues(savedEmails.length > 0 ? [...savedEmails, ""] : [""]);
   }, [savedThresholds, savedEmails]);

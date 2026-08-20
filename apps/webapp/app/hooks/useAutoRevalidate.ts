@@ -11,7 +11,7 @@ export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
   const { interval = 5000, onFocus = true, disabled = false } = options;
   const revalidator = useRevalidator();
   const revalidatorRef = useRef(revalidator);
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   revalidatorRef.current = revalidator;
 
   useEffect(() => {

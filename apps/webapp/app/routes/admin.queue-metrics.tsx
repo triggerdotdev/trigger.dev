@@ -65,7 +65,7 @@ export default function AdminQueueMetricsRoute() {
   const handledSaveDataRef = useRef(saveFetcher.data);
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setEnabled(controls.enabled);
     setSampleRate(String(controls.sampleRate));
   }, [controls.enabled, controls.sampleRate]);
@@ -77,7 +77,7 @@ export default function AdminQueueMetricsRoute() {
     handledSaveDataRef.current = saveFetcher.data;
 
     if (saveFetcher.data.success) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setError(null);
       revalidate();
     } else if (saveFetcher.data.error) {

@@ -970,7 +970,7 @@ export function PurchaseSeatsModal({
 
   const [amountValue, setAmountValue] = useState(extraSeats);
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- The authoritative seat count intentionally resets this modal draft.
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- The authoritative seat count intentionally resets this modal draft.
     setAmountValue(extraSeats);
   }, [extraSeats]);
   const isLoading = fetcher.state !== "idle";
@@ -985,7 +985,7 @@ export function PurchaseSeatsModal({
       "ok" in data &&
       data.ok
     ) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);

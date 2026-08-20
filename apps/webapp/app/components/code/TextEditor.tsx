@@ -48,7 +48,7 @@ export function TextEditor(opts: TextEditorProps) {
   const editor = useRef<HTMLDivElement>(null);
   const settings: Omit<UseCodeMirror, "onBlur"> = {
     ...opts,
-    // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+    // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
     container: editor.current,
     extensions,
     editable: !readOnly,

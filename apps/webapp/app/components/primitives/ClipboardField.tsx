@@ -120,7 +120,7 @@ export function ClipboardField({
   const { container, input, buttonVariant, button, size } = variants[variant];
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsSecure(secure !== undefined && secure);
   }, [secure]);
 

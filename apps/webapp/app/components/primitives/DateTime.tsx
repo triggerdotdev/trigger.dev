@@ -372,7 +372,7 @@ export const RelativeDateTime = ({ date, timeZone, capitalize = true }: Relative
 
   // On first render
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- A changed date intentionally resets the timer-backed relative text.
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- A changed date intentionally resets the timer-backed relative text.
     setRelativeText(getRelativeText(realDate, capitalize));
   }, [realDate, capitalize]);
 

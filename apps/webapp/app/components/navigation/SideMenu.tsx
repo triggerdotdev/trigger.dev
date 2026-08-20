@@ -445,7 +445,7 @@ export function SideMenu({
     const data = customizationFetcher.data;
     if (!data) {
       // Settled with no response body (e.g. a session-expiry redirect): fail rather than spin
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setCustomizeConfirmPending(false);
       setCustomizeError("Couldn't save your changes. Please try again.");
       return;
@@ -532,7 +532,7 @@ export function SideMenu({
   // object each render, so depending on it would fire the cleanup (flushing the debounce) every
   // render — and drags re-render constantly — instead of only on unmount.
   const flushPendingPreferencesRef = useRef<() => void>();
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   flushPendingPreferencesRef.current = () => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -598,7 +598,7 @@ export function SideMenu({
   }, []);
 
   // Animate width + progress over COLLAPSE_ANIM_MS (toggle button, ⌘B shortcut, release-snap).
-  /* oxlint-disable react/react-compiler -- The animation step is local to each callback invocation. */
+
   const animateTo = useCallback(
     (targetWidth: number, targetProgress: number) => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -629,7 +629,6 @@ export function SideMenu({
     },
     [writeVisual]
   );
-  /* oxlint-enable react/react-compiler */
 
   // Collapse/expand to a resting state and remember it.
   const applyCollapsed = useCallback(
@@ -648,7 +647,7 @@ export function SideMenu({
 
   // Drag runs on window-level listeners so releasing anywhere finalizes it. (Pointer capture alone
   // was unreliable: if the browser drops it mid-drag, the release never fires and the menu strands.)
-  /* oxlint-disable react/react-compiler -- Drag handlers share invocation-local state and listeners. */
+
   const onHandlePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -758,7 +757,6 @@ export function SideMenu({
     },
     [animateTo, applyCollapsed, persistSideMenuPreferences, writeVisual]
   );
-  /* oxlint-enable react/react-compiler */
 
   // Keep the drag handlers' collapsed mirror in sync; tear down any in-flight animation/drag on unmount.
   useEffect(() => {
@@ -1497,7 +1495,7 @@ function SideMenuMoreItem({
 
   // Watch search too: navigating to a favorite can change only the search on the same pathname
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOpen(false);
   }, [navigation.location?.pathname, navigation.location?.search]);
 
@@ -1711,7 +1709,7 @@ function OrgSelector({
   const planTitle = currentPlan?.v3Subscription?.plan?.title;
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOrgMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -1990,7 +1988,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
   const navigation = useNavigation();
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -2045,7 +2043,7 @@ function ProjectSelector({
   const { urlForProject } = usePageSwitcher();
 
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -2167,7 +2165,7 @@ function SideMenuPopoverSubMenu({
 
   // Close the submenu on navigation (the parent popover closes too).
   useEffect(() => {
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 

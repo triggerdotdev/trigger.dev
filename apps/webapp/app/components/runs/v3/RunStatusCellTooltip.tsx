@@ -100,7 +100,7 @@ function useChildRunStatusesTooltip({
     key: `child-statuses-${friendlyId}`,
   });
   const fetcherStateRef = useRef(fetcher.state);
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+
   fetcherStateRef.current = fetcher.state;
 
   const [childStatuses, setChildStatuses] = useState<ChildStatusEntry[] | undefined>();
@@ -121,7 +121,7 @@ function useChildRunStatusesTooltip({
   // Keep the latest loader callback available to the polling interval
   // without recreating the interval on every render.
   const loadChildStatusesRef = useRef(loadChildStatuses);
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+
   loadChildStatusesRef.current = loadChildStatuses;
 
   const stopPolling = useCallback(() => {
@@ -146,7 +146,6 @@ function useChildRunStatusesTooltip({
     const entry = fetcher.data.runs.find((run) => run.friendlyId === friendlyId);
     if (!entry) return;
 
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setChildStatuses((previous) =>
       areChildStatusesEqual(previous, entry.statuses) ? previous : entry.statuses
     );
@@ -172,7 +171,7 @@ function useChildRunStatusesTooltip({
   useEffect(() => {
     prevHasFinishedRef.current = hasFinished;
     stopPolling();
-    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+
     setChildStatuses(undefined);
     if (isOpenRef.current) {
       loadChildStatuses();

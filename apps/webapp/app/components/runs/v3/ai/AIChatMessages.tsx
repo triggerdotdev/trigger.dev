@@ -289,7 +289,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
   // Auto-select input tab when input arrives after initial render (e.g. streaming tool calls)
   useEffect(() => {
     if (!hasSubAgent && hasInput) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setActiveTab((current) => current ?? "input");
     }
   }, [hasInput, hasSubAgent]);

@@ -76,7 +76,7 @@ export function LogsTable({
   // Show load more spinner only after 0.2 seconds of loading time
   useEffect(() => {
     if (!isLoadingMore) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setShowLoadMoreSpinner(false);
       return;
     }

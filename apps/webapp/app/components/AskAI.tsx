@@ -273,7 +273,7 @@ function ChatMessages({
   // Reset feedback state when conversation is reset
   useEffect(() => {
     if (conversation.length === 0) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setFeedbackGivenForQAs(new Set());
     }
   }, [conversation.length]);

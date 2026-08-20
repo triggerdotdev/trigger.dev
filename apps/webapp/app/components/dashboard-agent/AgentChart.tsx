@@ -93,7 +93,7 @@ export function AgentChart({
     // The block can render before `query` has streamed in; an empty query 400s.
     if (!block.query) return;
     if (!organizationId || !projectId || !environmentId) {
-      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState({ status: "error", error: "No environment context to run the query." });
       return;
     }

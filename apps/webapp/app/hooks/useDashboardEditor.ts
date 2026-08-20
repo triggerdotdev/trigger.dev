@@ -207,7 +207,7 @@ export function useDashboardEditor({
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(initialData.layout));
   const initialDataRef = useRef(initialData);
-  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   initialDataRef.current = initialData;
 
   // Sync queue to prevent race conditions
@@ -258,7 +258,7 @@ export function useDashboardEditor({
   // Sync queue processor - ensures only one sync runs at a time
   // -------------------------------------------------------------------------
 
-  /* oxlint-disable react/react-compiler -- The recursive callback drains a serialized sync queue. */
+  /* oxlint-disable react/preserve-manual-memoization -- The recursive callback drains a serialized sync queue. */
   const processNextSync = useCallback(async () => {
     // If already syncing or queue is empty, do nothing
     if (isSyncingRef.current || syncQueueRef.current.length === 0) {
@@ -311,7 +311,7 @@ export function useDashboardEditor({
       processNextSync();
     }
   }, [widgetActionUrl, layoutActionUrl, onSyncError]);
-  /* oxlint-enable react/react-compiler */
+  /* oxlint-enable react/preserve-manual-memoization */
 
   // -------------------------------------------------------------------------
   // Queue helpers
