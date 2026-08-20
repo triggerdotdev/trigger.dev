@@ -42,7 +42,7 @@ export type ProjectRuntimeRow = {
   } | null;
 };
 
-export function RuntimeUpdatesPage({
+export function ProjectsPage({
   organizationSlug,
   needsUpdate,
   otherProjects,

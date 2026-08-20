@@ -164,11 +164,20 @@ describe("resolveDeeplinkPage", () => {
   });
 
   it("resolves organization-level pages separately from environment pages", () => {
-    expect(ORG_PAGE_TARGETS.get("runtime-updates")).toEqual({
-      landing: "runtime-updates",
-      prefix: "runtime-updates",
+    expect(ORG_PAGE_TARGETS.get("projects")).toEqual({
+      landing: "projects",
+      prefix: "projects",
     });
-    expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBe("runtime-updates");
+    expect(resolveOrganizationDeeplinkPage("projects")).toBe("projects");
+    expect(resolveDeeplinkPage("projects")).toBeUndefined();
+  });
+
+  it("keeps the legacy runtime-updates deeplink pointing at the projects page", () => {
+    expect(ORG_PAGE_TARGETS.get("runtime-updates")).toEqual({
+      landing: "projects",
+      prefix: "projects",
+    });
+    expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBe("projects");
     expect(resolveDeeplinkPage("runtime-updates")).toBeUndefined();
   });
 

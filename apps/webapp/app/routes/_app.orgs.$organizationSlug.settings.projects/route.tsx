@@ -6,7 +6,7 @@ import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { getUserId } from "~/services/session.server";
 import { pageMeta } from "~/utils/pageTitle";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
-import { type ProjectRuntimeRow, RuntimeUpdatesPage } from "./RuntimeUpdatesPage";
+import { type ProjectRuntimeRow, ProjectsPage } from "./ProjectsPage";
 
 export const meta = pageMeta("Projects");
 
@@ -73,7 +73,7 @@ export default function Page() {
   const { organizationSlug, needsUpdate, otherProjects } = useTypedLoaderData<typeof loader>();
 
   return (
-    <RuntimeUpdatesPage
+    <ProjectsPage
       organizationSlug={organizationSlug}
       needsUpdate={needsUpdate}
       otherProjects={otherProjects}
