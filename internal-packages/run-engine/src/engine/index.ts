@@ -469,10 +469,8 @@ export class RunEngine {
     const batchQueueRedis = options.batchQueue?.redis ?? options.queue.redis;
 
     this.batchQueue = new BatchQueue({
-      redis: {
-        keyPrefix: `${batchQueueRedis.keyPrefix ?? ""}batch-queue:`,
-        ...batchQueueRedis,
-      },
+      // Preserve the configured namespace so existing batch state remains addressable.
+      redis: batchQueueRedis,
       drr: {
         quantum: options.batchQueue?.drr?.quantum ?? 5,
         maxDeficit: options.batchQueue?.drr?.maxDeficit ?? 50,
