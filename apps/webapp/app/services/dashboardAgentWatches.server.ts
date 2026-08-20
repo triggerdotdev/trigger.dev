@@ -56,6 +56,7 @@ import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironm
 import { isReportKey } from "~/presenters/v3/reports/report-registry";
 import {
   dashboardAgentApiOrigin,
+  dashboardAgentUserApiOrigin,
   isDashboardAgentConfigured as isDashboardAgentConfiguredDefault,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
@@ -1043,11 +1044,12 @@ export async function scheduleWatchTick(params: {
   if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
 
   await client.tasks.trigger(
     WATCH_TASK_ID,
-    { watchId: params.watchId, token: params.token, apiOrigin, tick: params.tick },
+    { watchId: params.watchId, token: params.token, apiOrigin: userApiOrigin, tick: params.tick },
     {
       delay: `${params.delayMinutes}m`,
       // Keyed on the generation the payload carries, so a retried schedule can't double-tick.
@@ -1138,6 +1140,7 @@ export async function scheduleWatchBatchTick(params: {
   if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
   const token = await mintDashboardAgentWatchBatchToken({
     environmentId: params.environmentId,
@@ -1149,7 +1152,7 @@ export async function scheduleWatchBatchTick(params: {
     {
       environmentId: params.environmentId,
       cadenceMinutes: params.cadenceMinutes,
-      apiOrigin,
+      apiOrigin: userApiOrigin,
       token,
       epoch: params.epoch,
       tick: params.tick,
@@ -1173,6 +1176,7 @@ export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date
   if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
   const token = await mintDashboardAgentWatchToken({
     watchId: watch.id,
@@ -1181,7 +1185,7 @@ export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date
 
   await client.tasks.trigger(
     WATCH_TASK_ID,
-    { watchId: watch.id, token, apiOrigin, tick: 0, deliverOnly: true },
+    { watchId: watch.id, token, apiOrigin: userApiOrigin, tick: 0, deliverOnly: true },
     {
       idempotencyKey: `watch:${watch.id}:deliver`,
       idempotencyKeyTTL: "10m",
