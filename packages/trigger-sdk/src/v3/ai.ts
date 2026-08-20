@@ -3521,6 +3521,16 @@ type SteeringQueueEntry = {
 const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
 /** @internal */
 const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQueue");
+
+/**
+ * This turn's new messages, as `onTurnComplete.newUIMessages` will see them.
+ *
+ * Held in locals because `drainSteeringQueue` runs outside the turn closure and
+ * has to append the messages it injects. Without that, an injected message
+ * reaches the model and the browser but no hook, so an app persisting from
+ * `onTurnComplete` never learns it existed.
+ */
+const chatTurnNewUIMessagesKey = locals.create<UIMessage[]>("chat.turnNewUIMessages");
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
 /** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
@@ -4222,6 +4232,29 @@ async function drainSteeringQueue(
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
         for (const m of claimedUIMessages) injectedIds.add(m.id);
+      }
+
+      // Record them as part of the conversation.
+      //
+      // The model has them and the browser has them; without this the
+      // accumulator does not, so they reach neither `uiMessages` nor
+      // `newUIMessages` on `onTurnComplete` and an app that persists from there
+      // silently loses the instruction the answer was shaped by. Appending here
+      // rather than at turn end keeps them in the order they happened: after the
+      // message that started the turn, before the response that answers it.
+      //
+      // De-duplicated by id because a step boundary can drain more than once per
+      // turn, and because a message that failed to inject falls back to becoming
+      // its own turn, where it is accumulated the normal way.
+      const currentUIMessages = locals.get(chatCurrentUIMessagesKey);
+      const turnNew = locals.get(chatTurnNewUIMessagesKey);
+      for (const m of uiMessages) {
+        if (currentUIMessages && !currentUIMessages.some((existing) => existing.id === m.id)) {
+          currentUIMessages.push(m);
+        }
+        if (turnNew && !turnNew.some((existing) => existing.id === m.id)) {
+          turnNew.push(m);
+        }
       }
 
       // Write injection confirmation chunk to the stream so the frontend
@@ -7490,6 +7523,7 @@ function chatAgent<
                 // Track new messages for this turn (user input + assistant response).
                 const turnNewModelMessages: ModelMessage[] = [];
                 const turnNewUIMessages: TUIMessage[] = [];
+                locals.set(chatTurnNewUIMessagesKey, turnNewUIMessages);
 
                 // ── Action handling ──────────────────────────────────────
                 // Actions arrive on the same input stream but with

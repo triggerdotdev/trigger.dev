@@ -1,5 +1,5 @@
 import type { UIMessage, UIMessageChunk } from "ai";
-import { resourceCatalog } from "@trigger.dev/core/v3";
+import { resourceCatalog, sessionStreams } from "@trigger.dev/core/v3";
 import type { LocalsKey } from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import { __setSessionOpenImplForTests, __setSessionStartImplForTests } from "../sessions.js";
@@ -185,6 +185,17 @@ export type MockChatAgentHarness = {
 
   /** Send a custom action and wait for the next turn-complete. */
   sendAction(action: unknown): Promise<MockChatAgentTurn>;
+
+  /**
+   * Deliver a message mid-turn without waiting for it, the way the browser's
+   * steering path does. With a `pendingMessages` config the agent routes it into
+   * the steering queue for injection at the next step boundary; without one it
+   * buffers as the next turn.
+   *
+   * Send it while a turn is in flight — start the turn without awaiting it, then
+   * call this. Awaiting the turn first leaves nothing to steer.
+   */
+  sendPendingMessage(message: UIMessage): Promise<void>;
 
   /** Fire a stop signal. Does not wait for the turn — the task keeps running. */
   sendStop(message?: string): Promise<void>;
@@ -616,6 +627,39 @@ export function mockChatAgent(
         action,
         metadata: clientData,
       });
+    },
+
+    async sendPendingMessage(message) {
+      await harnessReady;
+
+      const seqBefore = sessionStreams.lastSeqNum(chatId, "in") ?? -1;
+
+      await sendSessionInput(sessionId, {
+        kind: "message",
+        payload: {
+          message,
+          chatId,
+          trigger: "submit-message",
+          metadata: clientData,
+        },
+      });
+
+      /**
+       * Wait for the record to be observable on the channel, not merely for the
+       * send call to return. A test that continues on the send alone is racing the
+       * append: the message can still be in flight when the step boundary runs, so
+       * the injection it was meant to trigger silently does not happen and the test
+       * passes while proving nothing.
+       */
+      const deadline = Date.now() + 5_000;
+      while ((sessionStreams.lastSeqNum(chatId, "in") ?? -1) <= seqBefore) {
+        if (Date.now() > deadline) {
+          throw new Error(
+            `sendPendingMessage: append for ${message.id} never landed on session.in`
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
     },
 
     async sendStop(message) {
