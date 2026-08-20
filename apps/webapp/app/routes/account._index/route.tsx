@@ -193,7 +193,7 @@ function StrongerColorsPreview() {
   return (
     <span
       aria-hidden
-      className="contrast-chip contrast-chip-solid inline-flex rounded bg-success/10 px-2 py-0.5 text-xs font-medium text-success opacity-0 transition-opacity system:bg-success system:text-white group-hover/preview:opacity-100 group-has-[:focus-visible]/preview:opacity-100"
+      className="inline-flex rounded bg-success/10 px-2 py-0.5 text-xs font-medium text-success opacity-0 transition-opacity system:bg-success system:text-white group-hover/preview:opacity-100 group-has-[:focus-visible]/preview:opacity-100"
     >
       Example
     </span>

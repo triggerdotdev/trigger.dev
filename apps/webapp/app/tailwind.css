@@ -344,19 +344,15 @@
    own text color fades in as contrast rises, so the soft tint keeps its
    footprint but the chip gains definition. Transparent at contrast 0; only
    set under icon contrast. Marker set by the chip components. */
+/* For tinted chips only. The ring is drawn in currentcolor, so on a chip that
+   fills solid it lands as a hairline in the label's colour inset into the fill -
+   a white line on dark, a white line on white. Chips that fill under the
+   preference don't carry this class. */
 [data-icon-contrast="true"] .contrast-chip {
   box-shadow: inset 0 0 0 1px
     color-mix(in srgb, currentcolor calc(var(--theme-contrast, 0) * 70%), transparent);
 }
 
-/* The ring is drawn in currentcolor, which is white on a chip that fills solid -
-   fine against a dark page, where it reads as an edge, but on white it reads as a
-   stray border inset into the fill. Cancelled there, and only for the chips that
-   actually fill: the tinted ones still need the edge it was written for. */
-[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"])
-  .contrast-chip-solid {
-  box-shadow: none;
-}
 
 /*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
