@@ -171,6 +171,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // `type === "run" | "span"` discriminant downstream in `SpanView`.
     if (result.type === "run") {
       const queueMetrics = await resolveRunQueueMetrics({
+        request,
         userId,
         organizationSlug,
         projectParam,

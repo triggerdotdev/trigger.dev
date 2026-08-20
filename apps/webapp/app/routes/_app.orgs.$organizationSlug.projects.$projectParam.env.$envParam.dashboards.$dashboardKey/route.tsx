@@ -63,7 +63,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // URL), so gate it per-org like the rest of the Queue Metrics view.
   if (
     dashboardKey === "queues" &&
-    !(await canAccessQueueMetricsUi({ userId: user.id, organizationSlug }))
+    !(await canAccessQueueMetricsUi({ request, userId: user.id, organizationSlug }))
   ) {
     throw new Response(undefined, { status: 404, statusText: "Not found" });
   }
