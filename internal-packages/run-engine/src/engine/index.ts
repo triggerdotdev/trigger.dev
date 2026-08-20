@@ -116,6 +116,7 @@ export class RunEngine {
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
+  private batchQueueConsumersEnabled: boolean;
   private workerQueueObserverAbortController?: AbortController;
   private quitPromise?: Promise<void>;
 
@@ -462,13 +463,15 @@ export class RunEngine {
       waitpointSystem: this.waitpointSystem,
     });
 
-    // Initialize BatchQueue for DRR-based batch processing (if configured)
-    const startBatchQueueConsumers = options.batchQueue?.consumerEnabled ?? true;
+    // Initialize BatchQueue for DRR-based batch processing. Consumers start lazily when the
+    // process-item callback is registered; before that they cannot perform useful work.
+    this.batchQueueConsumersEnabled = options.batchQueue?.consumerEnabled ?? true;
+    const batchQueueRedis = options.batchQueue?.redis ?? options.queue.redis;
 
     this.batchQueue = new BatchQueue({
       redis: {
-        keyPrefix: `${options.batchQueue?.redis.keyPrefix ?? ""}batch-queue:`,
-        ...options.batchQueue?.redis,
+        keyPrefix: `${batchQueueRedis.keyPrefix ?? ""}batch-queue:`,
+        ...batchQueueRedis,
       },
       drr: {
         quantum: options.batchQueue?.drr?.quantum ?? 5,
@@ -482,7 +485,7 @@ export class RunEngine {
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       globalRateLimiter: options.batchQueue?.globalRateLimiter,
       workerQueueMaxDepth: options.batchQueue?.workerQueueMaxDepth,
-      startConsumers: startBatchQueueConsumers,
+      startConsumers: false,
       retry: options.batchQueue?.retry,
       tracer: options.tracer,
       meter: options.meter,
@@ -492,7 +495,7 @@ export class RunEngine {
       consumerCount: options.batchQueue?.consumerCount ?? 2,
       drrQuantum: options.batchQueue?.drr?.quantum ?? 5,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
-      consumersEnabled: startBatchQueueConsumers,
+      consumersEnabled: this.batchQueueConsumersEnabled,
     });
 
     this.runAttemptSystem = new RunAttemptSystem({
@@ -1923,6 +1926,9 @@ export class RunEngine {
    */
   setBatchProcessItemCallback(callback: ProcessBatchItemCallback): void {
     this.batchQueue.onProcessItem(callback);
+    if (this.batchQueueConsumersEnabled) {
+      this.batchQueue.start();
+    }
   }
 
   /**

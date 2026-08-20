@@ -17,8 +17,8 @@ async function connectedClientCount(redis: Redis): Promise<number> {
 }
 
 function engineOptions(redisOptions: RedisOptions) {
-  // Keep caches and disabled consumers lazy so every connection opened by this test belongs to a
-  // shutdown resource. The run-lock client remains eager to exercise Redlock's ownership of it.
+  // Keep caches and consumers lazy so every connection opened by this test belongs to a shutdown
+  // resource. The run-lock client remains eager to exercise Redlock's ownership of it.
   const lazyRedisOptions = { ...redisOptions, lazyConnect: true };
 
   return {
@@ -40,10 +40,6 @@ function engineOptions(redisOptions: RedisOptions) {
     runLock: { redis: redisOptions },
     cache: { redis: lazyRedisOptions },
     debounce: { redis: lazyRedisOptions },
-    batchQueue: {
-      redis: lazyRedisOptions,
-      consumerEnabled: false,
-    },
     machines: {
       defaultMachine: "small-1x" as const,
       machines: {
