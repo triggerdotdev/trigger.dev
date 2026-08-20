@@ -541,6 +541,14 @@ function VercelAppInstalledRow() {
   );
 }
 
+function VercelLeadingIcon() {
+  return <VercelLogo className="-mx-1 size-3.5 text-text-bright" />;
+}
+
+function VercelLoadingIcon() {
+  return <Spinner color="blue" className="size-4" />;
+}
+
 function VercelSettingsRows({
   organizationSlug,
   projectSlug,
@@ -577,7 +585,7 @@ function VercelSettingsRows({
               noPermissionTooltip={noPermissionTooltip}
               to={vercelAppInstallPath(organizationSlug, projectSlug)}
               variant="secondary/small"
-              LeadingIcon={() => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />}
+              LeadingIcon={VercelLeadingIcon}
             >
               Install Vercel app
             </PermissionLink>
@@ -595,11 +603,7 @@ function VercelSettingsRows({
               onClick={() => onOpenModal?.()}
               disabled={isLoadingProjects || !onOpenModal || !canManageVercel}
               tooltip={canManageVercel ? undefined : noPermissionTooltip}
-              LeadingIcon={
-                isLoadingProjects
-                  ? () => <Spinner color="blue" className="size-4" />
-                  : () => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />
-              }
+              LeadingIcon={isLoadingProjects ? VercelLoadingIcon : VercelLeadingIcon}
             >
               {isLoadingProjects ? "Loading projects…" : "Connect Vercel project"}
             </Button>
@@ -691,7 +695,6 @@ function ConnectedVercelProjectForm({
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
-  const [hasConfigChanges, setHasConfigChanges] = useState(false);
   const [configValues, setConfigValues] = useState({
     atomicBuilds: connectedProject.integrationData.config.atomicBuilds ?? [],
     pullEnvVarsBeforeBuild: connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [],
@@ -708,35 +711,24 @@ function ConnectedVercelProjectForm({
     connectedProject.integrationData.config.vercelStagingEnvironment ?? null;
   const originalAutoPromote = connectedProject.integrationData.config.autoPromote ?? true;
 
-  useEffect(() => {
-    const atomicBuildsChanged =
-      JSON.stringify([...configValues.atomicBuilds].sort()) !==
-      JSON.stringify([...originalAtomicBuilds].sort());
-    const pullEnvVarsChanged =
-      JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
-      JSON.stringify([...originalPullEnvVars].sort());
-    const discoverEnvVarsChanged =
-      JSON.stringify([...configValues.discoverEnvVars].sort()) !==
-      JSON.stringify([...originalDiscoverEnvVars].sort());
-    const stagingEnvChanged =
-      configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
-    const autoPromoteChanged = configValues.autoPromote !== originalAutoPromote;
-
-    setHasConfigChanges(
-      atomicBuildsChanged ||
-        pullEnvVarsChanged ||
-        discoverEnvVarsChanged ||
-        stagingEnvChanged ||
-        autoPromoteChanged
-    );
-  }, [
-    configValues,
-    originalAtomicBuilds,
-    originalPullEnvVars,
-    originalDiscoverEnvVars,
-    originalStagingEnv,
-    originalAutoPromote,
-  ]);
+  const atomicBuildsChanged =
+    JSON.stringify([...configValues.atomicBuilds].sort()) !==
+    JSON.stringify([...originalAtomicBuilds].sort());
+  const pullEnvVarsChanged =
+    JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
+    JSON.stringify([...originalPullEnvVars].sort());
+  const discoverEnvVarsChanged =
+    JSON.stringify([...configValues.discoverEnvVars].sort()) !==
+    JSON.stringify([...originalDiscoverEnvVars].sort());
+  const stagingEnvChanged =
+    configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
+  const autoPromoteChanged = configValues.autoPromote !== originalAutoPromote;
+  const hasConfigChanges =
+    atomicBuildsChanged ||
+    pullEnvVarsChanged ||
+    discoverEnvVarsChanged ||
+    stagingEnvChanged ||
+    autoPromoteChanged;
 
   const [configForm, _fields] = useForm({
     id: "update-vercel-config",
@@ -1117,6 +1109,7 @@ function VercelSettingsPanel({
   isLoadingVercelData?: boolean;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const _location = useLocation();
   const data = fetcher.data;
   const [hasError, _setHasError] = useState(false);
@@ -1124,7 +1117,8 @@ function VercelSettingsPanel({
 
   useEffect(() => {
     if (!data?.authInvalid && !hasError && !data && !hasFetched) {
-      fetcher.load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
+      load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHasFetched(true);
     }
   }, [
@@ -1135,6 +1129,7 @@ function VercelSettingsPanel({
     hasError,
     data,
     hasFetched,
+    load,
   ]);
 
   if (hasError) {

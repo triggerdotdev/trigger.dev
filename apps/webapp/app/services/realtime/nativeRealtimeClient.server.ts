@@ -66,11 +66,11 @@ export interface RealtimeStreamClient {
   ): Promise<Response>;
 }
 
-export type WakeupReason = "notify" | "timeout" | "abort";
+type WakeupReason = "notify" | "timeout" | "abort";
 
 /** How a live poll resolved: `fast-hydrate` (router woke us, hydrate-by-id), `full-resolve`
  * (backstop), or `cold-resolve` (fresh env subscription probed once instead of holding blind). */
-export type LivePollPath = "fast-hydrate" | "full-resolve" | "cold-resolve";
+type LivePollPath = "fast-hydrate" | "full-resolve" | "cold-resolve";
 
 export type NativeRealtimeClientOptions = {
   runReader: RunHydrator;

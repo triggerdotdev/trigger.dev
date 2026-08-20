@@ -3,7 +3,6 @@ import { type Prisma, type PrismaClient } from "@trigger.dev/database";
 import { describe, expect, it, vi } from "vitest";
 import {
   createDraftPlatformNotification,
-  CreatePlatformNotificationSchema,
   getActivePlatformNotifications,
   getAdminNotificationsList,
   getNextCliNotification,
@@ -11,6 +10,7 @@ import {
   publishDraftPlatformNotification,
   updateDraftPlatformNotification,
 } from "~/services/platformNotifications.server";
+import { CreatePlatformNotificationSchema } from "~/services/platformNotificationSchemas";
 import { isCliVersionEligible } from "~/services/platformNotificationVersionTargeting";
 
 // Container provisioning on the first draft tests can exceed the 5s default.

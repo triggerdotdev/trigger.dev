@@ -4,11 +4,13 @@ This directory tracks changes to server-only components (webapp, supervisor, etc
 
 ## When to add a file
 
-**Server-only PRs**: If your PR only changes `apps/webapp/`, `apps/supervisor/`, or other server components (and does NOT change anything in `packages/`), add a `.server-changes/` file.
+These entries are **user-facing release notes**, not a catalog of every change. The test is "would a user or customer care about this change?", not "did I touch a server app?". Add one only when a server-only change is something a user would notice, act on, or want to hear about (a feature, a bug fix they could have hit, a behavior or performance change they would feel). Skip it for internal-only or admin-only changes, refactors, test-only changes, chores, and performance tuning with no user-visible effect. Anyone who wants the exact history reads the commits. When in doubt, ask a maintainer rather than adding a note by default.
 
-**Mixed PRs** (both packages and server): Just add a changeset as usual. No `.server-changes/` file needed — the changeset covers it.
+**Server-only PRs**: If your PR only changes `apps/webapp/`, `apps/supervisor/`, or other server components (and does NOT change anything in `packages/`) AND the change is user-facing, add a `.server-changes/` file.
 
-**Package-only PRs**: Just add a changeset as usual.
+**Mixed PRs** (both packages and server): the changeset covers it, so no `.server-changes/` file is needed. If the package change is internal and needs no changeset but the server change is user-facing, add a `.server-changes/` file for it.
+
+**Package-only PRs**: Just add a changeset as usual, when the change is user-facing.
 
 ## File format
 

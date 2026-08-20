@@ -3,10 +3,10 @@ import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { NextRunListPresenter } from "./NextRunListPresenter.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
-import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
+import { calculateNextScheduleRunTimes, formatScheduleWindow } from "~/v3/scheduleWindow.server";
+import { env } from "~/env.server";
 
 type ViewScheduleOptions = {
   userId?: string;
@@ -52,6 +52,8 @@ export class ViewSchedulePresenter {
         },
         instances: {
           select: {
+            environmentId: true,
+            schedulePhase: true,
             environment: {
               select: {
                 id: true,
@@ -82,8 +84,25 @@ export class ViewSchedulePresenter {
       return;
     }
 
+    const instance = schedule.instances.find(
+      (instance) => instance.environmentId === environmentId
+    );
+    if (!instance && schedule.instances.length > 0) {
+      return;
+    }
+
     const nextRuns = schedule.active
-      ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
+      ? calculateNextScheduleRunTimes({
+          cron: schedule.generatorExpression,
+          timezone: schedule.timezone,
+          deduplicationKey: schedule.deduplicationKey,
+          environmentId,
+          schedulePhase: instance?.schedulePhase ?? null,
+          phaseSecret: env.ENCRYPTION_KEY,
+          windowDurationSeconds: schedule.windowDurationSeconds,
+          windowPercentage: schedule.windowPercentage,
+          count: 5,
+        })
       : [];
 
     const runs = includeRunHistory
@@ -101,6 +120,7 @@ export class ViewSchedulePresenter {
         timezone: schedule.timezone,
         cron: schedule.generatorExpression,
         cronDescription: schedule.generatorDescription,
+        window: formatScheduleWindow(schedule),
         nextRuns,
         runs,
         environments: schedule.instances.map((instance) => {
@@ -146,14 +166,15 @@ export class ViewSchedulePresenter {
       type: result.schedule.type,
       task: result.schedule.taskIdentifier,
       active: result.schedule.active,
-      nextRun: result.schedule.nextRuns[0],
+      nextRun: result.schedule.nextRuns[0]?.nominalAt ?? null,
+      nextRunEffectiveAt: result.schedule.nextRuns[0]?.effectiveAt ?? null,
       generator: {
         type: "CRON",
         expression: result.schedule.cron,
         description: result.schedule.cronDescription,
       },
       timezone: result.schedule.timezone,
-      window: formatScheduleWindow(result.schedule),
+      window: result.schedule.window,
       externalId: result.schedule.externalId ?? undefined,
       deduplicationKey: result.schedule.userProvidedDeduplicationKey
         ? (result.schedule.deduplicationKey ?? undefined)

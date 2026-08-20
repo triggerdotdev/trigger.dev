@@ -3,7 +3,7 @@ import type { Informer, KubernetesObject, ListPromise } from "@kubernetes/client
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
-export const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
+const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 
 const logger = new SimpleStructuredLogger("kubernetes-client");
 

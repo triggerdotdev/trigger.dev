@@ -38,7 +38,7 @@ function getServerTimeZoneSnapshot(): string {
  * Uses useSyncExternalStore for SSR compatibility - returns "UTC" on server,
  * actual timezone on client. The timezone is cached and only resolved once.
  */
-export function useLocalTimeZone(): string {
+function useLocalTimeZone(): string {
   return useSyncExternalStore(subscribeToTimeZone, getTimeZoneSnapshot, getServerTimeZoneSnapshot);
 }
 
@@ -47,7 +47,7 @@ export function useLocalTimeZone(): string {
  * Returns the timezone stored in the user's preferences cookie (from root loader),
  * falling back to the browser's local timezone if not set.
  */
-export function useUserTimeZone(): string {
+function useUserTimeZone(): string {
   const rootData = useRouteLoaderData("root") as { timezone?: string } | undefined;
   const localTimeZone = useLocalTimeZone();
   // Use stored timezone from cookie, or fall back to browser's local timezone
@@ -204,32 +204,6 @@ export function formatUtcOffset(date: Date, timeZone: string): string {
   return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
 }
 
-// New component that only shows date when it changes
-export const SmartDateTime = ({ date, previousDate = null, hour12 = true }: DateTimeProps) => {
-  const locales = useLocales();
-  const userTimeZone = useUserTimeZone();
-  const realDate = typeof date === "string" ? new Date(date) : date;
-  const realPrevDate = previousDate
-    ? typeof previousDate === "string"
-      ? new Date(previousDate)
-      : previousDate
-    : null;
-
-  // Check if we should show the date
-  const showDatePart = !realPrevDate || !isSameDay(realDate, realPrevDate);
-
-  // Format with appropriate function
-  const formattedDateTime = showDatePart
-    ? formatSmartDateTime(realDate, userTimeZone, locales, hour12)
-    : formatTimeOnly(realDate, userTimeZone, locales, hour12);
-
-  return (
-    <span suppressHydrationWarning>
-      {formattedDateTime.replace(/\s/g, String.fromCharCode(32))}
-    </span>
-  );
-};
-
 // Helper function to check if two dates are on the same day
 function isSameDay(date1: Date, date2: Date): boolean {
   return (
@@ -237,26 +211,6 @@ function isSameDay(date1: Date, date2: Date): boolean {
     date1.getMonth() === date2.getMonth() &&
     date1.getDate() === date2.getDate()
   );
-}
-
-// Format with date and time
-function formatSmartDateTime(
-  date: Date,
-  timeZone: string,
-  locales: string[],
-  hour12: boolean = true
-): string {
-  return new Intl.DateTimeFormat(locales, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-    timeZone,
-    // @ts-ignore fractionalSecondDigits works in most modern browsers
-    fractionalSecondDigits: 3,
-    hour12,
-  }).format(date);
 }
 
 // Format time only
@@ -289,12 +243,16 @@ const DateTimeAccurateInner = ({
   const userTimeZone = useUserTimeZone();
   // Use provided timeZone prop if available, otherwise fall back to user's preferred timezone
   const displayTimeZone = timeZone ?? userTimeZone;
-  const realDate = typeof date === "string" ? new Date(date) : date;
-  const realPrevDate = previousDate
-    ? typeof previousDate === "string"
-      ? new Date(previousDate)
-      : previousDate
-    : null;
+  const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
+  const realPrevDate = useMemo(
+    () =>
+      previousDate
+        ? typeof previousDate === "string"
+          ? new Date(previousDate)
+          : previousDate
+        : null,
+    [previousDate]
+  );
 
   // Smart formatting based on whether date changed
   const formattedDateTime = useMemo(() => {
@@ -305,7 +263,7 @@ const DateTimeAccurateInner = ({
           ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
           : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12)
         : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12);
-  }, [realDate, displayTimeZone, locales, hour12, hideDate, previousDate]);
+  }, [realDate, realPrevDate, displayTimeZone, locales, hour12, hideDate]);
 
   if (!showTooltip)
     return (
@@ -414,6 +372,7 @@ export const RelativeDateTime = ({ date, timeZone, capitalize = true }: Relative
 
   // On first render
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- A changed date intentionally resets the timer-backed relative text.
     setRelativeText(getRelativeText(realDate, capitalize));
   }, [realDate, capitalize]);
 

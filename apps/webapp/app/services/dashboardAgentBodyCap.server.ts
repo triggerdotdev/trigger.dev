@@ -36,7 +36,7 @@ function refuse(res: Response): void {
  * reader still receives every chunk while nothing flows until it asks for it. Crossing the
  * limit ends the request: pausing alone wouldn't stop the route resuming the stream itself.
  */
-export function capRequestBody(req: Request, res: Response, limit: number): void {
+function capRequestBody(req: Request, res: Response, limit: number): void {
   const declared = Number.parseInt(req.headers["content-length"] ?? "", 10);
   if (Number.isFinite(declared) && declared > limit) {
     refuse(res);

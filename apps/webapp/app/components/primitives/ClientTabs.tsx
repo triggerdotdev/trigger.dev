@@ -20,18 +20,13 @@ const ClientTabs = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root>
 >(({ onValueChange, value: valueProp, defaultValue, ...props }, ref) => {
-  const [value, setValue] = React.useState<string | undefined>(valueProp ?? defaultValue);
-
-  React.useEffect(() => {
-    if (valueProp !== undefined) {
-      setValue(valueProp);
-    }
-  }, [valueProp]);
+  const [internalValue, setInternalValue] = React.useState<string | undefined>(defaultValue);
+  const value = valueProp ?? internalValue;
 
   const handleValueChange = React.useCallback(
     (nextValue: string) => {
       if (valueProp === undefined) {
-        setValue(nextValue);
+        setInternalValue(nextValue);
       }
       onValueChange?.(nextValue);
     },
@@ -198,16 +193,5 @@ const ClientTabsContent = React.forwardRef<
   />
 ));
 ClientTabsContent.displayName = TabsPrimitive.Content.displayName;
-
-export type TabsProps = {
-  tabs: {
-    label: string;
-    value: string;
-  }[];
-  currentValue: string;
-  className?: string;
-  layoutId: string;
-  variant?: Variants;
-};
 
 export { ClientTabs, ClientTabsContent, ClientTabsList, ClientTabsTrigger };

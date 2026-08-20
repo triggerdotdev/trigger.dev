@@ -53,7 +53,7 @@ import type { InvestigationRenderer } from "./tool-investigations";
  * environment is stated as one; a failed exchange says the read didn't land, and carries
  * its status, so an authorization failure is never reported as an absent environment.
  */
-export function envUnavailableError(result: EnvUnavailable, action: string): { error: string } {
+function envUnavailableError(result: EnvUnavailable, action: string): { error: string } {
   if (result.envUnavailable === "missing") {
     return { error: `No current environment is available to ${action}.` };
   }

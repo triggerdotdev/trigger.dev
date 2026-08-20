@@ -37,7 +37,7 @@ const StatusReportsSchema = z.object({
 
 export type AggregateState = "operational" | "degraded" | "downtime";
 
-export type IncidentStatus = {
+type IncidentStatus = {
   status: AggregateState;
   title: string | null;
 };

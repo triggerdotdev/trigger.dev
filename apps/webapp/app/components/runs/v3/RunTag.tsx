@@ -113,13 +113,17 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
 
   return (
     <SimpleTooltip
+      asChild
+      tabbable
       button={
-        <span
+        <button
+          type="button"
+          aria-label={copied ? "Copied" : "Copy tag"}
           onClick={copy}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover",
-            isHovered ? "flex" : "hidden",
+            "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
+            isHovered ? "opacity-100" : "pointer-events-none opacity-0",
             copied
               ? "text-green-500"
               : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
@@ -130,7 +134,7 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
           ) : (
             <ClipboardIcon className="size-3.5" />
           )}
-        </span>
+        </button>
       }
       content={copied ? "Copied!" : "Copy tag"}
       disableHoverableContent
@@ -158,18 +162,22 @@ function DeleteButton({
 
   return (
     <SimpleTooltip
+      asChild
+      tabbable
       button={
-        <span
+        <button
+          type="button"
+          aria-label="Remove tag"
           onClick={handleDelete}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover",
-            isHovered ? "flex" : "hidden",
+            "absolute -right-6 top-0 z-10 flex size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
+            isHovered ? "opacity-100" : "pointer-events-none opacity-0",
             "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-rose-400"
           )}
         >
           <XIcon className="size-3.5" />
-        </span>
+        </button>
       }
       content="Remove tag"
       disableHoverableContent

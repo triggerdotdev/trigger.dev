@@ -2,6 +2,7 @@ import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
+import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
@@ -14,13 +15,14 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
+  organizationPath,
+  organizationProjectsPath,
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationSsoPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
-  rootPath,
   v3BillingLimitsPath,
   v3BillingPath,
   v3PrivateConnectionsPath,
@@ -49,11 +51,13 @@ export function OrganizationSettingsSideMenu({
   buildInfo,
   isUsingPlugin,
   isSsoUsingPlugin,
+  hasProjectRuntimeUpdate,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
   isSsoUsingPlugin: boolean;
+  hasProjectRuntimeUpdate: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
@@ -72,7 +76,7 @@ export function OrganizationSettingsSideMenu({
         <LinkButton
           variant="minimal/medium"
           LeadingIcon={ArrowLeftIcon}
-          to={rootPath()}
+          to={organizationPath(organization)}
           fullWidth
           textAlignLeft
         >
@@ -127,6 +131,22 @@ export function OrganizationSettingsSideMenu({
               ) : null}
             </>
           )}
+          <SideMenuItem
+            name="Projects"
+            icon={FolderOpenIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationProjectsPath(organization)}
+            data-action="projects"
+            badge={
+              hasProjectRuntimeUpdate ? (
+                <>
+                  <span aria-hidden className="size-2 shrink-0 rounded-full bg-warning" />
+                  <span className="sr-only">Runtime update available.</span>
+                </>
+              ) : undefined
+            }
+          />
           <SideMenuItem
             name="Team"
             icon={UserGroupIcon}

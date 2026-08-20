@@ -18,7 +18,7 @@ import {
   watchIdentityValue,
 } from "~/presenters/v3/dashboardAgent";
 
-export const WATCH_STATUS_LABEL: Record<WatchStatus, string> = {
+const WATCH_STATUS_LABEL: Record<WatchStatus, string> = {
   active: "watching",
   fired: "fired",
   expired: "expired",

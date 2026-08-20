@@ -1,5 +1,10 @@
 import { intro, log, outro } from "@clack/prompts";
-import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
+import {
+  EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH,
+  getBranch,
+  prepareDeploymentError,
+  tryCatch,
+} from "@trigger.dev/core/v3";
 import type {
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
@@ -73,6 +78,8 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
   skipPromotion: z.boolean().default(false),
+  externalId: z.string().optional(),
+  force: z.boolean().default(false),
   cache: z.boolean().default(true),
   envFile: z.string().optional(),
   // Local build options
@@ -132,6 +139,14 @@ export function configureDeployCommand(program: Command) {
         .option(
           "--skip-promotion",
           "Skip promoting the deployment to the current deployment for the environment."
+        )
+        .option(
+          "--external-id <externalId>",
+          `An id of your choosing for this deploy, such as a commit SHA, CI run id or release tag (max ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters). Deploying the same id again returns the existing version instead of building it twice.`
+        )
+        .option(
+          "--force",
+          "Build again even if --external-id has already been deployed. Requires --external-id."
         )
     )
       .addOption(
@@ -249,13 +264,33 @@ export function configureDeployCommand(program: Command) {
   );
 }
 
-export async function deployCommand(dir: string, options: unknown) {
+async function deployCommand(dir: string, options: unknown) {
   return await wrapCommandAction("deployCommand", DeployCommandOptions, options, async (opts) => {
     return await _deployCommand(dir, opts);
   });
 }
 
 async function _deployCommand(dir: string, options: DeployCommandOptions) {
+  if (options.externalId !== undefined) {
+    options.externalId = options.externalId.trim();
+
+    if (options.externalId.length === 0) {
+      throw new Error("--external-id must not be empty.");
+    }
+
+    if (options.externalId.length > EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH) {
+      throw new Error(
+        `--external-id must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters.`
+      );
+    }
+  }
+
+  if (options.force && !options.externalId) {
+    throw new Error(
+      "--force requires --external-id. Without an id there is no previous deployment for --force to build over."
+    );
+  }
+
   if (!options.plain) {
     intro(`Deploying project${options.skipPromotion ? " (without promotion)" : ""}`);
   }
@@ -300,7 +335,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
   }
 
-  const resolvedConfig = await loadConfig({
+  let resolvedConfig = await loadConfig({
     cwd: projectPath,
     overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
     configFile: options.config,
@@ -310,6 +345,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
   logger.debug("gitMeta", gitMeta);
+
+  const isAttachingToExistingDeployment =
+    Boolean(envVars.TRIGGER_EXISTING_DEPLOYMENT_ID) ||
+    Boolean(gitMeta?.commitSha?.startsWith("deployment_"));
+
+  if (isAttachingToExistingDeployment && (options.externalId || options.force)) {
+    throw new Error(
+      "--external-id and --force are not supported when attaching to an existing deployment. Remove the flags, or start a new deployment instead."
+    );
+  }
 
   const branch =
     options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
@@ -362,6 +407,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (!projectClient) {
     throw new Error("Failed to get project client");
+  }
+
+  if (!resolvedConfig.runtimeWasExplicit && projectClient.defaultRuntime) {
+    resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
   if (options.nativeBuildServer) {
@@ -433,9 +482,54 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       isLocalBuild: options.localBuild,
       isNativeBuild: false,
       triggeredVia: getTriggeredVia(),
+      externalId: options.externalId,
+      force: options.force,
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
+
+  if (deployment.outcome === "existing") {
+    const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
+      dashboardUrl: authorization.dashboardUrl,
+      projectRef: resolvedConfig.project,
+      env: options.env,
+      shortCode: deployment.shortCode,
+    });
+
+    setDeploymentGithubActionsOutput({
+      version: deployment.version,
+      shortCode: deployment.shortCode,
+      rawDeploymentLink,
+      rawTestLink,
+      needsPromotion: !deployment.isPromoted,
+    });
+
+    warnAboutSkippedBuild(options.externalId, deployment.isPromoted);
+
+    const message = `Version ${deployment.version} was already deployed for --external-id ${options.externalId} — nothing to build`;
+
+    if (options.plain) {
+      console.log(message);
+
+      if (process.env.TRIGGER_DEPLOYMENT_LINK_OUTPUT_DISABLED !== "1") {
+        console.log(`Deployment: ${rawDeploymentLink}`);
+        console.log(`Test: ${rawTestLink}`);
+      }
+    } else {
+      outro(
+        `${message} ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""}`
+      );
+
+      if (!isLinksSupported) {
+        console.log("View deployment");
+        console.log(rawDeploymentLink);
+      }
+    }
+
+    return;
+  }
+
+  warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
 
   // When `externalBuildData` is not present the deployment implicitly goes into the local build path
   // which is used in self-hosted setups. There are a few subtle differences between local builds for the cloud
@@ -512,10 +606,12 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const version = deployment.version;
 
-  const rawDeploymentLink = `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${authorization.dashboardUrl}/projects/v3/${
-    resolvedConfig.project
-  }/test?environment=${options.env === "prod" ? "prod" : "stg"}`;
+  const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
+    dashboardUrl: authorization.dashboardUrl,
+    projectRef: resolvedConfig.project,
+    env: options.env,
+    shortCode: deployment.shortCode,
+  });
 
   const deploymentLink = cliLink("View deployment", rawDeploymentLink);
   const testLink = cliLink("Test tasks", rawTestLink);
@@ -751,30 +847,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     console.log(`Full build logs have been saved to ${logPath}`);
   }
 
-  setGithubActionsOutputAndEnvVars({
-    envVars: {
-      TRIGGER_DEPLOYMENT_VERSION: version,
-      TRIGGER_VERSION: version,
-      TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
-      TRIGGER_DEPLOYMENT_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
-    },
-    outputs: {
-      deploymentVersion: version,
-      workerVersion: version,
-      deploymentShortCode: deployment.shortCode,
-      deploymentUrl: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      testUrl: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
-      needsPromotion: options.skipPromotion ? "true" : "false",
-    },
+  setDeploymentGithubActionsOutput({
+    version,
+    shortCode: deployment.shortCode,
+    rawDeploymentLink,
+    rawTestLink,
+    needsPromotion: options.skipPromotion,
   });
 }
 
-export async function syncEnvVarsWithServer(
+async function syncEnvVarsWithServer(
   apiClient: CliApiClient,
   projectRef: string,
   environmentSlug: string,
@@ -888,7 +970,7 @@ async function failDeploy(
         break;
       }
       case "CANCELED": {
-        await doOutputLogs("Canceled");
+        await doOutputLogs(serverDeployment.canceledReason ?? "Canceled");
 
         exitCommand("Failed to deploy project");
 
@@ -975,6 +1057,7 @@ async function initializeOrAttachDeployment(
     return {
       ...existingDeploymentOrError.data,
       imageTag: imageReference,
+      outcome: "created" as const,
     };
   }
 
@@ -987,6 +1070,92 @@ async function initializeOrAttachDeployment(
   }
 
   return newDeploymentOrError.data;
+}
+
+function buildDeploymentLinks({
+  dashboardUrl,
+  projectRef,
+  env,
+  shortCode,
+}: {
+  dashboardUrl: string;
+  projectRef: string;
+  env: DeployCommandOptions["env"];
+  shortCode: string;
+}) {
+  return {
+    rawDeploymentLink: `${dashboardUrl}/projects/v3/${projectRef}/deployments/${shortCode}`,
+    rawTestLink: `${dashboardUrl}/projects/v3/${projectRef}/test?environment=${
+      env === "prod" ? "prod" : "stg"
+    }`,
+  };
+}
+
+function warnAboutSkippedBuild(externalId: string | undefined, isPromoted: boolean | undefined) {
+  prettyWarning(
+    "Environment variables were not synced because nothing was built.",
+    `If your environment variables have changed, deploy again with --force --external-id ${externalId} to rebuild this id and sync them.`
+  );
+
+  if (isPromoted === false) {
+    prettyWarning(
+      "This version is not the current deployment.",
+      "Promote it from the dashboard, or deploy again with --force to build a new version."
+    );
+  }
+}
+
+function warnAboutCanceledDeployments(
+  canceledDeployments: Array<{ version: string }> | undefined,
+  externalId: string | undefined
+) {
+  if (!canceledDeployments?.length || !externalId) {
+    return;
+  }
+
+  const versions = canceledDeployments.map((deployment) => deployment.version);
+
+  const header =
+    versions.length === 1
+      ? `--force canceled version ${versions[0]}, which was still building for --external-id ${externalId}`
+      : `--force canceled ${versions.length} in-progress deployments for --external-id ${externalId}: ${versions.join(", ")}`;
+
+  prettyWarning(
+    header,
+    "A canceled deployment can never be deployed. The build is signalled to stop, but a build running on another machine can keep going for a few minutes before it notices."
+  );
+}
+
+function setDeploymentGithubActionsOutput({
+  version,
+  shortCode,
+  rawDeploymentLink,
+  rawTestLink,
+  needsPromotion,
+}: {
+  version: string;
+  shortCode: string;
+  rawDeploymentLink: string;
+  rawTestLink: string;
+  needsPromotion: boolean;
+}) {
+  setGithubActionsOutputAndEnvVars({
+    envVars: {
+      TRIGGER_DEPLOYMENT_VERSION: version,
+      TRIGGER_VERSION: version,
+      TRIGGER_DEPLOYMENT_SHORT_CODE: shortCode,
+      TRIGGER_DEPLOYMENT_URL: rawDeploymentLink,
+      TRIGGER_TEST_URL: rawTestLink,
+    },
+    outputs: {
+      deploymentVersion: version,
+      workerVersion: version,
+      deploymentShortCode: shortCode,
+      deploymentUrl: rawDeploymentLink,
+      testUrl: rawTestLink,
+      needsPromotion: needsPromotion ? "true" : "false",
+    },
+  });
 }
 
 function getTriggeredVia(): DeploymentTriggeredVia {
@@ -1129,6 +1298,8 @@ async function handleNativeBuildServerDeploy({
     skipPromotion: options.skipPromotion,
     configFilePath,
     triggeredVia: getTriggeredVia(),
+    externalId: options.externalId,
+    force: options.force,
   });
 
   if (!initializeDeploymentResult.success) {
@@ -1144,28 +1315,42 @@ async function handleNativeBuildServerDeploy({
     options.env === "prod" ? "prod" : "stg"
   }`;
 
+  if (deployment.outcome === "existing") {
+    $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
+
+    setDeploymentGithubActionsOutput({
+      version: deployment.version,
+      shortCode: deployment.shortCode,
+      rawDeploymentLink,
+      rawTestLink,
+      needsPromotion: !deployment.isPromoted,
+    });
+
+    warnAboutSkippedBuild(options.externalId, deployment.isPromoted);
+
+    outro(
+      `Version ${deployment.version} was already deployed for --external-id ${options.externalId} — nothing to build ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : rawDeploymentLink
+      }`
+    );
+
+    return;
+  }
+
   const exposedDeploymentLink = isLinksSupported
     ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
     : chalk.bold(rawDeploymentLink);
   $deploymentSpinner.stop("Deployment initialized");
   log.info(`View deployment: ${exposedDeploymentLink}`);
 
-  setGithubActionsOutputAndEnvVars({
-    envVars: {
-      TRIGGER_DEPLOYMENT_VERSION: deployment.version,
-      TRIGGER_VERSION: deployment.version,
-      TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
-      TRIGGER_DEPLOYMENT_URL: rawDeploymentLink,
-      TRIGGER_TEST_URL: rawTestLink,
-    },
-    outputs: {
-      deploymentVersion: deployment.version,
-      workerVersion: deployment.version,
-      deploymentShortCode: deployment.shortCode,
-      deploymentUrl: rawDeploymentLink,
-      testUrl: rawTestLink,
-      needsPromotion: options.skipPromotion ? "true" : "false",
-    },
+  warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
+
+  setDeploymentGithubActionsOutput({
+    version: deployment.version,
+    shortCode: deployment.shortCode,
+    rawDeploymentLink,
+    rawTestLink,
+    needsPromotion: options.skipPromotion,
   });
 
   if (options.detach) {

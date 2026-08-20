@@ -195,7 +195,7 @@ export function readAuthConfigFile(): CliConfigFile | null {
   }
 }
 
-export function writeAuthConfigFile(config: CliConfigFile) {
+function writeAuthConfigFile(config: CliConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,

@@ -30,7 +30,7 @@ export function sessionStatusTitle(status: SessionStatus): string {
   }
 }
 
-export function sessionStatusColor(status: SessionStatus): string {
+function sessionStatusColor(status: SessionStatus): string {
   switch (status) {
     case "ACTIVE":
       return "text-pending";
@@ -43,7 +43,7 @@ export function sessionStatusColor(status: SessionStatus): string {
   }
 }
 
-export function SessionStatusIcon({
+function SessionStatusIcon({
   status,
   className,
   pulse = true,
@@ -73,7 +73,7 @@ export function SessionStatusIcon({
   }
 }
 
-export function SessionStatusLabel({ status }: { status: SessionStatus }) {
+function SessionStatusLabel({ status }: { status: SessionStatus }) {
   // system-mono-label: System themes uncolor the label (see tailwind.css)
   return (
     <span className={cn("system-mono-label", sessionStatusColor(status))}>

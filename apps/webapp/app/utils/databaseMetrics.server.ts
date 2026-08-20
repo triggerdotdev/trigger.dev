@@ -30,7 +30,7 @@ export type DatabaseMetricsSource = {
   poolCounters?: { opened: () => number; closed: () => number };
 };
 
-export type NormalizedPoolMetrics = {
+type NormalizedPoolMetrics = {
   open: number;
   busy: number;
   idle: number;
@@ -57,14 +57,6 @@ const sources = singleton("databaseMetricsSources", () => new Map<string, Databa
 
 export function registerDatabaseMetricsSource(source: DatabaseMetricsSource): void {
   sources.set(source.clientType, source);
-}
-
-export function listDatabaseMetricsSources(): ReadonlyArray<DatabaseMetricsSource> {
-  return Array.from(sources.values());
-}
-
-export function resetDatabaseMetricsSources(): void {
-  sources.clear();
 }
 
 function indexByKey(entries: Array<{ key: string; value: number }>): Record<string, number> {

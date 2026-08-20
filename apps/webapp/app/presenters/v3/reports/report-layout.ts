@@ -96,8 +96,6 @@ export const REPORT_SECTION_ORDER = [
   "footer",
 ] as const;
 
-export type ReportSectionId = (typeof REPORT_SECTION_ORDER)[number];
-
 /**
  * Reasons that mean "we can't say" rather than a verdict, so their finding renders headline-only.
  * A measured finding never carries one: an unmeasured input costs its own metric, not the verdict.
@@ -125,11 +123,11 @@ export function reportTrust(vm: { facts?: Record<string, unknown> }): LayoutTrus
   return (typeof reason === "string" ? TRUST_CAVEATS[reason] : undefined) ?? TRUST_CAVEAT_FALLBACK;
 }
 
-export function reportTone(severity: Severity, reason?: string): ReportTone {
+function reportTone(severity: Severity, reason?: string): ReportTone {
   return reason !== undefined && NEUTRAL_REASONS.has(reason) ? "neutral" : severity;
 }
 
-export function reportGlyph(severity: Severity, reason?: string): string {
+function reportGlyph(severity: Severity, reason?: string): string {
   return REPORT_GLYPH[reportTone(severity, reason)];
 }
 
@@ -160,11 +158,11 @@ export function reportFooterStyle(code: string): ReportFooterStyle {
 
 const MINUS = "−"; // U+2212
 
-export function fmtCount(n: number): string {
+function fmtCount(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-export function fmtDuration(ms: number): string {
+function fmtDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const s = ms / 1000;
   if (s < 60) return Number.isInteger(s) ? `${s}s` : `${s.toFixed(1)}s`;
@@ -172,16 +170,16 @@ export function fmtDuration(ms: number): string {
   return Number.isInteger(m) ? `${m}m` : `${m.toFixed(1)}m`;
 }
 
-export function fmtPct(ratio: number): string {
+function fmtPct(ratio: number): string {
   return `${(ratio * 100).toFixed(1)}%`;
 }
 
-export function fmtRate(n: number): string {
+function fmtRate(n: number): string {
   return `${fmtCount(n)}/min`;
 }
 
 /** A net rate carries its sign; a plain rate does not, so it isn't read as a change. */
-export function fmtSignedRate(net: number): string {
+function fmtSignedRate(net: number): string {
   const sign = net < 0 ? MINUS : net > 0 ? "+" : "";
   return `${sign}${fmtCount(Math.abs(net))}/min`;
 }
@@ -200,10 +198,7 @@ export function fmtValue(value: number, unit: Unit): string {
 }
 
 /** Fill the `{token}` placeholders a message catalog leaves for the renderer. */
-export function fillTokens(
-  template: string,
-  tokens: Record<string, string | number | undefined>
-): string {
+function fillTokens(template: string, tokens: Record<string, string | number | undefined>): string {
   return template.replace(/\{(\w+)\}/g, (whole, key: string) => {
     const value = tokens[key];
     if (value === undefined) return whole;
@@ -230,7 +225,7 @@ export type LayoutMetricInput = {
   severity: Severity;
 };
 
-export type LayoutFindingInput = {
+type LayoutFindingInput = {
   type: string;
   severity: Severity;
   reason: string;
@@ -260,10 +255,10 @@ export type LayoutViewModel = {
 
 // --- output shapes ----------------------------------------------------------
 
-export type LayoutDelta = { text: string; dir: "up" | "down" | "flat" };
+type LayoutDelta = { text: string; dir: "up" | "down" | "flat" };
 
 /** A metric's aside. `kind` lets a renderer choose its own frame around shared wording. */
-export type LayoutNote = { kind: "annotation" | "baseline" | "estimated"; text: string };
+type LayoutNote = { kind: "annotation" | "baseline" | "estimated"; text: string };
 
 export type LayoutMetricRow = {
   id: string;
@@ -301,9 +296,9 @@ export type LayoutFinding = {
   attributionKey?: string;
 };
 
-export type LayoutStatement = { tone: ReportTone; glyph: string; severity: Severity; text: string };
+type LayoutStatement = { tone: ReportTone; glyph: string; severity: Severity; text: string };
 
-export type LayoutFooterEntry = {
+type LayoutFooterEntry = {
   code: string;
   style: ReportFooterStyle;
   label: string;

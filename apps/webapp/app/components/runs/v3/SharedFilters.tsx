@@ -358,6 +358,8 @@ export interface TimeFilterProps {
   maxPeriodDays?: number;
   /** Optional className override for the value text in the filter pill */
   valueClassName?: string;
+  /** Extra URL params to clear when the range changes, in addition to the default cursor/direction (e.g. a page's namespaced pagination params). */
+  clearParams?: string[];
 }
 
 export function TimeFilter({
@@ -372,6 +374,7 @@ export function TimeFilter({
   onValueChange,
   maxPeriodDays,
   valueClassName,
+  clearParams,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
   // In controlled mode (onValueChange provided) the caller owns all three values via local
@@ -441,6 +444,7 @@ export function TimeFilter({
           applyShortcut={applyShortcut}
           onValueChange={onValueChange}
           maxPeriodDays={maxPeriodDays}
+          clearParams={clearParams}
         />
       )}
     </FilterMenuProvider>
@@ -460,7 +464,7 @@ function getInitialCustomDuration(period?: string): { value: string; unit: strin
 
 type SectionType = "duration" | "dateRange";
 
-export function TimeDropdown({
+function TimeDropdown({
   trigger,
   period,
   from,
@@ -471,6 +475,7 @@ export function TimeDropdown({
   onApply,
   onValueChange,
   maxPeriodDays,
+  clearParams,
 }: {
   trigger: ReactNode;
   period?: string;
@@ -484,6 +489,8 @@ export function TimeDropdown({
   onValueChange?: (values: TimeFilterApplyValues) => void;
   /** When set an upgrade message will be shown if you select a period further back than this number of days */
   maxPeriodDays?: number;
+  /** Extra URL params to clear on apply, alongside the default cursor/direction. */
+  clearParams?: string[];
 }) {
   const organization = useOptionalOrganization();
   const [open, setOpen] = useState<boolean | undefined>();
@@ -512,6 +519,7 @@ export function TimeDropdown({
   // Sync state when props change
   useEffect(() => {
     const parsed = getInitialCustomDuration(period);
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setCustomValue(parsed.value);
     setCustomUnit(parsed.unit);
 
@@ -561,6 +569,7 @@ export function TimeDropdown({
         onValueChange(values);
       } else {
         replace({
+          ...Object.fromEntries((clearParams ?? []).map((key) => [key, undefined])),
           period: periodToApply,
           cursor: undefined,
           direction: undefined,
@@ -574,7 +583,7 @@ export function TimeDropdown({
       setOpen(false);
       onApply?.(values);
     },
-    [maxPeriodDays, onValueChange, replace, onApply]
+    [clearParams, maxPeriodDays, onValueChange, replace, onApply]
   );
 
   const applySelection = useCallback(() => {
@@ -620,6 +629,7 @@ export function TimeDropdown({
       } else {
         // URL mode - navigate
         replace({
+          ...Object.fromEntries((clearParams ?? []).map((key) => [key, undefined])),
           period: undefined,
           cursor: undefined,
           direction: undefined,
@@ -633,6 +643,7 @@ export function TimeDropdown({
     }
   }, [
     activeSection,
+    clearParams,
     selectedPeriod,
     isCustomDurationValid,
     customValue,
@@ -658,16 +669,18 @@ export function TimeDropdown({
       >
         <div className="flex flex-col gap-4 p-3">
           {/* Duration section */}
-          <div
-            onClick={() => {
-              setActiveSection("duration");
-              setValidationError(null);
-              setSelectedQuickDate(null);
-            }}
-            className="flex cursor-pointer gap-3 rounded-md pb-3"
-          >
-            <RadioButtonCircle checked={activeSection === "duration"} />
-            <div className="flex flex-1 flex-col gap-1">
+          <div className="flex flex-col rounded-md pb-3">
+            <button
+              type="button"
+              aria-pressed={activeSection === "duration"}
+              onClick={() => {
+                setActiveSection("duration");
+                setValidationError(null);
+                setSelectedQuickDate(null);
+              }}
+              className="flex w-full cursor-pointer gap-3 text-left focus-custom"
+            >
+              <RadioButtonCircle checked={activeSection === "duration"} />
               <Label
                 className={cn(
                   "mb-2 transition-colors",
@@ -676,6 +689,8 @@ export function TimeDropdown({
               >
                 {labelName} in the last
               </Label>
+            </button>
+            <div className="ml-8 flex flex-1 flex-col gap-1">
               <div className="grid grid-cols-4 gap-2">
                 {/* Custom duration row */}
                 <div
@@ -689,7 +704,6 @@ export function TimeDropdown({
                       selectedPeriod === "custom" &&
                       "border-error"
                   )}
-                  onClick={(e) => e.stopPropagation()}
                 >
                   <input
                     type="number"
@@ -772,15 +786,17 @@ export function TimeDropdown({
           </div>
 
           {/* Date range section */}
-          <div
-            onClick={() => {
-              setActiveSection("dateRange");
-              setValidationError(null);
-            }}
-            className="flex cursor-pointer gap-3"
-          >
-            <RadioButtonCircle checked={activeSection === "dateRange"} />
-            <div className="flex flex-1 flex-col">
+          <div className="flex flex-col">
+            <button
+              type="button"
+              aria-pressed={activeSection === "dateRange"}
+              onClick={() => {
+                setActiveSection("dateRange");
+                setValidationError(null);
+              }}
+              className="flex w-full cursor-pointer gap-3 text-left focus-custom"
+            >
+              <RadioButtonCircle checked={activeSection === "dateRange"} />
               <Label
                 className={cn(
                   "mb-3 transition-colors",
@@ -797,7 +813,9 @@ export function TimeDropdown({
                   (in local time)
                 </span>
               </Label>
-              <div className="-ml-8 mb-2" onClick={(e) => e.stopPropagation()}>
+            </button>
+            <div className="ml-8 flex flex-1 flex-col">
+              <div className="-ml-8 mb-2">
                 <DateTimePicker
                   label="From"
                   value={fromValue}
@@ -813,7 +831,7 @@ export function TimeDropdown({
                   showInlineLabel
                 />
               </div>
-              <div onClick={(e) => e.stopPropagation()} className="-ml-8">
+              <div className="-ml-8">
                 <DateTimePicker
                   label="To"
                   value={toValue}
@@ -830,7 +848,7 @@ export function TimeDropdown({
                 />
               </div>
               {/* Quick select date ranges */}
-              <div className="mt-2 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <QuickDateButton
                   label="Yesterday"
                   isActive={selectedQuickDate === "yesterday"}
@@ -856,7 +874,7 @@ export function TimeDropdown({
                   }}
                 />
               </div>
-              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-3 gap-2">
                 <QuickDateButton
                   label="This week"
                   isActive={selectedQuickDate === "thisWeek"}

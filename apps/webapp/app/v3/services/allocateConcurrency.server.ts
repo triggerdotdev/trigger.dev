@@ -88,7 +88,7 @@ export class AllocateConcurrencyService extends BaseService {
       });
 
       if (!updatedEnvironment.paused) {
-        await updateEnvConcurrencyLimits(updatedEnvironment);
+        await updateEnvConcurrencyLimits(updatedEnvironment, undefined, this._prisma);
       }
 
       // Percent-based queue overrides follow the environment limit automatically. Note the

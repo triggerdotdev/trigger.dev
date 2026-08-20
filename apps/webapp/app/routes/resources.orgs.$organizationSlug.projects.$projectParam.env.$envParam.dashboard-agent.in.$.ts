@@ -12,6 +12,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
+  dashboardAgentUserApiOrigin,
   mintDashboardAgentUserActorToken,
   resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
@@ -42,6 +43,9 @@ const FORWARDED_HEADERS = [
 
 // The only turn metadata a browser may set: everything else the agent reads is injected
 // server-side. A whitelist — a new clientData field is server-owned until listed here on purpose.
+// `repoSnapshot` is the dangerous one to smuggle past this: its `tarballUrl` is fetched and
+// extracted on the agent worker, so a client-supplied one is SSRF from inside the worker
+// network plus an attacker-controlled untar.
 const CLIENT_METADATA_KEYS = ["currentPage", "pageContext"] as const;
 
 export function pickAgentClientMetadata(
@@ -89,6 +93,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (!upstreamPath) return json({ error: "Not found" }, { status: 404 });
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const url = new URL(request.url);
   const upstreamUrl = `${apiOrigin.replace(/\/$/, "")}/${upstreamPath}${url.search}`;
 
@@ -164,7 +169,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       parsed.payload.metadata = {
         ...pickAgentClientMetadata(parsed.payload.metadata),
         userActorToken,
-        apiOrigin,
+        apiOrigin: userApiOrigin,
         projectRef: project.externalRef,
         // Server-owned: the eval opt-out and every tenancy check key on these.
         organizationId: project.organizationId,

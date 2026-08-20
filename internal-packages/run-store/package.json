@@ -14,11 +14,11 @@
     }
   },
   "dependencies": {
-    "@internal/run-ops-database": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*"
   },
   "devDependencies": {
+    "@internal/run-ops-database": "workspace:*",
     "@internal/testcontainers": "workspace:*",
     "rimraf": "6.0.1"
   },

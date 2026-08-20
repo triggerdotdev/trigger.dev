@@ -267,7 +267,11 @@ let seq = 0;
 
 async function seedTenant(prisma: PrismaClient, suffix: string) {
   const organization = await prisma.organization.create({
-    data: { title: `Org ${suffix}`, slug: `org-${suffix}` },
+    data: {
+      title: `Org ${suffix}`,
+      slug: `org-${suffix}`,
+      featureFlags: { hasLogsPageAccess: true },
+    },
   });
   const project = await prisma.project.create({
     data: {

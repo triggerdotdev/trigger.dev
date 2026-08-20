@@ -156,7 +156,7 @@ async function scheduleBillingLimitReconcileTick(worker: ReturnType<typeof initi
   });
 }
 
-export const billingLimitWorker = singleton("billingLimitWorker", initializeWorker);
+const billingLimitWorker = singleton("billingLimitWorker", initializeWorker);
 
 export async function enqueueBillingLimitConverge(
   organizationId: string,

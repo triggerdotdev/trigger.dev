@@ -10,7 +10,7 @@ import {
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -570,7 +570,7 @@ function VariableFields({
     insertAfter,
   } = useList<Variable>([{ key: "", value: "" }]);
 
-  const handlePaste = useCallback((index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
@@ -593,7 +593,7 @@ function VariableFields({
       form.insert({ name: variablesFields.name });
     }
     insertAfter(index, rest);
-  }, []);
+  };
 
   const fields = variablesFields.getFieldList();
 

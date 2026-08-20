@@ -756,6 +756,14 @@ function CompareDialog({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useFetcher<typeof compareLoader>();
+  const loadComparison = fetcher.load;
+  const wasOpenRef = useRef(false);
+  const canCompare = models.length >= 2;
+  const comparisonPath = `${v3ModelComparePath(
+    organization,
+    project,
+    environment
+  )}?models=${models.join(",")}`;
 
   const comparison = (fetcher.data as { comparison?: ModelComparisonItem[] } | undefined)
     ?.comparison;
@@ -764,13 +772,14 @@ function CompareDialog({
     [comparison, models, catalogModels]
   );
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on open; other deps are stable per dialog mount
   useEffect(() => {
-    if (open && models.length >= 2) {
-      const params = models.join(",");
-      fetcher.load(`${v3ModelComparePath(organization, project, environment)}?models=${params}`);
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = open;
+
+    if (open && !wasOpen && canCompare) {
+      loadComparison(comparisonPath);
     }
-  }, [open]);
+  }, [open, canCompare, comparisonPath, loadComparison]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

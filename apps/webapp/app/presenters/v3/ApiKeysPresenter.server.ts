@@ -71,7 +71,6 @@ export class ApiKeysPresenter {
           id: true,
           apiKey: true,
           type: true,
-          createdAt: true,
           apiKeys: {
             where: showRevoked ? undefined : { revokedAt: null },
             orderBy: { createdAt: "desc" },
@@ -133,7 +132,6 @@ export class ApiKeysPresenter {
         name: "Root API key",
         value: keyEnvironment.apiKey,
         obfuscated: obfuscateApiKey(keyEnvironment.type, keyEnvironment.apiKey.slice(-4)),
-        createdAt: keyEnvironment.createdAt,
       },
       apiKeys: keyEnvironment.apiKeys.map((apiKey, index) => {
         const { presetId, scopes, ...apiKeyData } = apiKey;

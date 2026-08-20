@@ -3,7 +3,7 @@ import type { Meter, Tracer } from "@internal/tracing";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import type { RedisOptions } from "@internal/redis";
 
-export type SchedulingEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
+type SchedulingEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };
 }>;
 
@@ -27,13 +27,11 @@ export type TriggerScheduledTaskParams = {
 
 export type TriggerScheduledTaskErrorType = "QUEUE_LIMIT" | "OUT_OF_ENTITLEMENTS" | "SYSTEM_ERROR";
 
-export interface TriggerScheduledTaskCallback {
-  (params: TriggerScheduledTaskParams): Promise<{
-    success: boolean;
-    error?: string;
-    errorType?: TriggerScheduledTaskErrorType;
-  }>;
-}
+export type TriggerScheduledTaskCallback = (params: TriggerScheduledTaskParams) => Promise<{
+  success: boolean;
+  error?: string;
+  errorType?: TriggerScheduledTaskErrorType;
+}>;
 
 export interface ScheduleEngineOptions {
   logger?: Logger;
@@ -64,19 +62,6 @@ export interface ScheduleEngineOptions {
   onTriggerScheduledTask: TriggerScheduledTaskCallback;
   isDevEnvironmentConnectedHandler: (environmentId: string) => Promise<boolean>;
   onRegisterScheduleInstance?: (instanceId: string) => Promise<void>;
-}
-
-export interface UpsertScheduleParams {
-  projectId: string;
-  schedule: {
-    friendlyId?: string;
-    taskIdentifier: string;
-    deduplicationKey?: string;
-    cron: string;
-    timezone?: string;
-    externalId?: string;
-    environments: string[];
-  };
 }
 
 export interface TriggerScheduleParams {

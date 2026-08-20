@@ -62,7 +62,7 @@ const SWEEP_BATCH_LIMIT = 100;
 const SWEEP_CONCURRENCY = 8;
 
 /** What one finalization did. */
-export type WatchFinalizeOutcome =
+type WatchFinalizeOutcome =
   | "fired"
   | "expired"
   /** The user lost access: cancelled, and deliberately not narrated. */
@@ -220,7 +220,7 @@ function resolutionFor(
  * Finalize one overdue watch. Re-authorization comes first, before the final check reads
  * anything; `canDeliver: false` stops at the resolution, leaving the wake owed.
  */
-export async function finalizeOverdueWatch(
+async function finalizeOverdueWatch(
   watch: Watch,
   deps: WatchSweepDeps & { canDeliver?: boolean } = {}
 ): Promise<WatchFinalizeOutcome> {
@@ -296,7 +296,7 @@ export async function finalizeOverdueWatch(
  * Recover one owed wake, unconditionally: this sweep can't tell whether the user was already
  * told. Whether the wake needs prose is decided where the transcript can be read.
  */
-export async function recoverWatchDelivery(watch: Watch, deps: WatchSweepDeps = {}): Promise<void> {
+async function recoverWatchDelivery(watch: Watch, deps: WatchSweepDeps = {}): Promise<void> {
   const deliver = deps.deliver ?? scheduleWatchDelivery;
   await deliver(watch);
 }

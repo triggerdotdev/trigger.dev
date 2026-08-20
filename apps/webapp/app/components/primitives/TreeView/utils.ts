@@ -49,7 +49,7 @@ export function concreteStateFromInput({
   });
 }
 
-export function concreteStateFromPartialState<TData>(
+function concreteStateFromPartialState<TData>(
   tree: FlatTree<TData>,
   state: PartialNodeState
 ): NodesState {
@@ -78,7 +78,7 @@ export function applyVisibility<TData>(tree: FlatTree<TData>, state: NodesState)
     const parent = node.parentId
       ? acc[node.parentId]
       : { selected: defaultSelected, expanded: defaultExpanded, visible: true };
-    const visible = parent.expanded && parent.visible === true ? true : false;
+    const visible = parent.expanded && parent.visible === true;
     acc[node.id] = { ...nodeState, visible };
 
     return acc;

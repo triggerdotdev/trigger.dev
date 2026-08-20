@@ -5,6 +5,7 @@ import { SelectItem } from "../primitives/Select";
 export function TimezoneList({ timezones }: { timezones: string[] }) {
   const parentRef = useRef<HTMLDivElement>(null);
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: timezones.length,
     getScrollElement: () => parentRef.current,

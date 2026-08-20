@@ -70,6 +70,15 @@ function themeIcon(value: ThemePreference) {
   }
 }
 
+function renderTheme(value: ThemePreference) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {themeIcon(value)}
+      {themeLabel(value)}
+    </span>
+  );
+}
+
 export const meta = pageMeta("Your profile");
 
 function createSchema(
@@ -212,6 +221,7 @@ export default function Page() {
   const [contrastPreview, setContrastPreview] = useState(contrast);
   useEffect(() => {
     if (contrastFetcher.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setContrastPreview(contrast);
       document.documentElement.style.setProperty("--theme-contrast", String(contrast / 100));
     }
@@ -320,12 +330,7 @@ export default function Page() {
                   variant="secondary/small"
                   dropdownIcon
                   items={["classic", "system", "dark", "light"]}
-                  text={(value) => (
-                    <span className="flex items-center gap-1.5">
-                      {themeIcon(value)}
-                      {themeLabel(value)}
-                    </span>
-                  )}
+                  text={renderTheme}
                   className="w-44"
                 >
                   {(items) =>

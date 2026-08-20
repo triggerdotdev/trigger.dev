@@ -8,6 +8,8 @@ export * from "./queues.js";
 export * from "./tasks.js";
 export * from "./tools.js";
 export * from "./utils.js";
+export * from "./webhooks.js";
+export * from "./chatEvents.js";
 
 type ResolveEnvironmentVariablesOptions = {
   variables: Record<string, string> | Array<{ name: string; value: string }>;

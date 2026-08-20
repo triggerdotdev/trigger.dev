@@ -29,6 +29,7 @@ import {
   GetPersonalAccessTokenResponseSchema,
   GetProjectEnvResponse,
   GetProjectResponseBody,
+  GetProjectRuntimesResponseBody,
   GetProjectsResponseBody,
   InitializeDeploymentResponseBody,
   PromoteDeploymentResponseBody,
@@ -208,6 +209,19 @@ export class CliApiClient {
     }
 
     return wrapZodFetch(GetProjectsResponseBody, `${this.apiURL}/api/v1/projects`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProjectRuntimes() {
+    if (!this.accessToken) {
+      throw new Error("getProjectRuntimes: No access token");
+    }
+
+    return wrapZodFetch(GetProjectRuntimesResponseBody, `${this.apiURL}/api/v1/projects/runtimes`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",

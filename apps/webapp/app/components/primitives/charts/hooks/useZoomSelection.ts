@@ -5,7 +5,7 @@ export type ZoomRange = {
   end: string;
 };
 
-export type ZoomSelectionState = {
+type ZoomSelectionState = {
   /** Starting point of drag selection (x-axis value) */
   refAreaLeft: string | null;
   /** Ending point of drag selection (x-axis value) */
@@ -18,7 +18,7 @@ export type ZoomSelectionState = {
   inspectionLine: string | null;
 };
 
-export type ZoomSelectionActions = {
+type ZoomSelectionActions = {
   /** Start a new selection at the given x-axis value */
   startSelection: (label: string) => void;
   /** Update the selection as the user drags */
@@ -55,6 +55,7 @@ export function useZoomSelection(): UseZoomSelectionReturn {
   const stateRef = useRef<ZoomSelectionState>(state);
 
   // Keep ref in sync with state
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   stateRef.current = state;
 
   const startSelection = useCallback((label: string) => {

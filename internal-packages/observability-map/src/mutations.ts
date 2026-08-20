@@ -6,13 +6,13 @@ import ts from "@typescript/typescript6";
  * is tracked separately in `ADDITIVE_IDS`: INTERNALS.md, "The mutation harness".
  */
 
-export type MutationKind = "preserving" | "deleting";
+type MutationKind = "preserving" | "deleting";
 
 /**
  * The new source, and how many places in it the rewrite landed. `sites` is what the anti-vacuity guard
  * reads, because a file count says nothing about whether the rewrite reached anything inside the file.
  */
-export type MutationResult = { source: string; sites: number };
+type MutationResult = { source: string; sites: number };
 
 export type Mutation = {
   id: string;

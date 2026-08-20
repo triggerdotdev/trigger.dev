@@ -90,7 +90,7 @@ export function verifyWatchTokenFromRequest(token: string): Promise<WatchTokenCl
  * Chain tokens name a whole (environment, cadence) group. The prefix is disjoint from
  * `tr_daw_` rather than nested under it, so neither verifier sees the other's tokens.
  */
-export const WATCH_BATCH_TOKEN_PREFIX = "tr_dab_";
+const WATCH_BATCH_TOKEN_PREFIX = "tr_dab_";
 
 const WATCH_BATCH_TOKEN_KIND = "dashboard_agent_watch_batch";
 const WATCH_BATCH_TOKEN_CLIENT = "dashboard-agent-watch-batch";
@@ -100,7 +100,7 @@ const WATCH_BATCH_TOKEN_CLIENT = "dashboard-agent-watch-batch";
  * expire. A chain whose token no longer verifies keeps ticking — a failed check is never a
  * verdict — and gets a fresh token when the re-arm backstop starts the next epoch.
  */
-export const WATCH_BATCH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const WATCH_BATCH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type WatchBatchTokenClaims = { environmentId: string; cadenceMinutes: number };
 
@@ -128,7 +128,7 @@ export async function signDashboardAgentWatchBatchToken(
 }
 
 /** `undefined` for anything that isn't a valid, unexpired chain token. */
-export async function verifyDashboardAgentWatchBatchToken(
+async function verifyDashboardAgentWatchBatchToken(
   secret: string,
   token: string
 ): Promise<WatchBatchTokenClaims | undefined> {

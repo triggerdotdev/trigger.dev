@@ -795,7 +795,6 @@ function AgentOrb({
   colors = AGENT_ORB_PALETTE,
   restColor = "#ffffff",
   colored = true,
-  restShape = "triangle",
   dotCount = 21,
   orbitCount = 3,
   particlesPerOrbit = 3,
@@ -824,7 +823,7 @@ function AgentOrb({
     () => buildDotSpecs(effDotCount, orbitCount, effParticles),
     [effDotCount, orbitCount, effParticles]
   );
-  const restPoints = useMemo(() => triangleOutline(effDotCount), [restShape, effDotCount]);
+  const restPoints = useMemo(() => triangleOutline(effDotCount), [effDotCount]);
 
   useEffect(() => {
     activeRef.current = active;
@@ -846,7 +845,7 @@ function AgentOrb({
       restPoints,
       dotSpecs,
       orbitGeoms,
-      paletteRgb: colors.map(hexToRgb),
+      paletteRgb: colorsKey.split(",").map(hexToRgb),
       restRgb: hexToRgb(restColor),
       colored,
       radiusScale,
@@ -1129,7 +1128,7 @@ function AgentLogoMorph({
       outline: logoOutlinePoints(dotCount),
       dotSpecs: buildDotSpecs(dotCount, orbitCount, particlesPerOrbit),
       orbitGeoms: buildOrbitGeoms(orbitCount),
-      paletteRgb: colors.map(hexToRgb),
+      paletteRgb: colorsKey.split(",").map(hexToRgb),
       logoRgb: hexToRgb(logoColor),
     };
 

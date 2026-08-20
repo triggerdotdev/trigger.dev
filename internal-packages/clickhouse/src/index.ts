@@ -31,6 +31,7 @@ import {
   getLogDetailQueryBuilderV2,
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { projectTaskEventsSearchV2Window } from "./taskEventsSearchProjector.js";
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
@@ -48,6 +49,12 @@ import {
   getSessionsQueryBuilder,
   insertSessionsCompactArrays,
 } from "./sessions.js";
+import {
+  getWebhookDeliveriesQueryBuilder,
+  getWebhookDeliveriesCountQueryBuilder,
+  getWebhookDeliveriesGroupedCountQueryBuilder,
+  insertWebhookDeliveriesCompactArrays,
+} from "./webhookDeliveries.js";
 import {
   getGlobalModelMetrics,
   getGlobalModelComparison,
@@ -73,12 +80,14 @@ import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export * from "./taskEventsSearchProjector.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
 export type * from "./queueMetrics.js";
 export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
 export type * from "./sessions.js";
+export type * from "./webhookDeliveries.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -93,6 +102,11 @@ export {
 } from "./taskRuns.js";
 
 export { SESSION_COLUMNS, SESSION_INDEX, getSessionField } from "./sessions.js";
+export {
+  WEBHOOK_DELIVERY_COLUMNS,
+  WEBHOOK_DELIVERY_INDEX,
+  getWebhookDeliveryField,
+} from "./webhookDeliveries.js";
 
 // TSQL query execution
 export {
@@ -125,6 +139,7 @@ export type ClickhouseCommonConfig = {
     response?: boolean;
   };
   maxOpenConnections?: number;
+  requestTimeoutMs?: number;
 };
 
 export type ClickHouseConfig =
@@ -167,6 +182,7 @@ export class ClickHouse {
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
       this.reader = client;
@@ -183,6 +199,7 @@ export class ClickHouse {
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
       this.writer = new ClickhouseClient({
@@ -194,6 +211,7 @@ export class ClickHouse {
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
 
@@ -301,6 +319,15 @@ export class ClickHouse {
     };
   }
 
+  get webhookDeliveries() {
+    return {
+      insertCompactArrays: insertWebhookDeliveriesCompactArrays(this.writer),
+      queryBuilder: getWebhookDeliveriesQueryBuilder(this.reader),
+      countQueryBuilder: getWebhookDeliveriesCountQueryBuilder(this.reader),
+      groupedCountQueryBuilder: getWebhookDeliveriesGroupedCountQueryBuilder(this.reader),
+    };
+  }
+
   get taskEventsV2() {
     return {
       insert: insertTaskEventsV2(this.writer),
@@ -315,6 +342,7 @@ export class ClickHouse {
   get taskEventsSearch() {
     return {
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
+      projectV2Window: projectTaskEventsSearchV2Window(this.writer),
     };
   }
 

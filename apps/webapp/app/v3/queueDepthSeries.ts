@@ -9,7 +9,7 @@ export type QueueDepthBucketRow = { bucket: string; depth: number; throttled: nu
 export type QueueDepthGrid = { startMs: number; bucketIntervalMs: number; numBuckets: number };
 
 /** Rows placed on the grid by bucket index. Rows outside the window are dropped. */
-export function indexQueueDepthRows(
+function indexQueueDepthRows(
   rows: QueueDepthBucketRow[],
   grid: QueueDepthGrid
 ): Map<number, { depth: number; throttled: number }> {
@@ -25,7 +25,7 @@ export function indexQueueDepthRows(
 }
 
 /** A fixed-width series per grid bucket, so a gap can never shift later points in time. */
-export function fillQueueDepthSeries(
+function fillQueueDepthSeries(
   byIndex: Map<number, { depth: number; throttled: number }>,
   numBuckets: number
 ): { depth: number[]; throttled: number[] } {

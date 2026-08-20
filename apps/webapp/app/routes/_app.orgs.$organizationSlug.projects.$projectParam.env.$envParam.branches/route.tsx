@@ -505,17 +505,20 @@ export function BranchFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { showArchived } = BranchesOptions.parse(Object.fromEntries(searchParams.entries()));
 
-  const handleArchivedChange = useCallback((checked: boolean) => {
-    setSearchParams((s) => {
-      if (checked) {
-        s.set("showArchived", "true");
-      } else {
-        s.delete("showArchived");
-      }
-      s.delete("page");
-      return s;
-    });
-  }, []);
+  const handleArchivedChange = useCallback(
+    (checked: boolean) => {
+      setSearchParams((s) => {
+        if (checked) {
+          s.set("showArchived", "true");
+        } else {
+          s.delete("showArchived");
+        }
+        s.delete("page");
+        return s;
+      });
+    },
+    [setSearchParams]
+  );
 
   return (
     <div className="flex w-full items-center justify-between gap-2">
@@ -649,6 +652,7 @@ function PurchaseBranchesModal({
 
   const [amountValue, setAmountValue] = useState(extraBranches);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- The authoritative branch count intentionally resets this modal draft.
     setAmountValue(extraBranches);
   }, [extraBranches]);
   const isLoading = fetcher.state !== "idle";
@@ -663,6 +667,7 @@ function PurchaseBranchesModal({
       "ok" in data &&
       data.ok
     ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);

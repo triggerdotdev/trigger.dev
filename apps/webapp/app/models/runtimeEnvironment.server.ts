@@ -6,6 +6,7 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { hashApiKey } from "~/utils/apiKeys";
+import { BuildRuntime } from "@trigger.dev/core/v3";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { scopesGrantFullAccess } from "@trigger.dev/rbac";
@@ -77,6 +78,7 @@ export function toAuthenticated(
       defaultWorkerGroupId: env.project.defaultWorkerGroupId,
       organizationId: env.project.organizationId,
       builderProjectId: env.project.builderProjectId,
+      defaultRuntime: BuildRuntime.nullable().safeParse(env.project.defaultRuntime).data ?? null,
     },
     organization: {
       id: env.organization.id,
@@ -495,77 +497,6 @@ export async function findEnvironmentFromRun(
     runTags: taskRun.runTags,
     batchId: taskRun.batchId,
   };
-}
-
-export async function createNewSession(
-  environment: Pick<RuntimeEnvironment, "id">,
-  ipAddress: string
-) {
-  const session = await prisma.runtimeEnvironmentSession.create({
-    data: {
-      environmentId: environment.id,
-      ipAddress,
-    },
-  });
-
-  await prisma.runtimeEnvironment.update({
-    where: {
-      id: environment.id,
-    },
-    data: {
-      currentSessionId: session.id,
-    },
-  });
-
-  return session;
-}
-
-export async function disconnectSession(environmentId: string) {
-  const environment = await prisma.runtimeEnvironment.findFirst({
-    where: {
-      id: environmentId,
-    },
-  });
-
-  if (!environment || !environment.currentSessionId) {
-    return null;
-  }
-
-  const session = await prisma.runtimeEnvironmentSession.update({
-    where: {
-      id: environment.currentSessionId,
-    },
-    data: {
-      disconnectedAt: new Date(),
-    },
-  });
-
-  await prisma.runtimeEnvironment.update({
-    where: {
-      id: environment.id,
-    },
-    data: {
-      currentSessionId: null,
-    },
-  });
-
-  return session;
-}
-
-export async function findLatestSession(
-  environmentId: string,
-  client: PrismaClientOrTransaction = $replica
-) {
-  const session = await client.runtimeEnvironmentSession.findFirst({
-    where: {
-      environmentId,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  return session;
 }
 
 export type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{

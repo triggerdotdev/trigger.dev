@@ -5,6 +5,7 @@ export {
   ServiceValidationError as EngineServiceValidationError,
 } from "./engine/errors.js";
 export type { EventBusEventArgs, EventBusEvents } from "./engine/eventBus.js";
+export { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "./engine/systems/pendingVersionSystem.js";
 export type { AuthenticatedEnvironment } from "./shared/index.js";
 export type {
   PendingVersionRunIdLookup,
@@ -12,12 +13,16 @@ export type {
   PendingVersionRunIdLookupResult,
 } from "./engine/services/pendingVersionLookup.js";
 export { NoopPendingVersionRunIdLookup } from "./engine/services/pendingVersionLookup.js";
+export { readExternalDeploymentIdAnnotation } from "./engine/systems/pendingVersionSystem.js";
 export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.js";
 export type {
   ControlPlaneResolver,
   ResolvedEngineEnv,
   ResolvedAuthenticatedEnv,
   ResolvedWorkerVersion,
+  ResolvedWorkerTask,
+  ResolvedTaskQueue,
+  ResolvedWorkerDeployment,
 } from "./engine/controlPlaneResolver.js";
 
 // Batch Queue exports

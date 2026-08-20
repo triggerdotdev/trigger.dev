@@ -4,7 +4,22 @@ import { describe } from "node:test";
 import { expect } from "vitest";
 import { z } from "zod";
 import { Worker } from "./worker.js";
-import { createRedisClient } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
+
+async function connectedClientCount(redis: Redis): Promise<number> {
+  const clientsInfo = await redis.info("clients");
+  const match = clientsInfo.match(/^connected_clients:(\d+)$/m);
+
+  if (!match) {
+    throw new Error("Redis INFO clients response did not include connected_clients");
+  }
+
+  return Number(match[1]);
+}
+
+function activeTimeoutCount(): number {
+  return process.getActiveResourcesInfo().filter((resource) => resource === "Timeout").length;
+}
 
 describe("Worker", () => {
   redisTest("Process items that don't throw", { timeout: 30_000 }, async ({ redisContainer }) => {
@@ -546,6 +561,58 @@ describe("Worker", () => {
       expect(finalSizeWithFuture).toBe(0);
 
       await worker.stop();
+    }
+  );
+
+  redisTest(
+    "clears its shutdown deadline and closes Redis connections after a prompt stop",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const redisOptions = {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      };
+      const observer = createRedisClient(redisOptions);
+      await observer.ping();
+
+      const baselineConnections = await connectedClientCount(observer);
+      const worker = new Worker({
+        name: "shutdown-lifecycle-worker",
+        redisOptions,
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.number() }),
+            visibilityTimeoutMs: 5000,
+          },
+        },
+        jobs: {
+          testJob: async () => {},
+        },
+        concurrency: { workers: 1, tasksPerWorker: 1 },
+        pollIntervalMs: 10,
+        immediatePollIntervalMs: 10,
+        shutdownTimeoutMs: 30_000,
+        logger: new Logger("shutdown-lifecycle-test", "error"),
+      }).start();
+
+      try {
+        await expect
+          .poll(() => connectedClientCount(observer))
+          .toBeGreaterThan(baselineConnections);
+
+        // Let the worker enter its polling loop so the loop, rather than the deadline, wins shutdown.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const baselineTimeouts = activeTimeoutCount();
+        await worker.stop();
+
+        await expect.poll(() => connectedClientCount(observer)).toBe(baselineConnections);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(activeTimeoutCount()).toBeLessThanOrEqual(baselineTimeouts);
+      } finally {
+        await worker.stop();
+        await observer.quit();
+      }
     }
   );
 

@@ -26,6 +26,7 @@ vi.mock("~/models/project.server", () => ({
 vi.mock("~/models/runtimeEnvironment.server", () => ({ findEnvironmentBySlug: vi.fn() }));
 vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentApiOrigin: () => "https://api.trigger.dev",
+  dashboardAgentUserApiOrigin: () => "https://api.trigger.dev",
   isDashboardAgentConfigured: () => true,
   mintDashboardAgentToken: vi.fn(),
   mintDashboardAgentUserActorToken: vi.fn(),

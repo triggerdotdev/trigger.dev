@@ -22,6 +22,7 @@ import type {
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
   LockRunData,
+  PromotePendingVersionArgs,
   ReadClient,
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
@@ -654,9 +655,24 @@ export class RoutingRunStore implements RunStore {
 
   async promotePendingVersionRuns(
     runId: string,
+    args?: PromotePendingVersionArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
-    return (await this.#routeForWrite(runId)).promotePendingVersionRuns(runId);
+    return (await this.#routeForWrite(runId)).promotePendingVersionRuns(runId, args);
+  }
+
+  async expireParkedRun(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      statusReason: string;
+      snapshot: ExpireSnapshotInput;
+    },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }> {
+    return (await this.#routeForWrite(runId)).expireParkedRun(runId, data);
   }
 
   async suspendForCheckpoint<I extends Prisma.TaskRunInclude>(

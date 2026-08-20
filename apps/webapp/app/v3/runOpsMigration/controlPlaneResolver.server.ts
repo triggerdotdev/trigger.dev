@@ -10,6 +10,9 @@ import {
   ControlPlaneCache,
   DEFAULT_CP_CACHE_MAX_ENTRIES,
   DEFAULT_CP_CACHE_TTL_MS,
+  resolvedTaskQueueSelect,
+  resolvedWorkerDeploymentSelect,
+  resolvedWorkerTaskSelect,
   type ResolvedAuthenticatedEnv,
   type ResolvedEnv,
   type ResolvedWorkerVersion,
@@ -55,9 +58,26 @@ export type ControlPlaneResolverOptions = {
   controlPlaneReplica: PrismaReplicaClient;
   cache: ControlPlaneCache;
   splitEnabled: () => boolean;
+  /**
+   * When true (the default when omitted), the dequeue worker-version resolve reads the matched
+   * task/queue fresh on every call (no cache). When false, it falls back to the legacy env-keyed
+   * cache over the whole task/queue set — a kill-switch, retained only so the read shape can be
+   * reverted via config.
+   */
+  workerVersionFreshReadEnabled?: () => boolean;
 };
 
 type CpClient = PrismaClient | PrismaReplicaClient;
+
+type WorkerVersionWheres = {
+  taskWhere: { slug: string } | undefined;
+  queueWhere: { id: string } | { name: string } | undefined;
+};
+
+const ALL_WORKER_VERSION_WHERES: WorkerVersionWheres = {
+  taskWhere: undefined,
+  queueWhere: undefined,
+};
 
 function workerVersionKey(
   environmentId: string,
@@ -85,12 +105,14 @@ export class ControlPlaneResolver {
   private readonly controlPlaneReplica: PrismaReplicaClient;
   private readonly cache: ControlPlaneCache;
   private readonly splitEnabled: () => boolean;
+  private readonly workerVersionFreshReadEnabled: () => boolean;
 
   constructor(opts: ControlPlaneResolverOptions) {
     this.controlPlanePrimary = opts.controlPlanePrimary;
     this.controlPlaneReplica = opts.controlPlaneReplica;
     this.cache = opts.cache;
     this.splitEnabled = opts.splitEnabled;
+    this.workerVersionFreshReadEnabled = opts.workerVersionFreshReadEnabled ?? (() => true);
   }
 
   async resolveEnv(environmentId: string): Promise<ResolvedEnv | null> {
@@ -343,53 +365,76 @@ export class ControlPlaneResolver {
      * When omitted, the original app behavior applies (worker-by-id, else current promotion).
      */
     type?: RuntimeEnvironmentType;
+    taskIdentifier?: string;
+    queue?: { lockedQueueId?: string | null; name: string };
   }): Promise<ResolvedWorkerVersion | null> {
     const { environmentId, backgroundWorkerId, type } = args;
 
-    if (!this.splitEnabled()) {
-      return this.#queryWorkerVersion(
-        this.controlPlanePrimary,
+    if (!this.workerVersionFreshReadEnabled()) {
+      if (!this.splitEnabled()) {
+        return this.#queryWorkerVersion(
+          this.controlPlanePrimary,
+          environmentId,
+          backgroundWorkerId,
+          type,
+          ALL_WORKER_VERSION_WHERES
+        );
+      }
+
+      const key = workerVersionKey(environmentId, backgroundWorkerId, type);
+      const cached = this.cache.getWorkerVersion(key);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const resolved = await this.#queryWorkerVersion(
+        this.controlPlaneReplica,
         environmentId,
         backgroundWorkerId,
-        type
+        type,
+        ALL_WORKER_VERSION_WHERES
       );
+      this.cache.setWorkerVersion(key, resolved);
+      return resolved;
     }
 
-    const key = workerVersionKey(environmentId, backgroundWorkerId, type);
-    const cached = this.cache.getWorkerVersion(key);
-    if (cached !== undefined) {
-      return cached;
-    }
+    const wheres: WorkerVersionWheres = {
+      taskWhere: args.taskIdentifier ? { slug: args.taskIdentifier } : undefined,
+      queueWhere: args.queue
+        ? args.queue.lockedQueueId
+          ? { id: args.queue.lockedQueueId }
+          : { name: args.queue.name }
+        : undefined,
+    };
 
-    const resolved = await this.#queryWorkerVersion(
-      this.controlPlaneReplica,
-      environmentId,
-      backgroundWorkerId,
-      type
-    );
-    this.cache.setWorkerVersion(key, resolved);
-    return resolved;
+    const client = this.splitEnabled() ? this.controlPlaneReplica : this.controlPlanePrimary;
+    return this.#queryWorkerVersion(client, environmentId, backgroundWorkerId, type, wheres);
   }
 
   async #queryWorkerVersion(
     client: CpClient,
     environmentId: string,
-    backgroundWorkerId?: string,
-    type?: RuntimeEnvironmentType
+    backgroundWorkerId: string | undefined,
+    type: RuntimeEnvironmentType | undefined,
+    wheres: WorkerVersionWheres
   ): Promise<ResolvedWorkerVersion | null> {
     // Full run-engine dequeue dispatch (mirrors dequeueSystem's four helpers) when the env type is
     // known. DEVELOPMENT envs resolve by most-recent worker; deployed envs resolve the promoted
     // MANAGED deployment.
     if (type === "DEVELOPMENT") {
       return backgroundWorkerId
-        ? this.#queryWorkerById(client, backgroundWorkerId)
-        : this.#queryMostRecentWorker(client, environmentId);
+        ? this.#queryWorkerById(client, backgroundWorkerId, wheres)
+        : this.#queryMostRecentWorker(client, environmentId, wheres);
     }
 
     if (backgroundWorkerId) {
       const worker = await client.backgroundWorker.findFirst({
         where: { id: backgroundWorkerId },
-        include: { deployment: true, tasks: true, queues: true },
+        include: {
+          deployment: { select: resolvedWorkerDeploymentSelect },
+          tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+          queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
+        },
       });
 
       if (!worker) {
@@ -411,7 +456,16 @@ export class ControlPlaneResolver {
       where: { environmentId, label: CURRENT_DEPLOYMENT_LABEL },
       include: {
         deployment: {
-          include: { worker: { include: { tasks: true, queues: true } } },
+          select: {
+            ...resolvedWorkerDeploymentSelect,
+            type: true,
+            worker: {
+              include: {
+                tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+                queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
+              },
+            },
+          },
         },
       },
     });
@@ -421,11 +475,17 @@ export class ControlPlaneResolver {
     }
 
     if (type === undefined || promotion.deployment.type === "MANAGED") {
+      const { worker } = promotion.deployment;
       return {
-        worker: promotion.deployment.worker,
-        tasks: promotion.deployment.worker.tasks,
-        queues: promotion.deployment.worker.queues,
-        deployment: promotion.deployment,
+        worker,
+        tasks: worker.tasks,
+        queues: worker.queues,
+        deployment: {
+          id: promotion.deployment.id,
+          friendlyId: promotion.deployment.friendlyId,
+          imageReference: promotion.deployment.imageReference,
+          imagePlatform: promotion.deployment.imagePlatform,
+        },
       };
     }
 
@@ -434,7 +494,15 @@ export class ControlPlaneResolver {
     const latestV2Deployment = await client.workerDeployment.findFirst({
       where: { environmentId, type: "MANAGED" },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      include: { worker: { include: { tasks: true, queues: true } } },
+      select: {
+        ...resolvedWorkerDeploymentSelect,
+        worker: {
+          include: {
+            tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+            queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
+          },
+        },
+      },
     });
 
     if (!latestV2Deployment?.worker) {
@@ -445,17 +513,27 @@ export class ControlPlaneResolver {
       worker: latestV2Deployment.worker,
       tasks: latestV2Deployment.worker.tasks,
       queues: latestV2Deployment.worker.queues,
-      deployment: latestV2Deployment,
+      deployment: {
+        id: latestV2Deployment.id,
+        friendlyId: latestV2Deployment.friendlyId,
+        imageReference: latestV2Deployment.imageReference,
+        imagePlatform: latestV2Deployment.imagePlatform,
+      },
     };
   }
 
   async #queryWorkerById(
     client: CpClient,
-    workerId: string
+    workerId: string,
+    wheres: WorkerVersionWheres
   ): Promise<ResolvedWorkerVersion | null> {
     const worker = await client.backgroundWorker.findFirst({
       where: { id: workerId },
-      include: { deployment: true, tasks: true, queues: true },
+      include: {
+        deployment: { select: resolvedWorkerDeploymentSelect },
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
+      },
     });
 
     if (!worker) {
@@ -467,11 +545,15 @@ export class ControlPlaneResolver {
 
   async #queryMostRecentWorker(
     client: CpClient,
-    environmentId: string
+    environmentId: string,
+    wheres: WorkerVersionWheres
   ): Promise<ResolvedWorkerVersion | null> {
     const worker = await client.backgroundWorker.findFirst({
       where: { runtimeEnvironmentId: environmentId },
-      include: { tasks: true, queues: true },
+      include: {
+        tasks: { where: wheres.taskWhere, select: resolvedWorkerTaskSelect },
+        queues: { where: wheres.queueWhere, select: resolvedTaskQueueSelect },
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
 
@@ -550,4 +632,5 @@ export const controlPlaneResolver = new ControlPlaneResolver({
     maxEntries: env.CONTROL_PLANE_CACHE_MAX_ENTRIES ?? DEFAULT_CP_CACHE_MAX_ENTRIES,
   }),
   splitEnabled: () => SPLIT_ENABLED,
+  workerVersionFreshReadEnabled: () => env.RUN_OPS_WORKER_VERSION_FRESH_READ_ENABLED,
 });

@@ -1,4 +1,3 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
 import {
   DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
   DASHBOARD_AGENT_MODEL,
@@ -8,9 +7,12 @@ import {
 } from "@internal/dashboard-agent/tool-schemas";
 import {
   describePromptPrefix,
-  PROMPT_CACHE_CONTROL,
   promptCacheAttributes,
 } from "@internal/dashboard-agent/prompt-prefix";
+import {
+  resolveDashboardAgentModel,
+  withCacheBreakpoint,
+} from "@internal/dashboard-agent/model-provider";
 import { ApiClient, SessionStreamInstance, writeTurnCompleteRecord } from "@trigger.dev/core/v3";
 import { chat as chatServer } from "@trigger.dev/sdk/chat-server";
 import { streamText, type UIMessage, type UIMessageChunk } from "ai";
@@ -22,8 +24,6 @@ import {
 import { logger } from "~/services/logger.server";
 
 const TASK_ID = "dashboard-agent";
-
-const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
 /** Shown when the warm first turn produced nothing. The provider error is only logged. */
 export const HEAD_START_FAILURE_ERROR_TEXT =
@@ -113,16 +113,16 @@ export async function startDashboardAgentHeadStart(params: {
     run: async ({ chat: helper }) =>
       streamText({
         ...helper.toStreamTextOptions({ tools }),
-        model: anthropic(DASHBOARD_AGENT_MODEL),
+        model: resolveDashboardAgentModel(DASHBOARD_AGENT_MODEL),
         // A structured system message, not a bare string: without provider options
-        // Anthropic neither writes nor reads the cache, so this call paid full price
+        // the provider neither writes nor reads the cache, so this call paid full price
         // for the prefix and the agent's step 2 then paid for a fresh write. The tool
         // key order is frozen (see `tool-schemas.ts`) so both prefixes are identical
         // — the logged fingerprint is how a drift becomes visible.
         system: {
           role: "system",
           content: system,
-          providerOptions: { anthropic: { cacheControl: PROMPT_CACHE_CONTROL } },
+          providerOptions: withCacheBreakpoint(undefined, "prefix"),
         },
         onStepFinish: (step) => {
           logger.info(

@@ -91,6 +91,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useIsMetricResponseFresh } from "~/hooks/useMetricResourceQuery";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import {
@@ -170,13 +171,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // `type === "run" | "span"` discriminant downstream in `SpanView`.
     if (result.type === "run") {
       const queueMetrics = await resolveRunQueueMetrics({
+        request,
         userId,
         organizationSlug,
         projectParam,
         envParam,
         run: result.run,
       });
-      return typedjson({ type: "run" as const, run: result.run, queueMetrics });
+      return typedjson({
+        type: "run" as const,
+        run: result.run,
+        queueMetrics,
+        loadedAt: Date.now(),
+      });
     }
     return typedjson({ type: "span" as const, span: result.span });
   } catch (error) {
@@ -229,14 +236,15 @@ export function SpanView({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
 
   useEffect(() => {
     if (spanId === undefined) return;
     const url = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
       environment.slug
     }/runs/${runParam}/spans/${spanId}${linkedRunId ? `?linkedRunId=${linkedRunId}` : ""}`;
-    fetcher.load(url);
-  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId]);
+    load(url);
+  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId, load]);
 
   if (spanId === undefined) {
     return null;
@@ -269,6 +277,7 @@ export function SpanView({
         <RunBody
           run={fetcher.data.run}
           queueMetrics={fetcher.data.queueMetrics}
+          loadedAt={fetcher.data.loadedAt}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -394,12 +403,14 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
 function RunBody({
   run,
   queueMetrics,
+  loadedAt,
   runParam,
   spanId,
   closePanel,
 }: {
   run: SpanRun;
   queueMetrics: RunQueueMetrics | null;
+  loadedAt: number;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -873,6 +884,12 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>External deployment ID</Property.Label>
+                  <Property.Value>
+                    <ExternalDeploymentIdValue externalDeploymentId={run.externalDeploymentId} />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>SDK version</Property.Label>
                   <Property.Value>
                     {run.sdkVersion ? (
@@ -1147,6 +1164,7 @@ function RunBody({
                   waiting={queueMetrics.waiting}
                   status={run.status}
                   createdAt={run.createdAt}
+                  loadedAt={loadedAt}
                   runFriendlyId={run.friendlyId}
                 />
               ) : null}
@@ -1274,6 +1292,27 @@ function MiniStat({
   );
 }
 
+const EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH = 24;
+
+function ExternalDeploymentIdValue({
+  externalDeploymentId,
+}: {
+  externalDeploymentId: string | undefined;
+}) {
+  if (!externalDeploymentId) {
+    return <>–</>;
+  }
+
+  const display =
+    externalDeploymentId.length > EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH
+      ? `${externalDeploymentId.slice(0, EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH)}…`
+      : externalDeploymentId;
+
+  return (
+    <CopyableText value={display} copyValue={externalDeploymentId} className="font-mono" asChild />
+  );
+}
+
 // A compact "mini queue" for a waiting run: the queue page's stat blocks + charts, scaled down.
 function WaitingInQueueBlock({
   queueName,
@@ -1282,6 +1321,7 @@ function WaitingInQueueBlock({
   waiting,
   status,
   createdAt,
+  loadedAt,
   runFriendlyId,
 }: {
   queueName: string;
@@ -1290,11 +1330,16 @@ function WaitingInQueueBlock({
   waiting: RunQueueWaiting;
   status: SpanRun["status"];
   createdAt: Date;
+  loadedAt: number;
   runFriendlyId: string;
 }) {
   // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
   // the newest bucket only while fresh; otherwise fall back to the loader's live values.
-  const { rows: liveRows } = useQueueMetric(
+  const {
+    rows: liveRows,
+    responseReceivedAt,
+    lastSuccessfulResponseAt,
+  } = useQueueMetric(
     `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
     {
       ids: waiting.ids,
@@ -1306,10 +1351,13 @@ function WaitingInQueueBlock({
   );
   const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
   const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
-  const fresh =
-    latest && Number.isFinite(latestBucketMs) && Date.now() - latestBucketMs < LIVE_GAUGE_FRESH_MS
-      ? latest
-      : undefined;
+  const now = Math.max(loadedAt, lastSuccessfulResponseAt ?? loadedAt);
+  const liveFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    latestBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
+  const fresh = latest && liveFresh ? latest : undefined;
 
   const key = waiting.concurrencyKey;
   const running = fresh ? toNumber(fresh.running) : waiting.running;
@@ -1324,7 +1372,7 @@ function WaitingInQueueBlock({
   const showAtLimit = status === "PENDING" && atLimit && !paused;
   const pct =
     limit && limit > 0 ? Math.min(100, Math.round((runningAgainstLimit / limit) * 100)) : null;
-  const waitedMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
+  const waitedMs = Math.max(0, now - new Date(createdAt).getTime());
 
   // Why the run is held, surfaced as a warning icon on the Status tile (queue-page style) rather
   // than a separate sentence.
@@ -1777,7 +1825,7 @@ function SpanEntity({ span }: { span: Span }) {
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
-          <AIToolCallSpanDetails data={span.entity.object} />
+          <AIToolCallSpanDetails data={span.entity.object} spanEvents={span.events} />
         </div>
       );
     }
@@ -1787,7 +1835,7 @@ function SpanEntity({ span }: { span: Span }) {
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
-          <AIEmbedSpanDetails data={span.entity.object} />
+          <AIEmbedSpanDetails data={span.entity.object} spanEvents={span.events} />
         </div>
       );
     }

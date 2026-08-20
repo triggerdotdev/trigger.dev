@@ -10,10 +10,7 @@ import { singleton } from "~/utils/singleton";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 import { S2RealtimeStreams } from "./s2realtimeStreams.server";
-import {
-  resolveRealtimeStreamsVersion,
-  type RealtimeStreamsVersionConfig,
-} from "./realtimeStreamsVersion";
+import { resolveRealtimeStreamsVersion } from "./realtimeStreamsVersion";
 import type { StreamIngestor, StreamResponder } from "./types";
 
 function initializeRedisRealtimeStreams() {
@@ -31,7 +28,7 @@ function initializeRedisRealtimeStreams() {
   });
 }
 
-export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
+const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
 
 /**
  * Resolve a stream's basin. Precedence: run → session → org → global env.
@@ -99,8 +96,6 @@ function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): 
     : ["org", environment.organization.id, "env", environment.slug, environment.id];
   return segments.join("/");
 }
-
-export type { RealtimeStreamsVersionConfig };
 
 /**
  * Pass `organizationBasinName` wherever the caller has it. It mirrors the

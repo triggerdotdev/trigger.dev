@@ -12,7 +12,7 @@ import * as Property from "~/components/primitives/PropertyTable";
 // view. Decoupled from the .server module so the component stays client-safe.
 // Duration fields are always suffixed strings — the server's DurationSchema
 // rejects anything else, so non-string overrides fall back to the default.
-export type RateLimitConfig =
+type RateLimitConfig =
   | {
       type: "tokenBucket";
       refillRate: number;
@@ -30,7 +30,7 @@ export type EffectiveRateLimit = {
   config: RateLimitConfig;
 };
 
-export type FieldErrors = Record<string, string[] | undefined> | null;
+type FieldErrors = Record<string, string[] | undefined> | null;
 
 // Props shared by every per-domain wrapper (Api / Batch / future ones).
 export type RateLimitWrapperProps = {
@@ -65,10 +65,12 @@ export function RateLimitSection({
   const [maxTokens, setMaxTokens] = useState(current ? String(current.maxTokens) : "");
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     if (hasFieldErrors) setIsEditing(true);
   }, [hasFieldErrors]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     if (savedJustNow && !hasFieldErrors) setIsEditing(false);
   }, [savedJustNow, hasFieldErrors]);
 

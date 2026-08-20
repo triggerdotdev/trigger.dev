@@ -10,7 +10,7 @@ type TaskListOptions = {
   environmentType: RuntimeEnvironmentType;
 };
 
-export type TaskList = Awaited<ReturnType<TestPresenter["call"]>>;
+type TaskList = Awaited<ReturnType<TestPresenter["call"]>>;
 export type TaskListItem = NonNullable<TaskList["tasks"]>[0];
 
 export class TestPresenter extends BasePresenter {
@@ -52,11 +52,13 @@ export class TestPresenter extends BasePresenter {
         SELECT bwt.id, version, slug, "filePath", bwt."friendlyId", bwt."triggerSource"
         FROM latest_workers
         JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
-        WHERE bwt."triggerSource" != 'AGENT'
+        WHERE bwt."triggerSource" NOT IN ('AGENT', 'WEBHOOK')
         ORDER BY slug ASC;`;
     } else {
       const currentDeployment = await findCurrentWorkerDeployment({ environmentId: envId });
-      return (currentDeployment?.worker?.tasks ?? []).filter((t) => t.triggerSource !== "AGENT");
+      return (currentDeployment?.worker?.tasks ?? []).filter(
+        (t) => t.triggerSource !== "AGENT" && t.triggerSource !== "WEBHOOK"
+      );
     }
   }
 }

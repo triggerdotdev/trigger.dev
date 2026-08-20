@@ -324,103 +324,101 @@ function RunsList({
             selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
           )}
         >
-          <>
-            {list.runs.length === 0 && !list.hasAnyRuns ? (
-              list.possibleTasks.length === 0 ? (
-                <CreateFirstTaskInstructions />
-              ) : (
-                <RunTaskInstructions
-                  task={
-                    list.filters.tasks.length === 1
-                      ? list.possibleTasks.find((t) => t.slug === list.filters.tasks[0])
-                      : undefined
-                  }
-                />
-              )
+          {list.runs.length === 0 && !list.hasAnyRuns ? (
+            list.possibleTasks.length === 0 ? (
+              <CreateFirstTaskInstructions />
             ) : (
-              <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
-                <div className="flex items-start justify-between gap-x-2 p-2">
-                  <RunsFilters
-                    possibleTasks={list.possibleTasks}
-                    bulkActions={list.bulkActions}
-                    hasFilters={list.hasFilters}
-                    rootOnlyDefault={rootOnlyDefault}
-                  />
-                  <div className="flex items-center justify-end gap-x-2">
-                    {showNewRunsBanner && (
-                      <span className="flex duration-150 animate-in fade-in-0">
-                        <Button
-                          variant="secondary/small"
-                          className="text-text-bright"
-                          onClick={onClickShowNewRuns}
-                          LeadingIcon={<PulsingDot className="h-2 w-2" />}
-                          tooltip="Refresh to see new runs"
-                          aria-label="New runs created. Refresh to see new runs."
-                        >
-                          {newRunsCount >= 100
-                            ? "99+ new runs"
-                            : `${newRunsCount} new ${newRunsCount === 1 ? "run" : "runs"}`}
-                        </Button>
-                      </span>
-                    )}
-                    {/* Stay mounted while the inspector is open to avoid toolbar layout shift. */}
-                    <Button
-                      variant="secondary/small"
-                      disabled={isShowingBulkActionInspector || (!canCancelRuns && !canReplayRuns)}
-                      onClick={() =>
-                        replace({
-                          bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
-                          mode: selectedItems.size > 0 ? "selected" : undefined,
-                        })
-                      }
-                      LeadingIcon={ListCheckedIcon}
-                      className={cn(
-                        selectedItems.size > 0 ? "pr-1" : undefined,
-                        isShowingBulkActionInspector && "pointer-events-none invisible"
-                      )}
-                      tooltip={
-                        !canCancelRuns && !canReplayRuns ? (
-                          "You don't have permission to cancel or replay runs"
-                        ) : (
-                          <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
-                            <div className="flex items-center gap-0.5">
-                              <span>Replay</span>
-                              <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
-                            </div>
-                            <div className="flex items-center gap-0.5">
-                              <span>Cancel</span>
-                              <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
-                            </div>
-                          </div>
-                        )
-                      }
-                    >
-                      <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
-                        <span>Bulk action</span>
-                        {selectedItems.size > 0 && (
-                          <Badge variant="rounded">{selectedItems.size}</Badge>
-                        )}
-                      </span>
-                    </Button>
-                    <ListPagination list={list} />
-                  </div>
-                </div>
-
-                <TaskRunsTable
-                  total={visibleRuns.length}
+              <RunTaskInstructions
+                task={
+                  list.filters.tasks.length === 1
+                    ? list.possibleTasks.find((t) => t.slug === list.filters.tasks[0])
+                    : undefined
+                }
+              />
+            )
+          ) : (
+            <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
+              <div className="flex items-start justify-between gap-x-2 p-2">
+                <RunsFilters
+                  possibleTasks={list.possibleTasks}
+                  bulkActions={list.bulkActions}
                   hasFilters={list.hasFilters}
-                  filters={list.filters}
-                  runs={visibleRuns}
-                  childrenStatusesBasePath={childrenStatusesBasePath}
-                  isLoading={isLoading}
-                  allowSelection
                   rootOnlyDefault={rootOnlyDefault}
-                  canCancelRuns={canCancelRuns}
-                  canReplayRuns={canReplayRuns}
                 />
+                <div className="flex items-center justify-end gap-x-2">
+                  {showNewRunsBanner && (
+                    <span className="flex duration-150 animate-in fade-in-0">
+                      <Button
+                        variant="secondary/small"
+                        className="text-text-bright"
+                        onClick={onClickShowNewRuns}
+                        LeadingIcon={<PulsingDot className="h-2 w-2" />}
+                        tooltip="Refresh to see new runs"
+                        aria-label="New runs created. Refresh to see new runs."
+                      >
+                        {newRunsCount >= 100
+                          ? "99+ new runs"
+                          : `${newRunsCount} new ${newRunsCount === 1 ? "run" : "runs"}`}
+                      </Button>
+                    </span>
+                  )}
+                  {/* Stay mounted while the inspector is open to avoid toolbar layout shift. */}
+                  <Button
+                    variant="secondary/small"
+                    disabled={isShowingBulkActionInspector || (!canCancelRuns && !canReplayRuns)}
+                    onClick={() =>
+                      replace({
+                        bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
+                        mode: selectedItems.size > 0 ? "selected" : undefined,
+                      })
+                    }
+                    LeadingIcon={ListCheckedIcon}
+                    className={cn(
+                      selectedItems.size > 0 ? "pr-1" : undefined,
+                      isShowingBulkActionInspector && "pointer-events-none invisible"
+                    )}
+                    tooltip={
+                      !canCancelRuns && !canReplayRuns ? (
+                        "You don't have permission to cancel or replay runs"
+                      ) : (
+                        <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
+                          <div className="flex items-center gap-0.5">
+                            <span>Replay</span>
+                            <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            <span>Cancel</span>
+                            <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
+                          </div>
+                        </div>
+                      )
+                    }
+                  >
+                    <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
+                      <span>Bulk action</span>
+                      {selectedItems.size > 0 && (
+                        <Badge variant="rounded">{selectedItems.size}</Badge>
+                      )}
+                    </span>
+                  </Button>
+                  <ListPagination list={list} />
+                </div>
               </div>
-            )}
-          </>
+
+              <TaskRunsTable
+                total={visibleRuns.length}
+                hasFilters={list.hasFilters}
+                filters={list.filters}
+                runs={visibleRuns}
+                childrenStatusesBasePath={childrenStatusesBasePath}
+                isLoading={isLoading}
+                allowSelection
+                rootOnlyDefault={rootOnlyDefault}
+                canCancelRuns={canCancelRuns}
+                canReplayRuns={canReplayRuns}
+              />
+            </div>
+          )}
         </div>
       </ResizablePanel>
       <ResizableHandle

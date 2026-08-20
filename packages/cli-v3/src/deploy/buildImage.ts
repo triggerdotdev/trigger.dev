@@ -153,7 +153,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
   });
 }
 
-export interface DepotBuildImageOptions {
+interface DepotBuildImageOptions {
   auth: string;
   buildId: string;
   buildToken: string;
@@ -687,18 +687,31 @@ export type GenerateContainerfileOptions = {
   entrypoint: string;
 };
 
-const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "imbios/bun-node:1.3.3-20-slim@sha256:59d84856a7e31eec83afedadb542f7306f672343b8b265c70d733404a6e8834b",
-  node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
+// Prebuilt in base-images/; both maps must be bumped together, from one publish run
+export const BASE_IMAGE: Record<BuildRuntime, string> = {
+  bun: "triggerdotdev/bun:1.3-node20-bookworm@sha256:25b467196277b9d75a37773ee36d28b65ca81a6f41786f7d7d7f1fad95fb5a31",
+  node: "triggerdotdev/node:21-bookworm@sha256:49c6575cda32f63ac21a4aeaabc360dc50c6f767b86b675b44de7a9e9b6ca3fc",
   "node-22":
-    "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34",
+    "triggerdotdev/node:22-bookworm@sha256:3d1b59a1d50c3df713078a7b18386441cf7fdbaeea6da799247df5a2e180bdd5",
   "node-24":
-    "node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d",
+    "triggerdotdev/node:24-bookworm@sha256:d2d0c01822409f6d2de1cc69a9e718424048fa12fc64b223dfa84f6db44d0ffd",
   "node-26":
-    "node:26.4.0-bookworm-slim@sha256:ec82d089a8ae2cf02628da7b34ea57dc357b24db724d557fe2d240e6beb659c1",
+    "triggerdotdev/node:26-bookworm@sha256:0e9b19f814f32d3766a8cf167835a499349df5bd34702611577b1f75bc2d2026",
 };
 
-const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
+export const BUILD_IMAGE: Record<BuildRuntime, string> = {
+  bun: "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:a2d5e6d1ec25946ca1d86abdd9ffb9c589376df64ee1b490c461607953931245",
+  node: "triggerdotdev/node:21-bookworm-build@sha256:98f2bc6beb124da3c3aa9abba587a6c3d08a1aada217b5bb91f843364184d1d0",
+  "node-22":
+    "triggerdotdev/node:22-bookworm-build@sha256:acc6f0143021f532b601bf9fa2cd7745b07612358f94acb8e1cd864468320a81",
+  "node-24":
+    "triggerdotdev/node:24-bookworm-build@sha256:19322289508ae9b4be0b769acac179637e4b57d363844682f4b116feb951267d",
+  "node-26":
+    "triggerdotdev/node:26-bookworm-build@sha256:de5cdfd683dabad582182c79779135d59faac0e6893b6cf04520d5a0dc826dd7",
+};
+
+// Preinstalled in the published base images; must match base-images/images.json
+export const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
@@ -714,6 +727,31 @@ export async function generateContainerfile(options: GenerateContainerfileOption
   }
 }
 
+// repair: apt-get install refuses to run on dpkg state an instruction left
+// broken (the dpkg -i pattern). --allow-downgrades: a user pin of a
+// preinstalled package is a downgrade by the time this runs.
+function aptInstall(packages: string[], { repair }: { repair: boolean }): string {
+  const repairStep = repair
+    ? `apt-get --fix-broken install -y --no-install-recommends && \\
+  `
+    : "";
+
+  return `RUN apt-get update && \\
+  ${repairStep}apt-get install -y --no-install-recommends --allow-downgrades ${packages.join(" ")} && \\
+  apt-get clean && \\
+  rm -rf /var/lib/apt/lists/*`;
+}
+
+function aptRepair(): string {
+  return `RUN apt-get update && \\
+  apt-get --fix-broken install -y --no-install-recommends && \\
+  apt-get clean && \\
+  rm -rf /var/lib/apt/lists/*`;
+}
+
+// Must match base-images/images.json buildPackages, which the -build images preinstall
+export const TOOLCHAIN_PACKAGES = "python3 make g++";
+
 const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
   const buildArgs = Object.entries(options.build.env || {})
     .flatMap(([key]) => `ARG ${key}`)
@@ -726,43 +764,59 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
   const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
 
   const baseInstructions = (options.image?.instructions || []).join("\n");
-  const packages = Array.from(new Set(DEFAULT_PACKAGES.concat(options.image?.pkgs || []))).join(
-    " "
-  );
+  const userPackages = Array.from(new Set(options.image?.pkgs || []))
+    .filter((pkg) => !DEFAULT_PACKAGES.includes(pkg))
+    .sort();
+
+  const customization = [
+    baseInstructions,
+    userPackages.length > 0
+      ? aptInstall(userPackages, { repair: baseInstructions.length > 0 })
+      : baseInstructions
+        ? aptRepair()
+        : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  // Instructions run once (FROM base) since their downloads are unbounded;
+  // package-only projects keep the prebuilt toolchain and repeat the small install
+  const buildStage = baseInstructions
+    ? `FROM base AS build
+
+RUN apt-get update && \\
+  apt-get install -y --no-install-recommends ${TOOLCHAIN_PACKAGES} && \\
+  apt-get clean && \\
+  rm -rf /var/lib/apt/lists/*`
+    : `FROM ${BUILD_IMAGE[options.runtime]} AS build
+
+ENV DEBIAN_FRONTEND=noninteractive${
+        userPackages.length > 0 ? `\n\n${aptInstall(userPackages, { repair: false })}` : ""
+      }`;
 
   return {
     baseImage: BASE_IMAGE[options.runtime],
-    baseInstructions,
+    buildStage,
+    customization,
     buildArgs,
     buildEnvVars,
-    packages,
     postInstallCommands,
   };
 };
 
 async function generateBunContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
+  const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
-${baseInstructions}
-
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get --fix-broken install -y && \
-  apt-get install -y --no-install-recommends ${packages} && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
 
-FROM base AS build
+${customization}
 
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends python3 make g++ && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
+${buildStage}
 
 USER bun
 WORKDIR /app
@@ -853,28 +907,18 @@ CMD []
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
+  const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
-${baseInstructions}
-
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get --fix-broken install -y && \
-  apt-get install -y --no-install-recommends ${packages} && \
-  apt-get clean && rm -rf /var/lib/apt/lists/*
 
-FROM base AS build
+${customization}
 
-# Install build dependencies
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends python3 make g++ && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
+${buildStage}
 
 USER node
 WORKDIR /app
@@ -1114,11 +1158,11 @@ function shouldPush(imageTag: string, push?: boolean) {
       return false;
     }
     case undefined: {
-      return imageTag.startsWith("localhost") ||
+      return !(
+        imageTag.startsWith("localhost") ||
         imageTag.startsWith("127.0.0.1") ||
         imageTag.startsWith("0.0.0.0")
-        ? false
-        : true;
+      );
     }
     default: {
       assertExhaustive(push);
@@ -1136,7 +1180,7 @@ function shouldLoad(load?: boolean, push?: boolean) {
       return false;
     }
     case undefined: {
-      return push ? false : true;
+      return !push;
     }
     default: {
       assertExhaustive(load);

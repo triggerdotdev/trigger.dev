@@ -113,6 +113,7 @@ export async function createProject(
       // for historical rows; the V1->V2 upgrade guards on worker-register / deploy
       // stay in place to migrate existing legacy projects.
       engine: "V2",
+      defaultRuntime: "node-24",
       onboardingData,
     },
     include: {

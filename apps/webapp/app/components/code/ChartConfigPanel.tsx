@@ -568,6 +568,7 @@ function SeriesColorPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
+          aria-label="Change series color"
           className="shrink-0 rounded p-0.5 hover:bg-background-raised"
           title="Change series color"
         >

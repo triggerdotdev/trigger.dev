@@ -1692,13 +1692,11 @@ function parseStyleField(style: Prisma.JsonValue): TaskEventStyle {
   }
 
   if (typeof unsafe === "object") {
-    return Object.assign(
-      {
-        icon: undefined,
-        variant: undefined,
-      },
-      unsafe
-    ) as TaskEventStyle;
+    return {
+      icon: undefined,
+      variant: undefined,
+      ...unsafe,
+    } as TaskEventStyle;
   }
 
   return {};

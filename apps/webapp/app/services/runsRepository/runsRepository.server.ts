@@ -146,7 +146,7 @@ export type TagList = {
   tags: string[];
 };
 
-export type CursorPagination = {
+type CursorPagination = {
   nextCursor: string | null;
   previousCursor: string | null;
 };

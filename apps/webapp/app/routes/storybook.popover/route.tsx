@@ -1,5 +1,5 @@
 import { FolderIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -19,14 +19,14 @@ export default function Story() {
           className="min-w-80 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
         >
-          <Fragment>
+          <>
             <PopoverSectionHeader title="Acme Ltd." />
 
             <div className="flex flex-col gap-1 p-1">
               <PopoverMenuItem to="#" title="My Blog" icon={FolderIcon} />
               <PopoverMenuItem to="#" title="New Project" isSelected={false} icon={PlusIcon} />
             </div>
-          </Fragment>
+          </>
           <div className="border-t border-background-bright p-1">
             <PopoverMenuItem to="#" title="New Organization" isSelected={false} icon={PlusIcon} />
           </div>

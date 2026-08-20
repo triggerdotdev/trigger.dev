@@ -1,6 +1,6 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { motion } from "framer-motion";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { BookIcon } from "~/assets/icons/BookIcon";
 import { BulbIcon } from "~/assets/icons/BulbIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
@@ -129,7 +129,7 @@ export function HelpAndFeedback({
           sideOffset={isCollapsed ? 8 : 4}
           align="start"
         >
-          <Fragment>
+          <>
             {/* This popover lives in the app layout, above both AI hosts, so it opens them
                 through their open-request bridges rather than context. The hosts register the
                 keystrokes; this only shows them. */}
@@ -232,7 +232,7 @@ export function HelpAndFeedback({
                 target="_blank"
               />
             </div>
-          </Fragment>
+          </>
         </PopoverContent>
       </Popover>
       {/* Hosted outside the popover so closing the menu can't unmount the form mid-submit. */}

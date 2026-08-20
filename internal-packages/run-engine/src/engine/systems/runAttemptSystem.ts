@@ -2126,7 +2126,7 @@ export class RunAttemptSystem {
   }
 }
 
-export function safeParseGitMeta(git: unknown): GitMeta | undefined {
+function safeParseGitMeta(git: unknown): GitMeta | undefined {
   const parsed = GitMeta.safeParse(git);
   if (parsed.success) {
     return parsed.data;

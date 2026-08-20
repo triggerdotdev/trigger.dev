@@ -53,7 +53,7 @@ export function configureMcpCommand(program: Command) {
   });
 }
 
-export async function mcpCommand(options: McpCommandOptions) {
+async function mcpCommand(options: McpCommandOptions) {
   // The install wizard runs ONLY when explicitly requested (`trigger mcp --install`).
   // Bare `trigger mcp` always starts the server — MCP hosts (e.g. Claude Code) spawn it
   // over a PTY, so `process.stdout.isTTY` is true even though no human is there; gating
