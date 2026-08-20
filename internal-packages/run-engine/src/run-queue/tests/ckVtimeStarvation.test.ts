@@ -453,4 +453,133 @@ describe("CK vtime starvation by drain-and-re-register", () => {
       }
     }
   );
+  // The idle set has two bounds: the at-or-below-floor score reap, and a hard rank cap.
+  // The reap does the visible work now that the floor advances, which left the cap with no
+  // test isolating it. It still matters, because a park only ever writes a tag ABOVE the
+  // floor, so anything parked faster than the floor climbs is untouchable by the reap and
+  // the cap is the only thing standing between that and unbounded growth. Seed the set
+  // directly, well clear of the floor, so the reap provably cannot be what trims it.
+  redisTest("the rank cap trims the idle set from the bottom", async ({ redisContainer }) => {
+    const CAP = 10;
+    const SEEDED = 200;
+    const keyPrefix = `runqueue:test:rankcap:`;
+    const queue = createQueue(redisContainer, keyPrefix, true, CAP);
+
+    try {
+      const env = { ...baseEnv, maximumConcurrencyLimit: 20 };
+      await queue.updateEnvConcurrencyLimits(env);
+      const shard = testOptions.keys.masterQueueShardForEnvironment(env.id, 2);
+
+      // One ordinary servable variant, so the dequeue actually serves and the persist
+      // block that carries the trim runs at all.
+      await queue.enqueueMessage({
+        env,
+        message: makeMessage({ runId: "r-live", concurrencyKey: "live" }),
+        workerQueue: env.id,
+        skipDequeueProcessing: true,
+      });
+
+      const idleKey = testOptions.keys.ckVtimeIdleKeyFromQueue(variantName("live"));
+      const floorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("live"));
+
+      // Scores from 1000 up, far above any floor this fixture can reach, so
+      // ZREMRANGEBYSCORE -inf floor matches none of them.
+      const seed: (string | number)[] = [];
+      for (let i = 0; i < SEEDED; i++) seed.push(1000 + i, `${variantName("live")}-ghost-${i}`);
+      await queue.redis.zadd(idleKey, ...(seed as [number, string]));
+      expect(await queue.redis.zcard(idleKey)).toBe(SEEDED);
+
+      const served = await queue.testDequeueFromMasterQueue(shard, env.id, 5);
+      expect(served.length).toBe(1);
+
+      const floor = Number((await queue.redis.get(floorKey)) ?? "0");
+      const after = await queue.redis.zcard(idleKey);
+
+      // The floor never reached the seeded scores, so the reap cannot explain the trim.
+      expect(floor).toBeLessThan(1000);
+      expect(after).toBeLessThanOrEqual(CAP + 1);
+      expect(after).toBeGreaterThan(0);
+
+      // Trimmed from the bottom: the survivors are the highest tags, which are the ones
+      // holding the most remembered credit and so the most expensive to forget.
+      const survivors = await queue.redis.zrange(idleKey, 0, -1, "WITHSCORES");
+      const lowest = Number(survivors[1]);
+      expect(lowest).toBeGreaterThanOrEqual(1000 + SEEDED - (CAP + 1));
+    } finally {
+      await queue.quit();
+    }
+  });
+  // The defect Devin reported: a workload minting a previously-unseen concurrency key per
+  // run pinned the floor at the epoch, so a variant that had ever been served sat above
+  // every arrival and lost forever. Being served once was a permanent penalty. Measured at
+  // 1/600 before the fix against flag-off's 120/600.
+  redisTest(
+    "a persistent backlog survives a flood of brand-new keys",
+    async ({ redisContainer }) => {
+      const CALLS = 120;
+      const MAX = 5;
+      const FRESH_PER_CALL = 8; // above MAX on purpose: the overload case
+
+      async function run(vtime: boolean) {
+        const keyPrefix = `runqueue:test:freshflood:${vtime ? "on" : "off"}:`;
+        const queue = createQueue(redisContainer, keyPrefix, vtime);
+        try {
+          const env = { ...baseEnv, maximumConcurrencyLimit: 50 };
+          await queue.updateEnvConcurrencyLimits(env);
+          const shard = testOptions.keys.masterQueueShardForEnvironment(env.id, 2);
+          const t0 = Date.now() - 10_000_000;
+
+          for (let i = 0; i < 400; i++) {
+            await queue.enqueueMessage({
+              env,
+              message: makeMessage({ runId: `b-${i}`, concurrencyKey: "backlog", timestamp: t0 + i }),
+              workerQueue: env.id,
+              skipDequeueProcessing: true,
+            });
+          }
+
+          let fresh = 0;
+          let backlogServed = 0;
+          for (let call = 0; call < CALLS; call++) {
+            for (let f = 0; f < FRESH_PER_CALL; f++, fresh++) {
+              await queue.enqueueMessage({
+                env,
+                message: makeMessage({
+                  runId: `f-${fresh}`,
+                  concurrencyKey: `fresh-${fresh}`,
+                  timestamp: t0 + 5_000_000 + fresh,
+                }),
+                workerQueue: env.id,
+                skipDequeueProcessing: true,
+              });
+            }
+            for (const m of await queue.testDequeueFromMasterQueue(shard, env.id, MAX)) {
+              if (m.message.concurrencyKey === "backlog") backlogServed++;
+              await queue.acknowledgeMessage(env.organization.id, m.messageId, {
+                skipDequeueProcessing: true,
+              });
+            }
+          }
+          const floor = Number(
+            (await queue.redis.get(testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("backlog")))) ?? "0"
+          );
+          return { backlogServed, floor };
+        } finally {
+          await queue.quit();
+        }
+      }
+
+      const on = await run(true);
+      const off = await run(false);
+
+      // Flag off is pure age order, so the always-oldest backlog wins a slot every call.
+      expect(off.backlogServed).toBeGreaterThanOrEqual(100);
+      // Flag on now keeps pace with it. Pre-fix this was 1.
+      expect(on.backlogServed).toBeGreaterThanOrEqual(100);
+      // And the floor moves, which is the actual repair: arrivals no longer enter at the
+      // epoch, so virtual time tracks service instead of standing still.
+      expect(on.floor).toBeGreaterThan(0);
+    },
+    120_000
+  );
 });
