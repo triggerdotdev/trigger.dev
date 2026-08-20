@@ -243,6 +243,7 @@ export default function Page() {
   const usefulLinksPanelRef = useRef<PanelHandle>(null);
   const fetcher = useFetcher();
   const fetcherRef = useRef(fetcher);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   fetcherRef.current = fetcher;
 
   const toggleUsefulLinks = useCallback((show: boolean) => {

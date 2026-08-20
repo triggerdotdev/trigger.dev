@@ -165,6 +165,7 @@ export function useRunsLiveReload({
   const location = useLocation();
   const runsPollFetcher = useTypedFetcher<typeof liveRunsLoader>();
   const runsPollFetcherStateRef = useRef(runsPollFetcher.state);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   runsPollFetcherStateRef.current = runsPollFetcher.state;
 
   const [visibleRuns, setVisibleRuns] = useState(runs);

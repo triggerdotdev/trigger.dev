@@ -371,6 +371,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
         <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <JSONEditor
             autoFocus
+            // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
             defaultValue={currentJson.current}
             readOnly={false}
             basicSetup
