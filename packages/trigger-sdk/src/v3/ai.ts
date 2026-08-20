@@ -6551,6 +6551,16 @@ function chatAgent<
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
       let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
+
+      /**
+       * The `lastOutEventId` the most recent snapshot carried.
+       *
+       * A snapshot written outside a turn — after an action mutates history — has
+       * no turn cursor of its own, and writing `undefined` there would drop the
+       * resume point and make the next boot replay from further back. Retaining it
+       * keeps an action's write cursor-neutral.
+       */
+      let lastSnapshotOutEventId: string | undefined;
       let replayedSettled: TUIMessage[] = [];
       let replayedPartial: TUIMessage | undefined;
       let replayedPartialRaw: TUIMessage | undefined;
@@ -6601,6 +6611,8 @@ function chatAgent<
             // Without seeding, the new worker would emit no trim on its first
             // turn (chain self-bootstraps from turn 2), so this is purely an
             // optimization to keep continuation runs bounded from the first turn.
+            lastSnapshotOutEventId = bootSnapshot?.lastOutEventId;
+
             if (bootSnapshot?.lastOutEventId !== undefined) {
               const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
               if (Number.isFinite(seeded)) {
@@ -7607,6 +7619,63 @@ function chatAgent<
                       accumulatedUIMessages = [...actionOverride] as TUIMessage[];
                       accumulatedMessages = await toModelMessages(actionOverride);
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+
+                      /**
+                       * Persist it. An action is not a turn, so it never reaches the
+                       * turn-complete path below where the snapshot is normally
+                       * written — and `onAction` is exactly where `chat.history`
+                       * rollbacks are meant to happen.
+                       *
+                       * Without this the rollback lives only in this worker's
+                       * memory: undo works while the worker stays warm, and the
+                       * next continuation boots from a snapshot that still holds
+                       * the undone exchange, so the undo silently reverts minutes
+                       * later with no error. Awaited for the same reason as the
+                       * turn-complete write — the agent may suspend immediately
+                       * after, and in-flight promises do not reliably survive that.
+                       */
+                      if (!hydrateMessages) {
+                        try {
+                          await tracer.startActiveSpan(
+                            "snapshot.write",
+                            async () => {
+                              // The resume floor, not the dispatched high-water. An
+                              // action can run while records are still queued, and the
+                              // floor is held back below the earliest of those — writing
+                              // the high-water instead would advance the cursor past
+                              // records a replay still has to recover, losing them.
+                              const snapshotInCursor = chatInputRouter().resumeFloor();
+                              await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                                version: 1,
+                                savedAt: Date.now(),
+                                messages: accumulatedUIMessages,
+                                lastOutEventId: lastSnapshotOutEventId,
+                                lastInEventId:
+                                  snapshotInCursor !== undefined
+                                    ? String(snapshotInCursor)
+                                    : undefined,
+                              });
+                            },
+                            {
+                              attributes: {
+                                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                                [SemanticInternalAttributes.COLLAPSED]: true,
+                                "chat.id": currentWirePayload.chatId,
+                                "chat.snapshot.reason": "action",
+                                "chat.messages.count": accumulatedUIMessages.length,
+                              },
+                            }
+                          );
+                        } catch (error) {
+                          logger.warn(
+                            "chat.agent: snapshot write after action failed; the mutation may not survive a continuation",
+                            {
+                              error: error instanceof Error ? error.message : String(error),
+                              sessionId: sessionIdForSnapshot,
+                            }
+                          );
+                        }
+                      }
                     }
                   } else {
                     warnMissingOnActionOnce();
@@ -8683,11 +8752,13 @@ function chatAgent<
                         "snapshot.write",
                         async () => {
                           const snapshotInCursor = chatInputRouter().resumeFloor();
+                          lastSnapshotOutEventId =
+                            turnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
                           await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                             version: 1,
                             savedAt: Date.now(),
                             messages: accumulatedUIMessages,
-                            lastOutEventId: turnCompleteResult?.lastEventId,
+                            lastOutEventId: lastSnapshotOutEventId,
                             lastInEventId:
                               snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
                           });
