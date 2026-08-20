@@ -170,8 +170,8 @@ export function organizationSettingsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings`;
 }
 
-export function organizationRuntimeUpdatesPath(organization: OrgForPath) {
-  return `${organizationSettingsPath(organization)}/runtime-updates`;
+export function organizationProjectsPath(organization: OrgForPath) {
+  return `${organizationSettingsPath(organization)}/projects`;
 }
 
 function organizationIntegrationsPath(organization: OrgForPath) {

@@ -39,7 +39,7 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
 ]);
 
 export const ORG_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
-  ["runtime-updates", page("runtime-updates")],
+  ["projects", page("projects")],
 ]);
 
 export const DEEPLINK_PATH_PREFIX = "/_";

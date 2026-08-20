@@ -16,8 +16,8 @@ import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
   organizationPath,
+  organizationProjectsPath,
   organizationRolesPath,
-  organizationRuntimeUpdatesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationSsoPath,
@@ -136,8 +136,8 @@ export function OrganizationSettingsSideMenu({
             icon={FolderOpenIcon}
             activeIconColor="text-text-bright"
             inactiveIconColor="text-text-dimmed"
-            to={organizationRuntimeUpdatesPath(organization)}
-            data-action="runtime-updates"
+            to={organizationProjectsPath(organization)}
+            data-action="projects"
             badge={
               hasProjectRuntimeUpdate ? (
                 <>

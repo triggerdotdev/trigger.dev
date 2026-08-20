@@ -12,7 +12,7 @@ import {
   invitesPath,
   newOrganizationPath,
   newProjectPath,
-  organizationRuntimeUpdatesPath,
+  organizationProjectsPath,
   v3EnvironmentPath,
 } from "~/utils/pathBuilder";
 
@@ -33,8 +33,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const presenter = new SelectBestEnvironmentPresenter();
   try {
     const { project, organization, environment } = await presenter.call({ user });
-    if (organizationPage === "runtime-updates") {
-      return redirect(`${organizationRuntimeUpdatesPath(organization)}${search}`);
+    if (organizationPage === "projects") {
+      return redirect(`${organizationProjectsPath(organization)}${search}`);
     }
 
     const environmentPath = v3EnvironmentPath(organization, project, environment);
@@ -57,8 +57,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
 
     if (organization) {
-      if (organizationPage === "runtime-updates") {
-        return redirect(`${organizationRuntimeUpdatesPath(organization)}${search}`);
+      if (organizationPage === "projects") {
+        return redirect(`${organizationProjectsPath(organization)}${search}`);
       }
 
       return redirect(newProjectPath(organization));

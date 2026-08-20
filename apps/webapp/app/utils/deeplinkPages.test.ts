@@ -164,11 +164,17 @@ describe("resolveDeeplinkPage", () => {
   });
 
   it("resolves organization-level pages separately from environment pages", () => {
-    expect(ORG_PAGE_TARGETS.get("runtime-updates")).toEqual({
-      landing: "runtime-updates",
-      prefix: "runtime-updates",
+    expect(ORG_PAGE_TARGETS.get("projects")).toEqual({
+      landing: "projects",
+      prefix: "projects",
     });
-    expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBe("runtime-updates");
+    expect(resolveOrganizationDeeplinkPage("projects")).toBe("projects");
+    expect(resolveDeeplinkPage("projects")).toBeUndefined();
+  });
+
+  it("does not carry a runtime-updates alias", () => {
+    expect(ORG_PAGE_TARGETS.has("runtime-updates")).toBe(false);
+    expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBeUndefined();
     expect(resolveDeeplinkPage("runtime-updates")).toBeUndefined();
   });
 
