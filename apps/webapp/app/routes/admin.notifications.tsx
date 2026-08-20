@@ -787,11 +787,6 @@ function PublishNowButton({ notificationId }: { notificationId: string }) {
 
 function PublishDraftButton({ notificationId }: { notificationId: string }) {
   const [open, setOpen] = useState(false);
-  const fetcher = useFetcher<{ success?: boolean; error?: string }>();
-
-  useEffect(() => {
-    if (fetcher.data?.success) setOpen(false);
-  }, [fetcher.data]);
 
   return (
     <>
@@ -803,53 +798,71 @@ function PublishDraftButton({ notificationId }: { notificationId: string }) {
           <DialogHeader>
             <DialogTitle>Publish notification</DialogTitle>
           </DialogHeader>
-          <fetcher.Form method="post" className="space-y-3">
-            <input type="hidden" name="_action" value="publish-draft" />
-            <input type="hidden" name="notificationId" value={notificationId} />
-            <Paragraph variant="small" className="text-text-dimmed">
-              Set the schedule for this notification. It becomes visible to users at the start time.
-            </Paragraph>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label variant="small">
-                  Starts at (UTC) <span className="text-red-400">*</span>
-                </Label>
-                <input
-                  name="startsAt"
-                  type="datetime-local"
-                  defaultValue={toDatetimeLocalUTC(new Date())}
-                  className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
-                  required
-                />
-              </div>
-              <div>
-                <Label variant="small">
-                  Ends at (UTC) <span className="text-red-400">*</span>
-                </Label>
-                <input
-                  name="endsAt"
-                  type="datetime-local"
-                  defaultValue={defaultEndsAt()}
-                  className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
-                  required
-                />
-              </div>
-            </div>
-            <DialogFooter className="items-center">
-              {fetcher.data?.error && (
-                <span className="text-xs text-red-400">{fetcher.data.error}</span>
-              )}
-              <Button type="button" variant="tertiary/medium" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary/medium" disabled={fetcher.state !== "idle"}>
-                {fetcher.state !== "idle" ? "Publishing..." : "Publish"}
-              </Button>
-            </DialogFooter>
-          </fetcher.Form>
+          <PublishDraftForm notificationId={notificationId} onClose={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// Split out so the "close on success" effect calls the `onClose` prop rather than a
+// local state setter — the latter trips react/set-state-in-effect.
+function PublishDraftForm({
+  notificationId,
+  onClose,
+}: {
+  notificationId: string;
+  onClose: () => void;
+}) {
+  const fetcher = useFetcher<{ success?: boolean; error?: string }>();
+
+  useEffect(() => {
+    if (fetcher.data?.success) onClose();
+  }, [fetcher.data, onClose]);
+
+  return (
+    <fetcher.Form method="post" className="space-y-3">
+      <input type="hidden" name="_action" value="publish-draft" />
+      <input type="hidden" name="notificationId" value={notificationId} />
+      <Paragraph variant="small" className="text-text-dimmed">
+        Set the schedule for this notification. It becomes visible to users at the start time.
+      </Paragraph>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label variant="small">
+            Starts at (UTC) <span className="text-red-400">*</span>
+          </Label>
+          <input
+            name="startsAt"
+            type="datetime-local"
+            defaultValue={toDatetimeLocalUTC(new Date())}
+            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
+            required
+          />
+        </div>
+        <div>
+          <Label variant="small">
+            Ends at (UTC) <span className="text-red-400">*</span>
+          </Label>
+          <input
+            name="endsAt"
+            type="datetime-local"
+            defaultValue={defaultEndsAt()}
+            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
+            required
+          />
+        </div>
+      </div>
+      <DialogFooter className="items-center">
+        {fetcher.data?.error && <span className="text-xs text-red-400">{fetcher.data.error}</span>}
+        <Button type="button" variant="tertiary/medium" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary/medium" disabled={fetcher.state !== "idle"}>
+          {fetcher.state !== "idle" ? "Publishing..." : "Publish"}
+        </Button>
+      </DialogFooter>
+    </fetcher.Form>
   );
 }
 
