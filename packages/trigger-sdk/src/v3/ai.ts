@@ -6561,6 +6561,56 @@ function chatAgent<
        * keeps an action's write cursor-neutral.
        */
       let lastSnapshotOutEventId: string | undefined;
+
+      /**
+       * Persist the accumulator outside a turn.
+       *
+       * An action is not a turn, so it never reaches the turn-complete path where
+       * the snapshot is normally written — but it can change the conversation in
+       * two ways: a `chat.history` mutation, and a response streamed back from
+       * `onAction`. Both have to survive, and one write at the end of the action
+       * covers both rather than writing twice for a regenerate that does both.
+       *
+       * Cursor-neutral: an action has no turn cursor of its own, and writing
+       * `undefined` would drop the resume point the last turn established and make
+       * the next boot replay from further back.
+       */
+      const writeSnapshotOutsideTurn = async (reason: string) => {
+        if (hydrateMessages) return;
+        try {
+          await tracer.startActiveSpan(
+            "snapshot.write",
+            async () => {
+              const snapshotInCursor = chatInputRouter().resumeFloor();
+              await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                version: 1,
+                savedAt: Date.now(),
+                messages: accumulatedUIMessages,
+                lastOutEventId: lastSnapshotOutEventId,
+                lastInEventId:
+                  snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                "chat.snapshot.reason": reason,
+                "chat.messages.count": accumulatedUIMessages.length,
+              },
+            }
+          );
+        } catch (error) {
+          logger.warn(
+            "chat.agent: snapshot write outside a turn failed; the change may not survive a continuation",
+            {
+              error: error instanceof Error ? error.message : String(error),
+              sessionId: sessionIdForSnapshot,
+              reason,
+            }
+          );
+        }
+      };
       let replayedSettled: TUIMessage[] = [];
       let replayedPartial: TUIMessage | undefined;
       let replayedPartialRaw: TUIMessage | undefined;
@@ -7548,6 +7598,13 @@ function chatAgent<
                 // string, or UIMessage from `onAction`. Turn counter
                 // does not advance.
                 let actionStreamResult: unknown = undefined;
+                /**
+                 * Whether this action changed the conversation, by rolling history
+                 * back or by streaming a response. Drives the single snapshot write
+                 * at the end — an action never reaches the turn-complete path that
+                 * normally does it.
+                 */
+                let actionChangedHistory = false;
                 if (isAction) {
                   // Parse and validate the action payload
                   const parsedAction = parseAction
@@ -7620,62 +7677,7 @@ function chatAgent<
                       accumulatedMessages = await toModelMessages(actionOverride);
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
-                      /**
-                       * Persist it. An action is not a turn, so it never reaches the
-                       * turn-complete path below where the snapshot is normally
-                       * written — and `onAction` is exactly where `chat.history`
-                       * rollbacks are meant to happen.
-                       *
-                       * Without this the rollback lives only in this worker's
-                       * memory: undo works while the worker stays warm, and the
-                       * next continuation boots from a snapshot that still holds
-                       * the undone exchange, so the undo silently reverts minutes
-                       * later with no error. Awaited for the same reason as the
-                       * turn-complete write — the agent may suspend immediately
-                       * after, and in-flight promises do not reliably survive that.
-                       */
-                      if (!hydrateMessages) {
-                        try {
-                          await tracer.startActiveSpan(
-                            "snapshot.write",
-                            async () => {
-                              // The resume floor, not the dispatched high-water. An
-                              // action can run while records are still queued, and the
-                              // floor is held back below the earliest of those — writing
-                              // the high-water instead would advance the cursor past
-                              // records a replay still has to recover, losing them.
-                              const snapshotInCursor = chatInputRouter().resumeFloor();
-                              await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                                version: 1,
-                                savedAt: Date.now(),
-                                messages: accumulatedUIMessages,
-                                lastOutEventId: lastSnapshotOutEventId,
-                                lastInEventId:
-                                  snapshotInCursor !== undefined
-                                    ? String(snapshotInCursor)
-                                    : undefined,
-                              });
-                            },
-                            {
-                              attributes: {
-                                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                                [SemanticInternalAttributes.COLLAPSED]: true,
-                                "chat.id": currentWirePayload.chatId,
-                                "chat.snapshot.reason": "action",
-                                "chat.messages.count": accumulatedUIMessages.length,
-                              },
-                            }
-                          );
-                        } catch (error) {
-                          logger.warn(
-                            "chat.agent: snapshot write after action failed; the mutation may not survive a continuation",
-                            {
-                              error: error instanceof Error ? error.message : String(error),
-                              sessionId: sessionIdForSnapshot,
-                            }
-                          );
-                        }
-                      }
+                      actionChangedHistory = true;
                     }
                   } else {
                     warnMissingOnActionOnce();
@@ -7959,17 +7961,37 @@ function chatAgent<
                     isUIMessageStreamable(actionStreamResult)
                   ) {
                     try {
-                      const resolvedOptions = resolveUIMessageStreamOptions();
-                      const uiStream = (
-                        actionStreamResult as UIMessageStreamable
-                      ).toUIMessageStream({
-                        ...resolvedOptions,
-                        generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
-                      });
-                      await pipeChat(uiStream, {
-                        signal: combinedSignal,
-                        spanName: "stream response",
-                      });
+                      /**
+                       * Captured, not just piped. The stream reaching the browser was
+                       * never the problem — the problem was that it stopped there, so
+                       * the user read an answer the accumulator had no record of and
+                       * the next turn contradicted the screen. Worst on regenerate,
+                       * which removes the old answer and used to leave nothing in its
+                       * place.
+                       *
+                       * Persistence beyond the snapshot is still the app's job: an
+                       * action fires no `onTurnComplete`, so an app owning its own
+                       * store has to write the row itself — `chat.pipeAndCapture`
+                       * hands back the same message for that.
+                       */
+                      const { message: actionResponse } = await pipeChatAndCapture(
+                        actionStreamResult as UIMessageStreamable,
+                        { signal: combinedSignal, spanName: "stream response" }
+                      );
+
+                      if (actionResponse) {
+                        const existingIdx = actionResponse.id
+                          ? accumulatedUIMessages.findIndex((m) => m.id === actionResponse.id)
+                          : -1;
+                        if (existingIdx !== -1) {
+                          accumulatedUIMessages[existingIdx] = actionResponse as TUIMessage;
+                        } else {
+                          accumulatedUIMessages.push(actionResponse as TUIMessage);
+                        }
+                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                        actionChangedHistory = true;
+                      }
                     } catch (error) {
                       if (
                         error instanceof Error &&
@@ -7980,6 +8002,10 @@ function chatAgent<
                       }
                       throw error;
                     }
+                  }
+
+                  if (actionChangedHistory) {
+                    await writeSnapshotOutsideTurn("action");
                   }
 
                   await writeTurnCompleteChunk(currentWirePayload.chatId);
