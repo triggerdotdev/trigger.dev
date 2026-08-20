@@ -60,6 +60,22 @@ export function resolveThemePreference(
  * through the server and comes back via the root loader, and anything that waits
  * for that is at the mercy of whether the revalidation actually lands.
  */
+/**
+ * Write the contrast preference to the document.
+ *
+ * The value is signed: above zero strengthens the palette, below zero fades it
+ * (Black only). The ramps can't take a negative percentage - `color-mix` treats
+ * one as invalid and drops the whole declaration - so it's split into two
+ * always-positive variables. Anything writing this must go through here; the
+ * live preview used to set `--theme-contrast` on its own and silently did
+ * nothing at all below zero.
+ */
+export function applyThemeContrast(contrast: number) {
+  const root = document.documentElement;
+  root.style.setProperty("--theme-contrast", String(Math.max(0, contrast) / 100));
+  root.style.setProperty("--theme-fade", String(Math.max(0, -contrast) / 100));
+}
+
 export function applyThemePreference(
   preference: ThemePreference,
   systemThemes: SystemThemes = DEFAULT_SYSTEM_THEMES

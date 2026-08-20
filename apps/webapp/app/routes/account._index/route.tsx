@@ -56,6 +56,7 @@ import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import {
+  applyThemeContrast,
   applyThemePreference,
   type ThemeAppearance,
   useThemeAppearance,
@@ -79,6 +80,7 @@ import {
   normalizeThemeContrast,
   normalizeUnderlineLinks,
   normalizeThemePreference,
+  DEFAULT_THEME_CONTRAST_BLACK,
   MIN_THEME_CONTRAST_BLACK,
   SystemDarkTheme,
   SystemLightTheme,
@@ -879,7 +881,12 @@ export default function Page() {
      appearance. Only Black gets the extra travel below the base, so the slider
      needs to know rather than reading the raw preference. */
   const activeTheme = theme === "system" ? systemThemes[appearance] : theme;
-  const minContrast = activeTheme === "black" ? MIN_THEME_CONTRAST_BLACK : MIN_CONTRAST;
+  const isBlack = activeTheme === "black";
+  const minContrast = isBlack ? MIN_THEME_CONTRAST_BLACK : MIN_CONTRAST;
+  /* Black's rules want to sit far fainter than the base palette puts them, so
+     "Default" means something different there - both the tick and the label
+     follow it. */
+  const defaultContrast = isBlack ? DEFAULT_THEME_CONTRAST_BLACK : DEFAULT_CONTRAST_MARK;
 
   const saveSystemTheme = (end: "light" | "dark", value: string) => {
     const fetcher = end === "light" ? systemLightFetcher : systemDarkFetcher;
@@ -898,7 +905,7 @@ export default function Page() {
   useEffect(() => {
     if (contrastFetcher.state === "idle") {
       setContrastPreview(contrast);
-      document.documentElement.style.setProperty("--theme-contrast", String(contrast / 100));
+      applyThemeContrast(contrast);
     }
   }, [contrastFetcher.state, contrast]);
 
@@ -906,7 +913,7 @@ export default function Page() {
   // mark) persists it.
   const previewContrast = (value: number) => {
     setContrastPreview(value);
-    document.documentElement.style.setProperty("--theme-contrast", String(value / 100));
+    applyThemeContrast(value);
   };
   const saveContrast = (value: number) =>
     contrastFetcher.submit(
@@ -1105,16 +1112,16 @@ export default function Page() {
                       step={1}
                       marks={[
                         {
-                          value: DEFAULT_CONTRAST_MARK,
+                          value: defaultContrast,
                           label: "Reset to default",
                           onSelect: () => {
-                            previewContrast(DEFAULT_CONTRAST_MARK);
-                            saveContrast(DEFAULT_CONTRAST_MARK);
+                            previewContrast(defaultContrast);
+                            saveContrast(defaultContrast);
                           },
                         },
                       ]}
                       valueTooltip={(value) =>
-                        value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
+                        value === defaultContrast ? "Default" : `${value}%`
                       }
                       value={[Math.max(minContrast, contrastPreview)]}
                       onValueChange={(values) => previewContrast(values[0] ?? 0)}

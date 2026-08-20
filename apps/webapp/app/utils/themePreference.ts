@@ -54,10 +54,21 @@ export function normalizeUnderlineLinks(value: unknown): boolean {
 /** Interface contrast for the System themes, 0 to 100. Missing or invalid
  * values fall back to the default bump. */
 /** Floor of the contrast range on the Black theme, where the slider can also run
- *  *below* the base palette to fade the grid lines back toward the page. Every
- *  other theme floors at 0; a negative value simply has no ramp to act on there,
- *  so it reads as 0. */
-export const MIN_THEME_CONTRAST_BLACK = -50;
+ *  *below* the base palette to fade the grid lines back toward the page. -100
+ *  takes them all the way to the page colour, i.e. gone. Every other theme floors
+ *  at 0; a negative value simply has no ramp to act on there, so it reads as 0. */
+export const MIN_THEME_CONTRAST_BLACK = -100;
+
+/**
+ * Where "Default" sits on the Black theme.
+ *
+ * Chosen to mirror how the light end reads: on White the grid lines measure
+ * 1.16:1 (dimmed) and 1.27:1 (bright) against their page. -40 puts Black's at
+ * 1.15:1 and 1.19:1 against #000 - the same near-invisible weight, from the other
+ * direction. The base palette sits at 1.33:1 and 1.46:1, which is heavier than
+ * this theme wants when the rules are the only structure on the page.
+ */
+export const DEFAULT_THEME_CONTRAST_BLACK = -40;
 
 export function normalizeThemeContrast(value: unknown): number {
   const num = typeof value === "string" ? Number(value) : value;
