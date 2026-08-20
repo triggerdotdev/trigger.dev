@@ -46,10 +46,12 @@ export const DASHBOARD_AGENT_UAT_CAP = [
 // the agent's run payload expires quickly.
 const DASHBOARD_AGENT_UAT_TTL_SECONDS = 10 * 60;
 
-// The Trigger instance this webapp runs against — the same origin the agent
-// task calls back to (as the user) for its read tools.
 export function dashboardAgentApiOrigin(): string {
   return env.DASHBOARD_AGENT_BASE_URL ?? "https://api.trigger.dev";
+}
+
+export function dashboardAgentUserApiOrigin(): string {
+  return env.API_ORIGIN ?? env.APP_ORIGIN;
 }
 
 // Mint a short-lived, read-only delegated token for the signed-in user. Self

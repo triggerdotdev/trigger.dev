@@ -10,6 +10,7 @@ import { ApiClient } from "@trigger.dev/core/v3";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   dashboardAgentApiOrigin,
+  dashboardAgentUserApiOrigin,
   mintDashboardAgentUserActorToken,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
@@ -57,6 +58,7 @@ export async function kickWatchInvestigation(params: {
   if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   // The watch's immutable tenancy plus the delegated token that lets the turn read.
   const metadata = {
     userId: watch.userId,
@@ -65,7 +67,7 @@ export async function kickWatchInvestigation(params: {
     environmentId: watch.environmentId,
     projectRef: watch.projectRef ?? environment.project.externalRef,
     ...dashboardAgentEnvironmentAddress(environment),
-    apiOrigin,
+    apiOrigin: userApiOrigin,
     userActorToken: await mintDashboardAgentUserActorToken(watch.userId, {
       environmentId: watch.environmentId,
     }),

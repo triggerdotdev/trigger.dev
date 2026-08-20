@@ -42,7 +42,7 @@ import {
   submitDashboardAgentWatch,
 } from "~/services/dashboardAgentWatches.server";
 import {
-  dashboardAgentApiOrigin,
+  dashboardAgentUserApiOrigin,
   dashboardAgentWakeFeedCounter,
   isDashboardAgentConfigured,
   mintDashboardAgentToken,
@@ -345,7 +345,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv.id,
             }),
-            apiOrigin: dashboardAgentApiOrigin(),
+            apiOrigin: dashboardAgentUserApiOrigin(),
             projectRef: project.externalRef,
             // Server-owned, like the `in` proxy: the eval opt-out and every tenancy check
             // key on these, so the client can't set them at all.
