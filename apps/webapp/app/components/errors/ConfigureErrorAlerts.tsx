@@ -103,13 +103,15 @@ export function ConfigureErrorAlerts({
     }
   }, [fetcher.state, fetcher.data, closeHref, navigate, toast]);
 
-  const [emailFieldValues, setEmailFieldValues] = useState<string[]>(() =>
+  const [emailDefaultValues] = useState<string[]>(() =>
     existingEmails.length > 0 ? [...existingEmails.map((e) => e.email), ""] : [""]
   );
+  const emailFieldValues = useRef([...emailDefaultValues]);
 
-  const [webhookFieldValues, setWebhookFieldValues] = useState<string[]>(() =>
+  const [webhookDefaultValues] = useState<string[]>(() =>
     existingWebhooks.length > 0 ? [...existingWebhooks.map((w) => w.url), ""] : [""]
   );
+  const webhookFieldValues = useRef([...webhookDefaultValues]);
 
   const [form, fields] = useForm<z.infer<typeof ErrorAlertsFormSchema>>({
     id: "configure-error-alerts",
@@ -118,8 +120,8 @@ export function ConfigureErrorAlerts({
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
-      emails: emailFieldValues,
-      webhooks: webhookFieldValues,
+      emails: emailDefaultValues,
+      webhooks: webhookDefaultValues,
     },
   });
   const { emails, webhooks, slackChannel, slackIntegrationId } = fields;
@@ -167,12 +169,10 @@ export function ConfigureErrorAlerts({
                         placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                         icon={EnvelopeIcon}
                         onChange={(e) => {
-                          const nextValues = [...emailFieldValues];
-                          nextValues[index] = e.target.value;
-                          setEmailFieldValues(nextValues);
+                          emailFieldValues.current[index] = e.target.value;
                           if (
-                            emailFields.length === nextValues.length &&
-                            nextValues.every((value) => value !== "")
+                            emailFields.length === emailFieldValues.current.length &&
+                            emailFieldValues.current.every((value) => value !== "")
                           ) {
                             form.insert({ name: emails.name });
                           }
@@ -323,12 +323,10 @@ export function ConfigureErrorAlerts({
                       }
                       icon={GlobeLinesIcon}
                       onChange={(e) => {
-                        const nextValues = [...webhookFieldValues];
-                        nextValues[index] = e.target.value;
-                        setWebhookFieldValues(nextValues);
+                        webhookFieldValues.current[index] = e.target.value;
                         if (
-                          webhookFields.length === nextValues.length &&
-                          nextValues.every((value) => value !== "")
+                          webhookFields.length === webhookFieldValues.current.length &&
+                          webhookFieldValues.current.every((value) => value !== "")
                         ) {
                           form.insert({ name: webhooks.name });
                         }
