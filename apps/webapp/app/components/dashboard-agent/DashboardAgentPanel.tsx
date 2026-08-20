@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { AgentSpinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
-import { useApiOrigin } from "~/hooks/useApiOrigin";
+import { useDashboardAgentBaseUrl } from "~/hooks/useDashboardAgentBaseUrl";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -104,7 +104,7 @@ export function DashboardAgentPanel({
   const project = useProject();
   const environment = useEnvironment();
   const user = useUser();
-  const apiOrigin = useApiOrigin();
+  const apiOrigin = useDashboardAgentBaseUrl();
   const location = useLocation();
   const pageContext = useAgentPageContext();
   const toast = useToast();

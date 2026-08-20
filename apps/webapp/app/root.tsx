@@ -120,6 +120,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
       apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
+      dashboardAgentBaseUrl: env.DASHBOARD_AGENT_BASE_URL ?? "https://api.trigger.dev",
       triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
       timezone,
