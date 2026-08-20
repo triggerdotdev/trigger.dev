@@ -5,7 +5,7 @@ import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
 import { stringifyIO, timeoutError } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import { z } from "zod";
 import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
@@ -249,7 +249,9 @@ function CompleteDateTimeWaitpointForm({
   const project = useProject();
   const environment = useEnvironment();
 
-  const timeToComplete = waitpoint.completedAfter.getTime() - Date.now();
+  // oxlint-disable-next-line react/react-compiler -- This form intentionally snapshots wall-clock time for its deadline UI.
+  const now = Date.now();
+  const timeToComplete = waitpoint.completedAfter.getTime() - now;
   if (timeToComplete < 0) {
     return (
       <div className="flex items-center justify-center">
@@ -283,7 +285,7 @@ function CompleteDateTimeWaitpointForm({
           <div className="flex items-center gap-1">
             <AnimatedHourglassIcon
               className="text-dimmed-dimmed size-4"
-              delay={(waitpoint.completedAfter.getMilliseconds() - Date.now()) / 1000}
+              delay={(waitpoint.completedAfter.getMilliseconds() - now) / 1000}
             />
             <span className="mt-0.5 ">
               <LiveCountdown endTime={waitpoint.completedAfter} />
@@ -318,25 +320,22 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
   const currentJson = useRef<string>("{\n\n}");
   const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/${waitpoint.id}/complete`;
 
-  const submitForm = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      const formData = new FormData(e.currentTarget);
-      const data: Record<string, string> = {
-        type: formData.get("type") as string,
-        failureRedirect: formData.get("failureRedirect") as string,
-        successRedirect: formData.get("successRedirect") as string,
-      };
+  const submitForm = (e: React.FormEvent<HTMLFormElement>) => {
+    const formData = new FormData(e.currentTarget);
+    const data: Record<string, string> = {
+      type: formData.get("type") as string,
+      failureRedirect: formData.get("failureRedirect") as string,
+      successRedirect: formData.get("successRedirect") as string,
+    };
 
-      data.payload = currentJson.current;
+    data.payload = currentJson.current;
 
-      submit(data, {
-        action: formAction,
-        method: "post",
-      });
-      e.preventDefault();
-    },
-    [currentJson]
-  );
+    submit(data, {
+      action: formAction,
+      method: "post",
+    });
+    e.preventDefault();
+  };
 
   return (
     <Form
@@ -369,6 +368,7 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
         <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <JSONEditor
             autoFocus
+            // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
             defaultValue={currentJson.current}
             readOnly={false}
             basicSetup

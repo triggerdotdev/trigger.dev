@@ -41,12 +41,14 @@ export function AnimatedCallout({
 
   useEffect(() => {
     if (!show) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setAutoDismissed(false);
     }
   }, [show]);
 
   useEffect(() => {
     if (shouldShow) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setRendered(true);
       return;
     }

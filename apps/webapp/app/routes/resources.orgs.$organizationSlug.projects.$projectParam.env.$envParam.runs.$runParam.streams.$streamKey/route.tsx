@@ -105,6 +105,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   );
 };
 
+// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 export function RealtimeStreamViewer({
   runId,
   streamKey,
@@ -539,6 +540,7 @@ export function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setChunks([]);
     setError(null);
 

@@ -54,8 +54,10 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
 
 function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
   const replayDataFetcher = useTypedFetcher<typeof loader>();
+  const { load: loadReplayData } = replayDataFetcher;
   const isLoading = replayDataFetcher.state === "loading";
   const queueFetcher = useTypedFetcher<typeof queuesLoader>();
+  const { load: loadQueues } = queueFetcher;
 
   const [environmentIdOverride, setEnvironmentIdOverride] = useState<string | undefined>(undefined);
 
@@ -65,34 +67,35 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
       searchParams.set("environmentIdOverride", environmentIdOverride);
     }
 
-    replayDataFetcher.load(
-      `/resources/taskruns/${runFriendlyId}/replay?${searchParams.toString()}`
-    );
-  }, [runFriendlyId, environmentIdOverride]);
+    loadReplayData(`/resources/taskruns/${runFriendlyId}/replay?${searchParams.toString()}`);
+  }, [environmentIdOverride, loadReplayData, runFriendlyId]);
 
   const params = useParams();
+  const environmentOverrideSlug = environmentIdOverride
+    ? replayDataFetcher.data?.environments.find((env) => env.id === environmentIdOverride)?.slug
+    : undefined;
+
   useEffect(() => {
     if (params.organizationSlug && params.projectParam && params.envParam) {
       const searchParams = new URLSearchParams();
       searchParams.set("type", "custom");
       searchParams.set("per_page", "100");
 
-      let envSlug = params.envParam;
+      const envSlug = environmentOverrideSlug ?? params.envParam;
 
-      if (environmentIdOverride) {
-        const environmentOverride = replayDataFetcher.data?.environments.find(
-          (env) => env.id === environmentIdOverride
-        );
-        envSlug = environmentOverride?.slug ?? envSlug;
-      }
-
-      queueFetcher.load(
+      loadQueues(
         `/resources/orgs/${params.organizationSlug}/projects/${
           params.projectParam
         }/env/${envSlug}/queues?${searchParams.toString()}`
       );
     }
-  }, [params.organizationSlug, params.projectParam, params.envParam, environmentIdOverride]);
+  }, [
+    environmentOverrideSlug,
+    loadQueues,
+    params.envParam,
+    params.organizationSlug,
+    params.projectParam,
+  ]);
 
   const customQueues = useMemo(() => {
     return queueFetcher.data?.queues ?? [];

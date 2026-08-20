@@ -42,15 +42,16 @@ export function DurationPicker({
 
   // Sync internal state with external value changes
   useEffect(() => {
-    if (controlledValue !== undefined && controlledValue !== totalSeconds) {
-      const newHours = Math.floor(controlledValue / 3600);
-      const newMinutes = Math.floor((controlledValue % 3600) / 60);
-      const newSeconds = controlledValue % 60;
+    if (controlledValue === undefined) return;
 
-      setHours(newHours);
-      setMinutes(newMinutes);
-      setSeconds(newSeconds);
-    }
+    const newHours = Math.floor(controlledValue / 3600);
+    const newMinutes = Math.floor((controlledValue % 3600) / 60);
+    const newSeconds = controlledValue % 60;
+
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
+    setHours(newHours);
+    setMinutes(newMinutes);
+    setSeconds(newSeconds);
   }, [controlledValue]);
 
   useEffect(() => {

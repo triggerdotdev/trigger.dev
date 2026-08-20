@@ -1,6 +1,6 @@
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button } from "~/components/primitives/Buttons";
@@ -57,25 +57,33 @@ export const action = dashboardAction(
 export default function AdminQueueMetricsRoute() {
   const { controls, streams } = useTypedLoaderData<typeof loader>();
   const saveFetcher = useFetcher<{ success?: boolean; error?: string }>();
-  const revalidator = useRevalidator();
+  const { revalidate, state: revalidatorState } = useRevalidator();
 
   const [enabled, setEnabled] = useState(controls.enabled);
   const [sampleRate, setSampleRate] = useState(String(controls.sampleRate));
   const [error, setError] = useState<string | null>(null);
+  const handledSaveDataRef = useRef(saveFetcher.data);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setEnabled(controls.enabled);
     setSampleRate(String(controls.sampleRate));
   }, [controls.enabled, controls.sampleRate]);
 
   useEffect(() => {
-    if (saveFetcher.data?.success) {
+    if (!saveFetcher.data || handledSaveDataRef.current === saveFetcher.data) {
+      return;
+    }
+    handledSaveDataRef.current = saveFetcher.data;
+
+    if (saveFetcher.data.success) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setError(null);
-      revalidator.revalidate();
-    } else if (saveFetcher.data?.error) {
+      revalidate();
+    } else if (saveFetcher.data.error) {
       setError(saveFetcher.data.error);
     }
-  }, [saveFetcher.data]);
+  }, [saveFetcher.data, revalidate]);
 
   const isSaving = saveFetcher.state === "submitting";
 
@@ -142,8 +150,8 @@ export default function AdminQueueMetricsRoute() {
             <Header2>Stream health{totalLag > 0 ? ` (lag ${totalLag})` : ""}</Header2>
             <Button
               variant="tertiary/small"
-              onClick={() => revalidator.revalidate()}
-              disabled={revalidator.state === "loading"}
+              onClick={revalidate}
+              disabled={revalidatorState === "loading"}
             >
               Refresh
             </Button>

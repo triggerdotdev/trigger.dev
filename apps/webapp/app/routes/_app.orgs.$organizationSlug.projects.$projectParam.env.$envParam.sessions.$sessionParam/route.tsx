@@ -115,21 +115,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Session not found", { status: 404 });
   }
 
-  return typedjson({ session });
+  return typedjson({ session, loadedAt: Date.now() });
 };
 
 export default function Page() {
-  const { session } = useTypedLoaderData<typeof loader>();
+  const { session, loadedAt } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
+  const isExpired = session.expiresAt != null && new Date(session.expiresAt).getTime() < loadedAt;
   const status: SessionStatus =
-    session.closedAt != null
-      ? "CLOSED"
-      : session.expiresAt != null && new Date(session.expiresAt).getTime() < Date.now()
-        ? "EXPIRED"
-        : "ACTIVE";
+    session.closedAt != null ? "CLOSED" : isExpired ? "EXPIRED" : "ACTIVE";
 
   const displayId = session.externalId ?? session.friendlyId;
   const sessionsPath = v3SessionsPath(organization, project, environment);
@@ -170,7 +167,7 @@ export default function Page() {
             default="420px"
             className="overflow-hidden"
           >
-            <InspectorPane session={session} status={status} />
+            <InspectorPane session={session} status={status} isExpired={isExpired} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
@@ -264,6 +261,7 @@ const ROW_NUMBER_COL_MIN_CH = 3;
 const TIME_COL_WIDTH = "7rem";
 const TYPE_COL_WIDTH = "5rem";
 
+// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 function RawConversationView({
   inResourcePath,
   outResourcePath,
@@ -711,7 +709,15 @@ function MergedStreamRow({
   );
 }
 
-function InspectorPane({ session, status }: { session: LoadedSession; status: SessionStatus }) {
+function InspectorPane({
+  session,
+  status,
+  isExpired,
+}: {
+  session: LoadedSession;
+  status: SessionStatus;
+  isExpired: boolean;
+}) {
   const { value, replace } = useSearchParams();
   const tab = value("tab") ?? "overview";
   const organization = useOrganization();
@@ -760,7 +766,7 @@ function InspectorPane({ session, status }: { session: LoadedSession; status: Se
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" ? (
-          <OverviewTab session={session} status={status} />
+          <OverviewTab session={session} status={status} isExpired={isExpired} />
         ) : tab === "runs" ? (
           <RunsTab session={session} status={status} allRunsPath={allRunsPath} />
         ) : (
@@ -771,7 +777,15 @@ function InspectorPane({ session, status }: { session: LoadedSession; status: Se
   );
 }
 
-function OverviewTab({ session, status }: { session: LoadedSession; status: SessionStatus }) {
+function OverviewTab({
+  session,
+  status,
+  isExpired,
+}: {
+  session: LoadedSession;
+  status: SessionStatus;
+  isExpired: boolean;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -891,9 +905,7 @@ function OverviewTab({ session, status }: { session: LoadedSession; status: Sess
         </Property.Item>
         {session.expiresAt ? (
           <Property.Item>
-            <Property.Label>
-              {new Date(session.expiresAt).getTime() < Date.now() ? "Expired" : "Expires"}
-            </Property.Label>
+            <Property.Label>{isExpired ? "Expired" : "Expires"}</Property.Label>
             <Property.Value>
               <DateTime date={session.expiresAt} />
             </Property.Value>

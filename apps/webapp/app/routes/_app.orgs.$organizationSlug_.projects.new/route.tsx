@@ -360,6 +360,7 @@ export default function Page() {
 
   useEffect(() => {
     const nonOther = workingOnOptions.filter((o) => o !== WORKING_ON_OTHER);
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setShuffledWorkingOn([...shuffleArray(nonOther), WORKING_ON_OTHER]);
 
     const nonOtherGoals = goalOptions.filter((o) => o !== GOALS_OTHER);

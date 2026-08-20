@@ -165,6 +165,7 @@ export function useRunsLiveReload({
   const location = useLocation();
   const runsPollFetcher = useTypedFetcher<typeof liveRunsLoader>();
   const runsPollFetcherStateRef = useRef(runsPollFetcher.state);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   runsPollFetcherStateRef.current = runsPollFetcher.state;
 
   const [visibleRuns, setVisibleRuns] = useState(runs);
@@ -192,6 +193,7 @@ export function useRunsLiveReload({
   // Single reset path: new loader data or changed filters re-baseline both the
   // visible rows and new-run tracking.
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setVisibleRuns(runs);
     resetNewRunsTracking();
   }, [runs, searchKeyWithoutPagination, resetNewRunsTracking]);
@@ -202,6 +204,7 @@ export function useRunsLiveReload({
     const data = runsPollFetcher.data;
     if (!data?.runs.length) return;
 
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setVisibleRuns((currentRuns) => patchVisibleRunsWithLiveUpdates(currentRuns, data.runs));
   }, [runsPollFetcher.data]);
 

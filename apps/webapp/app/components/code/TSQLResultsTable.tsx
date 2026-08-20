@@ -224,6 +224,7 @@ const DebouncedInput = forwardRef<
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- Programmatic filter changes intentionally reset the debounced input draft.
     setValue(initialValue);
   }, [initialValue]);
 
@@ -1064,6 +1065,7 @@ function ColumnResizeHandle({ header }: { header: Header<RowData, unknown> }) {
 }
 /* oxlint-enable jsx-a11y/no-static-element-interactions */
 
+// oxlint-disable-next-line react/react-compiler -- TanStack Table is not compatible with compiler memoization.
 export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,

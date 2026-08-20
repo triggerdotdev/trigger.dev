@@ -124,6 +124,7 @@ export function useDeliveriesLiveReload({
   const location = useLocation();
   const deliveriesPollFetcher = useTypedFetcher<typeof liveDeliveriesLoader>();
   const deliveriesPollFetcherStateRef = useRef(deliveriesPollFetcher.state);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
   deliveriesPollFetcherStateRef.current = deliveriesPollFetcher.state;
 
   const [visibleDeliveries, setVisibleDeliveries] = useState(deliveries);
@@ -140,6 +141,7 @@ export function useDeliveriesLiveReload({
   } = useNewDeliveriesDetection({ deliveries, isLoading });
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setVisibleDeliveries(deliveries);
     resetNewDeliveriesTracking();
   }, [deliveries, location.search, resetNewDeliveriesTracking]);
@@ -148,6 +150,7 @@ export function useDeliveriesLiveReload({
     const data = deliveriesPollFetcher.data;
     if (!data?.deliveries.length) return;
 
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setVisibleDeliveries((current) =>
       patchVisibleDeliveriesWithLiveUpdates(current, data.deliveries)
     );

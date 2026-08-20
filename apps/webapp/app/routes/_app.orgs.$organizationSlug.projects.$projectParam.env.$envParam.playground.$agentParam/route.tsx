@@ -207,6 +207,7 @@ function PlaygroundChat() {
     activeConversation?.clientData ? JSON.stringify(activeConversation.clientData, null, 2) : "{}"
   );
   const clientDataJsonRef = useRef(clientDataJson);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   clientDataJsonRef.current = clientDataJson;
   const [machine, setMachine] = useState<string | undefined>(undefined);
   const [tags, setTags] = useState<string[]>([]);
@@ -267,12 +268,14 @@ function PlaygroundChat() {
   // silently ignored on the first send. Mirror the `clientDataJsonRef`
   // pattern so the transport always calls the latest `startSession`.
   const startSessionRef = useRef(startSession);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   startSessionRef.current = startSession;
 
   // Create TriggerChatTransport directly (not via useTriggerChatTransport hook
   // to avoid React version mismatch between SDK and webapp)
   const transportRef = useRef<TriggerChatTransport | null>(null);
   if (transportRef.current === null) {
+    // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
     transportRef.current = new TriggerChatTransport({
       task: agent.slug,
       // The Remix action is idempotent on `(env, externalId)` and
@@ -301,6 +304,7 @@ function PlaygroundChat() {
         : {}),
     });
   }
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   const transport = transportRef.current;
 
   // Keep the transport's `defaultMetadata` in sync with the JSON editor.
@@ -351,6 +355,7 @@ function PlaygroundChat() {
   );
 
   // useChat from AI SDK — handles message accumulation, streaming, stop
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   const { messages, sendMessage, stop, status, error } = useChat({
     id: chatId,
     messages: initialMessages,
@@ -391,8 +396,10 @@ function PlaygroundChat() {
     inputRef.current?.focus();
   }, [isEmpty]);
 
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   const session = transport.getSession(chatId);
 
+  /* oxlint-disable react/react-compiler -- The transport and chat ID are stable for this component's lifetime. */
   const handlePreload = useCallback(async () => {
     setPreloading(true);
     try {
@@ -403,6 +410,7 @@ function PlaygroundChat() {
       setPreloading(false);
     }
   }, [transport, chatId]);
+  /* oxlint-enable react/react-compiler */
 
   const handleNewConversation = useCallback(() => {
     // Navigate without ?conversation= so the loader returns activeConversation=null
@@ -1169,6 +1177,7 @@ function usePlaygroundPendingMessages({
     [status, transport, chatId, sendMessage, metadata]
   );
 
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative route integration outside React state.
   const pending: PendingMessageEntry[] = pendingMsgs.map((m) => ({
     id: m.id,
     text: m.parts[0]?.text ?? "",

@@ -47,6 +47,7 @@ export function LoginPageLayout({
   const [randomQuote, setRandomQuote] = useState<QuoteType | null>(null);
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * quotes.length);
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setRandomQuote(quotes[randomIndex]);
   }, []);
 

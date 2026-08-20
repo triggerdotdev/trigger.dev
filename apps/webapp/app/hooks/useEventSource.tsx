@@ -24,6 +24,7 @@ export function useEventSource(
     }
 
     // reset data if dependencies change
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setData(null);
 
     const eventSource = new EventSource(url, init);

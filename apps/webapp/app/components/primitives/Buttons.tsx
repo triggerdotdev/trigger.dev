@@ -261,6 +261,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const [showSpinner, setShowSpinner] = useState(false);
   useEffect(() => {
     if (!isLoading) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setShowSpinner(false);
       return;
     }

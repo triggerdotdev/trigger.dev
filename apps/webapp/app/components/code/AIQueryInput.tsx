@@ -61,9 +61,43 @@ export function AIQueryInput({
   // If mode is edit but there's no current query, switch to new
   useEffect(() => {
     if (mode === "edit" && !canEdit) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setMode("new");
     }
   }, [mode, canEdit]);
+
+  const processStreamEvent = useCallback(
+    (event: StreamEventType) => {
+      switch (event.type) {
+        case "thinking":
+          setThinking((prev) => prev + event.content);
+          break;
+        case "tool_call":
+          // Tool calls are handled silently — no UI text needed
+          break;
+        case "time_filter":
+          // Apply time filter immediately when the AI sets it
+          onTimeFilterChange?.(event.filter);
+          break;
+        case "result":
+          if (event.success) {
+            // Apply time filter if included in result (backup in case time_filter event was missed)
+            if (event.timeFilter) {
+              onTimeFilterChange?.(event.timeFilter);
+            }
+            onQueryGenerated(event.query);
+            setPrompt("");
+            setLastResult("success");
+            // Keep thinking visible to show what happened
+          } else {
+            setError(event.error);
+            setLastResult("error");
+          }
+          break;
+      }
+    },
+    [onQueryGenerated, onTimeFilterChange]
+  );
 
   const submitQuery = useCallback(
     async (queryPrompt: string, submitMode: AIQueryMode = mode) => {
@@ -158,40 +192,7 @@ export function AIQueryInput({
         setIsLoading(false);
       }
     },
-    [isLoading, resourcePath, mode, getCurrentQuery]
-  );
-
-  const processStreamEvent = useCallback(
-    (event: StreamEventType) => {
-      switch (event.type) {
-        case "thinking":
-          setThinking((prev) => prev + event.content);
-          break;
-        case "tool_call":
-          // Tool calls are handled silently — no UI text needed
-          break;
-        case "time_filter":
-          // Apply time filter immediately when the AI sets it
-          onTimeFilterChange?.(event.filter);
-          break;
-        case "result":
-          if (event.success) {
-            // Apply time filter if included in result (backup in case time_filter event was missed)
-            if (event.timeFilter) {
-              onTimeFilterChange?.(event.timeFilter);
-            }
-            onQueryGenerated(event.query);
-            setPrompt("");
-            setLastResult("success");
-            // Keep thinking visible to show what happened
-          } else {
-            setError(event.error);
-            setLastResult("error");
-          }
-          break;
-      }
-    },
-    [onQueryGenerated, onTimeFilterChange]
+    [getCurrentQuery, isLoading, mode, processStreamEvent, resourcePath]
   );
 
   const handleSubmit = useCallback(

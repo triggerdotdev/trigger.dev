@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef } from "react";
 import { SelectItem } from "../primitives/Select";
 
+// oxlint-disable-next-line react/react-compiler -- TanStack Virtual is not compatible with compiler memoization.
 export function TimezoneList({ timezones }: { timezones: string[] }) {
   const parentRef = useRef<HTMLDivElement>(null);
 

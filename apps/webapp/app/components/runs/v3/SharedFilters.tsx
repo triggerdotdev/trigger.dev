@@ -495,7 +495,6 @@ function TimeDropdown({
   const organization = useOptionalOrganization();
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
-  const extraCleared = Object.fromEntries((clearParams ?? []).map((key) => [key, undefined]));
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
 
@@ -520,6 +519,7 @@ function TimeDropdown({
   // Sync state when props change
   useEffect(() => {
     const parsed = getInitialCustomDuration(period);
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setCustomValue(parsed.value);
     setCustomUnit(parsed.unit);
 
@@ -569,7 +569,7 @@ function TimeDropdown({
         onValueChange(values);
       } else {
         replace({
-          ...extraCleared,
+          ...Object.fromEntries((clearParams ?? []).map((key) => [key, undefined])),
           period: periodToApply,
           cursor: undefined,
           direction: undefined,
@@ -583,7 +583,7 @@ function TimeDropdown({
       setOpen(false);
       onApply?.(values);
     },
-    [maxPeriodDays, onValueChange, replace, onApply]
+    [clearParams, maxPeriodDays, onValueChange, replace, onApply]
   );
 
   const applySelection = useCallback(() => {
@@ -629,7 +629,7 @@ function TimeDropdown({
       } else {
         // URL mode - navigate
         replace({
-          ...extraCleared,
+          ...Object.fromEntries((clearParams ?? []).map((key) => [key, undefined])),
           period: undefined,
           cursor: undefined,
           direction: undefined,
@@ -643,6 +643,7 @@ function TimeDropdown({
     }
   }, [
     activeSection,
+    clearParams,
     selectedPeriod,
     isCustomDurationValid,
     customValue,

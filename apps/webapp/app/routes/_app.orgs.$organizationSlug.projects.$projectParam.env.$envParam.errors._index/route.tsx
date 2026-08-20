@@ -567,9 +567,9 @@ function ErrorGroupRow({
   envParam: string;
 }) {
   const location = useOptimisticLocation();
-  const searchParams = new URLSearchParams(location.search);
 
   const errorPath = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
     const base = v3ErrorPath(
       { slug: organizationSlug },
       { slug: projectParam },
@@ -588,7 +588,7 @@ function ErrorGroupRow({
     }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
-  }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, searchParams.toString()]);
+  }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, location.search]);
 
   const errorMessage = `${errorGroup.errorMessage}`;
 

@@ -10,6 +10,7 @@ type InputNumberStepperProps = Omit<JSX.IntrinsicElements["input"], "min" | "max
   controlSize?: "base" | "large";
 };
 
+// oxlint-disable-next-line react/react-compiler -- The compiler cannot currently rewrite these hoisted function references.
 export function InputNumberStepper({
   value,
   onChange,

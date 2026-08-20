@@ -214,6 +214,7 @@ export default function Page() {
 
     const abortController = new AbortController();
 
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setLogs([]);
     setStreamError(null);
     setIsStreaming(true);
@@ -300,7 +301,13 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [eventStream?.s2?.basin, eventStream?.s2?.stream, eventStream?.s2?.accessToken, isPending]);
+  }, [
+    eventStream?.s2?.basin,
+    eventStream?.s2?.stream,
+    eventStream?.s2?.accessToken,
+    isPending,
+    logsDisabled,
+  ]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -625,6 +632,7 @@ function LogsDisplay({
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
 

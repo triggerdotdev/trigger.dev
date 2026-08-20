@@ -80,20 +80,26 @@ export function DateField({
     },
   });
 
-  //if the passed in value changes, we should update the date
+  const stateValueRef = useRef(state.value);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  stateValueRef.current = state.value;
+
+  // Sync only when the passed value or timezone mode changes. Depending on state.value directly
+  // would reset partially edited segments back to the default after every keystroke.
   useEffect(() => {
-    if (state.value === undefined && defaultValue === undefined) return;
+    const stateValue = stateValueRef.current;
+    if (stateValue === undefined && defaultValue === undefined) return;
 
     const calendarDate = utc
       ? utcDateToCalendarDate(defaultValue)
       : dateToCalendarDate(defaultValue);
-    //unchanged
-    if (state.value?.toDate("utc").getTime() === defaultValue?.getTime()) {
+    // unchanged
+    if (stateValue?.toDate(utc ? "utc" : deviceTimezone).getTime() === defaultValue?.getTime()) {
       return;
     }
 
     setValue(calendarDate);
-  }, [defaultValue]);
+  }, [defaultValue, utc]);
 
   const ref = useRef<null | HTMLDivElement>(null);
   const { labelProps: _labelProps, fieldProps } = useDateField(

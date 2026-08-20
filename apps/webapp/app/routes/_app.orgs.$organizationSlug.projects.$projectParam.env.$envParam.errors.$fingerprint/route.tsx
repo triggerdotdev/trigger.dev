@@ -100,6 +100,8 @@ export const meta = pageMeta(({ params }) => [
   "Errors",
 ]);
 
+const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
+
 const emptyStringToUndefined = z.preprocess(
   (v) => (v === "" ? undefined : v),
   z.coerce.number().positive().optional()
@@ -327,9 +329,9 @@ export default function Page() {
   } = useTypedLoaderData<typeof loader>();
 
   const location = useOptimisticLocation();
-  const searchParams = new URLSearchParams(location.search);
 
   const errorsPath = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
     const base = v3ErrorsPath(
       { slug: organizationSlug },
       { slug: projectParam },
@@ -347,7 +349,7 @@ export default function Page() {
     }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
-  }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
+  }, [organizationSlug, projectParam, envParam, location.search]);
 
   const alertsHref = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -856,7 +858,6 @@ function ActivityChart({
   activity: ErrorGroupActivity;
   versions: ErrorGroupActivityVersions;
 }) {
-  const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
   const colors = useMemo(
     () => versions.map((_, i) => ERROR_CHART_COLORS[i % ERROR_CHART_COLORS.length]),
     [versions]

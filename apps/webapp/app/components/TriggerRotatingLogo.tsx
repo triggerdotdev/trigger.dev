@@ -25,6 +25,7 @@ export function TriggerRotatingLogo() {
   useEffect(() => {
     // Already registered from a previous render
     if (customElements.get("spline-viewer")) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsSplineReady(true);
       return;
     }

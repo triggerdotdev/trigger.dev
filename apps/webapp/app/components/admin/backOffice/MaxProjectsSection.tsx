@@ -34,10 +34,12 @@ export function MaxProjectsSection({
   const [value, setValue] = useState(String(maximumProjectCount));
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     if (hasFieldErrors) setIsEditing(true);
   }, [hasFieldErrors]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
     if (savedJustNow && !hasFieldErrors) setIsEditing(false);
   }, [savedJustNow, hasFieldErrors]);
 

@@ -80,12 +80,14 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
       disabled,
       className,
       labelClassName: externalLabelClassName,
+      onChange,
       ...props
     },
     ref
   ) => {
     const [isChecked, setIsChecked] = useState<boolean>(defaultChecked ?? false);
-    const [isDisabled, setIsDisabled] = useState<boolean>(disabled ?? false);
+    const isDisabled = disabled ?? false;
+    const onChangeRef = React.useRef(onChange);
     const generatedId = React.useId();
     const inputId = id ?? generatedId;
     const labelId = `${inputId}-label`;
@@ -101,16 +103,15 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
     const inputPositionClasses = variants[variant].inputPosition;
 
     useEffect(() => {
-      setIsDisabled(disabled ?? false);
-    }, [disabled]);
+      onChangeRef.current = onChange;
+    }, [onChange]);
 
     useEffect(() => {
-      if (props.onChange) {
-        props.onChange(isChecked);
-      }
+      onChangeRef.current?.(isChecked);
     }, [isChecked]);
 
     useEffect(() => {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsChecked(defaultChecked ?? false);
     }, [defaultChecked]);
 

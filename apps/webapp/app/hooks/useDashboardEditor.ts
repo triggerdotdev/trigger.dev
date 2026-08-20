@@ -206,6 +206,9 @@ export function useDashboardEditor({
   const layoutDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(initialData.layout));
+  const initialDataRef = useRef(initialData);
+  // oxlint-disable-next-line react/react-compiler -- This ref intentionally coordinates an imperative integration outside React state.
+  initialDataRef.current = initialData;
 
   // Sync queue to prevent race conditions
   const syncQueueRef = useRef<SyncTask[]>([]);
@@ -217,6 +220,8 @@ export function useDashboardEditor({
     widgets: initialData.widgets,
   });
   useEffect(() => {
+    const { layout, widgets } = initialDataRef.current;
+
     // Cancel any pending layout save
     if (layoutDebounceRef.current) {
       clearTimeout(layoutDebounceRef.current);
@@ -229,11 +234,11 @@ export function useDashboardEditor({
     // Reset state to new initial data
     dispatch({
       type: "RESET_STATE",
-      payload: { layout: initialData.layout, widgets: initialData.widgets },
+      payload: { layout, widgets },
     });
 
     // Update refs
-    currentLayoutJsonRef.current = JSON.stringify(initialData.layout);
+    currentLayoutJsonRef.current = JSON.stringify(layout);
     isInitializedRef.current = false;
 
     // Allow saves after a short delay to skip initial mount callbacks
@@ -253,6 +258,7 @@ export function useDashboardEditor({
   // Sync queue processor - ensures only one sync runs at a time
   // -------------------------------------------------------------------------
 
+  /* oxlint-disable react/react-compiler -- The recursive callback drains a serialized sync queue. */
   const processNextSync = useCallback(async () => {
     // If already syncing or queue is empty, do nothing
     if (isSyncingRef.current || syncQueueRef.current.length === 0) {
@@ -305,6 +311,7 @@ export function useDashboardEditor({
       processNextSync();
     }
   }, [widgetActionUrl, layoutActionUrl, onSyncError]);
+  /* oxlint-enable react/react-compiler */
 
   // -------------------------------------------------------------------------
   // Queue helpers

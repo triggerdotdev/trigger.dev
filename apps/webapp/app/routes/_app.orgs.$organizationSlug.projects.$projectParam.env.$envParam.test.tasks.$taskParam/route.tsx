@@ -297,6 +297,7 @@ export default function Page() {
 
   const params = useParams();
   const queueFetcher = useFetcher<typeof queuesLoader>();
+  const { load: loadQueues } = queueFetcher;
 
   useEffect(() => {
     if (result.foundTask && params.organizationSlug && params.projectParam && params.envParam) {
@@ -304,13 +305,13 @@ export default function Page() {
       searchParams.set("type", "custom");
       searchParams.set("per_page", "100");
 
-      queueFetcher.load(
+      loadQueues(
         `/resources/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${
           params.envParam
         }/queues?${searchParams.toString()}`
       );
     }
-  }, [result.foundTask, params.organizationSlug, params.projectParam, params.envParam]);
+  }, [result.foundTask, params.organizationSlug, params.projectParam, params.envParam, loadQueues]);
 
   const defaultTaskQueue = result.foundTask && "queue" in result ? result.queue : undefined;
   const queues = useMemo(() => {
@@ -1584,6 +1585,7 @@ function RunTemplatesPopover({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsDeleteDialogOpen(false);
     }
   }, [lastSubmission]);
@@ -1758,6 +1760,7 @@ function CreateTemplateModal({
 }) {
   const submit = useSubmit();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const successMessageTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   const actionData = useActionData<typeof action>();
   const lastSubmission =
@@ -1770,13 +1773,22 @@ function CreateTemplateModal({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/react-compiler -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(false);
       setShowCreatedSuccessMessage(true);
-      setTimeout(() => {
+      clearTimeout(successMessageTimeoutRef.current);
+      successMessageTimeoutRef.current = setTimeout(() => {
         setShowCreatedSuccessMessage(false);
       }, 2000);
     }
-  }, [lastSubmission]);
+  }, [lastSubmission, setShowCreatedSuccessMessage]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(successMessageTimeoutRef.current);
+      setShowCreatedSuccessMessage(false);
+    };
+  }, [setShowCreatedSuccessMessage]);
 
   const [
     form,

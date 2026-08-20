@@ -45,7 +45,7 @@
     "typescript/consistent-type-imports": "error",
     "import/no-duplicates": "error",
     "import/namespace": "off",
-    "react/exhaustive-deps": "off",
+    "react/exhaustive-deps": "error",
     "react/rules-of-hooks": "off",
     "guard-for-in": "error",
     "symbol-description": "error",
@@ -124,6 +124,7 @@
         "react/button-has-type": "error",
         "react/jsx-no-useless-fragment": "error",
         "react/no-unstable-nested-components": "error",
+        "react/react-compiler": "error",
         "react/rules-of-hooks": "error",
         "trigger-runops/no-control-plane-run-graph-access": "error",
         "trigger-runops/no-control-plane-in-runops-slot": "error"
