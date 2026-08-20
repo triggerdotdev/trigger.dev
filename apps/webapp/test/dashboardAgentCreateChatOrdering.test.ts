@@ -63,10 +63,11 @@ vi.mock("~/services/logger.server", () => ({ logger: mocks.logger }));
 
 import { action } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent";
 
-function createChatRequest() {
+function createChatRequest(clientData?: Record<string, unknown>) {
   const form = new URLSearchParams({
     intent: "create",
     message: JSON.stringify({ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }),
+    ...(clientData ? { clientData: JSON.stringify(clientData) } : {}),
   });
 
   return action({
@@ -128,6 +129,44 @@ describe("dashboard agent chat creation — nothing fallible after the row exist
       environmentName: "dev",
     });
     expect(mocks.softDeleteChat).not.toHaveBeenCalled();
+  });
+
+  // The head-start metadata is built from the client's clientData: a smuggled
+  // `repoSnapshot.tarballUrl` would be fetched and extracted on the agent worker, so only
+  // the whitelisted page context may survive the merge.
+  it("strips server-owned fields from the clientData before head-starting", async () => {
+    const response = await createChatRequest({
+      currentPage: "/runs",
+      pageContext: { kind: "runs" },
+      organizationId: "org_evil",
+      userId: "usr_evil",
+      projectId: "proj_evil",
+      environmentId: "env_evil",
+      userActorToken: "tr_uat_evil",
+      apiOrigin: "https://evil.example.com",
+      repoSnapshot: { tarballUrl: "https://evil.example.com/x.tar.gz" },
+      somethingNew: "smuggled",
+    });
+
+    expect(response.status).toBe(200);
+    const metadata = mocks.headStart.mock.calls[0][0].metadata;
+    expect(metadata.currentPage).toBe("/runs");
+    expect(metadata.pageContext).toEqual({ kind: "runs" });
+    expect(metadata.organizationId).toBe("org_real");
+    expect(metadata.userId).toBe("usr_real");
+    expect(metadata.projectId).toBe("proj_real");
+    expect(metadata.environmentId).toBe("env_real");
+    expect(metadata.userActorToken).toBe("tr_uat_real");
+    expect(metadata.apiOrigin).toBe("https://api.trigger.dev");
+    expect(metadata.repoSnapshot).toBeUndefined();
+    expect(metadata).not.toHaveProperty("somethingNew");
+
+    // The chat row's stored context is whitelisted too. createChat(db, params) takes
+    // the db as arg 0, so the params object (carrying metadata) is arg 1.
+    const chatMetadata = mocks.createChat.mock.calls[0][1].metadata;
+    expect(chatMetadata).toEqual({
+      context: { currentPage: "/runs", pageContext: { kind: "runs" } },
+    });
   });
 });
 

@@ -600,8 +600,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       } catch {
         /* invalid JSON — start without metadata */
       }
+      const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+      if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+
       try {
-        const { publicAccessToken } = await startDashboardAgentSession({ chatId, clientData });
+        // Whitelisted like `create` and the `in` proxy: this object lands in the resumed
+        // run's `basePayload.metadata` verbatim, so without the pick a client could inject
+        // any server-owned field into the agent's first turn (a `repoSnapshot.tarballUrl`
+        // is fetched and extracted on the worker).
+        const { publicAccessToken } = await startDashboardAgentSession({
+          chatId,
+          clientData: {
+            ...pickAgentClientMetadata(clientData),
+            organizationId: project.organizationId,
+            userId,
+            projectId: project.id,
+            environmentId: runtimeEnv.id,
+            ...dashboardAgentEnvironmentAddress(runtimeEnv),
+          },
+        });
         return json({ publicAccessToken });
       } catch (error) {
         logger.error("Failed to start dashboard agent session", { chatId, error });

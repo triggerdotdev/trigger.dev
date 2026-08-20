@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   findEnvironmentBySlug: vi.fn<(...args: any[]) => Promise<any>>(),
+  startSession: vi.fn<(...args: any[]) => Promise<any>>(),
+  chatExists: vi.fn<(...args: any[]) => Promise<any>>(),
 }));
 
-vi.mock("~/db.server", () => ({ $replica: {} }));
+vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => ({ id: "usr_real", admin: false, isImpersonating: false }),
@@ -25,14 +27,32 @@ vi.mock("~/models/runtimeEnvironment.server", () => ({
 }));
 vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentApiOrigin: () => "https://api.trigger.dev",
+  isDashboardAgentConfigured: () => true,
+  mintDashboardAgentToken: async () => "pat_public",
   mintDashboardAgentUserActorToken: async () => "tr_uat_real",
   resolveDashboardAgentRepoSnapshot: async () => null,
+  startDashboardAgentSession: mocks.startSession,
+}));
+vi.mock("~/services/dashboardAgentHeadStart.server", () => ({
+  startDashboardAgentHeadStart: vi.fn(),
+}));
+vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
+vi.mock("~/services/resolveTriggerUri.server", () => ({ resolveTriggerUri: () => null }));
+// The chat route reaches the ClickHouse factory through the watch services, and the factory
+// builds its client at import time from an env var no test sets.
+vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
+  clickhouseFactory: { getClickhouseForOrganization: async () => ({}) },
+}));
+vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  chatExists: mocks.chatExists,
 }));
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
 import { action } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
+import { action as chatAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent";
 
 async function appendTurn(metadata: Record<string, unknown>): Promise<Record<string, unknown>> {
   const request = new Request(
@@ -158,5 +178,102 @@ describe("dashboard agent `in` proxy — client metadata", () => {
     expect(metadata).not.toHaveProperty("evalOptOut");
     expect(metadata).not.toHaveProperty("cap");
     expect(metadata).not.toHaveProperty("somethingNew");
+  });
+});
+
+// `intent=start` resumes an owned chat; the client-supplied clientData is folded into the
+// resumed run's payload metadata verbatim, so it goes through the same whitelist as the
+// `in` proxy. Otherwise a client could inject `repoSnapshot.tarballUrl` and the agent
+// worker would fetch and extract it.
+describe("dashboard agent `start` intent — client metadata", () => {
+  beforeEach(() => {
+    mocks.chatExists.mockReset().mockResolvedValue(true);
+    mocks.startSession.mockReset().mockResolvedValue({ publicAccessToken: "pat_public" });
+    mocks.findEnvironmentBySlug.mockReset().mockResolvedValue({
+      id: "env_real",
+      type: "DEVELOPMENT",
+      branchName: null,
+    });
+  });
+
+  async function startChat(clientData: Record<string, unknown>) {
+    const form = new URLSearchParams({
+      intent: "start",
+      chatId: "chat_real",
+      clientData: JSON.stringify(clientData),
+    });
+
+    const response = await chatAction({
+      request: new Request(
+        "https://app.trigger.dev/resources/orgs/acme/projects/api/env/dev/dashboard-agent",
+        {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: form.toString(),
+        }
+      ),
+      params: { organizationSlug: "acme", projectParam: "api", envParam: "dev" },
+      context: {},
+    } as any);
+
+    expect(response.status).toBe(200);
+    expect(mocks.startSession).toHaveBeenCalledTimes(1);
+    return mocks.startSession.mock.calls[0][0].clientData as Record<string, unknown>;
+  }
+
+  it("keeps the whitelisted page context", async () => {
+    const clientData = await startChat({ currentPage: "/runs", pageContext: { kind: "runs" } });
+
+    expect(clientData).toMatchObject({ currentPage: "/runs", pageContext: { kind: "runs" } });
+  });
+
+  it("drops every server-owned field a client sends", async () => {
+    const clientData = await startChat({
+      currentPage: "/runs",
+      organizationId: "org_evil",
+      userId: "usr_evil",
+      projectId: "proj_evil",
+      projectRef: "proj_ref_evil",
+      environmentId: "env_evil",
+      environmentName: "prod",
+      environmentBranch: "evil-branch",
+      apiOrigin: "https://evil.example.com",
+      userActorToken: "tr_uat_evil",
+      repoSnapshot: { tarballUrl: "https://evil.example.com/x.tar.gz" },
+      somethingNew: "smuggled",
+    });
+
+    expect(clientData).toMatchObject({
+      currentPage: "/runs",
+      organizationId: "org_real",
+      userId: "usr_real",
+      projectId: "proj_real",
+      environmentId: "env_real",
+      environmentName: "dev",
+    });
+    expect(clientData.projectRef).toBeUndefined();
+    expect(clientData.environmentBranch).toBeUndefined();
+    expect(clientData.apiOrigin).toBeUndefined();
+    expect(clientData.userActorToken).toBeUndefined();
+    expect(clientData.repoSnapshot).toBeUndefined();
+    expect(clientData).not.toHaveProperty("somethingNew");
+  });
+
+  it("re-injects the server-owned identity the resumed run boots with", async () => {
+    const clientData = await startChat({
+      currentPage: "/runs",
+      organizationId: "org_evil",
+      userId: "usr_evil",
+      projectId: "proj_evil",
+      environmentId: "env_evil",
+    });
+
+    expect(clientData).toMatchObject({
+      currentPage: "/runs",
+      organizationId: "org_real",
+      userId: "usr_real",
+      projectId: "proj_real",
+      environmentId: "env_real",
+    });
   });
 });
