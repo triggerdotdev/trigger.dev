@@ -224,6 +224,7 @@ const DebouncedInput = forwardRef<
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- Programmatic filter changes intentionally reset the debounced input draft.
     setValue(initialValue);
   }, [initialValue]);
 

@@ -652,6 +652,7 @@ function PurchaseBranchesModal({
 
   const [amountValue, setAmountValue] = useState(extraBranches);
   useEffect(() => {
+    // oxlint-disable-next-line react/react-compiler -- The authoritative branch count intentionally resets this modal draft.
     setAmountValue(extraBranches);
   }, [extraBranches]);
   const isLoading = fetcher.state !== "idle";
