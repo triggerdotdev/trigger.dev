@@ -35,6 +35,8 @@ export function ErrorStatusBadge({
     <span
       className={cn(
         "contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
+        // Only `bright` fills solid under the preference, so only it drops the ring.
+        prominence === "bright" && "contrast-chip-solid",
         (prominence === "bright" ? brightStyles : subtleStyles)[status],
         className
       )}

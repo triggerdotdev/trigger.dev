@@ -349,6 +349,15 @@
     color-mix(in srgb, currentcolor calc(var(--theme-contrast, 0) * 70%), transparent);
 }
 
+/* The ring is drawn in currentcolor, which is white on a chip that fills solid -
+   fine against a dark page, where it reads as an edge, but on white it reads as a
+   stray border inset into the fill. Cancelled there, and only for the chips that
+   actually fill: the tinted ones still need the edge it was written for. */
+[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"])
+  .contrast-chip-solid {
+  box-shadow: none;
+}
+
 /*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
   theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via

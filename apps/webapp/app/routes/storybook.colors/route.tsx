@@ -559,7 +559,7 @@ function QueueHealthChip({ label, className }: { label: string; className: strin
   return (
     <span
       className={cn(
-        "contrast-chip inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
+        "contrast-chip contrast-chip-solid inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
         className
       )}
     >
@@ -1060,7 +1060,7 @@ export default function Story_() {
       {/* ------------------------------------------------------------------ */}
       <StorySection
         title="5. Tinted chips and badges"
-        description="Same pill, same size, same weight — the tint and the text color are the only variables. These already opt into the contrast-chip ring, so the right-hand column shows what that ring does at the current interface-contrast setting."
+        description="Same pill, same size, same weight — the tint and the text color are the only variables. These already opt into the contrast-chip ring, so the right-hand column shows what that ring does at the current interface-contrast setting — except where the chip fills solid, which cancels it on the light themes."
       >
         <Audit
           title="Error group statuses"
