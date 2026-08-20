@@ -62,7 +62,7 @@ export const REVOKED_CODES = new Set(["access_revoked", "cancelled", "not_found"
  * failures replaces one another instead of nesting — the row's `lastResult` reaches the
  * wake facts, the alert and the webhook body.
  */
-export function lastObservedResult(lastResult: unknown): Record<string, unknown> | undefined {
+function lastObservedResult(lastResult: unknown): Record<string, unknown> | undefined {
   let current = lastResult;
   while (isCheckFailure(current)) current = current.previous;
   return current !== null && typeof current === "object" && !Array.isArray(current)

@@ -10,7 +10,7 @@ import { join, relative } from "node:path";
 import * as zlib from "node:zlib";
 import { logger } from "./logger.js";
 
-export type FileSource = { contents: string; contentHash: string };
+type FileSource = { contents: string; contentHash: string };
 export type FileSources = Record<string, FileSource>;
 
 export async function resolveFileSources(

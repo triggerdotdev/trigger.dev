@@ -13,20 +13,20 @@ export const demoFreshFailureSignal: AgentPageSignal = {
   failedAt: "2026-07-27T10:13:41.000Z",
 };
 
-export const demoWaitingRunSignal: AgentPageSignal = {
+const demoWaitingRunSignal: AgentPageSignal = {
   kind: "waiting_run",
   runId: DEMO_WORLD.waitingRunId,
   queue: DEMO_WORLD.queue,
 };
 
-export const demoSlowRunSignal: AgentPageSignal = {
+const demoSlowRunSignal: AgentPageSignal = {
   kind: "slow_run",
   runId: DEMO_WORLD.slowRunId,
   durationMs: 1_421_000,
   baselineP95Ms: 183_000,
 };
 
-export const demoConcurrencySaturationSignal: AgentPageSignal = {
+const demoConcurrencySaturationSignal: AgentPageSignal = {
   kind: "concurrency_saturation",
   severity: "crit",
 };
@@ -50,7 +50,7 @@ export const demoFailedRunPageContext: AgentPageContext = {
   signals: [demoFreshFailureSignal],
 };
 
-export const demoWaitingRunPageContext: AgentPageContext = {
+const demoWaitingRunPageContext: AgentPageContext = {
   page: {
     kind: "run",
     runId: DEMO_WORLD.waitingRunId,
@@ -61,7 +61,7 @@ export const demoWaitingRunPageContext: AgentPageContext = {
   signals: [demoWaitingRunSignal, demoConcurrencySaturationSignal],
 };
 
-export const demoSlowRunPageContext: AgentPageContext = {
+const demoSlowRunPageContext: AgentPageContext = {
   page: {
     kind: "run",
     runId: DEMO_WORLD.slowRunId,
@@ -71,27 +71,27 @@ export const demoSlowRunPageContext: AgentPageContext = {
   signals: [demoSlowRunSignal],
 };
 
-export const demoRunsPageContext: AgentPageContext = {
+const demoRunsPageContext: AgentPageContext = {
   page: { kind: "runs", filters: { statuses: ["COMPLETED_WITH_ERROR"], period: "24h" } },
   signals: [demoFreshFailureSignal],
 };
 
-export const demoErrorPageContext: AgentPageContext = {
+const demoErrorPageContext: AgentPageContext = {
   page: { kind: "error", fingerprint: DEMO_WORLD.errorFingerprint },
   signals: [demoFreshFailureSignal],
 };
 
-export const demoQueuePageContext: AgentPageContext = {
+const demoQueuePageContext: AgentPageContext = {
   page: { kind: "queue", name: DEMO_WORLD.queue, health: "crit" },
   signals: [demoConcurrencySaturationSignal, demoWaitingRunSignal],
 };
 
-export const demoDeploymentPageContext: AgentPageContext = {
+const demoDeploymentPageContext: AgentPageContext = {
   page: { kind: "deployment", version: DEMO_WORLD.deploymentVersion },
   signals: [],
 };
 
-export const demoOtherPageContext: AgentPageContext = {
+const demoOtherPageContext: AgentPageContext = {
   page: { kind: "other", path: "/orgs/demo/projects/demo/env/prod/settings" },
   signals: [],
 };
@@ -247,11 +247,3 @@ export const demoResolvedDismissedPromptIds: string[] = ["sp:fresh-failure"];
 export const demoPromptsAfterDismissal: SuggestedPrompt[] = demoPromptSets.failedRun
   .filter((p) => !demoDismissedPromptIds.includes(p.id))
   .slice(0, SUGGESTED_PROMPT_CAP);
-
-export const demoPrompts = {
-  sets: demoPromptSets,
-  defaults: DEFAULT_PROMPTS,
-  dismissedIds: demoDismissedPromptIds,
-  afterDismissal: demoPromptsAfterDismissal,
-  cap: SUGGESTED_PROMPT_CAP,
-} as const;

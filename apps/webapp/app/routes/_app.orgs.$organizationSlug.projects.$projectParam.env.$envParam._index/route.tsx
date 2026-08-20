@@ -214,6 +214,7 @@ const TASK_TYPE_SEGMENTS: {
 ];
 
 const PAGE_SIZE = 25;
+const TASK_FILTER_KEYS = ["slug", "filePath", "triggerSource"];
 
 export default function Page() {
   const organization = useOrganization();
@@ -242,6 +243,7 @@ export default function Page() {
   const usefulLinksPanelRef = useRef<PanelHandle>(null);
   const fetcher = useFetcher();
   const fetcherRef = useRef(fetcher);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   fetcherRef.current = fetcher;
 
   const toggleUsefulLinks = useCallback((show: boolean) => {
@@ -266,7 +268,7 @@ export default function Page() {
 
   const { filteredItems } = useFuzzyFilter<UnifiedTaskListItem>({
     items,
-    keys: ["slug", "filePath", "triggerSource"],
+    keys: TASK_FILTER_KEYS,
     filterText: value("search") ?? "",
   });
 
@@ -563,7 +565,7 @@ function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
   if (!state) {
     return <span className="text-text-dimmed">–</span>;
   }
-  return <>{state.running ?? 0}</>;
+  return state.running ?? 0;
 }
 
 function TaskTypeFilter() {

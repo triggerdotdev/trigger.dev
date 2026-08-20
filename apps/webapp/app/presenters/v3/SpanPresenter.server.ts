@@ -1,3 +1,4 @@
+import { readExternalDeploymentIdAnnotation } from "@internal/run-engine";
 import {
   type MachinePreset,
   prettyPrintPacket,
@@ -399,6 +400,7 @@ export class SpanPresenter extends BasePresenter {
       ttl: run.ttl,
       taskIdentifier: run.taskIdentifier,
       version: lockedWorker?.lockedToVersion?.version,
+      externalDeploymentId: readExternalDeploymentIdAnnotation(run.annotations),
       sdkVersion: lockedWorker?.lockedToVersion?.sdkVersion,
       runtime: lockedWorker?.lockedToVersion?.runtime,
       runtimeVersion: lockedWorker?.lockedToVersion?.runtimeVersion,

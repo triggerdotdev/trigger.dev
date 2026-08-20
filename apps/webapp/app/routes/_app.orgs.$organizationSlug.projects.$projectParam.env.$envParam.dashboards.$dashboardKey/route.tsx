@@ -444,6 +444,7 @@ function useContainerWidth(initialWidth = 1280) {
 
   useEffect(() => {
     measureWidth();
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setMounted(true);
 
     const element = containerRef.current;

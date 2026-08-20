@@ -46,7 +46,6 @@ import { projectPubSub } from "./projectPubSub.server";
 
 import { assertNoDuplicateTaskIds } from "./duplicateTaskIds.server";
 import { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
-export { stripBackgroundWorkerMetadataForStorage };
 
 export class CreateBackgroundWorkerService extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;

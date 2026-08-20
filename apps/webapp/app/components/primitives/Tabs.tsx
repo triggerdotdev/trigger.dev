@@ -81,7 +81,7 @@ export function TabContainer({
   return <div className={cn(`flex`, className)}>{children}</div>;
 }
 
-export function TabLink({
+function TabLink({
   to,
   children,
   layoutId,
@@ -234,17 +234,15 @@ export function TabButton({
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const ref = useRef<HTMLButtonElement>(null);
 
-  if (shortcut) {
-    useShortcutKeys({
-      shortcut: shortcut,
-      action: () => {
-        if (ref.current) {
-          ref.current.click();
-        }
-      },
-      disabled: props.disabled,
-    });
-  }
+  useShortcutKeys({
+    shortcut,
+    action: () => {
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+    disabled: props.disabled,
+  });
 
   const title = variant === "title";
 
@@ -260,38 +258,36 @@ export function TabButton({
       ref={ref}
       {...props}
     >
-      <>
-        <div className={cn("flex items-center gap-1", title && "flex-1")}>
-          <span
-            className={cn(
-              "transition duration-200",
-              title
-                ? cn(
-                    headerVariants.header2.text,
-                    isActive ? "text-text-bright" : "text-text-dimmed group-hover:text-text-bright"
-                  )
-                : "text-sm text-text-bright"
-            )}
-          >
-            {props.children}
-          </span>
-          {shortcut && <ShortcutKey className={cn("")} shortcut={shortcut} variant={"small"} />}
-        </div>
-        {isActive ? (
-          <motion.div
-            layoutId={layoutId}
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-            className={cn("h-0.5 w-full bg-indigo-500", !title && "mt-1")}
-          />
-        ) : (
-          <div
-            className={cn(
-              "h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100",
-              !title && "mt-1"
-            )}
-          />
-        )}
-      </>
+      <div className={cn("flex items-center gap-1", title && "flex-1")}>
+        <span
+          className={cn(
+            "transition duration-200",
+            title
+              ? cn(
+                  headerVariants.header2.text,
+                  isActive ? "text-text-bright" : "text-text-dimmed group-hover:text-text-bright"
+                )
+              : "text-sm text-text-bright"
+          )}
+        >
+          {props.children}
+        </span>
+        {shortcut && <ShortcutKey className={cn("")} shortcut={shortcut} variant={"small"} />}
+      </div>
+      {isActive ? (
+        <motion.div
+          layoutId={layoutId}
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+          className={cn("h-0.5 w-full bg-indigo-500", !title && "mt-1")}
+        />
+      ) : (
+        <div
+          className={cn(
+            "h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100",
+            !title && "mt-1"
+          )}
+        />
+      )}
     </button>
   );
 }

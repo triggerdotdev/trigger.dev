@@ -40,7 +40,7 @@ import {
   TimeFilter,
 } from "./SharedFilters";
 
-export const BatchStatus = z.enum(allBatchStatuses);
+const BatchStatus = z.enum(allBatchStatuses);
 
 export const BatchListFilters = z.object({
   cursor: z.string().optional(),

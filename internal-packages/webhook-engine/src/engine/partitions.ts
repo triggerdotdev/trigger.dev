@@ -3,8 +3,8 @@ import type { WebhookDatabase } from "@trigger.dev/database";
 // Two identifier forms for the PascalCase Prisma table name. DDL must DOUBLE-QUOTE
 // (Postgres folds unquoted identifiers to lowercase); pg_class.relname stores the
 // bare case-preserved name, so catalog lookups bind the bare form.
-export const PARENT_DDL = `"WebhookDelivery"`;
-export const PARENT_NAME = `WebhookDelivery`;
+const PARENT_DDL = `"WebhookDelivery"`;
+const PARENT_NAME = `WebhookDelivery`;
 
 // ---------------------------------------------------------------------------
 // Day-bucket math (everything in UTC, matching how the migration writes bounds)
@@ -34,7 +34,7 @@ export function dayBucket(lo: Date): Bucket {
 }
 
 /** All day buckets covering [start, end] inclusive of the day containing end. */
-export function dayBuckets(start: Date, end: Date): Bucket[] {
+function dayBuckets(start: Date, end: Date): Bucket[] {
   const out: Bucket[] = [];
   let cur = floorDayUTC(start);
   const last = floorDayUTC(end);
@@ -203,7 +203,7 @@ export type PartitionInfo = {
   hi?: Date;
 };
 
-export async function listPartitions(prisma: WebhookDatabase): Promise<PartitionInfo[]> {
+async function listPartitions(prisma: WebhookDatabase): Promise<PartitionInfo[]> {
   const rows = await prisma.$queryRawUnsafe<
     { name: string; bound: string; approx_rows: bigint; bytes: bigint }[]
   >(

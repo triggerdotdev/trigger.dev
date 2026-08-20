@@ -124,13 +124,13 @@ async function isExternalResolvable(
   }
 }
 
-export type CollectedExternal = {
+type CollectedExternal = {
   name: string;
   path: string;
   version: string;
 };
 
-export type ExternalsCollector = {
+type ExternalsCollector = {
   externals: Array<CollectedExternal>;
   plugin: esbuild.Plugin;
 };

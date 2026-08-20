@@ -249,6 +249,7 @@ function Branches({
   }, []);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -310,7 +311,7 @@ function Branches({
  * Inner content of the branches popover (list, empty states, "Manage branches" footer). Shared by
  * the `Branches` hover submenu and the side-menu Preview popover.
  */
-export function BranchesPopoverContent({
+function BranchesPopoverContent({
   parentEnvironment,
   branchEnvironments,
   currentEnvironment,

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePopper } from "react-popper";
 import { useEvent } from "react-use";
-import useLazyRef from "~/hooks/useLazyRef";
 
 // Recharts 3.x will have portal support, but until then we're using this:
 //https://github.com/recharts/recharts/issues/2458#issuecomment-1063463873
@@ -33,23 +32,20 @@ export interface PopperPortalProps {
 export default function TooltipPortal({ active = true, children }: PopperPortalProps) {
   const [portalElement, setPortalElement] = useState<HTMLDivElement>();
   const [popperElement, setPopperElement] = useState<HTMLDivElement | null>();
-  const virtualElementRef = useLazyRef(() => new VirtualElement());
+  const [virtualElement] = useState(() => new VirtualElement());
 
-  const { styles, attributes, update } = usePopper(
-    virtualElementRef.current,
-    popperElement,
-    POPPER_OPTIONS
-  );
+  const { styles, attributes, update } = usePopper(virtualElement, popperElement, POPPER_OPTIONS);
 
   useEffect(() => {
     const el = document.createElement("div");
     document.body.appendChild(el);
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setPortalElement(el);
     return () => el.remove();
   }, []);
 
   useEvent("mousemove", ({ clientX: x, clientY: y }) => {
-    virtualElementRef.current?.update(x, y);
+    virtualElement.update(x, y);
     if (!active) return;
     update?.();
   });
@@ -58,9 +54,9 @@ export default function TooltipPortal({ active = true, children }: PopperPortalP
     if (!active) return;
     // Seed from the last known pointer so the tooltip appears at the cursor immediately, even if the
     // mouse is held still after hovering onto a point (otherwise it flashes in the top-left corner).
-    virtualElementRef.current?.update(lastPointer.x, lastPointer.y);
+    virtualElement.update(lastPointer.x, lastPointer.y);
     update?.();
-  }, [active, update, virtualElementRef]);
+  }, [active, update, virtualElement]);
 
   if (!portalElement) return null;
 

@@ -63,7 +63,7 @@ export type ResolvedWorkerTask = {
 };
 
 /** The `select` that yields a `ResolvedWorkerTask`. */
-export const resolvedWorkerTaskSelect = {
+const resolvedWorkerTaskSelect = {
   id: true,
   slug: true,
   machineConfig: true,
@@ -81,7 +81,7 @@ export type ResolvedTaskQueue = {
 };
 
 /** The `select` that yields a `ResolvedTaskQueue`. */
-export const resolvedTaskQueueSelect = {
+const resolvedTaskQueueSelect = {
   id: true,
   name: true,
 } satisfies Prisma.TaskQueueSelect;
@@ -99,7 +99,7 @@ export type ResolvedWorkerDeployment = {
 };
 
 /** The `select` that yields a `ResolvedWorkerDeployment`. */
-export const resolvedWorkerDeploymentSelect = {
+const resolvedWorkerDeploymentSelect = {
   id: true,
   friendlyId: true,
   imageReference: true,
@@ -144,7 +144,7 @@ type WorkerVersionWheres = {
 };
 
 /** Build the nested-include `where`s for a dispatch filter (undefined = fetch the whole set). */
-export function workerVersionWheres(filter: WorkerVersionDispatchFilter): WorkerVersionWheres {
+function workerVersionWheres(filter: WorkerVersionDispatchFilter): WorkerVersionWheres {
   return {
     taskWhere: filter.taskIdentifier ? { slug: filter.taskIdentifier } : undefined,
     queueWhere: filter.queue

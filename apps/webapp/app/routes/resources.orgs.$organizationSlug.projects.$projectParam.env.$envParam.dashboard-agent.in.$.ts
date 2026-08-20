@@ -42,6 +42,9 @@ const FORWARDED_HEADERS = [
 
 // The only turn metadata a browser may set: everything else the agent reads is injected
 // server-side. A whitelist — a new clientData field is server-owned until listed here on purpose.
+// `repoSnapshot` is the dangerous one to smuggle past this: its `tarballUrl` is fetched and
+// extracted on the agent worker, so a client-supplied one is SSRF from inside the worker
+// network plus an attacker-controlled untar.
 const CLIENT_METADATA_KEYS = ["currentPage", "pageContext"] as const;
 
 export function pickAgentClientMetadata(

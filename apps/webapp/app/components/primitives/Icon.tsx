@@ -18,7 +18,7 @@ export function Icon(props: IconProps) {
   }
 
   if (React.isValidElement(props.icon)) {
-    return <>{props.icon}</>;
+    return props.icon;
   }
 
   if (

@@ -3,7 +3,7 @@
   "categories": {
     "correctness": "error"
   },
-  "plugins": ["typescript", "import", "react"],
+  "plugins": ["typescript", "import", "react", "jsx-a11y"],
   "jsPlugins": [
     "./oxlint-plugins/no-thrown-unawaited-redirect.mjs",
     "./oxlint-plugins/runops-residency.mjs",
@@ -34,7 +34,7 @@
     ],
     "no-empty-pattern": "off",
     "no-control-regex": "off",
-    "typescript/no-non-null-asserted-optional-chain": "off",
+    "typescript/no-non-null-asserted-optional-chain": "error",
     "no-unused-expressions": [
       "error",
       {
@@ -45,8 +45,87 @@
     "typescript/consistent-type-imports": "error",
     "import/no-duplicates": "error",
     "import/namespace": "off",
-    "react-hooks/exhaustive-deps": "off",
-    "react-hooks/rules-of-hooks": "off",
+    "react/exhaustive-deps": "error",
+    "react/rules-of-hooks": "off",
+    "guard-for-in": "error",
+    "symbol-description": "error",
+    "no-unneeded-ternary": "error",
+    "prefer-object-has-own": "error",
+    "no-redeclare": "error",
+    "no-multi-assign": "error",
+    "prefer-object-spread": "error",
+    "react/jsx-no-target-blank": "error",
+    "react/jsx-fragments": "error",
+    "react/self-closing-comp": "error",
+    "react/jsx-no-constructed-context-values": "error",
+    "react/no-children-prop": "error",
+    "react/no-danger-with-children": "error",
+    "react/no-direct-mutation-state": "error",
+    "react/no-find-dom-node": "error",
+    "react/no-is-mounted": "error",
+    "react/no-render-return-value": "error",
+    "react/no-string-refs": "error",
+    "react/no-unsafe": "error",
+    "react/no-will-update-set-state": "error",
+    "react/require-render-return": "error",
+    "react/style-prop-object": "error",
+    "react/void-dom-elements-no-children": "error",
+    "react/error-boundaries": "off",
+    "react/globals": "off",
+    "react/immutability": "off",
+    "react/incompatible-library": "off",
+    "react/preserve-manual-memoization": "off",
+    "react/purity": "off",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "react/set-state-in-render": "off",
+    "react/static-components": "off",
+    "react/unsupported-syntax": "off",
+    "react/use-memo": "off",
+    "react/void-use-memo": "off",
+    "react/checked-requires-onchange-or-readonly": "error",
+    "react/forward-ref-uses-ref": "error",
+    "react/iframe-missing-sandbox": "error",
+    "react/no-unknown-property": "error",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/aria-role": "error",
+    "jsx-a11y/click-events-have-key-events": "error",
+    "jsx-a11y/control-has-associated-label": [
+      "error",
+      {
+        "depth": 4,
+        "ignoreElements": ["audio", "canvas", "embed", "input", "textarea", "tr", "td", "video"]
+      }
+    ],
+    "jsx-a11y/label-has-associated-control": "error",
+    "jsx-a11y/no-autofocus": "off",
+    "jsx-a11y/no-noninteractive-element-interactions": "error",
+    "jsx-a11y/no-static-element-interactions": "error",
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "jsx-a11y/anchor-ambiguous-text": "error",
+    "jsx-a11y/anchor-has-content": "error",
+    "jsx-a11y/anchor-is-valid": "error",
+    "jsx-a11y/aria-activedescendant-has-tabindex": "error",
+    "jsx-a11y/aria-props": "error",
+    "jsx-a11y/aria-proptypes": "error",
+    "jsx-a11y/aria-unsupported-elements": "error",
+    "jsx-a11y/autocomplete-valid": "error",
+    "jsx-a11y/heading-has-content": "error",
+    "jsx-a11y/html-has-lang": "error",
+    "jsx-a11y/iframe-has-title": "error",
+    "jsx-a11y/img-redundant-alt": "error",
+    "jsx-a11y/media-has-caption": "error",
+    "jsx-a11y/no-access-key": "error",
+    "jsx-a11y/no-aria-hidden-on-focusable": "error",
+    "jsx-a11y/no-distracting-elements": "error",
+    "jsx-a11y/no-redundant-roles": "error",
+    "jsx-a11y/role-has-required-aria-props": "error",
+    "jsx-a11y/role-supports-aria-props": "error",
+    "jsx-a11y/scope": "error",
+    "jsx-a11y/tabindex-no-positive": "error",
+    "no-lone-blocks": "error",
+    "typescript/prefer-function-type": "error",
+    "typescript/prefer-for-of": "error",
     "trigger/no-thrown-unawaited-redirect": "error",
     "trigger-prisma/no-unbounded-list-filter": "error",
     "trigger-prisma/no-unbounded-list-filter-in-args-helper": "error"
@@ -55,8 +134,40 @@
     {
       "files": ["apps/webapp/app/**/*.ts", "apps/webapp/app/**/*.tsx"],
       "rules": {
+        "react/button-has-type": "error",
+        "react/jsx-no-useless-fragment": "error",
+        "react/no-unstable-nested-components": "error",
+        "react/error-boundaries": "error",
+        "react/globals": "error",
+        "react/hooks": "error",
+        "react/immutability": "error",
+        "react/incompatible-library": "error",
+        "react/memo-dependencies": "error",
+        "react/no-deriving-state-in-effects": "error",
+        "react/preserve-manual-memoization": "error",
+        "react/purity": "error",
+        "react/refs": "error",
+        "react/set-state-in-effect": "error",
+        "react/set-state-in-render": "error",
+        "react/static-components": "error",
+        "react/unsupported-syntax": "error",
+        "react/use-memo": "error",
+        "react/void-use-memo": "error",
+        "react/rules-of-hooks": "error",
         "trigger-runops/no-control-plane-run-graph-access": "error",
         "trigger-runops/no-control-plane-in-runops-slot": "error"
+      }
+    },
+    {
+      "files": ["packages/react-hooks/src/**/*.ts", "packages/react-hooks/src/**/*.tsx"],
+      "rules": {
+        "react/rules-of-hooks": "error"
+      }
+    },
+    {
+      "files": ["**/*.ts", "**/*.tsx"],
+      "rules": {
+        "no-redeclare": "off"
       }
     },
     {
@@ -71,6 +182,21 @@
       "rules": {
         "trigger-prisma/no-unbounded-list-filter": "off",
         "trigger-prisma/no-unbounded-list-filter-in-args-helper": "off"
+      }
+    },
+    {
+      "files": ["internal-packages/tsql/**"],
+      "rules": {
+        "prefer-object-has-own": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/webapp/app/components/primitives/charts/Chart.tsx",
+        "apps/webapp/app/components/primitives/Timeline.tsx"
+      ],
+      "rules": {
+        "react/jsx-no-constructed-context-values": "off"
       }
     }
   ]

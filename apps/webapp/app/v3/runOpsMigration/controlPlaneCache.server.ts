@@ -49,7 +49,7 @@ export type ResolvedEnv = {
  * ~62KB/query (and each cached entry stays small); `machineConfig`/`retryConfig` are read
  * at dequeue and stay.
  */
-export type ResolvedWorkerTask = {
+type ResolvedWorkerTask = {
   id: string;
   slug: string;
   machineConfig: Prisma.JsonValue | null;
@@ -67,7 +67,7 @@ export const resolvedWorkerTaskSelect = {
 } satisfies Prisma.BackgroundWorkerTaskSelect;
 
 /** Mirrors run-engine's `ResolvedTaskQueue` exactly. `id` + `name` (the matcher keys on both). */
-export type ResolvedTaskQueue = {
+type ResolvedTaskQueue = {
   id: string;
   name: string;
 };
@@ -82,7 +82,7 @@ export const resolvedTaskQueueSelect = {
  * Mirrors run-engine's `ResolvedWorkerDeployment` exactly. Drops the unread heavy JSON columns
  * (`externalBuildData`, `buildServerMetadata`, `errorData`, `git`) from this single-row read.
  */
-export type ResolvedWorkerDeployment = {
+type ResolvedWorkerDeployment = {
   id: string;
   friendlyId: string;
   imageReference: string | null;

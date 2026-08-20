@@ -32,7 +32,7 @@ import {
 } from "../primitives/Popover";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
-export type ChartType = z.infer<typeof ChartType>;
+type ChartType = z.infer<typeof ChartType>;
 
 const SortDirection = z.union([z.literal("asc"), z.literal("desc")]);
 export type SortDirection = z.infer<typeof SortDirection>;

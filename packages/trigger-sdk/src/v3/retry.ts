@@ -116,7 +116,7 @@ function onThrow<T>(
   );
 }
 
-export interface RetryFetchRequestInit extends RequestInit {
+interface RetryFetchRequestInit extends RequestInit {
   retry?: FetchRetryOptions;
   timeoutInMs?: number;
 }
@@ -434,9 +434,7 @@ const getRetryStrategyForResponse = async (
   const statusCodes = Object.keys(retry);
   const clonedResponse = response.clone();
 
-  for (let i = 0; i < statusCodes.length; i++) {
-    const statusRange = statusCodes[i];
-
+  for (const statusRange of statusCodes) {
     if (!statusRange) {
       continue;
     }

@@ -24,7 +24,7 @@ import { TestSessionStreamManager } from "./test-session-stream-manager.js";
  * `TaskRunContext`. Each sub-object is a partial of its real shape —
  * unset fields get sensible defaults.
  */
-export type MockTaskRunContextOverrides = {
+type MockTaskRunContextOverrides = {
   task?: Partial<TaskRunContext["task"]>;
   attempt?: Partial<TaskRunContext["attempt"]>;
   run?: Partial<TaskRunContext["run"]>;

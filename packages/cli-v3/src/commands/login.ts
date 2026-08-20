@@ -39,12 +39,12 @@ import {
 } from "../utilities/accessTokens.js";
 import { links } from "@trigger.dev/core/v3";
 
-export const LoginCommandOptions = CommonCommandOptions.extend({
+const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
   browser: z.boolean().default(true),
 });
 
-export type LoginCommandOptions = z.infer<typeof LoginCommandOptions>;
+type LoginCommandOptions = z.infer<typeof LoginCommandOptions>;
 
 export function configureLoginCommand(program: Command) {
   return commonOptions(
@@ -75,7 +75,7 @@ Examples:
     });
 }
 
-export async function loginCommand(options: unknown) {
+async function loginCommand(options: unknown) {
   return await wrapCommandAction("loginCommand", LoginCommandOptions, options, async (opts) => {
     return await _loginCommand(opts);
   });

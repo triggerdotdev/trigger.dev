@@ -294,6 +294,7 @@ function useAgentSessionMessages({
   const lastFlushAtRef = useRef<number>(0);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleFlush = useRef<() => void>(() => {});
+
   scheduleFlush.current = () => {
     if (pendingTimerRef.current !== null) return; // already scheduled
     const now = Date.now();
@@ -670,6 +671,7 @@ function useAgentSessionMessages({
   return useMemo(() => {
     const timestamps = timestampsRef.current;
     const arr = Array.from(messagesById.values());
+
     arr.sort((a, b) => {
       const ta = timestamps.get(a.id) ?? 0;
       const tb = timestamps.get(b.id) ?? 0;

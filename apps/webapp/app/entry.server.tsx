@@ -10,6 +10,7 @@ import { PassThrough } from "stream";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
+import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
 import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
@@ -277,6 +278,7 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
 initBillingLimitWorker();
+initLogsSearchProjectorWorker();
 initQueueMetricsEmitter();
 initQueueMetricsConsumer();
 

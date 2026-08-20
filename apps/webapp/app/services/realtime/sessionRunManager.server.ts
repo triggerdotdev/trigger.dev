@@ -21,11 +21,11 @@ import { determineRealtimeStreamsVersion } from "./v1StreamsGlobal.server";
  * an `isContinuation` flag) come in via the `payloadOverrides` argument
  * to `ensureRunForSession` and shallow-merge on top of `basePayload`.
  */
-export const SessionTriggerConfigSchema = SessionTriggerConfigZod;
+const SessionTriggerConfigSchema = SessionTriggerConfigZod;
 
 export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfigSchema>;
 
-export type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
+type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
 
 /**
  * Hard cap on how many times `ensureRunForSession` will recurse on the
@@ -533,6 +533,6 @@ async function cancelLostRaceRun(
   await service.call(run, { reason: "Lost session-run claim race" });
 }
 
-export class SessionRunManagerError extends Error {
+class SessionRunManagerError extends Error {
   readonly name = "SessionRunManagerError";
 }

@@ -1,5 +1,7 @@
+import type { SpanEvent as OtelSpanEvent } from "@trigger.dev/core/v3";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { formatDuration } from "./aiHelpers";
 import { SpanMetricRow as MetricRow } from "./SpanMetricRow";
 
@@ -35,7 +37,13 @@ export function extractAIEmbedData(
   };
 }
 
-export function AIEmbedSpanDetails({ data }: { data: AIEmbedData }) {
+export function AIEmbedSpanDetails({
+  data,
+  spanEvents,
+}: {
+  data: AIEmbedData;
+  spanEvents?: OtelSpanEvent[];
+}) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
@@ -56,6 +64,12 @@ export function AIEmbedSpanDetails({ data }: { data: AIEmbedData }) {
               <div className="rounded-md border border-grid-bright bg-background-hover/50 px-3.5 py-2">
                 <Paragraph variant="small/dimmed">{data.value}</Paragraph>
               </div>
+            </div>
+          )}
+
+          {spanEvents && spanEvents.some((event) => !event.name.startsWith("trigger.dev/")) && (
+            <div className="py-2.5">
+              <SpanEvents spanEvents={spanEvents} />
             </div>
           )}
         </div>

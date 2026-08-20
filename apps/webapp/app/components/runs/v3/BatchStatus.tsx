@@ -41,7 +41,7 @@ export function BatchStatusCombo({
   );
 }
 
-export function BatchStatusLabel({ status }: { status: BatchTaskRunStatus }) {
+function BatchStatusLabel({ status }: { status: BatchTaskRunStatus }) {
   // system-mono-label: System themes uncolor the label (see tailwind.css)
   return (
     <span className={cn("system-mono-label", batchStatusColor(status))}>
@@ -50,13 +50,7 @@ export function BatchStatusLabel({ status }: { status: BatchTaskRunStatus }) {
   );
 }
 
-export function BatchStatusIcon({
-  status,
-  className,
-}: {
-  status: BatchTaskRunStatus;
-  className: string;
-}) {
+function BatchStatusIcon({ status, className }: { status: BatchTaskRunStatus; className: string }) {
   switch (status) {
     case "PROCESSING":
       return <Spinner className={cn(batchStatusColor(status), className)} />;
@@ -74,7 +68,7 @@ export function BatchStatusIcon({
   }
 }
 
-export function batchStatusColor(status: BatchTaskRunStatus): string {
+function batchStatusColor(status: BatchTaskRunStatus): string {
   switch (status) {
     case "PROCESSING":
       return "text-blue-500";

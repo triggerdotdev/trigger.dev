@@ -48,7 +48,7 @@ type BootstrapAuthenticationDependencies = {
   authenticateApiKeyRequest: typeof authenticateApiKeyRequest;
 };
 
-export async function authenticateEnvironmentScopedApiRequest(
+async function authenticateEnvironmentScopedApiRequest(
   request: Request,
   action: "read" | "write",
   resource: EnvironmentScopedResource,

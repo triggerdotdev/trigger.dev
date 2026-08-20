@@ -346,6 +346,7 @@ export class HttpServer {
 
   private findRoute(url: string): string | null {
     for (const route in this.routes) {
+      if (!Object.hasOwn(this.routes, route)) continue;
       const routeParts = route.split("/");
       const urlWithoutQueryParams = url.split("?")[0];
 

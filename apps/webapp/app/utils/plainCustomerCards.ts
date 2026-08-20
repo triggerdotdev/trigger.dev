@@ -27,8 +27,6 @@ export const PlainCustomerCardRequestSchema = z.object({
     .nullish(),
 });
 
-export type PlainCustomerCardRequest = z.infer<typeof PlainCustomerCardRequestSchema>;
-
 /**
  * The values to try, in order, when looking a user up by email.
  *

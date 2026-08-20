@@ -118,7 +118,7 @@ export interface IWebhookDeliveriesRepository {
   getDelivery(options: GetWebhookDeliveryOptions): Promise<DetailedWebhookDelivery | null>;
 }
 
-export class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
+class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
   private readonly clickHouseRepository: ClickHouseWebhookDeliveriesRepository;
 
   constructor(private readonly options: WebhookDeliveriesRepositoryOptions) {

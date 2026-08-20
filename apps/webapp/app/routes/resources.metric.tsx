@@ -202,12 +202,25 @@ export function MetricWidget({
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isDirtyRef = useRef(false);
+  const submitRef = useRef<() => void>(() => {});
 
   // Track the latest props so the submit callback always uses fresh values
   // without needing to be recreated (which would cause useInterval to re-register listeners).
   const propsRef = useRef(props);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   propsRef.current = props;
 
+  // Track visibility so we only fetch for on-screen widgets.
+  // When a widget scrolls into view and has no data yet, trigger a load.
+  const { ref: visibilityRef, isVisibleRef } = useElementVisibility({
+    onVisibilityChange: (visible) => {
+      if (visible && (!response || isDirtyRef.current)) {
+        submitRef.current();
+      }
+    },
+  });
+
+  /* oxlint-disable react/memo-dependencies -- These ref objects are stable callback inputs. */
   const submit = useCallback(() => {
     if (!isVisibleRef.current) {
       isDirtyRef.current = true;
@@ -251,17 +264,10 @@ export function MetricWidget({
           setIsLoading(false);
         }
       });
-  }, []);
-
-  // Track visibility so we only fetch for on-screen widgets.
-  // When a widget scrolls into view and has no data yet, trigger a load.
-  const { ref: visibilityRef, isVisibleRef } = useElementVisibility({
-    onVisibilityChange: (visible) => {
-      if (visible && (!response || isDirtyRef.current)) {
-        submit();
-      }
-    },
-  });
+  }, [isVisibleRef]);
+  /* oxlint-enable react/memo-dependencies */
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
+  submitRef.current = submit;
 
   // Clean up on unmount
   useEffect(() => {
@@ -273,24 +279,12 @@ export function MetricWidget({
   // Reload periodically and on focus (onLoad: false — the useEffect below handles initial load)
   useInterval({ interval: refreshIntervalMs, callback: submit, onLoad: false });
 
+  const reloadKey = JSON.stringify(props);
+
   // Reload on mount and when query, time period, or filters change
   useEffect(() => {
     submit();
-  }, [
-    submit,
-    props.query,
-    props.from,
-    props.to,
-    props.period,
-    props.scope,
-    JSON.stringify(props.taskIdentifiers),
-    JSON.stringify(props.queues),
-    JSON.stringify(props.responseModels),
-    JSON.stringify(props.promptSlugs),
-    JSON.stringify(props.promptVersions),
-    JSON.stringify(props.operations),
-    JSON.stringify(props.providers),
-  ]);
+  }, [submit, reloadKey]);
 
   const data = response?.success
     ? { rows: response.data.rows, columns: response.data.columns }

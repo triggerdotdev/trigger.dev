@@ -155,7 +155,7 @@ export function TaskRunsTable({
         }
       }
     },
-    [checkboxes, runs]
+    [checkboxes, runs, select]
   );
 
   return (
@@ -253,11 +253,7 @@ export function TaskRunsTable({
           >
             Duration
           </TableHeaderCell>
-          {showCompute && (
-            <>
-              <TableHeaderCell>Compute</TableHeaderCell>
-            </>
-          )}
+          {showCompute && <TableHeaderCell>Compute</TableHeaderCell>}
           <TableHeaderCell className="pl-4" tooltip={<MachineTooltipInfo />}>
             Machine
           </TableHeaderCell>
@@ -717,7 +713,7 @@ function BlankState({
   const project = useProject();
   const environment = useEnvironment();
   const colSpan = showRegion ? 16 : 15;
-  if (isLoading) return <TableBlankRow colSpan={colSpan}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={colSpan} />;
 
   const { tasks, from, to, ...otherFilters } = filters;
   const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;

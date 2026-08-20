@@ -589,7 +589,7 @@ export class UpdateMetadataService {
       await this._runStore.updateMetadata(
         runId,
         {
-          metadata: metadataPacket?.data!,
+          metadata: metadataPacket.data!,
           metadataType: metadataPacket?.dataType,
           metadataVersion: {
             increment: 1,

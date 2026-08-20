@@ -22,7 +22,6 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
-  devBranchesEnabled: "devBranchesEnabled",
   runOpsMintKind: "runOpsMintKind",
   // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
   runOpsMintKindPrev: "runOpsMintKindPrev",
@@ -83,8 +82,6 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
-  // Per-org access to development branches. Off unless enabled for the org.
-  [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
   // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
   // RUN_OPS_MINT_ENABLED is on AND isSplitEnabled() is true.
   [FEATURE_FLAG.runOpsMintKind]: z.enum(["cuid", "runOpsId"]),
@@ -133,11 +130,6 @@ export function validateFeatureFlagValue<T extends FeatureFlagKey>(
   value: unknown
 ): z.SafeParseReturnType<unknown, z.infer<(typeof FeatureFlagCatalog)[T]>> {
   return FeatureFlagCatalog[key].safeParse(value);
-}
-
-// Utility function to validate all feature flags at once
-export function validateAllFeatureFlags(values: Record<string, unknown>) {
-  return FeatureFlagCatalogSchema.safeParse(values);
 }
 
 // Utility function to validate partial feature flags (all keys optional)
@@ -201,7 +193,7 @@ export type FlagControlType =
   | { type: "number"; min?: number; max?: number }
   | { type: "string" };
 
-export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
+function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
   const typeName = schema._def.typeName;
 
   if (typeName === "ZodBoolean") {

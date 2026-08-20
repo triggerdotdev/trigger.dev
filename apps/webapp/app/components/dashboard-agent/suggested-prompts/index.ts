@@ -1,27 +1,8 @@
 // Client-safe only: the promoted-slot flag reader lives in `promotedPrompt.server.ts`.
 export {
-  contextualPrompts,
-  contextualPromptsBySlot,
-  formatAgo,
-  formatMultiplier,
-  GENERIC_PROMPTS,
-  isFailedDeploymentStatus,
-  pageDefaultPrompts,
-  pageSlotPrompts,
-  PROMPT_SLOTS,
-  promptForSignal,
-  SIGNAL_PRIORITY,
-  SIGNAL_SLOT,
-  type PageSlotPrompts,
-  type PromptSlot,
-} from "./registry";
-export {
-  makeSuggestedPromptResolver,
   resolveSuggestedPrompts,
   resolveSuggestedPromptsBySlot,
   type ResolvedPromptSlot,
-  type ResolvedSuggestedPrompt,
-  type ResolveSuggestedPromptsOptions,
 } from "./resolver";
 export {
   agentsAgentPageContext,
@@ -35,13 +16,10 @@ export {
   deploymentsAgentPageContext,
   errorAgentPageContext,
   errorsAgentPageContext,
-  FRESH_FAILURE_WINDOW_MS,
-  isFailedBatchStatus,
   limitsAgentPageContext,
   modelsAgentPageContext,
   playgroundAgentPageContext,
   promptsAgentPageContext,
-  QUEUE_OLDEST_WAIT_WARNING_MS,
   queueAgentPageContext,
   queuesAgentPageContext,
   runAgentPageContext,
@@ -51,11 +29,5 @@ export {
   taskAgentPageContext,
   testAgentPageContext,
   waitpointsAgentPageContext,
-  type SectionPageKind,
 } from "./page-mappers";
-export { parsePromotedPrompt } from "./promoted";
-export {
-  dismissedPromptStorageKey,
-  readDismissedPromptIds,
-  writeDismissedPromptId,
-} from "./dismissal";
+export { readDismissedPromptIds } from "./dismissal";

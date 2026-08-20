@@ -346,6 +346,7 @@ export function unflattenAttributes(
     const maxIndex = Math.max(...Object.keys(result).map((k) => parseInt(k)));
     const arrayResult = Array(maxIndex + 1);
     for (const key in result) {
+      if (!Object.hasOwn(result, key)) continue;
       arrayResult[parseInt(key)] = result[key];
     }
     return arrayResult as any;

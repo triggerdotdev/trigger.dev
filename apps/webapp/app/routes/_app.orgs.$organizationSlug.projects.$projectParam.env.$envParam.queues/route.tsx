@@ -74,6 +74,7 @@ import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
+  useIsMetricResponseFresh,
   useMetricResourceQuery,
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
@@ -420,27 +421,30 @@ function QueuesWithMetricsView() {
   // Empty rows (quiet env, or the very first fetch still in flight) fall back to the loader values,
   // so we never flash a stale 0. Fixed 15m window, env-wide (no queue filter), CH-only recurring
   // load; pauses while the tab is hidden (handled inside the hook).
-  const { rows: liveBlockRows } = useMetricResourceQuery(QUEUE_LIVE_BLOCKS_QUERY, {
-    organizationId: organization.id,
-    projectId: project.id,
-    environmentId: env.id,
-    timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
-    defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
-    fillGaps: false,
-    refreshIntervalMs: 15_000,
-  });
+  const { rows: liveBlockRows, responseReceivedAt } = useMetricResourceQuery(
+    QUEUE_LIVE_BLOCKS_QUERY,
+    {
+      organizationId: organization.id,
+      projectId: project.id,
+      environmentId: env.id,
+      timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
+      defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
+      fillGaps: false,
+      refreshIntervalMs: 15_000,
+    }
+  );
   const lastLiveBlockRow =
     liveBlockRows.length > 0 ? liveBlockRows[liveBlockRows.length - 1] : null;
   // Only trust the gauge while its newest bucket is fresh. A row painted from the hook's cache on
   // client-side nav-back (responseCache), or a quiet env whose latest bucket is minutes old, must
   // not override the loader's Redis-exact live values with a stale count.
   const lastLiveBucketMs = lastLiveBlockRow ? tileTimeToMs(lastLiveBlockRow.t) : NaN;
-  const freshLiveBlockRow =
-    lastLiveBlockRow &&
-    Number.isFinite(lastLiveBucketMs) &&
-    Date.now() - lastLiveBucketMs < LIVE_GAUGE_FRESH_MS
-      ? lastLiveBlockRow
-      : null;
+  const liveBlockIsFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    lastLiveBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
+  const freshLiveBlockRow = lastLiveBlockRow && liveBlockIsFresh ? lastLiveBlockRow : null;
   const envQueuedLive = freshLiveBlockRow
     ? tileNumber(freshLiveBlockRow.env_queued)
     : environment.queued;
@@ -1031,6 +1035,7 @@ function EnvironmentPauseResumeButton({
 
   useEffect(() => {
     if (navigation.state === "loading" || navigation.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);
@@ -1426,10 +1431,7 @@ function QueueEnvMetricChart({
     [tile.id, tile.label, lineColor]
   );
 
-  const { tickFormatter, tooltipLabelFormatter } = useMemo(
-    () => buildActivityTimeAxis(data),
-    [data]
-  );
+  const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(data);
   const hasData = data.length > 0 && data.some((p) => Number(p[tile.id] ?? 0) > 0);
 
   // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty

@@ -128,6 +128,7 @@ export function ToastUI({
           {actionNode}
         </div>
         <button
+          type="button"
           className={cn(
             "-mr-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright",
             title && "-mt-1"

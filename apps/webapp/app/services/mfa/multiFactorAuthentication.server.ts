@@ -8,6 +8,7 @@ import { createOTP } from "@better-auth/utils/otp";
 import { base32 } from "@better-auth/utils/base32";
 import { z } from "zod";
 import { scheduleEmail } from "../scheduleEmail.server";
+import { checkMfaRateLimit } from "./mfaRateLimiterGlobal.server";
 
 const generateRandomString = createRandomStringGenerator("A-Z", "0-9");
 
@@ -47,6 +48,11 @@ export class MultiFactorAuthenticationService {
         success: false,
       };
     }
+
+    // Rate limit before checking the code: disabling MFA asks for the second
+    // factor, so unlimited attempts here would let a hijacked session
+    // brute-force it. Same limiter as the login verify path.
+    await checkMfaRateLimit(userId);
 
     // validate the TOTP code
     const secretStore = getSecretStore(user.mfaSecretReference.provider);
@@ -170,6 +176,11 @@ export class MultiFactorAuthenticationService {
     if (!secretResult) {
       throw new ServiceValidationError("User has not enabled MFA");
     }
+
+    // Rate limit enrollment confirmation too: it verifies a TOTP code against
+    // a real secret, so it needs the same brute-force protection as the
+    // disable and login verify paths.
+    await checkMfaRateLimit(userId);
 
     const secret = secretResult.secret;
 

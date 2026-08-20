@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import type { ErrorWebhook } from "@trigger.dev/core/v3/schemas";
 
-export type ErrorAlertClassification = "new_issue" | "regression" | "unignored";
+type ErrorAlertClassification = "new_issue" | "regression" | "unignored";
 
 export type ErrorGroupAlertData = {
   classification: ErrorAlertClassification;

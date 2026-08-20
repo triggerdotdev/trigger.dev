@@ -28,7 +28,6 @@ const mintCounter = new Counter({
 });
 
 export type WorkloadAuthTransport = "http" | "ws";
-export type WorkloadAuthOutcome = "jwt_valid" | "jwt_invalid" | "legacy_bare" | "token_absent";
 
 const verifyCounter = new Counter({
   name: "workload_auth_verify_total",

@@ -9,13 +9,14 @@
     "@trigger.dev/plugins": "workspace:*"
   },
   "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@types/node": "^24.13.3",
     "rimraf": "6.0.1"
   },
   "scripts": {
     "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json && tsc --noEmit -p tsconfig.test.json",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --noEmit false --outDir dist --declaration --watch",
     "test": "vitest run",

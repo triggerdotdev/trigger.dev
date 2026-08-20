@@ -12,7 +12,7 @@ import { boundedIn, type Prisma } from "@trigger.dev/database";
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
 export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
 
-export const DEFAULT_ENV_VARS_PAGE_SIZE = 50;
+const DEFAULT_ENV_VARS_PAGE_SIZE = 50;
 
 export class EnvironmentVariablesPresenter {
   #prismaClient: PrismaClient;

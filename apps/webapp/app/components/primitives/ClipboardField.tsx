@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { cn } from "~/utils/cn";
 import { CopyButton } from "./CopyButton";
 
@@ -116,10 +116,11 @@ export function ClipboardField({
   fullWidth = true,
 }: ClipboardFieldProps) {
   const [isSecure, setIsSecure] = useState(secure !== undefined && secure);
-  const inputIcon = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const { container, input, buttonVariant, button, size } = variants[variant];
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsSecure(secure !== undefined && secure);
   }, [secure]);
 
@@ -128,21 +129,19 @@ export function ClipboardField({
   return (
     <span className={cn(container, fullWidth ? "w-full" : "max-w-fit", className)}>
       {icon && (
-        <span
-          onClick={() => inputIcon.current && inputIcon.current.focus()}
-          className="flex items-center pl-1"
-        >
+        <label htmlFor={inputId} className="flex items-center pl-1">
           {icon}
-        </span>
+        </label>
       )}
       <input
+        id={inputId}
         type="text"
-        ref={inputIcon}
         value={isSecure ? maskedValue : value}
         readOnly={true}
         className={cn(
           "shrink grow select-all overflow-x-auto",
-          fullWidth ? "w-full" : "max-w-fit",
+          // min-w-0 stops the input's intrinsic min-width pushing the copy button out of the row.
+          fullWidth ? "w-full min-w-0" : "max-w-fit",
           input
         )}
         onFocus={(e) => {

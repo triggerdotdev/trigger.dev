@@ -1,8 +1,4 @@
-import {
-  type PrismaClientOrTransaction,
-  type RuntimeEnvironmentType,
-  type TaskTriggerSource,
-} from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { type ClickHouse } from "@internal/clickhouse";
 import { z } from "zod";
 import { $replica } from "~/db.server";
@@ -10,20 +6,12 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
-export type AgentListItem = {
-  slug: string;
-  filePath: string;
-  createdAt: Date;
-  triggerSource: TaskTriggerSource;
-  config: unknown;
-};
-
 export type AgentActiveState = {
   running: number;
   suspended: number;
 };
 
-export class AgentListPresenter {
+class AgentListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({

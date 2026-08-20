@@ -1,6 +1,5 @@
 import { CircleStackIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigate } from "@remix-run/react";
-import { useCallback } from "react";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -141,13 +140,13 @@ function Statuses() {
   const location = useOptimisticLocation();
   const search = new URLSearchParams(location.search);
 
-  const handleChange = useCallback((values: string[]) => {
+  const handleChange = (values: string[]) => {
     search.delete("status");
     for (const value of values) {
       search.append("status", value);
     }
     navigate(`${location.pathname}?${search.toString()}`, { replace: true });
-  }, []);
+  };
 
   return (
     <Select
@@ -160,19 +159,17 @@ function Statuses() {
       filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
       shortcut={{ key: "s" }}
     >
-      {(matches, { shortcutsEnabled }) => (
-        <>
-          {matches?.map((item, index) => (
-            <SelectItem
-              key={item.value}
-              value={item.value}
-              shortcut={shortcutFromIndex(index, { shortcutsEnabled })}
-            >
-              <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
-            </SelectItem>
-          ))}
-        </>
-      )}
+      {(matches, { shortcutsEnabled }) =>
+        matches?.map((item, index) => (
+          <SelectItem
+            key={item.value}
+            value={item.value}
+            shortcut={shortcutFromIndex(index, { shortcutsEnabled })}
+          >
+            <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
+          </SelectItem>
+        ))
+      }
     </Select>
   );
 }

@@ -7,7 +7,7 @@ import { singleton } from "~/utils/singleton";
 // apiRateLimiter (only `/api/*`) does not cover, so it needs its own per-user
 // cap. Exported so the policy is asserted in tests rather than re-encoded.
 export const AI_TITLE_RATE_LIMIT_ATTEMPTS = 30;
-export const AI_TITLE_RATE_LIMIT_WINDOW = "10 m" as const;
+const AI_TITLE_RATE_LIMIT_WINDOW = "10 m" as const;
 
 /**
  * Build the ai-title per-user rate limiter. Production uses the env-derived

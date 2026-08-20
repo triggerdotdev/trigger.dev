@@ -10607,6 +10607,10 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};
+    const maxAttempts = params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts;
+    const maxDuration = params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration;
+    const idleTimeoutInSeconds =
+      params.triggerConfig?.idleTimeoutInSeconds ?? options?.triggerConfig?.idleTimeoutInSeconds;
 
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
@@ -10624,18 +10628,8 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
         ? { queue: params.triggerConfig?.queue ?? options?.triggerConfig?.queue }
         : {}),
       tags,
-      ...(options?.triggerConfig?.maxAttempts !== undefined ||
-      params.triggerConfig?.maxAttempts !== undefined
-        ? {
-            maxAttempts: params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
-          }
-        : {}),
-      ...(options?.triggerConfig?.maxDuration !== undefined ||
-      params.triggerConfig?.maxDuration !== undefined
-        ? {
-            maxDuration: params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration!,
-          }
-        : {}),
+      ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+      ...(maxDuration !== undefined ? { maxDuration } : {}),
       ...(options?.triggerConfig?.region || params.triggerConfig?.region
         ? { region: params.triggerConfig?.region ?? options?.triggerConfig?.region }
         : {}),
@@ -10645,14 +10639,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
               params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
         : {}),
-      ...(options?.triggerConfig?.idleTimeoutInSeconds !== undefined ||
-      params.triggerConfig?.idleTimeoutInSeconds !== undefined
-        ? {
-            idleTimeoutInSeconds:
-              params.triggerConfig?.idleTimeoutInSeconds ??
-              options?.triggerConfig?.idleTimeoutInSeconds!,
-          }
-        : {}),
+      ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
     const startBody = {

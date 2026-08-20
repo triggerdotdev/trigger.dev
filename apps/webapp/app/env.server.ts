@@ -192,6 +192,7 @@ const EnvironmentSchema = z
     // standard chat.agent SDK flow. When unset, the live agent is disabled — the
     // conversation store / History still work, no chat can start.
     DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
+    DASHBOARD_AGENT_BASE_URL: z.string().optional(),
     // Pins agent sessions to a specific deployed version (paired with
     // --skip-promotion deploys); unset => the project env's current version.
     DASHBOARD_AGENT_VERSION: z.string().optional(),
@@ -209,6 +210,28 @@ const EnvironmentSchema = z
     // uses its own key on the Trigger side. When unset, Head Start is disabled
     // and the first turn falls back to the normal cold-start path.
     ANTHROPIC_API_KEY: z.string().optional(),
+    // Selects the dashboard agent's LLM provider (default anthropic). The internal
+    // seam reads process.env directly; this entry validates the value webapp-side.
+    DASHBOARD_AGENT_MODEL_PROVIDER: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.enum(["anthropic", "bedrock"]).default("anthropic")
+    ),
+    // AWS credentials for the dashboard agent's Bedrock provider (only used when
+    // DASHBOARD_AGENT_MODEL_PROVIDER=bedrock; default path stays Anthropic). The
+    // provider resolves credentials itself, so only the region is read here.
+    AWS_REGION: z.string().optional(),
+    AWS_DEFAULT_REGION: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_SESSION_TOKEN: z.string().optional(),
+    AWS_BEARER_TOKEN_BEDROCK: z.string().optional(),
+    // Dedicated, non-global credentials for the dashboard agent's Bedrock calls (a
+    // Bedrock-invoke-only IAM user). Kept separate from AWS_ACCESS_KEY_ID/etc so
+    // injecting them can't hijack the default credential chain the ECR/STS deploy
+    // clients rely on.
+    DASHBOARD_AGENT_AWS_ACCESS_KEY_ID: z.string().optional(),
+    DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    DASHBOARD_AGENT_AWS_REGION: z.string().optional(),
     DIRECT_URL: z
       .string()
       .refine(
@@ -465,6 +488,31 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     TASK_META_CACHE_CURRENT_ENV_TTL_SECONDS: z.coerce.number().default(86400),
+
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    EXTERNAL_DEPLOYMENT_CACHE_TTL_SECONDS: z.coerce.number().default(2592000),
+    EXTERNAL_DEPLOYMENT_CACHE_MISSING_TTL_SECONDS: z.coerce.number().default(20),
+    EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS: z.coerce.number().default(3600000),
 
     // Runs-list empty-state check: how far back the ClickHouse "does this env have any run"
     // probe looks. Bounds the prove-absence partition scan. 0 = unbounded ("any run ever").
@@ -2072,20 +2120,28 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Logs list pagination tuning (page sizing + recent-first probe windows).
+    // Scheduled logs-search projection. Disabled by default. LOGS_CLICKHOUSE_URL, or the
+    // CLICKHOUSE_URL fallback, must reach both source and destination tables and allow writes.
+    LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
+    LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(120),
+    LOGS_SEARCH_PROJECTOR_MAX_ROWS_TO_READ: z.coerce.number().int().positive().default(10_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_500_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
+
+    // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
     LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),
-    // Days back from the page ceiling to probe before widening to the full requested window,
-    // comma-separated. Empty disables narrowing (a single full-window query).
-    LOGS_LIST_RECENT_FIRST_PROBE_DAYS: z
-      .string()
-      .default("1,7")
-      .transform((s) =>
-        s
-          .split(",")
-          .map((v) => Number(v.trim()))
-          .filter((n) => Number.isFinite(n) && n > 0)
-      ),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
@@ -2094,10 +2150,7 @@ const EnvironmentSchema = z
     AI_FEATURES_ENABLED: z.string().default("0"),
 
     // Logs page ClickHouse URL (for logs queries)
-    LOGS_CLICKHOUSE_URL: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
+    LOGS_CLICKHOUSE_URL: z.string().optional(),
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z

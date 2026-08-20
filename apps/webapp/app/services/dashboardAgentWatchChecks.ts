@@ -33,23 +33,6 @@ export type {
   WatchQueueOldestAge,
   WatchRunRow,
 } from "./dashboardAgentWatchCheckBase";
-export {
-  checkRunFailed,
-  checkRunFinished,
-  checkRunStart,
-  describeRunWait,
-  isTerminalRunStatus,
-  type WatchWaitBasis,
-} from "./dashboardAgentWatchRunChecks";
-export {
-  checkBacklogDrain,
-  checkQueueDepthAbove,
-  checkQueueDepthBelow,
-  checkQueueOldestAge,
-  checkQueueStalled,
-} from "./dashboardAgentWatchQueueChecks";
-export { checkErrorRecurrence, normalizeErrorFingerprint } from "./dashboardAgentWatchErrorChecks";
-export { checkHealthRecovery } from "./dashboardAgentWatchHealthChecks";
 
 /**
  * The previous check's facts out of `lastResult`, which holds raw facts, the check endpoint's
@@ -114,7 +97,7 @@ export async function checkWatch(
  * The observation for a check that couldn't run. `verified: false` means the condition
  * couldn't be confirmed, not that it didn't happen.
  */
-export function unobservedOutcome(spec: WatchSpec): WatchObservedOutcome {
+function unobservedOutcome(spec: WatchSpec): WatchObservedOutcome {
   switch (spec.kind) {
     case "run_start":
       return { kind: "run_start", verified: false, status: null, started: false };

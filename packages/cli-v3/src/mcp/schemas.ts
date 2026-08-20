@@ -6,7 +6,7 @@ import {
 } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 
-export const ProjectRefSchema = z
+const ProjectRefSchema = z
   .string()
   .describe(
     "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
@@ -202,7 +202,7 @@ export const ListRunsInput = CommonProjectsInput.extend({
 
 export type ListRunsInput = z.output<typeof ListRunsInput>;
 
-export const CommonDeployInput = CommonProjectsInput.omit({
+const CommonDeployInput = CommonProjectsInput.omit({
   environment: true,
 }).extend({
   environment: z
@@ -211,7 +211,7 @@ export const CommonDeployInput = CommonProjectsInput.omit({
     .default("prod"),
 });
 
-export type CommonDeployInput = z.output<typeof CommonDeployInput>;
+type CommonDeployInput = z.output<typeof CommonDeployInput>;
 
 export const DeployInput = CommonDeployInput.extend({
   skipPromotion: z

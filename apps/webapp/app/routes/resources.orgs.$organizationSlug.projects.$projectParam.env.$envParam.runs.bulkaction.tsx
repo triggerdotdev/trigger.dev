@@ -255,22 +255,17 @@ export function CreateBulkActionInspector({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const { value, replace, del } = useSearchParams();
-  const [action, setAction] = useState<BulkActionAction>(
-    bulkActionActionFromString(value("action"))
-  );
+  const action = bulkActionActionFromString(value("action"));
   const location = useOptimisticLocation();
   const user = useUser();
 
   useEffect(() => {
-    fetcher.load(
+    load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/bulkaction${location.search}`
     );
-  }, [organization.id, project.id, environment.id, location.search]);
-
-  useEffect(() => {
-    setAction(bulkActionActionFromString(value("action")));
-  }, [value("action")]);
+  }, [organization.slug, project.slug, environment.slug, location.search, load]);
 
   const mode = bulkActionModeFromString(value("mode"));
 

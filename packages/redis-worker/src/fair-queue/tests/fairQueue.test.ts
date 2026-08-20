@@ -211,6 +211,33 @@ class TestFairQueueHelper {
 describe("FairQueue", () => {
   let keys: FairQueueKeyProducer;
 
+  describe("worker queue lifecycle", () => {
+    redisTest(
+      "aborts a blocking pop without reconnecting the disconnected client",
+      { timeout: 5000 },
+      async ({ redisOptions }) => {
+        const workerQueue = new WorkerQueueManager({
+          redis: redisOptions,
+          keys: new DefaultFairQueueKeyProducer({ prefix: "abort-test" }),
+        });
+        const abortController = new AbortController();
+
+        try {
+          const pop = workerQueue.blockingPop(TEST_WORKER_QUEUE_ID, 60, abortController.signal);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+
+          const startedAt = performance.now();
+          abortController.abort();
+
+          await expect(pop).resolves.toBeNull();
+          expect(performance.now() - startedAt).toBeLessThan(1000);
+        } finally {
+          await workerQueue.close();
+        }
+      }
+    );
+  });
+
   describe("basic enqueue and process", () => {
     redisTest(
       "should enqueue and process a single message",

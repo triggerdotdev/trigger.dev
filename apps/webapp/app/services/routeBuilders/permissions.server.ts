@@ -29,6 +29,7 @@ export function checkPermissions<K extends string>(
 ): Record<K, boolean> {
   const result = {} as Record<K, boolean>;
   for (const key in checks) {
+    if (!Object.hasOwn(checks, key)) continue;
     const check = checks[key];
     result[key] =
       "requireSuper" in check ? ability.canSuper() : ability.can(check.action, check.resource);

@@ -260,6 +260,29 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     if (!claims) {
       return { ok: false, status: 401, error: "Invalid user-actor token" };
     }
+
+    // Same tenant floor as authenticateSession: in a scoped context a non-member's
+    // delegated token is denied here, not handed a usable ability (even for reads).
+    // Admins are exempt. An unscoped context is not a tenant claim — skip the lookup
+    // entirely and keep the prior behavior (no user query, no denial).
+    if (context.organizationId || context.projectId) {
+      const where = { id: claims.userId };
+      const user =
+        (await this.replica.user.findFirst({ where, select: { id: true, admin: true } })) ??
+        (await this.prisma.user.findFirst({ where, select: { id: true, admin: true } }));
+      if (!user) {
+        return { ok: false, status: 401, error: "Invalid user-actor token" };
+      }
+      if (!user.admin) {
+        const denied = await this.deniedByMembership(
+          context.organizationId,
+          context.projectId,
+          user.id
+        );
+        if (denied) return { ok: false, status: 403, error: "Unauthorized" };
+      }
+    }
+
     return {
       ok: true,
       userId: claims.userId,

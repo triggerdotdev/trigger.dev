@@ -118,6 +118,9 @@ class RoutingRunStore implements RunStore {
   promotePendingVersionRuns(runId: string, ...a: any[]): any {
     return (this.#resolveById(runId).promotePendingVersionRuns as any)(runId, ...a);
   }
+  expireParkedRun(runId: string, ...a: any[]): any {
+    return (this.#resolveById(runId).expireParkedRun as any)(runId, ...a);
+  }
   suspendForCheckpoint(runId: string, ...a: any[]): any {
     return (this.#resolveById(runId).suspendForCheckpoint as any)(runId, ...a);
   }

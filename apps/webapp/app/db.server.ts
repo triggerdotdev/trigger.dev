@@ -15,7 +15,6 @@ import { markReadReplicaClient } from "@internal/run-store";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import invariant from "tiny-invariant";
-import { z } from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
@@ -274,8 +273,8 @@ export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica"
   return $replica;
 });
 
-export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
-export type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
+type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
+type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
 export type RunOpsTopology = {
   newRunOps: NewRunOpsClients;
   legacyRunOps: RunOpsClients;
@@ -1142,10 +1141,6 @@ function redactUrlSecrets(hrefOrUrl: string | URL) {
 
 export type { PrismaClient } from "@trigger.dev/database";
 
-export const PrismaErrorSchema = z.object({
-  code: z.string(),
-});
-
 function getDatabaseSchema() {
   if (!isValidDatabaseUrl(env.DATABASE_URL)) {
     throw new Error("Invalid Database URL");
@@ -1162,6 +1157,6 @@ function getDatabaseSchema() {
   return schemaFromSearchParam;
 }
 
-export const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
+const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
 
 export const sqlDatabaseSchema = Prisma.sql([`${DATABASE_SCHEMA}`]);

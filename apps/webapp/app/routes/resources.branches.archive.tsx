@@ -13,7 +13,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { requireUserId } from "~/services/session.server";
-import { branchesDevPath, branchesPath } from "~/utils/pathBuilder";
+import { sanitizeRedirectPath } from "~/utils";
 
 const ArchiveBranchOptions = z.object({
   environmentId: z.string(),
@@ -35,6 +35,8 @@ export async function action({ request }: ActionFunctionArgs) {
     return redirectWithErrorMessage("/", request, "Invalid form data");
   }
 
+  const redirectPath = sanitizeRedirectPath(submission.value.redirectPath);
+
   const archiveBranchService = new ArchiveBranchService();
 
   const result = await archiveBranchService.call(
@@ -46,15 +48,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (result.success) {
     return redirectWithSuccessMessage(
-      result.branch.type === "DEVELOPMENT"
-        ? branchesDevPath(result.organization, result.project, result.branch)
-        : branchesPath(result.organization, result.project, result.branch),
+      redirectPath,
       request,
       `Branch "${result.branch.branchName}" archived`
     );
   }
 
-  return redirectWithErrorMessage(submission.value.redirectPath, request, result.error);
+  return redirectWithErrorMessage(redirectPath, request, result.error);
 }
 
 export function ArchiveButton({

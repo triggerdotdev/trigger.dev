@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { BoolEnv, AdditionalEnvVars, NodeLabelValue, Tolerations } from "./envUtil.js";
+import {
+  BoolEnv,
+  AdditionalEnvVars,
+  NodeLabelValue,
+  OrgPlacementOverrides,
+  Tolerations,
+} from "./envUtil.js";
 
 describe("BoolEnv", () => {
   it("should parse string 'true' as true", () => {
@@ -201,5 +207,127 @@ describe("Tolerations", () => {
 
   it("should reject a stray extra effect instead of folding it into the value", () => {
     expect(Tolerations.safeParse("dedicated=runs:NoSchedule:NoExecute").success).toBe(false);
+  });
+});
+
+describe("OrgPlacementOverrides", () => {
+  it("should parse a full override with nodeSelector and tolerations", () => {
+    expect(
+      OrgPlacementOverrides.parse(
+        JSON.stringify({
+          org_123: {
+            nodeSelector: { "node.cluster.x-k8s.io/machinepool": "dedicated-pool" },
+            tolerations: "dedicated=pool:NoSchedule",
+          },
+        })
+      )
+    ).toEqual({
+      org_123: {
+        nodeSelector: { "node.cluster.x-k8s.io/machinepool": "dedicated-pool" },
+        tolerations: [{ key: "dedicated", operator: "Equal", value: "pool", effect: "NoSchedule" }],
+      },
+    });
+  });
+
+  it("should allow either half to be omitted", () => {
+    expect(
+      OrgPlacementOverrides.parse(JSON.stringify({ org_123: { nodeSelector: { pool: "a" } } }))
+    ).toEqual({ org_123: { nodeSelector: { pool: "a" } } });
+
+    expect(
+      OrgPlacementOverrides.parse(JSON.stringify({ org_123: { tolerations: "spot:NoExecute" } }))
+    ).toEqual({
+      org_123: { tolerations: [{ key: "spot", operator: "Exists", effect: "NoExecute" }] },
+    });
+
+    expect(OrgPlacementOverrides.parse(JSON.stringify({ org_123: {} }))).toEqual({ org_123: {} });
+  });
+
+  it("should reject invalid JSON at startup rather than silently skipping the override", () => {
+    for (const invalid of ["not json", "[]", '"org_123"', "{"]) {
+      expect(OrgPlacementOverrides.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it("should treat a blank or missing value as no overrides, like the sibling settings", () => {
+    expect(OrgPlacementOverrides.parse(undefined)).toBeUndefined();
+    expect(OrgPlacementOverrides.parse("")).toBeUndefined();
+    expect(OrgPlacementOverrides.parse("   ")).toBeUndefined();
+  });
+
+  it("should accept tolerations as an array of entries, matching the Helm list shape", () => {
+    expect(
+      OrgPlacementOverrides.parse(
+        JSON.stringify({
+          org_123: { tolerations: ["dedicated=pool:NoSchedule", "spot:NoExecute"] },
+        })
+      )
+    ).toEqual({
+      org_123: {
+        tolerations: [
+          { key: "dedicated", operator: "Equal", value: "pool", effect: "NoSchedule" },
+          { key: "spot", operator: "Exists", effect: "NoExecute" },
+        ],
+      },
+    });
+  });
+
+  it("should coerce scalar node selector values to strings, as Kubernetes labels are", () => {
+    expect(
+      OrgPlacementOverrides.parse(
+        JSON.stringify({ org_123: { nodeSelector: { paid: true, replicas: 3 } } })
+      )
+    ).toEqual({ org_123: { nodeSelector: { paid: "true", replicas: "3" } } });
+  });
+
+  it("should trim whitespace around node selector keys and values", () => {
+    expect(
+      OrgPlacementOverrides.parse(
+        JSON.stringify({ org_123: { nodeSelector: { " pool ": " a " } } })
+      )
+    ).toEqual({ org_123: { nodeSelector: { pool: "a" } } });
+  });
+
+  it("should reject blank or padded org keys, since the lookup is exact", () => {
+    for (const key of [" ", " org_123", "org_123 "]) {
+      expect(OrgPlacementOverrides.safeParse(JSON.stringify({ [key]: {} })).success).toBe(false);
+    }
+  });
+
+  it("should reject an empty node selector value instead of pinning the org to nothing", () => {
+    for (const value of ["", "   "]) {
+      expect(
+        OrgPlacementOverrides.safeParse(
+          JSON.stringify({ org_123: { nodeSelector: { pool: value } } })
+        ).success
+      ).toBe(false);
+    }
+  });
+
+  it("should reject an unknown field, so a typo cannot silently drop an override", () => {
+    expect(
+      OrgPlacementOverrides.safeParse(
+        JSON.stringify({ org_123: { toleration: "dedicated=pool:NoSchedule" } })
+      ).success
+    ).toBe(false);
+  });
+
+  it("should reject a node selector key or value Kubernetes would reject", () => {
+    for (const invalid of [
+      { org_123: { nodeSelector: { "bad key": "a" } } },
+      { org_123: { nodeSelector: { pool: "bad value" } } },
+      { org_123: { nodeSelector: { "a/b/c": "a" } } },
+      { org_123: { nodeSelector: { pool: "v".repeat(64) } } },
+    ]) {
+      expect(OrgPlacementOverrides.safeParse(JSON.stringify(invalid)).success).toBe(false);
+    }
+  });
+
+  it("should reject an invalid toleration inside an override", () => {
+    expect(
+      OrgPlacementOverrides.safeParse(
+        JSON.stringify({ org_123: { tolerations: "dedicated=pool:Nope" } })
+      ).success
+    ).toBe(false);
   });
 });

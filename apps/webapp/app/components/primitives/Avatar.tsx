@@ -34,8 +34,8 @@ export const AvatarData = z.discriminatedUnion("type", [
 
 export type Avatar = z.infer<typeof AvatarData>;
 export type IconAvatar = Extract<Avatar, { type: "icon" }>;
-export type ImageAvatar = Extract<Avatar, { type: "image" }>;
-export type LettersAvatar = Extract<Avatar, { type: "letters" }>;
+type ImageAvatar = Extract<Avatar, { type: "image" }>;
+type LettersAvatar = Extract<Avatar, { type: "letters" }>;
 
 export function parseAvatar(json: Prisma.JsonValue, defaultAvatar: Avatar): Avatar {
   if (!json || typeof json !== "object") {

@@ -366,25 +366,32 @@ export function SideMenu({
   const rafRef = useRef<number | null>(null);
   // Mirror of `isCollapsed` for the drag handlers (outside React's render cycle; no stale closures).
   const isCollapsedRef = useRef(isCollapsed);
+  // Freeze first-paint values so React never fights the imperative width writes after hydration.
+  const [initialVisual] = useState(() => {
+    const collapsed = user.dashboardPreferences.sideMenu?.isCollapsed ?? false;
+    const expandedWidth = clamp(
+      user.dashboardPreferences.sideMenu?.width ?? DEFAULT_WIDTH,
+      DEFAULT_WIDTH,
+      MAX_WIDTH
+    );
+    const width = collapsed ? COLLAPSED_WIDTH : expandedWidth;
+    const progress = collapsed ? 1 : 0;
+
+    return {
+      expandedWidth,
+      width,
+      progress,
+      style: {
+        width,
+        "--sm-collapse": String(progress),
+        "--sm-label-opacity": String(progressToLabelOpacity(progress)),
+      } as CSSProperties,
+    };
+  });
   // The last-committed expanded width; animation targets and re-expansion read from here.
-  const expandedWidthRef = useRef(
-    clamp(user.dashboardPreferences.sideMenu?.width ?? DEFAULT_WIDTH, DEFAULT_WIDTH, MAX_WIDTH)
-  );
-  // Frozen first-paint width; never changes, so React never fights the imperative width writes.
-  const initialWidthRef = useRef(
-    (user.dashboardPreferences.sideMenu?.isCollapsed ?? false)
-      ? COLLAPSED_WIDTH
-      : expandedWidthRef.current
-  );
-  const widthRef = useRef(initialWidthRef.current);
-  const progressRef = useRef((user.dashboardPreferences.sideMenu?.isCollapsed ?? false) ? 1 : 0);
-  // Frozen initial style (incl. CSS vars) so the SSR HTML has the right collapsed/expanded visuals
-  // (no pre-hydration flash). Stable identity, so React never rewrites it after writeVisual.
-  const initialStyleRef = useRef<CSSProperties>({
-    width: initialWidthRef.current,
-    "--sm-collapse": String(progressRef.current),
-    "--sm-label-opacity": String(progressToLabelOpacity(progressRef.current)),
-  } as CSSProperties);
+  const expandedWidthRef = useRef(initialVisual.expandedWidth);
+  const widthRef = useRef(initialVisual.width);
+  const progressRef = useRef(initialVisual.progress);
   // Removes an in-flight drag's window listeners (set on pointerdown; cleared on finish/unmount).
   const dragCleanupRef = useRef<(() => void) | null>(null);
 
@@ -438,6 +445,7 @@ export function SideMenu({
     const data = customizationFetcher.data;
     if (!data) {
       // Settled with no response body (e.g. a session-expiry redirect): fail rather than spin
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setCustomizeConfirmPending(false);
       setCustomizeError("Couldn't save your changes. Please try again.");
       return;
@@ -524,6 +532,7 @@ export function SideMenu({
   // object each render, so depending on it would fire the cleanup (flushing the debounce) every
   // render — and drags re-render constantly — instead of only on unmount.
   const flushPendingPreferencesRef = useRef<() => void>();
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   flushPendingPreferencesRef.current = () => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -589,6 +598,7 @@ export function SideMenu({
   }, []);
 
   // Animate width + progress over COLLAPSE_ANIM_MS (toggle button, ⌘B shortcut, release-snap).
+
   const animateTo = useCallback(
     (targetWidth: number, targetProgress: number) => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -637,6 +647,7 @@ export function SideMenu({
 
   // Drag runs on window-level listeners so releasing anywhere finalizes it. (Pointer capture alone
   // was unreliable: if the browser drops it mid-drag, the release never fires and the menu strands.)
+
   const onHandlePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -825,7 +836,7 @@ export function SideMenu({
     });
   }
 
-  if (isAdmin || featureFlags.hasQueryAccess) {
+  if (isAdmin || featureFlags.hasQueryAccess || featureFlags.hasLogsPageAccess) {
     staticSections.push({
       id: "metrics",
       title: "Observability",
@@ -843,55 +854,59 @@ export function SideMenu({
               } satisfies SideMenuItemConfig,
             ]
           : []),
-        {
-          id: "errors",
-          name: "Errors",
-          icon: BugIcon,
-          activeIconColor: "text-errors",
-          to: v3ErrorsPath(organization, project, environment),
-          dataAction: "errors",
-        },
-        {
-          id: "query",
-          name: "Query",
-          icon: CodeSquareIcon,
-          activeIconColor: "text-query",
-          to: queryPath(organization, project, environment),
-          dataAction: "query",
-        },
-        {
-          id: "queues",
-          name: "Queues",
-          icon: QueuesIcon,
-          activeIconColor: "text-queues",
-          to: v3QueuesPath(organization, project, environment),
-          dataAction: "queues",
-        },
-        {
-          id: "dashboards",
-          name: "Dashboards",
-          icon: ChartBarIcon,
-          activeIconColor: "text-metrics",
-          to: v3DashboardsLandingPath(organization, project, environment),
-          dataAction: "dashboards-landing",
-          action: (
-            <CreateDashboardButton
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-            />
-          ),
-          after: (
-            <DashboardList
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-              user={user}
-            />
-          ),
-        },
+        ...(isAdmin || featureFlags.hasQueryAccess
+          ? [
+              {
+                id: "errors",
+                name: "Errors",
+                icon: BugIcon,
+                activeIconColor: "text-errors",
+                to: v3ErrorsPath(organization, project, environment),
+                dataAction: "errors",
+              },
+              {
+                id: "query",
+                name: "Query",
+                icon: CodeSquareIcon,
+                activeIconColor: "text-query",
+                to: queryPath(organization, project, environment),
+                dataAction: "query",
+              },
+              {
+                id: "queues",
+                name: "Queues",
+                icon: QueuesIcon,
+                activeIconColor: "text-queues",
+                to: v3QueuesPath(organization, project, environment),
+                dataAction: "queues",
+              },
+              {
+                id: "dashboards",
+                name: "Dashboards",
+                icon: ChartBarIcon,
+                activeIconColor: "text-metrics",
+                to: v3DashboardsLandingPath(organization, project, environment),
+                dataAction: "dashboards-landing",
+                action: (
+                  <CreateDashboardButton
+                    organization={organization}
+                    project={project}
+                    environment={environment}
+                    isCollapsed={isCollapsed}
+                  />
+                ),
+                after: (
+                  <DashboardList
+                    organization={organization}
+                    project={project}
+                    environment={environment}
+                    isCollapsed={isCollapsed}
+                    user={user}
+                  />
+                ),
+              },
+            ]
+          : []),
       ],
     });
   }
@@ -1057,7 +1072,7 @@ export function SideMenu({
   return (
     <div
       ref={rootRef}
-      style={initialStyleRef.current}
+      style={initialVisual.style}
       className={cn(
         "relative h-full border-r bg-background-bright",
         // The accent is the loudest "you are not this user" tell, so "view as user" drops it too —
@@ -1480,6 +1495,7 @@ function SideMenuMoreItem({
 
   // Watch search too: navigating to a favorite can change only the search on the same pathname
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOpen(false);
   }, [navigation.location?.pathname, navigation.location?.search]);
 
@@ -1693,6 +1709,7 @@ function OrgSelector({
   const planTitle = currentPlan?.v3Subscription?.plan?.title;
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOrgMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -1971,6 +1988,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
   const navigation = useNavigation();
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -2025,6 +2043,7 @@ function ProjectSelector({
   const { urlForProject } = usePageSwitcher();
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -2146,6 +2165,7 @@ function SideMenuPopoverSubMenu({
 
   // Close the submenu on navigation (the parent popover closes too).
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 
