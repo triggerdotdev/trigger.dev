@@ -1,5 +1,5 @@
 import * as RadixSlider from "@radix-ui/react-slider";
-import { type ComponentProps, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
 import type { RenderIcon } from "./Icon";
 import { Icon } from "./Icon";
@@ -81,12 +81,33 @@ export function Slider({
   // The pointer leaves the thumb while dragging, so hover alone can't keep the
   // label up.
   const [isDragging, setIsDragging] = useState(false);
+
+  /* The Root's own onPointerUp only fires if the release lands back on the
+     slider. Drag past either end and let go out there and it never runs, so the
+     value label stayed up for good. Watch the window instead, only while a drag
+     is actually in progress. */
+  useEffect(() => {
+    if (!isDragging) return;
+    const stop = () => setIsDragging(false);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [isDragging]);
   const currentValue = props.value?.[0] ?? props.defaultValue?.[0] ?? 0;
   const min = props.min ?? 0;
   const max = props.max ?? 100;
 
   return (
-    <div className={cn("group flex items-center", variation.container)}>
+    <div
+      className={cn("group flex items-center", variation.container)}
+      // Belt and braces: the label goes with the pointer if it leaves the
+      // control. Radix holds pointer capture on the thumb mid-drag, so this
+      // doesn't fire while the handle is genuinely being moved.
+      onPointerLeave={() => setIsDragging(false)}
+    >
       {LeadingIcon && <Icon icon={LeadingIcon} className={variation.icons} />}
       <RadixSlider.Root
         className={cn(
