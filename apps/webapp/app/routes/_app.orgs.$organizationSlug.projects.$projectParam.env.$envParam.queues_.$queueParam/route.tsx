@@ -106,7 +106,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // This whole page is part of the metrics UI; gate it per-org (the list already hides
   // the only link to it, this is defense in depth).
-  if (!(await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+  if (!(await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
     throw new Response(undefined, { status: 404, statusText: "Not found" });
   }
 

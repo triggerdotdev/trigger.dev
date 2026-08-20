@@ -170,7 +170,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Per-org gate for the metrics UI. When off, this org gets the classic Queues page and
   // no metrics query fires.
-  const queueMetricsUiEnabled = await canAccessQueueMetricsUi({ userId, organizationSlug });
+  const queueMetricsUiEnabled = await canAccessQueueMetricsUi({
+    request,
+    userId,
+    organizationSlug,
+  });
 
   const maxPeriodDays = queueMetricsUiEnabled
     ? await queueMetricsMaxPeriodDays(environment.organizationId)
