@@ -1,9 +1,5 @@
 import { Redis } from "ioredis";
 import { defaultReconnectOnError } from "@internal/redis";
-import {
-  SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE,
-  serializeSessionStreamWaitpointRecord,
-} from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { logger } from "./logger.server";
@@ -17,33 +13,10 @@ import { logger } from "./logger.server";
 // is shared — without it, two environments using the same externalId
 // would drain each other's waitpoints.
 const KEY_PREFIX = "ssw:";
-const FORMAT_KEY_PREFIX = "sswf:";
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-export type SessionStreamWaitpoint = {
-  id: string;
-  responseFormat?: "record-v1";
-};
-
-export function sessionStreamWaitpointOutput(
-  waitpoint: SessionStreamWaitpoint,
-  data: string,
-  seqNum: number | undefined
-): { value: string; type: string; isError: false } {
-  const hasRecordEnvelope = waitpoint.responseFormat === "record-v1" && seqNum !== undefined;
-  return {
-    value: hasRecordEnvelope ? serializeSessionStreamWaitpointRecord(data, seqNum) : data,
-    type: hasRecordEnvelope ? SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE : "application/json",
-    isError: false,
-  };
-}
 
 function buildKey(environmentId: string, addressingKey: string, io: "out" | "in"): string {
   return `${KEY_PREFIX}${environmentId}:${addressingKey}:${io}`;
-}
-
-function buildFormatKey(waitpointId: string): string {
-  return `${FORMAT_KEY_PREFIX}${waitpointId}`;
 }
 
 // Pre-env-scoping key format, drained for one release so waitpoints from the
@@ -108,25 +81,13 @@ export async function addSessionStreamWaitpoint(
   addressingKey: string,
   io: "out" | "in",
   waitpointId: string,
-  ttlMs?: number,
-  responseFormat?: "record-v1"
+  ttlMs?: number
 ): Promise<void> {
   if (!redis) return;
 
   try {
     const key = buildKey(environmentId, addressingKey, io);
-    const effectiveTtlMs = ttlMs ?? DEFAULT_TTL_MS;
-
-    // Keep the set member as the plain waitpoint id so an older append
-    // instance can still drain it during a rolling deploy. New instances read
-    // the optional response format from this separate, TTL-bound key.
-    if (responseFormat) {
-      await redis.set(buildFormatKey(waitpointId), responseFormat, "PX", effectiveTtlMs);
-    } else {
-      await redis.del(buildFormatKey(waitpointId));
-    }
-
-    await redis.eval(ADD_WAITPOINT_SCRIPT, 1, key, waitpointId, String(effectiveTtlMs));
+    await redis.eval(ADD_WAITPOINT_SCRIPT, 1, key, waitpointId, String(ttlMs ?? DEFAULT_TTL_MS));
   } catch (error) {
     logger.error("Failed to set session stream waitpoint cache", {
       environmentId,
@@ -146,7 +107,7 @@ export async function drainSessionStreamWaitpoints(
   environmentId: string,
   addressingKey: string,
   io: "out" | "in"
-): Promise<SessionStreamWaitpoint[]> {
+): Promise<string[]> {
   if (!redis) return [];
 
   try {
@@ -168,34 +129,7 @@ export async function drainSessionStreamWaitpoints(
       if (err || !Array.isArray(members)) continue;
       for (const m of members as string[]) ids.add(m);
     }
-    const waitpointIds = [...ids];
-    if (waitpointIds.length === 0) return [];
-
-    let formatResults: Awaited<ReturnType<typeof pipeline.exec>> | null = null;
-    try {
-      const formatPipeline = redis.multi();
-      for (const waitpointId of waitpointIds) {
-        formatPipeline.get(buildFormatKey(waitpointId));
-        formatPipeline.del(buildFormatKey(waitpointId));
-      }
-      formatResults = await formatPipeline.exec();
-    } catch (error) {
-      // The waitpoint ids were already drained. Complete them with raw data
-      // rather than losing the wake-up because optional metadata was unavailable.
-      logger.error("Failed to read session stream waitpoint response formats", {
-        environmentId,
-        addressingKey,
-        io,
-        error,
-      });
-    }
-
-    return waitpointIds.map((id, index) => {
-      const formatEntry = formatResults?.[index * 2];
-      const responseFormat =
-        formatEntry && !formatEntry[0] && formatEntry[1] === "record-v1" ? "record-v1" : undefined;
-      return { id, responseFormat };
-    });
+    return [...ids];
   } catch (error) {
     logger.error("Failed to drain session stream waitpoint cache", {
       environmentId,
@@ -306,10 +240,7 @@ export async function removeSessionStreamWaitpoint(
 
   try {
     const key = buildKey(environmentId, addressingKey, io);
-    const pipeline = redis.multi();
-    pipeline.srem(key, waitpointId);
-    pipeline.del(buildFormatKey(waitpointId));
-    await pipeline.exec();
+    await redis.srem(key, waitpointId);
   } catch (error) {
     logger.error("Failed to remove session stream waitpoint cache entry", {
       environmentId,

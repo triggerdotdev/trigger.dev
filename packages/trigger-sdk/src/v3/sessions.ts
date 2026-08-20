@@ -25,8 +25,6 @@ import type {
 import {
   InputStreamOncePromise,
   ManualWaitpointPromise,
-  SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE,
-  SESSION_STREAM_WAITPOINT_RESPONSE_FORMAT,
   SemanticInternalAttributes,
   SessionStreamInstance,
   WaitpointTimeoutError,
@@ -34,7 +32,6 @@ import {
   apiClientManager,
   ensureReadableStream,
   mergeRequestOptions,
-  parseSessionStreamWaitpointRecord,
   runtime,
   sessionStreams,
   taskContext,
@@ -725,7 +722,6 @@ export class SessionInputChannel {
           idempotencyKeyTTL: options?.idempotencyKeyTTL,
           tags: options?.tags,
           lastSeqNum: lastConsumedSeqNum,
-          responseFormat: SESSION_STREAM_WAITPOINT_RESPONSE_FORMAT,
         });
 
         const result = await tracer.startActiveSpan(
@@ -741,80 +737,59 @@ export class SessionInputChannel {
             }
 
             // Stop the SSE tail before suspending. Buffered records stay in
-            // place; the exact record returned by the waitpoint is removed on
-            // resume, while any later records remain available to consumers.
+            // place so nothing is lost across the suspend.
             sessionStreams.disconnectStream(this.sessionId, "in");
 
             const waitResult = await runtime.waitUntil(response.waitpointId);
-            const hasRecordEnvelope =
-              waitResult.outputType === SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE;
 
-            const parsedOutput =
-              waitResult.output !== undefined
-                ? await conditionallyImportAndParsePacket(
-                    {
-                      data: waitResult.output,
-                      dataType: hasRecordEnvelope
-                        ? "application/json"
-                        : (waitResult.outputType ?? "application/json"),
-                    },
-                    apiClient
-                  )
-                : undefined;
-
-            if (waitResult.ok) {
-              const record = hasRecordEnvelope
-                ? parseSessionStreamWaitpointRecord(parsedOutput)
-                : undefined;
-              let seqNum = record?.seqNum;
-              const data = record
-                ? await conditionallyImportAndParsePacket(
-                    {
-                      data:
-                        typeof record.data === "string" ? record.data : JSON.stringify(record.data),
-                      dataType: "application/json",
-                    },
-                    apiClient
-                  )
-                : parsedOutput;
-
-              // Older servers return only raw data. Recover its durable
-              // sequence from the channel instead of guessing and risking a
-              // cursor that skips or strands another record.
-              if (seqNum === undefined && waitResult.output !== undefined) {
-                try {
-                  const response = await apiClient.readSessionStreamRecords(this.sessionId, "in", {
-                    afterEventId:
-                      lastConsumedSeqNum !== undefined ? String(lastConsumedSeqNum) : undefined,
-                  });
-                  const matchingRecords = response.records.filter(
-                    (candidate) =>
-                      candidate.data === waitResult.output ||
-                      (typeof candidate.data !== "string" &&
-                        JSON.stringify(candidate.data) === JSON.stringify(parsedOutput))
-                  );
-                  if (matchingRecords.length === 1) {
-                    seqNum = matchingRecords[0]!.seqNum;
-                  }
-                } catch {
-                  // Leave the cursor behind when an older server cannot
-                  // provide record metadata. At-least-once replay is safer
-                  // than acknowledging an unknown sequence.
-                }
-              }
-
-              if (seqNum !== undefined) {
-                sessionStreams.consumeRecord(this.sessionId, "in", seqNum);
-                sessionStreams.setLastSeqNum(this.sessionId, "in", seqNum);
-              }
-
-              return { ok: true as const, output: data as T };
-            } else {
-              const error = new WaitpointTimeoutError(parsedOutput?.message ?? "Timed out");
+            if (!waitResult.ok) {
+              const parsed =
+                waitResult.output !== undefined
+                  ? await conditionallyImportAndParsePacket(
+                      {
+                        data: waitResult.output,
+                        dataType: waitResult.outputType ?? "application/json",
+                      },
+                      apiClient
+                    )
+                  : undefined;
+              const error = new WaitpointTimeoutError(parsed?.message ?? "Timed out");
               span.recordException(error);
               span.setStatus({ code: SpanStatusCode.ERROR });
               return { ok: false as const, error };
             }
+
+            // The waitpoint is only a wake signal. The append route commits the
+            // record to the channel before it drains any waitpoint, so by the
+            // time we are here the record is durably readable from the channel
+            // itself, carrying its real sequence. Reading it back that way is
+            // what keeps the cursor exact: the waitpoint payload cannot
+            // identify which record it corresponds to, and guessing or matching
+            // on payload equality both produce a cursor that strands or
+            // redelivers records.
+            const record = await sessionStreams.onceRecord(this.sessionId, "in");
+
+            if (!record.ok) {
+              const error = new WaitpointTimeoutError("Timed out");
+              span.recordException(error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+              return { ok: false as const, error };
+            }
+
+            sessionStreams.setLastSeqNum(this.sessionId, "in", record.output.seqNum);
+
+            const data = await conditionallyImportAndParsePacket(
+              {
+                data:
+                  typeof record.output.data === "string"
+                    ? record.output.data
+                    : JSON.stringify(record.output.data),
+                dataType: "application/json",
+              },
+              apiClient
+            );
+
+            return { ok: true as const, output: data as T };
           },
           {
             attributes: {

@@ -307,4 +307,53 @@ describe("chat.messages mailbox", () => {
     expect(first).toEqual({ id: "part-redelivered", seqNum: 27, payload });
     expect(redelivered).toEqual(first);
   });
+
+  it("delivers a message queued behind a control record no consumer claimed", async () => {
+    const chatId = "mailbox-unclaimed-head";
+    const ready = deferred();
+    const inspect = deferred();
+    const observed: { pending?: boolean; message?: ChatMessageRecord } = {};
+
+    const agent = chat.customAgent({
+      id: "chat-messages-mailbox-unclaimed-head",
+      run: async () => {
+        ready.resolve();
+        await inspect.promise;
+        observed.pending = await chat.messages.hasPending();
+        observed.message = await chat.messages.next({ timeoutInSeconds: 0 });
+      },
+    });
+    const run = resourceCatalog.getTask(agent.id)?.fns.run;
+    if (!run) throw new Error("custom agent was not registered");
+
+    await runInMockTaskContext(async (drivers) => {
+      const runPromise = run(
+        { chatId, trigger: "preload" },
+        { ctx: drivers.ctx, signal: new AbortController().signal }
+      );
+      await ready.promise;
+
+      await drivers.sessions.in.send(chatId, { kind: "stop" }, "in", {
+        id: "unclaimed-stop",
+        seqNum: 60,
+      });
+      await drivers.sessions.in.send(
+        chatId,
+        { kind: "message", payload: userPayload(chatId, "u-behind-stop") },
+        "in",
+        { id: "behind-stop", seqNum: 61 }
+      );
+      inspect.resolve();
+      await runPromise;
+    });
+
+    expect(observed).toEqual({
+      pending: true,
+      message: {
+        id: "behind-stop",
+        seqNum: 61,
+        payload: userPayload(chatId, "u-behind-stop"),
+      },
+    });
+  });
 });

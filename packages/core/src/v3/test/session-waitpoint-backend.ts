@@ -1,10 +1,6 @@
 import { ApiClient } from "../apiClient/index.js";
 import { WaitpointId } from "../isomorphic/friendlyId.js";
 import { NoopRuntimeManager } from "../runtime/noopRuntimeManager.js";
-import {
-  SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE,
-  serializeSessionStreamWaitpointRecord,
-} from "../sessionStreams/wireProtocol.js";
 import type {
   CreateSessionStreamWaitpointRequestBody,
   CreateSessionStreamWaitpointResponseBody,
@@ -17,7 +13,6 @@ type PendingWait = {
   io: "in" | "out";
   lastSeqNum?: number;
   timeout?: string;
-  responseFormat?: "record-v1";
   abort: AbortController;
 };
 
@@ -76,7 +71,6 @@ export class SessionWaitpointBackend {
       io: body.io,
       lastSeqNum: body.lastSeqNum,
       timeout: body.timeout,
-      responseFormat: body.responseFormat,
       abort: new AbortController(),
     });
     return { waitpointId, isCached: false };
@@ -119,20 +113,12 @@ export class SessionWaitpointBackend {
         };
       }
 
-      const output =
-        pending.responseFormat === "record-v1"
-          ? serializeSessionStreamWaitpointRecord(result.data, result.seqNum)
-          : typeof result.data === "string"
-            ? result.data
-            : JSON.stringify(result.data);
-      return {
-        ok: true,
-        output,
-        outputType:
-          pending.responseFormat === "record-v1"
-            ? SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE
-            : "application/json",
-      };
+      // The waitpoint is a wake signal only. Production appends the record to
+      // the channel before draining any waitpoint, so the SDK re-attaches and
+      // reads it back from the channel with its real sequence. Returning the
+      // record here would let a test pass on output the SDK no longer reads.
+      void result;
+      return { ok: true };
     } catch {
       return {
         ok: false,

@@ -40,53 +40,6 @@ export const SESSION_STATE_LAST_EVENT_ID_HEADER = "last-event-id" as const;
  */
 export const SESSION_IN_EVENT_ID_HEADER = "session-in-event-id" as const;
 
-/**
- * Opt-in response format for Session stream waitpoints. Older SDKs omit this
- * and continue receiving the raw record data.
- */
-export const SESSION_STREAM_WAITPOINT_RESPONSE_FORMAT = "record-v1" as const;
-
-/** Content type used only when a waitpoint actually returns a record-v1 envelope. */
-export const SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE =
-  "application/vnd.trigger.session-stream-record+json" as const;
-
-const SESSION_STREAM_WAITPOINT_RECORD_TYPE = "trigger-session-stream-record" as const;
-
-/** Internal envelope used to return an exact Session record from a waitpoint. */
-export type SessionStreamWaitpointRecord = Readonly<{
-  type: typeof SESSION_STREAM_WAITPOINT_RECORD_TYPE;
-  version: 1;
-  seqNum: number;
-  data: unknown;
-}>;
-
-export function serializeSessionStreamWaitpointRecord(data: unknown, seqNum: number): string {
-  return JSON.stringify({
-    type: SESSION_STREAM_WAITPOINT_RECORD_TYPE,
-    version: 1,
-    seqNum,
-    data,
-  } satisfies SessionStreamWaitpointRecord);
-}
-
-export function parseSessionStreamWaitpointRecord(
-  value: unknown
-): SessionStreamWaitpointRecord | undefined {
-  if (!value || typeof value !== "object") return undefined;
-
-  const record = value as Partial<SessionStreamWaitpointRecord>;
-  if (
-    record.type !== SESSION_STREAM_WAITPOINT_RECORD_TYPE ||
-    record.version !== 1 ||
-    typeof record.seqNum !== "number" ||
-    !Number.isFinite(record.seqNum)
-  ) {
-    return undefined;
-  }
-
-  return record as SessionStreamWaitpointRecord;
-}
-
 export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",

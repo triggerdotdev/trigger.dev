@@ -1,8 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import {
   CreateSessionStreamWaitpointRequestBody,
-  SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE,
-  serializeSessionStreamWaitpointRecord,
   type CreateSessionStreamWaitpointResponseBody,
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
@@ -127,8 +125,7 @@ const { action, loader } = createActionApiRoute(
         addressingKey,
         body.io,
         result.waitpoint.id,
-        ttlMs && ttlMs > 0 ? ttlMs : undefined,
-        body.responseFormat
+        ttlMs && ttlMs > 0 ? ttlMs : undefined
       );
 
       // Race-check. If a record landed on the channel before this
@@ -158,14 +155,8 @@ const { action, loader } = createActionApiRoute(
               await engine.completeWaitpoint({
                 id: result.waitpoint.id,
                 output: {
-                  value:
-                    body.responseFormat === "record-v1"
-                      ? serializeSessionStreamWaitpointRecord(record.data, record.seqNum)
-                      : record.data,
-                  type:
-                    body.responseFormat === "record-v1"
-                      ? SESSION_STREAM_WAITPOINT_RECORD_CONTENT_TYPE
-                      : "application/json",
+                  value: record.data,
+                  type: "application/json",
                   isError: false,
                 },
               });

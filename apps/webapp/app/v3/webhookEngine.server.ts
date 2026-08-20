@@ -17,7 +17,6 @@ import {
   claimSessionStreamPart,
   drainSessionStreamWaitpoints,
   releaseSessionStreamPart,
-  sessionStreamWaitpointOutput,
 } from "~/services/sessionStreamWaitpointCache.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { singleton } from "~/utils/singleton";
@@ -228,12 +227,10 @@ function createWebhookEngine() {
           "in",
           deliveryId
         );
-        let appendSeq: number | undefined;
         if (wonClaim) {
-          const [appendError, seqNum] = await tryCatch(
+          const [appendError] = await tryCatch(
             realtimeStream.appendPartToSessionStream(part, deliveryId, addressingKey, "in")
           );
-          appendSeq = seqNum ?? undefined;
           if (appendError) {
             // Nothing landed — release the claim so a retry re-appends the same id.
             await releaseSessionStreamPart(environment.id, addressingKey, "in", deliveryId);
@@ -246,7 +243,7 @@ function createWebhookEngine() {
         }
 
         // Wake any `.in` waitpoints the run registered (best-effort; the record is durable in S2).
-        const [drainError, waitpoints] = await tryCatch(
+        const [drainError, waitpointIds] = await tryCatch(
           drainSessionStreamWaitpoints(environment.id, addressingKey, "in")
         );
         if (drainError) {
@@ -254,13 +251,13 @@ function createWebhookEngine() {
             externalId,
             error: drainError,
           });
-        } else if (waitpoints && waitpoints.length > 0) {
+        } else if (waitpointIds && waitpointIds.length > 0) {
           await Promise.all(
-            waitpoints.map((waitpoint) =>
+            waitpointIds.map((waitpointId) =>
               tryCatch(
                 runEngine.completeWaitpoint({
-                  id: waitpoint.id,
-                  output: sessionStreamWaitpointOutput(waitpoint, part, appendSeq),
+                  id: waitpointId,
+                  output: { value: part, type: "application/json", isError: false },
                 })
               )
             )
