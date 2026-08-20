@@ -79,6 +79,7 @@ import {
   normalizeThemeContrast,
   normalizeUnderlineLinks,
   normalizeThemePreference,
+  MIN_THEME_CONTRAST_BLACK,
   SystemDarkTheme,
   SystemLightTheme,
   type ThemePreference,
@@ -874,6 +875,12 @@ export default function Page() {
   );
   const systemThemes = { light: systemLightTheme, dark: systemDarkTheme };
 
+  /* Which of the four is on screen, resolving `system` through the OS
+     appearance. Only Black gets the extra travel below the base, so the slider
+     needs to know rather than reading the raw preference. */
+  const activeTheme = theme === "system" ? systemThemes[appearance] : theme;
+  const minContrast = activeTheme === "black" ? MIN_THEME_CONTRAST_BLACK : MIN_CONTRAST;
+
   const saveSystemTheme = (end: "light" | "dark", value: string) => {
     const fetcher = end === "light" ? systemLightFetcher : systemDarkFetcher;
     // Re-resolve straight away: on `system` this changes which theme is showing
@@ -1093,7 +1100,7 @@ export default function Page() {
                       variant="settings"
                       className="w-44"
                       aria-label="Contrast"
-                      min={MIN_CONTRAST}
+                      min={minContrast}
                       max={100}
                       step={1}
                       marks={[
@@ -1109,7 +1116,7 @@ export default function Page() {
                       valueTooltip={(value) =>
                         value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
                       }
-                      value={[contrastPreview]}
+                      value={[Math.max(minContrast, contrastPreview)]}
                       onValueChange={(values) => previewContrast(values[0] ?? 0)}
                       onValueCommit={(values) => saveContrast(values[0] ?? 0)}
                     />

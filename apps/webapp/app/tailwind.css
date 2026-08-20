@@ -1216,6 +1216,32 @@
   --color-background-deep: #000000;
   --color-background-dimmed: #000000;
   --color-background-bright: #000000;
+  /*
+    Grid lines get the extra travel below the base that the other themes don't
+    have. Everything here sits flat on #000, so the rules are the only thing
+    giving the page structure - and at the base palette they can be heavier than
+    this theme wants. Above 0 this is the shared dark ramp exactly; below it the
+    line fades back toward the page.
+  */
+  --color-grid-dimmed: color-mix(
+    in srgb,
+    color-mix(
+      in srgb,
+      var(--color-charcoal-750),
+      var(--color-charcoal-650) calc(var(--theme-contrast, 0) * 100%)
+    ),
+    #000000 calc(var(--theme-fade, 0) * 100%)
+  );
+  --color-grid-bright: color-mix(
+    in srgb,
+    color-mix(
+      in srgb,
+      var(--color-charcoal-700),
+      var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%)
+    ),
+    #000000 calc(var(--theme-fade, 0) * 100%)
+  );
+
   /* Interaction feedback still needs somewhere to go */
   --color-background-hover: #171717;
   --color-background-raised: #1f1f1f;

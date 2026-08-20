@@ -53,8 +53,14 @@ export function normalizeUnderlineLinks(value: unknown): boolean {
 
 /** Interface contrast for the System themes, 0 to 100. Missing or invalid
  * values fall back to the default bump. */
+/** Floor of the contrast range on the Black theme, where the slider can also run
+ *  *below* the base palette to fade the grid lines back toward the page. Every
+ *  other theme floors at 0; a negative value simply has no ramp to act on there,
+ *  so it reads as 0. */
+export const MIN_THEME_CONTRAST_BLACK = -50;
+
 export function normalizeThemeContrast(value: unknown): number {
   const num = typeof value === "string" ? Number(value) : value;
   if (typeof num !== "number" || !Number.isFinite(num)) return DEFAULT_THEME_CONTRAST;
-  return Math.min(100, Math.max(0, Math.round(num)));
+  return Math.min(100, Math.max(MIN_THEME_CONTRAST_BLACK, Math.round(num)));
 }
