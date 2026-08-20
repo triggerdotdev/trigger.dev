@@ -340,7 +340,7 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   });
 
   redisTest(
-    "new key initialises at the floor, not zero and not behind the backlog",
+    "new key joins one quantum behind the leader, not at zero and not behind its backlog",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer);
       try {
@@ -382,8 +382,10 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
         expect(floor).toBeGreaterThan(10);
 
-        // A fresh variant registers itself at the current floor via the
-        // enqueue-time registration (ZADD NX in the enqueue script).
+        // A fresh variant registers itself via the enqueue-time registration, joining
+        // one quantum behind the current leader so it cannot undercut consumed credit.
+        const leaderEntry = await queue.redis.zrange(ckVtimeKey, -1, -1, "WITHSCORES");
+        const leaderTag = Number(leaderEntry[1]);
         const freshVariant = variantName("fresh");
         // two messages so the fresh variant isn't GC'd on its first serve
         for (let i = 0; i < 2; i++) {
@@ -399,13 +401,19 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           });
         }
 
+        // registered within one round: behind the leader by exactly one quantum (=1),
+        // not at the frozen floor and not at zero
+        const registeredTag = Number(await queue.redis.zscore(ckVtimeKey, freshVariant));
+        expect(registeredTag).toBe(leaderTag + 1);
+        expect(registeredTag).toBeGreaterThan(floor);
+
         const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
         const served = messages.some((m) => m.message.concurrencyKey === "fresh");
         expect(served).toBe(true);
 
         const freshTag = Number(await queue.redis.zscore(ckVtimeKey, freshVariant));
-        // initialised at the floor and advanced by quantum (=1), not stuck at 1
-        expect(freshTag).toBe(floor + 1);
+        // advanced by quantum (=1) when served, not stuck
+        expect(freshTag).toBe(registeredTag + 1);
       } finally {
         await queue.quit();
       }
@@ -419,7 +427,7 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   // missing floor as 0 and jumped ahead of the whole established backlog. The
   // enqueue/nack registration paths now refresh the floor key TTL too.
   redisTest(
-    "enqueue refreshes the floor key TTL and a new variant registers at the current floor",
+    "enqueue refreshes the floor key TTL and a new variant registers behind the current leader",
     async ({ redisContainer }) => {
       const stateTtlSeconds = 3600;
       const queue = createQueue(redisContainer, { stateTtlSeconds });
@@ -489,8 +497,10 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const floorAfter = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
         expect(floorAfter).toBe(floor);
 
-        // A brand-new variant enqueued now registers at the CURRENT floor, so it
-        // cannot leapfrog the established backlog back to 0.
+        // A brand-new variant enqueued now registers one quantum behind the current
+        // leader, so it cannot leapfrog the established backlog back to 0.
+        const leaderEntry = await queue.redis.zrange(ckVtimeKey, -1, -1, "WITHSCORES");
+        const leaderTag = Number(leaderEntry[1]);
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: makeMessage({ runId: "r-fresh", concurrencyKey: "fresh", timestamp: t0 }),
@@ -498,7 +508,8 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           skipDequeueProcessing: true,
         });
         const freshTag = Number(await queue.redis.zscore(ckVtimeKey, variantName("fresh")));
-        expect(freshTag).toBe(floor);
+        expect(freshTag).toBe(leaderTag + 1);
+        expect(freshTag).toBeGreaterThan(floor);
       } finally {
         await queue.quit();
       }
@@ -910,8 +921,10 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         // The floor tracked the key that was actually being served.
         expect(floor).toBeGreaterThan(0);
 
-        // A key arriving now joins level with the established keys rather than underneath
-        // them, so it gets its turn instead of monopolising the fair pass.
+        // A key arriving now joins one quantum behind the established keys rather than
+        // underneath them, so it takes its turn instead of monopolising the fair pass.
+        // The stalled variant's tag sits below the floor and contributes nothing here:
+        // arrival stacking reads the MAX tag, not the pinned minimum.
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: makeMessage({ runId: "r-newcomer", concurrencyKey: "newcomer", timestamp: t0 }),
@@ -923,8 +936,8 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const newcomerTag = Number(await queue.redis.zscore(ckVtimeKey, variantName("newcomer")));
         const busyTag = Number(await queue.redis.zscore(ckVtimeKey, busyVariant));
 
-        expect(newcomerTag).toBe(floor);
-        expect(busyTag - newcomerTag).toBeLessThanOrEqual(1);
+        expect(newcomerTag).toBe(busyTag + 1);
+        expect(newcomerTag).toBeGreaterThanOrEqual(floor);
       } finally {
         await queue.quit();
       }
@@ -1029,9 +1042,10 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           });
         }
 
-        // The arrival registers at the pinned floor, so it starts below the incumbent by
-        // exactly the freeze debt rather than level with it.
-        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("zznew")))).toBe(0);
+        // The arrival enters one quantum behind the leader rather than at the floor, so a
+        // key showing up mid-freeze cannot leapfrog the incumbents that are stuck. zbusy
+        // advanced to 8 on pass 2 during the freeze, so the newcomer lands at 9.
+        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("zznew")))).toBe(9);
 
         // Unblock by giving each blocker ready work, which is what the elapsed-backoff
         // case looks like from the script's side. Their tags are untouched (ZADD NX).
@@ -1077,7 +1091,7 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   );
 
   redisTest(
-    "enqueue registers the variant at the current floor with NX",
+    "enqueue registers a fresh variant behind the pack, and NX never rewinds an existing tag",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer);
       try {
@@ -1121,14 +1135,16 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
         expect(floor).toBeGreaterThanOrEqual(5);
 
-        // a fresh key enqueued now lands exactly at the floor (no dequeue in between)
+        // A fresh key enqueued now lands one quantum behind the leader, not at the floor:
+        // entering at the floor is what let an endless supply of new keys outrank anything
+        // that had ever been served. a and b are both on 8, so it lands on 9.
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: makeMessage({ runId: "r-fresh-0", concurrencyKey: "fresh", timestamp: t0 }),
           workerQueue: authenticatedEnvDev.id,
           skipDequeueProcessing: true,
         });
-        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("fresh")))).toBe(floor);
+        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("fresh")))).toBe(9);
 
         // NX: enqueueing on a key whose tag is already 9 never rewinds it
         await queue.redis.zadd(ckVtimeKey, 9, variantName("nine"));
@@ -1252,9 +1268,11 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         skipDequeueProcessing: true,
       });
 
-      // the variant is back in ckIndex AND in ckVtime at the floor
+      // The variant is back in ckIndex and in ckVtime. Its parked idle tag was reaped once
+      // the floor climbed past it, so the nack re-registers it on the fresh-arrival branch:
+      // one quantum behind b, which is on 7. Bounded, unlike a reset to the floor.
       expect(await queue.redis.zscore(ckIndexKey, aVariant)).not.toBeNull();
-      expect(Number(await queue.redis.zscore(ckVtimeKey, aVariant))).toBe(floor);
+      expect(Number(await queue.redis.zscore(ckVtimeKey, aVariant))).toBe(8);
 
       // and a subsequent dequeue serves it
       const after = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);

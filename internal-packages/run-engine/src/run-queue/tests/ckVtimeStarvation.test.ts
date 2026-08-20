@@ -402,7 +402,7 @@ describe("CK vtime starvation by drain-and-re-register", () => {
   // growing by the drain count every round and never shrinking. The rank cap is the bound
   // that does not depend on the floor moving.
   redisTest(
-    "the idle set stays capped when fresh keys keep the floor pinned",
+    "fresh keys advance the floor, and the idle set stays capped",
     async ({ redisContainer }) => {
       const CAP = 25;
       const DRAINS = 400;
@@ -437,11 +437,16 @@ describe("CK vtime starvation by drain-and-re-register", () => {
           testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("fresh-0"))
         );
 
-        // The floor really is pinned, so the score reap cannot be what bounded this.
-        expect(Number(floor ?? 0)).toBe(0);
+        // This test was written when a stream of fresh keys pinned the floor at 0 forever,
+        // and it asserted exactly that, to show the rank cap was the only thing bounding
+        // the idle set. Registering a fresh variant behind the pack rather than at the
+        // floor removed the pinning, so the premise is gone and the floor now climbs with
+        // service. That climb IS the fresh-key fix, so assert it rather than delete it.
+        expect(Number(floor ?? 0)).toBeGreaterThan(0);
+        // The set stays bounded either way. Both mechanisms now contribute: the
+        // at-or-below-floor reap can finally fire, and the rank cap backstops it.
         // One call can park past the cap before the next trim, hence the small margin.
         expect(idleSize).toBeLessThanOrEqual(CAP + 10);
-        // And it is the cap doing the work, not an empty set.
         expect(idleSize).toBeGreaterThan(0);
       } finally {
         await queue.quit();
