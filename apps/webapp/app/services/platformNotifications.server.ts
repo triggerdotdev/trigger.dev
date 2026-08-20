@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { errAsync, fromPromise, type ResultAsync } from "neverthrow";
+import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { prisma } from "~/db.server";
 import {
   type PlatformNotificationScope,
@@ -48,19 +48,26 @@ export type PlatformNotificationWithPayload = {
 
 // --- Read: admin list with interaction stats ---
 
-export async function getAdminNotificationsList({
-  page = 1,
-  pageSize = 20,
-  hideInactive = false,
-}: {
-  page?: number;
-  pageSize?: number;
-  hideInactive?: boolean;
-}) {
-  const where = hideInactive ? { archivedAt: null, endsAt: { gt: new Date() } } : {};
+export async function getAdminNotificationsList(
+  {
+    page = 1,
+    pageSize = 20,
+    hideInactive = false,
+  }: {
+    page?: number;
+    pageSize?: number;
+    hideInactive?: boolean;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
+  // Drafts carry placeholder dates, so exempt them from the "inactive" (expired)
+  // filter: a draft is neither active nor expired and must stay visible to admins.
+  const where = hideInactive
+    ? { archivedAt: null, OR: [{ isDraft: true }, { endsAt: { gt: new Date() } }] }
+    : {};
 
   const [notifications, total] = await Promise.all([
-    prisma.platformNotification.findMany({
+    db.platformNotification.findMany({
       where,
       orderBy: [{ createdAt: "desc" }],
       skip: (page - 1) * pageSize,
@@ -78,7 +85,7 @@ export async function getAdminNotificationsList({
         },
       },
     }),
-    prisma.platformNotification.count({ where }),
+    db.platformNotification.count({ where }),
   ]);
 
   return {
@@ -557,7 +564,10 @@ export async function getNextCliNotification(
 
 // --- Create and update: admin endpoint support ---
 
-type CreateError = { type: "validation"; issues: z.ZodIssue[] } | { type: "db"; message: string };
+type CreateError =
+  | { type: "validation"; issues: z.ZodIssue[] }
+  | { type: "db"; message: string }
+  | { type: "conflict"; message: string };
 
 export function createPlatformNotification(
   input: CreatePlatformNotificationInput
@@ -681,7 +691,7 @@ export function createDraftPlatformNotification(
 export function updateDraftPlatformNotification(
   input: UpdateDraftPlatformNotificationInput,
   db: PrismaClientOrTransaction = prisma
-): ResultAsync<{ id: string; friendlyId: string }, CreateError> {
+): ResultAsync<{ id: string }, CreateError> {
   const parseResult = UpdateDraftPlatformNotificationSchema.safeParse(input);
 
   if (!parseResult.success) {
@@ -692,9 +702,11 @@ export function updateDraftPlatformNotification(
 
   // Editing a draft touches content only; startsAt/endsAt/isDraft are left as-is
   // so the notification stays an unscheduled draft until it is published.
+  // `isDraft: true` in the predicate makes this a no-op against a non-draft row,
+  // so draft-only semantics can never be applied to an active/pending/archived one.
   return fromPromise(
-    db.platformNotification.update({
-      where: { id: data.id },
+    db.platformNotification.updateMany({
+      where: { id: data.id, isDraft: true },
       data: {
         title: data.title,
         payload: data.payload,
@@ -709,19 +721,25 @@ export function updateDraftPlatformNotification(
         cliMaxShowCount: data.surface === "CLI" ? (data.cliMaxShowCount ?? null) : null,
         cliShowEvery: data.surface === "CLI" ? (data.cliShowEvery ?? null) : null,
       },
-      select: { id: true, friendlyId: true },
     }),
     (e): CreateError => ({
       type: "db",
       message: e instanceof Error ? e.message : String(e),
     })
+  ).andThen(({ count }) =>
+    count === 0
+      ? errAsync<{ id: string }, CreateError>({
+          type: "conflict",
+          message: "Notification not found or is not a draft",
+        })
+      : okAsync({ id: data.id })
   );
 }
 
 export function publishDraftPlatformNotification(
   input: PublishDraftPlatformNotificationInput,
   db: PrismaClientOrTransaction = prisma
-): ResultAsync<{ id: string; friendlyId: string }, CreateError> {
+): ResultAsync<{ id: string }, CreateError> {
   const parseResult = PublishDraftPlatformNotificationSchema.safeParse(input);
 
   if (!parseResult.success) {
@@ -730,16 +748,25 @@ export function publishDraftPlatformNotification(
 
   const data = parseResult.data;
 
+  // `isDraft: true` in the predicate ensures we only publish an actual draft:
+  // a request naming a non-draft id updates zero rows and reports a conflict
+  // rather than resetting a live notification's schedule.
   return fromPromise(
-    db.platformNotification.update({
-      where: { id: data.id },
+    db.platformNotification.updateMany({
+      where: { id: data.id, isDraft: true },
       data: { startsAt: data.startsAt, endsAt: data.endsAt, isDraft: false },
-      select: { id: true, friendlyId: true },
     }),
     (e): CreateError => ({
       type: "db",
       message: e instanceof Error ? e.message : String(e),
     })
+  ).andThen(({ count }) =>
+    count === 0
+      ? errAsync<{ id: string }, CreateError>({
+          type: "conflict",
+          message: "Notification not found or is not a draft",
+        })
+      : okAsync({ id: data.id })
   );
 }
 

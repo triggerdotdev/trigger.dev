@@ -5,9 +5,11 @@ import {
   createDraftPlatformNotification,
   CreatePlatformNotificationSchema,
   getActivePlatformNotifications,
+  getAdminNotificationsList,
   getNextCliNotification,
   getRecentChangelogs,
   publishDraftPlatformNotification,
+  updateDraftPlatformNotification,
 } from "~/services/platformNotifications.server";
 import { isCliVersionEligible } from "~/services/platformNotificationVersionTargeting";
 
@@ -265,5 +267,85 @@ describe("platform notification drafts are hidden from users", () => {
       prisma
     );
     expect(after.notifications.map((n) => n.id)).toContain(id);
+  });
+});
+
+describe("platform notification draft admin guards", () => {
+  postgresTest("drafts stay in the admin list when hiding inactive", async ({ prisma }) => {
+    const now = new Date();
+    // A draft whose placeholder endsAt is already in the past — must NOT be treated as expired.
+    const draft = await seedNotification(prisma, {
+      surface: "WEBAPP",
+      payload: webappCardPayload("draft"),
+      isDraft: true,
+      startsAt: now,
+      endsAt: now,
+    });
+    // A genuinely expired, non-draft notification — must be hidden.
+    const expired = await seedNotification(prisma, {
+      surface: "WEBAPP",
+      payload: webappCardPayload("expired"),
+      isDraft: false,
+      startsAt: new Date(now.getTime() - 2 * HOUR_MS),
+      endsAt: new Date(now.getTime() - HOUR_MS),
+    });
+
+    const { notifications } = await getAdminNotificationsList({ hideInactive: true }, prisma);
+
+    const ids = notifications.map((n) => n.id);
+    expect(ids).toContain(draft.id);
+    expect(ids).not.toContain(expired.id);
+  });
+
+  postgresTest("publishing a non-draft is rejected and leaves it unchanged", async ({ prisma }) => {
+    const startsAt = new Date(Date.now() - 2 * HOUR_MS);
+    const endsAt = new Date(Date.now() + HOUR_MS);
+    const published = await seedNotification(prisma, {
+      surface: "WEBAPP",
+      payload: webappCardPayload("already published"),
+      isDraft: false,
+      startsAt,
+      endsAt,
+    });
+
+    const result = await publishDraftPlatformNotification(
+      {
+        id: published.id,
+        startsAt: new Date(Date.now() + HOUR_MS).toISOString(),
+        endsAt: new Date(Date.now() + 48 * HOUR_MS).toISOString(),
+      },
+      prisma
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.type).toBe("conflict");
+
+    // The live notification's schedule is untouched.
+    const row = await prisma.platformNotification.findFirst({ where: { id: published.id } });
+    expect(row?.isDraft).toBe(false);
+    expect(row?.startsAt.toISOString()).toBe(startsAt.toISOString());
+    expect(row?.endsAt.toISOString()).toBe(endsAt.toISOString());
+  });
+
+  postgresTest("editing a non-draft with the draft path is rejected", async ({ prisma }) => {
+    const published = await seedNotification(prisma, {
+      surface: "WEBAPP",
+      payload: webappCardPayload("live"),
+      isDraft: false,
+    });
+
+    const result = await updateDraftPlatformNotification(
+      {
+        id: published.id,
+        title: "hijack attempt",
+        payload: { version: "1", data: { type: "card", title: "x", description: "y" } },
+        surface: "WEBAPP",
+        scope: "GLOBAL",
+      },
+      prisma
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.type).toBe("conflict");
   });
 });

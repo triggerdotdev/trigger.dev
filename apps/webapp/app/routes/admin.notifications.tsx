@@ -414,6 +414,9 @@ async function handlePublishDraftAction(formData: FormData) {
         { status: 400 }
       );
     }
+    if (err.type === "conflict") {
+      return typedjson({ error: err.message }, { status: 409 });
+    }
     logger.error("Failed to publish draft platform notification", { error: err, notificationId });
     return typedjson(
       { error: "Failed to publish notification, please try again." },
@@ -528,6 +531,9 @@ async function handleEditDraftAction(formData: FormData) {
         { error: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
         { status: 400 }
       );
+    }
+    if (err.type === "conflict") {
+      return typedjson({ error: err.message }, { status: 409 });
     }
     logger.error("Failed to update draft platform notification", { error: err });
     return typedjson({ error: "Something went wrong, please try again." }, { status: 500 });
@@ -1388,17 +1394,11 @@ function NotificationForm({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            type="submit"
-            name="_action"
-            value="create-preview"
-            variant="tertiary/medium"
-            disabled={fetcher.state !== "idle"}
-          >
-            Send preview to me
-          </Button>
-          {isEdit ? (
+        {isEdit ? (
+          // "Save changes" is first in DOM so pressing Enter in a field saves
+          // (HTML implicit submission uses the first submit button); flex-row-reverse
+          // keeps the preview button on the left and the primary action on the right.
+          <div className="flex flex-row-reverse items-center gap-2">
             <Button
               type="submit"
               name="_action"
@@ -1408,29 +1408,47 @@ function NotificationForm({
             >
               {fetcher.state !== "idle" ? "Saving..." : "Save changes"}
             </Button>
-          ) : (
-            <>
-              <Button
-                type="submit"
-                name="_action"
-                value="create-draft"
-                variant="secondary/medium"
-                disabled={fetcher.state !== "idle"}
-              >
-                Save as draft
-              </Button>
-              <Button
-                type="submit"
-                name="_action"
-                value="create"
-                variant="primary/medium"
-                disabled={fetcher.state !== "idle"}
-              >
-                {fetcher.state !== "idle" ? "Creating..." : "Create"}
-              </Button>
-            </>
-          )}
-        </div>
+            <Button
+              type="submit"
+              name="_action"
+              value="create-preview"
+              variant="tertiary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              Send preview to me
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              type="submit"
+              name="_action"
+              value="create-preview"
+              variant="tertiary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              Send preview to me
+            </Button>
+            <Button
+              type="submit"
+              name="_action"
+              value="create-draft"
+              variant="secondary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              Save as draft
+            </Button>
+            <Button
+              type="submit"
+              name="_action"
+              value="create"
+              variant="primary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              {fetcher.state !== "idle" ? "Creating..." : "Create"}
+            </Button>
+          </div>
+        )}
       </DialogFooter>
     </fetcher.Form>
   );
