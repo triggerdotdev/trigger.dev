@@ -235,6 +235,13 @@ export type RunQueueOptions = {
      * credit is worth least. Default 10000.
      */
     idleMaxEntries?: number;
+    /**
+     * Bounds how far above the floor a brand-new variant can register, as a multiple
+     * of the quantum. Guards against one anomalously inflated tag propagating to every
+     * future arrival, and bounds the transitional penalty on queues that accumulated a
+     * large tag spread before arrival stacking shipped. Default 64.
+     */
+    arrivalCapMultiplier?: number;
   };
 };
 
@@ -325,6 +332,7 @@ export class RunQueue {
   readonly #ckVtimeWindowMultiplier: number;
   readonly #ckVtimeStateTtl: number;
   readonly #ckVtimeIdleMaxEntries: number;
+  readonly #ckVtimeArrivalCap: number;
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
@@ -347,6 +355,9 @@ export class RunQueue {
       1,
       Math.floor(options.ckVirtualTimeScheduling?.idleMaxEntries ?? 10000)
     );
+    this.#ckVtimeArrivalCap =
+      Math.max(1, Math.floor(options.ckVirtualTimeScheduling?.arrivalCapMultiplier ?? 64)) *
+      this.#ckVtimeQuantum;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -2313,6 +2324,8 @@ export class RunQueue {
               ckKeyPrefix,
               String(this.counterTtlSeconds),
               String(this.#ckVtimeStateTtl),
+              String(this.#ckVtimeQuantum),
+              String(this.#ckVtimeArrivalCap),
               // Must stay last: the gauge fragment reads ARGV[#ARGV].
               metricsGaugeArg
             )
@@ -2387,6 +2400,8 @@ export class RunQueue {
               ckKeyPrefix,
               String(this.counterTtlSeconds),
               String(this.#ckVtimeStateTtl),
+              String(this.#ckVtimeQuantum),
+              String(this.#ckVtimeArrivalCap),
               // Must stay last: the gauge fragment reads ARGV[#ARGV].
               metricsGaugeArg
             )
@@ -3142,7 +3157,9 @@ export class RunQueue {
           ckWildcardName,
           this.options.redis.keyPrefix ?? "",
           String(this.counterTtlSeconds),
-          String(this.#ckVtimeStateTtl)
+          String(this.#ckVtimeStateTtl),
+          String(this.#ckVtimeQuantum),
+          String(this.#ckVtimeArrivalCap)
         );
       } else {
         await this.redis.nackMessageCkTracked(
@@ -4329,6 +4346,9 @@ local keyPrefix = ARGV[11]
 local counterTtl = ARGV[12]
 -- TTL (seconds) applied to ckVtime on registration
 local stateTtl = ARGV[13]
+-- Arrival stacking (only read when this call registers a brand-new variant)
+local quantum = tonumber(ARGV[14] or '1')
+local arrivalCap = tonumber(ARGV[15] or '64')
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 
@@ -4396,9 +4416,11 @@ if #earliest > 0 then
 end
 
 -- Register this variant in the virtual-time index. NX means an already-advanced tag is
--- never rewound. The start is max(floor, remembered idle tag): a variant that drained and
--- came back would otherwise be handed full credit at the floor on every re-enqueue, which
--- starves any variant carrying a persistent backlog.
+-- never rewound. A returning variant starts at max(floor, remembered idle tag): it would
+-- otherwise be handed full credit at the floor on every re-enqueue, which starves any
+-- variant carrying a persistent backlog. A never-seen variant instead joins one quantum
+-- behind the highest tag on record (capped at floor + arrivalCap): registered at a frozen
+-- floor it would permanently outrank anything that has ever been served.
 -- The idle lookup only matters when this call is what registers the variant: ZADD NX is
 -- a no-op on an already-registered one, and its tag is already correct. Doing the ZADD
 -- first and the ZSCORE only on the registering call takes the common path from two ops to
@@ -4407,8 +4429,35 @@ end
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
-  if vidle and tonumber(vidle) > tonumber(vfloor) then
-    redis.call('ZADD', ckVtimeKey, 'XX', vidle, queueName)
+  if vidle then
+    if tonumber(vidle) > tonumber(vfloor) then
+      redis.call('ZADD', ckVtimeKey, 'XX', vidle, queueName)
+    end
+  else
+    -- Brand new (or reaped): join at the back of the current round rather than the
+    -- floor, so it cannot undercut consumed service credit. The ckVtime read includes
+    -- self at vfloor, so base only exceeds the floor on some OTHER variant's credit.
+    -- When nothing in ckVtime is above the floor the credit may have drained out with
+    -- a parked variant, so fall back to the idle set's max; skipping that read when
+    -- ckVtime already proves credit keeps steady minting at one extra read.
+    local base = tonumber(vfloor)
+    local vmax = redis.call('ZRANGE', ckVtimeKey, -1, -1, 'WITHSCORES')
+    if #vmax > 0 and tonumber(vmax[2]) > base then
+      base = tonumber(vmax[2])
+    else
+      local imax = redis.call('ZRANGE', ckVtimeIdleKey, -1, -1, 'WITHSCORES')
+      if #imax > 0 and tonumber(imax[2]) > base then
+        base = tonumber(imax[2])
+      end
+    end
+    if base > tonumber(vfloor) then
+      -- Strictly behind the max: registering AT it leaves an unbounded lex-ordered
+      -- tie cohort under overload, and a lex-late backlogged variant still starves.
+      local target = base + quantum
+      local cap = tonumber(vfloor) + arrivalCap
+      if target > cap then target = cap end
+      redis.call('ZADD', ckVtimeKey, 'XX', tostring(target), queueName)
+    end
   end
 end
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
@@ -4487,6 +4536,9 @@ local keyPrefix = ARGV[13]
 local counterTtl = ARGV[14]
 -- TTL (seconds) applied to ckVtime on registration
 local stateTtl = ARGV[15]
+-- Arrival stacking (only read when this call registers a brand-new variant)
+local quantum = tonumber(ARGV[16] or '1')
+local arrivalCap = tonumber(ARGV[17] or '64')
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 
@@ -4547,9 +4599,11 @@ if #earliest > 0 then
 end
 
 -- Register this variant in the virtual-time index. NX means an already-advanced tag is
--- never rewound. The start is max(floor, remembered idle tag): a variant that drained and
--- came back would otherwise be handed full credit at the floor on every re-enqueue, which
--- starves any variant carrying a persistent backlog.
+-- never rewound. A returning variant starts at max(floor, remembered idle tag): it would
+-- otherwise be handed full credit at the floor on every re-enqueue, which starves any
+-- variant carrying a persistent backlog. A never-seen variant instead joins one quantum
+-- behind the highest tag on record (capped at floor + arrivalCap): registered at a frozen
+-- floor it would permanently outrank anything that has ever been served.
 -- The idle lookup only matters when this call is what registers the variant: ZADD NX is
 -- a no-op on an already-registered one, and its tag is already correct. Doing the ZADD
 -- first and the ZSCORE only on the registering call takes the common path from two ops to
@@ -4558,8 +4612,35 @@ end
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
-  if vidle and tonumber(vidle) > tonumber(vfloor) then
-    redis.call('ZADD', ckVtimeKey, 'XX', vidle, queueName)
+  if vidle then
+    if tonumber(vidle) > tonumber(vfloor) then
+      redis.call('ZADD', ckVtimeKey, 'XX', vidle, queueName)
+    end
+  else
+    -- Brand new (or reaped): join at the back of the current round rather than the
+    -- floor, so it cannot undercut consumed service credit. The ckVtime read includes
+    -- self at vfloor, so base only exceeds the floor on some OTHER variant's credit.
+    -- When nothing in ckVtime is above the floor the credit may have drained out with
+    -- a parked variant, so fall back to the idle set's max; skipping that read when
+    -- ckVtime already proves credit keeps steady minting at one extra read.
+    local base = tonumber(vfloor)
+    local vmax = redis.call('ZRANGE', ckVtimeKey, -1, -1, 'WITHSCORES')
+    if #vmax > 0 and tonumber(vmax[2]) > base then
+      base = tonumber(vmax[2])
+    else
+      local imax = redis.call('ZRANGE', ckVtimeIdleKey, -1, -1, 'WITHSCORES')
+      if #imax > 0 and tonumber(imax[2]) > base then
+        base = tonumber(imax[2])
+      end
+    end
+    if base > tonumber(vfloor) then
+      -- Strictly behind the max: registering AT it leaves an unbounded lex-ordered
+      -- tie cohort under overload, and a lex-late backlogged variant still starves.
+      local target = base + quantum
+      local cap = tonumber(vfloor) + arrivalCap
+      if target > cap then target = cap end
+      redis.call('ZADD', ckVtimeKey, 'XX', tostring(target), queueName)
+    end
   end
 end
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
@@ -6505,6 +6586,9 @@ local keyPrefix = ARGV[6]
 local counterTtl = ARGV[7]
 -- TTL (seconds) applied to ckVtime on registration
 local stateTtl = ARGV[8]
+-- Arrival stacking (only read when this call registers a brand-new variant)
+local quantum = tonumber(ARGV[9] or '1')
+local arrivalCap = tonumber(ARGV[10] or '64')
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -6555,9 +6639,11 @@ if #earliest > 0 then
 end
 
 -- Register this variant in the virtual-time index. NX means an already-advanced tag is
--- never rewound. The start is max(floor, remembered idle tag): a nack after the variant
--- drained would otherwise hand back full credit at the floor, which is the same starvation
--- the enqueue path guards against.
+-- never rewound. A returning variant starts at max(floor, remembered idle tag): a nack
+-- after the variant drained would otherwise hand back full credit at the floor, which is
+-- the same starvation the enqueue path guards against. A never-seen variant instead joins
+-- one quantum behind the highest tag on record (capped at floor + arrivalCap), matching
+-- the enqueue paths.
 -- The idle lookup only matters when this call is what registers the variant: ZADD NX is
 -- a no-op on an already-registered one, and its tag is already correct. Doing the ZADD
 -- first and the ZSCORE only on the registering call takes the common path from two ops to
@@ -6566,8 +6652,31 @@ end
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, messageQueueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, messageQueueName)
-  if vidle and tonumber(vidle) > tonumber(vfloor) then
-    redis.call('ZADD', ckVtimeKey, 'XX', vidle, messageQueueName)
+  if vidle then
+    if tonumber(vidle) > tonumber(vfloor) then
+      redis.call('ZADD', ckVtimeKey, 'XX', vidle, messageQueueName)
+    end
+  else
+    -- Brand new (or reaped): join at the back of the current round rather than the
+    -- floor, so it cannot undercut consumed service credit. See the enqueue scripts
+    -- for the full rationale; the idle-set fallback matters because drained variants
+    -- carry their credit out of ckVtime into the idle set.
+    local base = tonumber(vfloor)
+    local vmax = redis.call('ZRANGE', ckVtimeKey, -1, -1, 'WITHSCORES')
+    if #vmax > 0 and tonumber(vmax[2]) > base then
+      base = tonumber(vmax[2])
+    else
+      local imax = redis.call('ZRANGE', ckVtimeIdleKey, -1, -1, 'WITHSCORES')
+      if #imax > 0 and tonumber(imax[2]) > base then
+        base = tonumber(imax[2])
+      end
+    end
+    if base > tonumber(vfloor) then
+      local target = base + quantum
+      local cap = tonumber(vfloor) + arrivalCap
+      if target > cap then target = cap end
+      redis.call('ZADD', ckVtimeKey, 'XX', tostring(target), messageQueueName)
+    end
   end
 end
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
@@ -7431,6 +7540,8 @@ declare module "@internal/redis" {
       keyPrefix: string,
       counterTtl: string,
       stateTtl: string,
+      quantum: string,
+      arrivalCap: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -7470,6 +7581,8 @@ declare module "@internal/redis" {
       keyPrefix: string,
       counterTtl: string,
       stateTtl: string,
+      quantum: string,
+      arrivalCap: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -7622,6 +7735,8 @@ declare module "@internal/redis" {
       keyPrefix: string,
       counterTtl: string,
       stateTtl: string,
+      quantum: string,
+      arrivalCap: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
