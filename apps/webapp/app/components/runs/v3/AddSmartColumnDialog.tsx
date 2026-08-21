@@ -169,12 +169,12 @@ export function AddSmartColumnDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Bounded height with the columns absorbing it, so the stacked form can't push the
           header or footer off a short screen. */}
-      <DialogContent className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-[860px]!">
+      <DialogContent className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-[930px]!">
         <DialogHeader>{editing ? "Edit smart column" : "Add smart column"}</DialogHeader>
         <div className="flex min-h-0 flex-col gap-5 pt-3">
           <Paragraph variant="base/bright">
-            Pick a source, then click a value in the sample to turn it into a column. Smart columns
-            are display only, so you can't sort or filter by them.
+            Pick a source, then click a value in the sample payload to turn it into a column. Smart
+            columns are display only, so you can't sort or filter by them.
           </Paragraph>
 
           <div className="grid min-h-0 grid-cols-1 items-stretch gap-2.5 md:grid-cols-3">
@@ -375,7 +375,7 @@ function SmartColumnPreview({
               <div
                 key={index}
                 className={cn(
-                  "flex h-8 items-center border-b border-grid-dimmed/60 px-2.5 text-sm last:border-b-0",
+                  "flex h-8 items-center whitespace-nowrap border-b border-grid-dimmed/60 px-2.5 text-sm last:border-b-0",
                   alignClass
                 )}
               >

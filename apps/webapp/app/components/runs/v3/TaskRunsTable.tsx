@@ -486,12 +486,33 @@ const STANDARD_RENDERERS: Record<string, StandardColumnRenderer> = {
   },
 };
 
+const SMART_SOURCE_LABELS: Record<SmartColumnSource, string> = {
+  payload: "payload",
+  metadata: "metadata",
+  output: "output",
+};
+
 function SmartColumnHeader({ def }: { def: SmartColumnDef }) {
   return (
-    <TableHeaderCell>
+    <TableHeaderCell
+      tooltip={
+        <div className="flex max-w-xs flex-col gap-1 p-1">
+          <Paragraph variant="small" className="text-text-bright">
+            Smart column
+          </Paragraph>
+          <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
+            Reads <span className="font-mono text-text-bright">{def.path}</span> from each run's{" "}
+            {SMART_SOURCE_LABELS[def.source]}, shown as {def.displayAs}.
+          </Paragraph>
+          <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
+            Display only, so this column can't be sorted or filtered.
+          </Paragraph>
+        </div>
+      }
+    >
       <span className="flex items-center gap-1">
-        <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate">{def.label}</span>
+        <SmartColumnIcon className="size-4 flex-none text-text-dimmed" />
       </span>
     </TableHeaderCell>
   );
@@ -513,7 +534,7 @@ function SmartColumnCell({
 
   return (
     <TableCell to={path} className={numeric ? "text-right tabular-nums" : undefined}>
-      <SmartCellContent cell={cell} def={def} provisional={!run.hasFinished} />
+      <SmartCellContent cell={cell} def={def} provisional={!run.hasFinished} truncate />
     </TableCell>
   );
 }

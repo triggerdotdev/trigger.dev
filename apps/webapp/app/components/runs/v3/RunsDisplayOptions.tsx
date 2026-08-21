@@ -1,7 +1,6 @@
 import {
   ArrowUturnLeftIcon,
   PencilSquareIcon,
-  PlusIcon,
   StarIcon as StarIconSolid,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -237,7 +236,7 @@ export function RunsDisplayOptions({
           </div>
           <div className="flex flex-col p-1">
             <PopoverMenuItem
-              icon={PlusIcon}
+              icon={SmartColumnIcon}
               title="Add smart column…"
               onClick={() => setAddOpen(true)}
               className="h-8"

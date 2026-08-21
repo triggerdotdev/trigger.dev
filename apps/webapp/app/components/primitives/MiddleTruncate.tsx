@@ -5,6 +5,8 @@ import { SimpleTooltip } from "./Tooltip";
 type MiddleTruncateProps = {
   text: string;
   className?: string;
+  /** Hover delay before the full-text tooltip opens. Defaults to the tooltip default (0). */
+  tooltipDelay?: number;
 };
 
 /**
@@ -13,7 +15,7 @@ type MiddleTruncateProps = {
  *
  * Example: "namespace:category:subcategory:task-name" becomes "namespace:cat…task-name"
  */
-export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
+export function MiddleTruncate({ text, className, tooltipDelay }: MiddleTruncateProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
   const [displayText, setDisplayText] = useState(text);
@@ -154,6 +156,7 @@ export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
         content={<span className="max-w-xs break-all font-mono text-xs">{text}</span>}
         side="top"
         asChild
+        delayDuration={tooltipDelay}
       />
     );
   }

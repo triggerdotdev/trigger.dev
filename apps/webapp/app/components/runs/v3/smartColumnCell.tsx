@@ -1,5 +1,6 @@
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Badge } from "~/components/primitives/Badge";
+import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import type { SmartColumnDef } from "./runColumns";
@@ -32,7 +33,16 @@ function toFiniteNumber(value: unknown): number {
   return NaN;
 }
 
-function renderSmartValue(value: unknown, displayAs: SmartColumnDef["displayAs"]): React.ReactNode {
+/** How wide a truncated text cell may get before the middle is elided. */
+const TEXT_CELL_MAX_WIDTH = "max-w-[600px]";
+/** Long values are common enough that an instant tooltip would fire while just scanning rows. */
+const TEXT_CELL_TOOLTIP_DELAY_MS = 500;
+
+function renderSmartValue(
+  value: unknown,
+  displayAs: SmartColumnDef["displayAs"],
+  truncate: boolean
+): React.ReactNode {
   switch (displayAs) {
     case "number": {
       const n = toFiniteNumber(value);
@@ -46,8 +56,16 @@ function renderSmartValue(value: unknown, displayAs: SmartColumnDef["displayAs"]
     }
     case "badge":
       return <Badge variant="extra-small">{stringifySmartValue(value)}</Badge>;
-    default:
-      return stringifySmartValue(value);
+    default: {
+      const text = stringifySmartValue(value);
+      if (!truncate) return text;
+      // MiddleTruncate measures against its parent, so it needs the width cap around it.
+      return (
+        <span className={cn("block min-w-0", TEXT_CELL_MAX_WIDTH)}>
+          <MiddleTruncate text={text} tooltipDelay={TEXT_CELL_TOOLTIP_DELAY_MS} />
+        </span>
+      );
+    }
   }
 }
 
@@ -61,10 +79,13 @@ export function SmartCellContent({
   cell,
   def,
   provisional,
+  truncate = false,
 }: {
   cell: SmartCellValue;
   def: SmartColumnDef;
   provisional: boolean;
+  /** Middle-truncate long text to a fixed cap. On for the table; the preview scrolls instead. */
+  truncate?: boolean;
 }) {
   if (cell.state === "offloaded") {
     return (
@@ -86,7 +107,7 @@ export function SmartCellContent({
 
   return (
     <span className={cn(provisional && "border-b border-dotted border-text-dimmed/50")}>
-      {renderSmartValue(cell.value, def.displayAs)}
+      {renderSmartValue(cell.value, def.displayAs, truncate)}
     </span>
   );
 }
