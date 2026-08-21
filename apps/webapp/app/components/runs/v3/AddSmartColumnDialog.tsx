@@ -1,11 +1,15 @@
-import { BoltIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import { useEffect, useMemo, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
+import { SmartColumnIcon } from "~/assets/icons/SmartColumnIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from "~/components/primitives/Dialog";
+import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -167,30 +171,35 @@ export function AddSmartColumnDialog({
           header or footer off a short screen. */}
       <DialogContent className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-[860px]!">
         <DialogHeader>{editing ? "Edit smart column" : "Add smart column"}</DialogHeader>
-        <div className="flex min-h-0 flex-col gap-5">
-          <Paragraph variant="small/dimmed">
-            Pull a single value out of a run's payload, metadata, or output by JSON path. Smart
-            columns are display only — you can't sort or filter by them.
+        <div className="flex min-h-0 flex-col gap-5 pt-3">
+          <Paragraph variant="base/bright">
+            Pick a source, then click a value in the sample to turn it into a column. Smart columns
+            are display only — you can't sort or filter by them.
           </Paragraph>
 
-          <div className="grid min-h-0 grid-cols-1 items-stretch gap-5 md:grid-cols-3">
+          <div className="grid min-h-0 grid-cols-1 items-stretch gap-2.5 md:grid-cols-3">
             <div className="flex flex-col gap-4 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-              <div className="flex flex-col gap-1.5">
+              <InputGroup fullWidth>
                 <Label>Source</Label>
-                <div className="flex flex-col gap-2">
+                <RadioGroup
+                  className="flex flex-col gap-2"
+                  value={source}
+                  onValueChange={(next) => handleSourceChange(next as SmartColumnSource)}
+                >
                   {SOURCE_CARDS.map((card) => (
-                    <SourceCard
+                    <RadioGroupItem
                       key={card.value}
+                      id={`smart-source-${card.value}`}
+                      value={card.value}
+                      variant="description"
                       label={card.label}
                       description={card.description}
-                      selected={source === card.value}
-                      onSelect={() => handleSourceChange(card.value)}
                     />
                   ))}
-                </div>
-              </div>
+                </RadioGroup>
+              </InputGroup>
 
-              <div className="flex flex-col gap-1.5">
+              <InputGroup fullWidth>
                 <Label>JSON path</Label>
                 <Input
                   value={path}
@@ -198,13 +207,13 @@ export function AddSmartColumnDialog({
                   placeholder="$.order.total"
                   spellCheck={false}
                 />
-                <Paragraph variant="extra-small" className="text-balance text-text-dimmed">
+                <Hint className="text-balance">
                   e.g. <code>$.order.total</code>, <code>$.items[0].sku</code>,{" "}
                   <code>$.items.length</code>
-                </Paragraph>
-              </div>
+                </Hint>
+              </InputGroup>
 
-              <div className="flex flex-col gap-1.5">
+              <InputGroup fullWidth>
                 <Label>Column label</Label>
                 <Input
                   value={effectiveLabel}
@@ -214,21 +223,27 @@ export function AddSmartColumnDialog({
                   }}
                   placeholder={labelFromPath(path)}
                 />
-              </div>
+              </InputGroup>
 
-              <div className="flex flex-col gap-1.5">
+              <InputGroup fullWidth>
                 <Label>Display as</Label>
-                <div className="grid grid-cols-2 gap-2">
+                <RadioGroup
+                  className="grid grid-cols-2 gap-2"
+                  value={displayAs}
+                  onValueChange={(next) => setDisplayAs(next as SmartColumnDisplay)}
+                >
                   {DISPLAY_OPTIONS.map((option) => (
-                    <SourceCard
+                    <RadioGroupItem
                       key={option.value}
+                      id={`smart-display-${option.value}`}
+                      value={option.value}
+                      variant="button/small"
                       label={option.label}
-                      selected={displayAs === option.value}
-                      onSelect={() => setDisplayAs(option.value)}
+                      className="w-full"
                     />
                   ))}
-                </div>
-              </div>
+                </RadioGroup>
+              </InputGroup>
             </div>
 
             <div className="flex min-h-0 flex-col gap-1.5">
@@ -279,7 +294,7 @@ export function AddSmartColumnDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="tertiary/medium" onClick={() => onOpenChange(false)}>
+          <Button variant="secondary/medium" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button variant="primary/medium" disabled={!canSubmit} onClick={handleSubmit}>
@@ -326,46 +341,6 @@ function SampleRunPicker({
   );
 }
 
-/** Radio card used for both Source (with a description) and Display as (without). */
-function SourceCard({
-  label,
-  description,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  description?: string;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={cn(
-        "flex cursor-pointer flex-col gap-1 rounded-lg border p-2.5 text-left transition",
-        selected
-          ? "border-blue-500 bg-blue-500/10"
-          : "border-grid-bright bg-background-dimmed hover:border-text-dimmed"
-      )}
-    >
-      <span className="flex items-center gap-1.5 text-sm font-medium text-text-bright">
-        <span
-          className={cn(
-            "grid size-3.5 flex-none place-items-center rounded-full border",
-            selected ? "border-blue-500" : "border-text-dimmed"
-          )}
-        >
-          {selected && <span className="size-1.5 rounded-full bg-blue-500" />}
-        </span>
-        {label}
-      </span>
-      {description && <span className="text-xs text-text-dimmed">{description}</span>}
-    </button>
-  );
-}
-
 function SmartColumnPreview({
   rows,
   def,
@@ -381,7 +356,7 @@ function SmartColumnPreview({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-grid-dimmed">
       <div className="flex flex-none items-center gap-1 border-b border-grid-dimmed bg-background-dimmed px-2.5 py-1.5">
-        <BoltIcon className="size-3.5 flex-none text-text-dimmed" />
+        <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate text-xs font-medium text-text-bright">
           {def.label || "Column"}
         </span>

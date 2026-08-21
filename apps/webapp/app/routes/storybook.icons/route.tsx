@@ -118,6 +118,7 @@ import { SideMenuRightClosedIcon } from "~/assets/icons/SideMenuRightClosed";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { SlackMonoIcon } from "~/assets/icons/SlackMonoIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
+import { SmartColumnIcon } from "~/assets/icons/SmartColumnIcon";
 import { SnakedArrowIcon } from "~/assets/icons/SnakedArrowIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
@@ -266,6 +267,7 @@ const icons: IconEntry[] = [
   { name: "SlackIcon", render: simple(SlackIcon) },
   { name: "SlackMonoIcon", render: simple(SlackMonoIcon) },
   { name: "SlidersIcon", render: simple(SlidersIcon) },
+  { name: "SmartColumnIcon", render: simple(SmartColumnIcon) },
   { name: "SnakedArrowIcon", render: simple(SnakedArrowIcon) },
   { name: "SparkleListIcon", render: simple(SparkleListIcon) },
   { name: "StarIcon", render: simple(StarIcon) },

@@ -2,7 +2,6 @@ import {
   ArrowPathIcon,
   ArrowRightIcon,
   ClockIcon,
-  BoltIcon,
   CpuChipIcon,
   NoSymbolIcon,
   RectangleStackIcon,
@@ -64,6 +63,7 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { SmartColumnIcon } from "~/assets/icons/SmartColumnIcon";
 import {
   parseColumnParams,
   resolveColumnLayout,
@@ -490,7 +490,7 @@ function SmartColumnHeader({ def }: { def: SmartColumnDef }) {
   return (
     <TableHeaderCell>
       <span className="flex items-center gap-1">
-        <BoltIcon className="size-3.5 flex-none text-text-dimmed" />
+        <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate">{def.label}</span>
       </span>
     </TableHeaderCell>

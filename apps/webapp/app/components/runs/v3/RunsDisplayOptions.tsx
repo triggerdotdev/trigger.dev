@@ -2,7 +2,6 @@ import {
   ArrowUturnLeftIcon,
   PencilSquareIcon,
   PlusIcon,
-  BoltIcon,
   StarIcon as StarIconSolid,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -10,6 +9,7 @@ import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
 import { GripVerticalIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { ColumnsIcon } from "~/assets/icons/ColumnsIcon";
+import { SmartColumnIcon } from "~/assets/icons/SmartColumnIcon";
 import { useFavoritePageToggle } from "~/components/navigation/favoritePages";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
@@ -355,7 +355,7 @@ function ColumnRow({
         >
           {col.def.label}
         </span>
-        {isSmart && <BoltIcon className="size-3.5 flex-none text-text-dimmed" />}
+        {isSmart && <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />}
       </label>
       <div className="flex flex-none items-center gap-0.5 pr-1">
         {onEdit && (
