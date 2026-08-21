@@ -89,7 +89,7 @@ import {
   ThemePreference,
 } from "~/utils/themePreference";
 import { cachedFlag, resolveOrganizationFeatureFlags } from "~/v3/featureFlags.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { pageMeta } from "~/utils/pageTitle";
 import { cn } from "~/utils/cn";
@@ -199,18 +199,32 @@ function profileUpdateError(error: string, status: number) {
 }
 
 /**
- * Shared gate for the appearance writes: the theme-switcher flag. Returns the
- * user so the caller needn't load it a second time.
+ * Shared gate for every write on this page. Returns the user so the caller
+ * needn't load it a second time.
  */
-async function requireAppearanceAccess(request: Request) {
+async function requireOwnAccountWrite(request: Request) {
   const user = await requireUser(request);
+  if (user.isImpersonating) {
+    return {
+      error: profileUpdateError("You can't change this while impersonating another user.", 403),
+    };
+  }
+
+  return { user };
+}
+
+/** The gate above, plus the theme-switcher flag. */
+async function requireAppearanceAccess(request: Request) {
+  const gate = await requireOwnAccountWrite(request);
+  if ("error" in gate) return gate;
+
   const showThemeSwitcher =
-    user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
+    gate.user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
   if (!showThemeSwitcher) {
     return { error: profileUpdateError("Not available", 404) };
   }
 
-  return { user };
+  return gate;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -252,7 +266,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export const action: ActionFunction = async ({ request }) => {
-  const userId = await requireUserId(request);
 
   const formData = await request.formData();
 
@@ -324,6 +337,9 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-name") {
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
+
     const submission = NameSchema.safeParse({ name: formData.get("name") });
     if (!submission.success) {
       return profileUpdateError(
@@ -332,14 +348,16 @@ export const action: ActionFunction = async ({ request }) => {
       );
     }
 
-    await updateUserName({ id: userId, name: submission.data.name });
+    await updateUserName({ id: gate.user.id, name: submission.data.name });
     return json({ success: true as const });
   }
 
   if (formData.get("action") === "update-email") {
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
+
     // Re-checked: the loader only picked the modal.
-    const user = await requireUser(request);
-    const ownership = await getEmailOwnership(user);
+    const ownership = await getEmailOwnership(gate.user);
     if (ownership === "idp") {
       return profileUpdateError(
         "Your email address is managed by your organization's identity provider.",
@@ -363,15 +381,18 @@ export const action: ActionFunction = async ({ request }) => {
 
     const { email } = submission.data;
     const existingUser = await prisma.user.findFirst({ where: { email } });
-    if (existingUser && existingUser.id !== userId) {
+    if (existingUser && existingUser.id !== gate.user.id) {
       return profileUpdateError("Email is already being used by a different account", 400);
     }
 
-    await updateUserEmail({ id: userId, email });
+    await updateUserEmail({ id: gate.user.id, email });
     return json({ success: true as const });
   }
 
   if (formData.get("action") === "update-marketing-emails") {
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
+
     const submission = MarketingEmailsSchema.safeParse({
       marketingEmails: formData.get("marketingEmails"),
     });
@@ -381,7 +402,7 @@ export const action: ActionFunction = async ({ request }) => {
 
     // No-op when the stored value already matches.
     await updateUserMarketingEmails({
-      id: userId,
+      id: gate.user.id,
       marketingEmails: submission.data.marketingEmails,
     });
     return json({ success: true as const });
