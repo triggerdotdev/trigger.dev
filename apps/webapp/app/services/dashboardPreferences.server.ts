@@ -4,6 +4,7 @@ import { type UserFromSession } from "./session.server";
 import {
   type DashboardPreferences,
   type FavoritePage,
+  mergeHiddenItems,
   parseDashboardPreferences,
   SideMenuPreferences,
 } from "~/utils/dashboardPreferences";
@@ -480,6 +481,13 @@ export async function updateSideMenuCustomization({
   favorites?: Array<{ id: string; label: string }>;
   /** Favorites deleted from the customize modal. */
   removedFavoriteIds?: string[];
+  /**
+   * Item ids the submitting dialog rendered. `hiddenItems` only describes these,
+   * so ids outside the list keep whatever they had: the dialog's section list
+   * depends on the org whose feature flags were in scope, and a narrower list
+   * must not un-hide items belonging to a wider one.
+   */
+  knownItemIds?: string[];
 }) {
   if (user.isImpersonating) {
     return;
@@ -494,8 +502,7 @@ export async function updateSideMenuCustomization({
     }
 
     if (hiddenItems !== undefined) {
-      next.hiddenItems =
-        hiddenItems && Object.keys(hiddenItems).length > 0 ? hiddenItems : undefined;
+      next.hiddenItems = mergeHiddenItems(currentSideMenu.hiddenItems, hiddenItems, knownItemIds);
     }
 
     if (sectionItemOrder !== undefined) {
