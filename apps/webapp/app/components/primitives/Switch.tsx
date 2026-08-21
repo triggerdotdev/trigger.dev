@@ -6,19 +6,11 @@ import { cn } from "~/utils/cn";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 
 /*
-  The thumb sits inside the track's 2px transparent border, so an even gap on all
-  four sides means: thumb height == the track's content box, and a checked travel
-  of (content width - thumb). The medium track is h-4 w-7.5, a 12x26 content box,
-  so that's a 12px thumb travelling 14px. `large` already follows this; the thumb
-  here used to be 14px, which overflowed the 12px content box and left 1px above
-  and below against 2px at the ends - a handle tight to the top and bottom rails.
-
-  The press squish widens the thumb and, when checked, pulls the same distance
-  off the travel so the leading edge stays pinned: +4px width, -4px translate.
-
-  `small` (h-3 w-5.5, 10px thumb) still has the original mismatch. It's left
-  alone here because it's the variant used across the app, not the one on the
-  profile page - fixing it would be an 8px thumb travelling 10px.
+  The thumb sits inside the track's 2px transparent border, so an even gap all
+  round means thumb height == the content box and a travel of (width - thumb).
+  The h-4 w-7.5 track is a 12x26 box, hence a 12px thumb travelling 14px. The
+  press squish widens the thumb and takes the same off the travel, +4/-4, so the
+  leading edge stays pinned. `small` still has the original uneven gap.
 */
 const MEDIUM_THUMB = cn(
   "h-3 w-3 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
@@ -78,8 +70,7 @@ const variations = {
     thumb: MEDIUM_THUMB,
     text: "text-sm text-text-dimmed",
   },
-  /* Like medium, minus the hover box: the toggle is the whole target, for rows
-     that already carry their own affordance. */
+  /* Medium without the hover box, for rows that carry their own affordance. */
   "minimal/medium": {
     container: "flex items-center gap-x-2 rounded-md focus-custom",
     root: "h-4 w-7.5",
@@ -123,8 +114,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
     const switchElement = (
       <div
         className={cn(
-          // The checked track shares --color-accent-fill with the primary
-          // button, so the two accents are the same purple and can't drift.
+          // Shares --color-accent-fill with the primary button.
           "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-accent-fill group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
           root
         )}
@@ -132,9 +122,8 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         <SwitchPrimitives.Thumb
           className={cn(
             thumb,
-            /* White once checked, in every theme, matching the primary button's
-               label on the same fill - an off-white thumb sat at 2.80:1 against
-               the track, under the 3:1 a control's parts need. */
+            /* White in every theme once checked: an off-white thumb was 2.80:1
+               against the fill, under the 3:1 a control's parts need. */
             "pointer-events-none block rounded-full bg-white transition-[translate,width,background-color] dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-white"
           )}
         />

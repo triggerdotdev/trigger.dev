@@ -70,11 +70,8 @@ class UnifiedTaskListPresenter {
     const items = toUnifiedItems(taskResult.tasks, agentResult.agents);
     const allSlugs = items.map((item) => item.slug);
 
-    // Both deferred promises below are backstopped: the route only subscribes
-    // (via typeddefer) after further awaits, so a rejection landing in that
-    // gap — e.g. ClickHouse refusing connections — would otherwise be an
-    // unhandled rejection and take the server down. Awaiting them still
-    // rejects into the route's error elements.
+    // Backstopped: the route subscribes via typeddefer only after further
+    // awaits, so a rejection in that gap would be unhandled.
     const hourlyActivity: Promise<HourlyTaskActivity> =
       allSlugs.length === 0
         ? Promise.resolve({})

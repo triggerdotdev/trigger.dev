@@ -9,11 +9,8 @@ export function PulsingDot({
   ringClassName?: string;
   dotClassName?: string;
 }) {
-  /* The dot fills the container rather than carrying its own size, so a call
-     site that resizes the whole thing (`className="size-3"`) scales the dot and
-     the ping ring together. It used to be a fixed size-2 next to a full-width
-     ring, so any other size left a small dot sitting in the corner of an
-     oversized halo - flex-start in both axes, since nothing centered it. */
+  /* The dot fills the container, so resizing the whole thing scales the dot and
+     the ping ring together. */
   return (
     <span className={cn("relative flex size-2 items-center justify-center", className)}>
       <span

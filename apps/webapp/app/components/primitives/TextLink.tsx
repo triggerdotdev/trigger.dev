@@ -6,14 +6,8 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
-/* Both variants hover by shifting color, never by adding an underline: the
-   underline is reserved for the "Underline links" preference, so its presence
-   always means the preference is on.
-
-   `primary` reads the link token rather than a raw palette value, so each theme
-   picks its own link color - a single hard-coded indigo can't clear 4.5:1 on
-   both a near-black card and white. There used to be a separate `token` variant
-   for exactly that; it's gone, because this is now the only behaviour. */
+/* Hover shifts colour, never adds an underline: that's reserved for the
+   "Underline links" preference, so its presence always means the preference. */
 const colors = {
   primary: "text-text-link transition hover:text-text-link-hover",
   secondary: "text-text-dimmed transition hover:text-text-bright",
@@ -22,12 +16,8 @@ const colors = {
 const layout = "inline-flex gap-0.5 items-center group";
 
 /**
- * A link's colour plus `inline-text-link`, the marker the "Underline links"
- * preference targets (see tailwind.css) - without this component's layout.
- *
- * For links that can't be a `TextLink`: ones that must stay in the inline flow
- * (markdown prose, where the component's inline-flex would stop them wrapping),
- * and triggers that aren't anchors at all.
+ * A link's colour plus the `inline-text-link` marker, without the layout - for
+ * links that must stay in the inline flow, and triggers that aren't anchors.
  */
 export function textLinkClassName(variant: keyof typeof colors = "primary") {
   return cn("inline-text-link focus-visible:focus-custom", colors[variant]);

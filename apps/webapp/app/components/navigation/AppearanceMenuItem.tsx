@@ -14,20 +14,13 @@ import { SIDE_MENU_POPOVER_ITEM_ICON, SIDE_MENU_POPOVER_ITEM_LABEL } from "./sid
 
 const THEME_ACTION_PATH = "/resources/preferences/theme";
 
-/**
- * Theme switcher for the account popover: an "Appearance" submenu listing each theme, with a check
- * against the current one. Picking a theme doesn't navigate, so the menu stays open and the new
- * theme applies underneath it. Hidden entirely while the theme switcher feature flag is off,
- * matching the account page.
- */
 export function AppearanceMenuItem() {
   const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
   const fetcher = useFetcher<{ success?: boolean }>();
   const savedTheme = rootData?.themePreference;
   const systemThemes = rootData?.systemThemes;
 
-  // A failed write would otherwise leave the optimistic theme on screen, since
-  // the loader data never changes and so `useSystemThemeSync` never re-runs.
+  // A failed write would otherwise leave the optimistic theme on screen.
   useEffect(() => {
     if (fetcher.state !== "idle" || !fetcher.data || fetcher.data.success || !savedTheme) return;
     applyThemePreference(savedTheme, systemThemes);
@@ -37,7 +30,6 @@ export function AppearanceMenuItem() {
     return null;
   }
 
-  // Move the check as soon as a theme is clicked; the write follows.
   const pendingTheme = fetcher.formData?.get("theme");
   const theme =
     typeof pendingTheme === "string"
@@ -45,16 +37,13 @@ export function AppearanceMenuItem() {
       : rootData.themePreference;
 
   const pickTheme = (value: ThemePreference) => {
-    // Applied here rather than waiting for the write to come back through the
-    // root loader: dismissing the popover unmounts this row, and an unmounted
-    // fetcher's revalidation is dropped, which left the theme untouched even
-    // though the preference had saved.
+    // Dismissing the popover unmounts this row, and an unmounted fetcher's
+    // revalidation is dropped, so apply the theme here rather than waiting.
     applyThemePreference(value, rootData.systemThemes);
     fetcher.submit({ theme: value }, { method: "post", action: THEME_ACTION_PATH });
   };
 
   return (
-    // Much narrower than the standard submenu: these labels don't need the room.
     <SideMenuPopoverSubMenu title="Appearance" icon={ToggleSwitchIcon} contentClassName="min-w-36">
       <div className="flex flex-col gap-1 p-1">
         {THEME_OPTIONS.map((option) => (

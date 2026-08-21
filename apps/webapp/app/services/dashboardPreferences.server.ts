@@ -238,10 +238,7 @@ export async function updateUnderlineLinksPreference({
   `;
 }
 
-/**
- * Which theme `system` resolves to at one end of the OS setting. `end` names the
- * key, so both ends share this one narrow jsonb_set write.
- */
+/** `end` names the key, so both ends share this one narrow jsonb_set write. */
 export async function updateSystemThemePreference({
   user,
   end,
@@ -259,8 +256,7 @@ export async function updateSystemThemePreference({
     return;
   }
 
-  // Narrow jsonb_set write: see updateThemePreference. The key is a checked
-  // union, never caller-supplied text.
+  // Narrow jsonb_set write. The key is a checked union, never caller text.
   const key = end === "systemLightTheme" ? "{systemLightTheme}" : "{systemDarkTheme}";
   return prisma.$executeRaw`
     UPDATE "User"

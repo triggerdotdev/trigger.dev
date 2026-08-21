@@ -68,37 +68,11 @@ import { StoryGrid, StoryPage, StorySection, StorySubSection } from "../storyboo
 import { measureTextContrast, NON_TEXT_THRESHOLD, TEXT_THRESHOLD } from "./contrast";
 import { useDocumentIconContrast, useDocumentTheme, useThemeRevision } from "./useThemeRevision";
 
-/* An audit page, not a component gallery. Every entry is something the app
-   currently leans on color for - either the color is the only difference between
-   two meanings, or the color itself is too low-contrast to see. Each one renders
-   five times: once per theme, then once under the "Stronger colors" preference.
-
-   Scope note: the preference used to swap icons as well, and this page was named
-   for that. It now only moves colors, so entries whose whole point was a shared
-   glyph have been dropped - what remains is either an accent that shifts, or an
-   icon/label pair where the label's treatment changes and the icon is the
-   context you need to read it.
-
-   The columns work by putting `data-theme` and `data-icon-contrast` on a wrapper
-   div. Every rule either preference drives is a plain attribute or descendant
-   selector - `:is([data-theme="light"], ...)`, `[data-icon-contrast="true"]
-   .contrast-chip`, the `system:` variant, the `dark:` variant - so all of it
-   applies from any ancestor, not just <html>. Even the `--chart-2`/`--chart-3`
-   override resolves here: it wants both attributes on one element, and the last
-   column restates the theme it inherited. */
-
-// ---------------------------------------------------------------------------
 // Scaffolding
-// ---------------------------------------------------------------------------
 
-/* The four themes side by side, then the preference. Pinning `data-theme` on a
-   wrapper works because every theme block is written as a plain attribute
-   selector (`:is([data-theme="light"], ...)`) rather than being anchored to
-   <html>, and the `dark:` variant is descendant-capable too - so a nested column
-   gets the whole token set, not just the custom properties.
-
-   The last column pins no theme of its own: it follows the page's switcher, so
-   you can put any theme next to its own high-contrast treatment. */
+/* Theme blocks are plain attribute selectors, so pinning `data-theme` on a
+   wrapper gives a nested column the whole token set. The last column pins
+   nothing and follows the page switcher. */
 const THEME_COLUMNS = [
   { key: "light", label: "Light", theme: "light", strongerColors: false },
   { key: "white", label: "White", theme: "white", strongerColors: false },
@@ -109,16 +83,10 @@ const THEME_COLUMNS = [
 
 type ThemeColumn = (typeof THEME_COLUMNS)[number];
 
-/** Minimum width of one theme column, so a narrow viewport scrolls rather than
- *  crushing five columns of live UI into slivers. */
 const THEME_COLUMN_MIN = "13rem";
 
 const themeGridTemplate = (min: string) => `repeat(5, minmax(${min}, 1fr))`;
 
-/**
- * A cell rendered in one theme's context. The four fixed columns restate the
- * theme; the preference column takes whatever the page is on.
- */
 function ThemeCell({
   column,
   className,
@@ -133,8 +101,7 @@ function ThemeCell({
     <div
       data-theme={column.theme ?? documentTheme}
       data-icon-contrast={column.strongerColors ? "true" : "false"}
-      // An explicit surface, not the page background: statuses live in cards and
-      // tables, and the measured ratios need a known backdrop.
+      // Ratios need a known backdrop, not the page background.
       className={cn("min-w-0 bg-background-bright", className)}
     >
       {children}
@@ -142,7 +109,6 @@ function ThemeCell({
   );
 }
 
-/** The five column labels, above a block's cells. */
 function ThemeColumnLabels({ leading }: { leading?: ReactNode }) {
   return (
     <>
@@ -156,10 +122,6 @@ function ThemeColumnLabels({ leading }: { leading?: ReactNode }) {
   );
 }
 
-/**
- * One audited pattern. `where` is the file (or files) it lives in, `note` says
- * what the color is carrying. The children render once per column.
- */
 function Audit({
   title,
   where,
@@ -170,7 +132,7 @@ function Audit({
   title: string;
   where: string[];
   note: ReactNode;
-  /** Widen the columns for blocks holding a table rather than a single sample. */
+  /** Widen for blocks holding a table. */
   columnMin?: string;
   children: ReactNode;
 }) {
@@ -210,21 +172,15 @@ function Audit({
   );
 }
 
-/** A vertical stack, the way statuses sit in a list. */
 function Stack({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("flex flex-col items-start gap-2", className)}>{children}</div>;
 }
 
-/** A horizontal run, for icon-only sets. */
 function Row({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("flex flex-wrap items-center gap-3", className)}>{children}</div>;
 }
 
-/**
- * A stand-in for a table row. Statuses almost never appear alone in the app -
- * they sit in a list where the neighbouring rows are the only thing telling you
- * what "different" looks like.
- */
+/** Neighbouring rows are the only thing showing what "different" looks like. */
 function MockRows({ columns, rows }: { columns: string[]; rows: ReactNode[][] }) {
   return (
     <div className="overflow-hidden rounded-sm border border-grid-dimmed">
@@ -255,35 +211,19 @@ function MockRows({ columns, rows }: { columns: string[]; rows: ReactNode[][] })
   );
 }
 
-// ---------------------------------------------------------------------------
 // Measured contrast
-// ---------------------------------------------------------------------------
 
 type ContrastEntry = {
-  /** What to render the sample in: either a token name or a utility class. */
   token?: string;
   className?: string;
-  /** Where the app uses it. */
   usedBy: string;
 };
 
-/** Name+usage, fill, ratio, verdict - wide enough that "passes 4.5:1" doesn't wrap. */
-/* One mode's readings: token details, then Fill / Ratio / Verdict. The five
-   themes come from the Audit columns wrapping this, not from the table - each
-   column is already a `data-theme` context, so the same table measured inside it
-   reports that theme's answer. Building the themes in here as well is what
-   produced twenty-five mode blocks per table. */
 const CONTRAST_GRID = "grid grid-cols-[minmax(0,1fr)_2.5rem_3.5rem_4.75rem]";
 
-/** Wider than a component column: each of these holds four sub-columns. */
 const CONTRAST_COLUMN_MIN = "22rem";
 
-/**
- * One measured swatch. The ratio is the sample's own computed color against the
- * surface behind it, read off the DOM - so it follows the theme of whichever
- * column it lands in, the contrast slider, and the preference, with no table of
- * hard-coded values to fall out of date.
- */
+/** Ratio is read off the DOM, so it follows the column's theme and the slider. */
 function ContrastRow({ entry }: { entry: ContrastEntry }) {
   const sampleRef = useRef<HTMLSpanElement>(null);
   const revision = useThemeRevision();
@@ -293,18 +233,12 @@ function ContrastRow({ entry }: { entry: ContrastEntry }) {
   useEffect(() => {
     if (!sampleRef.current) return;
     setRatio(measureTextContrast(sampleRef.current));
-    /* What the variable actually resolves to in this column, for the swatch
-       tooltip - the whole point being that one token is five different values
-       across the row. */
     setResolved(getComputedStyle(sampleRef.current).color);
   }, [revision, entry.token, entry.className]);
 
   const name = entry.token ? entry.token.replace("--color-", "") : entry.className;
   const style = entry.token ? { color: `var(${entry.token})` } : undefined;
-  /* Under the 3:1 floor the value is unusable for anything, text or not - call
-     it out in bold red so the failures pull the eye down a long table. The
-     verdict words carry the same information, so the red is reinforcement
-     rather than the signal. */
+  /* Below the 3:1 non-text floor nothing passes; flag it. */
   const fails = ratio !== null && ratio < NON_TEXT_THRESHOLD;
 
   return (
@@ -401,7 +335,6 @@ const ENVIRONMENT_TOKENS: ContrastEntry[] = [
   { token: "--color-prod", usedBy: "Production env label + icon" },
 ];
 
-/** The nav/section accent set, in the order tailwind.css declares it. */
 const ACCENT_TOKENS: ContrastEntry[] = [
   { token: "--color-tasks", usedBy: "Tasks nav + standard task icon" },
   { token: "--color-runs", usedBy: "Runs nav, run metrics" },
@@ -434,11 +367,7 @@ const ACCENT_TOKENS: ContrastEntry[] = [
   { token: "--color-previewBranches", usedBy: "Preview branches nav" },
 ];
 
-/**
- * Raw palette utilities used straight from components. These sit outside the
- * themable layer entirely: they are the same color in all four themes and the
- * accessibility preference can't touch them.
- */
+/** Outside the themable layer: same colour in every theme, preference can't touch them. */
 const RAW_PALETTE_CLASSES: ContrastEntry[] = [
   { className: "text-amber-300", usedBy: "TaskRunStatus.tsx — Paused" },
   { className: "text-amber-400", usedBy: "SpanTitle.tsx / RunIcon.tsx — WARN spans and logs" },
@@ -457,7 +386,7 @@ const RAW_PALETTE_CLASSES: ContrastEntry[] = [
   { className: "text-yellow-500", usedBy: "RunTimeline.tsx — fallback event marker" },
 ];
 
-/** Chart/sparkbar series for run statuses - judged at 3:1, not 4.5:1. */
+/** Judged at 3:1, not 4.5:1. */
 const RUN_STATUS_CHART_TOKENS: ContrastEntry[] = [
   { token: "--color-run-pending", usedBy: "Queued" },
   { token: "--color-run-delayed", usedBy: "Delayed" },
@@ -490,11 +419,8 @@ const CALLOUT_TOKENS: ContrastEntry[] = [
   { token: "--color-callout-pricing-text", usedBy: "Callout body — pricing" },
 ];
 
-// ---------------------------------------------------------------------------
 // Fixtures
-// ---------------------------------------------------------------------------
 
-/** The four environment types plus a branch, as the env switcher lists them. */
 const ENVIRONMENTS = [
   { type: "DEVELOPMENT" as const },
   { type: "STAGING" as const },
@@ -503,17 +429,12 @@ const ENVIRONMENTS = [
   { type: "PREVIEW" as const, branchName: "feat/checkout-rewrite" },
 ];
 
-/** The three run statuses that share RectangleStackIcon. */
 const STACK_ICON_STATUSES = ["PENDING", "PENDING_VERSION", "DEQUEUED"] as const;
 
-/* These two were exported from the components purely for this audit. Main's
-   unused-code pass removed them, so they live here now. */
 const LOG_LEVELS = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"] as const;
 
-/* Written out rather than derived from the Prisma enum: that package pulls in the
-   client, and a value import of it here breaks client-side navigation to this
-   page - SSR resolves it, the browser can't, and Remix falls back to a full
-   document load. A type-only import is erased, so it costs nothing. */
+/* Literal, not derived from the Prisma enum: a value import of that package
+   here breaks client-side navigation to this page. Type-only is erased. */
 const ATTEMPT_STATUSES: TaskRunAttemptStatus[] = [
   "PENDING",
   "EXECUTING",
@@ -531,8 +452,7 @@ const BULK_ACTION_TYPES: BulkActionType[] = ["REPLAY", "CANCEL"];
 
 const BULK_ACTION_STATUSES: BulkActionStatus[] = ["PENDING", "COMPLETED", "ABORTED"];
 
-/** The queue health labels from the Queues route. Paused and At capacity share
- *  one tint, so color alone can't separate them even before contrast. */
+/** Paused and At capacity share one tint, so colour alone can't separate them. */
 const QUEUE_HEALTH = [
   {
     label: "Paused",
@@ -553,8 +473,7 @@ const QUEUE_HEALTH = [
   },
 ];
 
-/** Copied from the Queues route so the chip can be shown here without exporting
- *  it. Keep in sync if QUEUE_HEALTH_STYLES changes. */
+/** Keep in sync with QUEUE_HEALTH_STYLES. */
 function QueueHealthChip({ label, className }: { label: string; className: string }) {
   return (
     <span
@@ -579,9 +498,8 @@ const TRACE_BAR_STATES = [
 
 const CHART_SERIES = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
 
-/** Five nav items with their real icons and accent classes, as sideMenuSections
- *  declares them. Classes rather than inline styles on purpose: the monochrome
- *  override is a stylesheet rule, and an inline color would out-specify it. */
+/** Classes, not inline styles: the monochrome override is a stylesheet rule
+ *  and an inline colour would out-specify it. */
 const NAV_ITEMS = [
   { label: "Runs", icon: RunsIcon, activeIconColor: "text-runs" },
   { label: "Batches", icon: BatchesIcon, activeIconColor: "text-batches" },
@@ -597,14 +515,7 @@ const AGENT_STATUS_SERIES = [
   { label: "Canceled / Expired", token: "--color-text-dimmed" },
 ];
 
-// ---------------------------------------------------------------------------
-// Palette reference (formerly the Theme tokens page)
-// ---------------------------------------------------------------------------
-
-/* The raw semantic layer: surfaces, lines and the neutral ramp. These aren't
-   accents carrying meaning, so they get swatches rather than a measured verdict
-   - what matters is the value itself, and the theme switcher above shows each
-   theme's in place. */
+// Palette reference
 
 const BACKGROUND_TOKENS = [
   "--color-background-deep",
@@ -653,26 +564,14 @@ function Swatch({ token, tall }: { token: string; tall?: boolean }) {
   );
 }
 
-// ---------------------------------------------------------------------------
 // Chart examples
-// ---------------------------------------------------------------------------
 
-/* Invented numbers, shaped like a week of runs so the stack heights vary the way
-   a real chart's would. Both charts share one series list, so the same four
-   accents can be compared as fills and as strokes. */
-/* Three bars, not a full week: each chart renders five times across the row, so a
-   narrow column needs stacks wide enough to read the four fills against each
-   other rather than a dense week of slivers. */
 const CHART_WEEK = [
   { day: "Mon", completed: 186, queued: 38, delayed: 22, failed: 24 },
   { day: "Tue", completed: 205, queued: 44, delayed: 15, failed: 18 },
   { day: "Wed", completed: 164, queued: 29, delayed: 34, failed: 41 },
 ];
 
-/* A deliberate mix of how the tokens behave, so the columns show the range
-   rather than a best case: queues-chart moves on every theme, success and
-   warning only on the dark ones (Light and White already darken them to the
-   high-contrast value), and error never moves. */
 const CHART_SERIES_TOKENS = [
   { key: "completed", label: "Completed", color: "var(--color-success)" },
   { key: "queued", label: "Queued", color: "var(--color-queues-chart)" },
@@ -683,7 +582,6 @@ const CHART_SERIES_TOKENS = [
 const AXIS_TICK = { fontSize: 10, fill: "var(--color-text-dimmed)" } as const;
 const CHART_MARGIN = { top: 4, right: 4, bottom: 0, left: -18 } as const;
 
-/** Swatch legend, so a series can be named without a tooltip. */
 function SeriesLegend() {
   return (
     <Row className="gap-x-3 gap-y-1 pt-2">
@@ -700,11 +598,8 @@ function SeriesLegend() {
   );
 }
 
-/* Animation is off on both: each renders twice on this page, and a chart that
-   grows out of the axis on every theme switch makes the two columns hard to
-   compare mid-flight. */
+/* Animation off: each chart renders five times across the row. */
 
-/** Stacked bars, so the four fills meet edge to edge with no gap to separate them. */
 function StackedBarExample() {
   return (
     <div className="h-44 w-full">
@@ -729,7 +624,6 @@ function StackedBarExample() {
   );
 }
 
-/** The same series as strokes, where a 2px line has far less area than a bar. */
 function LineExample() {
   return (
     <div className="h-44 w-full">
@@ -755,9 +649,7 @@ function LineExample() {
   );
 }
 
-// ---------------------------------------------------------------------------
 // Page
-// ---------------------------------------------------------------------------
 
 export default function Story_() {
   const documentIconContrast = useDocumentIconContrast();

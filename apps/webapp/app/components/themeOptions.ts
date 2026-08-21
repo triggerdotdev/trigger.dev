@@ -13,24 +13,19 @@ export type ThemeOption = {
   icon: FunctionComponent<{ className?: string }>;
 };
 
-/** The themes offered everywhere, in display order - including the account
- *  popover's submenu. Shared by every theme picker so the labels and icons
- *  can't drift apart. */
+/** Shared by every theme picker, in display order. */
 export const THEME_OPTIONS: ThemeOption[] = [
   { value: "system", label: "System", icon: MonitorIcon },
   { value: "light", label: "Light", icon: SunIcon },
   { value: "dark", label: "Dark", icon: MoonIcon },
 ];
 
-/** Light and Dark with their surfaces pinned flat, so grid lines carry the
- *  layout. Account page only. The icons here are the
- *  dark-theme pair; `themeOptionIcon` swaps them per active theme. */
+/** Account page only. Icons are the dark-theme pair; `themeOptionIcon` swaps them. */
 const FLAT_OPTIONS: ThemeOption[] = [
   { value: "white", label: "White", icon: CircleFilledIcon },
   { value: "black", label: "Black", icon: CircleOutlineIcon },
 ];
 
-/** Every theme, for the account page's full picker. */
 export const ALL_THEME_OPTIONS: ThemeOption[] = [...THEME_OPTIONS, ...FLAT_OPTIONS];
 
 export const THEME_OPTIONS_BY_VALUE = Object.fromEntries(
@@ -38,13 +33,8 @@ export const THEME_OPTIONS_BY_VALUE = Object.fromEntries(
 ) as Record<ThemePreference, ThemeOption>;
 
 /**
- * The icon to draw for an option under the active theme.
- *
- * Black and White show the active theme's background *through* the circle: the
- * option matching the current end of the scale is a ring, so the background
- * reads through it, and the opposing one is a solid disc in the foreground
- * colour. On a dark theme that makes Black a ring and White a filled disc; on a
- * light theme it flips. Every other option has one fixed icon.
+ * Black and White show the active background through the circle: the option
+ * matching the current end is a ring, the opposing one a solid disc.
  */
 export function themeOptionIcon(option: ThemeOption, appearance: ThemeAppearance) {
   if (option.value === "black") {
@@ -56,7 +46,6 @@ export function themeOptionIcon(option: ThemeOption, appearance: ThemeAppearance
   return option.icon;
 }
 
-/** The two candidates for each end of the `system` setting. */
 export const SYSTEM_LIGHT_OPTIONS: ThemeOption[] = ALL_THEME_OPTIONS.filter(
   (option) => option.value === "light" || option.value === "white"
 );

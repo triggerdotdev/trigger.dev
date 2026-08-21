@@ -8,9 +8,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { SIDE_MENU_POPOVER_ITEM_ICON, SIDE_MENU_POPOVER_ITEM_LABEL } from "./sideMenuTypes";
 
 /**
- * Hover-expandable submenu row for side-menu popovers (Account, Switch organization, Integrations,
- * Appearance): a menu item with a trailing chevron that reveals `children` in a popover to the
- * right, with a short close delay so the pointer can cross the gap.
+ * A menu item whose chevron reveals `children` in a popover to the right, with a
+ * short close delay so the pointer can cross the gap.
  */
 export function SideMenuPopoverSubMenu({
   title,

@@ -35,8 +35,7 @@ export function ErrorStatusBadge({
     <span
       className={cn(
         "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
-        // The contrast ring is for tints: `bright` fills solid under the
-        // preference, where the ring would be a hairline in the label's colour.
+        // The contrast ring is for tints; `bright` fills solid.
         prominence !== "bright" && "contrast-chip",
         (prominence === "bright" ? brightStyles : subtleStyles)[status],
         className

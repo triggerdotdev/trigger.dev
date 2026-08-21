@@ -4,14 +4,7 @@ import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
 
-/* Shared scaffolding for storybook pages: one long scrolling page per component
-   (or component group), split into titled sections whose samples sit in a
-   responsive grid of labelled cells. */
-
-/**
- * The component's own file name, copyable on hover, so a story can be traced
- * back to source without hunting. Pass every file a page covers.
- */
+/** The component's file name, copyable on hover. Pass every file a page covers. */
 export function ComponentNames({ names }: { names: string[] }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">

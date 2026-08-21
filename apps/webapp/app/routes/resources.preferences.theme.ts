@@ -7,8 +7,7 @@ import { cachedFlag } from "~/v3/featureFlags.server";
 export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
-  // Same gate as the account page: while the flag is off, everyone stays on the
-  // default theme, so a preference must not be writable from the menu either.
+  // Same gate as the account page: not writable while the flag is off.
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
   if (!showThemeSwitcher) {
@@ -16,8 +15,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const formData = await request.formData();
-  // Parsed strictly rather than normalized: an unknown value should fail loudly
-  // instead of silently resetting the user's theme to the default.
+  // Strict, not normalized: an unknown value must fail rather than reset.
   const theme = ThemePreference.safeParse(formData.get("theme"));
   if (!theme.success) {
     return json({ success: false, error: "Invalid theme" }, { status: 400 });

@@ -86,9 +86,8 @@ class AgentListPresenter {
       };
     }
 
-    // All queries are deferred for streaming. Backstopped: consumers subscribe
-    // late (or, for some callers, not at all), and an unhandled rejection in
-    // the gap kills the server.
+    // Deferred for streaming, and backstopped: consumers subscribe late or,
+    // for some callers, not at all.
     const activeStates = backstopPromise(this.#getActiveStates(clickhouse, environmentId, slugs));
     const conversationSparklines = backstopPromise(
       this.#getConversationSparklines(clickhouse, environmentId, slugs)

@@ -61,9 +61,7 @@ const theme = {
   primary: {
     textColor: "text-white transition group-disabled/button:text-white/60",
     button:
-      // Shares --color-accent-fill with the switch's checked track, so the two
-      // accents can't drift. The border is a fixed bevel one stop up the ramp,
-      // like the indigo pair it replaces.
+      // Shares --color-accent-fill with the switch's checked track.
       "bg-accent-fill border border-lavender-500 group-hover/button:bg-lavender-500 group-hover/button:border-lavender-400 group-disabled/button:opacity-50 group-disabled/button:bg-accent-fill group-disabled/button:border-lavender-500 group-disabled/button:pointer-events-none",
     shortcut:
       "border-white/40 text-white group-hover/button:border-white/60 group-hover/button:text-white",
@@ -72,9 +70,7 @@ const theme = {
   secondary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      // On light, hover darkens off white. On the dark themes bg-secondary is
-      // charcoal-650, so hover steps one stop up the scale to charcoal-600
-      // (surface-control) - background-raised is charcoal-700, i.e. darker.
+      // Hover steps up the scale; background-raised would be darker.
       "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised dark:group-hover/button:bg-surface-control group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
@@ -302,11 +298,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
           className={cn(
             textAlignLeft ? "text-left" : "justify-center",
             "flex w-full items-center",
-            // The label row owns the variant's text color so children inherit it
-            // whatever shape they are. Setting it only on the string branch below
-            // left element children (a fragment, a span, text mixed with a value)
-            // inheriting the page color instead - near-white on the dark themes,
-            // which read as roughly right, but near-black on Light and White.
+            // Set here, not on the string branch below, so element children
+            // inherit the variant's colour rather than the page's.
             textColorClassName,
             iconSpacingClassName,
             iconSpacing,
@@ -355,9 +348,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
             renderShortcutKey()}
         </div>
         {showSpinner && (
-          // Wears the variant's text color so the spinner tracks the button it's
-          // on: white on primary and danger, and dark ink on the neutral
-          // variants once the theme is light rather than white on near-white.
+          // Inherits the variant's colour so the spinner tracks its button.
           <span
             className={cn("absolute inset-0 flex items-center justify-center", textColorClassName)}
           >

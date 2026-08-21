@@ -50,10 +50,9 @@ const DashboardPreferences = z.object({
   /* An unknown value (e.g. written by a newer deploy) degrades to undefined
      instead of failing the whole blob and erasing every other setting */
   theme: ThemePreference.optional().catch(undefined),
-  /** Interface contrast, 0-100. A percentage of the active theme's own range
-   *  rather than a shared scale, so it stays meaningful across themes. */
+  /** 0-100, a position within the active theme's own range. */
   contrast: z.number().int().min(0).max(100).optional().catch(undefined),
-  /** Swaps the Classic icon and badge accents for the high-contrast set. */
+  /** Swaps the base icon and badge accents for the high-contrast set. */
   iconContrast: z.boolean().optional().catch(undefined),
   /** Underlines inline links. */
   underlineLinks: z.boolean().optional().catch(undefined),

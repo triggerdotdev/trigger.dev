@@ -1,10 +1,5 @@
-/* Live contrast measurement for the Colors audit page. Ratios are read off real
-   DOM nodes rather than hard-coded, so a swatch always reports what that
-   combination resolves to - theme, the interface contrast slider and the
-   Stronger colors preference all feed into the same custom properties, and any
-   of them can move a token. Because the measurement walks the DOM for its
-   background, a column that pins `data-theme` on a wrapper gets that theme's
-   answer without the page having to switch. */
+/* Ratios are read off real DOM nodes, so a column that pins `data-theme` on a
+   wrapper reports that theme's answer without the page having to switch. */
 
 export type Rgb = { r: number; g: number; b: number; a: number };
 
@@ -25,20 +20,14 @@ function getParseContext() {
   return parseContext;
 }
 
-/**
- * Any CSS color the browser can parse -> 8-bit RGBA. Goes through a canvas
- * rather than a regex because computed values here are not all `rgb()`:
- * `color-mix()` (the contrast ramp) and `oklab()` both show up, and the exact
- * serialization varies by browser version.
- */
+/** Via canvas, not a regex: computed values include `color-mix()` and `oklab()`. */
 export function parseCssColor(value: string | null | undefined): Rgb | null {
   if (!value) return null;
 
   const ctx = getParseContext();
   if (!ctx) return null;
 
-  // An unparseable assignment leaves fillStyle untouched, so try it against two
-  // different seeds: if both land on the same value the assignment took.
+  // An unparseable assignment leaves fillStyle untouched, so seed it twice.
   ctx.fillStyle = "#000000";
   ctx.fillStyle = value;
   const fromBlack = ctx.fillStyle;
@@ -65,10 +54,8 @@ export function compositeOver(fg: Rgb, bg: Rgb): Rgb {
 }
 
 /**
- * The surface an element actually sits on: walk up until something opaque is
- * found, then composite the translucent layers back down. Tinted chips
- * (`bg-error/10` and friends) are everywhere in this audit, so stopping at the
- * first background-color would report the wrong backdrop.
+ * Walks up to the first opaque background, then composites the translucent
+ * layers back down - tinted chips would otherwise report the wrong backdrop.
  */
 export function effectiveBackgroundColor(element: Element | null): Rgb {
   const layers: Rgb[] = [];
@@ -83,8 +70,7 @@ export function effectiveBackgroundColor(element: Element | null): Rgb {
     node = node.parentElement;
   }
 
-  // Nothing opaque found (only possible if the page background is unset) - fall
-  // back to white, the harsher of the two ends.
+  // Nothing opaque found: fall back to white, the harsher end.
   let result: Rgb = { r: 255, g: 255, b: 255, a: 1 };
   for (let i = layers.length - 1; i >= 0; i--) {
     result = compositeOver(layers[i], result);
@@ -109,10 +95,7 @@ export function contrastRatio(a: Rgb, b: Rgb) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-/**
- * The contrast between an element's own text color and the surface behind it.
- * `null` when either color can't be resolved.
- */
+/** `null` when either colour can't be resolved. */
 export function measureTextContrast(element: HTMLElement): number | null {
   const surface = effectiveBackgroundColor(element.parentElement ?? element);
   const color = parseCssColor(getComputedStyle(element).color);

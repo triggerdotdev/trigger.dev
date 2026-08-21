@@ -85,9 +85,8 @@ class TaskListPresenter {
     });
 
     // IMPORTANT: Don't await this, we want to return the promise
-    // so we can defer the loading of the data. Backstopped because the caller
-    // only subscribes after further awaits — with ClickHouse down this rejects
-    // instantly, and an unhandled rejection kills the whole server.
+    // so we can defer the loading of the data. Backstopped: the caller
+    // subscribes only after further awaits.
     const runningStats = backstopPromise(
       environmentMetricsRepository.getCurrentRunningStats({
         organizationId,

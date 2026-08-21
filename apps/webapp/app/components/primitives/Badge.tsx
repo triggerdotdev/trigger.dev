@@ -10,9 +10,7 @@ const variants = {
     "grid place-items-center border border-border-bright rounded-sm px-1 h-5 text-xs bg-background-bright text-blue-500 system:border-transparent system:bg-blue-500 system:text-white whitespace-nowrap",
   "outline-rounded":
     "grid place-items-center rounded-full px-1 h-4 tracking-wider text-xxs border border-blue-500 text-blue-500 system:border-transparent system:bg-blue-500 system:text-white uppercase whitespace-nowrap",
-  // White, not text-text-bright: that token is near-black on the light themes,
-  // which put dark text on the blue-600 fill. The fill is the same in every
-  // theme, so the label should be too.
+  // White, not text-text-bright: the fill is the same in every theme.
   rounded:
     "grid place-items-center rounded-full px-1.5 h-4 text-xxs border bg-blue-600 text-white system:border-transparent uppercase whitespace-nowrap",
 };

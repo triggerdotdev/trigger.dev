@@ -91,11 +91,8 @@ export function kindToLevel(kind: string, status: string): LogLevel {
   }
 }
 
-/* Level badge styles. Every chip is a translucent wash of its own accent over
-   whatever surface it lands on, so the set reads as one family and follows the
-   theme - DEBUG included, which used to be the only solid tile in the row and so
-   stayed a dark chip in a white table. Accents come from tokens rather than the
-   raw palette so the "Increase color contrast" preference can reach them. */
+/* Each chip is a translucent wash of its own accent, from tokens rather than the
+   raw palette so the "Stronger colors" preference can reach them. */
 export function getLevelColor(level: LogLevel): string {
   switch (level) {
     case "ERROR":

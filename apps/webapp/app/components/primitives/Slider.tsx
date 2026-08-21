@@ -6,26 +6,17 @@ import { Icon } from "./Icon";
 import { SimpleTooltip } from "./Tooltip";
 
 const variants = {
-  /* Quiet variant for settings rows: no hover box, no thumb halo */
   settings: {
     container: "h-6 gap-1 rounded-sm px-1",
     icons: "h-4 w-4 text-text-bright",
     root: "h-4 grow",
     track: "h-1 bg-grid-bright",
     range: "bg-transparent",
-    // The secondary-button hairline+shadow keeps the dot visible on the light
-    // track. Hover moves the handle off its resting tone in whichever direction
-    // reads as more prominent: brighter on the dark themes, dimmer on light -
-    // but only half a stop dimmer there, since the handle sits on white and even
-    // one full stop reads as a dark blob rather than a hover. #f4f4f6 is the
-    // midpoint of white and charcoal-100, opaque on purpose: charcoal-100/50
-    // would replace the white fill rather than sit over it, letting the track
-    // line show through the handle.
+    // #f4f4f6 (white/charcoal-100 midpoint) is opaque on purpose: a half-alpha
+    // hover would let the track line show through the handle.
     thumb:
       "h-4.5 w-4.5 border border-border-bright bg-white shadow-sm hover:bg-[#f4f4f6] dark:border-transparent dark:bg-charcoal-300 dark:shadow-none dark:hover:bg-charcoal-200",
     thumbSize: 18,
-    // Track-coloured line, notched off the track by borders in the colour of
-    // the page behind it (settings rows sit on background-dimmed).
     mark: "bg-grid-bright border-background-dimmed",
     markHover: "hover:bg-text-dimmed",
   },
@@ -49,11 +40,7 @@ export type SliderProps = ComponentProps<typeof RadixSlider.Root> & {
   LeadingIcon?: RenderIcon;
   TrailingIcon?: RenderIcon;
   variant: VariantName;
-  /**
-   * Opts into a small label above the thumb showing the formatted value, shown
-   * while the thumb is hovered or being dragged. It sits inside the thumb, so it
-   * tracks the handle exactly. Reads the controlled `value`, so pass one.
-   */
+  /** Label above the thumb while hovered or dragged. Reads `value`, so pass one. */
   valueTooltip?: (value: number) => string;
   /** Values to tick on the track, e.g. the setting's default. */
   marks?: SliderMark[];
@@ -78,14 +65,10 @@ export function Slider({
   ...props
 }: SliderProps) {
   const variation = variants[variant];
-  // The pointer leaves the thumb while dragging, so hover alone can't keep the
-  // label up.
   const [isDragging, setIsDragging] = useState(false);
 
-  /* The Root's own onPointerUp only fires if the release lands back on the
-     slider. Drag past either end and let go out there and it never runs, so the
-     value label stayed up for good. Watch the window instead, only while a drag
-     is actually in progress. */
+  /* Root's onPointerUp only fires if the release lands back on the slider, so
+     watch the window while a drag is in progress. */
   useEffect(() => {
     if (!isDragging) return;
     const stop = () => setIsDragging(false);
@@ -103,9 +86,7 @@ export function Slider({
   return (
     <div
       className={cn("group flex items-center", variation.container)}
-      // Belt and braces: the label goes with the pointer if it leaves the
-      // control. Radix holds pointer capture on the thumb mid-drag, so this
-      // doesn't fire while the handle is genuinely being moved.
+      // Radix holds pointer capture mid-drag, so this can't fire during one.
       onPointerLeave={() => setIsDragging(false)}
     >
       {LeadingIcon && <Icon icon={LeadingIcon} className={variation.icons} />}
@@ -135,16 +116,12 @@ export function Slider({
         {marks?.map((mark) => {
           const percent = ((mark.value - min) / (max - min)) * 100;
           if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
-          // Radix keeps the thumb inside the track by offsetting it against its
-          // own width, so a plain percentage would sit off the handle. Same
-          // formula as its `getThumbInBoundsOffset`, so the tick lands under
-          // the thumb's centre.
+          // Same formula as Radix's `getThumbInBoundsOffset`, so the tick lands
+          // under the thumb's centre.
           const offset = variation.thumbSize * (0.5 - percent / 100);
           const style = { left: `calc(${percent}% + ${offset}px)` };
-          // Drawn after the track, so it sits on top of it - and before the
-          // thumb, so an overlapping handle keeps the hover and the click.
-          // box-content keeps the line 2px wide and hangs the borders outside
-          // it, so they read as a gap in the track rather than eating the line.
+          // box-content hangs the borders outside the 2px line, so they read as
+          // a gap in the track rather than eating it.
           const markClassName = cn(
             "absolute top-1/2 box-content h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-x-[3px]",
             variation.mark
@@ -170,8 +147,7 @@ export function Slider({
                   aria-label={mark.label}
                   className={cn(markClassName, "cursor-pointer", variation.markHover)}
                   style={style}
-                  // Without this Radix reads the press as a click on the track
-                  // and drags the thumb to it.
+                  // Or Radix reads the press as a track click and drags the thumb.
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={mark.onSelect}
                 />
@@ -179,7 +155,6 @@ export function Slider({
             />
           );
         })}
-        {/* The thumb is the role="slider" element, so the label lives here */}
         <RadixSlider.Thumb
           aria-label={ariaLabel}
           className={cn(
@@ -191,14 +166,11 @@ export function Slider({
             <span
               className={cn(
                 "pointer-events-none absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2 rounded border border-grid-bright bg-background-bright px-1.5 py-0.5 text-xs tabular-nums text-text-bright shadow-md transition-opacity",
-                // Deliberately not keyed off focus: the thumb keeps focus after a
-                // click, which would leave the label stuck on.
+                // Not keyed off focus: the thumb keeps it after a click.
                 isDragging ? "opacity-100" : "opacity-0 group-hover/thumb:opacity-100"
               )}
             >
               {valueTooltip(currentValue)}
-              {/* Straddles the bottom edge, hiding the border it overlaps, so the
-                  two outer sides read as an arrow pointing at the handle. */}
               <span className="absolute left-1/2 top-full size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-grid-bright bg-background-bright" />
             </span>
           )}

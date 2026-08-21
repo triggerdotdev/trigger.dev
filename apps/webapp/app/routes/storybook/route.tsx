@@ -152,12 +152,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-/* The storybook's theme is its own, so components can be checked in every theme
-   without touching the account preference. Default is System.
-
-   Each segment gets mod+1..5. The browser binds those to tab switching, hence
-   preventDefault; the shortcuts only exist while this layout is mounted, so
-   they're scoped to the storybook. */
 const THEME_OPTIONS: { label: string; value: ThemePreference; shortcut: ShortcutDefinition }[] = [
   {
     label: "System",
@@ -219,9 +213,6 @@ function ThemeShortcut({
   return null;
 }
 
-/* The accessibility preference is a plain attribute on <html>, so the storybook
-   can flip it locally the same way it does the theme, and hand it back on the
-   way out. The stored key is still `iconContrast`. */
 function useStorybookIconContrast() {
   const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
   const [iconContrast, setIconContrast] = useState(false);
@@ -250,8 +241,7 @@ function useStorybookTheme() {
   const rootData = useTypedRouteLoaderData<typeof rootLoader>("root");
   const [theme, setTheme] = useState<ThemePreference>("system");
 
-  // Refs so the unmount cleanup restores whatever the account preference is by
-  // then, without re-running the restore on data revalidation.
+  // Refs so the unmount restore isn't re-run on data revalidation.
   const savedPreference = useRef(rootData?.themePreference);
   const savedSystemThemes = useRef(rootData?.systemThemes);
   // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.

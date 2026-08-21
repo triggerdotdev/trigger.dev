@@ -46,9 +46,8 @@ import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { type RenderIcon } from "../primitives/Icon";
 import { type SideMenuSectionId } from "./sideMenuTypes";
 
-// The side menu's customizable sections (everything except Tasks/Runs/Sessions), in DEFAULT order.
-// Lives outside SideMenu so the profile page can build the same list for the "Customize sidebar"
-// modal - it has no side menu of its own to read them from.
+// The side menu's customizable sections, in DEFAULT order. Outside SideMenu so
+// the profile page can build the same list without one to read from.
 
 type SideMenuItemConfig = {
   /** Stable id used for hidden/order preferences; never rename once shipped. */

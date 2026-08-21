@@ -1,23 +1,15 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-/** Attributes on `<html>` that can change what a color token resolves to:
- *  the theme, the accessibility preference, and the inline `--theme-contrast`
- *  the interface-contrast slider writes into `style`. */
+/** `<html>` attributes that can change what a colour token resolves to. */
 const WATCHED_ATTRIBUTES = ["data-theme", "data-icon-contrast", "style"];
 
 /**
- * How long to wait before re-reading. Plenty of components put a CSS
- * `transition` on their text color, and at the moment the attribute changes the
- * transition has not started - the computed color is still the *outgoing* one,
- * while untransitioned backgrounds have already snapped to the new theme. Read
- * then and you pair the old foreground with the new fill, which is how a
- * perfectly fine button came out at 2.75:1. Tailwind's default is 150ms and a
- * few call sites use 300ms, so settle well clear of both.
+ * Read too early and a transitioning foreground pairs with an already-snapped
+ * background. Clear of both the 150ms default and the 300ms call sites.
  */
 const TRANSITION_SETTLE_MS = 500;
 
-/* One observer for the whole page, not one per swatch - the audit renders a few
-   hundred measured rows and each of them wants the same signal. */
+/* One observer for the page, not one per swatch. */
 const listeners = new Set<() => void>();
 let revision = 0;
 let observer: MutationObserver | null = null;
@@ -28,7 +20,7 @@ function bump() {
   for (const listener of listeners) listener();
 }
 
-/** Read now so nothing looks frozen, then again once the transitions land. */
+/** Read now, then again once the transitions land. */
 function bumpAndSettle() {
   bump();
   if (settleTimer) clearTimeout(settleTimer);
@@ -44,8 +36,7 @@ function subscribe(listener: () => void) {
       attributes: true,
       attributeFilter: WATCHED_ATTRIBUTES,
     });
-    // One tick on the next frame: in dev the stylesheet can land after
-    // hydration, and a ratio measured before it does is meaningless.
+    // In dev the stylesheet can land after hydration.
     requestAnimationFrame(bumpAndSettle);
   }
 
@@ -60,11 +51,7 @@ function subscribe(listener: () => void) {
   };
 }
 
-/**
- * A counter that ticks whenever the resolved palette could have moved. Measured
- * ratios re-run off this, so flipping the theme switcher above re-reads every
- * swatch instead of leaving stale numbers on screen.
- */
+/** Ticks whenever the resolved palette could have moved. */
 export function useThemeRevision() {
   return useSyncExternalStore(
     subscribe,
@@ -74,16 +61,8 @@ export function useThemeRevision() {
 }
 
 /**
- * Whether the document-wide "Distinguish without color" preference is on. The
- * audit page shows both treatments at once, so it needs to know when the header
- * switch has turned the left-hand column into a duplicate of the right.
- */
-/**
- * The theme currently on `<html>`. The audit's "Stronger colors" column follows
- * the page rather than pinning a theme, and it needs the value rather than just
- * inheriting it: the `--chart-2`/`--chart-3` override is a compound selector
- * wanting `data-theme` and `data-icon-contrast` on the *same* element, so that
- * column has to restate the theme to pick it up.
+ * The theme on `<html>`. Returned as a value, not inherited: the chart-2/3
+ * override needs `data-theme` and `data-icon-contrast` on the same element.
  */
 export function useDocumentTheme() {
   const revision = useThemeRevision();

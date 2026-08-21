@@ -41,14 +41,9 @@ export function SettingsContainer({
 }
 
 /**
- * Vertical gap between sibling settings sections, for pages that hand-roll their
- * sections (the account page) instead of using `SettingsSection`, so both sit on
- * the same rhythm.
- *
- * Must stay in step with the `mt-13` in `SettingsSection` below. The two are
- * written out separately rather than composed, because Tailwind only generates
- * classes it can see as complete literals in the source - a template literal
- * building `[&:not(:first-child)]:${gap}` produces no CSS at all.
+ * For pages that hand-roll their sections. Must stay in step with the `mt-13` in
+ * `SettingsSection`: Tailwind only generates classes written as full literals,
+ * so the two can't be composed.
  */
 export const SETTINGS_SECTION_GAP = "mt-13";
 
@@ -124,7 +119,6 @@ export function SettingsRowTitle({
   );
 }
 
-/** Description/subtitle typography for a row - a step down from the title. */
 export function SettingsRowDescription({
   children,
   className,
@@ -139,8 +133,7 @@ export function SettingsRowDescription({
   );
 }
 
-/** Title-to-description spacing, kept in one place so every settings row and
- *  anything hand-rolling the pair reads the same. */
+/** Title-to-description spacing, shared with anything hand-rolling the pair. */
 export const SETTINGS_ROW_TITLE_GAP = "space-y-0.5";
 
 /**

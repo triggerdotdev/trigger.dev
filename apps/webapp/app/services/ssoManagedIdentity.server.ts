@@ -3,25 +3,9 @@ import { logger } from "~/services/logger.server";
 import { ssoController } from "~/services/sso.server";
 
 /**
- * Whether a user's identity is owned by an identity provider rather than by the
- * user — true when any organization they belong to has SSO set up with at least
- * one active connection.
- *
- * "Set up with an active connection" is the same thing the SSO settings page
- * calls active (`hasIdpOrg` plus a live connection): a configured-but-dead
- * connection can't sign anyone in, so on its own it doesn't mean the IdP owns
- * the account. This is deliberately NOT the Enterprise plan flag — an org can be
- * on Enterprise without ever configuring SSO, and that org's members own their
- * own email addresses.
- *
- * Any org counts, not just the "current" one: this page has no org in scope, and
- * a user who is in one SSO org and one personal org still authenticates through
- * that IdP.
- *
- * Fails CLOSED. If the SSO plugin can't answer we treat the account as
- * IdP-managed, because the alternative is letting an outage open up a write we
- * can't verify. On OSS (no plugin installed) this short-circuits to `false`
- * before any query runs, so self-hosters pay nothing and never see the branch.
+ * Whether an identity provider owns this user's identity rather than the user.
+ * Any org they belong to counts. Fails closed: if the plugin can't answer, treat
+ * the account as IdP-managed rather than allowing an unverifiable write.
  */
 export async function isSsoManagedUser(userId: string): Promise<boolean> {
   if (!(await ssoController.isUsingPlugin())) {

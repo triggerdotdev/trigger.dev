@@ -121,8 +121,7 @@ function styleFromSize(size: number) {
 const AVATAR_LETTER_DARK = "#272a2e";
 const AVATAR_LETTER_LIGHT = "#ffffff";
 
-/** WCAG relative luminance, so the pair below is compared the way a contrast
- *  checker would rather than by a gamma-encoded weighted average. */
+/** WCAG relative luminance, so the pair below compares the way a checker would. */
 function relativeLuminance(r: number, g: number, b: number): number {
   const channel = (value: number) => {
     const c = value / 255;
@@ -135,14 +134,7 @@ function contrastRatio(a: number, b: number): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-/**
- * Dark or white initials, whichever holds more contrast against the tile.
- *
- * The old version compared a weighted RGB average against a threshold of 140,
- * which put the Green preset (#22C55E, average 136.5) on the white side at
- * 2.28:1 when dark letters would have given it 6.33:1. Measuring both candidates
- * removes the cliff: every preset now gets whichever one actually wins.
- */
+/** Dark or white initials, whichever holds more contrast against the tile. */
 function letterColorForBackground(hex: string): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
   if (!match) return AVATAR_LETTER_LIGHT;

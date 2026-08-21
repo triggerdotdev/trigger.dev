@@ -92,25 +92,17 @@ import { cn } from "~/utils/cn";
 
 export const meta = pageMeta("Your profile");
 
-/** Floor of the contrast slider. 0 is meaningful now: it's the palette the
- *  Classic theme shipped, so the bottom of the range has to stay reachable. */
 const MIN_CONTRAST = 0;
 
-/** Where the slider ticks and labels "Default". 0 is the bottom of whichever
- *  theme's range is active - the base palette on most, the faded grid lines on
- *  Black. */
 const DEFAULT_CONTRAST_MARK = 0;
 
 function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
   const Icon = themeOptionIcon(THEME_OPTIONS_BY_VALUE[value], appearance);
-  // shrink-0: without it the icon is the flex item that gives way to a long
-  // label, and "System" squashes it to a sliver.
+  // shrink-0 stops a long label squashing the icon.
   return <Icon className="size-4 shrink-0 text-text-bright" />;
 }
 
-/** The icon-and-label pair a theme shows in the picker, shared by the theme
- *  select and the two system light/dark selects. Module scope so the `text`
- *  render prop stays a stable reference rather than a per-render component. */
+/** Module scope keeps the `text` render prop a stable reference. */
 function themeOptionLabel(value: ThemePreference, appearance: ThemeAppearance) {
   return (
     <span className="flex items-center gap-1.5">
@@ -120,10 +112,6 @@ function themeOptionLabel(value: ThemePreference, appearance: ThemeAppearance) {
   );
 }
 
-/**
- * Picker for one end of the `system` setting: Light or White, Dark or Black. Same
- * shape as the Interface theme select, with its own two options.
- */
 function SystemThemeSelect({
   label,
   value,
@@ -166,37 +154,8 @@ function SystemThemeSelect({
 }
 
 /**
- * Hover preview for the "Stronger colors" switch: one chip that visibly moves
- * when the preference does. Nothing here sets `data-icon-contrast` - it inherits
- * from <html>, so the chip moves with the rest of the page and can never
- * disagree with what's actually saved.
- *
- * It borrows the Resolved error-status treatment (tinted green, going solid with
- * white text under the preference) rather than a plain accent chip, because the
- * accent tokens alone don't change on the light themes: those themes already
- * darken success and warning for white, to the very same values the
- * high-contrast set uses, so a `text-warning` chip was inert on Light and White.
- * The `system:` swap to a filled chip is driven by the preference directly, so it
- * reads in all four themes.
- *
- * Fades in on hover of an ancestor marked `group/preview`, so it must be rendered
- * inside one. The group is named because Switch's own root is an unnamed `group`
- * whose track styles key off `group-hover:` - an unnamed group here would sit
- * above it and light the track up whenever this chip was hovered.
- *
- * Keyboard focus reveals it too, but via `:focus-visible` rather than
- * `focus-within`: clicking the switch leaves it focused, so `focus-within` would
- * strand the chip on screen after the pointer had left. A mouse click doesn't set
- * `:focus-visible`, so tabbing to the switch shows the chip and clicking it
- * doesn't.
- *
- * It stays mounted at `opacity-0` rather than being conditionally rendered: its
- * width is reserved either way, so the row can't reflow as the pointer arrives.
- * `text-xs` is explicit because the chip used to inherit it from the tooltip it
- * lived in; in the row it would otherwise pick up the page's base size and tower
- * over the description beside it. `aria-hidden` because "Example" tells a screen
- * reader nothing - the chip is the colour, and the switch's own label carries the
- * meaning.
+ * Must be rendered inside an ancestor marked `group/preview`. Reveals on
+ * `:focus-visible`, not `focus-within`, so a click doesn't strand it on screen.
  */
 function StrongerColorsPreview() {
   return (
@@ -209,8 +168,6 @@ function StrongerColorsPreview() {
   );
 }
 
-/** The name and email rows each save on their own, so each has its own schema
- *  rather than one that would reject the whole profile over a single field. */
 const MAX_NAME_LENGTH = 50;
 
 const NameSchema = z.object({
@@ -222,27 +179,22 @@ const NameSchema = z.object({
 });
 
 const EmailSchema = z.object({
-  // Trimmed first: a pasted address often carries a trailing space, and
-  // `emailSchema` would reject it with an unhelpful "invalid email".
+  // Trim first: a trailing space fails as "invalid email".
   email: z.string({ required_error: "You must enter an email address" }).trim().pipe(emailSchema),
 });
 
 const MarketingEmailsSchema = z.object({
-  // Not `z.coerce.boolean()`: it treats the string "false" as truthy.
+  // Not `z.coerce.boolean()`: "false" is truthy.
   marketingEmails: z.union([z.literal("true"), z.literal("false")]).transform((v) => v === "true"),
 });
 
-/** What every profile row's fetcher gets back. `error` is written for the person
- *  reading it, because it lands in a toast and under the field. */
 type ProfileUpdateResult = { success: true } | { success: false; error: string };
 
 function profileUpdateError(error: string, status: number) {
   return json({ success: false as const, error }, { status });
 }
 
-/** First line of the "don't hammer the database" defence, and the only one a
- *  scripted POST can't skip: the client debounce and the no-op write guard both
- *  help, but neither survives someone replaying the request by hand. */
+/** The only limit a scripted POST can't skip. */
 async function checkProfileUpdateRateLimit(userId: string) {
   const limit = await profileUpdateRateLimiter.limit(`user:${userId}`);
   if (limit.success) {
@@ -256,15 +208,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
 
-  // Decides which of the two email modals opens. The action re-checks it before
-  // writing — this value only picks the UI, so a stale page can't be used to
-  // sneak an email change past the identity provider.
+  // Picks the modal only; the action re-checks before writing.
   const isSsoManaged = await isSsoManagedUser(user.id);
 
-  // The customize modal's section list is built from the side menu's items, which
-  // are keyed to a project and environment. Resolve the user's current one so the
-  // modal can open here rather than sending them into the app to find it. Null
-  // when they have no project yet, and the row hides itself.
+  // Null when the user has no project yet; the row hides itself.
   let sidebarContext: {
     organization: { slug: string };
     project: { slug: string };
@@ -279,9 +226,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       project: { slug: project.slug },
       environment: { slug: environment.slug },
     };
-  } catch {
-    // No project to customize a sidebar for
-  }
+  } catch {}
 
   return json({ showThemeSwitcher, sidebarContext, isSsoManaged });
 }
@@ -350,8 +295,7 @@ export const action: ActionFunction = async ({ request }) => {
     if (!showThemeSwitcher) {
       return json({ error: "Not available" }, { status: 404 });
     }
-    // Parsed strictly: an unknown end or theme should fail rather than silently
-    // resetting which theme `system` lands on.
+    // Strict: an unknown value must fail, not silently reset.
     const end = formData.get("end");
     if (end === "light") {
       const theme = SystemLightTheme.safeParse(formData.get("theme"));
@@ -388,8 +332,7 @@ export const action: ActionFunction = async ({ request }) => {
     const rateLimited = await checkProfileUpdateRateLimit(userId);
     if (rateLimited) return rateLimited;
 
-    // Re-checked here, not just in the loader: the loader only chose which modal
-    // to render, and an SSO user could post this branch directly.
+    // Re-checked: the loader only picked the modal.
     if (await isSsoManagedUser(userId)) {
       return profileUpdateError(
         "Your email address is managed by your organization's identity provider.",
@@ -426,8 +369,7 @@ export const action: ActionFunction = async ({ request }) => {
       return profileUpdateError("That preference isn't valid.", 400);
     }
 
-    // Writes nothing when the stored value already matches, so a duplicate
-    // request costs one WHERE that matches no rows.
+    // No-op when the stored value already matches.
     await updateUserMarketingEmails({
       id: userId,
       marketingEmails: submission.data.marketingEmails,
@@ -438,14 +380,7 @@ export const action: ActionFunction = async ({ request }) => {
   return json({ success: false as const, error: "Unknown action" }, { status: 400 });
 };
 
-/**
- * Wiring shared by the two edit modals: submit through a fetcher, toast the
- * outcome once, and keep the message around so it can also sit under the field —
- * the toast says whether it worked, the inline error says which field to fix.
- *
- * The fetcher's `data` outlives a submission, so this only settles once THIS
- * submission has been in flight - the same guard `CustomizeSidebarButton` uses.
- */
+/** `data` outlives a submission, so settle only once this one has flown. */
 function useProfileFieldUpdate({
   successMessage,
   onSuccess,
@@ -474,21 +409,15 @@ function useProfileFieldUpdate({
       return;
     }
 
-    // A dropped request leaves `data` undefined, so there's no server message.
+    // A dropped request leaves `data` undefined.
     const message = fetcher.data?.error ?? "Something went wrong. Please try again.";
     setError(message);
     toast.error(message);
-    // `submitSeenRef` gates the body on a submission having settled, so the
-    // extra deps only ever cause a no-op re-run.
   }, [fetcher.state, fetcher.data, toast, successMessage, onSuccess]);
 
   return { fetcher, error, setError, isSubmitting: fetcher.state !== "idle" };
 }
 
-/**
- * The Full name row's action. The name itself is now read-only text in the row,
- * and this is the one place it can be changed.
- */
 function EditNameButton() {
   const user = useUser();
   const [isOpen, setIsOpen] = useState(false);
@@ -557,14 +486,6 @@ function EditNameButton() {
   );
 }
 
-/**
- * The Email address row's action. Which modal opens depends on whether an
- * identity provider owns this account: if it does there is nothing to edit, so
- * the modal explains that and who to ask, and carries no footer to imply
- * otherwise - closing it is the only thing left to do.
- *
- * `isSsoManaged` only picks the modal. The action re-checks it before writing.
- */
 function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
   const user = useUser();
   const [isOpen, setIsOpen] = useState(false);
@@ -639,41 +560,22 @@ function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
   );
 }
 
-/** How long after the last click the write goes out. Long enough to collapse a
- *  burst of clicks into one request, short enough that a deliberate toggle has
- *  saved by the time you look away. */
 const MARKETING_EMAILS_DEBOUNCE_MS = 600;
 
-/**
- * "Receive onboarding emails" saves itself now, so the switch is what paces the
- * writes. Three things keep a spammed switch off the database:
- *
- *  1. it shows the click straight away but only writes once the clicking stops,
- *     so a burst becomes a single request for the value landed on;
- *  2. one write at a time — a click made mid-flight is reconciled after the
- *     current write settles rather than queued behind it;
- *  3. a toggle that ends up back where it started never reaches the server at
- *     all, and the write itself matches no rows if it does (see
- *     `updateUserMarketingEmails`).
- *
- * None of that survives someone posting the form by hand, which is what the
- * per-user rate limit in the action is for.
- */
+/** Debounced, one write at a time; the action's rate limit backs it up. */
 function MarketingEmailsSwitch() {
   const user = useUser();
   const stored = user.marketingEmails;
   const fetcher = useFetcher<ProfileUpdateResult>();
   const toast = useToast();
 
-  // What the switch shows: the last click. `stored` catches up to it when the
-  // write lands and the root loader revalidates.
+  // The last click; `stored` catches up once the write lands.
   const [desired, setDesired] = useState(stored);
-  // The value the in-flight write is trying to store, read when it settles.
+  // What the in-flight write is storing, read when it settles.
   const sentRef = useRef(stored);
   const submitSeenRef = useRef(false);
-  // `useFetcher` hands back a fresh object every render, so the debounce below
-  // can't list it as a dependency without clearing and restarting its timer on
-  // each render - it would never fire. Refresh the submit function here instead.
+  // `useFetcher` is a fresh object each render; depending on it would
+  // restart the debounce timer every render, so keep submit in a ref.
   const submitRef = useRef(fetcher.submit);
   useEffect(() => {
     submitRef.current = fetcher.submit;
@@ -699,12 +601,9 @@ function MarketingEmailsSwitch() {
     toast.error(
       fetcher.data?.error ?? "Couldn't save your onboarding email preference. Please try again."
     );
-    // Put the switch back to what's actually stored. Without this the reconcile
-    // below would see a difference it can never close and retry on a loop.
+    // Resync, or the reconcile below retries a gap it can never close.
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setDesired(stored);
-    // As above: guarded by `submitSeenRef`, so `stored` catching up on
-    // revalidation re-runs this to no effect rather than replaying the toast.
   }, [fetcher.state, fetcher.data, toast, stored]);
 
   useEffect(() => {
@@ -732,14 +631,7 @@ function MarketingEmailsSwitch() {
   );
 }
 
-/**
- * Opens the side menu's own "Customize sidebar" modal from here, so the settings row doesn't send
- * anyone into the app to find it. The section list is built from the same source the side menu
- * renders from, keyed to the user's current project and environment.
- *
- * The fetcher lives here rather than in the dialog because closing the dialog unmounts it, which
- * would abort a save mid-request - the same reason the side menu owns its copy.
- */
+/** The fetcher lives here: closing the dialog unmounts it and would abort a save. */
 function CustomizeSidebarButton({
   context,
 }: {
@@ -758,7 +650,7 @@ function CustomizeSidebarButton({
   const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState<string>();
   const fetcher = useFetcher<{ success: boolean }>();
-  // The fetcher's data outlives a confirm, so only settle once THIS submission has been in flight.
+  // `data` outlives a confirm, so settle only once this submission has flown.
   const submitSeenRef = useRef(false);
 
   useEffect(() => {
@@ -875,12 +767,10 @@ export default function Page() {
     typeof pendingTheme === "string"
       ? normalizeThemePreference(pendingTheme)
       : normalizeThemePreference(user.dashboardPreferences.theme);
-  // Black and White draw themselves against the active theme, so the icons
-  // follow the optimistic pick rather than waiting for the write to land.
+  // Icons follow the optimistic pick, not the settled write.
   const appearance = useThemeAppearance(theme);
 
-  // Which theme `system` lands on at each end. One fetcher per end so picking
-  // both in quick succession can't cancel the first.
+  // One fetcher per end, so picking both quickly can't cancel the first.
   const systemLightFetcher = useFetcher();
   const systemDarkFetcher = useFetcher();
   const pendingSystemLight = systemLightFetcher.formData?.get("theme");
@@ -907,9 +797,7 @@ export default function Page() {
     fetcher.submit({ action: "update-system-theme", end, theme: value }, { method: "post" });
   };
 
-  // Dragging previews the contrast via the CSS var before it persists; once the
-  // save settles, resnap the page and the thumb to the stored value so a failed
-  // or rejected save doesn't leave a phantom contrast level on screen.
+  // Resnap to the stored value so a failed save leaves no phantom contrast.
   const [contrastPreview, setContrastPreview] = useState(contrast);
   useEffect(() => {
     if (contrastFetcher.state === "idle") {
@@ -919,8 +807,6 @@ export default function Page() {
     }
   }, [contrastFetcher.state, contrast]);
 
-  // Dragging previews through the CSS var; releasing (or clicking the default
-  // mark) persists it.
   const previewContrast = (value: number) => {
     setContrastPreview(value);
     applyThemeContrast(value);
@@ -1006,8 +892,7 @@ export default function Page() {
                       aria-label="Interface theme"
                       value={theme}
                       setValue={(value) => {
-                        // Applied here so the theme lands immediately rather than
-                        // on the root loader's next pass (see applyThemePreference).
+                        // Applied here so the theme lands before the loader's next pass.
                         applyThemePreference(normalizeThemePreference(value), systemThemes);
                         themeFetcher.submit(
                           { action: "update-theme", theme: value },
@@ -1018,11 +903,8 @@ export default function Page() {
                       dropdownIcon
                       items={ALL_THEME_OPTIONS.map((option) => option.value)}
                       text={(value) => themeOptionLabel(value, appearance)}
-                      // Hugs its label; the popover keeps the wider floor below so
-                      // the options aren't cramped by the shortest one.
                       className="w-fit"
-                      // The popover's 180px floor left a gap past the longest
-                      // label; match the trigger instead.
+                      // Match the trigger rather than the popover's wider default floor.
                       popoverClassName="min-w-27"
                     >
                       {(items) =>
@@ -1041,13 +923,7 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-              {/*
-                Which theme each end of the OS setting resolves to — only meaningful on
-                `system`, so the two rows slide and fade open when it's picked. Animating the
-                grid row track rather than a height keeps the rows at their natural size, and
-                the `visibility` transition holds them on screen while they collapse but
-                takes them out of the tab order once shut.
-              */}
+              {/* Animating the grid row track keeps the rows at their natural size. */}
               <div
                 className="grid w-full transition-[grid-template-rows,opacity,visibility] duration-200 ease-in-out"
                 style={{

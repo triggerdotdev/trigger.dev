@@ -141,25 +141,12 @@
 */
 @theme {
   /* Text colors */
-  /* The brand accent. Points at the link accent rather than carrying its own
-     value: the app had one indigo doing the work of a primary color and an
-     apple green sitting unused beside it, so this is the same hue by
-     definition and can't drift from it. */
   --color-primary: var(--color-text-link);
   --color-secondary: var(--color-charcoal-650);
   --color-tertiary: var(--color-charcoal-700);
   --color-text-link: var(--color-lavender-400);
-  /* Link hover: one stop up the ramp. Sized to be unmistakable - a step the
-     size of TextLink's own indigo-500 -> indigo-400 was too subtle to read as a
-     hover at all. This lands just under the largest hover step the app already
-     uses (text-dimmed -> text-bright). */
   --color-text-link-hover: var(--color-lavender-300);
-  /* The same brand purple as a *fill* under white content - the primary button
-     and the switch's checked track, which must agree with each other. One value
-     for every theme: white content needs 4.5:1, which pins it dark, while
-     --color-text-link above has to travel the other way to stay legible as text
-     on a near-black page. So the fill and the link color match on the light
-     themes and can't on the dark ones. */
+  /* One value for every theme: white content on this fill needs 4.5:1. */
   --color-accent-fill: var(--color-lavender-600);
   --color-text-faint: var(--color-charcoal-500);
   --color-text-dimmed: var(--color-charcoal-400);
@@ -173,9 +160,6 @@
   --color-surface-hover-subtle: var(--color-charcoal-750);
   --color-background-raised: var(--color-charcoal-700);
 
-  /* Track behind a secondary segmented control. Half-strength raised is enough
-     of a step on Dark (#1e2024 over a #15171a page), but the themes that pin
-     their surfaces flat need the full value - see the overrides below. */
   --color-segmented-track: color-mix(in srgb, var(--color-background-raised) 50%, transparent);
   --color-surface-selected: var(--color-charcoal-650);
   --color-surface-selected-hover: var(--color-charcoal-600);
@@ -187,8 +171,6 @@
   /* Borders, from subtlest to most visible */
   --color-grid-dimmed: var(--color-charcoal-750);
   --color-grid-bright: var(--color-charcoal-700);
-  /* Blend of border-bright over the selected card, so it tracks whatever ramp
-     border-bright is on - the dark themes need no contrast entry of their own */
   --color-border-selected: color-mix(in srgb, var(--color-border-bright) 50%, var(--color-surface-selected));
   --color-border-bright: var(--color-charcoal-600);
   --color-border-brighter: var(--color-charcoal-550);
@@ -197,9 +179,6 @@
   --color-pending: var(--color-blue-500);
   --color-warning: var(--color-amber-500);
 
-  /* Log level accent for TRACE. The chip was tokenised without this ever being
-     declared, so bg-log-trace and border-log-trace generated no CSS at all and
-     the chip rendered bare. purple-500 is what the raw classes used. */
   --color-log-trace: var(--color-purple-500);
   --color-error: var(--color-rose-600);
 
@@ -207,10 +186,6 @@
   --color-dev: var(--color-pink-500);
   --color-staging: var(--color-orange-400);
   --color-prod: var(--color-mint-500);
-  /* Blue in every theme, including under Stronger colors: yellow needed a
-     different value per mode to stay legible (yellow-400 on dark, yellow-700 on
-     white, which reads brown), and the two ends stopped looking like one
-     environment. */
   --color-preview: var(--color-blue-500);
 
   /* Icon colors */
@@ -243,7 +218,6 @@
   --color-sessions: var(--color-pink-500);
   --color-playgrounds: var(--color-fuchsia-500);
   --color-models: var(--color-violet-500);
-  /* Branch labels sit inside a preview environment, so they track its color. */
   --color-previewBranches: var(--color-blue-500);
 }
 
@@ -284,9 +258,6 @@
   /* Status */
   --color-success: var(--color-mint-600);
   --color-warning: var(--color-amber-600);
-  /* Env set: pink dev and green prod as in the base set. Preview and its branch
-     labels are blue in every theme now, so they need no entry here. Staging
-     stays warm orange and is the one per-mode env color - see the light block. */
   --color-prod: var(--color-mint-600);
 
   /* Icons */
@@ -299,7 +270,6 @@
   --color-errors: var(--color-amber-600);
   --color-apiKeys: var(--color-amber-600);
 
-  /* Queue charts read blue here; the base set keeps the queues purple */
   --color-queues-chart: var(--color-blue-500);
   --color-queues-chart-ref: var(--color-charcoal-500);
 
@@ -308,8 +278,6 @@
   --color-callout-pending: var(--color-blue-500);
   --color-callout-pricing: var(--color-indigo-500);
 
-  /* Amber run statuses: three distinct steps, the base dark-to-light order
-     kept (waiting-for-deploy < pending-version < paused) */
   --color-run-waiting-for-deploy: var(--color-amber-700);
   --color-run-pending-version: #c76508;
   --color-run-paused: var(--color-amber-600);
@@ -317,30 +285,17 @@
   --color-run-timed-out: #ed5f74;
 }
 
-/* "Underline links" preference: underlines body-text links - those carrying the
-   marker class from the TextLink component, plus markdown prose links, which
-   can't take a class because streamdown renders the anchors. Decorative
-   underlines (dashed tooltip terms, tab underlines, the always-underlined
-   citation links in agent reports) are untouched either way.
-
-   Links in this set never underline on hover alone; hover shifts their color
-   instead, so the underline means "this preference is on" and nothing else. */
+/* Underlines body-text links only: the TextLink marker class plus markdown
+   prose links, which can't take a class. */
 [data-underline-links="true"] :is(.inline-text-link, .streamdown-container a) {
   text-decoration-line: underline;
   text-underline-offset: 2px;
 }
 
-/* Icon contrast drops decorative icon accents to monochrome; with it off,
-   the icons stay colored. side-menu-active-icon is set in SideMenuItem for the
-   active nav item; system-mono-icon marks section-header icons (e.g. the
-   limits page). */
 [data-icon-contrast="true"] :is(.side-menu-active-icon, .system-mono-icon) {
   color: var(--color-text-bright);
 }
 
-/* Icon contrast: status/env labels follow the surrounding text color, only the
-   icon keeps its tint. With it off both are colored. Set in EnvironmentLabel
-   and the status combo components. */
 [data-icon-contrast="true"] .system-mono-label {
   color: inherit;
 }
@@ -349,10 +304,7 @@
    own text color fades in as contrast rises, so the soft tint keeps its
    footprint but the chip gains definition. Transparent at contrast 0; only
    set under icon contrast. Marker set by the chip components. */
-/* For tinted chips only. The ring is drawn in currentcolor, so on a chip that
-   fills solid it lands as a hairline in the label's colour inset into the fill -
-   a white line on dark, a white line on white. Chips that fill under the
-   preference don't carry this class. */
+/* Tinted chips only - chips that fill solid under the preference omit it. */
 [data-icon-contrast="true"] .contrast-chip {
   box-shadow: inset 0 0 0 1px
     color-mix(in srgb, currentcolor calc(var(--theme-contrast, 0) * 70%), transparent);
@@ -426,9 +378,6 @@
   --color-editor-scrollbar-thumb-active: #3c4b62;
 }
 
-/* Queue chart series colors - queues purple in the base set, overridden to blue in
-   the System themes; the grey reference series lightens per mode there.
-   Consumed from JS via var(), so declared static. */
 @theme static {
   --color-queues-chart: var(--color-queues);
   --color-queues-chart-ref: #4d525b;
@@ -481,14 +430,8 @@
    Dark and Black are both dark-mode themes, so the variant matches both. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="black"], [data-theme="dark"] *, [data-theme="black"] *));
 
-/* system: the high-contrast icon and badge treatment - solid status badges,
-   monochrome nav icons. Named for the System themes it shipped with, but it now
-   follows the "Distinguish without color" preference in any theme; off means the
-   base tinted chips and colored icons. */
 @custom-variant system (&:where([data-icon-contrast="true"], [data-icon-contrast="true"] *));
 
-/* light: the light-mode themes only - for values that are fine on every dark
-   theme but illegible on white. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="white"], [data-theme="light"] *, [data-theme="white"] *));
 
 @utility focus-custom {
@@ -644,7 +587,6 @@
     --chart-5: 27 87% 67%;
   }
 
-  /* The app-wide dark chart set. */
   :is([data-theme="dark"], [data-theme="black"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
@@ -653,7 +595,6 @@
     --chart-5: 340 75% 55%;
   }
 
-  /* Light keeps the same hues with chart-2/3 darkened to clear 3:1 on white. */
   :is([data-theme="light"], [data-theme="white"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 40%;
@@ -662,10 +603,6 @@
     --chart-5: 340 75% 55%;
   }
 
-  /* With the accessibility preference on, the dark themes adopt Light's darker
-     chart-2/3 as well. Two reasons: they hold a higher ratio against the plot
-     background, and it makes the series colours identical across both ends of
-     the `system` setting, so a chart doesn't shift hue when the OS flips. */
   [data-icon-contrast="true"]:is([data-theme="dark"], [data-theme="black"]) {
     --chart-2: 160 60% 40%;
     --chart-3: 30 80% 47%;
@@ -773,11 +710,8 @@
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
   }
-  /* Matches TextLink: the link token, brightening on hover, and underlined only
-     when the "Underline links" preference says so - see the rule that opts these
-     anchors into it. `no-underline` is load-bearing: streamdown hard-codes
-     `underline` onto every anchor it renders, and this outspecifies it (a class
-     plus a type selector beats a bare class). */
+  /* `no-underline` is load-bearing: streamdown hard-codes `underline` on every
+   anchor, and a class plus type selector outspecifies it. */
   & a {
     @apply text-text-link no-underline transition hover:text-text-link-hover;
   }
@@ -808,20 +742,9 @@
   }
 }
 
-/*
-  The contrast slider stores a plain 0-100, and it means "how far along this
-  theme's range" rather than a position on one shared scale. That keeps the
-  number portable: 35% is 35% whichever theme you switch to, even though the two
-  themes put their 35% in different places.
-
-  Every ramp reads `--theme-contrast` (strengthen) and `--theme-fade` (fade below
-  the base, Black only). Mapping the percent onto those here rather than in JS
-  means nothing on the client has to know which theme resolved - which matters
-  for `system`, where that isn't settled until hydration.
-
-  Default range: 0 to 100, so the percent passes straight through and there's
-  nothing to fade.
-*/
+/* The stored 0-100 is a position within the active theme's own range, mapped
+   here rather than in JS so `system` needs nothing resolved on the client.
+   Ramps read --theme-contrast (strengthen) and --theme-fade (Black only). */
 :root {
   --theme-contrast: var(--theme-contrast-percent, 0);
   --theme-fade: 0;
@@ -831,8 +754,6 @@
   Light theme. Overrides the themable variables only; raw palettes stay put.
   Code/editor values come from the trigger.light VS Code theme.
 */
-/* The Light theme's token set, shared with White (which only pins its
-   backgrounds, further down) */
 :is([data-theme="light"], [data-theme="white"]) {
   --color-secondary: #ffffff;
   --color-input-bg: #ffffff;
@@ -849,10 +770,6 @@
   /* Text */
   --color-tertiary: #eef0f3;
   --color-text-link: var(--color-lavender-600);
-  /* Hover goes *down* the ramp here, not up: on white, more prominent means
-     darker. Same direction as every other light-mode hover, where
-     text-dimmed -> text-bright also darkens. Two stops rather than one, because
-     600 and 700 sit close together - one stop is invisible at text sizes. */
   --color-text-link-hover: var(--color-lavender-800);
   --color-text-faint: var(--color-charcoal-400);
   --color-text-dimmed: var(--color-charcoal-500);
@@ -867,13 +784,9 @@
   --color-surface-hover-subtle: #f7f8f9;
   --color-background-raised: #e9eaee;
   --color-surface-control: #dcdee3;
-  /* Half strength is invisible against a near-white page; take the full value,
-     which each of the two themes resolves to its own (#e9eaee / #ededed). */
   --color-segmented-track: var(--color-background-raised);
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
-  /* Selection sits lighter than the controls here - on white a soft grey is
-     already enough to read as selected */
   --color-surface-selected: #eff0f2;
   --color-surface-selected-hover: #e7e9ec;
 
@@ -885,12 +798,7 @@
   --color-border-brighter: #b9bdc7;
   --color-border-brightest: #9ba1ad;
 
-  /* Accents come from one of two sets: the high-contrast block above when
-     "Distinguish without color" is on, or the base-derived block below when
-     it's off. Either way dev keeps its base pink-500, which passes on white. */
 
-  /* Staging is the one per-mode env color: warm orange has no clean unified
-     mid-tone, so dark keeps the base bright orange-400 and light deepens it */
   --color-staging: var(--color-orange-600);
 
   /* Grey chart reference series, light enough not to dominate on white */
@@ -906,8 +814,6 @@
   /* Monochrome icon gray - per-mode, not part of the unified accent set */
   --color-customDashboards: var(--color-charcoal-500);
 
-  /* Callout text/bg - deep tints instead of the dark theme's pastels; text
-     can't unify across modes (see the unified accents block) */
   --color-callout-warning-text: var(--color-yellow-800);
   --color-callout-error-text: var(--color-rose-700);
   --color-callout-success-text: var(--color-green-800);
@@ -1001,7 +907,6 @@
   --color-errors: var(--color-amber-600);
   --color-apiKeys: var(--color-amber-600);
 
-  /* Queue charts keep the base purple, one step down for white */
   --color-queues-chart: var(--color-purple-600);
   --color-log-trace: var(--color-purple-600);
 
@@ -1010,32 +915,16 @@
   --color-callout-pending: var(--color-blue-500);
   --color-callout-pricing: var(--color-indigo-500);
 
-  /* Amber run statuses, the base dark-to-light order kept */
   --color-run-waiting-for-deploy: var(--color-amber-700);
   --color-run-pending-version: #c76508;
   --color-run-paused: var(--color-amber-600);
   --color-run-timed-out: #ed5f74;
 }
 
-/*
-  Neutral run statuses on the light themes, with Stronger colors on. Queued,
-  Delayed, Waiting, Canceled and Expired are pale greys chosen to sit quietly on
-  a white plot, which puts all five between 1.32:1 and 1.66:1 - under the 3:1 a
-  chart series needs.
-
-  charcoal-400 is the first stop on the ramp that clears it (3.36:1); charcoal-300
-  is still 1.98:1. They all land on the same stop, which sounds worse than it is:
-  the five were already within 1.05:1 of each other, so nothing was
-  distinguishable between them to lose. If they ever need to be told apart, that's
-  a separate decision about spreading them down the ramp - it can't be done
-  without pushing four of them darker than the floor requires.
-
-  The dark themes are untouched: their greys already clear 3:1 against a dark plot.
-*/
-/* The TRACE chip is the one level that stays an outline with Stronger colors on
-   the light themes: filled purple with a white label it competes with ERROR two
-   chips along, where a dark-grey rule and label sit quieter while still clearing
-   4.5:1 (charcoal-600 is 10.71:1 on white). The other four fill solid. */
+/* The five pale greys all sit under the 3:1 a chart series needs on white;
+   charcoal-400 is the first stop that clears it. Dark themes are untouched. */
+/* TRACE stays an outline on the light themes so it doesn't compete with
+   ERROR two chips along. The other four fill solid. */
 [data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"])
   .log-level-chip-trace {
   background-color: transparent;
@@ -1056,8 +945,6 @@
   --muted: #eceef1;
 }
 
-/* The timeline label shadow is a legibility aid for the base accents; the
-   high-contrast set doesn't need it */
 [data-icon-contrast="true"] .text-shadow-custom {
   text-shadow: none;
 }
@@ -1089,53 +976,28 @@
   }
 }
 
-/* The table row-hover menu wraps the always-visible "Suggest a region" button
-   in a ring container; on light that ring doubles up with the button's own
-   border, so drop it here. */
 :is([data-theme="light"], [data-theme="white"]) .suggest-region-cell > div > div {
   box-shadow: none;
 }
 
-/*
-  Interface contrast. --theme-contrast is 0..1, set on <html> from the dashboard
-  preference. It pulls the monochrome scale apart: text and borders travel
-  toward the light end of the charcoal ramp, backgrounds toward the dark end.
-  Accents are untouched.
-
-  Every token travels BETWEEN TWO CHARCOAL STOPS rather than toward #fff/#000.
-  The ramp is a hand-picked set of cool-leaning greys whose tint peaks in the
-  midtones (B-R runs 4, 6, 11, 18, 17, 14, 10 ... 5, 4), and mixing toward pure
-  white or black flattened that curve - at full contrast the old grid-bright
-  landed on tint +6 where the ramp's own grey at that brightness carries +14.
-  Interpolating stop-to-stop keeps every intermediate value inside the palette.
-
-  Each token moves TWO stops, except the text group, which moves one: text-bright
-  starts one stop from the ramp's light end, and moving the group together keeps
-  the spacing between bright, dimmed and faint identical at both ends of the
-  slider. Two stops also preserves the pairs that are deliberately equal at 0%
-  (surface-control/border-bright, and input-bg/background-hover).
-
-  At contrast 0 every value is its base stop, so this is byte-identical to the
-  palette the Classic theme used to ship. These blocks must stay below the
-  [data-theme="light"] theme block so they win the cascade.
-*/
+/* Interface contrast. Text and borders travel toward the light end of the
+   charcoal ramp, backgrounds toward the dark end; accents are untouched. Every
+   token moves between two ramp stops, never toward #fff/#000, so intermediate
+   values stay in the palette. Must stay below the theme blocks to win the
+   cascade. */
 :is([data-theme="dark"], [data-theme="black"]) {
-  /* Text travels toward the ramp's light end - one stop, so the group keeps its spacing */
   --color-text-bright: color-mix(in srgb, var(--color-charcoal-200), var(--color-charcoal-100) calc(var(--theme-contrast, 0) * 100%));
   --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
   --color-text-faint: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
 
-  /* Backgrounds travel toward the dark end, keeping their relative order */
   --color-background-deep: color-mix(in srgb, var(--color-charcoal-900), var(--color-charcoal-1000) calc(var(--theme-contrast, 0) * 100%));
   --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), var(--color-charcoal-950) calc(var(--theme-contrast, 0) * 100%));
   --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
   --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
-  /* Mirrors background-hover, as it does at contrast 0 */
   --color-surface-hover-subtle: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
   --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), var(--color-charcoal-775) calc(var(--theme-contrast, 0) * 100%));
   --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
 
-  /* Controls and borders travel toward the light end */
   --color-surface-control: color-mix(in srgb, var(--color-charcoal-600), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
   --color-surface-control-hover: color-mix(in srgb, var(--color-charcoal-550), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
   --color-surface-control-active: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
@@ -1146,52 +1008,17 @@
   --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
 }
 
-/*
-  Light travels the same way, with one wrinkle: light's greys are its own
-  hand-picked set, not charcoal stops - but they sit on the SAME cool scale and
-  continue straight into it (text-faint is c-400, text-dimmed c-500, text-bright
-  c-800), with the same tint curve. So the scale for light is its pale greys at
-  the top and the charcoal ramp below them.
-
-  Light's pale end is densely sampled while the mid-greys it travels into are
-  charcoal's sparser stops, so a "step" is not a fixed perceptual distance here.
-  Destinations are therefore chosen per token to land near where that token sits
-  today - which mirrors the old per-token weights (25%, 28%, 32%, 38%...) rather
-  than replacing them with one number. Ordering is enforced within each group;
-  groups already crossed each other at high contrast before this change.
-
-  Backgrounds stay among light's pale greys, since charcoal has nothing between
-  c-100 and c-200 to move them into. Everything else lands on a charcoal stop.
-
-  Text is the exception to matching today: at full contrast the old mixing sent
-  text-bright to pure #000 and text-dimmed to #0e0f11, only 1.10:1 apart, so the
-  bright/dimmed hierarchy disappeared. It now moves two stops like the dark
-  side, which keeps the three text tones spaced as they are at contrast 0.
-*/
+/* Light's pale greys continue onto the same cool scale, but unevenly, so
+   destinations are picked per token by where it should land rather than by
+   counting stops. */
 :is([data-theme="light"], [data-theme="white"]) {
-  /* Text deepens down the ramp, holding the gaps it has at contrast 0 */
   --color-text-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
   --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%));
   --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
 
-  /* Surfaces. Light has nowhere brighter to go than the white it already sits
-     on, so the whole stack deepens - which is what buys panel separation here
-     rather than text contrast.
-
-     Destinations are chosen by LUMINANCE, not by counting stops. The scale is
-     unevenly spaced up here, so equal step counts squeezed the two surfaces that
-     matter most: background-bright (the side menu and title bar) and
-     background-dimmed (the page) sit 0.042 apart at contrast 0, and equal steps
-     closed that to 0.005 by 100% - the two read as one colour exactly when the
-     user asked for more definition. Each tier now drops about 0.13 luminance, so
-     the gaps survive the trip and bright stays clearly above dimmed:
-
-       bright  1.000 -> 0.862     dimmed 0.958 -> 0.822   (gap 0.042 -> 0.040)
-       hover   0.890 -> 0.780     deep   0.885 -> 0.740
-       raised  0.822 -> 0.693
-
-     These stay among light's own pale greys: charcoal has nothing between c-100
-     and c-200 to hold them. White pins all six afterwards, so it stays flat. */
+  /* Light has nowhere brighter to go, so the stack deepens. Destinations are
+     chosen by luminance: the scale is unevenly spaced here, and equal step
+     counts collapsed the bright/dimmed gap. White pins all six afterwards. */
   --color-background-bright: color-mix(in srgb, #ffffff, #eef0f3 calc(var(--theme-contrast, 0) * 100%));
   --color-background-dimmed: color-mix(in srgb, #fbfbfc, #e9eaee calc(var(--theme-contrast, 0) * 100%));
   --color-background-hover: color-mix(in srgb, #f2f3f5, #e2e4e9 calc(var(--theme-contrast, 0) * 100%));
@@ -1199,17 +1026,11 @@
   --color-background-raised: color-mix(in srgb, #e9eaee, var(--color-charcoal-200) calc(var(--theme-contrast, 0) * 100%));
   --color-input-bg: color-mix(in srgb, #ffffff, #eef0f3 calc(var(--theme-contrast, 0) * 100%));
 
-  /* Controls, grid lines and borders push down onto the charcoal stops - this is
-     where light-mode contrast is actually visible, and where mixing toward #000
-     did the most damage: border-bright used to land on a +6 blue lean where the
-     ramp's own grey at that brightness carries +18. */
+  /* Where light-mode contrast is actually visible. */
   --color-surface-control: color-mix(in srgb, #dcdee3, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
   --color-surface-control-hover: color-mix(in srgb, #cfd2d9, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
   --color-surface-control-active: color-mix(in srgb, #b8bcc6, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
-  /* Grid lines stop a tier short of where the controls and borders end up. They
-     divide rows and sections rather than outlining anything, so at full contrast
-     charcoal-400 read as ruled paper; these land soft but still legible against
-     the page (grid-bright 1.65:1, grid-dimmed 1.25:1 at 100%). */
+  /* A tier short of the controls: they divide rows rather than outline. */
   --color-grid-dimmed: color-mix(in srgb, #eceef1, #cfd2d9 calc(var(--theme-contrast, 0) * 100%));
   --color-grid-bright: color-mix(in srgb, #e2e4e9, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
   /* Steeper than border-bright so the selected card stays the loudest edge */
@@ -1219,39 +1040,19 @@
   --color-border-brightest: color-mix(in srgb, #9ba1ad, var(--color-charcoal-550) calc(var(--theme-contrast, 0) * 100%));
 }
 
-/*
-  Black and White. Each takes its whole token set from Dark or Light above -
-  text, borders, controls, accents, charts, the contrast overlay - and only pins
-  the surfaces flat, so sections are separated by grid lines rather than by
-  layered fills.
-
-  These must stay below the contrast blocks so the pinned surfaces win: the
-  contrast control still moves text, grid lines, borders and controls, but the
-  backgrounds hold at black or white at every contrast level. Deliberately
-  neutral greys, not charcoal, which carries a blue cast.
-*/
+/* Black and White inherit Dark's and Light's token sets and only pin their
+   surfaces flat. Must stay below the contrast blocks so the pins win. */
 [data-theme="black"] {
-  /* Page, side menu, cards and popovers all sit flat on black */
   --color-background-deep: #000000;
   --color-background-dimmed: #000000;
   --color-background-bright: #000000;
-  /*
-    Black's range is -30 to 100 rather than 0 to 100: its 0% fades the grid lines
-    below the base palette, which is where this theme wants to start, and its
-    100% is full strength like everywhere else. r = p * 1.3 - 0.3, split into the
-    two always-positive halves the ramps need - `color-mix` rejects a negative
-    percentage outright.
-  */
+  /* Black's range is -30..100: r = p * 1.3 - 0.3, split into two always-positive
+     halves because `color-mix` rejects a negative percentage. */
   --theme-contrast: max(0, var(--theme-contrast-percent, 0) * 1.3 - 0.3);
   --theme-fade: max(0, 0.3 - var(--theme-contrast-percent, 0) * 1.3);
 
-  /*
-    Grid lines get the extra travel below the base that the other themes don't
-    have. Everything here sits flat on #000, so the rules are the only thing
-    giving the page structure - and at the base palette they can be heavier than
-    this theme wants. Above 0 this is the shared dark ramp exactly; below it the
-    line fades back toward the page.
-  */
+  /* Grid lines are the only structure on a flat black page, so they get the
+     extra travel below the base palette. */
   --color-grid-dimmed: color-mix(
     in srgb,
     color-mix(
@@ -1271,12 +1072,9 @@
     #000000 calc(var(--theme-fade, 0) * 100%)
   );
 
-  /* Interaction feedback still needs somewhere to go */
   --color-background-hover: #171717;
   --color-background-raised: #1f1f1f;
-  /* Half of #1f1f1f over black is #101010, which reads as nothing */
   --color-segmented-track: var(--color-background-raised);
-  /* Inputs read as part of the page; their border does the work */
   --color-input-bg: #0a0a0a;
 }
 

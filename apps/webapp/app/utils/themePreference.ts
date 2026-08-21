@@ -1,12 +1,10 @@
 import { z } from "zod";
 
-// Shared between server (dashboard preferences) and client (theme UI, system
-// theme sync) - must stay free of server-only imports.
+// Shared with the client, so no server-only imports.
 export const ThemePreference = z.enum(["system", "dark", "light", "black", "white"]);
 export type ThemePreference = z.infer<typeof ThemePreference>;
 
-/* Which theme `system` resolves to at each end of the OS setting. Both ends have
-   a flat counterpart (White, Black), so the user picks per end. */
+/* Which theme `system` resolves to at each end of the OS setting. */
 export const SystemLightTheme = z.enum(["light", "white"]);
 export type SystemLightTheme = z.infer<typeof SystemLightTheme>;
 export const SystemDarkTheme = z.enum(["dark", "black"]);
@@ -22,45 +20,30 @@ export function normalizeSystemDarkTheme(value: unknown): SystemDarkTheme {
   return result.success ? result.data : "dark";
 }
 
-/** Coerce any stored/legacy value into a valid preference. Missing or unknown
- * values fall back to `dark`, which is the default. This is also the upgrade
- * path off the removed `classic` theme: a stored "classic" no longer parses, so
- * it lands here and resolves to Dark - which at contrast 0 renders the exact
- * palette Classic used to. Pinned rather than system-resolved, so nobody gets
- * surprised by light mode. */
+/** Missing, unknown and legacy values (including the removed `classic`) fall
+ *  back to `dark`. */
 export function normalizeThemePreference(value: unknown): ThemePreference {
   const result = ThemePreference.safeParse(value);
   return result.success ? result.data : "dark";
 }
 
-/** Dark's palette at contrast 0 is exactly the palette the Classic theme
- *  shipped, so 0 is the default: anyone arriving from Classic sees no change,
- *  and the slider only ever adds contrast on top. */
+/** 0 is the base palette; the slider only ever adds contrast on top. */
 const DEFAULT_THEME_CONTRAST = 0;
 
-/** The "Distinguish without color" accessibility preference: on swaps the
- *  default accents for the high-contrast set (solid badges, monochrome nav
- *  icons, darker chart series). Off is the default. Stored as `iconContrast`,
- *  which predates the preference covering charts and shapes too. */
+/** The "Stronger colors" preference. Stored as `iconContrast`, which predates it
+ *  covering charts and shapes too. */
 export function normalizeIconContrast(value: unknown): boolean {
   return value === true;
 }
 
-/** Underlines inline links (the TextLink component). Off is the default. */
 export function normalizeUnderlineLinks(value: unknown): boolean {
   return value === true;
 }
 
-/** Interface contrast for the System themes, 0 to 100. Missing or invalid
- * values fall back to the default bump. */
-/*
- * Contrast is stored as a plain 0-100: "how far along the active theme's range",
- * not a position on one shared scale. Each theme maps it onto its own range in
- * tailwind.css - Black's starts below the base palette so its 0% fades the grid
- * lines, while the others start at the base. Keeping the stored value a
- * percentage is what lets 35% stay 35% when you switch themes.
+/**
+ * A 0-100 position within the active theme's own range, not a shared scale, so
+ * 35% stays 35% across themes. Each theme maps it in tailwind.css.
  */
-
 export function normalizeThemeContrast(value: unknown): number {
   const num = typeof value === "string" ? Number(value) : value;
   if (typeof num !== "number" || !Number.isFinite(num)) return DEFAULT_THEME_CONTRAST;

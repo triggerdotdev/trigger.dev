@@ -97,8 +97,7 @@ export default function Story_() {
           <Story label="PopoverCustomTrigger">
             <PopoverSample>
               {() => (
-                // The trigger is itself a button, so its child is content — an
-                // icon and a label here, never another button.
+                // The trigger is itself a button, so its child is content.
                 <PopoverCustomTrigger
                   aria-label="Custom trigger"
                   className="gap-1.5 px-2 py-1 text-sm"

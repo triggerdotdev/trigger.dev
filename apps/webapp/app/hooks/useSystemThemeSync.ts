@@ -10,8 +10,7 @@ export type SystemThemes = { light: SystemLightTheme; dark: SystemDarkTheme };
 
 const DEFAULT_SYSTEM_THEMES: SystemThemes = { light: "light", dark: "dark" };
 
-/** Which end of the scale a theme sits on. Classic and Black are dark; White is
- *  light; `system` follows the OS. */
+/** Which end of the scale a theme sits on. */
 export type ThemeAppearance = "dark" | "light";
 
 function themeAppearance(preference: ThemePreference, prefersDark: boolean): ThemeAppearance {
@@ -20,10 +19,8 @@ function themeAppearance(preference: ThemePreference, prefersDark: boolean): The
 }
 
 /**
- * The resolved appearance, tracking OS changes while the preference is `system`.
- *
- * Defaults to dark before the effect runs, matching the SSR fallback in root.tsx,
- * so the first client render agrees with the server's.
+ * Resolved appearance, tracking the OS while the preference is `system`. Defaults
+ * to dark before the effect runs, matching root.tsx's SSR fallback.
  */
 export function useThemeAppearance(preference: ThemePreference): ThemeAppearance {
   const [prefersDark, setPrefersDark] = useState(true);
@@ -40,11 +37,7 @@ export function useThemeAppearance(preference: ThemePreference): ThemeAppearance
   return themeAppearance(preference, prefersDark);
 }
 
-/**
- * The theme a preference resolves to. Only `system` needs resolving, and it lands
- * on whichever variant the user picked for that end of the OS setting - Light or
- * White, Dark or Black.
- */
+/** Only `system` needs resolving; it lands on the variant picked for that end. */
 export function resolveThemePreference(
   preference: ThemePreference,
   prefersDark: boolean,
@@ -54,24 +47,12 @@ export function resolveThemePreference(
   return prefersDark ? systemThemes.dark : systemThemes.light;
 }
 
-/**
- * Puts a preference on <html> now, resolving `system` against the OS once. Use
- * this to apply a theme the moment it's picked: the preference round-trips
- * through the server and comes back via the root loader, and anything that waits
- * for that is at the mercy of whether the revalidation actually lands.
- */
-/**
- * Write the contrast preference to the document.
- *
- * Just the percent: each theme maps it onto its own range in CSS, so there's
- * nothing here that needs to know which theme resolved. That used to write
- * `--theme-contrast` directly, which meant the live preview and the server
- * render could disagree, and a value outside 0-100 silently did nothing.
- */
+/** Just the percent; each theme maps it onto its own range in CSS. */
 export function applyThemeContrast(percent: number) {
   document.documentElement.style.setProperty("--theme-contrast-percent", String(percent / 100));
 }
 
+/** Applies a theme immediately, rather than waiting for the loader round-trip. */
 export function applyThemePreference(
   preference: ThemePreference,
   systemThemes: SystemThemes = DEFAULT_SYSTEM_THEMES
@@ -86,13 +67,9 @@ export function applyThemePreference(
 }
 
 /**
- * Keeps `data-theme` on <html> in sync with the preference. For `system` it
- * follows the OS color scheme live; for pinned themes it writes the attribute
- * explicitly - React can skip the write when its virtual DOM already matched
- * the SSR fallback while the inline script had changed the real attribute.
- * The single resolution rule (dark vs light) lives here and in the blocking
- * inline script in root.tsx; downstream consumers react to the `data-theme`
- * mutation (see useThemeColor).
+ * Keeps `data-theme` in sync with the preference. Pinned themes are written
+ * explicitly: React can skip a write its virtual DOM thinks already matched,
+ * while root.tsx's inline script had changed the real attribute.
  */
 export function useSystemThemeSync(
   preference: ThemePreference,
@@ -114,6 +91,6 @@ export function useSystemThemeSync(
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-    // Destructured so a fresh object identity each render doesn't re-run this
+    // Destructured so a fresh object each render doesn't re-run this
   }, [preference, light, dark]);
 }

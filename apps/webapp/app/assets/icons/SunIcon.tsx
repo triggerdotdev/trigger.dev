@@ -1,8 +1,3 @@
-/**
- * Sun with rays — the light theme. The source artwork wrapped this in a mask and
- * a clip path; both were no-ops at this viewBox, and dropping them keeps the
- * markup free of ids that would collide when the icon renders more than once.
- */
 export function SunIcon({ className }: { className?: string }) {
   return (
     <svg

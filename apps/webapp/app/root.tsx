@@ -85,31 +85,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   const user = await getUser(request);
-  // Theme switching is feature-flagged; while off, everyone stays on Dark at
-  // contrast 0 even if a preference was saved earlier - that pairing renders
-  // the exact palette the Classic theme used to ship. Admins always get the
-  // switcher so the team can dogfood before the flag flips. Cached: the root
-  // loader runs on every document request and client navigation.
+  // Feature-flagged; while off everyone stays on Dark at contrast 0. Admins
+  // always get it. Cached: this loader runs on every request and navigation.
   const showThemeSwitcher = user
     ? user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }))
     : false;
-  // Logged-out pages (login, invites) always render the branded dark look.
+  // Logged-out pages always render the branded dark look.
   const themePreference: ThemePreference = showThemeSwitcher
     ? normalizeThemePreference(user?.dashboardPreferences.theme)
     : "dark";
   const themeContrast = showThemeSwitcher
     ? normalizeThemeContrast(user?.dashboardPreferences.contrast)
     : 0;
-  // The "Distinguish without color" accents. Off by default, and forced off
-  // with the switcher hidden so logged-out and unflagged pages render the
-  // standard set.
+  // Forced off with the switcher hidden, so unflagged pages render the base set.
   const iconContrast = showThemeSwitcher
     ? normalizeIconContrast(user?.dashboardPreferences.iconContrast)
     : false;
   const underlineLinks = showThemeSwitcher
     ? normalizeUnderlineLinks(user?.dashboardPreferences.underlineLinks)
     : false;
-  // Which theme `system` lands on at each end of the OS setting.
   const systemThemes = {
     light: normalizeSystemLightTheme(user?.dashboardPreferences.systemLightTheme),
     dark: normalizeSystemDarkTheme(user?.dashboardPreferences.systemDarkTheme),
@@ -203,27 +197,25 @@ export default function App() {
   } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
   useSystemThemeSync(themePreference, systemThemes);
-  // SSR falls back to the dark end for `system`; the inline script below corrects
-  // it before paint, and useSystemThemeSync keeps it live afterwards.
+  // SSR falls back to the dark end for `system`; the script below fixes it
+  // before paint, and useSystemThemeSync keeps it live after.
   const resolvedTheme = resolveThemePreference(themePreference, true, systemThemes);
 
   return (
     <html
       lang="en"
       className="h-full"
-      // The pre-paint script below may flip data-theme before hydration
+      // The script below may flip data-theme before hydration
       suppressHydrationWarning
       data-theme={resolvedTheme}
       data-theme-preference={themePreference}
-      // Read by the pre-paint script below, which resolves `system` before the
-      // loader data is available to JS
+      // Read by the script below, before loader data reaches JS
       data-system-light={systemThemes.light}
       data-system-dark={systemThemes.dark}
-      // Accent set for icons and badges; the `system:` variant keys off this
+      // The `system:` variant keys off this
       data-icon-contrast={iconContrast ? "true" : "false"}
-      // Underlines links carrying the inline-text-link marker class
       data-underline-links={underlineLinks ? "true" : "false"}
-      // Just the percent; each theme maps it onto its own contrast range in CSS
+      // Each theme maps the percent onto its own range in CSS
       style={{ "--theme-contrast-percent": themeContrast / 100 } as CSSProperties}
     >
       <head>

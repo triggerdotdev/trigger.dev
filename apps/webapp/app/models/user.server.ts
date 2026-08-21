@@ -399,10 +399,8 @@ export function updateUser({
 }
 
 /**
- * The profile page updates each field on its own, so these three writes touch
- * only the column they're named for. `updateUser` above is the onboarding write
- * — it takes name and email together and confirms basic details as a side
- * effect, which is wrong for an edit made from the profile page.
+ * One column each. `updateUser` above is the onboarding write and confirms basic
+ * details as a side effect, which is wrong for a profile edit.
  */
 export function updateUserName({ id, name }: Pick<User, "id" | "name">) {
   return prisma.user.update({
@@ -419,11 +417,8 @@ export function updateUserEmail({ id, email }: Pick<User, "id" | "email">) {
 }
 
 /**
- * Set the marketing-email preference, writing nothing when it already holds that
- * value. `updateMany` (rather than read-then-write) keeps it to a single
- * statement whose WHERE does the comparing, so a redundant request — a
- * double-click that the client debounce didn't catch, or a replayed POST —
- * updates zero rows instead of churning the row and its updatedAt.
+ * `updateMany` so the WHERE does the comparing: a redundant request updates zero
+ * rows rather than churning the row and its updatedAt.
  */
 export async function updateUserMarketingEmails({
   id,
