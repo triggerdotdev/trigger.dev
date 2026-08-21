@@ -46,7 +46,9 @@ describe("edgeField", () => {
   it("distinguishes index 0 from an absent index", () => {
     expect(edgeField("w_a", 0)).not.toBe(edgeField("w_a"));
   });
+});
 
+describe("waitpointIdFromEdgeField", () => {
   it("round-trips back to the waitpoint id", () => {
     for (const index of [undefined, null, 0, 7]) {
       expect(waitpointIdFromEdgeField(edgeField("w_a", index))).toBe("w_a");
@@ -55,6 +57,10 @@ describe("edgeField", () => {
 
   it("returns undefined for a field with no separator", () => {
     expect(waitpointIdFromEdgeField("nope")).toBeUndefined();
+  });
+
+  it("splits on the last separator, tolerating a '#' inside the waitpoint id", () => {
+    expect(waitpointIdFromEdgeField("a#b#3")).toBe("a#b");
   });
 });
 

@@ -31,10 +31,11 @@ export function idempotencyKey(environmentId: string, key: string): string {
   return `wp:idem:{${environmentId}}:${key}`;
 }
 
-// "#" separates the id from the index. A waitpoint id and a run id never contain "#", so
-// the split is unambiguous. An absent index collapses onto the empty suffix, which is how
-// the partial unique index on a null batchIndex behaves; index 0 keeps its own field,
-// because "0" and "" are different strings.
+// "#" separates the id from the index. An absent index collapses onto the empty suffix,
+// which is how the partial unique index on a null batchIndex behaves; index 0 keeps its
+// own field, because "0" and "" are different strings. The split back to an id below is
+// taken from the LAST "#", not the first, so this stays unambiguous even if a waitpoint id
+// or a run id ever contains "#" itself.
 const SEPARATOR = "#";
 
 export function edgeField(waitpointId: string, batchIndex?: number | null): string {
@@ -45,6 +46,9 @@ export function watcherField(runId: string, batchIndex?: number | null): string 
   return `${runId}${SEPARATOR}${batchIndex ?? ""}`;
 }
 
+// The last-"#" rule here is re-implemented as a Lua pattern in runClear (scripts.ts). This
+// function has no caller besides its own test, so that test is what pins the rule as a
+// specification the Lua mirrors, not just documentation of this helper.
 export function waitpointIdFromEdgeField(field: string): string | undefined {
   const separator = field.lastIndexOf(SEPARATOR);
   return separator === -1 ? undefined : field.slice(0, separator);

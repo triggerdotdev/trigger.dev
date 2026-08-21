@@ -252,6 +252,33 @@ describe("registerOrReport", () => {
       await store.quit();
     }
   });
+
+  redisTest("keeps the first registration's watcher on a re-register", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+      await store.registerOrReport({
+        waitpointId: "w_a",
+        runId: "run_1",
+        spanIdToComplete: "span_first",
+        createdAt: NOW,
+      });
+      // Same run, same (absent) batch index, so the watcher field collides. HSETNX must
+      // not let this second registration overwrite the first one's span.
+      await store.registerOrReport({
+        waitpointId: "w_a",
+        runId: "run_1",
+        spanIdToComplete: "span_second",
+        createdAt: NOW,
+      });
+
+      const completed = await store.complete({ waitpointId: "w_a", completion: completion() });
+      expect(completed.watchers).toHaveLength(1);
+      expect(completed.watchers[0]!.spanIdToComplete).toBe("span_first");
+    } finally {
+      await store.quit();
+    }
+  });
 });
 
 describe("complete", () => {
