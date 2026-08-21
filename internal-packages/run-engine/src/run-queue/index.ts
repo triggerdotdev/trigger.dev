@@ -5747,9 +5747,18 @@ if gatedPending ~= nil then
   end
   if redis.call('ZADD', unpack(gatedArgs)) > 0 then
     for _, ckQueueName in ipairs(gatedPending) do
-      local gateIdle = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
-      if gateIdle and tonumber(gateIdle) > floor then
-        redis.call('ZADD', ckVtimeKey, 'XX', gateIdle, ckQueueName)
+      -- Only the members this call put at the floor may take their parked tag back. The
+      -- batched ZADD reports how many it added but not which, and gatedPending can hold an
+      -- already-registered variant whenever the pass-1 scan was truncated, so the current
+      -- score is the discriminator: at the floor means it either just registered or has no
+      -- credit to lose either way. Without this the parked tag overwrites a live advanced
+      -- one and rewinds that variant's clock, which is the one thing NX exists to stop.
+      local gateCur = redis.call('ZSCORE', ckVtimeKey, ckQueueName)
+      if gateCur and tonumber(gateCur) <= floor then
+        local gateIdle = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
+        if gateIdle and tonumber(gateIdle) > floor then
+          redis.call('ZADD', ckVtimeKey, 'XX', gateIdle, ckQueueName)
+        end
       end
     end
     redis.call('EXPIRE', ckVtimeKey, stateTtl)
