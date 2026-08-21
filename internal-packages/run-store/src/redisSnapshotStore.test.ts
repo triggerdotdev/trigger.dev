@@ -392,7 +392,7 @@ describe("TTL rule", () => {
         expect(await raw.pttl(key)).toBe(-1);
       }
     } finally {
-      raw.disconnect();
+      await raw.quit();
       await store.quit();
     }
   });
@@ -409,6 +409,13 @@ describe("TTL rule", () => {
           isTerminal: false,
           cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
         });
+        // Second cycle, so the terminal PEXPIRE loop runs past its first iteration.
+        await store.append({
+          entry: entry({ id: "s1b" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_b", index: 0 }] },
+        });
         const r = await store.append({
           entry: entry({ id: "s2", executionStatus: "FINISHED" }),
           kind: "transition",
@@ -421,13 +428,14 @@ describe("TTL rule", () => {
           "snap:{run_1}:cur",
           "snap:{run_1}:seq",
           "snap:{run_1}:wp:1",
+          "snap:{run_1}:wp:2",
         ]) {
           const ttl = await raw.pttl(key);
           expect(ttl).toBeGreaterThan(0);
           expect(ttl).toBeLessThanOrEqual(60_000);
         }
       } finally {
-        raw.disconnect();
+        await raw.quit();
         await store.quit();
       }
     }
@@ -437,12 +445,37 @@ describe("TTL rule", () => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
     const raw = createRedisClient(redisOptions);
     try {
-      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      await store.append({
+        entry: entry({ id: "s1" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+      });
+      await store.append({
+        entry: entry({ id: "s1b" }),
+        kind: "transition",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_b", index: 0 }] },
+      });
       await store.append({
         entry: entry({ id: "s2", executionStatus: "FINISHED" }),
         kind: "transition",
         isTerminal: true,
       });
+
+      const keys = [
+        "snap:{run_1}:e",
+        "snap:{run_1}:idx",
+        "snap:{run_1}:cur",
+        "snap:{run_1}:seq",
+        "snap:{run_1}:wp:1",
+        "snap:{run_1}:wp:2",
+      ];
+      // Shrink first: a re-apply is then the only way the TTL can go back up.
+      for (const key of keys) {
+        await raw.pexpire(key, 5_000);
+      }
+
       // A stale client appends a non-terminal, invalid row after FINISHED.
       const late = await store.append({
         entry: entry({ id: "s3", error: "stale" }),
@@ -450,12 +483,13 @@ describe("TTL rule", () => {
         isTerminal: false,
       });
       expect(late).toMatchObject({ outcome: "written", ttl: "reapplied" });
-      // Never a live TTL, and never cleared: the key stays bounded.
-      const ttl = await raw.pttl("snap:{run_1}:e");
-      expect(ttl).toBeGreaterThan(0);
-      expect(ttl).toBeLessThanOrEqual(60_000);
+      for (const key of keys) {
+        const ttl = await raw.pttl(key);
+        expect(ttl).toBeGreaterThan(55_000);
+        expect(ttl).toBeLessThanOrEqual(60_000);
+      }
     } finally {
-      raw.disconnect();
+      await raw.quit();
       await store.quit();
     }
   });
@@ -480,7 +514,7 @@ describe("TTL rule", () => {
       expect(after).toEqual({ outcome: "skippedNoKeyspace" });
       expect(await raw.exists("snap:{run_1}:e")).toBe(0);
     } finally {
-      raw.disconnect();
+      await raw.quit();
       await store.quit();
     }
   });
