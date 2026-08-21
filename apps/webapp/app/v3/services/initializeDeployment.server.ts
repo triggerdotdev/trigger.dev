@@ -290,7 +290,9 @@ export class InitializeDeploymentService extends BaseService {
         const serializedBytes = Buffer.byteLength(serialized, "utf8");
         if (serializedBytes > env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES) {
           const sizeKB = parseFloat((serializedBytes / 1024).toFixed(1));
-          const limitKB = parseFloat((env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES / 1024).toFixed(1));
+          const limitKB = parseFloat(
+            (env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES / 1024).toFixed(1)
+          );
           throw new ServiceValidationError(
             `Build environment variables size (${sizeKB} KB) exceeds the allowed limit of ${limitKB} KB. Reach out to us if you are seeing this error consistently.`
           );
