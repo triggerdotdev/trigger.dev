@@ -1,5 +1,5 @@
 import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { UnclassifiableRunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
   TaskRun,
@@ -92,11 +92,24 @@ export class WaitpointSystem {
     try {
       store = await this.$.runStore.forWaitpointCompletion(id, { routeKind: "MANUAL" });
     } catch (error) {
-      this.$.logger.error("completeWaitpoint: unclassifiable waitpointId", {
+      // Only a genuine id-classification failure should become UnclassifiableWaitpointId.
+      // forWaitpointCompletion also probes the DB to resolve the owning store, so a transient
+      // database/infra error (e.g. can't reach the database) can surface here too. Those MUST
+      // bubble up unchanged so they keep their original type, retryability, and error grouping
+      // instead of being mislabelled as an unclassifiable id.
+      if (error instanceof UnclassifiableRunId) {
+        this.$.logger.error("completeWaitpoint: unclassifiable waitpointId", {
+          waitpointId: id,
+          error,
+        });
+        throw new UnclassifiableWaitpointId(id, { cause: error });
+      }
+
+      this.$.logger.error("completeWaitpoint: error resolving waitpoint store", {
         waitpointId: id,
         error,
       });
-      throw new UnclassifiableWaitpointId(id, { cause: error });
+      throw error;
     }
 
     // 1. Complete the Waitpoint (if not completed)
