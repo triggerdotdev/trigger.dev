@@ -96,7 +96,10 @@ export type CompleteResult = {
   watchers: WatcherEntry[];
 };
 
-/** One run-to-waitpoint edge. The metadata a frozen return type needs travels here. */
+/**
+ * One run-to-waitpoint edge. The metadata a frozen return type — an existing API response
+ * shape this store must keep reproducing — needs travels here.
+ */
 export type BlockEdge = {
   waitpointId: string;
   batchIndex?: number | null;
@@ -126,7 +129,10 @@ export type AbsorbResult = {
   alreadyDelivered: Array<{ waitpointId: string; completion?: WaitpointCompletion }>;
 };
 
-export type BlockStateEdge = BlockEdge & { edgeId: string };
+// absorbBlockers strips `reported` before writing the edge blob, so a value read back
+// here can never carry it — Omit says so instead of inheriting a field that is always
+// undefined.
+export type BlockStateEdge = Omit<BlockEdge, "reported"> & { edgeId: string };
 
 export type BlockState = {
   pendingIds: string[];
@@ -423,7 +429,17 @@ export class WaitpointStoreCoordinator {
     const edges: BlockStateEdge[] = [];
     for (let i = 0; i < edgeCount; i += 2) {
       const edgeId = reply[cursor + i]!;
-      const stored = JSON.parse(reply[cursor + i + 1] ?? "{}") as BlockEdge;
+      // An edge value is always a non-empty JSON.stringify, so a missing slot here means
+      // the cursor walked off the end of the reply. That must fail loudly, not decode a
+      // BlockEdge with no waitpointId — the exact off-by-one this task's arithmetic guards
+      // against.
+      const edgeJson = reply[cursor + i + 1];
+      if (!edgeJson) {
+        throw new Error(
+          `readBlockState(${runId}): missing edge payload at reply index ${cursor + i + 1}`
+        );
+      }
+      const stored = JSON.parse(edgeJson) as BlockEdge;
       edges.push({ ...stored, edgeId });
     }
 
@@ -433,15 +449,21 @@ export class WaitpointStoreCoordinator {
   /**
    * Drain one cycle's edges, or clear the run entirely when no edge ids are given.
    *
-   * The selective form RECONCILES: after the named edges go, any pending or delivered
-   * entry that no surviving edge references goes too. That is wider than deleting the
-   * named ids, and it has to be — a delivery is written unconditionally, so the window
-   * between register and absorb can leave a delivered entry with no edge at all.
+   * The selective form RECONCILES: any pending or delivered entry that no surviving edge
+   * references goes too, not only the named ones. See runClear in scripts.ts for why.
    */
   async clearBlockState(args: {
     runId: string;
     edgeIds?: string[];
-  }): Promise<{ outcome: "cleared" | "drained" }> {
+  }): Promise<{ outcome: "cleared" | "drained" | "noop" }> {
+    // `omitted` and `explicitly empty` must not collapse onto each other: the Lua's
+    // n === 0 means "clear the whole run", so an omitted edgeIds stays the terminal clear,
+    // but a caller that computed zero edges to drain gets a genuine no-op that never
+    // reaches Redis.
+    if (args.edgeIds && args.edgeIds.length === 0) {
+      return { outcome: "noop" };
+    }
+
     const keys = runBlockKeys(args.runId);
     const edgeIds = args.edgeIds ?? [];
 

@@ -360,9 +360,10 @@ describe("complete", () => {
   });
 });
 
-// No coordinator method calls runAbsorbBlockers/runClear/wpIdemReserve yet — a later task
-// wires those in. Registered directly on a raw client so the Lua itself is exercised now.
-describe("runAbsorbBlockers, runClear and wpIdemReserve (direct Lua)", () => {
+// A coordinator method now drives each of these scripts, but this block stays: it is the
+// only place asserting the RAW reply shape, so a Lua/TypeScript framing change made on
+// both sides at once would still fail here even though every class-level test passed.
+describe("reply framing (direct Lua — pins the wire shape the coordinator decodes)", () => {
   const envelope = JSON.stringify(completion());
 
   redisTest(
@@ -780,8 +781,6 @@ describe("absorbBlockers", () => {
         expect(result.pendingOfRequested).toBe(1);
         expect(result.storePendingTotal).toBe(1);
 
-        // The edges themselves stay distinct — that multiplicity is what produces the
-        // repeats in the cycle's ordered id list.
         const state = await store.readBlockState(RUN_ID);
         expect(state.edges).toHaveLength(2);
         expect(state.edges.map((e) => e.batchIndex).sort()).toEqual([0, 2]);
@@ -830,7 +829,6 @@ describe("absorbBlockers", () => {
   redisTest("lets a delivery that raced ahead of the absorb win", async ({ redisOptions }) => {
     const store = coordinator(redisOptions);
     try {
-      // The completion landed between register and absorb, so it is already delivered.
       await store.deliverCompletion({
         runId: RUN_ID,
         waitpointId: "w_a",
@@ -895,6 +893,31 @@ describe("absorbBlockers", () => {
       await store.quit();
     }
   });
+
+  redisTest(
+    "reports a smaller pendingOfRequested than storePendingTotal when an unrelated blocker is already pending",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        // w_x is a live blocker from an earlier absorb, unrelated to this call's request.
+        await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_x")] });
+
+        const result = await store.absorbBlockers({
+          runId: RUN_ID,
+          edges: [edge("w_a", { reported: completion() })],
+        });
+
+        // Nothing THIS call requested is pending (w_a arrived already delivered), but the
+        // run's whole store-resident set still holds w_x — a divergence for a different
+        // reason than an empty request list, so a reply[0]/reply[1] swap or a
+        // re-derived-in-TypeScript pendingOfRequested would both be caught here too.
+        expect(result.pendingOfRequested).toBe(0);
+        expect(result.storePendingTotal).toBe(1);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 
   redisTest("sets no TTL on any run key", async ({ redisOptions }) => {
     const store = coordinator(redisOptions);
@@ -1117,4 +1140,25 @@ describe("clearBlockState", () => {
       await store.quit();
     }
   });
+
+  redisTest(
+    "is a no-op for an explicitly empty edge id list, unlike an omitted one",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a"), edge("w_b")] });
+
+        // Omitting edgeIds reaches the Lua's n === 0 branch and clears everything (proven
+        // above). A caller-computed EMPTY array must not collapse onto that: it means
+        // "nothing to drain", not "clear the run".
+        expect((await store.clearBlockState({ runId: RUN_ID, edgeIds: [] })).outcome).toBe("noop");
+
+        const state = await store.readBlockState(RUN_ID);
+        expect(state.edges.map((e) => e.waitpointId).sort()).toEqual(["w_a", "w_b"]);
+        expect(state.pendingIds.sort()).toEqual(["w_a", "w_b"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 });
