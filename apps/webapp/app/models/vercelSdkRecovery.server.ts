@@ -147,6 +147,7 @@ export const VercelSchemas = {
         .object({
           envs: z.array(z.record(z.unknown())),
           pagination: z.unknown().optional(),
+          hiddenProductionEnvCount: z.number().optional(),
         })
         .passthrough(),
       z.array(z.record(z.unknown())),

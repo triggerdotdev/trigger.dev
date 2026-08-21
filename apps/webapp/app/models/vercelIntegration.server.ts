@@ -43,6 +43,23 @@ function normalizeTarget(target: string[] | string | undefined): string[] {
   return [];
 }
 
+function readProjectEnvs(
+  response: unknown,
+  logContext: Record<string, unknown>
+): ResponseBodyEnvs[] {
+  const cursor = (response as { pagination?: { next?: unknown } } | null | undefined)?.pagination
+    ?.next;
+
+  if (typeof cursor === "number" && cursor > 0) {
+    logger.error(
+      "Vercel project env list returned a pagination cursor — this endpoint has always returned every record in one response, so this read is incomplete and needs paginating",
+      logContext
+    );
+  }
+
+  return extractVercelEnvs(response as FilterProjectEnvsResponseBody);
+}
+
 function extractVercelEnvs(response: FilterProjectEnvsResponseBody): ResponseBodyEnvs[] {
   if ("envs" in response && Array.isArray(response.envs)) {
     return response.envs;
@@ -509,19 +526,7 @@ export class VercelIntegrationRepository {
       { projectId, teamId },
       toVercelApiError
     ).map((response) => {
-      // Warn if response is paginated (more data exists that we're not fetching)
-      if (
-        "pagination" in response &&
-        response.pagination &&
-        "next" in response.pagination &&
-        response.pagination.next !== null
-      ) {
-        logger.warn(
-          "Vercel filterProjectEnvs returned paginated response - some env vars may be missing",
-          { projectId, count: response.pagination.count }
-        );
-      }
-      return extractVercelEnvs(response).map(toVercelEnvironmentVariable);
+      return readProjectEnvs(response, { projectId, teamId }).map(toVercelEnvironmentVariable);
     });
   }
 
@@ -544,7 +549,7 @@ export class VercelIntegrationRepository {
       toVercelApiError
     ).andThen((response) => {
       // Apply all filters BEFORE decryption to avoid unnecessary API calls
-      const filteredEnvs = extractVercelEnvs(response).filter((env) => {
+      const filteredEnvs = readProjectEnvs(response, { projectId, teamId }).filter((env) => {
         if (target && !normalizeTarget(env.target).includes(target)) return false;
         if (shouldIncludeKey && !shouldIncludeKey(env.key)) return false;
         if (isVercelSecretType(env.type)) return false;
@@ -1237,7 +1242,7 @@ export class VercelIntegrationRepository {
             }
           );
 
-          const envs = extractVercelEnvs(existingEnvs);
+          const envs = readProjectEnvs(existingEnvs, { vercelProjectId, teamId });
 
           const existingEnv = envs.find((env) => {
             if (env.key !== key) return false;
@@ -1296,7 +1301,7 @@ export class VercelIntegrationRepository {
             }
           );
 
-          const envs = extractVercelEnvs(existingEnvs);
+          const envs = readProjectEnvs(existingEnvs, { vercelProjectId, teamId });
 
           const existingEnv = envs.find((env) => {
             if (env.key !== key) return false;
@@ -1668,7 +1673,7 @@ export class VercelIntegrationRepository {
       }
     );
 
-    const existingEnvsList = extractVercelEnvs(existingEnvs);
+    const existingEnvsList = readProjectEnvs(existingEnvs, { vercelProjectId, teamId });
 
     const toCreate: Array<{
       key: string;
@@ -1951,7 +1956,7 @@ export class VercelIntegrationRepository {
       }
     );
 
-    const envs = extractVercelEnvs(existingEnvs);
+    const envs = readProjectEnvs(existingEnvs, { vercelProjectId, teamId });
     const idsToRemove = envs.filter((env) => env.key === key && env.id).map((env) => env.id!);
 
     if (idsToRemove.length === 0) {
@@ -1990,7 +1995,7 @@ export class VercelIntegrationRepository {
       }
     );
 
-    const envs = extractVercelEnvs(existingEnvs);
+    const envs = readProjectEnvs(existingEnvs, { vercelProjectId, teamId });
 
     // Vercel can have multiple env vars with the same key but different targets
     const existingEnv = envs.find((existing) => {
