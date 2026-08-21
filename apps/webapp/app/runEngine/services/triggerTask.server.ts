@@ -74,6 +74,9 @@ import {
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
+import type { ExternalDeploymentCache } from "~/services/externalDeploymentCache.server";
+import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
+import { resolveExternalDeployment } from "~/v3/services/resolveExternalDeployment.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -101,6 +104,7 @@ export class RunEngineTriggerTaskService {
   private readonly evaluateGate: MollifierEvaluateGate;
   private readonly getMollifierBuffer: MollifierGetBuffer;
   private readonly isMollifierGloballyEnabled: () => boolean;
+  private readonly externalDeploymentCache: ExternalDeploymentCache;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -117,6 +121,7 @@ export class RunEngineTriggerTaskService {
     evaluateGate?: MollifierEvaluateGate;
     getMollifierBuffer?: MollifierGetBuffer;
     isMollifierGloballyEnabled?: () => boolean;
+    externalDeploymentCache?: ExternalDeploymentCache;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -134,6 +139,7 @@ export class RunEngineTriggerTaskService {
     this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
     this.isMollifierGloballyEnabled =
       opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
+    this.externalDeploymentCache = opts.externalDeploymentCache ?? externalDeploymentCacheInstance;
   }
 
   /**
@@ -394,7 +400,7 @@ export class RunEngineTriggerTaskService {
             });
           }
 
-          const lockedToBackgroundWorker = body.options?.lockToVersion
+          const explicitlyLockedToBackgroundWorker = body.options?.lockToVersion
             ? await this.prisma.backgroundWorker.findFirst({
                 where: {
                   projectId: environment.projectId,
@@ -409,6 +415,34 @@ export class RunEngineTriggerTaskService {
                 },
               })
             : undefined;
+
+          const externalDeploymentId = body.options?.lockToVersion
+            ? undefined
+            : body.options?.externalDeploymentId;
+
+          const externalDeploymentResolution =
+            externalDeploymentId && environment.type !== "DEVELOPMENT"
+              ? await resolveExternalDeployment({
+                  prisma: this.prisma,
+                  environmentId: environment.id,
+                  externalDeploymentId,
+                  cache: this.externalDeploymentCache,
+                })
+              : undefined;
+
+          const lockedToBackgroundWorker =
+            explicitlyLockedToBackgroundWorker ??
+            (externalDeploymentResolution?.outcome === "deployed"
+              ? {
+                  id: externalDeploymentResolution.worker.workerId,
+                  version: externalDeploymentResolution.worker.version,
+                  sdkVersion: externalDeploymentResolution.worker.sdkVersion,
+                  cliVersion: externalDeploymentResolution.worker.cliVersion,
+                }
+              : undefined);
+
+          const parkedOnExternalDeploymentId =
+            externalDeploymentResolution?.outcome === "park" ? externalDeploymentId : undefined;
 
           const { queueName, lockedQueueId, taskTtl, taskKind } =
             await this.queueConcern.resolveQueueProperties(
@@ -503,6 +537,7 @@ export class RunEngineTriggerTaskService {
             rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
             rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
             taskKind: taskKind ?? "STANDARD",
+            externalDeploymentId,
           };
 
           // Route runs in a scheduled lineage (the scheduled run itself and every
@@ -638,6 +673,7 @@ export class RunEngineTriggerTaskService {
                       depth,
                       parentRun: parentRun ?? undefined,
                       annotations,
+                      parkedOnExternalDeploymentId,
                       planType,
                       taskId,
                       payloadPacket,
@@ -717,6 +753,7 @@ export class RunEngineTriggerTaskService {
                   depth,
                   parentRun: parentRun ?? undefined,
                   annotations,
+                  parkedOnExternalDeploymentId,
                   planType,
                   taskId,
                   payloadPacket,
@@ -892,7 +929,9 @@ export class RunEngineTriggerTaskService {
       triggerAction: string;
       rootTriggerSource: string;
       rootScheduleId?: string | undefined;
+      externalDeploymentId?: string | undefined;
     };
+    parkedOnExternalDeploymentId?: string;
     planType?: string;
     taskId: string;
     payloadPacket: { data?: string; dataType: string };
@@ -974,6 +1013,7 @@ export class RunEngineTriggerTaskService {
       streamBasinName: args.environment.organization.streamBasinName,
       debounce: removeNullBytesFromKey(args.body.options?.debounce),
       annotations: args.annotations,
+      parkedOnExternalDeploymentId: args.parkedOnExternalDeploymentId,
     };
   }
 

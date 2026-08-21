@@ -57,11 +57,11 @@ export function ChatTranscript({
 }
 
 export function ChatTurn({
-  role = "assistant",
+  speaker = "assistant",
   bleed = false,
   children,
 }: {
-  role?: ChatRole;
+  speaker?: ChatRole;
   bleed?: boolean;
   children: React.ReactNode;
 }) {
@@ -71,7 +71,7 @@ export function ChatTurn({
         className={cn(
           bleed ? undefined : TRANSCRIPT_INSET_X,
           "min-w-0",
-          role === "user" ? "flex justify-end" : TURN_BODY_GAP
+          speaker === "user" ? "flex justify-end" : TURN_BODY_GAP
         )}
       >
         {children}
@@ -80,8 +80,8 @@ export function ChatTurn({
   );
 }
 
-export function ChatText({ role = "assistant", text }: { role?: ChatRole; text: string }) {
-  if (role === "user") {
+export function ChatText({ speaker = "assistant", text }: { speaker?: ChatRole; text: string }) {
+  if (speaker === "user") {
     return (
       <div className="max-w-[80%] rounded-lg bg-background-raised px-4 py-2.5 text-sm text-text-bright">
         <div className="whitespace-pre-wrap wrap-anywhere">{text}</div>

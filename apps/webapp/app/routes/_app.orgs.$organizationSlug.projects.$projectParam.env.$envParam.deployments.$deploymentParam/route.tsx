@@ -181,6 +181,21 @@ function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
   }
 }
 
+const EXTERNAL_ID_DISPLAY_LENGTH = 24;
+
+function ExternalIdValue({ externalId }: { externalId: string | null }) {
+  if (!externalId) {
+    return <>–</>;
+  }
+
+  const display =
+    externalId.length > EXTERNAL_ID_DISPLAY_LENGTH
+      ? `${externalId.slice(0, EXTERNAL_ID_DISPLAY_LENGTH)}…`
+      : externalId;
+
+  return <CopyableText value={display} copyValue={externalId} className="font-mono text-sm" />;
+}
+
 export default function Page() {
   const { deployment, eventStream } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -200,6 +215,7 @@ export default function Page() {
 
     const abortController = new AbortController();
 
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setLogs([]);
     setStreamError(null);
     setIsStreaming(true);
@@ -286,7 +302,13 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [eventStream?.s2?.basin, eventStream?.s2?.stream, eventStream?.s2?.accessToken, isPending]);
+  }, [
+    eventStream?.s2?.basin,
+    eventStream?.s2?.stream,
+    eventStream?.s2?.accessToken,
+    isPending,
+    logsDisabled,
+  ]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -447,6 +469,12 @@ export default function Page() {
                 <Property.Value>{capitalizeWord(deployment.type)}</Property.Value>
               </Property.Item>
               <Property.Item>
+                <Property.Label>External ID</Property.Label>
+                <Property.Value>
+                  <ExternalIdValue externalId={deployment.externalId} />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
                 <Property.Label>Started at</Property.Label>
                 <Property.Value>
                   {deployment.startedAt ? (
@@ -605,6 +633,7 @@ function LogsDisplay({
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
 

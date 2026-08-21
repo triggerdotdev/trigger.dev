@@ -243,12 +243,16 @@ const DateTimeAccurateInner = ({
   const userTimeZone = useUserTimeZone();
   // Use provided timeZone prop if available, otherwise fall back to user's preferred timezone
   const displayTimeZone = timeZone ?? userTimeZone;
-  const realDate = typeof date === "string" ? new Date(date) : date;
-  const realPrevDate = previousDate
-    ? typeof previousDate === "string"
-      ? new Date(previousDate)
-      : previousDate
-    : null;
+  const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
+  const realPrevDate = useMemo(
+    () =>
+      previousDate
+        ? typeof previousDate === "string"
+          ? new Date(previousDate)
+          : previousDate
+        : null,
+    [previousDate]
+  );
 
   // Smart formatting based on whether date changed
   const formattedDateTime = useMemo(() => {
@@ -259,7 +263,7 @@ const DateTimeAccurateInner = ({
           ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
           : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12)
         : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12);
-  }, [realDate, displayTimeZone, locales, hour12, hideDate, previousDate]);
+  }, [realDate, realPrevDate, displayTimeZone, locales, hour12, hideDate]);
 
   if (!showTooltip)
     return (
@@ -368,6 +372,7 @@ export const RelativeDateTime = ({ date, timeZone, capitalize = true }: Relative
 
   // On first render
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- A changed date intentionally resets the timer-backed relative text.
     setRelativeText(getRelativeText(realDate, capitalize));
   }, [realDate, capitalize]);
 

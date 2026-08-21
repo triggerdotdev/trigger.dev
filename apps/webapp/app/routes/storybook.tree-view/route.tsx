@@ -181,6 +181,11 @@ function TreeViewParent({
     },
   });
 
+  const getInteractiveNodeProps = (id: string) => ({
+    ...getNodeProps(id),
+    onClick: () => toggleNodeSelection(id),
+  });
+
   return (
     <div className="flex w-72 flex-col items-start gap-y-4 p-4">
       <div className="flex items-center gap-2">
@@ -207,7 +212,7 @@ function TreeViewParent({
         autoFocus
         tree={tree}
         nodes={nodes}
-        getNodeProps={getNodeProps}
+        getNodeProps={getInteractiveNodeProps}
         getTreeProps={getTreeProps}
         parentClassName="h-96 bg-background-deep"
         renderNode={({ node, state, index, virtualizer, virtualItem }) => (
@@ -219,19 +224,23 @@ function TreeViewParent({
               "flex cursor-pointer items-center gap-2 py-1 hover:bg-blue-500/10",
               state.selected && "bg-blue-500/20 hover:bg-blue-500/30"
             )}
-            onClick={() => {
-              toggleNodeSelection(node.id);
-            }}
           >
-            <div
-              className="h-4 w-4"
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={
+                node.hasChildren
+                  ? state.expanded
+                    ? "Collapse node"
+                    : "Expand node"
+                  : "Select node"
+              }
+              className="h-4 w-4 focus-custom"
               onClick={(e) => {
                 e.stopPropagation();
                 toggleExpandNode(node.id);
                 selectNode(node.id, true);
-              }}
-              onKeyDown={(e) => {
-                console.log(e.key);
+                parentRef.current?.focus();
               }}
             >
               {node.hasChildren ? (
@@ -243,7 +252,7 @@ function TreeViewParent({
               ) : (
                 <DocumentIcon className="h-4 w-4" />
               )}
-            </div>
+            </button>
             <div>{node.data.title}</div>
           </div>
         )}

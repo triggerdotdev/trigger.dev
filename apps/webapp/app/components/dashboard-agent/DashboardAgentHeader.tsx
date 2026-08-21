@@ -49,6 +49,7 @@ export function DashboardAgentHeader({
   onClose: () => void;
 }) {
   const [isHistoryOpen, setHistoryOpen] = useState(false);
+  const [historyOpenedAt, setHistoryOpenedAt] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
 
   return (
@@ -57,7 +58,10 @@ export function DashboardAgentHeader({
         open={isHistoryOpen}
         onOpenChange={(open) => {
           setHistoryOpen(open);
-          if (open) onOpenHistory();
+          if (open) {
+            setHistoryOpenedAt(Date.now());
+            onOpenHistory();
+          }
         }}
       >
         <PopoverArrowTrigger
@@ -74,19 +78,22 @@ export function DashboardAgentHeader({
           className="w-72 max-w-(--radix-popover-content-available-width) p-0"
           align="start"
         >
-          <DashboardAgentHistoryMenu
-            chats={chats}
-            currentChatId={currentChatId}
-            thinkingChatId={thinkingChatId}
-            onSelect={(chatId) => {
-              setHistoryOpen(false);
-              onSelectChat(chatId);
-            }}
-            onRequestDelete={(chat) => {
-              setHistoryOpen(false);
-              setPendingDelete(chat);
-            }}
-          />
+          {historyOpenedAt === null ? null : (
+            <DashboardAgentHistoryMenu
+              chats={chats}
+              currentChatId={currentChatId}
+              thinkingChatId={thinkingChatId}
+              now={historyOpenedAt}
+              onSelect={(chatId) => {
+                setHistoryOpen(false);
+                onSelectChat(chatId);
+              }}
+              onRequestDelete={(chat) => {
+                setHistoryOpen(false);
+                setPendingDelete(chat);
+              }}
+            />
+          )}
         </PopoverContent>
       </Popover>
 

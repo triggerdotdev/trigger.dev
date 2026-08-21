@@ -442,6 +442,7 @@ export function ConnectGitHubRepoModal({
     const params = new URLSearchParams(searchParams);
 
     if (params.get("openGithubRepoModal") === "1") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(true);
       params.delete("openGithubRepoModal");
       setSearchParams(params);
@@ -450,6 +451,7 @@ export function ConnectGitHubRepoModal({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(false);
     }
   }, [lastSubmission]);
@@ -810,6 +812,7 @@ export function ConnectedGitHubRepoForm({
       gitSettingsValues.stagingBranch !==
         (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
       gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasGitSettingsChanges(hasChanges);
   }, [gitSettingsValues, connectedGitHubRepo]);
 
@@ -1077,6 +1080,7 @@ export function GitHubSettingsPanel({
   layout?: "settings" | "compact";
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const location = useLocation();
 
   // Preserve current search params (e.g. origin=marketplace, next=...) but strip
@@ -1088,8 +1092,8 @@ export function GitHubSettingsPanel({
     return search ? `${location.pathname}?${search}` : location.pathname;
   })();
   useEffect(() => {
-    fetcher.load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
-  }, [organizationSlug, projectSlug, environmentSlug]);
+    load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
+  }, [organizationSlug, projectSlug, environmentSlug, load]);
 
   const data = fetcher.data;
 

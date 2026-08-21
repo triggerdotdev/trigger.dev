@@ -93,6 +93,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // external_deployment_id
     ];
 
     const [insertError, insertResult] = await insert([taskRunData]);
@@ -236,6 +237,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // external_deployment_id
       ];
 
       const [insertError, insertResult] = await insert([taskRunData]);
@@ -336,6 +338,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // external_deployment_id
     ];
 
     const run2: TaskRunInsertArray = [
@@ -394,6 +397,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // external_deployment_id
     ];
 
     const [insertError, insertResult] = await insert([run1, run2]);
@@ -499,6 +503,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // external_deployment_id
       ];
 
       const [_insertError, _insertResult] = await insert([taskRun]);
@@ -612,6 +617,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // external_deployment_id
       ];
 
       const childA_v1: TaskRunInsertArray = [
@@ -670,6 +676,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const childA_v2: TaskRunInsertArray = [...childA_v1];
@@ -732,6 +739,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const childDeleted_v1: TaskRunInsertArray = [
@@ -790,6 +798,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const childDeleted_v2: TaskRunInsertArray = [...childDeleted_v1];
@@ -968,6 +977,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const rdsSnapshot: TaskRunInsertArray = [...base];
@@ -1072,6 +1082,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const earlier: TaskRunInsertArray = [...base];
@@ -1176,6 +1187,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const rdsSnapshot: TaskRunInsertArray = [...base];

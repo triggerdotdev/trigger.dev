@@ -129,25 +129,23 @@ export default function SegmentedControl({
               }
             >
               {({ checked }) => (
-                <>
-                  <div
-                    className={cn(
-                      "relative flex h-full w-full items-center justify-between",
-                      variantStyle.option
-                    )}
-                  >
-                    <div className="z-10 flex h-full w-full items-center justify-center">
-                      <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
-                    </div>
-                    {checked && (
-                      <motion.div
-                        layoutId={`segmented-control-${name}`}
-                        transition={{ duration: 0.4, type: "spring" }}
-                        className={variantStyle.selected}
-                      />
-                    )}
+                <div
+                  className={cn(
+                    "relative flex h-full w-full items-center justify-between",
+                    variantStyle.option
+                  )}
+                >
+                  <div className="z-10 flex h-full w-full items-center justify-center">
+                    <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
                   </div>
-                </>
+                  {checked && (
+                    <motion.div
+                      layoutId={`segmented-control-${name}`}
+                      transition={{ duration: 0.4, type: "spring" }}
+                      className={variantStyle.selected}
+                    />
+                  )}
+                </div>
               )}
             </RadioGroup.Option>
           ))}

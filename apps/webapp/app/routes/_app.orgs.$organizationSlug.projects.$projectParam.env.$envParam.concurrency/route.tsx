@@ -437,6 +437,7 @@ function Upgradable({
                             <span>
                               Save your changes or{" "}
                               <button
+                                type="button"
                                 className={cn(textLinkClassName(), "inline")}
                                 onClick={() => {
                                   setAllocation(initialAllocation(environments));
@@ -468,9 +469,7 @@ function Upgradable({
                         </div>
                         <ArrowDownIcon className="size-4 animate-bounce text-success" />
                       </div>
-                    ) : (
-                      <></>
-                    )}
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>
@@ -646,17 +645,18 @@ function PurchaseConcurrencyModal({
   // Close the panel, when we've succeeded
   // This is required because a redirect to the same path doesn't clear state
   const [searchParams, setSearchParams] = useSearchParams();
+  const purchaseSucceeded = Boolean(searchParams.get("success"));
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const success = searchParams.get("success");
-    if (success) {
+    if (purchaseSucceeded) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
       setSearchParams((s) => {
         s.delete("success");
         return s;
       });
     }
-  }, [searchParams.get("success")]);
+  }, [purchaseSucceeded, setSearchParams]);
 
   const state = updateState({
     value: amountValue,

@@ -43,6 +43,15 @@ import { sendToPlain } from "~/utils/plain.server";
 import { formatCurrency } from "~/utils/numberFormatter";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 
+function WhiteSpinnerIcon() {
+  return <Spinner color="white" />;
+}
+
+/** A white spinner would vanish on the secondary button's light surface. */
+function InheritSpinnerIcon() {
+  return <Spinner color="inherit" />;
+}
+
 const Params = z.object({
   organizationSlug: z.string(),
 });
@@ -323,6 +332,7 @@ export function TierFree({
   const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -399,7 +409,7 @@ export function TierFree({
                 <Button
                   variant="danger/medium"
                   disabled={isLoading}
-                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                  LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
                   type="submit"
                 >
                   Downgrade plan
@@ -489,6 +499,7 @@ export function TierHobby({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -527,8 +538,7 @@ export function TierHobby({
                 <Button
                   variant="secondary/medium"
                   disabled={isLoading}
-                  // A white spinner would vanish on this button's light surface
-                  LeadingIcon={isLoading ? () => <Spinner color="inherit" /> : undefined}
+                  LeadingIcon={isLoading ? InheritSpinnerIcon : undefined}
                   form="subscribe-hobby"
                 >
                   {`Downgrade to ${plan.title}`}
@@ -630,6 +640,7 @@ export function TierPro({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -669,7 +680,7 @@ export function TierPro({
                   <Button
                     variant="primary/medium"
                     disabled={isLoading}
-                    LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                    LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
                     form="subscribe-pro"
                   >
                     {`Upgrade to ${plan.title}`}

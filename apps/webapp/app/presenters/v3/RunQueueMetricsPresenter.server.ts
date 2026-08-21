@@ -41,6 +41,7 @@ const DELAY_GRID_MS = 5 * 60 * 1000;
  * waiting to start, live counts and recent delay percentiles. Null when flag off.
  */
 export async function resolveRunQueueMetrics(options: {
+  request: Request;
   userId: string;
   organizationSlug: string;
   projectParam: string;
@@ -52,10 +53,10 @@ export async function resolveRunQueueMetrics(options: {
     queue: { name: string; concurrencyKey?: string | null };
   };
 }): Promise<RunQueueMetrics | null> {
-  const { userId, organizationSlug, projectParam, envParam, run } = options;
+  const { request, userId, organizationSlug, projectParam, envParam, run } = options;
 
   try {
-    if (!(await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+    if (!(await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
       return null;
     }
 

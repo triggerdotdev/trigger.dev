@@ -38,6 +38,7 @@ export function SideMenuPopoverSubMenu({
 
   // Close the submenu on navigation (the parent popover closes too).
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 

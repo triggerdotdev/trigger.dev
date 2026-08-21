@@ -173,6 +173,7 @@ export const loader = dashboardLoader(
         additionalApiKeyIssuanceEnabled,
         isRbacPluginAvailable,
         showRevoked: searchParams.showRevoked ?? false,
+        loadedAt: Date.now(),
       });
     } catch (error) {
       console.error(error);
@@ -308,6 +309,7 @@ export default function Page() {
     hasVercelIntegration,
     availableTasks,
     presets,
+    loadedAt,
   } = useTypedLoaderData<typeof loader>();
 
   const apiKeyEnvironmentLabel = {
@@ -398,7 +400,7 @@ export default function Page() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <ApiKeyStatus />
+                    <ApiKeyStatus now={loadedAt} />
                   </TableCell>
                   <TableCell>
                     <ApiKeyAccess label="No restrictions" />
@@ -424,7 +426,7 @@ export default function Page() {
 
                 {apiKeys.map((apiKey) => {
                   const isExpired = apiKey.expiresAt
-                    ? new Date(apiKey.expiresAt).getTime() <= Date.now()
+                    ? new Date(apiKey.expiresAt).getTime() <= loadedAt
                     : false;
                   const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
                   const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
@@ -445,7 +447,11 @@ export default function Page() {
                         <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
                       </TableCell>
                       <TableCell>
-                        <ApiKeyStatus revokedAt={apiKey.revokedAt} expiresAt={apiKey.expiresAt} />
+                        <ApiKeyStatus
+                          revokedAt={apiKey.revokedAt}
+                          expiresAt={apiKey.expiresAt}
+                          now={loadedAt}
+                        />
                       </TableCell>
                       <TableCell>
                         <ApiKeyAccess
@@ -611,6 +617,7 @@ function NewApiKeyDialog({
     }
 
     if (actionData?.ok && actionData.action === "create") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setCreatedApiKey(actionData.apiKey);
     } else if (actionData && !actionData.ok) {
       setShowError(true);
@@ -1341,9 +1348,11 @@ function ApiKeyAccess({
 function ApiKeyStatus({
   revokedAt,
   expiresAt,
+  now,
 }: {
   revokedAt?: Date | string | null;
   expiresAt?: Date | string | null;
+  now: number;
 }) {
   if (revokedAt) {
     return (
@@ -1354,7 +1363,7 @@ function ApiKeyStatus({
     );
   }
 
-  if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+  if (expiresAt && new Date(expiresAt).getTime() <= now) {
     return (
       <div className="flex items-center gap-1 text-xs text-text-dimmed">
         <ExclamationTriangleIcon className="size-4" />

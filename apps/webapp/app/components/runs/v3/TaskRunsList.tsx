@@ -78,22 +78,20 @@ export function TaskRunsList({
     }
   );
 
-  const onClickShowNewRuns = () => {
-    const isPaginated = has("cursor") || has("direction");
-    dismissNewRuns();
-    if (isPaginated) {
-      replace({ cursor: undefined, direction: undefined });
-      return;
-    }
-    revalidator.revalidate();
-  };
-
   // Surface the banner to the top-bar button rendered by the page: keep the
   // ref's action current, mirror the count up, and clear it when this boundary
   // unmounts (e.g. the table re-suspends on a filter change).
   useEffect(() => {
-    showNewRunsRef.current = onClickShowNewRuns;
-  }, [onClickShowNewRuns, showNewRunsRef]);
+    showNewRunsRef.current = () => {
+      const isPaginated = has("cursor") || has("direction");
+      dismissNewRuns();
+      if (isPaginated) {
+        replace({ cursor: undefined, direction: undefined });
+        return;
+      }
+      revalidator.revalidate();
+    };
+  }, [dismissNewRuns, has, replace, revalidator, showNewRunsRef]);
   useEffect(() => {
     onNewRunsCountChange(newRunsCount);
   }, [newRunsCount, onNewRunsCountChange]);

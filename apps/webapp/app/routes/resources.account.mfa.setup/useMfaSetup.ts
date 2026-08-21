@@ -178,10 +178,12 @@ export function useMfaSetup(initialIsEnabled: boolean) {
     disableMethod: "totp",
   });
 
+  const fetcherData = fetcher.data;
+
   // Handle fetcher responses
   useEffect(() => {
-    if (fetcher.data) {
-      const { data } = fetcher;
+    if (fetcherData) {
+      const data = fetcherData;
 
       switch (data.action) {
         case "enable-mfa":
@@ -222,7 +224,7 @@ export function useMfaSetup(initialIsEnabled: boolean) {
           break;
       }
     }
-  }, [fetcher.data]);
+  }, [fetcherData]);
 
   // Handle submitting state
   useEffect(() => {

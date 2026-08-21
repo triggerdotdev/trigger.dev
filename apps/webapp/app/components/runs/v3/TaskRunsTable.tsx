@@ -155,7 +155,7 @@ export function TaskRunsTable({
         }
       }
     },
-    [checkboxes, runs]
+    [checkboxes, runs, select]
   );
 
   return (
@@ -253,11 +253,7 @@ export function TaskRunsTable({
           >
             Duration
           </TableHeaderCell>
-          {showCompute && (
-            <>
-              <TableHeaderCell>Compute</TableHeaderCell>
-            </>
-          )}
+          {showCompute && <TableHeaderCell>Compute</TableHeaderCell>}
           <TableHeaderCell className="pl-4" tooltip={<MachineTooltipInfo />}>
             Machine
           </TableHeaderCell>

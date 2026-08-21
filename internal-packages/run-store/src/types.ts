@@ -55,6 +55,14 @@ export type CompletionSnapshotInput = {
   runnerId?: string;
 };
 
+export type PromotePendingVersionArgs = {
+  status?: Extract<TaskRunStatus, "PENDING" | "DELAYED">;
+  lockedToVersionId?: string;
+  taskVersion?: string;
+  sdkVersion?: string;
+  cliVersion?: string;
+};
+
 export type ExpireSnapshotInput = {
   engine: "V2";
   executionStatus: "FINISHED";
@@ -71,6 +79,9 @@ export type RescheduleSnapshotInput = {
   environmentType: RuntimeEnvironmentType;
   projectId: string;
   organizationId: string;
+  executionStatus?: TaskRunExecutionStatus;
+  runStatus?: TaskRunStatus;
+  description?: string;
 };
 
 export type LockSnapshotInput = {
@@ -105,6 +116,7 @@ export type CreateRunData = {
   id: string;
   engine: "V2";
   status: TaskRunStatus;
+  statusReason?: string;
   friendlyId: string;
   runtimeEnvironmentId: string;
   environmentType: RuntimeEnvironmentType;
@@ -486,6 +498,18 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   promotePendingVersionRuns(
     runId: string,
+    args?: PromotePendingVersionArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
+  expireParkedRun(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      statusReason: string;
+      snapshot: ExpireSnapshotInput;
+    },
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }>;
   suspendForCheckpoint<I extends Prisma.TaskRunInclude>(

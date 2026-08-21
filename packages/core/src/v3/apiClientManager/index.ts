@@ -85,6 +85,14 @@ export class APIClientManagerAPI {
     return value ? value : undefined;
   }
 
+  get externalDeploymentId(): string | undefined {
+    const scoped = sdkScope.getStore();
+    if (scoped) {
+      return scoped.apiClientConfig.externalDeploymentId;
+    }
+    return this.#getConfig()?.externalDeploymentId;
+  }
+
   public resolveApiClientConfig(partial: ApiClientConfiguration = {}): ApiClientConfiguration {
     return {
       baseURL: partial.baseURL ?? getEnvVar("TRIGGER_API_URL"),
@@ -99,6 +107,7 @@ export class APIClientManagerAPI {
         getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
         getEnvVar("VERCEL_GIT_COMMIT_REF") ??
         getDevBranchEnvVar(),
+      externalDeploymentId: partial.externalDeploymentId,
       requestOptions: partial.requestOptions,
       future: partial.future,
     };

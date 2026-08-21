@@ -65,6 +65,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       externalBuildData:
         deployment.externalBuildData as GetDeploymentResponseBody["externalBuildData"],
       errorData: deployment.errorData as GetDeploymentResponseBody["errorData"],
+      canceledReason: deployment.canceledReason,
       worker: deployment.worker
         ? {
             id: deployment.worker.friendlyId,

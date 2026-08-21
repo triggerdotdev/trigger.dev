@@ -39,6 +39,7 @@ export function AIFilterInput() {
 
   useEffect(() => {
     if (fetcher.data?.success && fetcher.state === "loading") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setText("");
       setIsFocused(false);
 
@@ -53,7 +54,7 @@ export function AIFilterInput() {
         inputRef.current.focus();
       }
     }
-  }, [fetcher.data, navigate]);
+  }, [fetcher.data, fetcher.state, navigate]);
 
   const isLoading = fetcher.state === "submitting";
 
@@ -184,6 +185,7 @@ function ErrorPopover({
 
   useEffect(() => {
     if (error) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsOpen(true);
     }
     if (timeout.current) {

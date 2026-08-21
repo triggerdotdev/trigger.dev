@@ -8,7 +8,9 @@ import {
   DEEPLINK_PATH_PREFIX,
   deeplinkSuffix,
   ENV_PAGE_TARGETS,
+  ORG_PAGE_TARGETS,
   resolveDeeplinkPage,
+  resolveOrganizationDeeplinkPage,
 } from "./deeplinkPages";
 
 const APP_DIR = join(__dirname, "..");
@@ -159,6 +161,21 @@ describe("resolveDeeplinkPage", () => {
     expect(resolveDeeplinkPage("apikeys")).toBe("apikeys");
     expect(resolveDeeplinkPage("waitpoints")).toBe("waitpoints/tokens");
     expect(resolveDeeplinkPage("tasks")).toBe("");
+  });
+
+  it("resolves organization-level pages separately from environment pages", () => {
+    expect(ORG_PAGE_TARGETS.get("projects")).toEqual({
+      landing: "projects",
+      prefix: "projects",
+    });
+    expect(resolveOrganizationDeeplinkPage("projects")).toBe("projects");
+    expect(resolveDeeplinkPage("projects")).toBeUndefined();
+  });
+
+  it("does not carry a runtime-updates alias", () => {
+    expect(ORG_PAGE_TARGETS.has("runtime-updates")).toBe(false);
+    expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBeUndefined();
+    expect(resolveDeeplinkPage("runtime-updates")).toBeUndefined();
   });
 
   it("grafts deeper segments onto the prefix", () => {

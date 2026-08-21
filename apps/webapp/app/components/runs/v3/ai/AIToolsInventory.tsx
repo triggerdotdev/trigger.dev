@@ -49,6 +49,7 @@ function ToolDefRow({ def, wasCalled }: { def: ToolDefinition; wasCalled: boolea
       {def.parametersJson && (
         <div className="pl-3.5">
           <button
+            type="button"
             onClick={() => setShowSchema(!showSchema)}
             className={cn(textLinkClassName(), "text-[10px]")}
           >

@@ -1,4 +1,5 @@
-import type { PrismaClient } from "@trigger.dev/database";
+import { type PrismaClient } from "@trigger.dev/database";
+import { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "../systems/pendingVersionSystem.js";
 import type {
   PendingVersionRunIdLookup,
   PendingVersionRunIdLookupOptions,
@@ -32,6 +33,21 @@ export class PostgresPendingVersionRunIdLookup implements PendingVersionRunIdLoo
         status: "PENDING_VERSION",
         taskIdentifier: { in: options.taskIdentifiers },
         queue: { in: options.queues },
+        OR: [
+          { statusReason: null },
+          { statusReason: { not: PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } },
+          ...(options.externalDeploymentId
+            ? [
+                {
+                  statusReason: PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON,
+                  annotations: {
+                    path: ["externalDeploymentId"],
+                    equals: options.externalDeploymentId,
+                  },
+                },
+              ]
+            : []),
+        ],
       },
       select: { id: true },
       orderBy: { createdAt: "asc" },

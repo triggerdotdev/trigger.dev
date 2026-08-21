@@ -47,6 +47,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return await OrgIntegrationRepository.redirectToAuthService(
     "SLACK",
     project.organizationId,
+    userId,
     request,
     v3NewProjectAlertPathConnectToSlackPath({ slug: organizationSlug }, project, {
       slug: envParam,

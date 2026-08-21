@@ -909,6 +909,7 @@ function OverrideDialog({
   // Reset when dialog opens
   useEffect(() => {
     if (open) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setEditedContent(content);
       setCommitMessage("");
       setModel(currentOverrideModel ?? prompt.defaultModel ?? "");
@@ -1332,6 +1333,7 @@ function GenerationsTab({
   // Append fetched rows when fetcher completes
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setGenerations((prev) => {
         const existingIds = new Set(prev.map((g) => g.span_id));
         const newRows = fetcher.data!.generations.filter((g) => !existingIds.has(g.span_id));
@@ -1422,6 +1424,7 @@ function GenerationsTab({
   const [showSpinner, setShowSpinner] = useState(false);
   useEffect(() => {
     if (!isLoadingMore) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setShowSpinner(false);
       return;
     }
@@ -2093,11 +2096,13 @@ function VersionsTab({
         const isOverride = v.labels.includes("override");
 
         return (
-          <div
+          <button
+            type="button"
+            aria-pressed={isSelected}
             key={v.id}
             onClick={() => onSelectVersion(v.version)}
             className={cn(
-              "flex cursor-pointer items-center gap-3 px-3 py-3 text-sm transition",
+              "flex w-full cursor-pointer items-center gap-3 px-3 py-3 text-left text-sm transition focus-custom",
               isSelected
                 ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]"
                 : "hover:bg-background-hover"
@@ -2143,7 +2148,7 @@ function VersionsTab({
             <span className="shrink-0 text-xs text-text-dimmed">
               <DateTime date={v.createdAt} />
             </span>
-          </div>
+          </button>
         );
       })}
     </div>

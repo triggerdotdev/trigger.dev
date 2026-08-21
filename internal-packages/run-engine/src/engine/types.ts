@@ -249,6 +249,7 @@ export type RunEngineOptions = {
    * to disable lag-aware retries entirely.
    */
   pendingVersionLagMaxRetries?: number;
+  externalDeploymentParkDeadlineMs?: number;
   /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
    *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
   defaultMaxTtl?: string;
@@ -372,7 +373,9 @@ export type TriggerParams = {
     triggerAction: string;
     rootTriggerSource: string;
     rootScheduleId?: string;
+    externalDeploymentId?: string;
   };
+  parkedOnExternalDeploymentId?: string;
   /**
    * Called when a run is debounced (existing delayed run found with triggerAndWait).
    * Return spanIdToComplete to enable span closing when the run completes.

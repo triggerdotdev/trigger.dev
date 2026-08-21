@@ -227,6 +227,7 @@ function useStorybookIconContrast() {
   const [iconContrast, setIconContrast] = useState(false);
 
   const savedIconContrast = useRef(rootData?.iconContrast);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   savedIconContrast.current = rootData?.iconContrast;
 
   useEffect(() => {
@@ -253,7 +254,9 @@ function useStorybookTheme() {
   // then, without re-running the restore on data revalidation.
   const savedPreference = useRef(rootData?.themePreference);
   const savedSystemThemes = useRef(rootData?.systemThemes);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   savedPreference.current = rootData?.themePreference;
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   savedSystemThemes.current = rootData?.systemThemes;
 
   const systemThemes = rootData?.systemThemes;

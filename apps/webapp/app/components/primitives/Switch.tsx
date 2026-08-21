@@ -8,31 +8,42 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 /*
   The thumb sits inside the track's 2px transparent border, so an even gap on all
   four sides means: thumb height == the track's content box, and a checked travel
-  of (content width - thumb). The medium track is h-4 w-8, so that's a 12px thumb
-  travelling 16px. `large` already follows this; the thumb here used to be 14px,
-  which overflowed the 12px content box and left 1px above and below against 2px
-  at the ends - visible as a handle sitting tight to the top and bottom rails.
+  of (content width - thumb). The medium track is h-4 w-7.5, a 12x26 content box,
+  so that's a 12px thumb travelling 14px. `large` already follows this; the thumb
+  here used to be 14px, which overflowed the 12px content box and left 1px above
+  and below against 2px at the ends - a handle tight to the top and bottom rails.
 
-  `small` (h-3 w-6, size-2.5 thumb) still has the same mismatch. It's left alone
-  here because it's the variant used across the app, not the one on the profile
-  page - fixing it would be a size-2 thumb travelling 12px.
+  The press squish widens the thumb and, when checked, pulls the same distance
+  off the travel so the leading edge stays pinned: +4px width, -4px translate.
+
+  `small` (h-3 w-5.5, 10px thumb) still has the original mismatch. It's left
+  alone here because it's the variant used across the app, not the one on the
+  profile page - fixing it would be an 8px thumb travelling 10px.
 */
-const MEDIUM_THUMB =
-  "size-3 data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0";
+const MEDIUM_THUMB = cn(
+  "h-3 w-3 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+  "group-active:w-4 group-active:data-[state=checked]:translate-x-2.5"
+);
 
 const small = {
   container:
     "flex items-center h-6 gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 hover:disabled:bg-background-raised transition focus-custom disabled:opacity-50 text-text-dimmed hover:text-text-bright disabled:hover:cursor-not-allowed hover:cursor-pointer disabled:hover:text-rose-500",
-  root: "h-3 w-6",
-  thumb: "size-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
+  root: "h-3 w-5.5",
+  thumb: cn(
+    "h-2.5 w-2.5 data-[state=checked]:translate-x-2 data-[state=unchecked]:translate-x-0",
+    "group-active:w-3.25 group-active:data-[state=checked]:translate-x-1.25"
+  ),
   text: "text-xs text-text-dimmed",
 };
 
 const variations = {
   large: {
     container: "flex items-center gap-x-2 rounded-md hover:bg-tertiary p-2 transition focus-custom",
-    root: "h-6 w-11",
-    thumb: "size-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
+    root: "h-6 w-10.5",
+    thumb: cn(
+      "h-5 w-5 data-[state=checked]:translate-x-4.5 data-[state=unchecked]:translate-x-0",
+      "group-active:w-6.5 group-active:data-[state=checked]:translate-x-3"
+    ),
     text: "text-sm text-text-dimmed",
   },
   small,
@@ -63,7 +74,7 @@ const variations = {
   medium: {
     container:
       "flex items-center gap-x-2 rounded-md hover:bg-tertiary py-1.5 px-2 transition focus-custom",
-    root: "h-4 w-8",
+    root: "h-4 w-7.5",
     thumb: MEDIUM_THUMB,
     text: "text-sm text-text-dimmed",
   },
@@ -71,7 +82,7 @@ const variations = {
      that already carry their own affordance. */
   "minimal/medium": {
     container: "flex items-center gap-x-2 rounded-md focus-custom",
-    root: "h-4 w-8",
+    root: "h-4 w-7.5",
     thumb: MEDIUM_THUMB,
     text: "text-sm text-text-dimmed",
   },
@@ -91,17 +102,15 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
 
     const { container, root, thumb, text } = variations[variant];
 
-    if (props.shortcut) {
-      useShortcutKeys({
-        shortcut: props.shortcut,
-        action: () => {
-          if (innerRef.current) {
-            innerRef.current.click();
-          }
-        },
-        disabled: props.disabled,
-      });
-    }
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: () => {
+        if (innerRef.current) {
+          innerRef.current.click();
+        }
+      },
+      disabled: props.disabled,
+    });
 
     const labelElement = label ? (
       <label
@@ -126,7 +135,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
             /* White once checked, in every theme, matching the primary button's
                label on the same fill - an off-white thumb sat at 2.80:1 against
                the track, under the 3:1 a control's parts need. */
-            "pointer-events-none block rounded-full bg-white transition dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-white"
+            "pointer-events-none block rounded-full bg-white transition-[translate,width,background-color] dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-white"
           )}
         />
       </div>

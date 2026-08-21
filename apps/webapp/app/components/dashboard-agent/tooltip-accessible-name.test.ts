@@ -60,7 +60,6 @@ const NO_AS_CHILD_BASELINE = new Set([
   "app/components/GitMetadata.tsx::LinkButton",
   "app/components/code/TSQLResultsTable.tsx::TextLink",
   "app/components/integrations/VercelLink.tsx::LinkButton",
-  "app/components/primitives/CopyButton.tsx::Button",
   "app/components/runs/v3/RunTag.tsx::Link",
   "app/components/runs/v3/TaskRunsTable.tsx::DialogTrigger",
   "app/routes/account.tokens/route.tsx::DialogTrigger",
@@ -88,6 +87,16 @@ function tagOf(node: JsxNode): string {
 function attrOf(node: JsxNode, name: string) {
   const open = ts.isJsxElement(node) ? node.openingElement : node;
   return open.attributes.properties.find((p) => ts.isJsxAttribute(p) && p.name.getText() === name);
+}
+
+function hasStaticTrueAttribute(node: JsxNode, name: string): boolean {
+  const attribute = attrOf(node, name);
+  if (!attribute || !ts.isJsxAttribute(attribute)) return false;
+  if (!attribute.initializer) return true;
+  return (
+    ts.isJsxExpression(attribute.initializer) &&
+    attribute.initializer.expression?.kind === ts.SyntaxKind.TrueKeyword
+  );
 }
 
 /** Text anywhere under the element, ignoring an expression that can render nothing. */
@@ -179,7 +188,7 @@ function scanFile(file: string, relative: string): Violation[] {
       const initializer =
         buttonAttr && ts.isJsxAttribute(buttonAttr) ? buttonAttr.initializer : undefined;
       if (initializer && ts.isJsxExpression(initializer)) {
-        const asChild = !!attrOf(node, "asChild");
+        const asChild = hasStaticTrueAttribute(node, "asChild");
         for (const trigger of resolve(initializer.expression).flatMap(triggersIn)) {
           const named =
             !!attrOf(trigger, "aria-label") ||

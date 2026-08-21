@@ -99,6 +99,7 @@ export function NewBranchPanel({
         s.delete("dialogClosed");
         return s;
       });
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [searchParams, setSearchParams]);

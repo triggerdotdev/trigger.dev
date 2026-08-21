@@ -139,6 +139,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
       apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
+      dashboardAgentBaseUrl: env.DASHBOARD_AGENT_BASE_URL ?? "https://api.trigger.dev",
       triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
       timezone,
@@ -168,27 +169,25 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 
 export function ErrorBoundary() {
   return (
-    <>
-      <html lang="en" className="h-full" data-theme="dark">
-        <head>
-          <meta charSet="utf-8" />
+    <html lang="en" className="h-full" data-theme="dark">
+      <head>
+        <meta charSet="utf-8" />
 
-          <StaleAssetRecovery isProduction={isProduction} />
-          <Meta />
-          <Links />
-        </head>
-        <body className="h-full overflow-hidden bg-background-dimmed antialiased">
-          <ShortcutsProvider>
-            <AppContainer>
-              <MainCenteredContainer>
-                <RouteErrorDisplay />
-              </MainCenteredContainer>
-            </AppContainer>
-          </ShortcutsProvider>
-          <Scripts />
-        </body>
-      </html>
-    </>
+        <StaleAssetRecovery isProduction={isProduction} />
+        <Meta />
+        <Links />
+      </head>
+      <body className="h-full overflow-hidden bg-background-dimmed antialiased">
+        <ShortcutsProvider>
+          <AppContainer>
+            <MainCenteredContainer>
+              <RouteErrorDisplay />
+            </MainCenteredContainer>
+          </AppContainer>
+        </ShortcutsProvider>
+        <Scripts />
+      </body>
+    </html>
   );
 }
 
@@ -209,48 +208,45 @@ export default function App() {
   const resolvedTheme = resolveThemePreference(themePreference, true, systemThemes);
 
   return (
-    <>
-      <html
-        lang="en"
-        className="h-full"
-        // The pre-paint script below may flip data-theme before hydration
-        suppressHydrationWarning
-        data-theme={resolvedTheme}
-        data-theme-preference={themePreference}
-        // Read by the pre-paint script below, which resolves `system` before the
-        // loader data is available to JS
-        data-system-light={systemThemes.light}
-        data-system-dark={systemThemes.dark}
-        // Accent set for icons and badges; the `system:` variant keys off this
-        data-icon-contrast={iconContrast ? "true" : "false"}
-        // Underlines links carrying the inline-text-link marker class
-        data-underline-links={underlineLinks ? "true" : "false"}
-        // Contrast overlay input for the System themes; Classic never reads it
-        // Just the percent; each theme maps it onto its own contrast range in CSS
-        style={{ "--theme-contrast-percent": themeContrast / 100 } as CSSProperties}
-      >
-        <head>
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `try{var h=document.documentElement;if(h.getAttribute("data-theme-preference")==="system"){var d=matchMedia("(prefers-color-scheme: dark)").matches;h.setAttribute("data-theme",d?(h.getAttribute("data-system-dark")||"dark"):(h.getAttribute("data-system-light")||"light"))}}catch(e){}`,
-            }}
-          />
-          <StaleAssetRecovery isProduction={isProduction} />
-          <Meta />
-          <Links />
-        </head>
-        <body className="h-full overflow-hidden bg-background-dimmed antialiased">
-          <ShortcutsProvider>
-            <TimezoneSetter />
-            <GlobalShortcuts />
-            <Outlet />
-            <Toast />
-          </ShortcutsProvider>
-          <ScrollRestoration />
-          <ExternalScripts />
-          <Scripts />
-        </body>
-      </html>
-    </>
+    <html
+      lang="en"
+      className="h-full"
+      // The pre-paint script below may flip data-theme before hydration
+      suppressHydrationWarning
+      data-theme={resolvedTheme}
+      data-theme-preference={themePreference}
+      // Read by the pre-paint script below, which resolves `system` before the
+      // loader data is available to JS
+      data-system-light={systemThemes.light}
+      data-system-dark={systemThemes.dark}
+      // Accent set for icons and badges; the `system:` variant keys off this
+      data-icon-contrast={iconContrast ? "true" : "false"}
+      // Underlines links carrying the inline-text-link marker class
+      data-underline-links={underlineLinks ? "true" : "false"}
+      // Just the percent; each theme maps it onto its own contrast range in CSS
+      style={{ "--theme-contrast-percent": themeContrast / 100 } as CSSProperties}
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var h=document.documentElement;if(h.getAttribute("data-theme-preference")==="system"){var d=matchMedia("(prefers-color-scheme: dark)").matches;h.setAttribute("data-theme",d?(h.getAttribute("data-system-dark")||"dark"):(h.getAttribute("data-system-light")||"light"))}}catch(e){}`,
+          }}
+        />
+        <StaleAssetRecovery isProduction={isProduction} />
+        <Meta />
+        <Links />
+      </head>
+      <body className="h-full overflow-hidden bg-background-dimmed antialiased">
+        <ShortcutsProvider>
+          <TimezoneSetter />
+          <GlobalShortcuts />
+          <Outlet />
+          <Toast />
+        </ShortcutsProvider>
+        <ScrollRestoration />
+        <ExternalScripts />
+        <Scripts />
+      </body>
+    </html>
   );
 }

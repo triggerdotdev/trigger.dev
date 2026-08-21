@@ -44,66 +44,75 @@ export function CopyButton({
 
   const { icon: iconSize, button: buttonSize } = sizes[size];
 
-  const button =
-    variant === "icon" ? (
-      <span
-        onClick={copy}
-        className={cn(
-          buttonSize,
-          "flex items-center justify-center rounded border border-border-bright bg-background-hover",
-          copied
-            ? "text-green-500"
-            : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright",
-          buttonClassName
-        )}
-      >
-        {copied ? (
-          <ClipboardCheckIcon className={iconSize} />
-        ) : (
-          <ClipboardIcon className={iconSize} />
-        )}
+  if (variant === "button") {
+    return (
+      <span className={className}>
+        <Button
+          variant={`${buttonVariant}/${size === "extra-small" ? "small" : size}`}
+          onClick={copy}
+          className={cn("shrink-0", buttonClassName)}
+          tooltip={showTooltip ? (copied ? "Copied!" : "Copy") : undefined}
+          aria-label={children ? undefined : copied ? "Copied" : "Copy"}
+          LeadingIcon={
+            copied ? (
+              <ClipboardCheckIcon
+                className={cn(
+                  iconSize,
+                  buttonVariant === "primary" ? "text-background-dimmed" : "text-green-500"
+                )}
+              />
+            ) : (
+              <ClipboardIcon
+                className={cn(
+                  iconSize,
+                  buttonVariant === "primary" ? "text-background-dimmed" : "text-text-dimmed"
+                )}
+              />
+            )
+          }
+        >
+          {children}
+        </Button>
       </span>
-    ) : (
-      <Button
-        variant={`${buttonVariant}/${size === "extra-small" ? "small" : size}`}
-        onClick={copy}
-        className={cn("shrink-0", buttonClassName)}
-        LeadingIcon={
-          copied ? (
-            <ClipboardCheckIcon
-              className={cn(
-                iconSize,
-                buttonVariant === "primary" ? "text-background-dimmed" : "text-green-500"
-              )}
-            />
-          ) : (
-            <ClipboardIcon
-              className={cn(
-                iconSize,
-                buttonVariant === "primary" ? "text-background-dimmed" : "text-text-dimmed"
-              )}
-            />
-          )
-        }
-      >
-        {children}
-      </Button>
     );
+  }
 
-  if (!showTooltip) return <span className={className}>{button}</span>;
+  const iconButton = (
+    <button
+      type="button"
+      aria-label={copied ? "Copied" : "Copy"}
+      onClick={copy}
+      className={cn(
+        buttonSize,
+        "flex shrink-0 items-center justify-center rounded border border-border-bright bg-background-hover",
+        copied
+          ? "text-green-500"
+          : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright",
+        buttonClassName
+      )}
+    >
+      {copied ? (
+        <ClipboardCheckIcon className={iconSize} />
+      ) : (
+        <ClipboardIcon className={iconSize} />
+      )}
+    </button>
+  );
+
+  if (!showTooltip) return <span className={className}>{iconButton}</span>;
 
   return (
     <span className={className}>
       <SimpleTooltip
-        button={button}
+        // The icon button is a real <button>; without asChild the tooltip
+        // trigger wraps it in its own, and the browser parser splits the nested
+        // buttons apart, which React then fails to hydrate.
+        asChild
+        tabbable
+        button={iconButton}
         content={copied ? "Copied!" : "Copy"}
         className="font-sans"
         disableHoverableContent
-        // The button variant is a real <button>; without asChild the tooltip
-        // trigger wraps it in its own, and the browser parser splits the nested
-        // buttons apart, which React then fails to hydrate.
-        asChild={variant === "button"}
-        tabbable={variant === "button"}
       />
     </span>
   );

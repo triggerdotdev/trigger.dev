@@ -3,6 +3,7 @@ import { type ReactNode } from "react";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { cn } from "~/utils/cn";
 import { Header2, Header3 } from "./Headers";
+import { labelVariants } from "./Label";
 import { Paragraph } from "./Paragraph";
 
 // A composable layout system for settings pages: a centered container holds
@@ -94,7 +95,7 @@ export function SettingsHeader({
         className
       )}
     >
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         <Heading>{title}</Heading>
         {description ? <Paragraph variant="small">{description}</Paragraph> : null}
       </div>
@@ -113,10 +114,7 @@ export function SettingsRowTitle({
   htmlFor?: string;
   className?: string;
 }) {
-  const classes = cn(
-    "block font-sans text-sm font-semibold leading-tight text-text-bright",
-    className
-  );
+  const classes = cn(labelVariants.medium.text, className);
   return htmlFor ? (
     <label htmlFor={htmlFor} className={classes}>
       {children}

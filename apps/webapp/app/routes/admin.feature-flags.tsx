@@ -178,16 +178,18 @@ export default function AdminFeatureFlagsRoute() {
     // Only track editable flags in state
     const editable: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(loaded)) {
-      if (!isLocked(key)) {
+      if (unlocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
         editable[key] = value;
       }
     }
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setValues({ ...editable });
     setInitialValues({ ...editable });
   }, [globalFlags, unlocked]);
 
   useEffect(() => {
     if (saveFetcher.data?.success) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setSaveError(null);
       setConfirmOpen(false);
     } else if (saveFetcher.data?.error) {

@@ -267,6 +267,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const [showSpinner, setShowSpinner] = useState(false);
   useEffect(() => {
     if (!isLoading) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setShowSpinner(false);
       return;
     }
@@ -328,7 +329,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
             (typeof text === "string" ? (
               <span className="mx-auto grow self-center truncate">{text}</span>
             ) : (
-              <>{text}</>
+              text
             ))}
 
           {shortcut &&
@@ -389,6 +390,7 @@ type ButtonPropsType = Pick<
 > &
   React.ComponentProps<typeof ButtonContent>;
 
+/* oxlint-disable react/button-has-type -- Callers can select button, reset, or submit semantics. */
 export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, autoFocus, onClick, "aria-label": ariaLabel, ...props }, ref) => {
     const innerRef = useRef<HTMLButtonElement>(null);
@@ -450,6 +452,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     return buttonElement;
   }
 );
+/* oxlint-enable react/button-has-type */
 
 type LinkPropsType = Pick<
   LinkProps,

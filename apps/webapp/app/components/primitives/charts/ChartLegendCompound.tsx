@@ -302,17 +302,10 @@ type ViewAllDataRowProps = {
 
 function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
   return (
-    <div
+    <button
+      type="button"
       className="relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-background-dimmed"
       onClick={onViewAll}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onViewAll?.();
-        }
-      }}
     >
       <div className="relative flex w-full items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
@@ -324,7 +317,7 @@ function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
             preference should reach. */}
         <span className="self-start text-text-link">View all</span>
       </div>
-    </div>
+    </button>
   );
 }
 

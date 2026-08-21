@@ -90,6 +90,7 @@ export function useDocumentTheme() {
   const [theme, setTheme] = useState<string | undefined>(undefined);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setTheme(document.documentElement.getAttribute("data-theme") ?? undefined);
   }, [revision]);
 
@@ -101,6 +102,7 @@ export function useDocumentIconContrast() {
   const [isOn, setIsOn] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOn(document.documentElement.getAttribute("data-icon-contrast") === "true");
   }, [revision]);
 

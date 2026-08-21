@@ -45,10 +45,11 @@ function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
 function DebugRunContent({ friendlyId }: { friendlyId: string }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const isLoading = fetcher.state === "loading";
+  const load = fetcher.load;
 
   useEffect(() => {
-    fetcher.load(`/resources/taskruns/${friendlyId}/debug`);
-  }, [friendlyId]);
+    load(`/resources/taskruns/${friendlyId}/debug`);
+  }, [friendlyId, load]);
 
   return (
     <>

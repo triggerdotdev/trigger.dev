@@ -249,6 +249,7 @@ function Branches({
   }, []);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setMenuOpen(false);
   }, [navigation.location?.pathname]);
 

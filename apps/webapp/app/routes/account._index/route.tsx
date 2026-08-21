@@ -108,6 +108,18 @@ function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
   return <Icon className="size-4 shrink-0 text-text-bright" />;
 }
 
+/** The icon-and-label pair a theme shows in the picker, shared by the theme
+ *  select and the two system light/dark selects. Module scope so the `text`
+ *  render prop stays a stable reference rather than a per-render component. */
+function themeOptionLabel(value: ThemePreference, appearance: ThemeAppearance) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {themeIcon(value, appearance)}
+      {THEME_OPTIONS_BY_VALUE[value].label}
+    </span>
+  );
+}
+
 /**
  * Picker for one end of the `system` setting: Light or White, Dark or Black. Same
  * shape as the Interface theme select, with its own two options.
@@ -133,12 +145,7 @@ function SystemThemeSelect({
       variant="secondary/small"
       dropdownIcon
       items={options.map((option) => option.value)}
-      text={(item) => (
-        <span className="flex items-center gap-1.5">
-          {themeIcon(item as ThemePreference, appearance)}
-          {THEME_OPTIONS_BY_VALUE[item as ThemePreference].label}
-        </span>
-      )}
+      text={(item) => themeOptionLabel(item as ThemePreference, appearance)}
       className="w-fit"
       popoverClassName="min-w-27"
     >
@@ -460,6 +467,7 @@ function useProfileFieldUpdate({
     submitSeenRef.current = false;
 
     if (fetcher.data?.success) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setError(undefined);
       toast.success(successMessage);
       onSuccess();
@@ -470,7 +478,9 @@ function useProfileFieldUpdate({
     const message = fetcher.data?.error ?? "Something went wrong. Please try again.";
     setError(message);
     toast.error(message);
-  }, [fetcher.state, fetcher.data]);
+    // `submitSeenRef` gates the body on a submission having settled, so the
+    // extra deps only ever cause a no-op re-run.
+  }, [fetcher.state, fetcher.data, toast, successMessage, onSuccess]);
 
   return { fetcher, error, setError, isSubmitting: fetcher.state !== "idle" };
 }
@@ -661,6 +671,13 @@ function MarketingEmailsSwitch() {
   // The value the in-flight write is trying to store, read when it settles.
   const sentRef = useRef(stored);
   const submitSeenRef = useRef(false);
+  // `useFetcher` hands back a fresh object every render, so the debounce below
+  // can't list it as a dependency without clearing and restarting its timer on
+  // each render - it would never fire. Refresh the submit function here instead.
+  const submitRef = useRef(fetcher.submit);
+  useEffect(() => {
+    submitRef.current = fetcher.submit;
+  });
 
   useEffect(() => {
     if (fetcher.state !== "idle") {
@@ -684,8 +701,11 @@ function MarketingEmailsSwitch() {
     );
     // Put the switch back to what's actually stored. Without this the reconcile
     // below would see a difference it can never close and retry on a loop.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setDesired(stored);
-  }, [fetcher.state, fetcher.data]);
+    // As above: guarded by `submitSeenRef`, so `stored` catching up on
+    // revalidation re-runs this to no effect rather than replaying the toast.
+  }, [fetcher.state, fetcher.data, toast, stored]);
 
   useEffect(() => {
     if (fetcher.state !== "idle") return;
@@ -693,7 +713,7 @@ function MarketingEmailsSwitch() {
 
     const timer = setTimeout(() => {
       sentRef.current = desired;
-      fetcher.submit(
+      submitRef.current(
         { action: "update-marketing-emails", marketingEmails: desired ? "true" : "false" },
         { method: "post" }
       );
@@ -750,6 +770,7 @@ function CustomizeSidebarButton({
     if (!submitSeenRef.current) return;
     setIsConfirming(false);
     if (fetcher.data?.success) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsOpen(false);
     } else {
       setError("Couldn't save your changes. Please try again.");
@@ -892,6 +913,7 @@ export default function Page() {
   const [contrastPreview, setContrastPreview] = useState(contrast);
   useEffect(() => {
     if (contrastFetcher.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setContrastPreview(contrast);
       applyThemeContrast(contrast);
     }
@@ -995,12 +1017,7 @@ export default function Page() {
                       variant="secondary/small"
                       dropdownIcon
                       items={ALL_THEME_OPTIONS.map((option) => option.value)}
-                      text={(value) => (
-                        <span className="flex items-center gap-1.5">
-                          {themeIcon(value, appearance)}
-                          {THEME_OPTIONS_BY_VALUE[value].label}
-                        </span>
-                      )}
+                      text={(value) => themeOptionLabel(value, appearance)}
                       // Hugs its label; the popover keeps the wider floor below so
                       // the options aren't cramped by the shortest one.
                       className="w-fit"
