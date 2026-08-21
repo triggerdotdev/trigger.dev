@@ -232,9 +232,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
 
-  // Picks the modal only; the action re-checks before writing.
-  const emailOwnership = await getEmailOwnership(user);
-
   // Null when the user has no project yet; the row hides itself.
   let sidebarContext: {
     organization: { slug: string };
@@ -262,11 +259,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  return json({ showThemeSwitcher, sidebarContext, emailOwnership });
+  return json({ showThemeSwitcher, sidebarContext });
 }
 
 export const action: ActionFunction = async ({ request }) => {
-
   const formData = await request.formData();
 
   if (formData.get("action") === "update-theme") {
@@ -517,13 +513,17 @@ function EditNameButton() {
   );
 }
 
-function EditEmailButton({ ownership }: { ownership: EmailOwnership }) {
+const EMAIL_OWNERSHIP_PATH = "/resources/account/email-ownership";
+
+function EditEmailButton() {
   const user = useUser();
   const [isOpen, setIsOpen] = useState(false);
   const { fetcher, error, setError, isSubmitting } = useProfileFieldUpdate({
     successMessage: "Your email address has been updated.",
     onSuccess: () => setIsOpen(false),
   });
+  const ownershipFetcher = useFetcher<{ ownership: EmailOwnership }>();
+  const ownership = ownershipFetcher.data?.ownership;
 
   return (
     <Dialog
@@ -531,6 +531,9 @@ function EditEmailButton({ ownership }: { ownership: EmailOwnership }) {
       onOpenChange={(open) => {
         setIsOpen(open);
         if (!open) setError(undefined);
+        if (open && ownershipFetcher.state === "idle" && !ownershipFetcher.data) {
+          ownershipFetcher.load(EMAIL_OWNERSHIP_PATH);
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -548,7 +551,11 @@ function EditEmailButton({ ownership }: { ownership: EmailOwnership }) {
           <DialogHeader>
             <DialogTitle>Email address</DialogTitle>
           </DialogHeader>
-          {ownership === "idp" ? (
+          {ownership === undefined ? (
+            <Paragraph variant="small" className="pt-2">
+              Checking your sign-in settings…
+            </Paragraph>
+          ) : ownership === "idp" ? (
             <Paragraph variant="small" className="pt-2">
               Your organization uses single sign-on, so your email address is managed by your
               identity provider rather than here. To change it, ask an organization admin to update
@@ -771,7 +778,7 @@ function CustomizeSidebarButton({
 
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher, sidebarContext, emailOwnership } = useLoaderData<typeof loader>();
+  const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
   const themeFetcher = useFetcher();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
@@ -889,7 +896,7 @@ export default function Page() {
                 <Paragraph variant="small" className="min-w-0 break-all text-right">
                   {user.email}
                 </Paragraph>
-                <EditEmailButton ownership={emailOwnership} />
+                <EditEmailButton />
               </div>
             </div>
           </div>
