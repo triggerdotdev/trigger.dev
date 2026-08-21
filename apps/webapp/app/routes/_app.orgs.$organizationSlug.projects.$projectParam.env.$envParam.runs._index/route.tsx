@@ -348,7 +348,7 @@ function RunsList({
                   hasFilters={list.hasFilters}
                   rootOnlyDefault={rootOnlyDefault}
                 />
-                <div className="flex items-center justify-end gap-x-2">
+                <div className="flex items-center justify-end gap-x-1.5">
                   {showNewRunsBanner && (
                     <span className="flex duration-150 animate-in fade-in-0">
                       <Button

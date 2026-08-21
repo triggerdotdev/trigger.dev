@@ -3,14 +3,22 @@ import {
   PencilSquareIcon,
   PlusIcon,
   BoltIcon,
-  ViewColumnsIcon,
+  StarIcon as StarIconSolid,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
+import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
 import { GripVerticalIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ColumnsIcon } from "~/assets/icons/ColumnsIcon";
+import { useFavoritePageToggle } from "~/components/navigation/favoritePages";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -42,6 +50,8 @@ export function RunsDisplayOptions({
   const { isManagedCloud } = useFeatures();
   const location = useOptimisticLocation();
   const { value, values, replace } = useSearchParams();
+  // Same favorite the page-header star toggles, so the two stay in lockstep on this URL.
+  const { isFavorited, canFavorite, toggle: toggleFavorite } = useFavoritePageToggle();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<SmartEditTarget | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
@@ -132,18 +142,24 @@ export function RunsDisplayOptions({
     <>
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="secondary/small" LeadingIcon={ViewColumnsIcon}>
+          <Button variant="secondary/small" LeadingIcon={ColumnsIcon}>
             Columns
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-64 p-0">
+        <PopoverContent
+          align="end"
+          className="w-64 p-0"
+          // Radix otherwise focuses the first item on open, and the row's hover-revealed
+          // reorder handle would show through :focus-within before the mouse ever gets there.
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <div className="flex items-center justify-between px-3 py-2">
             <span className="text-xs font-medium text-text-dimmed">Columns</span>
             <span className="text-xs text-text-dimmed">
               {shownCount} of {totalCount}
             </span>
           </div>
-          <div className="max-h-80 overflow-y-auto border-y border-grid-dimmed">
+          <div className="max-h-80 overflow-y-auto border-y border-grid-dimmed p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             {layout.ordered.map(({ col, hidden }) => {
               const key = keyFor(col);
               return (
@@ -174,23 +190,30 @@ export function RunsDisplayOptions({
             })}
           </div>
           <div className="flex flex-col p-1">
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-text-bright transition-colors hover:bg-charcoal-750 focus-custom"
+            <PopoverMenuItem
+              icon={PlusIcon}
+              title="Add smart column…"
               onClick={() => setAddOpen(true)}
-            >
-              <PlusIcon className="size-4 text-text-dimmed" />
-              Add smart column…
-            </button>
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-text-dimmed transition-colors hover:bg-charcoal-750 hover:text-text-bright focus-custom disabled:opacity-50"
+            />
+            {canFavorite && (
+              <PopoverMenuItem
+                icon={
+                  isFavorited ? (
+                    <StarIconSolid className="size-4 text-yellow-500" />
+                  ) : (
+                    <StarIconOutline className="size-4" />
+                  )
+                }
+                title={isFavorited ? "Remove from favorites" : "Save to favorites"}
+                onClick={toggleFavorite}
+              />
+            )}
+            <PopoverMenuItem
+              icon={ArrowUturnLeftIcon}
+              title="Reset to default"
               onClick={reset}
               disabled={!layout.isCustomized}
-            >
-              <ArrowUturnLeftIcon className="size-4" />
-              Reset to default
-            </button>
+            />
           </div>
         </PopoverContent>
       </Popover>
@@ -245,7 +268,7 @@ function ColumnRow({
   return (
     <div
       className={cn(
-        "group relative flex h-8 items-center gap-2 pl-3 pr-1.5 transition-colors hover:bg-charcoal-750",
+        "group relative flex h-[1.8rem] items-center rounded-sm transition-colors hover:bg-background-hover",
         dragging && "opacity-40"
       )}
       draggable
@@ -263,20 +286,32 @@ function ColumnRow({
       }}
     >
       {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500" />}
-      {locked ? <Checkbox checked disabled /> : <Checkbox checked={checked} onChange={onToggle} />}
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className={cn("truncate text-sm", checked ? "text-text-bright" : "text-text-dimmed")}>
+      {/* Native label so the whole name area toggles the column, matching CheckboxWithLabel. */}
+      <label
+        className={cn(
+          "flex h-full min-w-0 flex-1 items-center gap-x-1.5 pl-[0.4rem]",
+          locked ? "cursor-default" : "cursor-pointer"
+        )}
+      >
+        {locked ? (
+          <Checkbox checked disabled />
+        ) : (
+          <Checkbox checked={checked} onChange={onToggle} />
+        )}
+        <span
+          className={cn("truncate text-2sm", checked ? "text-text-bright" : "text-text-dimmed")}
+        >
           {col.def.label}
         </span>
         {isSmart && <BoltIcon className="size-3.5 flex-none text-text-dimmed" />}
-      </span>
-      <div className="flex flex-none items-center gap-0.5">
+      </label>
+      <div className="flex flex-none items-center gap-0.5 pr-[0.4rem]">
         {onEdit && (
           <button
             type="button"
             onClick={onEdit}
             aria-label={`Edit ${col.def.label}`}
-            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
+            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <PencilSquareIcon className="size-4" />
           </button>
@@ -286,7 +321,7 @@ function ColumnRow({
             type="button"
             onClick={onRemove}
             aria-label={`Remove ${col.def.label}`}
-            className="flex size-6 items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
+            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <XMarkIcon className="size-4" />
           </button>
@@ -303,7 +338,7 @@ function ColumnRow({
               onMove(1);
             }
           }}
-          className="flex size-6 cursor-grab items-center justify-center rounded text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100 active:cursor-grabbing"
+          className="flex size-6 cursor-grab items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100 active:cursor-grabbing"
         >
           <GripVerticalIcon className="size-4" />
         </button>

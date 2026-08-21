@@ -39,6 +39,7 @@ import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { AWS, DigitalOcean } from "~/assets/icons/CloudProviderIcon";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
+import { ColumnsIcon } from "~/assets/icons/ColumnsIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import {
   CheckingConnectionIcon,
@@ -181,6 +182,7 @@ const icons: IconEntry[] = [
   { name: "ClockIcon", render: simple(ClockIcon) },
   { name: "ClockRotateLeftIcon", render: simple(ClockRotateLeftIcon) },
   { name: "CodeSquareIcon", render: simple(CodeSquareIcon) },
+  { name: "ColumnsIcon", render: simple(ColumnsIcon) },
   { name: "ConcurrencyIcon", render: simple(ConcurrencyIcon) },
   { name: "ConnectedIcon", render: simple(ConnectedIcon) },
   { name: "CubeSparkleIcon", render: simple(CubeSparkleIcon) },
