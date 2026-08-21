@@ -738,6 +738,37 @@ describe("getSince", () => {
   );
 
   redisTest(
+    "does not donate a foreign-environment head's waitpoints to the query's window",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({
+          entry: entry({ id: "s1", environmentId: "env_a" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+        });
+        // Same run, a different environment -- unreachable in production, but exercises the branch
+        // where the Lua-chosen head is dropped by the TS-side environment filter.
+        await store.append({
+          entry: entry({ id: "s2", environmentId: "env_b" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_b", index: 0 }] },
+        });
+
+        const r = await store.getSince("run_1", "s1", { environmentId: "env_a" });
+        expect(r.kind).toBe("hit");
+        if (r.kind !== "hit") throw new Error("unreachable");
+        expect(r.entries).toEqual([]);
+        expect(r.headWaitpointIds.order).toEqual([]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
     "hits with zero entries when scoped to the since entry's own environment",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });

@@ -325,17 +325,23 @@ export class RedisSnapshotStore {
 
       const headOrder = reply[1] ?? "";
       const rows: SnapshotRead[] = [];
+      // Tracks whether the Lua-chosen head row (always the first, i === 2) itself survives the
+      // env filter below -- headOrder must never be attributed to a different, surviving row.
+      let headSurvived = false;
       for (let i = 2; i + 3 < reply.length; i += 4) {
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
           opts?.environmentId
         );
-        if (decoded) rows.push(decoded);
+        if (decoded) {
+          rows.push(decoded);
+          if (i === 2) headSurvived = true;
+        }
       }
 
       rows.reverse();
-      const head = rows[rows.length - 1];
-      const headWaitpointIds = decodeWaitpointIds(head !== undefined, headOrder);
+      const head = headSurvived ? rows[rows.length - 1] : undefined;
+      const headWaitpointIds = decodeWaitpointIds(head !== undefined, head ? headOrder : "");
       if (head) {
         head.completedWaitpointIds = headWaitpointIds;
       }
