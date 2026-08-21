@@ -502,6 +502,36 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
   );
 
   redisTest(
+    "reported flag '1' with an empty envelope still delivers, not pends",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const keys = runBlockKeys("run_1");
+
+        // The bug this task fixed: COMPLETED-with-no-envelope must take the reported
+        // branch on the flag alone, not on the envelope being non-empty.
+        const reply = await client.runAbsorbBlockers(
+          keys.pend,
+          keys.done,
+          keys.edge,
+          "1",
+          "w_a",
+          edgeField("w_a", 0),
+          "{}",
+          "1",
+          ""
+        );
+
+        expect(reply).toEqual(["0", "0", "w_a", ""]);
+        expect(await client.scard(keys.pend)).toBe(0);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  redisTest(
     "counts the same unreported id passed twice as one pending, not two",
     async ({ redisOptions }) => {
       const client = createRedisClient(redisOptions);
@@ -819,7 +849,7 @@ describe("absorbBlockers", () => {
       try {
         const result = await store.absorbBlockers({
           runId: RUN_ID,
-          edges: [edge("w_a", { reported: completion() }), edge("w_b")],
+          edges: [edge("w_a", { reported: { completion: completion() } }), edge("w_b")],
         });
 
         expect(result.pendingOfRequested).toBe(1);
@@ -837,8 +867,8 @@ describe("absorbBlockers", () => {
       const result = await store.absorbBlockers({
         runId: RUN_ID,
         edges: [
-          edge("w_a", { batchIndex: 0, reported: completion() }),
-          edge("w_a", { batchIndex: 1, reported: completion() }),
+          edge("w_a", { batchIndex: 0, reported: { completion: completion() } }),
+          edge("w_a", { batchIndex: 1, reported: { completion: completion() } }),
         ],
       });
 
@@ -926,7 +956,7 @@ describe("absorbBlockers", () => {
 
         const result = await store.absorbBlockers({
           runId: RUN_ID,
-          edges: [edge("w_a", { reported: completion() })],
+          edges: [edge("w_a", { reported: { completion: completion() } })],
         });
 
         // Nothing THIS call requested is pending (w_a arrived already delivered), but the
@@ -1200,6 +1230,10 @@ describe("registerBlocks: a COMPLETED waitpoint with no envelope never blocks (r
         expect(result.pendingOfRequested).toBe(0);
         expect(result.storePendingTotal).toBe(0);
         expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+        // The whole point: no fabricated envelope, and the delivery is real on the run
+        // shard, not just absent from pending.
+        expect(result.alreadyDelivered[0]!.completion).toBeUndefined();
+        expect((await store.readBlockState(RUN_ID)).deliveredIds).toEqual(["w_a"]);
       } finally {
         await store.quit();
       }
@@ -1284,6 +1318,43 @@ describe("registerBlocks: the two orderings", () => {
     }
   });
 
+  redisTest(
+    "a throw mid-loop leaves the earlier watcher registered, and that residue is safe",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({ record: record("w_ok"), status: "PENDING" });
+
+        await expect(
+          store.registerBlocks({ runId: RUN_ID, edges: [edge("w_ok"), edge("w_missing")] })
+        ).rejects.toThrow(WaitpointNotFoundError);
+
+        // registerBlocks throws before absorbBlockers ever runs, so the run's own shard
+        // is untouched.
+        const state = await store.readBlockState(RUN_ID);
+        expect(state.pendingIds).toEqual([]);
+        expect(state.edges).toEqual([]);
+
+        // But w_ok's watcher WAS registered on w_ok's own shard before the throw.
+        const completed = await store.complete({ waitpointId: "w_ok", completion: completion() });
+        expect(completed.watchers.map((w) => w.runId)).toEqual([RUN_ID]);
+
+        // Delivering it writes a `done` entry for a run that was never blocked on it —
+        // inert residue, not a false resume: no edge ever named it, and clearBlockState's
+        // reconcile would drop it the moment this run's block state is next drained.
+        const delivered = await store.deliverCompletion({
+          runId: RUN_ID,
+          waitpointId: "w_ok",
+          completion: completed.completion!,
+        });
+        expect(delivered.storePendingTotal).toBe(0);
+        expect((await store.readBlockState(RUN_ID)).deliveredIds).toEqual(["w_ok"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
   redisTest("is idempotent when run twice", async ({ redisOptions }) => {
     const store = coordinator(redisOptions);
     try {
@@ -1347,6 +1418,11 @@ describe("multi-index merge, end to end into the executor shape", () => {
           waitpointId: "w_child",
           completion: completion({ output: null }),
         });
+        // The cross-shard fact this test claims to prove: two registers for the same
+        // waitpoint at different indexes fanned out into two distinct watcher entries.
+        expect(
+          completed.watchers.map((w) => w.batchIndex).sort((a, b) => (a ?? 0) - (b ?? 0))
+        ).toEqual([0, 2]);
         await store.deliverCompletion({
           runId: RUN_ID,
           waitpointId: "w_child",
