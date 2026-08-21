@@ -45,7 +45,6 @@ export type InitializeDeploymentResult =
       imageRef: string;
       eventStream?: DeploymentEventStream;
       canceledDeployments?: SupersededDeployment[];
-      buildEnvVarsStored?: boolean;
     }
   | {
       outcome: "existing";
@@ -105,7 +104,6 @@ export class InitializeDeploymentService extends BaseService {
           outcome: "created",
           deployment: existingDeployment,
           imageRef: existingDeployment.imageReference ?? "",
-          buildEnvVarsStored: false,
         };
       }
 
@@ -445,7 +443,6 @@ export class InitializeDeploymentService extends BaseService {
         imageRef: deployment.imageReference ?? "",
         eventStream,
         canceledDeployments,
-        buildEnvVarsStored: encryptedBuildEnvVars !== undefined,
       };
     });
   }

@@ -105,10 +105,6 @@ type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 type Deployment = InitializeDeploymentResponseBody;
 
-// Pre-checks of the server-enforced limits, to fail before uploading anything
-const BUILD_ENV_VARS_MAX_BYTES = 128 * 1024;
-const BUILD_ENV_VARS_MAX_KEYS = 200;
-
 export function configureDeployCommand(program: Command) {
   return (
     commonOptions(
@@ -1364,21 +1360,6 @@ async function handleNativeBuildServerDeploy({
       )
     );
 
-    const buildEnvVarCount = Object.keys(bundleBuildEnvVars).length;
-    const buildEnvVarBytes = Buffer.byteLength(JSON.stringify(bundleBuildEnvVars), "utf8");
-
-    if (buildEnvVarCount > BUILD_ENV_VARS_MAX_KEYS) {
-      throw new Error(
-        `Your build uses too many build environment variables: ${buildEnvVarCount} (max ${BUILD_ENV_VARS_MAX_KEYS}).`
-      );
-    }
-
-    if (buildEnvVarBytes > BUILD_ENV_VARS_MAX_BYTES) {
-      throw new Error(
-        `Your build environment variables are too large: ${buildEnvVarBytes} bytes (max ${BUILD_ENV_VARS_MAX_BYTES}). Reduce the size of the env var values used by your build.`
-      );
-    }
-
     if (options.dryRun) {
       logger.info(`Dry run complete. View the built bundle at ${destination.path}`);
       return;
@@ -1565,36 +1546,6 @@ async function handleNativeBuildServerDeploy({
     );
 
     return;
-  }
-
-  // No ack for sent build env vars means an older server stripped them; fail fast.
-  // After the outcome=existing return: a reused deployment builds nothing.
-  if (
-    options.localBundle &&
-    bundleBuildEnvVars &&
-    Object.keys(bundleBuildEnvVars).length > 0 &&
-    !deployment.buildEnvVarsStored
-  ) {
-    // Best-effort cancel so the deployment does not linger until the queue timeout
-    const [cancelError] = await tryCatch(
-      apiClient.cancelDeployment(deployment.id, "Build environment variables were not stored")
-    );
-    if (cancelError) {
-      logger.debug("Failed to cancel deployment after missing build env vars ack", {
-        deploymentId: deployment.id,
-        error: cancelError,
-      });
-    }
-
-    $deploymentSpinner.stop("Failed to initialize deployment");
-    log.error(
-      chalk.bold(
-        chalkError(
-          "This server does not support --local-bundle deploys with build environment variables yet. Deploy without --local-bundle instead."
-        )
-      )
-    );
-    throw new OutroCommandError(`Deployment failed`);
   }
 
   const exposedDeploymentLink = isLinksSupported

@@ -758,8 +758,6 @@ export const InitializeDeploymentResponseBody = z.object({
       }),
     })
     .optional(),
-  // Ack that buildEnvVars were stored; absence on an older server is a client-side hard error
-  buildEnvVarsStored: z.boolean().optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;

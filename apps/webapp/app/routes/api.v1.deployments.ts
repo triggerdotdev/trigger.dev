@@ -60,7 +60,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
               .externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
             eventStream: result.eventStream,
             canceledDeployments: result.canceledDeployments,
-            ...(result.buildEnvVarsStored ? { buildEnvVarsStored: true } : {}),
           }
         : { isPromoted: result.isPromoted }),
     };
