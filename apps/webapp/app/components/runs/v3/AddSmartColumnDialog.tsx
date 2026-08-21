@@ -174,7 +174,7 @@ export function AddSmartColumnDialog({
         <div className="flex min-h-0 flex-col gap-5 pt-3">
           <Paragraph variant="base/bright">
             Pick a source, then click a value in the sample to turn it into a column. Smart columns
-            are display only — you can't sort or filter by them.
+            are display only, so you can't sort or filter by them.
           </Paragraph>
 
           <div className="grid min-h-0 grid-cols-1 items-stretch gap-2.5 md:grid-cols-3">
