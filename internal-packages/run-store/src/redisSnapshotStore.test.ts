@@ -664,6 +664,31 @@ describe("getSince", () => {
   );
 
   redisTest(
+    "skips an entry whose body was evicted rather than throwing",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+        await store.append({ entry: entry({ id: "s1" }), kind: "transition", isTerminal: false });
+        await store.append({ entry: entry({ id: "s2" }), kind: "transition", isTerminal: false });
+
+        // The mirror of the case the append script documents: idx survives while the entry body in
+        // `e` is gone. The seq field is left in place so the id still resolves.
+        await raw.hdel("snap:{run_1}:e", "s1");
+
+        const r = await store.getSince("run_1", "s0");
+        expect(r.kind).toBe("hit");
+        if (r.kind !== "hit") throw new Error("unreachable");
+        expect(r.entries.map((e) => e.id)).toEqual(["s2"]);
+      } finally {
+        await raw.quit();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
     "hits with zero entries when scoped to the since entry's own environment",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
