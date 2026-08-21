@@ -567,7 +567,7 @@ export class ExecutionSnapshotSystem {
       });
     }
 
-    this.$.logger.info("heartbeatRun snapshot heartbeat updated", {
+    this.$.logger.debug("heartbeatRun snapshot heartbeat updated", {
       id: latestSnapshot.id,
       runId: latestSnapshot.runId,
       lastHeartbeatAt: new Date(),
