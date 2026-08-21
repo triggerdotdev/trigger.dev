@@ -1467,6 +1467,23 @@ async function handleNativeBuildServerDeploy({
 
   logger.debug("Artifact created", { artifactKey });
 
+  // Version-skew guard: an older server that does not know the deployment_bundle
+  // artifact type silently stores the upload as a plain source context, and the
+  // remote build would then try to install and bundle an already-bundled directory.
+  // The bundle-specific key prefix doubles as the ack that the server understood
+  // the type, independent of whether any build env vars are sent later.
+  if (options.localBundle && !artifactKey.startsWith("bundles/")) {
+    $deploymentSpinner.stop("Failed creating deployment artifact");
+    log.error(
+      chalk.bold(
+        chalkError(
+          "This server does not support --local-bundle deploys yet. Deploy without --local-bundle instead."
+        )
+      )
+    );
+    throw new OutroCommandError(`Deployment failed`);
+  }
+
   $deploymentSpinner.message("Uploading deployment files");
 
   const [readError, fileBuffer] = await tryCatch(readFile(archivePath));
@@ -1957,6 +1974,13 @@ async function handleFromBundleDeploy({
   }
 
   const bundleManifest = manifestResult.data;
+
+  // Match the other deploy paths' promise: --dry-run never touches the server.
+  // Exit after the manifest is validated, before any branch/deployment calls.
+  if (options.dryRun) {
+    logger.info(`Dry run complete. Validated bundle at ${bundlePath}`);
+    return;
+  }
 
   const projectRef = projectRefOverride ?? bundleManifest.config.project;
 
