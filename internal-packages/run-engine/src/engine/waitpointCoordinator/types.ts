@@ -87,7 +87,7 @@ export type CompleteParams = {
 };
 
 /** One run blocked by the completed waitpoint, with the fields the caller's fan-out loop reads. */
-export type BlockedRun = {
+type BlockedRun = {
   taskRunId: string;
   spanIdToComplete: string | null;
   createdAt: Date;
