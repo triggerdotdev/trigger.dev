@@ -28,21 +28,34 @@ export function idpOwnsEmailDomain(status: OrgSsoStatus, emailDomain: string): b
   );
 }
 
-function domainOf(email: string): string | undefined {
-  const domain = email.toLowerCase().trim().split("@")[1];
-  return domain || undefined;
+export function emailDomainOf(email: string): string | undefined {
+  const normalized = email.toLowerCase().trim();
+  const at = normalized.lastIndexOf("@");
+  return at === -1 ? undefined : normalized.slice(at + 1) || undefined;
 }
 
-export async function getEmailOwnership(user: {
-  id: string;
-  email: string;
-}): Promise<EmailOwnership> {
+/**
+ * `candidateEmail` is the address being moved to, when there is one. An org that
+ * owns either end owns the change: checking only the current address would let a
+ * member on an unverified domain move onto the org's IdP-managed one.
+ */
+export async function getEmailOwnership(
+  user: {
+    id: string;
+    email: string;
+  },
+  candidateEmail?: string
+): Promise<EmailOwnership> {
   if (!(await ssoController.isUsingPlugin())) {
     return "user";
   }
 
-  const emailDomain = domainOf(user.email);
-  if (!emailDomain) {
+  const domains = [
+    emailDomainOf(user.email),
+    candidateEmail ? emailDomainOf(candidateEmail) : undefined,
+  ];
+  const emailDomains = [...new Set(domains.filter((domain): domain is string => !!domain))];
+  if (emailDomains.length === 0) {
     return "user";
   }
 
@@ -74,7 +87,7 @@ export async function getEmailOwnership(user: {
       continue;
     }
 
-    if (idpOwnsEmailDomain(status.value, emailDomain)) {
+    if (emailDomains.some((domain) => idpOwnsEmailDomain(status.value, domain))) {
       return "idp";
     }
   }

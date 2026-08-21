@@ -353,7 +353,17 @@ export const action: ActionFunction = async ({ request }) => {
     if ("error" in gate) return gate.error;
 
     // Re-checked: the loader only picked the modal.
-    const ownership = await getEmailOwnership(gate.user);
+    const submission = EmailSchema.safeParse({ email: formData.get("email") });
+    if (!submission.success) {
+      return profileUpdateError(
+        submission.error.issues[0]?.message ?? "That email address isn't valid.",
+        400
+      );
+    }
+
+    const { email } = submission.data;
+
+    const ownership = await getEmailOwnership(gate.user, email);
     if (ownership === "idp") {
       return profileUpdateError(
         "Your email address is managed by your organization's identity provider.",
@@ -366,16 +376,6 @@ export const action: ActionFunction = async ({ request }) => {
         503
       );
     }
-
-    const submission = EmailSchema.safeParse({ email: formData.get("email") });
-    if (!submission.success) {
-      return profileUpdateError(
-        submission.error.issues[0]?.message ?? "That email address isn't valid.",
-        400
-      );
-    }
-
-    const { email } = submission.data;
     const existingUser = await prisma.user.findFirst({ where: { email } });
     if (existingUser && existingUser.id !== gate.user.id) {
       return profileUpdateError("Email is already being used by a different account", 400);
