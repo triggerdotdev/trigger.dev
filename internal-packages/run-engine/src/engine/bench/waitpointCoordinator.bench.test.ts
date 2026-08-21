@@ -122,8 +122,12 @@ containerTest(
     const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const store = new WaitpointStoreCoordinator({ redisOptions });
     const samples: Sample[] = [];
-    const registerCost: Array<{ width: number; p50Ms: number; p99Ms: number; perEdgeMsP50: number }> =
-      [];
+    const registerCost: Array<{
+      width: number;
+      p50Ms: number;
+      p99Ms: number;
+      perEdgeMsP50: number;
+    }> = [];
 
     try {
       const ids = Array.from({ length: FANIN }, (_, i) => `bench_w_${i}`);
@@ -132,7 +136,10 @@ containerTest(
       // measures an index probe against nothing.
       await insertWaitpoints(prisma, ids, env.id, env.project.id);
       for (const id of ids) {
-        await store.createIfAbsent({ record: record(id, env.id, env.project.id), status: "PENDING" });
+        await store.createIfAbsent({
+          record: record(id, env.id, env.project.id),
+          status: "PENDING",
+        });
       }
       await store.registerBlocks({
         runId: "bench_run_fanin",
