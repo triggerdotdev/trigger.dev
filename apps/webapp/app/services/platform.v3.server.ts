@@ -1236,8 +1236,6 @@ export function isCloud(): boolean {
     return true;
   }
 
-  // Preview environments are cloud installs too; without this the billing client silently no-ops.
-  // Optional chaining because test suites mock the env module with partial objects.
   if (env.LOGIN_ORIGIN?.endsWith(".triggerlabs.dev")) {
     return true;
   }

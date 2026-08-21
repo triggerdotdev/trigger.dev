@@ -86,24 +86,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       );
     }
 
-    let variables: Record<string, string>;
-
-    try {
-      const decrypted = await decryptSecret(env.ENCRYPTION_KEY, envelope.data);
-      variables = z.record(z.string()).parse(JSON.parse(decrypted));
-    } catch (error) {
-      logger.error("Failed to decrypt stored build env vars", {
-        deploymentId,
-        environmentId: authenticatedEnv.id,
-        error,
-      });
-      return json(
-        {
-          error: "The stored build environment variables could not be decrypted. Retry the deploy.",
-        },
-        { status: 500 }
-      );
-    }
+    const decrypted = await decryptSecret(env.ENCRYPTION_KEY, envelope.data);
+    const variables = z.record(z.string()).parse(JSON.parse(decrypted));
 
     return json({ variables } satisfies GetDeploymentBuildEnvVarsResponseBody, { status: 200 });
   } catch (error) {
