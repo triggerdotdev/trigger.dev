@@ -89,7 +89,7 @@ export function ChartCard({
     <div ref={containerRef} className="group h-full min-h-0 overflow-hidden">
       <Card className={cn("h-full overflow-hidden px-0 pb-2", tabbed ? "pt-0" : "pt-3", className)}>
         {tabbed ? (
-          <div className={cn(TITLE_BAR_CHROME, "items-stretch justify-between gap-x-0 px-2")}>
+          <div className={cn(TITLE_BAR_CHROME, "items-stretch justify-between gap-x-0 pl-4 pr-2")}>
             <div className="flex items-stretch gap-x-4">{title}</div>
             {maximizable && <div className="flex items-center">{maximizeButton}</div>}
           </div>

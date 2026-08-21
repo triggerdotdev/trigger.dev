@@ -206,7 +206,7 @@ function TitleTabButtons({ layoutId, size }: { layoutId: string; size?: "base" |
   const [active, setActive] = useState("first");
 
   return (
-    <TabContainer variant="title" className="justify-start gap-x-4 px-2">
+    <TabContainer variant="title" className="justify-start gap-x-4 pl-4 pr-2">
       {["first", "second"].map((value) => (
         <TabButton
           key={value}
