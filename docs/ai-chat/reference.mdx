@@ -546,7 +546,7 @@ Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data
 
 ## `chat.withClientData`
 
-Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. All hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options.
+Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. Managed-agent hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options. Custom agents parse `payload.metadata` on the initial payload and later input frames before passing it to user code.
 
 ```ts
 chat.withClientData<TSchema>({ schema: TSchema }): ChatBuilder<UIMessage, TSchema>;
@@ -555,6 +555,8 @@ chat.withClientData<TSchema>({ schema: TSchema }): ChatBuilder<UIMessage, TSchem
 | Parameter | Type         | Description                                        |
 | --------- | ------------ | -------------------------------------------------- |
 | `schema`  | `TaskSchema` | Zod, ArkType, Valibot, or any supported schema lib |
+
+For `chat.customAgent()`, invalid client data is skipped. Async reads emit an error chunk followed by `turn-complete`. A `chat.messages.on()` subscription uses the task's `onClientDataValidationError` callback and task log instead, so an active response is not ended early. Without a schema, metadata is passed through unchanged.
 
 Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chatwithclientdata).
 
@@ -784,7 +786,7 @@ Send a custom action to the agent. Actions wake the agent from suspension and fi
 transport.sendAction(chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>>
 ```
 
-The action payload is validated against the agent's `actionSchema` on the backend.
+For managed `chat.agent()` tasks, the action payload is validated against the agent's `actionSchema` on the backend. Raw `chat.customAgent()` tasks receive it as `unknown` and must validate it themselves.
 
 ```tsx
 // Undo button

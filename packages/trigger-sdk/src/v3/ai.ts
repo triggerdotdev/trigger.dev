@@ -1431,6 +1431,186 @@ async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Pr
   return result;
 }
 
+type ChatCustomAgentClientDataParser = {
+  parse: (value: unknown) => Promise<unknown> | unknown;
+  parseSync: (value: unknown) => unknown;
+};
+
+type ChatCustomAgentClientDataErrorHandler = (event: {
+  error: unknown;
+  payload: ChatTaskWirePayload;
+}) => Promise<void> | void;
+
+const CHAT_CUSTOM_AGENT_CLIENT_DATA_ERROR_TEXT = "Invalid client data";
+
+const chatCustomAgentClientDataParserKey = locals.create<ChatCustomAgentClientDataParser>(
+  "chat.customAgentClientDataParser"
+);
+const chatCustomAgentClientDataErrorHandlerKey =
+  locals.create<ChatCustomAgentClientDataErrorHandler>("chat.customAgentClientDataErrorHandler");
+
+function shouldValidateChatCustomAgentPayload(payload: ChatTaskWirePayload): boolean {
+  return (
+    payload.trigger !== "close" && locals.get(chatCustomAgentClientDataParserKey) !== undefined
+  );
+}
+
+function assertChatCustomAgentSyncParseResult(result: unknown): unknown {
+  if (result && typeof (result as { then?: unknown }).then === "function") {
+    void Promise.resolve(result).catch(() => {});
+    throw new Error(
+      "chat.messages.peek() cannot validate clientData with an asynchronous schema. " +
+        "Use chat.messages.once(), chat.messages.wait(), or chat.messages.waitWithIdleTimeout()."
+    );
+  }
+  return result;
+}
+
+function getChatCustomAgentSyncSchemaParseFn(schema: TaskSchema): (value: unknown) => unknown {
+  const parser = schema as any;
+
+  if (typeof parser === "function" && typeof parser.assert === "function") {
+    return parser.assert.bind(parser);
+  }
+
+  if (typeof parser === "function") {
+    return (value) => assertChatCustomAgentSyncParseResult(parser(value));
+  }
+
+  if (typeof parser.parse === "function") {
+    return (value) => assertChatCustomAgentSyncParseResult(parser.parse(value));
+  }
+
+  if (typeof parser.validateSync === "function") {
+    return parser.validateSync.bind(parser);
+  }
+
+  if (typeof parser.create === "function") {
+    return parser.create.bind(parser);
+  }
+
+  if (typeof parser.assert === "function") {
+    return (value) => {
+      parser.assert(value);
+      return value;
+    };
+  }
+
+  return () => {
+    throw new Error(
+      "chat.messages.peek() cannot validate clientData with this schema. " +
+        "Use chat.messages.once(), chat.messages.wait(), or chat.messages.waitWithIdleTimeout()."
+    );
+  };
+}
+
+async function writeChatCustomAgentClientDataErrorToStream(
+  payload: ChatTaskWirePayload
+): Promise<void> {
+  try {
+    await withChatWriter((writer) => {
+      writer.write({
+        type: "error",
+        errorText: CHAT_CUSTOM_AGENT_CLIENT_DATA_ERROR_TEXT,
+      } as any);
+    });
+    await chatWriteTurnComplete();
+  } catch (signalError) {
+    logger.warn("chat.customAgent: failed to report clientData validation error", {
+      chatId: payload.chatId,
+      trigger: payload.trigger,
+      error: signalError instanceof Error ? signalError.message : String(signalError),
+    });
+  }
+}
+
+async function reportChatCustomAgentClientDataError(
+  payload: ChatTaskWirePayload,
+  error: unknown,
+  options: { writeToStream: boolean; callHandler?: boolean }
+): Promise<void> {
+  const errorText = error instanceof Error ? error.message : "An unexpected error occurred";
+  logger.warn("chat.customAgent: clientData validation failed", {
+    chatId: payload.chatId,
+    trigger: payload.trigger,
+    error: errorText,
+  });
+
+  const errorHandler =
+    options.callHandler === false
+      ? undefined
+      : locals.get(chatCustomAgentClientDataErrorHandlerKey);
+  if (errorHandler) {
+    try {
+      await errorHandler({ error, payload });
+    } catch (handlerError) {
+      logger.warn("chat.customAgent: clientData validation error handler failed", {
+        chatId: payload.chatId,
+        trigger: payload.trigger,
+        error: handlerError instanceof Error ? handlerError.message : String(handlerError),
+      });
+    }
+  }
+
+  if (!options.writeToStream) {
+    return;
+  }
+  await writeChatCustomAgentClientDataErrorToStream(payload);
+}
+
+type ChatCustomAgentPayloadValidationResult<TPayload extends ChatTaskWirePayload> =
+  | { ok: true; payload: TPayload }
+  | { ok: false; error: unknown };
+
+async function parseChatCustomAgentPayload<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload
+): Promise<ChatCustomAgentPayloadValidationResult<TPayload>> {
+  const parser = locals.get(chatCustomAgentClientDataParserKey);
+  if (!parser || payload.trigger === "close") {
+    return { ok: true, payload };
+  }
+
+  try {
+    const metadata = await parser.parse(payload.metadata);
+    return { ok: true, payload: { ...payload, metadata } };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+async function validateChatCustomAgentPayload<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload,
+  options: { writeErrorToStream?: boolean } = {}
+): Promise<ChatCustomAgentPayloadValidationResult<TPayload>> {
+  const result = await parseChatCustomAgentPayload(payload);
+  if (!result.ok) {
+    await reportChatCustomAgentClientDataError(payload, result.error, {
+      writeToStream: options.writeErrorToStream ?? true,
+    });
+  }
+  return result;
+}
+
+function validateChatCustomAgentPayloadSync<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload
+): TPayload {
+  const parser = locals.get(chatCustomAgentClientDataParserKey);
+  if (!parser || payload.trigger === "close") {
+    return payload;
+  }
+
+  try {
+    return { ...payload, metadata: parser.parseSync(payload.metadata) };
+  } catch (error) {
+    logger.warn("chat.customAgent: clientData validation failed in chat.messages.peek()", {
+      chatId: payload.chatId,
+      trigger: payload.trigger,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
 // `ChatTaskWirePayload` and `ChatInputChunk` live in `./ai-shared.ts` so
 // browser bundles (which import them via `chat-client.ts` / `chat.ts`)
 // can pull the types without dragging `ai.ts` into the client graph.
@@ -1543,21 +1723,84 @@ export type ChatTaskRunPayload<
 // keep their original shape. Each accessor resolves the session handle
 // lazily via `getChatSession()` so the module-level references stay
 // compatible with the pre-migration wiring.
+type ChatMessageSubscription = {
+  off: () => void;
+  drain?: () => Promise<void>;
+};
+
+function subscribeToRawChatMessages(
+  handler: (payload: ChatTaskWirePayload) => unknown
+): ChatMessageSubscription {
+  return getChatSession().in.on<ChatInputChunk>((chunk) => {
+    if (chunk.kind === "message") {
+      // Returning `true` marks the record CONSUMED at the manager level:
+      // it is neither buffered for a later `once()` nor re-delivered by
+      // the buffer drain when the next turn re-attaches its handler.
+      void Promise.resolve(handler(chunk.payload)).catch(() => {});
+      return true;
+    }
+    return undefined;
+  });
+}
+
+function subscribeToValidatedChatMessages(
+  handler: (payload: ChatTaskWirePayload, isActive: () => boolean) => unknown,
+  options: {
+    onAfterOff?: (payload: ChatTaskWirePayload) => unknown;
+    onInvalidAfterOff?: (payload: ChatTaskWirePayload, error: unknown) => unknown;
+  } = {}
+): ChatMessageSubscription {
+  let active = true;
+  let delivery = Promise.resolve();
+  const subscription = subscribeToRawChatMessages((payload) => {
+    delivery = delivery
+      .then(async () => {
+        const result = await parseChatCustomAgentPayload(payload);
+        if (!result.ok) {
+          if (active) {
+            // Completing the turn here could close an active response.
+            await reportChatCustomAgentClientDataError(payload, result.error, {
+              writeToStream: false,
+            });
+          } else if (options.onInvalidAfterOff) {
+            await options.onInvalidAfterOff(payload, result.error);
+          } else {
+            // The subscription was removed while parsing. Keep the failure
+            // observable without invoking a user callback after off().
+            await reportChatCustomAgentClientDataError(payload, result.error, {
+              writeToStream: false,
+              callHandler: false,
+            });
+          }
+          return;
+        }
+        if (active) {
+          await handler(result.payload, () => active);
+        } else {
+          await options.onAfterOff?.(result.payload);
+        }
+      })
+      .catch(() => {});
+  });
+
+  return {
+    off() {
+      active = false;
+      subscription.off();
+    },
+    drain: () => delivery,
+  };
+}
+
 const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
   id: "chat-messages",
   on(handler) {
-    return getChatSession().in.on<ChatInputChunk>((chunk) => {
-      if (chunk.kind === "message") {
-        // Returning `true` marks the record CONSUMED at the manager level:
-        // it is neither buffered for a later `once()` nor re-delivered by
-        // the buffer drain when the next turn re-attaches its handler.
-        // Without this, a message arriving mid-stream was delivered twice
-        // and ran a duplicate turn.
-        void Promise.resolve(handler(chunk.payload)).catch(() => {});
-        return true;
-      }
-      return undefined;
-    });
+    if (!locals.get(chatCustomAgentClientDataParserKey)) {
+      return subscribeToRawChatMessages(handler);
+    }
+
+    const deliver = (payload: ChatTaskWirePayload) => handler(payload);
+    return subscribeToValidatedChatMessages(deliver, { onAfterOff: deliver });
   },
   once(options) {
     const ctx = taskContext.ctx;
@@ -1575,8 +1818,15 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
                 return;
               }
               if (result.output.kind === "message") {
-                resolve({ ok: true, output: result.output.payload });
-                return;
+                if (!shouldValidateChatCustomAgentPayload(result.output.payload)) {
+                  resolve({ ok: true, output: result.output.payload });
+                  return;
+                }
+                const validated = await validateChatCustomAgentPayload(result.output.payload);
+                if (validated.ok) {
+                  resolve({ ok: true, output: validated.payload });
+                  return;
+                }
               }
               // Non-message chunks (stops) are handled by the stopInput
               // facade's persistent listener; loop and wait for the next.
@@ -1604,7 +1854,9 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
   },
   peek() {
     const chunk = getChatSession().in.peek<ChatInputChunk>();
-    if (chunk && chunk.kind === "message") return chunk.payload;
+    if (chunk && chunk.kind === "message") {
+      return validateChatCustomAgentPayloadSync(chunk.payload);
+    }
     return undefined;
   },
   wait(options) {
@@ -1617,8 +1869,15 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
             return;
           }
           if (result.output.kind === "message") {
-            resolve({ ok: true, output: result.output.payload });
-            return;
+            if (!shouldValidateChatCustomAgentPayload(result.output.payload)) {
+              resolve({ ok: true, output: result.output.payload });
+              return;
+            }
+            const validated = await validateChatCustomAgentPayload(result.output.payload);
+            if (validated.ok) {
+              resolve({ ok: true, output: validated.payload });
+              return;
+            }
           }
           // Stop chunks are handled by the stopInput facade's persistent
           // listener; loop back into the suspending wait.
@@ -1633,7 +1892,13 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
       const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
       if (!result.ok) return result;
       if (result.output.kind === "message") {
-        return { ok: true, output: result.output.payload };
+        if (!shouldValidateChatCustomAgentPayload(result.output.payload)) {
+          return { ok: true, output: result.output.payload };
+        }
+        const validated = await validateChatCustomAgentPayload(result.output.payload);
+        if (validated.ok) {
+          return { ok: true, output: validated.payload };
+        }
       }
       // Swallow stop-kind chunks — persistent stop listener already handled
       // the abort; we just loop for the next message.
@@ -5323,9 +5588,38 @@ type ChatCustomAgentOptions<
     ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
     unknown
   >,
-  "triggerSource" | "agentConfig"
+  "triggerSource" | "agentConfig" | "run"
 > & {
+  /**
+   * Schema for validating `metadata` from the frontend.
+   *
+   * The initial payload and later `chat.messages` frames are parsed before
+   * user code receives them. Invalid submitted turns and async reads write an
+   * error chunk followed by `turn-complete`. Messageless boots and active
+   * subscriptions use `onClientDataValidationError` and the task log because
+   * there is no submitted turn to complete or a response may still be streaming.
+   * This validates `metadata` only; raw `action` payloads remain `unknown`.
+   */
   clientDataSchema?: TClientDataSchema;
+  /**
+   * Called when a custom-agent input fails `clientDataSchema` validation.
+   *
+   * Submitted turns and async reads also write an error chunk followed by
+   * `turn-complete`. Messageless boots and active `chat.messages.on()`
+   * subscriptions are reported through this callback and the task log only.
+   *
+   * `payload.metadata` is typed `unknown`: this callback only fires when
+   * the metadata failed to parse, so it can be any shape the client sent.
+   */
+  onClientDataValidationError?: (event: {
+    error: unknown;
+    payload: ChatTaskWirePayload<TUIMessage, unknown>;
+  }) => Promise<void> | void;
+  run: TaskOptions<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+    unknown
+  >["run"];
 };
 
 function chatCustomAgent<
@@ -5335,7 +5629,11 @@ function chatCustomAgent<
 >(
   options: ChatCustomAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
-  const { clientDataSchema, run: userRun, ...restOptions } = options;
+  const { clientDataSchema, onClientDataValidationError, run: userRun, ...restOptions } = options;
+  const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
+  const parseClientDataSync = clientDataSchema
+    ? getChatCustomAgentSyncSchemaParseFn(clientDataSchema)
+    : undefined;
 
   const task = createTask<
     TIdentifier,
@@ -5362,6 +5660,18 @@ function chatCustomAgent<
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatExternalIdKey, payload.chatId);
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      if (parseClientData && parseClientDataSync) {
+        locals.set(chatCustomAgentClientDataParserKey, {
+          parse: parseClientData,
+          parseSync: parseClientDataSync,
+        });
+      }
+      if (onClientDataValidationError) {
+        locals.set(
+          chatCustomAgentClientDataErrorHandlerKey,
+          onClientDataValidationError as ChatCustomAgentClientDataErrorHandler
+        );
+      }
       // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
       // trims `session.out` back to the previous turn boundary. Without
       // this the slot is undefined and the trim never runs, so `.out`
@@ -5374,7 +5684,76 @@ function chatCustomAgent<
       // listener — otherwise a continuation boot replays already-answered
       // messages into the loop's first wait.
       await seedSessionInResumeCursorForCustomLoop(payload);
-      return userRun(payload, runOptions);
+
+      // Keep the schema-free path identical to the original custom-agent
+      // wrapper, including when userRun starts executing.
+      if (!parseClientData) {
+        return userRun(payload, runOptions);
+      }
+
+      const isHandoverBoot = payload.trigger === "handover-prepare";
+      const isMessagelessBoot =
+        payload.trigger === "preload" ||
+        (payload.continuation === true &&
+          payload.message === undefined &&
+          payload.trigger !== "action" &&
+          payload.trigger !== "regenerate-message" &&
+          !isHandoverBoot);
+      const validated = await validateChatCustomAgentPayload(payload, {
+        // Preload and continuation boots do not represent a submitted turn,
+        // so there is no sender waiting for a terminal frame. Handover errors
+        // must be written after the warm response flushes and signals below.
+        writeErrorToStream: !isMessagelessBoot && !isHandoverBoot,
+      });
+      if (validated.ok) {
+        return userRun(
+          validated.payload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+          runOptions
+        );
+      }
+
+      if (isHandoverBoot) {
+        const signal = await waitForHandover({
+          payload,
+          timeout: "1h",
+          spanName: "waiting for handover signal (invalid clientData)",
+        });
+        if (!signal || signal.kind === "handover-skip") {
+          return;
+        }
+
+        // The head-start writer flushes before sending this signal. Writing
+        // the terminal error now preserves stream order and closes the stitch.
+        await writeChatCustomAgentClientDataErrorToStream(payload);
+        return;
+      }
+
+      // The Session base payload is sticky across continuation runs. If it is
+      // invalid, returning here would boot the same bad metadata again on the
+      // next message. Stay attached and wait for a valid wire frame instead.
+      const next = await messagesInput.waitWithIdleTimeout({
+        idleTimeoutInSeconds: payload.idleTimeoutInSeconds ?? 30,
+        timeout: "1h",
+        spanName: "waiting for valid clientData",
+      });
+      if (!next.ok || next.output.trigger === "close") {
+        return;
+      }
+
+      // Normal input frames omit run-level boot context. Carry it forward so
+      // a continuation still tells the custom loop to restore prior state.
+      const recoveredPayload = {
+        ...next.output,
+        continuation: next.output.continuation ?? payload.continuation,
+        previousRunId: next.output.previousRunId ?? payload.previousRunId,
+        sessionId: next.output.sessionId ?? payload.sessionId,
+        idleTimeoutInSeconds: next.output.idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds,
+      };
+
+      return userRun(
+        recoveredPayload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+        runOptions
+      );
     },
   });
 
@@ -8281,7 +8660,10 @@ export interface ChatBuilder<
         options: ChatCustomAgentOptions<TId, undefined, TUIMessage>
       ) => Task<TId, ChatTaskWirePayload<TUIMessage, undefined>, unknown>
     : <TId extends string>(
-        options: ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>
+        options: Omit<
+          ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>,
+          "clientDataSchema"
+        >
       ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 }
 
@@ -9441,7 +9823,7 @@ export type ChatSessionOptions = {
   pendingMessages?: PendingMessagesOptions;
 };
 
-export type ChatTurn = {
+export type ChatTurn<TClientData = unknown> = {
   /** Turn number (0-indexed). */
   number: number;
   /** Chat session ID. */
@@ -9449,7 +9831,7 @@ export type ChatTurn = {
   /** What triggered this turn. */
   trigger: string;
   /** Client data from the transport (`metadata` field on the wire payload). */
-  clientData: unknown;
+  clientData: TClientData;
   /** Full accumulated model messages — pass directly to `streamText`. */
   readonly messages: ModelMessage[];
   /** Full accumulated UI messages — use for persistence. */
@@ -9548,10 +9930,10 @@ export type ChatTurn = {
  * });
  * ```
  */
-function createChatSession(
-  payload: ChatTaskWirePayload,
+function createChatSession<TClientData = unknown>(
+  payload: ChatTaskWirePayload<UIMessage, TClientData>,
   options: ChatSessionOptions
-): AsyncIterable<ChatTurn> {
+): AsyncIterable<ChatTurn<TClientData>> {
   const {
     signal: runSignal,
     idleTimeoutInSeconds: sessionIdleTimeoutOpt,
@@ -9579,14 +9961,23 @@ function createChatSession(
       // Messages consumed mid-turn, dispatched one per next(). Iterator-level
       // for the same reason as the agent loop's `pendingWireMessages`:
       // consumed records never replay, so a turn-local buffer loses them.
-      const sessionPendingWire: ChatTaskWirePayload[] = [];
+      const sessionPendingWire: Array<
+        | { payload: ChatTaskWirePayload; validation: "unvalidated" | "valid" }
+        | { payload: ChatTaskWirePayload; validation: "invalid"; error: unknown }
+      > = [];
       // The current turn's message subscription — detached defensively at the
       // top of next() in case user code threw without complete()/done().
-      let activeMsgSub: { off: () => void } | undefined;
+      let activeMsgSub: ChatMessageSubscription | undefined;
 
       return {
-        async next(): Promise<IteratorResult<ChatTurn>> {
-          activeMsgSub?.off();
+        async next(): Promise<IteratorResult<ChatTurn<TClientData>>> {
+          if (activeMsgSub?.drain) {
+            activeMsgSub.off();
+            await activeMsgSub.drain();
+          } else {
+            // Keep the schema-free path free of a new async boundary.
+            activeMsgSub?.off();
+          }
           activeMsgSub = undefined;
           if (!booted) {
             booted = true;
@@ -9647,7 +10038,7 @@ function createChatSession(
               return { done: true, value: undefined };
             }
             const continuationBoot = isMessagelessContinuationBoot;
-            currentPayload = result.output;
+            currentPayload = result.output as ChatTaskWirePayload<UIMessage, TClientData>;
             // Preserve the continuation flag — the wire payload of the next
             // message doesn't carry it, and `turn.continuation` is how the
             // user knows to seed history (e.g. `turn.setMessages(stored)`).
@@ -9659,8 +10050,33 @@ function createChatSession(
           // Subsequent turns: drain buffered mid-turn messages first (they
           // were consumed and won't be re-delivered), then wait.
           if (turn > 0) {
-            if (sessionPendingWire.length > 0) {
-              currentPayload = sessionPendingWire.shift()!;
+            let bufferedPayload: ChatTaskWirePayload<UIMessage, TClientData> | undefined;
+            while (sessionPendingWire.length > 0) {
+              const candidate = sessionPendingWire.shift()!;
+              if (candidate.validation === "invalid") {
+                await reportChatCustomAgentClientDataError(candidate.payload, candidate.error, {
+                  writeToStream: true,
+                });
+                continue;
+              }
+              if (
+                candidate.validation === "valid" ||
+                !locals.get(chatCustomAgentClientDataParserKey)
+              ) {
+                // Avoid adding an async boundary when no schema is configured.
+                bufferedPayload = candidate.payload as ChatTaskWirePayload<UIMessage, TClientData>;
+                break;
+              }
+
+              const validated = await validateChatCustomAgentPayload(candidate.payload);
+              if (validated.ok) {
+                bufferedPayload = validated.payload as ChatTaskWirePayload<UIMessage, TClientData>;
+                break;
+              }
+            }
+
+            if (bufferedPayload) {
+              currentPayload = bufferedPayload;
             } else {
               // chat.requestUpgrade() / chat.endRun() — exit before waiting
               if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
@@ -9677,7 +10093,7 @@ function createChatSession(
                 stop.cleanup();
                 return { done: true, value: undefined };
               }
-              currentPayload = next.output;
+              currentPayload = next.output as ChatTaskWirePayload<UIMessage, TClientData>;
             }
           }
 
@@ -9707,37 +10123,73 @@ function createChatSession(
           });
 
           // Listen for messages during streaming (steering + next-turn buffer)
-          const sessionMsgSub = messagesInput.on(async (msg) => {
-            if (sessionPendingMessages) {
-              // Steering route — the frontend re-sends non-injected
-              // messages on turn complete, so don't also buffer the wire.
-              // Slim wire: at most one delta message per record. Read
-              // `msg.message` directly — no array slicing needed.
-              const lastUIMessage = msg.message;
-              if (lastUIMessage) {
-                if (sessionPendingMessages.onReceived) {
-                  try {
-                    await sessionPendingMessages.onReceived({
-                      message: lastUIMessage,
-                      chatId: currentPayload.chatId,
-                      turn,
-                    });
-                  } catch {
-                    /* non-fatal */
-                  }
-                }
+          const handleSteeringMessage = async (
+            msg: ChatTaskWirePayload,
+            isActive: () => boolean = () => true
+          ) => {
+            const bufferForNextTurn = () => {
+              sessionPendingWire.push({ payload: msg, validation: "valid" });
+            };
+            if (!isActive()) {
+              bufferForNextTurn();
+              return;
+            }
+
+            // Steering route — the frontend re-sends non-injected
+            // messages on turn complete, so don't also buffer the wire.
+            // Slim wire: at most one delta message per record. Read
+            // `msg.message` directly — no array slicing needed.
+            const lastUIMessage = msg.message;
+            if (lastUIMessage) {
+              if (sessionPendingMessages?.onReceived) {
                 try {
-                  const modelMsgs = await toModelMessages([lastUIMessage]);
-                  turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                  await sessionPendingMessages.onReceived({
+                    message: lastUIMessage,
+                    chatId: currentPayload.chatId,
+                    turn,
+                  });
                 } catch {
                   /* non-fatal */
                 }
               }
-              return;
+              if (!isActive()) {
+                bufferForNextTurn();
+                return;
+              }
+              try {
+                const modelMsgs = await toModelMessages([lastUIMessage]);
+                if (!isActive()) {
+                  bufferForNextTurn();
+                  return;
+                }
+                turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+              } catch {
+                /* non-fatal */
+              }
             }
+          };
 
-            sessionPendingWire.push(msg);
-          });
+          const sessionMsgSub: ChatMessageSubscription = sessionPendingMessages
+            ? locals.get(chatCustomAgentClientDataParserKey)
+              ? subscribeToValidatedChatMessages(handleSteeringMessage, {
+                  onAfterOff: (msg) => {
+                    sessionPendingWire.push({ payload: msg, validation: "valid" });
+                  },
+                  onInvalidAfterOff: (msg, error) => {
+                    sessionPendingWire.push({ payload: msg, validation: "invalid", error });
+                  },
+                })
+              : messagesInput.on(async (msg) => {
+                  // Steering route — the frontend re-sends non-injected
+                  // messages on turn complete, so don't also buffer the wire.
+                  await handleSteeringMessage(msg);
+                })
+            : subscribeToRawChatMessages((msg) => {
+                // Buffer synchronously in wire order. Validation happens when
+                // the frame becomes the next turn, after the active response
+                // has completed and it is safe to write an error boundary.
+                sessionPendingWire.push({ payload: msg, validation: "unvalidated" });
+              });
           activeMsgSub = sessionMsgSub;
 
           // Accumulate messages. Slim wire: pass the single delta message as
@@ -9773,11 +10225,11 @@ function createChatSession(
 
           const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
 
-          const turnObj: ChatTurn = {
+          const turnObj: ChatTurn<TClientData> = {
             number: turn,
             chatId: currentPayload.chatId,
             trigger: currentPayload.trigger,
-            clientData: currentPayload.metadata,
+            clientData: currentPayload.metadata as TClientData,
             get messages() {
               return accumulator.modelMessages;
             },
@@ -9954,7 +10406,6 @@ function createChatSession(
                 }
               }
 
-              sessionMsgSub.off();
               await chatWriteTurnComplete();
               return response;
             },
