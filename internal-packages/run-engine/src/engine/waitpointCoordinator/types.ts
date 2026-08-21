@@ -45,8 +45,8 @@ export type ClearRunBlockStateParams = {
 /**
  * One block edge, with the fields the unblock decision reads.
  *
- * `batchId` is read by no logic. It rides inside two `logger.debug` payloads
- * (`waitpointSystem.ts:702-705` and `:936-939`), so removing it changes log output.
+ * `batchId` is read by no logic. It rides inside the two `logger.debug` payloads in
+ * `continueRunIfUnblocked`, so removing it changes log output.
  */
 export type RunBlockEdge = {
   id: string;
