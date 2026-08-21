@@ -80,8 +80,7 @@ import {
   normalizeThemeContrast,
   normalizeUnderlineLinks,
   normalizeThemePreference,
-  DEFAULT_THEME_CONTRAST_BLACK,
-  MIN_THEME_CONTRAST_BLACK,
+  BLACK_CONTRAST_OFFSET,
   SystemDarkTheme,
   SystemLightTheme,
   type ThemePreference,
@@ -98,8 +97,9 @@ export const meta = pageMeta("Your profile");
  *  Classic theme shipped, so the bottom of the range has to stay reachable. */
 const MIN_CONTRAST = 0;
 
-/** The contrast the slider ticks and labels as "Default". Matches
- *  `DEFAULT_THEME_CONTRAST`, the value applied when none is saved. */
+/** Where the slider ticks and labels "Default", in the 0-100 the user sees. On
+ *  Black that lands on the theme's faint floor rather than the base palette; the
+ *  offset below does the translating. */
 const DEFAULT_CONTRAST_MARK = 0;
 
 function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
@@ -881,12 +881,6 @@ export default function Page() {
      appearance. Only Black gets the extra travel below the base, so the slider
      needs to know rather than reading the raw preference. */
   const activeTheme = theme === "system" ? systemThemes[appearance] : theme;
-  const isBlack = activeTheme === "black";
-  const minContrast = isBlack ? MIN_THEME_CONTRAST_BLACK : MIN_CONTRAST;
-  /* Black's rules want to sit far fainter than the base palette puts them, so
-     "Default" means something different there - both the tick and the label
-     follow it. */
-  const defaultContrast = isBlack ? DEFAULT_THEME_CONTRAST_BLACK : DEFAULT_CONTRAST_MARK;
 
   const saveSystemTheme = (end: "light" | "dark", value: string) => {
     const fetcher = end === "light" ? systemLightFetcher : systemDarkFetcher;
@@ -920,6 +914,18 @@ export default function Page() {
       { action: "update-contrast", contrast: String(value) },
       { method: "post" }
     );
+
+  /* The slider always runs 0-100 as far as the user is concerned. Black's range
+     sits that whole window lower, so its stored value is the displayed one minus
+     the offset: 0% on screen is -30 in the ramp, and nothing negative is ever
+     shown or reachable by dragging. */
+  const contrastOffset = activeTheme === "black" ? BLACK_CONTRAST_OFFSET : 0;
+  const displayedContrast = Math.max(MIN_CONTRAST, contrastPreview + contrastOffset);
+  const resetContrast = () => {
+    const stored = DEFAULT_CONTRAST_MARK - contrastOffset;
+    previewContrast(stored);
+    saveContrast(stored);
+  };
 
   return (
     <PageContainer>
@@ -1107,25 +1113,22 @@ export default function Page() {
                       variant="settings"
                       className="w-44"
                       aria-label="Contrast"
-                      min={minContrast}
+                      min={MIN_CONTRAST}
                       max={100}
                       step={1}
                       marks={[
                         {
-                          value: defaultContrast,
+                          value: DEFAULT_CONTRAST_MARK,
                           label: "Reset to default",
-                          onSelect: () => {
-                            previewContrast(defaultContrast);
-                            saveContrast(defaultContrast);
-                          },
+                          onSelect: resetContrast,
                         },
                       ]}
                       valueTooltip={(value) =>
-                        value === defaultContrast ? "Default" : `${value}%`
+                        value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
                       }
-                      value={[Math.max(minContrast, contrastPreview)]}
-                      onValueChange={(values) => previewContrast(values[0] ?? 0)}
-                      onValueCommit={(values) => saveContrast(values[0] ?? 0)}
+                      value={[displayedContrast]}
+                      onValueChange={(values) => previewContrast((values[0] ?? 0) - contrastOffset)}
+                      onValueCommit={(values) => saveContrast((values[0] ?? 0) - contrastOffset)}
                     />
                   </div>
                 </div>
