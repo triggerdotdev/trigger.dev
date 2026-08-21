@@ -246,7 +246,11 @@ export class RedisSnapshotStore {
     isTerminal: boolean;
     expectedCur?: string;
     cycle?:
-      | { kind: "new"; completedWaitpoints: CompletedWaitpointRef[]; records?: string }
+      | {
+          kind: "new";
+          completedWaitpoints: CompletedWaitpointRef[];
+          records?: CompletedWaitpointRecord[];
+        }
       | { kind: "carryForward"; cycleSeq: number };
   }): Promise<AppendResult> {
     if (args.entry.completedWaitpoints !== undefined) {
@@ -270,7 +274,7 @@ export class RedisSnapshotStore {
         const order = deriveOrder(args.cycle.completedWaitpoints);
         cycleMode = "new";
         orderJson = JSON.stringify(order);
-        records = args.cycle.records ?? "";
+        records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
         orderCount = String(order.length);
       } else if (args.cycle?.kind === "carryForward") {
         cycleMode = "carry";

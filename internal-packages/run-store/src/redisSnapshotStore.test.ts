@@ -11,6 +11,7 @@ import {
   RedisSnapshotStore,
   type SnapshotEntryInput,
   type CompletedWaitpointsPointer,
+  type CompletedWaitpointRecord,
 } from "./redisSnapshotStore.js";
 
 describe("snapshotKeys", () => {
@@ -232,6 +233,46 @@ describe("append", () => {
         const read = await store.getById("run_1", "snap_2");
         expect(read?.cycle).toEqual({ cycleSeq: 1, count: 2 });
       } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "round-trips a typed records array through the cycle hash's records field",
+    async ({ redisOptions }) => {
+      // The only place CompletedWaitpointRecord[] physically enters Redis. If the writer ever
+      // serializes a different envelope, this is where that would show up as a broken round trip.
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      const raw = createRedisClient(redisOptions);
+      const records: CompletedWaitpointRecord[] = [
+        {
+          id: "w_a",
+          friendlyId: "waitpoint_a",
+          type: "RUN",
+          completedAt: "2026-01-01T00:00:00.000Z",
+          outputType: "application/json",
+          outputIsError: false,
+          output: { deriveFromRun: true },
+          completedByTaskRunId: "run_child",
+        },
+      ];
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [{ id: "w_a", index: 0 }],
+            records,
+          },
+        });
+
+        const storedRaw = await raw.hget("snap:{run_1}:wp:1", "records");
+        expect(JSON.parse(storedRaw!)).toEqual(records);
+      } finally {
+        raw.disconnect();
         await store.quit();
       }
     }

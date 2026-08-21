@@ -94,10 +94,13 @@ async function referenceResolver(
       output = record.output.inline;
     } else if ("ref" in record.output) {
       output = record.output.ref;
-    } else {
+    } else if ("deriveFromRun" in record.output) {
       output = record.completedByTaskRunId
         ? await lookupRunOutput(record.completedByTaskRunId)
         : undefined;
+    } else {
+      const _never: never = record.output;
+      throw new Error(`unknown record output variant: ${JSON.stringify(_never)}`);
     }
 
     for (const index of indexes) {
@@ -156,16 +159,17 @@ async function assertParity(
   runOutputs: Record<string, string> = {}
 ) {
   const enhanced = enhanceExecutionSnapshotWithWaitpoints(makeSnapshot(batchId), waitpoints, order);
-  const resolved = await referenceResolver(
-    {
-      runId: "run_1",
-      batchId: batchId ?? undefined,
-      pointer: { cycleSeq: 1, count: order.length },
-      order,
-      records: waitpoints.map(toRecord),
-    },
-    async (id) => runOutputs[id]
-  );
+  const args: ResolveCompletedWaitpointsArgs = {
+    runId: "run_1",
+    batchId: batchId ?? undefined,
+    pointer: { cycleSeq: 1, count: order.length },
+    order,
+    records: waitpoints.map(toRecord),
+  };
+  // The frozen rule: count is order.length, NOT the record count. Binding it here means every
+  // parity case enforces it, not only the dedicated "the frozen pointer shape" cases.
+  expect(args.pointer.count).toBe(order.length);
+  const resolved = await referenceResolver(args, async (id) => runOutputs[id]);
   expect(resolved).toEqual(enhanced.completedWaitpoints);
   return { enhanced, resolved };
 }
