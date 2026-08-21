@@ -7,7 +7,7 @@ import type {
   TaskRunStatus,
   WaitpointTag,
 } from "@trigger.dev/database";
-import { ownerEngine, type Residency } from "@trigger.dev/core/v3/isomorphic";
+import { ownerEngine, type Residency, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type {
   ClearIdempotencyKeyInput,
@@ -34,23 +34,51 @@ import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
 
 import { boundedIn } from "@trigger.dev/database";
+
+// The two reserved gen-1 shard keys. They are multi-char, so a gen-2 single-char shard key can
+// never collide with them.
+const NEW_SHARD: ShardKey = "new";
+const LEGACY_SHARD: ShardKey = "legacy";
+
 /**
- * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore}
- * by selecting between a NEW store (the dedicated run-ops DB, where new runs are born) and
- * a LEGACY store (the control-plane DB) via the residency classifier (`ownerEngine`:
- * run-ops id→NEW, cuid→LEGACY). In single-DB both stores are the same, so routing is a no-op
- * passthrough. Inert until the injecting seam wires it in under `isSplitEnabled()`; reads no
- * flag here. The TaskRun-core methods (create/find/findRuns + updateMetadata/clearIdempotencyKey)
- * route by residency; all other methods are mechanical residency-routing delegates.
+ * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore} over a
+ * map from shard key to store, selecting one by the residency classifier (`ownerEngine`: run-ops
+ * id→NEW, cuid→LEGACY). The compat constructor holds the two gen-1 shards — a NEW store (the
+ * dedicated run-ops DB, where new runs are born) and a LEGACY store (the control-plane DB).
+ * In single-DB both stores are the same, so routing is a no-op passthrough. Inert until the
+ * injecting seam wires it in under `isSplitEnabled()`; reads no flag here.
+ *
+ * Three policies are held as data rather than implied by statement order: {@link #probeOrder} for a
+ * lookup with no routable id, {@link #precedence} for a merge, and the two id-less fallbacks. A
+ * merge MUST iterate #precedence and a probe MUST iterate #probeOrder — the two are the reverse of
+ * each other, so swapping them changes behaviour.
  */
 export class RoutingRunStore implements RunStore {
-  readonly #new: RunStore;
-  readonly #legacy: RunStore;
+  readonly #shards: ReadonlyMap<ShardKey, RunStore>;
+  // Sequential probe for a lookup with no routable id. The first non-null result wins, and the LAST
+  // entry owns the canonical not-found throw.
+  readonly #probeOrder: readonly ShardKey[];
+  // Ascending authority for a merge. The last write wins, so the highest-authority shard wins a
+  // duplicate id. Every merge in this class MUST use this order.
+  readonly #precedence: readonly ShardKey[];
+  // The two id-less defaults. They differ by role on purpose: a route with no id lands on the
+  // steady-state home, a waitpoint read with no id lands on the legacy store.
+  readonly #idlessRouteShard: ShardKey;
+  readonly #idlessWaitpointShard: ShardKey;
   readonly #classify: (id: string) => Residency;
 
+  // Compat constructor: the two gen-1 stores, keyed by their reserved shard keys. The options type
+  // MUST stay closed — a union arm loosens the excess-property check and retires the
+  // `@ts-expect-error onLegacyRead` lock in the test corpus.
   constructor(options: { new: RunStore; legacy: RunStore; classify?: (id: string) => Residency }) {
-    this.#new = options.new;
-    this.#legacy = options.legacy;
+    this.#shards = new Map<ShardKey, RunStore>([
+      [NEW_SHARD, options.new],
+      [LEGACY_SHARD, options.legacy],
+    ]);
+    this.#probeOrder = [NEW_SHARD, LEGACY_SHARD];
+    this.#precedence = [LEGACY_SHARD, NEW_SHARD];
+    this.#idlessRouteShard = NEW_SHARD;
+    this.#idlessWaitpointShard = LEGACY_SHARD;
     this.#classify = options.classify ?? ownerEngine;
   }
 
@@ -71,14 +99,98 @@ export class RoutingRunStore implements RunStore {
     return client != null && !isReadReplicaClient(client) ? store.primaryReadClient : undefined;
   }
 
+  // The store for a shard key. Unreachable with the compat constructor — #shardKeyOfSafe yields only
+  // the two reserved keys — so this throw fires only if a caller wires a partial map.
+  #shardStore(key: ShardKey): RunStore {
+    const store = this.#shards.get(key);
+    if (store === undefined) {
+      throw new Error(`RoutingRunStore: no store is configured for shard key "${key}"`);
+    }
+    return store;
+  }
+
+  // The shard that owns an existing id. Throws only when an injected classifier throws.
+  #shardKeyOf(id: string): ShardKey {
+    return this.#classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD;
+  }
+
   // An unclassifiable id is treated as LEGACY (probe the control-plane DB rather than drop a
   // real run), matching the read-through layer's policy.
-  #classifySafe(id: string): Residency {
+  #shardKeyOfSafe(id: string): ShardKey {
     try {
-      return this.#classify(id);
+      return this.#shardKeyOf(id);
     } catch {
-      return "LEGACY";
+      return LEGACY_SHARD;
     }
+  }
+
+  // Sequential probe over #probeOrder, returning the first non-null result. `isLast` marks the leg
+  // that owns the canonical not-found throw, so a caller can swap in its throwing variant there.
+  async #probeFirst<R>(
+    fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>
+  ): Promise<R> {
+    const last = this.#probeOrder.length - 1;
+    for (let i = 0; i < last; i++) {
+      const key = this.#probeOrder[i]!;
+      const found = await fn(this.#shardStore(key), key, false);
+      if (found != null) {
+        return found;
+      }
+    }
+    const key = this.#probeOrder[last]!;
+    return fn(this.#shardStore(key), key, true);
+  }
+
+  // Run `fn` on every shard in parallel, returning the results in `order`. Pass #probeOrder where
+  // the result-array order is observable; pass #precedence where a duplicate id's winner decides
+  // the value. The two orders are the reverse of each other, so passing the wrong one is a
+  // behaviour change.
+  #fanOut<R>(
+    order: readonly ShardKey[],
+    fn: (store: RunStore, key: ShardKey) => Promise<R>
+  ): Promise<R[]> {
+    return Promise.all(order.map((key) => fn(this.#shardStore(key), key)));
+  }
+
+  // Apply `fn` to every shard and sum the counts. A sum is order-independent, so this takes no order.
+  async #sumCounts(
+    fn: (store: RunStore, key: ShardKey) => Promise<{ count: number }>
+  ): Promise<Prisma.BatchPayload> {
+    const legs = await this.#fanOut(this.#probeOrder, fn);
+    return { count: legs.reduce((sum, leg) => sum + leg.count, 0) };
+  }
+
+  // Group ids by owning shard, then run `fn` once per NON-EMPTY bucket, in `order`, in parallel. A
+  // shard with no id is never queried, so no leg issues an empty `IN ()`.
+  async #fanOutPartitioned<R>(
+    order: readonly ShardKey[],
+    ids: string[],
+    fn: (store: RunStore, shardIds: string[], key: ShardKey) => Promise<R>
+  ): Promise<R[]> {
+    const byShard = new Map<ShardKey, string[]>();
+    for (const id of ids) {
+      const key = this.#shardKeyOfSafe(id);
+      const bucket = byShard.get(key);
+      if (bucket) bucket.push(id);
+      else byShard.set(key, [id]);
+    }
+    const legs: Array<Promise<R>> = [];
+    for (const key of order) {
+      const shardIds = byShard.get(key);
+      if (shardIds !== undefined) {
+        legs.push(fn(this.#shardStore(key), shardIds, key));
+      }
+    }
+    return Promise.all(legs);
+  }
+
+  // Every shard other than `key`, in probe order. With the compat constructor this yields exactly
+  // one entry, which is why each caller may take the first. At more than two shards a caller MUST
+  // fan out over all of them instead.
+  #shardsExcept(key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
+    return this.#probeOrder
+      .filter((k) => k !== key)
+      .map((k) => ({ key: k, store: this.#shardStore(k) }));
   }
 
   // A `findRuns` caller bound to the given store (preserves `this`; the overload set isn't
@@ -98,21 +210,25 @@ export class RoutingRunStore implements RunStore {
 
   // Route an existing run-ops id by residency. Throws on an unclassifiable id.
   #route(id: string): RunStore {
-    return this.#classify(id) === "NEW" ? this.#new : this.#legacy;
+    return this.#shardStore(this.#shardKeyOf(id));
   }
 
-  // Best-effort route; falls back to NEW (the steady-state home) when the id is absent.
-  // Classification is total (any id without the v1 version marker is LEGACY), so the
-  // catch below only guards injected classifiers that still throw.
-  #routeOrNew(id: string | undefined): RunStore {
+  // Best-effort shard key; falls back to #idlessRouteShard when the id is absent. Classification is
+  // total (any id without the v1 version marker is LEGACY), so the catch below only guards injected
+  // classifiers that still throw.
+  #routeKeyOrDefault(id: string | undefined): ShardKey {
     if (typeof id !== "string") {
-      return this.#new;
+      return this.#idlessRouteShard;
     }
     try {
-      return this.#route(id);
+      return this.#shardKeyOf(id);
     } catch {
-      return this.#new;
+      return this.#idlessRouteShard;
     }
+  }
+
+  #routeOrNew(id: string | undefined): RunStore {
+    return this.#shardStore(this.#routeKeyOrDefault(id));
   }
 
   // WRITE routing is pure id-shape (cuid → LEGACY, run-ops id → NEW). A LEGACY-classified id is
@@ -145,8 +261,8 @@ export class RoutingRunStore implements RunStore {
   // `onPrimary` probes each store's own primary (read-your-writes callers; a fresh row may not
   // be on the replica yet, which would mis-resolve the store).
   async #resolveWaitpointStore(id: string | undefined, onPrimary = false): Promise<RunStore> {
-    const home =
-      typeof id === "string" && this.#classifySafe(id) === "NEW" ? this.#new : this.#legacy;
+    const homeKey = typeof id === "string" ? this.#shardKeyOfSafe(id) : this.#idlessWaitpointShard;
+    const home = this.#shardStore(homeKey);
     if (typeof id !== "string") {
       return home;
     }
@@ -155,12 +271,15 @@ export class RoutingRunStore implements RunStore {
     ) {
       return home;
     }
-    const other = home === this.#new ? this.#legacy : this.#new;
-    return (await other.findWaitpoint(
+    const [other] = this.#shardsExcept(homeKey);
+    if (other === undefined) {
+      return home;
+    }
+    return (await other.store.findWaitpoint(
       { where: { id } },
-      onPrimary ? other.primaryReadClient : undefined
+      onPrimary ? other.store.primaryReadClient : undefined
     ))
-      ? other
+      ? other.store
       : home;
   }
 
@@ -249,14 +368,9 @@ export class RoutingRunStore implements RunStore {
     onPrimary: boolean
   ): Promise<unknown> {
     const method = onPrimary ? "findRunOnPrimary" : "findRun";
-    const fromNew = await (this.#new[method] as (...rest: unknown[]) => Promise<unknown>)(
-      where,
-      args
+    return this.#probeFirst((store) =>
+      (store[method] as (...rest: unknown[]) => Promise<unknown>)(where, args)
     );
-    if (fromNew != null) {
-      return fromNew;
-    }
-    return (this.#legacy[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
   }
 
   findRuns<S extends Prisma.TaskRunSelect>(
@@ -339,15 +453,10 @@ export class RoutingRunStore implements RunStore {
   ): Promise<unknown[]> {
     const { args: selArgs, addedFields } = ensureProjected(args);
     const fan = { ...selArgs, take: undefined, skip: undefined };
-    const newIds = ids.filter((id) => this.#classifySafe(id) === "NEW");
-    const legacyIds = ids.filter((id) => this.#classifySafe(id) !== "NEW");
-    const findNew = this.#findManyOn(this.#new, client);
-    const findLegacy = this.#findManyOn(this.#legacy, client);
-    const [newRows, legacyRows] = await Promise.all([
-      newIds.length > 0 ? findNew(narrowToIds(fan, newIds)) : [],
-      legacyIds.length > 0 ? findLegacy(narrowToIds(fan, legacyIds)) : [],
-    ]);
-    return finalizeRows([...newRows, ...legacyRows], args, addedFields);
+    const legs = await this.#fanOutPartitioned(this.#probeOrder, ids, (store, shardIds) =>
+      this.#findManyOn(store, client)(narrowToIds(fan, shardIds))
+    );
+    return finalizeRows(legs.flat(), args, addedFields);
   }
 
   // Open predicate (e.g. `{ batchId }`, `{ status, runtimeEnvironmentId }`): no id set to
@@ -355,12 +464,11 @@ export class RoutingRunStore implements RunStore {
   async #findRunsOpen(args: FindRunsArgs, client?: ReadClient): Promise<unknown[]> {
     const { args: selArgs, addedFields } = ensureProjected(args);
     const fan = widenForMerge(selArgs);
-    const findNew = this.#findManyOn(this.#new, client);
-    const findLegacy = this.#findManyOn(this.#legacy, client);
-    const [newRows, legacyRows] = await Promise.all([findNew(fan), findLegacy(fan)]);
+    const legs = await this.#fanOut(this.#precedence, (store) =>
+      this.#findManyOn(store, client)(fan)
+    );
     const byId = new Map<string, Record<string, unknown>>();
-    for (const r of legacyRows) byId.set(r.id as string, r);
-    for (const r of newRows) byId.set(r.id as string, r);
+    for (const r of legs.flat()) byId.set(r.id as string, r);
     return finalizeRows([...byId.values()], args, addedFields);
   }
 
@@ -427,18 +535,11 @@ export class RoutingRunStore implements RunStore {
     if (args.idempotencyKeys.length === 0) {
       return [];
     }
-    const [newRows, legacyRows] = await Promise.all([
-      this.#new.findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(this.#new, client)),
-      this.#legacy.findRunsByIdempotencyKeys(
-        args,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ),
-    ]);
+    const legs = await this.#fanOut(this.#precedence, (store) =>
+      store.findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(store, client))
+    );
     const byKey = new Map<string, IdempotencyKeyRunMatch>();
-    for (const row of legacyRows) {
-      if (row.idempotencyKey != null) byKey.set(row.idempotencyKey, row);
-    }
-    for (const row of newRows) {
+    for (const row of legs.flat()) {
       if (row.idempotencyKey != null) byKey.set(row.idempotencyKey, row);
     }
     return [...byKey.values()];
@@ -477,17 +578,16 @@ export class RoutingRunStore implements RunStore {
     // so fall back to LEGACY when NEW matched nothing — otherwise the reset 404s and the stale legacy
     // key keeps deduping. In the steady (fully-drained) state NEW matches and legacy is never touched.
     if ("byPredicate" in params && params.byPredicate?.residency === "NEW") {
-      const fromNew = await this.#new.clearIdempotencyKey(params, undefined);
+      const fromNew = await this.#shardStore(NEW_SHARD).clearIdempotencyKey(params, undefined);
       if (fromNew.count > 0) {
         return fromNew;
       }
-      const fromLegacy = await this.#legacy.clearIdempotencyKey(params);
-      return { count: fromNew.count + fromLegacy.count };
+      const rest = await Promise.all(
+        this.#shardsExcept(NEW_SHARD).map(({ store }) => store.clearIdempotencyKey(params))
+      );
+      return { count: rest.reduce((sum, leg) => sum + leg.count, fromNew.count) };
     }
-    return Promise.all([
-      this.#new.clearIdempotencyKey(params),
-      this.#legacy.clearIdempotencyKey(params),
-    ]).then(([fromNew, fromLegacy]) => ({ count: fromNew.count + fromLegacy.count }));
+    return this.#sumCounts((store) => store.clearIdempotencyKey(params));
   }
 
   // ---------------------------------------------------------------------------
@@ -625,15 +725,11 @@ export class RoutingRunStore implements RunStore {
     data: { error: TaskRunError; now: Date },
     tx?: PrismaClientOrTransaction
   ): Promise<number> {
-    // Partition by id-shape: run-ops id → NEW, everything else → LEGACY. Call each store
-    // only when its partition is non-empty (avoids an empty IN () clause). Sum counts.
-    const newIds = runIds.filter((id) => this.#classifySafe(id) === "NEW");
-    const legacyIds = runIds.filter((id) => this.#classifySafe(id) !== "NEW");
-    const [fromNew, fromLegacy] = await Promise.all([
-      newIds.length > 0 ? this.#new.expireRunsBatch(newIds, data) : 0,
-      legacyIds.length > 0 ? this.#legacy.expireRunsBatch(legacyIds, data) : 0,
-    ]);
-    return fromNew + fromLegacy;
+    // Partition by id-shape, call each store only for its own ids, and sum the counts.
+    const legs = await this.#fanOutPartitioned(this.#probeOrder, runIds, (store, shardIds) =>
+      store.expireRunsBatch(shardIds, data)
+    );
+    return legs.reduce((sum, leg) => sum + leg, 0);
   }
 
   async lockRunToWorker(
@@ -771,16 +867,11 @@ export class RoutingRunStore implements RunStore {
     onPrimary: boolean
   ): Promise<unknown> {
     const probe = onPrimary ? "findRunOnPrimary" : "findRun";
-    const fromNew = await (this.#new[probe] as (...rest: unknown[]) => Promise<unknown>)(
-      where,
-      args
-    );
-    if (fromNew != null) {
-      return fromNew;
-    }
-    // LEGACY is the last leg probed, so it owns the canonical not-found throw when both DBs miss.
+    // The last probe leg owns the canonical not-found throw when every shard misses.
     const throwMethod = onPrimary ? "findRunOrThrowOnPrimary" : "findRunOrThrow";
-    return (this.#legacy[throwMethod] as (...rest: unknown[]) => Promise<unknown>)(where, args);
+    return this.#probeFirst((store, _key, isLast) =>
+      (store[isLast ? throwMethod : probe] as (...rest: unknown[]) => Promise<unknown>)(where, args)
+    );
   }
 
   // Explicit read-your-writes entry points: route by residency to the owning store's PRIMARY
@@ -923,13 +1014,8 @@ export class RoutingRunStore implements RunStore {
       const store = this.#routeOrNew(runId);
       return store.findExecutionSnapshot(args, RoutingRunStore.#ownPrimary(store, client));
     }
-    const fromNew = await this.#new.findExecutionSnapshot(
-      args,
-      RoutingRunStore.#ownPrimary(this.#new, client)
-    );
-    return (
-      fromNew ??
-      this.#legacy.findExecutionSnapshot(args, RoutingRunStore.#ownPrimary(this.#legacy, client))
+    return this.#probeFirst((store) =>
+      store.findExecutionSnapshot(args, RoutingRunStore.#ownPrimary(store, client))
     );
   }
 
@@ -943,14 +1029,10 @@ export class RoutingRunStore implements RunStore {
       const store = this.#routeOrNew(runId);
       return store.findManyExecutionSnapshots(args, RoutingRunStore.#ownPrimary(store, client));
     }
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findManyExecutionSnapshots(args, RoutingRunStore.#ownPrimary(this.#new, client)),
-      this.#legacy.findManyExecutionSnapshots(
-        args,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ),
-    ]);
-    return [...fromNew, ...fromLegacy];
+    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+      store.findManyExecutionSnapshots(args, RoutingRunStore.#ownPrimary(store, client))
+    );
+    return legs.flat();
   }
 
   async createExecutionSnapshot(
@@ -980,17 +1062,13 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       );
     }
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findSnapshotCompletedWaitpointIds(
+    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+      store.findSnapshotCompletedWaitpointIds(
         snapshotId,
-        RoutingRunStore.#ownPrimary(this.#new, client)
-      ),
-      this.#legacy.findSnapshotCompletedWaitpointIds(
-        snapshotId,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ),
-    ]);
-    return uniqueStrings([...fromNew, ...fromLegacy]);
+        RoutingRunStore.#ownPrimary(store, client)
+      )
+    );
+    return uniqueStrings(legs.flat());
   }
 
   // As above: route to the run's store when the run id is threaded through, else fan out (the snapshot
@@ -1007,19 +1085,15 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       );
     }
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findSnapshotCompletedWaitpointIdsWithPresence(
+    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+      store.findSnapshotCompletedWaitpointIdsWithPresence(
         snapshotId,
-        RoutingRunStore.#ownPrimary(this.#new, client)
-      ),
-      this.#legacy.findSnapshotCompletedWaitpointIdsWithPresence(
-        snapshotId,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ),
-    ]);
+        RoutingRunStore.#ownPrimary(store, client)
+      )
+    );
     return {
-      present: fromNew.present || fromLegacy.present,
-      ids: uniqueStrings([...fromNew.ids, ...fromLegacy.ids]),
+      present: legs.some((leg) => leg.present),
+      ids: uniqueStrings(legs.flatMap((leg) => leg.ids)),
     };
   }
 
@@ -1029,34 +1103,23 @@ export class RoutingRunStore implements RunStore {
   // row on each leg. Each sub-store already caps at CONNECTED_RUNS_LIMIT, but a disjoint run set on
   // each side can still make the union exceed it, so slice again after the merge.
   async findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findWaitpointConnectedRunIds(
-        waitpointId,
-        RoutingRunStore.#ownPrimary(this.#new, client)
-      ),
-      this.#legacy.findWaitpointConnectedRunIds(
-        waitpointId,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ),
-    ]);
-    return uniqueStrings([...fromNew, ...fromLegacy]).slice(0, CONNECTED_RUNS_LIMIT);
+    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+      store.findWaitpointConnectedRunIds(waitpointId, RoutingRunStore.#ownPrimary(store, client))
+    );
+    return uniqueStrings(legs.flat()).slice(0, CONNECTED_RUNS_LIMIT);
   }
 
   async findWaitpointCompletedSnapshotIds(
     waitpointId: string,
     client?: ReadClient
   ): Promise<string[]> {
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findWaitpointCompletedSnapshotIds(
+    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+      store.findWaitpointCompletedSnapshotIds(
         waitpointId,
-        RoutingRunStore.#ownPrimary(this.#new, client)
-      ),
-      this.#legacy.findWaitpointCompletedSnapshotIds(
-        waitpointId,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ),
-    ]);
-    return uniqueStrings([...fromNew, ...fromLegacy]);
+        RoutingRunStore.#ownPrimary(store, client)
+      )
+    );
+    return uniqueStrings(legs.flat());
   }
 
   async blockRunWithWaitpointEdges(params: {
@@ -1086,24 +1149,17 @@ export class RoutingRunStore implements RunStore {
     runId?: string
   ): Promise<number> {
     if (runId === undefined) {
-      const [fromNew, fromLegacy] = await Promise.all([
-        this.#new.countPendingWaitpoints(
-          waitpointIds,
-          RoutingRunStore.#ownPrimary(this.#new, client)
-        ),
-        this.#legacy.countPendingWaitpoints(
-          waitpointIds,
-          RoutingRunStore.#ownPrimary(this.#legacy, client)
-        ),
-      ]);
-      return fromNew + fromLegacy;
+      const legs = await this.#fanOut(this.#probeOrder, (store) =>
+        store.countPendingWaitpoints(waitpointIds, RoutingRunStore.#ownPrimary(store, client))
+      );
+      return legs.reduce((sum, leg) => sum + leg, 0);
     }
 
     if (waitpointIds.length === 0) {
       return 0;
     }
-    const runStore = this.#routeOrNew(runId);
-    const otherStore = runStore === this.#new ? this.#legacy : this.#new;
+    const runKey = this.#routeKeyOrDefault(runId);
+    const runStore = this.#shardStore(runKey);
     const { pendingIds, presentIds } = await runStore.countPendingWaitpointsWithPresence(
       waitpointIds,
       RoutingRunStore.#ownPrimary(runStore, client)
@@ -1113,9 +1169,13 @@ export class RoutingRunStore implements RunStore {
     if (missing.length === 0) {
       return pendingIds.length;
     }
-    const otherPending = await otherStore.countPendingWaitpoints(
+    const [other] = this.#shardsExcept(runKey);
+    if (other === undefined) {
+      return pendingIds.length;
+    }
+    const otherPending = await other.store.countPendingWaitpoints(
       missing,
-      RoutingRunStore.#ownPrimary(otherStore, client)
+      RoutingRunStore.#ownPrimary(other.store, client)
     );
     return pendingIds.length + otherPending;
   }
@@ -1128,19 +1188,15 @@ export class RoutingRunStore implements RunStore {
     waitpointIds: string[],
     client?: ReadClient
   ): Promise<{ pendingIds: string[]; presentIds: string[] }> {
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.countPendingWaitpointsWithPresence(
+    const legs = await this.#fanOut(this.#probeOrder, (store) =>
+      store.countPendingWaitpointsWithPresence(
         waitpointIds,
-        RoutingRunStore.#ownPrimary(this.#new, client)
-      ),
-      this.#legacy.countPendingWaitpointsWithPresence(
-        waitpointIds,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ),
-    ]);
+        RoutingRunStore.#ownPrimary(store, client)
+      )
+    );
     return {
-      pendingIds: uniqueStrings([...fromNew.pendingIds, ...fromLegacy.pendingIds]),
-      presentIds: uniqueStrings([...fromNew.presentIds, ...fromLegacy.presentIds]),
+      pendingIds: uniqueStrings(legs.flatMap((leg) => leg.pendingIds)),
+      presentIds: uniqueStrings(legs.flatMap((leg) => leg.presentIds)),
     };
   }
 
@@ -1178,14 +1234,16 @@ export class RoutingRunStore implements RunStore {
     waitpointId: string | undefined
   ): RunStore {
     if (ownerId !== undefined) {
-      return this.#classifySafe(ownerId) === "NEW" ? this.#new : this.#legacy;
+      return this.#shardStore(this.#shardKeyOfSafe(ownerId));
     }
     if (residency !== undefined) {
-      return residency === "NEW" ? this.#new : this.#legacy;
+      return this.#shardStore(residency === "NEW" ? NEW_SHARD : LEGACY_SHARD);
     }
-    return typeof waitpointId === "string" && this.#classifySafe(waitpointId) === "NEW"
-      ? this.#new
-      : this.#legacy;
+    return this.#shardStore(
+      typeof waitpointId === "string"
+        ? this.#shardKeyOfSafe(waitpointId)
+        : this.#idlessWaitpointShard
+    );
   }
 
   upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
@@ -1237,14 +1295,12 @@ export class RoutingRunStore implements RunStore {
             scalarArgs as typeof args,
             coLocatedDedup ? store.primaryReadClient : RoutingRunStore.#ownPrimary(store, client)
           )) as Record<string, unknown> | null)
-        : (((await this.#new.findWaitpoint(
-            scalarArgs as typeof args,
-            RoutingRunStore.#ownPrimary(this.#new, client)
-          )) ??
-            (await this.#legacy.findWaitpoint(
+        : ((await this.#probeFirst((probed) =>
+            probed.findWaitpoint(
               scalarArgs as typeof args,
-              RoutingRunStore.#ownPrimary(this.#legacy, client)
-            ))) as Record<string, unknown> | null);
+              RoutingRunStore.#ownPrimary(probed, client)
+            )
+          )) as Record<string, unknown> | null);
     if (row) {
       await this.#reresolveWaitpointRelationsCrossDb(row, relations, client);
     }
@@ -1258,7 +1314,12 @@ export class RoutingRunStore implements RunStore {
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
   ): Promise<Prisma.WaitpointGetPayload<T> | null> {
     const id = RoutingRunStore.#waitpointId((args as { where?: unknown }).where);
-    const store = id !== undefined ? await this.#resolveWaitpointStore(id, true) : this.#new;
+    // The id-less arm takes the ROUTE default, not the waitpoint default. Only the unblock re-read
+    // calls this, and it always carries an id, so the arm is unreachable today.
+    const store =
+      id !== undefined
+        ? await this.#resolveWaitpointStore(id, true)
+        : this.#shardStore(this.#idlessRouteShard);
     return store.findWaitpointOnPrimary(args);
   }
 
@@ -1297,7 +1358,8 @@ export class RoutingRunStore implements RunStore {
     if (runId !== undefined) {
       const requestedIds = idListFromWhere((scalarArgs.where ?? {}) as Prisma.TaskRunWhereInput);
       if (requestedIds !== undefined) {
-        const runStore = this.#routeOrNew(runId);
+        const runKey = this.#routeKeyOrDefault(runId);
+        const runStore = this.#shardStore(runKey);
         const fromRun = (await runStore.findManyWaitpoints(
           scalarArgs as Prisma.WaitpointFindManyArgs,
           RoutingRunStore.#ownPrimary(runStore, client)
@@ -1309,33 +1371,33 @@ export class RoutingRunStore implements RunStore {
         if (missing.length === 0) {
           return fromRun;
         }
-        const otherStore = runStore === this.#new ? this.#legacy : this.#new;
-        const fromOther = (await otherStore.findManyWaitpoints(
+        const [other] = this.#shardsExcept(runKey);
+        if (other === undefined) {
+          return fromRun;
+        }
+        const fromOther = (await other.store.findManyWaitpoints(
           narrowArgsToIds(scalarArgs, missing) as Prisma.WaitpointFindManyArgs,
-          RoutingRunStore.#ownPrimary(otherStore, client)
+          RoutingRunStore.#ownPrimary(other.store, client)
         )) as Record<string, unknown>[];
         return [...fromRun, ...fromOther];
       }
       // No bounded id set to partition on → fall through to the fan-out path.
     }
 
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findManyWaitpoints(
-        scalarArgs as Prisma.WaitpointFindManyArgs,
-        RoutingRunStore.#ownPrimary(this.#new, client)
-      ) as Promise<Record<string, unknown>[]>,
-      this.#legacy.findManyWaitpoints(
-        scalarArgs as Prisma.WaitpointFindManyArgs,
-        RoutingRunStore.#ownPrimary(this.#legacy, client)
-      ) as Promise<Record<string, unknown>[]>,
-    ]);
-    // A token mirrored onto both DBs during drain appears in BOTH legs; dedup by id with NEW-wins
-    // (the NEW copy is authoritative once a run migrates), matching the router's NEW-wins invariant
-    // (#findRunsOpen). Without this, edge-waitpoint hydration could read a stale LEGACY status and
-    // strand the run. Rows whose projection omits `id` can't be deduped and pass through.
+    const legs = await this.#fanOut(
+      this.#precedence,
+      (store) =>
+        store.findManyWaitpoints(
+          scalarArgs as Prisma.WaitpointFindManyArgs,
+          RoutingRunStore.#ownPrimary(store, client)
+        ) as Promise<Record<string, unknown>[]>
+    );
+    // A token mirrored onto both DBs during drain appears in BOTH legs; dedup by id in #precedence
+    // order, so the highest-authority copy wins. Without this, edge-waitpoint hydration could read a
+    // stale LEGACY status and strand the run. Rows whose projection omits `id` pass through.
     const byId = new Map<string, Record<string, unknown>>();
     const passthrough: Record<string, unknown>[] = [];
-    for (const w of [...fromLegacy, ...fromNew]) {
+    for (const w of legs.flat()) {
       const id = w.id;
       if (typeof id === "string") byId.set(id, w);
       else passthrough.push(w);
@@ -1462,12 +1524,8 @@ export class RoutingRunStore implements RunStore {
       const store = await this.#resolveWaitpointStore(id);
       return store.updateManyWaitpoints(args, undefined);
     }
-    // No single routable id (batch where): apply to both stores and sum.
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.updateManyWaitpoints(args),
-      this.#legacy.updateManyWaitpoints(args),
-    ]);
-    return { count: fromNew.count + fromLegacy.count };
+    // No single routable id (batch where): apply to every store and sum.
+    return this.#sumCounts((store) => store.updateManyWaitpoints(args));
   }
 
   // Residency guard: selects the owning store by waitpointId.
@@ -1476,14 +1534,13 @@ export class RoutingRunStore implements RunStore {
     context: ForWaitpointCompletionContext
   ): Promise<RunStore> {
     // Preferred store: explicit legacy-authority pins first, else the waitpoint's id-shape.
-    const preferred =
+    const preferredKey =
       context.treeOwnerResidency === "LEGACY" ||
       context.isCrossTreeIdempotency === true ||
       context.hasLegacyParent === true
-        ? this.#legacy
-        : this.#classifySafe(waitpointId) === "NEW"
-          ? this.#new
-          : this.#legacy;
+        ? LEGACY_SHARD
+        : this.#shardKeyOfSafe(waitpointId);
+    const preferred = this.#shardStore(preferredKey);
     // Resolve to where the waitpoint ACTUALLY lives: a migrated run's waitpoint can be on NEW
     // with a LEGACY-classified id (or vice versa), so verify and fall back rather than route
     // by id-shape alone and miss it (which leaves the blocked run stuck forever). This guard
@@ -1495,9 +1552,10 @@ export class RoutingRunStore implements RunStore {
     ) {
       return preferred;
     }
-    const other = preferred === this.#new ? this.#legacy : this.#new;
-    if (await other.findWaitpoint({ where: { id: waitpointId } }, other.primaryReadClient)) {
-      return other;
+    for (const { store } of this.#shardsExcept(preferredKey)) {
+      if (await store.findWaitpoint({ where: { id: waitpointId } }, store.primaryReadClient)) {
+        return store;
+      }
     }
     return preferred;
   }
@@ -1534,17 +1592,13 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       )) as Record<string, unknown>[];
     } else {
-      const [fromNew, fromLegacy] = await Promise.all([
-        this.#new.findManyTaskRunWaitpoints(
+      const legs = await this.#fanOut(this.#precedence, (store) =>
+        store.findManyTaskRunWaitpoints(
           scalarArgs as typeof args,
-          RoutingRunStore.#ownPrimary(this.#new, client)
-        ),
-        this.#legacy.findManyTaskRunWaitpoints(
-          scalarArgs as typeof args,
-          RoutingRunStore.#ownPrimary(this.#legacy, client)
-        ),
-      ]);
-      edges = dedupeEdgesById([...fromNew, ...fromLegacy]) as Record<string, unknown>[];
+          RoutingRunStore.#ownPrimary(store, client)
+        )
+      );
+      edges = dedupeEdgesById(legs.flat()) as Record<string, unknown>[];
     }
 
     if (waitpoint) {
@@ -1623,11 +1677,7 @@ export class RoutingRunStore implements RunStore {
     if (taskRunId !== undefined) {
       return (await this.#routeOrNewForWrite(taskRunId)).deleteManyTaskRunWaitpoints(args);
     }
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.deleteManyTaskRunWaitpoints(args),
-      this.#legacy.deleteManyTaskRunWaitpoints(args),
-    ]);
-    return { count: fromNew.count + fromLegacy.count };
+    return this.#sumCounts((store) => store.deleteManyTaskRunWaitpoints(args));
   }
 
   findTaskRunAttempt<T extends Prisma.TaskRunAttemptFindFirstArgs>(
@@ -1650,14 +1700,9 @@ export class RoutingRunStore implements RunStore {
     args: Prisma.SelectSubset<T, Prisma.TaskRunAttemptFindFirstArgs>,
     client?: ReadClient
   ): Promise<Prisma.TaskRunAttemptGetPayload<T> | null> {
-    const fromNew = await this.#new.findTaskRunAttempt(
-      args,
-      RoutingRunStore.#ownPrimary(this.#new, client)
+    return this.#probeFirst((store) =>
+      store.findTaskRunAttempt(args, RoutingRunStore.#ownPrimary(store, client))
     );
-    if (fromNew != null) {
-      return fromNew;
-    }
-    return this.#legacy.findTaskRunAttempt(args, RoutingRunStore.#ownPrimary(this.#legacy, client));
   }
 
   // Co-locate the checkpoint with its OWNING run so the run-routed snapshot's `checkpointId` FK
@@ -1714,16 +1759,8 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim (a cross-DB probe with one shared client can
     // only reach one DB); its presence resolves each leg to that store's OWN primary.
-    const fromNew = await this.#new.findBatchTaskRunById(
-      id,
-      args,
-      RoutingRunStore.#ownPrimary(this.#new, client)
-    );
-    if (fromNew != null) return fromNew;
-    return this.#legacy.findBatchTaskRunById(
-      id,
-      args,
-      RoutingRunStore.#ownPrimary(this.#legacy, client)
+    return this.#probeFirst((store) =>
+      store.findBatchTaskRunById(id, args, RoutingRunStore.#ownPrimary(store, client))
     );
   }
 
@@ -1736,18 +1773,13 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
-    const fromNew = await this.#new.findBatchTaskRunByFriendlyId(
-      friendlyId,
-      environmentId,
-      args,
-      RoutingRunStore.#ownPrimary(this.#new, client)
-    );
-    if (fromNew != null) return fromNew;
-    return this.#legacy.findBatchTaskRunByFriendlyId(
-      friendlyId,
-      environmentId,
-      args,
-      RoutingRunStore.#ownPrimary(this.#legacy, client)
+    return this.#probeFirst((store) =>
+      store.findBatchTaskRunByFriendlyId(
+        friendlyId,
+        environmentId,
+        args,
+        RoutingRunStore.#ownPrimary(store, client)
+      )
     );
   }
 
@@ -1766,18 +1798,13 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
-    const fromNew = await this.#new.findBatchTaskRunByIdempotencyKey(
-      environmentId,
-      idempotencyKey,
-      args,
-      RoutingRunStore.#ownPrimary(this.#new, client)
-    );
-    if (fromNew != null) return fromNew;
-    return this.#legacy.findBatchTaskRunByIdempotencyKey(
-      environmentId,
-      idempotencyKey,
-      args,
-      RoutingRunStore.#ownPrimary(this.#legacy, client)
+    return this.#probeFirst((store) =>
+      store.findBatchTaskRunByIdempotencyKey(
+        environmentId,
+        idempotencyKey,
+        args,
+        RoutingRunStore.#ownPrimary(store, client)
+      )
     );
   }
 
@@ -1791,11 +1818,7 @@ export class RoutingRunStore implements RunStore {
       const store = this.#routeOrNew(id);
       return store.updateManyBatchTaskRun(args, undefined);
     }
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.updateManyBatchTaskRun(args),
-      this.#legacy.updateManyBatchTaskRun(args),
-    ]);
-    return { count: fromNew.count + fromLegacy.count };
+    return this.#sumCounts((store) => store.updateManyBatchTaskRun(args));
   }
 
   // Items co-reside with their batch — route by `batchTaskRunId`, no fan-out.
@@ -1824,11 +1847,7 @@ export class RoutingRunStore implements RunStore {
       const store = this.#routeOrNew(id);
       return store.updateManyBatchTaskRunItems(args, undefined);
     }
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.updateManyBatchTaskRunItems(args),
-      this.#legacy.updateManyBatchTaskRunItems(args),
-    ]);
-    return { count: fromNew.count + fromLegacy.count };
+    return this.#sumCounts((store) => store.updateManyBatchTaskRunItems(args));
   }
 
   // An item co-resides with its batch AND its child run on one DB (both FKs local), so route by
@@ -1898,13 +1917,11 @@ export class RoutingRunStore implements RunStore {
       skip: 0,
       ...(args.take != null ? { take: skip + args.take } : {}),
     };
-    const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findManyWaitpointTags(perLeg, RoutingRunStore.#ownPrimary(this.#new, client)),
-      this.#legacy.findManyWaitpointTags(perLeg, RoutingRunStore.#ownPrimary(this.#legacy, client)),
-    ]);
+    const legs = await this.#fanOut(this.#precedence, (store) =>
+      store.findManyWaitpointTags(perLeg, RoutingRunStore.#ownPrimary(store, client))
+    );
     const byId = new Map<string, WaitpointTag>();
-    for (const tag of fromLegacy) byId.set(tag.id, tag);
-    for (const tag of fromNew) byId.set(tag.id, tag);
+    for (const tag of legs.flat()) byId.set(tag.id, tag);
     const merged = args.orderBy
       ? (sortByOrderBy(
           [...byId.values()] as unknown as Array<Record<string, unknown>>,
@@ -2034,8 +2051,9 @@ function narrowArgsToIds(args: Record<string, unknown>, ids: string[]): Record<s
   };
 }
 
-// Merge edge rows from both stores, keeping one per edge `id` (NEW seen last wins). Rows whose
-// projection omits `id` can't be deduped, so they pass through unchanged.
+// Merge edge rows from every store, keeping one per edge `id`. The caller MUST supply the rows in
+// #precedence order, so the highest-authority shard is seen last and wins. Rows whose projection
+// omits `id` can't be deduped, so they pass through unchanged.
 function dedupeEdgesById<R>(rows: R[]): R[] {
   const byId = new Map<string, R>();
   const passthrough: R[] = [];

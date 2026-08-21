@@ -195,10 +195,10 @@ async function seedSharedEnv(prisma14: PrismaClient, suffix: string) {
 }
 
 describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id #new coexisting)", () => {
-  // ── Case 1: findRuns by a MIXED bounded id-set (#findRunsByIdSet, runOpsStore.ts:294) ──
+  // ── Case 1: findRuns by a MIXED bounded id-set (#findRunsByIdSet, runOpsStore.ts:449) ──
   // A list-hydrate id set spans cuid (legacy) + run-ops id (new) ids plus a run-ops id absent from legacy.
   // Both resident runs returned; take/skip applied GLOBALLY post-merge; orderBy honored; the absent
-  // run-ops id short-circuits (never probed on LEGACY, :309).
+  // run-ops id short-circuits (never probed on LEGACY, #fanOutPartitioned, :165).
   heteroRunOpsPostgresTest(
     "case 1: findRuns by a mixed id-set returns both DBs' runs, ordered, take/skip global",
     async ({ prisma14, prisma17 }) => {
@@ -306,7 +306,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 2: findRuns by an OPEN predicate (#findRunsOpen, runOpsStore.ts:319) ──
+  // ── Case 2: findRuns by an OPEN predicate (#findRunsOpen, runOpsStore.ts:464) ──
   // No id set → query BOTH stores, union, dedup by id (NEW wins). Filter by a shared scalar
   // (runtimeEnvironmentId + status) that matches rows on both DBs.
   heteroRunOpsPostgresTest(
@@ -355,7 +355,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 3: expireRunsBatch with a MIXED id list (runOpsStore.ts:474) ──
+  // ── Case 3: expireRunsBatch with a MIXED id list (runOpsStore.ts:723) ──
   // Partitions run-ops id→NEW / cuid→LEGACY; each leg called only when non-empty; counts summed; each row
   // updated on its OWN DB only.
   heteroRunOpsPostgresTest(
@@ -388,7 +388,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 4: clearIdempotencyKey fan-out arm (byFriendlyIds, runOpsStore.ts:358) ──
+  // ── Case 4: clearIdempotencyKey fan-out arm (byFriendlyIds, runOpsStore.ts:590) ──
   // byFriendlyIds spans mixed residency → fan out to both, sum the count, each row cleared on its home.
   heteroRunOpsPostgresTest(
     "case 4: clearIdempotencyKey byFriendlyIds clears across both DBs and sums the count",
@@ -429,7 +429,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 5: countPendingWaitpoints scattered across both DBs (runOpsStore.ts:731) ──
+  // ── Case 5: countPendingWaitpoints scattered across both DBs (runOpsStore.ts:1146) ──
   // A run's pending waitpoints can be split across both stores mid-drain → count on each and sum.
   heteroRunOpsPostgresTest(
     "case 5: countPendingWaitpoints sums PENDING waitpoints scattered across both DBs",
@@ -465,7 +465,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 6: findManyWaitpoints { id: { in: [...mixed...] } } (runOpsStore.ts:793) ──
+  // ── Case 6: findManyWaitpoints { id: { in: [...mixed...] } } (runOpsStore.ts:1326) ──
   // Merge waitpoints from both DBs for a mixed id set.
   heteroRunOpsPostgresTest(
     "case 6: findManyWaitpoints merges a mixed id set from both DBs",
@@ -495,7 +495,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
 
   // ── Case 8: findExecutionSnapshot / findManyExecutionSnapshots OPEN (no runId) where ──
   // A by-snapshot-id-only lookup (snapshot ids are non-classifiable cuids) must fan out NEW→LEGACY
-  // (findExecutionSnapshot, :675) / merge both (findManyExecutionSnapshots, :688). Seed a snapshot on
+  // (findExecutionSnapshot, :1008) / merge both (findManyExecutionSnapshots, :1023). Seed a snapshot on
   // EACH DB (one run-ops run on #new, one cuid run on #legacy) and read with a no-runId where.
   heteroRunOpsPostgresTest(
     "case 8: findExecutionSnapshot/findManyExecutionSnapshots with an open where reach both DBs",
@@ -544,7 +544,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 9a: findRun with an UNCLASSIFIABLE where (spanId) on a #legacy run (#findRunUnrouted, :213) ──
+  // ── Case 9a: findRun with an UNCLASSIFIABLE where (spanId) on a #legacy run (#findRunUnrouted, :365) ──
   // A run-ops run on #new and a cuid run on #legacy each carry a distinct spanId. A spanId where can't
   // be id-classified → fan out NEW-first then LEGACY. The legacy-resident run must be found.
   heteroRunOpsPostgresTest(
@@ -586,7 +586,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 9b: findRunOrThrow with an UNCLASSIFIABLE where (spanId) on a #legacy run (:593) ──
+  // ── Case 9b: findRunOrThrow with an UNCLASSIFIABLE where (spanId) on a #legacy run (#findRunOrThrowUnrouted, :864) ──
   // The throwing twin must match findRun's fan-out: an unclassifiable where whose only matching run
   // lives on #legacy must NOT throw. A NEW-only fallback would miss the legacy run and throw.
   heteroRunOpsPostgresTest(
@@ -628,7 +628,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 7: findManyTaskRunWaitpoints with edges whose relations STRADDLE DBs (runOpsStore.ts:876) ──
+  // ── Case 7: findManyTaskRunWaitpoints with edges whose relations STRADDLE DBs (runOpsStore.ts:1573) ──
   // An edge co-locates with its RUN, but its `waitpoint`/`taskRun` relations can live on the OTHER DB
   // (a cuid token blocking a run-ops run, and vice versa). The per-leg scalar query is stripped of the
   // relation keys; the router re-hydrates `waitpoint`/`taskRun` across BOTH DBs. Exercises BOTH
@@ -721,7 +721,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 7b: the "blocking waitpoint not found on either DB" HARD ERROR (runOpsStore.ts:917) ──
+  // ── Case 7b: the "blocking waitpoint not found on either DB" HARD ERROR (#hydrateEdgeWaitpointsCrossDb, runOpsStore.ts:1637) ──
   // An edge whose `waitpointId` resolves on NEITHER DB must throw rather than leave a null status that
   // would strand (hang) or wrongly unblock the run.
   heteroRunOpsPostgresTest(
@@ -748,7 +748,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 10: findBatchTaskRunById / findBatchTaskRunByFriendlyId NEW-then-LEGACY probe (:1124,:1137) ──
+  // ── Case 10: findBatchTaskRunById / findBatchTaskRunByFriendlyId NEW-then-LEGACY probe (:1755, :1768) ──
   // A batch resident on #legacy AND a run-ops-id batch landed on #new (the control-plane window mints
   // cuid ids, but a run-ops batch resides on #new) are BOTH found via the probe, regardless of id-shape.
   heteroRunOpsPostgresTest(
@@ -792,7 +792,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 11a: updateManyWaitpoints with a NO-ID (batch) where fans out to both and sums (:822) ──
+  // ── Case 11a: updateManyWaitpoints with a NO-ID (batch) where fans out to both and sums (:1518) ──
   // A batch where (no single routable id, e.g. completedByTaskRunId IS NULL + status PENDING) must
   // apply on BOTH DBs and sum the count.
   heteroRunOpsPostgresTest(
