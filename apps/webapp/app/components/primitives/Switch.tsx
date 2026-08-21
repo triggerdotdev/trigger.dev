@@ -102,12 +102,6 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
           root
         )}
       >
-        {/*
-          The `group-active:` classes in `thumb` stretch it into an oval while the switch is held
-          down. An unchecked thumb is flush with the left of the track, so extra width grows it
-          rightwards on its own; a checked thumb gives back the same amount of translation to stay
-          pinned right and grow leftwards instead.
-        */}
         <SwitchPrimitives.Thumb
           className={cn(
             thumb,
