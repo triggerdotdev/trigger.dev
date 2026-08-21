@@ -1,6 +1,6 @@
 import type { OrgSsoStatus } from "@trigger.dev/plugins";
 import { describe, expect, it } from "vitest";
-import { idpOwnsEmailDomain } from "~/services/ssoManagedIdentity.server";
+import { emailDomainOf, idpOwnsEmailDomain } from "~/services/ssoManagedIdentity.server";
 
 function status(overrides: Partial<OrgSsoStatus> = {}): OrgSsoStatus {
   return {
@@ -82,5 +82,24 @@ describe("idpOwnsEmailDomain", () => {
 
   it("does not treat a subdomain as the verified domain", () => {
     expect(idpOwnsEmailDomain(status(), "mail.acme.com")).toBe(false);
+  });
+});
+
+describe("emailDomainOf", () => {
+  it("reads the domain off an ordinary address", () => {
+    expect(emailDomainOf("alice@acme.com")).toBe("acme.com");
+  });
+
+  it("lowercases and trims", () => {
+    expect(emailDomainOf("  Alice@ACME.com ")).toBe("acme.com");
+  });
+
+  it("splits on the last @, so a quoted local part can't hide the domain", () => {
+    expect(emailDomainOf('"a@b"@acme.com')).toBe("acme.com");
+  });
+
+  it("returns undefined when there is no domain to read", () => {
+    expect(emailDomainOf("alice")).toBeUndefined();
+    expect(emailDomainOf("alice@")).toBeUndefined();
   });
 });

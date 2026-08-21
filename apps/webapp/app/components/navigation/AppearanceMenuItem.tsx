@@ -65,6 +65,7 @@ export function AppearanceMenuItem() {
           icon={EllipsisHorizontalIcon}
           leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
           className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          isSelected={!THEME_OPTIONS.some((option) => option.value === theme)}
         />
       </div>
     </SideMenuPopoverSubMenu>

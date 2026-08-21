@@ -97,3 +97,45 @@ export function parseDashboardPreferences(
 
   return result.data;
 }
+
+/**
+ * Re-attach keys the schema dropped, so a full-blob write preserves fields this
+ * deploy was not compiled against. The parsed result wins for every key it
+ * carries, including ones it deliberately cleared to undefined.
+ */
+export function preserveUnknownKeys(
+  raw: unknown,
+  updated: DashboardPreferences
+): DashboardPreferences {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return updated;
+  }
+
+  const known = new Set(Object.keys(DashboardPreferences.shape));
+  const unknownKeys = Object.entries(raw as Record<string, unknown>).filter(
+    ([key]) => !known.has(key)
+  );
+
+  return unknownKeys.length > 0 ? { ...Object.fromEntries(unknownKeys), ...updated } : updated;
+}
+
+/**
+ * Fold a customize-sidebar submission into the stored hidden map. `submitted`
+ * only describes `knownItemIds`, so ids outside that list keep what they had -
+ * the dialog's section list depends on which org's feature flags were in scope,
+ * and a narrower list must not un-hide items belonging to a wider one. Without
+ * the list the submission is authoritative, as it was before.
+ */
+export function mergeHiddenItems(
+  current: Record<string, boolean> | undefined,
+  submitted: Record<string, boolean> | null,
+  knownItemIds: string[] | undefined
+): Record<string, boolean> | undefined {
+  const known = knownItemIds ? new Set(knownItemIds) : undefined;
+  const preserved: Array<[string, boolean]> = known
+    ? Object.entries(current ?? {}).filter(([id]) => !known.has(id))
+    : [];
+  const merged = { ...Object.fromEntries(preserved), ...(submitted ?? {}) };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}

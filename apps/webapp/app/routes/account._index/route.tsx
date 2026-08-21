@@ -69,7 +69,6 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { updateUserEmail, updateUserMarketingEmails, updateUserName } from "~/models/user.server";
 import { logger } from "~/services/logger.server";
-import { profileUpdateRateLimiter } from "~/services/profileUpdateRateLimiter.server";
 import { type EmailOwnership, getEmailOwnership } from "~/services/ssoManagedIdentity.server";
 import {
   updateContrastPreference,
@@ -90,7 +89,7 @@ import {
   ThemePreference,
 } from "~/utils/themePreference";
 import { cachedFlag, resolveOrganizationFeatureFlags } from "~/v3/featureFlags.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { pageMeta } from "~/utils/pageTitle";
 import { cn } from "~/utils/cn";
@@ -100,6 +99,8 @@ export const meta = pageMeta("Your profile");
 const MIN_CONTRAST = 0;
 
 const DEFAULT_CONTRAST_MARK = 0;
+
+const CONTRAST_SAVE_DEBOUNCE_MS = 400;
 
 function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
   const Icon = themeOptionIcon(THEME_OPTIONS_BY_VALUE[value], appearance);
@@ -200,40 +201,38 @@ function profileUpdateError(error: string, status: number) {
 }
 
 /**
- * Shared gate for the appearance writes: same rate limit as the profile writes,
- * then the theme-switcher flag. Returns the user so the caller needn't load it
- * a second time.
+ * Shared gate for every write on this page. Returns the user so the caller
+ * needn't load it a second time.
  */
-async function requireAppearanceAccess(request: Request, userId: string) {
-  const rateLimited = await checkProfileUpdateRateLimit(userId);
-  if (rateLimited) return { error: rateLimited };
-
+async function requireOwnAccountWrite(request: Request) {
   const user = await requireUser(request);
-  const showThemeSwitcher =
-    user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-  if (!showThemeSwitcher) {
-    return { error: profileUpdateError("Not available", 404) };
+  if (user.isImpersonating) {
+    return {
+      error: profileUpdateError("You can't change this while impersonating another user.", 403),
+    };
   }
 
   return { user };
 }
 
-/** The only limit a scripted POST can't skip. */
-async function checkProfileUpdateRateLimit(userId: string) {
-  const limit = await profileUpdateRateLimiter.limit(`user:${userId}`);
-  if (limit.success) {
-    return undefined;
+/** The gate above, plus the theme-switcher flag. */
+async function requireAppearanceAccess(request: Request) {
+  const gate = await requireOwnAccountWrite(request);
+  if ("error" in gate) return gate;
+
+  const showThemeSwitcher =
+    gate.user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
+  if (!showThemeSwitcher) {
+    return { error: profileUpdateError("Not available", 404) };
   }
-  return profileUpdateError("Too many changes at once. Please wait a moment and try again.", 429);
+
+  return gate;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-
-  // Picks the modal only; the action re-checks before writing.
-  const emailOwnership = await getEmailOwnership(user);
 
   // Null when the user has no project yet; the row hides itself.
   let sidebarContext: {
@@ -262,16 +261,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  return json({ showThemeSwitcher, sidebarContext, emailOwnership });
+  return json({ showThemeSwitcher, sidebarContext });
 }
 
 export const action: ActionFunction = async ({ request }) => {
-  const userId = await requireUserId(request);
-
   const formData = await request.formData();
 
   if (formData.get("action") === "update-theme") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     // Strict, matching /resources/preferences/theme: an unknown value must fail
     // rather than quietly resetting a saved theme to the default.
@@ -282,7 +279,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-contrast") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     const contrast = normalizeThemeContrast(formData.get("contrast"));
     await updateContrastPreference({ user: gate.user, contrast });
@@ -290,7 +287,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-icon-contrast") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     await updateIconContrastPreference({
       user: gate.user,
@@ -300,7 +297,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-underline-links") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     await updateUnderlineLinksPreference({
       user: gate.user,
@@ -310,7 +307,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-system-theme") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     // Strict: an unknown value must fail, not silently reset.
     const end = formData.get("end");
@@ -338,8 +335,8 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-name") {
-    const rateLimited = await checkProfileUpdateRateLimit(userId);
-    if (rateLimited) return rateLimited;
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
 
     const submission = NameSchema.safeParse({ name: formData.get("name") });
     if (!submission.success) {
@@ -349,17 +346,26 @@ export const action: ActionFunction = async ({ request }) => {
       );
     }
 
-    await updateUserName({ id: userId, name: submission.data.name });
+    await updateUserName({ id: gate.user.id, name: submission.data.name });
     return json({ success: true as const });
   }
 
   if (formData.get("action") === "update-email") {
-    const rateLimited = await checkProfileUpdateRateLimit(userId);
-    if (rateLimited) return rateLimited;
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
 
     // Re-checked: the loader only picked the modal.
-    const user = await requireUser(request);
-    const ownership = await getEmailOwnership(user);
+    const submission = EmailSchema.safeParse({ email: formData.get("email") });
+    if (!submission.success) {
+      return profileUpdateError(
+        submission.error.issues[0]?.message ?? "That email address isn't valid.",
+        400
+      );
+    }
+
+    const { email } = submission.data;
+
+    const ownership = await getEmailOwnership(gate.user, email);
     if (ownership === "idp") {
       return profileUpdateError(
         "Your email address is managed by your organization's identity provider.",
@@ -372,28 +378,18 @@ export const action: ActionFunction = async ({ request }) => {
         503
       );
     }
-
-    const submission = EmailSchema.safeParse({ email: formData.get("email") });
-    if (!submission.success) {
-      return profileUpdateError(
-        submission.error.issues[0]?.message ?? "That email address isn't valid.",
-        400
-      );
-    }
-
-    const { email } = submission.data;
     const existingUser = await prisma.user.findFirst({ where: { email } });
-    if (existingUser && existingUser.id !== userId) {
+    if (existingUser && existingUser.id !== gate.user.id) {
       return profileUpdateError("Email is already being used by a different account", 400);
     }
 
-    await updateUserEmail({ id: userId, email });
+    await updateUserEmail({ id: gate.user.id, email });
     return json({ success: true as const });
   }
 
   if (formData.get("action") === "update-marketing-emails") {
-    const rateLimited = await checkProfileUpdateRateLimit(userId);
-    if (rateLimited) return rateLimited;
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
 
     const submission = MarketingEmailsSchema.safeParse({
       marketingEmails: formData.get("marketingEmails"),
@@ -404,7 +400,7 @@ export const action: ActionFunction = async ({ request }) => {
 
     // No-op when the stored value already matches.
     await updateUserMarketingEmails({
-      id: userId,
+      id: gate.user.id,
       marketingEmails: submission.data.marketingEmails,
     });
     return json({ success: true as const });
@@ -519,13 +515,17 @@ function EditNameButton() {
   );
 }
 
-function EditEmailButton({ ownership }: { ownership: EmailOwnership }) {
+const EMAIL_OWNERSHIP_PATH = "/resources/account/email-ownership";
+
+function EditEmailButton() {
   const user = useUser();
   const [isOpen, setIsOpen] = useState(false);
   const { fetcher, error, setError, isSubmitting } = useProfileFieldUpdate({
     successMessage: "Your email address has been updated.",
     onSuccess: () => setIsOpen(false),
   });
+  const ownershipFetcher = useFetcher<{ ownership: EmailOwnership }>();
+  const ownership = ownershipFetcher.data?.ownership;
 
   return (
     <Dialog
@@ -533,6 +533,9 @@ function EditEmailButton({ ownership }: { ownership: EmailOwnership }) {
       onOpenChange={(open) => {
         setIsOpen(open);
         if (!open) setError(undefined);
+        if (open && ownershipFetcher.state === "idle" && !ownershipFetcher.data) {
+          ownershipFetcher.load(EMAIL_OWNERSHIP_PATH);
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -550,7 +553,11 @@ function EditEmailButton({ ownership }: { ownership: EmailOwnership }) {
           <DialogHeader>
             <DialogTitle>Email address</DialogTitle>
           </DialogHeader>
-          {ownership === "idp" ? (
+          {ownership === undefined ? (
+            <Paragraph variant="small" className="pt-2">
+              Checking your sign-in settings…
+            </Paragraph>
+          ) : ownership === "idp" ? (
             <Paragraph variant="small" className="pt-2">
               Your organization uses single sign-on, so your email address is managed by your
               identity provider rather than here. To change it, ask an organization admin to update
@@ -773,8 +780,8 @@ function CustomizeSidebarButton({
 
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher, sidebarContext, emailOwnership } = useLoaderData<typeof loader>();
-  const themeFetcher = useFetcher();
+  const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
+  const themeFetcher = useFetcher<ProfileUpdateResult>();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
   const pendingIconContrast = iconContrastFetcher.formData?.get("iconContrast");
@@ -802,8 +809,8 @@ export default function Page() {
   const appearance = useThemeAppearance(theme);
 
   // One fetcher per end, so picking both quickly can't cancel the first.
-  const systemLightFetcher = useFetcher();
-  const systemDarkFetcher = useFetcher();
+  const systemLightFetcher = useFetcher<ProfileUpdateResult>();
+  const systemDarkFetcher = useFetcher<ProfileUpdateResult>();
   const pendingSystemLight = systemLightFetcher.formData?.get("theme");
   const pendingSystemDark = systemDarkFetcher.formData?.get("theme");
   const systemLightTheme = normalizeSystemLightTheme(
@@ -828,25 +835,51 @@ export default function Page() {
     fetcher.submit({ action: "update-system-theme", end, theme: value }, { method: "post" });
   };
 
+  const storedTheme = normalizeThemePreference(user.dashboardPreferences.theme);
+  const storedSystemLight = normalizeSystemLightTheme(user.dashboardPreferences.systemLightTheme);
+  const storedSystemDark = normalizeSystemDarkTheme(user.dashboardPreferences.systemDarkTheme);
+  const themeWriteFailed = [themeFetcher, systemLightFetcher, systemDarkFetcher].some(
+    (fetcher) => fetcher.state === "idle" && fetcher.data && !fetcher.data.success
+  );
+  useEffect(() => {
+    if (themeWriteFailed) {
+      applyThemePreference(storedTheme, { light: storedSystemLight, dark: storedSystemDark });
+    }
+  }, [themeWriteFailed, storedTheme, storedSystemLight, storedSystemDark]);
+
   // Resnap to the stored value so a failed save leaves no phantom contrast.
   const [contrastPreview, setContrastPreview] = useState(contrast);
+  const [contrastToSave, setContrastToSave] = useState<number | undefined>(undefined);
   useEffect(() => {
-    if (contrastFetcher.state === "idle") {
+    if (contrastFetcher.state === "idle" && contrastToSave === undefined) {
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setContrastPreview(contrast);
       applyThemeContrast(contrast);
     }
-  }, [contrastFetcher.state, contrast]);
+  }, [contrastFetcher.state, contrast, contrastToSave]);
+
+  const contrastSubmitRef = useRef(contrastFetcher.submit);
+  useEffect(() => {
+    contrastSubmitRef.current = contrastFetcher.submit;
+  });
+  useEffect(() => {
+    if (contrastToSave === undefined) return;
+    const timer = setTimeout(() => {
+      contrastSubmitRef.current(
+        { action: "update-contrast", contrast: String(contrastToSave) },
+        { method: "post" }
+      );
+      // oxlint-disable-next-line react/set-state-in-effect -- Clears the debounce slot once the write is away.
+      setContrastToSave(undefined);
+    }, CONTRAST_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [contrastToSave]);
 
   const previewContrast = (value: number) => {
     setContrastPreview(value);
     applyThemeContrast(value);
   };
-  const saveContrast = (value: number) =>
-    contrastFetcher.submit(
-      { action: "update-contrast", contrast: String(value) },
-      { method: "post" }
-    );
+  const saveContrast = (value: number) => setContrastToSave(value);
 
   return (
     <PageContainer>
@@ -891,7 +924,7 @@ export default function Page() {
                 <Paragraph variant="small" className="min-w-0 break-all text-right">
                   {user.email}
                 </Paragraph>
-                <EditEmailButton ownership={emailOwnership} />
+                <EditEmailButton />
               </div>
             </div>
           </div>
