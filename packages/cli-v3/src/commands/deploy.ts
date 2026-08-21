@@ -254,7 +254,7 @@ export function configureDeployCommand(program: Command) {
       .addOption(
         new CommandOption(
           "--local-bundle",
-          "Experimental: bundle the project locally and upload only the build output; the build server runs the container build. Useful when the remote install/bundle step doesn't work for your project setup. Implies using the native build server."
+          "Experimental: install and bundle locally, upload only the build output, and build the image remotely. Implies using the native build server."
         )
           .implies({ nativeBuildServer: true })
           .conflicts(["localBuild", "forceLocalBuild"])
@@ -262,7 +262,7 @@ export function configureDeployCommand(program: Command) {
       .addOption(
         new CommandOption(
           "--from-bundle <dir>",
-          "Internal: build the deployment image from a pre-built bundle directory, skipping the bundling step. Implies a local build."
+          "Internal: build the image from a pre-built bundle directory. Implies a local build."
         )
           .implies({ localBuild: true })
           .conflicts(["nativeBuildServer", "localBundle"])
