@@ -77,6 +77,13 @@ export type WatcherEntry = {
   createdAt: string;
 };
 
+/**
+ * Marks an edge as reported COMPLETED with no completion envelope — the shape a
+ * FINISHED-healing create can produce. Distinct from `undefined` (never reported), so the
+ * pending decision can key on outcome alone rather than on envelope presence.
+ */
+export const EMPTY_REPORTED_MARKER = Symbol("waitpoint-reported-no-envelope");
+
 export type CreateIfAbsentResult =
   | { outcome: "created" }
   | {
@@ -109,7 +116,7 @@ export type BlockEdge = {
   type: WaitpointRecordInput["type"];
   completedAfter?: string;
   /** Set when the register step already reported this waitpoint COMPLETED. */
-  reported?: WaitpointCompletion;
+  reported?: WaitpointCompletion | typeof EMPTY_REPORTED_MARKER;
 };
 
 export type AbsorbResult = {
@@ -367,11 +374,17 @@ export class WaitpointStoreCoordinator {
     const argv: string[] = [String(args.edges.length)];
     for (const item of args.edges) {
       const { reported, ...stored } = item;
+      const reportedFlag = reported !== undefined ? "1" : "0";
+      const reportedJson =
+        reported !== undefined && reported !== EMPTY_REPORTED_MARKER
+          ? JSON.stringify(reported)
+          : "";
       argv.push(
         item.waitpointId,
         edgeField(item.waitpointId, item.batchIndex),
         JSON.stringify(stored),
-        reported ? JSON.stringify(reported) : ""
+        reportedFlag,
+        reportedJson
       );
     }
 
@@ -390,6 +403,40 @@ export class WaitpointStoreCoordinator {
       storePendingTotal: Number(reply[1]),
       alreadyDelivered,
     };
+  }
+
+  /**
+   * Block a run on a set of waitpoints.
+   *
+   * Register on every waitpoint's own shard FIRST, then absorb on the run's shard. The
+   * order is the protocol: a completion that lands in between finds the watcher already
+   * registered, so it delivers onto the run's shard, and the absorb sees that delivery and
+   * never marks the waitpoint pending. Reversing the two would open the window where a
+   * completion is missed by both steps.
+   *
+   * The register keys the decision to skip the pending set on OUTCOME, never on whether a
+   * completion envelope came back — a waitpoint can be reported COMPLETED with none.
+   */
+  async registerBlocks(args: { runId: string; edges: BlockEdge[] }): Promise<AbsorbResult> {
+    const registered: BlockEdge[] = [];
+
+    for (const item of args.edges) {
+      const result = await this.registerOrReport({
+        waitpointId: item.waitpointId,
+        runId: args.runId,
+        batchIndex: item.batchIndex,
+        spanIdToComplete: item.spanIdToComplete,
+        createdAt: item.createdAt,
+      });
+
+      registered.push(
+        result.outcome === "completed"
+          ? { ...item, reported: result.completion ?? EMPTY_REPORTED_MARKER }
+          : item
+      );
+    }
+
+    return this.absorbBlockers({ runId: args.runId, edges: registered });
   }
 
   async deliverCompletion(args: {

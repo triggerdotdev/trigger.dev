@@ -386,10 +386,12 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "w_solo",
           fieldA,
           "{}",
+          "0",
           "",
           "w_solo",
           fieldB,
           "{}",
+          "1",
           envelope
         );
 
@@ -419,10 +421,12 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "w_solo",
           fieldB,
           "{}",
+          "1",
           envelope,
           "w_solo",
           fieldA,
           "{}",
+          "0",
           ""
         );
 
@@ -448,10 +452,12 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
         "w_a",
         edgeField("w_a", 0),
         "{}",
+        "0",
         "",
         "w_b",
         edgeField("w_b", 0),
         "{}",
+        "0",
         ""
       );
 
@@ -478,10 +484,12 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "w_a",
           edgeField("w_a", 0),
           "{}",
+          "0",
           "",
           "w_b",
           edgeField("w_b", 0),
           "{}",
+          "1",
           envelope
         );
 
@@ -509,10 +517,12 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "w_a",
           edgeField("w_a", 0),
           "{}",
+          "0",
           "",
           "w_a",
           edgeField("w_a", 1),
           "{}",
+          "0",
           ""
         );
 
@@ -543,6 +553,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "w_a",
           edgeField("w_a", 0),
           "{}",
+          "0",
           ""
         );
 
@@ -561,9 +572,20 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
       const keys = runBlockKeys("run_1");
       const field = edgeField("w_solo", 0);
 
-      // n says 2 groups but only one group (4 ARGV entries) is supplied.
+      // n says 2 groups (1 + 2 * 5 = 11 ARGV entries expected) but only one group (5
+      // ARGV entries) is supplied.
       await expect(
-        client.runAbsorbBlockers(keys.pend, keys.done, keys.edge, "2", "w_solo", field, "{}", "")
+        client.runAbsorbBlockers(
+          keys.pend,
+          keys.done,
+          keys.edge,
+          "2",
+          "w_solo",
+          field,
+          "{}",
+          "0",
+          ""
+        )
       ).rejects.toThrow();
 
       expect(await client.exists(keys.pend)).toBe(0);
@@ -1161,4 +1183,231 @@ describe("clearBlockState", () => {
       }
     }
   );
+});
+
+describe("registerBlocks: a COMPLETED waitpoint with no envelope never blocks (regression)", () => {
+  redisTest(
+    "created COMPLETED with no envelope: registerBlocks does not block the run",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        // No `completion` at all — the FINISHED-healing shape from Task 4's "can create an
+        // already-COMPLETED record with no completion envelope" test.
+        await store.createIfAbsent({ record: record("w_a"), status: "COMPLETED" });
+
+        const result = await store.registerBlocks({ runId: RUN_ID, edges: [edge("w_a")] });
+
+        expect(result.pendingOfRequested).toBe(0);
+        expect(result.storePendingTotal).toBe(0);
+        expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "created COMPLETED with an envelope: behaves identically with respect to blocking",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({
+          record: record("w_a"),
+          status: "COMPLETED",
+          completion: completion(),
+        });
+
+        const result = await store.registerBlocks({ runId: RUN_ID, edges: [edge("w_a")] });
+
+        expect(result.pendingOfRequested).toBe(0);
+        expect(result.storePendingTotal).toBe(0);
+        expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+});
+
+describe("registerBlocks: the two orderings", () => {
+  redisTest("block first, then complete: the run blocks, then wakes", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+
+      const blocked = await store.registerBlocks({ runId: RUN_ID, edges: [edge("w_a")] });
+      expect(blocked.pendingOfRequested).toBe(1);
+      expect(blocked.storePendingTotal).toBe(1);
+
+      const completed = await store.complete({ waitpointId: "w_a", completion: completion() });
+      expect(completed.watchers.map((w) => w.runId)).toEqual([RUN_ID]);
+
+      const delivered = await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_a",
+        completion: completed.completion!,
+      });
+      expect(delivered.storePendingTotal).toBe(0);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("complete first, then block: the run never goes pending", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+      await store.complete({ waitpointId: "w_a", completion: completion() });
+
+      const result = await store.registerBlocks({ runId: RUN_ID, edges: [edge("w_a")] });
+
+      expect(result.pendingOfRequested).toBe(0);
+      expect(result.storePendingTotal).toBe(0);
+      expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+
+      const state = await store.readBlockState(RUN_ID);
+      expect(state.pendingIds).toEqual([]);
+      expect(state.deliveredIds).toEqual(["w_a"]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("throws when a blocking waitpoint does not exist", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await expect(
+        store.registerBlocks({ runId: RUN_ID, edges: [edge("w_missing")] })
+      ).rejects.toThrow(WaitpointNotFoundError);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("is idempotent when run twice", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+
+      const first = await store.registerBlocks({ runId: RUN_ID, edges: [edge("w_a")] });
+      const second = await store.registerBlocks({ runId: RUN_ID, edges: [edge("w_a")] });
+
+      expect(first.storePendingTotal).toBe(1);
+      expect(second.storePendingTotal).toBe(1);
+      expect((await store.readBlockState(RUN_ID)).edges).toHaveLength(1);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "mixed set: one pending and one already complete blocks the run once",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({ record: record("w_pending"), status: "PENDING" });
+        await store.createIfAbsent({ record: record("w_done"), status: "PENDING" });
+        await store.complete({ waitpointId: "w_done", completion: completion() });
+
+        const result = await store.registerBlocks({
+          runId: RUN_ID,
+          edges: [edge("w_pending"), edge("w_done")],
+        });
+
+        expect(result.pendingOfRequested).toBe(1);
+        expect(result.storePendingTotal).toBe(1);
+        expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_done"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+});
+
+describe("multi-index merge, end to end into the executor shape", () => {
+  redisTest(
+    "a run blocked on one waitpoint at two indexes resolves to two entries",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({
+          record: record("w_child", { type: "RUN", completedByTaskRunId: "run_child" }),
+          status: "PENDING",
+        });
+
+        await store.registerBlocks({
+          runId: RUN_ID,
+          edges: [
+            edge("w_child", { batchIndex: 0, batchId: "batch_1", type: "RUN" }),
+            edge("w_child", { batchIndex: 2, batchId: "batch_1", type: "RUN" }),
+          ],
+        });
+
+        const completed = await store.complete({
+          waitpointId: "w_child",
+          completion: completion({ output: null }),
+        });
+        await store.deliverCompletion({
+          runId: RUN_ID,
+          waitpointId: "w_child",
+          completion: completed.completion!,
+        });
+
+        const state = await store.readBlockState(RUN_ID);
+        expect(state.pendingIds).toEqual([]);
+        expect(state.deliveredIds).toEqual(["w_child"]);
+
+        // Derive the cycle's ordered id list the way the read path does: keep only edges
+        // that carry a batch index, sort ascending, map to id. Derived inline on purpose —
+        // another lane owns the order rule and its resolver, and this test's job is to
+        // prove the COORDINATOR preserved the edge multiplicity across two shards, not to
+        // own that rule.
+        const order = state.edges
+          .filter((e) => e.batchIndex !== undefined && e.batchIndex !== null)
+          .sort((a, b) => a.batchIndex! - b.batchIndex!)
+          .map((e) => e.waitpointId);
+
+        // One waitpoint, two edges, so the id repeats — that repeat is what expands into
+        // two entries for the executor, and losing it would silently drop a batch item.
+        expect(order).toEqual(["w_child", "w_child"]);
+        expect(state.edges.map((e) => e.edgeId).sort()).toEqual(["w_child#0", "w_child#2"]);
+        expect(state.edges.every((e) => e.batchId === "batch_1")).toBe(true);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+});
+
+describe("the resume cycle drains and can start again", () => {
+  redisTest("a second wait on the same waitpoint blocks nothing", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+      await store.registerBlocks({ runId: RUN_ID, edges: [edge("w_a")] });
+
+      const completed = await store.complete({ waitpointId: "w_a", completion: completion() });
+      await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_a",
+        completion: completed.completion!,
+      });
+
+      const first = await store.readBlockState(RUN_ID);
+      await store.clearBlockState({ runId: RUN_ID, edgeIds: first.edges.map((e) => e.edgeId) });
+
+      // Cycle two. The waitpoint is COMPLETED for good, so the register reports it and the
+      // run is never blocked.
+      const second = await store.registerBlocks({
+        runId: RUN_ID,
+        edges: [edge("w_a", { batchIndex: 5 })],
+      });
+
+      expect(second.storePendingTotal).toBe(0);
+      expect(second.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+      expect((await store.readBlockState(RUN_ID)).edges.map((e) => e.edgeId)).toEqual(["w_a#5"]);
+    } finally {
+      await store.quit();
+    }
+  });
 });

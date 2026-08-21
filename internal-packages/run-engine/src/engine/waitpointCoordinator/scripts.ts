@@ -154,7 +154,11 @@ export function registerWaitpointCommands(redis: Redis): void {
   });
 
   // KEYS: pend, done, edge.
-  // ARGV: n, then n groups of 4 — waitpointId, edgeField, edgeJson, reportedJson ('').
+  // ARGV: n, then n groups of 5 — waitpointId, edgeField, edgeJson, reportedFlag
+  // ('1'|'0'), reportedJson (''). reportedFlag, not the emptiness of reportedJson, is what
+  // decides the branch: a waitpoint can be reported COMPLETED with no completion envelope
+  // (see the FINISHED-healing path), and that case must still take the reported branch —
+  // flag '1', reportedJson '' — or the run would block forever on something already done.
   redis.defineCommand("runAbsorbBlockers", {
     numberOfKeys: 3,
     lua: `
@@ -163,7 +167,7 @@ export function registerWaitpointCommands(redis: Redis): void {
 
       -- Guard before any write: a wrong n must not half-apply the script. HDEL/HSETNX below
       -- are irreversible mid-script, and Redis does not roll back a script that errors.
-      if #ARGV ~= 1 + n * 4 then
+      if #ARGV ~= 1 + n * 5 then
         return redis.error_reply('runAbsorbBlockers: arity mismatch')
       end
 
@@ -174,18 +178,20 @@ export function registerWaitpointCommands(redis: Redis): void {
       local out = { '0', '0' }
 
       for i = 0, n - 1 do
-        local id       = ARGV[2 + i * 4]
-        local field    = ARGV[3 + i * 4]
-        local edgeJson = ARGV[4 + i * 4]
-        local reported = ARGV[5 + i * 4]
+        local id           = ARGV[2 + i * 5]
+        local field        = ARGV[3 + i * 5]
+        local edgeJson     = ARGV[4 + i * 5]
+        local reportedFlag = ARGV[5 + i * 5]
+        local reported     = ARGV[6 + i * 5]
 
         -- HSETNX is the ON CONFLICT DO NOTHING of the edge write: a retry must not
         -- overwrite the first attempt's metadata.
         redis.call('HSETNX', edge, field, edgeJson)
         requestedIds[id] = true
 
-        if reported ~= '' then
-          -- Already COMPLETED when the watcher registered. It never becomes pending.
+        if reportedFlag == '1' then
+          -- Already COMPLETED when the watcher registered. It never becomes pending, even
+          -- when reported ('' here) carries no envelope.
           redis.call('HSET', done, id, reported)
           redis.call('SREM', pend, id)
           if not seenDelivered[id] then
