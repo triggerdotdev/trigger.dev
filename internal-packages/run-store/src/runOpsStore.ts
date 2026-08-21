@@ -45,8 +45,12 @@ const LEGACY_SHARD: ShardKey = "legacy";
  * map from shard key to store, selecting one by the residency classifier (`ownerEngine`: run-ops
  * id→NEW, cuid→LEGACY). The compat constructor holds the two gen-1 shards — a NEW store (the
  * dedicated run-ops DB, where new runs are born) and a LEGACY store (the control-plane DB).
- * In single-DB both stores are the same, so routing is a no-op passthrough. Inert until the
- * injecting seam wires it in under `isSplitEnabled()`; reads no flag here.
+ * Inert until the injecting seam wires it in under `isSplitEnabled()`; reads no flag here.
+ *
+ * Every shard MUST be a distinct database. Single-DB does not construct this class at all — the
+ * injecting seam returns a bare PostgresRunStore — and split mode requires two configured run-ops
+ * URLs whose distinctness the boot sentinel enforces fail-closed. Two shard keys that resolve to
+ * ONE store would make the sum sites (#sumCounts, the counting fan-outs) count that store twice.
  *
  * Three policies are held as data rather than implied by statement order: {@link #probeOrder} for a
  * lookup with no routable id, {@link #precedence} for a merge, and the two id-less fallbacks. A
