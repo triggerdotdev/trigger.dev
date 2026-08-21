@@ -7,13 +7,15 @@ import type {
   TaskRunExecutionStatus,
   Waitpoint,
 } from "@trigger.dev/database";
-import { Prisma, boundedIn } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
+import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
+import type { WaitpointCoordinator } from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
@@ -45,11 +47,17 @@ export class WaitpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
+  private readonly coordinator: WaitpointCoordinator;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
+    this.coordinator = new LegacyPostgresWaitpointCoordinator({
+      runStore: this.$.runStore,
+      prisma: this.$.prisma,
+      logger: this.$.logger,
+    });
   }
 
   public async clearBlockingWaitpoints({
@@ -59,14 +67,7 @@ export class WaitpointSystem {
     runId: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    // A run's edges co-locate with the run (the edge write routes by runId), so the router routes this
-    // taskRunId-keyed delete to the run's store rather than fanning out. The caller's `tx` is not
-    // forwarded — the delete runs on the owning store's own client (the router never threads a
-    // control-plane tx into a routed write).
-    const deleted = await this.$.runStore.deleteManyTaskRunWaitpoints(
-      { where: { taskRunId: runId } },
-      tx
-    );
+    const deleted = await this.coordinator.clearRunBlockState({ runId, tx });
 
     return deleted.count;
   }
@@ -926,11 +927,9 @@ export class WaitpointSystem {
 
       if (blockingWaitpoints.length > 0) {
         //5. Remove the blocking waitpoints
-        await this.$.runStore.deleteManyTaskRunWaitpoints({
-          where: {
-            taskRunId: runId,
-            id: { in: boundedIn(blockingWaitpoints.map((b) => b.id)) },
-          },
+        await this.coordinator.clearRunBlockState({
+          runId,
+          edgeIds: blockingWaitpoints.map((b) => b.id),
         });
 
         this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
