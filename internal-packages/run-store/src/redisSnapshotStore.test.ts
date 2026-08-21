@@ -1,8 +1,9 @@
 // Unit suite for the raw Redis execution-snapshot store. Redis-only: the store holds no Prisma
 // reference, so no Postgres container is needed.
-import { expect, describe } from "vitest";
+import { expect, describe, vi } from "vitest";
 import { redisTest } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
+import { Logger } from "@trigger.dev/core/logger";
 import {
   snapshotKeys,
   deriveOrder,
@@ -987,4 +988,51 @@ describe("observability", () => {
       await store.quit();
     }
   });
+  redisTest(
+    "names the run in a high-water warning, and stays silent under a high threshold",
+    async ({ redisOptions }) => {
+      const loudLogger = new Logger("test", "debug");
+      const loudWarn = vi.spyOn(loudLogger, "warn");
+      const loud = new RedisSnapshotStore({
+        redisOptions,
+        completedTtlMs: 1000,
+        logger: loudLogger,
+        highWater: { entryBytes: 1, cycleKeyBytes: 1, cycleCount: 0 },
+      });
+
+      const quietLogger = new Logger("test", "debug");
+      const quietWarn = vi.spyOn(quietLogger, "warn");
+      const quiet = new RedisSnapshotStore({
+        redisOptions,
+        completedTtlMs: 1000,
+        logger: quietLogger,
+        highWater: { entryBytes: 1_000_000, cycleKeyBytes: 1_000_000, cycleCount: 1_000_000 },
+      });
+
+      try {
+        await loud.append({
+          entry: entry({ id: "s1", runId: "run_loud" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+        });
+        expect(loudWarn).toHaveBeenCalledTimes(3);
+        for (const [, payload] of loudWarn.mock.calls) {
+          expect(payload).toMatchObject({ runId: "run_loud" });
+        }
+
+        // Same shape of append, high thresholds: proves the mark is respected, not just logged.
+        await quiet.append({
+          entry: entry({ id: "s1", runId: "run_quiet" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+        });
+        expect(quietWarn).not.toHaveBeenCalled();
+      } finally {
+        await loud.quit();
+        await quiet.quit();
+      }
+    }
+  );
 });
