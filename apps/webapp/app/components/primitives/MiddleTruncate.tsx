@@ -7,6 +7,8 @@ type MiddleTruncateProps = {
   className?: string;
   /** Hover delay before the full-text tooltip opens. Defaults to the tooltip default (0). */
   tooltipDelay?: number;
+  /** Merged onto the tooltip body, for callers whose text needs a bigger or scrollable box. */
+  tooltipContentClassName?: string;
 };
 
 /**
@@ -15,7 +17,12 @@ type MiddleTruncateProps = {
  *
  * Example: "namespace:category:subcategory:task-name" becomes "namespace:cat…task-name"
  */
-export function MiddleTruncate({ text, className, tooltipDelay }: MiddleTruncateProps) {
+export function MiddleTruncate({
+  text,
+  className,
+  tooltipDelay,
+  tooltipContentClassName,
+}: MiddleTruncateProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
   const [displayText, setDisplayText] = useState(text);
@@ -153,7 +160,11 @@ export function MiddleTruncate({ text, className, tooltipDelay }: MiddleTruncate
     return (
       <SimpleTooltip
         button={content}
-        content={<span className="max-w-xs break-all font-mono text-xs">{text}</span>}
+        content={
+          <span className={cn("max-w-xs break-all font-mono text-xs", tooltipContentClassName)}>
+            {text}
+          </span>
+        }
         side="top"
         asChild
         delayDuration={tooltipDelay}

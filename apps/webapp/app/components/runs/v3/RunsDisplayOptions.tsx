@@ -1,13 +1,9 @@
-import {
-  ArrowUturnLeftIcon,
-  PencilSquareIcon,
-  StarIcon as StarIconSolid,
-  XMarkIcon,
-} from "@heroicons/react/20/solid";
+import { PencilSquareIcon, StarIcon as StarIconSolid, XMarkIcon } from "@heroicons/react/20/solid";
 import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
 import { GripVerticalIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { ColumnsIcon } from "~/assets/icons/ColumnsIcon";
+import { ResetIcon } from "~/assets/icons/ResetIcon";
 import { SmartColumnIcon } from "~/assets/icons/SmartColumnIcon";
 import { useFavoritePageToggle } from "~/components/navigation/favoritePages";
 import { Button } from "~/components/primitives/Buttons";
@@ -42,6 +38,9 @@ function keyFor(col: ResolvedColumn): string {
 }
 
 type SmartEditTarget = { index: number; def: SmartColumnDef };
+
+/** The three footer actions share one icon size so the mixed icon sets line up. */
+const FOOTER_ICON_CLASS = "size-[1.15rem]";
 
 /** Opens the Columns popover. "l" is free on every list this control appears on. */
 export const COLUMNS_SHORTCUT = { key: "l" as const };
@@ -240,14 +239,17 @@ export function RunsDisplayOptions({
               title="Add smart column…"
               onClick={() => setAddOpen(true)}
               className="h-8"
+              leadingIconClassName={FOOTER_ICON_CLASS}
             />
             {canFavorite && (
               <PopoverMenuItem
                 icon={
                   isFavorited ? (
-                    <StarIconSolid className="size-4 text-yellow-500" />
+                    <StarIconSolid className={cn(FOOTER_ICON_CLASS, "text-yellow-500")} />
                   ) : (
-                    <StarIconOutline className="size-4" />
+                    // The outline star is 1.5px by default, noticeably thinner than the
+                    // custom 2px icons beside it.
+                    <StarIconOutline className={FOOTER_ICON_CLASS} strokeWidth={2} />
                   )
                 }
                 title={isFavorited ? "Remove from favorites" : "Save to favorites"}
@@ -258,7 +260,7 @@ export function RunsDisplayOptions({
             {/* Wrapper carries the cursor: the disabled button has pointer-events-none. */}
             <div className={cn("flex", !layout.isCustomized && "cursor-not-allowed")}>
               <PopoverMenuItem
-                icon={ArrowUturnLeftIcon}
+                icon={ResetIcon}
                 title="Reset to default"
                 onClick={reset}
                 disabled={!layout.isCustomized}
@@ -284,6 +286,13 @@ export function RunsDisplayOptions({
     </>
   );
 }
+
+/**
+ * The row's hover-revealed actions. Square, and hidden until the row is hovered or the
+ * control itself takes keyboard focus (a checkbox click must not reveal them).
+ */
+const ROW_ACTION_CLASS =
+  "aspect-square h-6 p-1 opacity-0 transition group-hover:opacity-100 group-focus-visible/button:opacity-100";
 
 function ColumnRow({
   col,
@@ -358,28 +367,27 @@ function ColumnRow({
       </label>
       <div className="flex flex-none items-center gap-0.5 pr-1">
         {onEdit && (
-          <button
-            type="button"
+          <Button
+            variant="minimal/small"
             onClick={onEdit}
             aria-label={`Edit ${col.def.label}`}
-            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom focus-visible:opacity-100 group-hover:opacity-100"
-          >
-            <PencilSquareIcon className="size-4" />
-          </button>
+            LeadingIcon={<PencilSquareIcon className="size-4" />}
+            className={ROW_ACTION_CLASS}
+          />
         )}
         {onRemove && (
-          <button
-            type="button"
+          <Button
+            variant="minimal/small"
             onClick={onRemove}
             aria-label={`Remove ${col.def.label}`}
-            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom focus-visible:opacity-100 group-hover:opacity-100"
-          >
-            <XMarkIcon className="size-4" />
-          </button>
+            LeadingIcon={<XMarkIcon className="size-4" />}
+            className={cn(ROW_ACTION_CLASS, "group-hover/button:text-error")}
+          />
         )}
-        <button
-          type="button"
-          aria-label={`Reorder ${col.def.label} (use arrow up and down)`}
+        {/* Button forwards no onKeyDown, so the arrow-key reorder listens on the wrapper
+            and catches the event bubbling up from the focused button. */}
+        <span
+          role="presentation"
           onKeyDown={(e) => {
             if (e.key === "ArrowUp") {
               e.preventDefault();
@@ -389,10 +397,14 @@ function ColumnRow({
               onMove(1);
             }
           }}
-          className="flex size-6 cursor-grab items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
         >
-          <GripVerticalIcon className="size-4" />
-        </button>
+          <Button
+            variant="minimal/small"
+            aria-label={`Reorder ${col.def.label} (use arrow up and down)`}
+            LeadingIcon={<GripVerticalIcon className="size-4" />}
+            className={cn(ROW_ACTION_CLASS, "cursor-grab active:cursor-grabbing")}
+          />
+        </span>
       </div>
     </div>
   );

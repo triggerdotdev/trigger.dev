@@ -105,6 +105,7 @@ import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { FlagEurope, FlagUSA } from "~/assets/icons/RegionIcons";
+import { ResetIcon } from "~/assets/icons/ResetIcon";
 import { RightSideMenuIcon } from "~/assets/icons/RightSideMenuIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
@@ -251,6 +252,7 @@ const icons: IconEntry[] = [
   { name: "QuestionMarkIcon", render: simple(QuestionMarkIcon) },
   { name: "QueuesIcon", render: simple(QueuesIcon) },
   { name: "RadarPulseIcon", render: simple(RadarPulseIcon) },
+  { name: "ResetIcon", render: simple(ResetIcon) },
   { name: "RightSideMenuIcon", render: simple(RightSideMenuIcon) },
   { name: "RolesIcon", render: simple(RolesIcon) },
   { name: "RunFunctionIcon", render: simple(RunFunctionIcon) },

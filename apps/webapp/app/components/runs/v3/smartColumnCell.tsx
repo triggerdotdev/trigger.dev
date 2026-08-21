@@ -37,6 +37,9 @@ function toFiniteNumber(value: unknown): number {
 const TEXT_CELL_MAX_WIDTH = "max-w-[600px]";
 /** Long values are common enough that an instant tooltip would fire while just scanning rows. */
 const TEXT_CELL_TOOLTIP_DELAY_MS = 500;
+/** A whole payload string can be arbitrarily long, so the tooltip is capped and scrolls. */
+const TEXT_CELL_TOOLTIP_CLASS =
+  "block max-w-sm max-h-64 overflow-y-auto whitespace-pre-wrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
 
 function renderSmartValue(
   value: unknown,
@@ -62,7 +65,11 @@ function renderSmartValue(
       // MiddleTruncate measures against its parent, so it needs the width cap around it.
       return (
         <span className={cn("block min-w-0", TEXT_CELL_MAX_WIDTH)}>
-          <MiddleTruncate text={text} tooltipDelay={TEXT_CELL_TOOLTIP_DELAY_MS} />
+          <MiddleTruncate
+            text={text}
+            tooltipDelay={TEXT_CELL_TOOLTIP_DELAY_MS}
+            tooltipContentClassName={TEXT_CELL_TOOLTIP_CLASS}
+          />
         </span>
       );
     }

@@ -356,10 +356,10 @@ function SmartColumnPreview({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-grid-dimmed">
       <div className="flex flex-none items-center gap-1 border-b border-grid-dimmed bg-background-dimmed px-2.5 py-1.5">
-        <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate text-xs font-medium text-text-bright">
           {def.label || "Column"}
         </span>
+        <SmartColumnIcon className="size-4 flex-none text-text-dimmed" />
       </div>
       <div className="flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {!loaded ? (
@@ -375,7 +375,7 @@ function SmartColumnPreview({
               <div
                 key={index}
                 className={cn(
-                  "flex h-8 items-center whitespace-nowrap border-b border-grid-dimmed/60 px-2.5 text-sm last:border-b-0",
+                  "flex min-h-8 items-center break-all border-b border-grid-dimmed/60 px-2.5 py-1.5 text-sm last:border-b-0",
                   alignClass
                 )}
               >
