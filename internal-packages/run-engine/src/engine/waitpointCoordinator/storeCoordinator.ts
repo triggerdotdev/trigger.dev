@@ -268,9 +268,12 @@ export class WaitpointStoreCoordinator {
    * forever, because an idempotency key commonly carries no expiry to clear it.
    *
    * Create-first inverts the failure: a crash leaves an orphan record that nothing ever
-   * referenced, because its id is random and unpublished. No caller hangs, and the orphan
-   * is reaped by the store's own garbage collection rather than by an expiry, which
-   * pending keys never carry.
+   * referenced, because its id is random and unpublished. No caller hangs, but nothing
+   * currently reclaims that record either: the backstop collector the wider plan
+   * describes is keyed off a run's status, and this orphan has no owning run, so that
+   * collector never sees it. The record is harmless — inert, unreferenced, never
+   * returned to anyone — but it is a real leak until a later ticket adds a reaper for
+   * standalone idempotency-keyed orphans specifically.
    */
   async createWithIdempotencyKey(args: {
     record: WaitpointRecordInput;
@@ -294,7 +297,7 @@ export class WaitpointStoreCoordinator {
       return { waitpointId: args.record.id, created: true };
     }
 
-    const winner = reply[1] ?? args.record.id;
+    const winner = reply[1];
     if (winner !== args.record.id) {
       // Safe to discard: this id is random and was never handed to any caller, so no
       // watcher can reference it. Both keys share the record's tag.

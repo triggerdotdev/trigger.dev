@@ -689,8 +689,15 @@ describe("createWithIdempotencyKey", () => {
       });
 
       const ttl = await probe.pttl(`wp:idem:{${ENV_ID}}:key-1`);
-      expect(ttl).toBeGreaterThan(0);
-      expect(ttl).toBeLessThanOrEqual(60_000);
+      // Wide band, deliberately: the deadline is computed from the test process's clock
+      // and applied as an absolute PEXPIREAT, while PTTL is computed against the Redis
+      // server's own clock. A few ms of disagreement between those two clocks is normal
+      // and shows up as overshoot on this read, not as a bug in the reservation. The
+      // band still catches every failure worth catching — wrong units, no expiry
+      // applied, a negative TTL — without re-asserting that two independent clocks
+      // agree to the millisecond.
+      expect(ttl).toBeGreaterThan(55_000);
+      expect(ttl).toBeLessThanOrEqual(65_000);
     } finally {
       probe.disconnect();
       await store.quit();
