@@ -62,14 +62,17 @@ export function RunsDisplayOptions({
   const [editing, setEditing] = useState<SmartEditTarget | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  // Whether this open came from the shortcut, which decides if focus moves into the list.
+  const openedByShortcut = useRef(false);
 
   useShortcutKeys({
     shortcut: COLUMNS_SHORTCUT,
     action: (event) => {
       event.preventDefault();
       event.stopPropagation();
-      triggerRef.current?.click();
+      openedByShortcut.current = true;
+      setOpen((previous) => !previous);
     },
   });
 
@@ -156,7 +159,13 @@ export function RunsDisplayOptions({
 
   return (
     <>
-      <Popover>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) openedByShortcut.current = false;
+        }}
+      >
         <SimpleTooltip
           asChild
           side="bottom"
@@ -166,7 +175,7 @@ export function RunsDisplayOptions({
             // so the tooltip anchor can't be the Button itself (same as NotificationPanel).
             <div className="flex">
               <PopoverTrigger asChild>
-                <Button ref={triggerRef} variant="secondary/small" LeadingIcon={ColumnsIcon}>
+                <Button variant="secondary/small" LeadingIcon={ColumnsIcon}>
                   Columns
                 </Button>
               </PopoverTrigger>
@@ -182,9 +191,13 @@ export function RunsDisplayOptions({
         <PopoverContent
           align="end"
           className="w-64 p-0"
-          // Radix otherwise focuses the first item on open, and the row's hover-revealed
-          // reorder handle would show through :focus-within before the mouse ever gets there.
-          onOpenAutoFocus={(event) => event.preventDefault()}
+          // Opened by shortcut: let Radix focus the first row so the list can be tabbed
+          // straight away. Opened by mouse: keep focus put, or the first row's
+          // hover-revealed reorder handle would appear before the cursor ever got there.
+          onOpenAutoFocus={(event) => {
+            if (!openedByShortcut.current) event.preventDefault();
+            openedByShortcut.current = false;
+          }}
         >
           <div className="flex items-center justify-between px-3 py-2">
             <span className="text-xs font-medium text-text-dimmed">Columns</span>
@@ -243,12 +256,25 @@ export function RunsDisplayOptions({
                 className="h-8"
               />
             )}
-            <PopoverMenuItem
-              icon={ArrowUturnLeftIcon}
-              title="Reset to default"
-              onClick={reset}
-              disabled={!layout.isCustomized}
-              className="h-8"
+            <SimpleTooltip
+              asChild
+              side="bottom"
+              disableHoverableContent
+              hidden={layout.isCustomized}
+              button={
+                // The disabled button has pointer-events-none, so it can host neither the
+                // not-allowed cursor nor a tooltip; the wrapper carries both.
+                <div className={cn("flex", !layout.isCustomized && "cursor-not-allowed")}>
+                  <PopoverMenuItem
+                    icon={ArrowUturnLeftIcon}
+                    title="Reset to default"
+                    onClick={reset}
+                    disabled={!layout.isCustomized}
+                    className="h-8 group-disabled/button:opacity-50 group-disabled/button:[&_span]:text-text-dimmed"
+                  />
+                </div>
+              }
+              content="Columns are already at their default"
             />
           </div>
         </PopoverContent>
