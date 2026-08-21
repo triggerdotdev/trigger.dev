@@ -1,6 +1,13 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import { assertSingleSlot, idempotencyKey, waitpointKeys, watcherField } from "./keys.js";
+import {
+  assertSingleSlot,
+  edgeField,
+  idempotencyKey,
+  runBlockKeys,
+  waitpointKeys,
+  watcherField,
+} from "./keys.js";
 import { registerWaitpointCommands } from "./scripts.js";
 
 /** The values written into a record's `status` field. Uppercase, and never a token. */
@@ -87,6 +94,44 @@ export type CompleteResult = {
   outcome: "completed" | "already";
   completion?: WaitpointCompletion;
   watchers: WatcherEntry[];
+};
+
+/** One run-to-waitpoint edge. The metadata a frozen return type needs travels here. */
+export type BlockEdge = {
+  waitpointId: string;
+  batchIndex?: number | null;
+  batchId?: string;
+  spanIdToComplete?: string;
+  createdAt: string;
+  type: WaitpointRecordInput["type"];
+  completedAfter?: string;
+  /** Set when the register step already reported this waitpoint COMPLETED. */
+  reported?: WaitpointCompletion;
+};
+
+export type AbsorbResult = {
+  /**
+   * How many DISTINCT requested ids were still pending. Equivalent to the count the
+   * previous path took over this call's ids, which was a COUNT over waitpoint rows — so
+   * two edges for one waitpoint contribute one. This is the number a caller should use to
+   * keep today's block-time gate unchanged.
+   */
+  pendingOfRequested: number;
+  /**
+   * The run's whole pending set, counting STORE-RESIDENT blockers only. A run can also be
+   * blocked by a legacy waitpoint, which this number cannot see, so it is never on its own
+   * a decision to resume.
+   */
+  storePendingTotal: number;
+  alreadyDelivered: Array<{ waitpointId: string; completion?: WaitpointCompletion }>;
+};
+
+export type BlockStateEdge = BlockEdge & { edgeId: string };
+
+export type BlockState = {
+  pendingIds: string[];
+  deliveredIds: string[];
+  edges: BlockStateEdge[];
 };
 
 export class WaitpointNotFoundError extends Error {
@@ -306,5 +351,107 @@ export class WaitpointStoreCoordinator {
     }
 
     return { waitpointId: winner, created: false };
+  }
+
+  async absorbBlockers(args: { runId: string; edges: BlockEdge[] }): Promise<AbsorbResult> {
+    const keys = runBlockKeys(args.runId);
+
+    // No fast path for an empty list: storePendingTotal is defined as the run's WHOLE
+    // store-resident pending set, so it has to be read even when nothing is requested.
+    const argv: string[] = [String(args.edges.length)];
+    for (const item of args.edges) {
+      const { reported, ...stored } = item;
+      argv.push(
+        item.waitpointId,
+        edgeField(item.waitpointId, item.batchIndex),
+        JSON.stringify(stored),
+        reported ? JSON.stringify(reported) : ""
+      );
+    }
+
+    const reply = await this.#call("runAbsorbBlockers", [keys.pend, keys.done, keys.edge], ...argv);
+
+    const alreadyDelivered: AbsorbResult["alreadyDelivered"] = [];
+    for (let i = 2; i < reply.length; i += 2) {
+      alreadyDelivered.push({
+        waitpointId: reply[i]!,
+        completion: parseJson<WaitpointCompletion>(reply[i + 1]),
+      });
+    }
+
+    return {
+      pendingOfRequested: Number(reply[0]),
+      storePendingTotal: Number(reply[1]),
+      alreadyDelivered,
+    };
+  }
+
+  async deliverCompletion(args: {
+    runId: string;
+    waitpointId: string;
+    completion: WaitpointCompletion;
+  }): Promise<{ storePendingTotal: number }> {
+    const keys = runBlockKeys(args.runId);
+
+    const reply = await this.#call(
+      "runDeliverCompletion",
+      [keys.pend, keys.done],
+      args.waitpointId,
+      JSON.stringify(args.completion)
+    );
+
+    return { storePendingTotal: Number(reply[0]) };
+  }
+
+  async readBlockState(runId: string): Promise<BlockState> {
+    const keys = runBlockKeys(runId);
+    const reply = await this.#call("runReadBlockState", [keys.pend, keys.done, keys.edge]);
+
+    // Slots 0 and 1 are true element counts, but slot 2 is the FLAT length of the edge
+    // HGETALL — two entries per edge, field then value. The cursor arithmetic below relies
+    // on that asymmetry, so do not "normalise" it without changing the Lua too.
+    const pendCount = Number(reply[0]);
+    const doneCount = Number(reply[1]);
+    const edgeCount = Number(reply[2]);
+
+    let cursor = 3;
+    const pendingIds = reply.slice(cursor, cursor + pendCount);
+    cursor += pendCount;
+    const deliveredIds = reply.slice(cursor, cursor + doneCount);
+    cursor += doneCount;
+
+    const edges: BlockStateEdge[] = [];
+    for (let i = 0; i < edgeCount; i += 2) {
+      const edgeId = reply[cursor + i]!;
+      const stored = JSON.parse(reply[cursor + i + 1] ?? "{}") as BlockEdge;
+      edges.push({ ...stored, edgeId });
+    }
+
+    return { pendingIds, deliveredIds, edges };
+  }
+
+  /**
+   * Drain one cycle's edges, or clear the run entirely when no edge ids are given.
+   *
+   * The selective form RECONCILES: after the named edges go, any pending or delivered
+   * entry that no surviving edge references goes too. That is wider than deleting the
+   * named ids, and it has to be — a delivery is written unconditionally, so the window
+   * between register and absorb can leave a delivered entry with no edge at all.
+   */
+  async clearBlockState(args: {
+    runId: string;
+    edgeIds?: string[];
+  }): Promise<{ outcome: "cleared" | "drained" }> {
+    const keys = runBlockKeys(args.runId);
+    const edgeIds = args.edgeIds ?? [];
+
+    const reply = await this.#call(
+      "runClear",
+      [keys.pend, keys.done, keys.edge],
+      String(edgeIds.length),
+      ...edgeIds
+    );
+
+    return { outcome: reply[0] as "cleared" | "drained" };
   }
 }

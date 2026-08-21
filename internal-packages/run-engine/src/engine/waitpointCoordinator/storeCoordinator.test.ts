@@ -14,6 +14,7 @@ import { registerWaitpointCommands } from "./scripts.js";
 import {
   WaitpointNotFoundError,
   WaitpointStoreCoordinator,
+  type BlockEdge,
   type WaitpointCompletion,
   type WaitpointRecordInput,
   type WatcherEntry,
@@ -735,6 +736,383 @@ describe("the single-slot guard", () => {
       expect(() =>
         store.assertKeysForTest("wpComplete", ["wp:{w_a}", "wp:run:{run_1}:pend"])
       ).toThrow(WaitpointKeyTagError);
+    } finally {
+      await store.quit();
+    }
+  });
+});
+
+const RUN_ID = "run_1";
+
+function edge(waitpointId: string, overrides: Partial<BlockEdge> = {}): BlockEdge {
+  return { waitpointId, createdAt: NOW, type: "MANUAL", ...overrides };
+}
+
+describe("absorbBlockers", () => {
+  redisTest("counts pending blockers and reports the store total", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const result = await store.absorbBlockers({
+        runId: RUN_ID,
+        edges: [edge("w_a"), edge("w_b")],
+      });
+
+      expect(result.pendingOfRequested).toBe(2);
+      expect(result.storePendingTotal).toBe(2);
+      expect(result.alreadyDelivered).toEqual([]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "counts a repeated waitpoint id once, matching a count over distinct rows",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        const result = await store.absorbBlockers({
+          runId: RUN_ID,
+          edges: [edge("w_a", { batchIndex: 0 }), edge("w_a", { batchIndex: 2 })],
+        });
+
+        // The count this replaces was a COUNT(*) over waitpoint rows, so two edges for
+        // one waitpoint contributed one. Both numbers must say 1, not 2.
+        expect(result.pendingOfRequested).toBe(1);
+        expect(result.storePendingTotal).toBe(1);
+
+        // The edges themselves stay distinct — that multiplicity is what produces the
+        // repeats in the cycle's ordered id list.
+        const state = await store.readBlockState(RUN_ID);
+        expect(state.edges).toHaveLength(2);
+        expect(state.edges.map((e) => e.batchIndex).sort()).toEqual([0, 2]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "does not add a reported-complete blocker to the pending set",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        const result = await store.absorbBlockers({
+          runId: RUN_ID,
+          edges: [edge("w_a", { reported: completion() }), edge("w_b")],
+        });
+
+        expect(result.pendingOfRequested).toBe(1);
+        expect(result.storePendingTotal).toBe(1);
+        expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest("reports a repeated already-delivered id once", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const result = await store.absorbBlockers({
+        runId: RUN_ID,
+        edges: [
+          edge("w_a", { batchIndex: 0, reported: completion() }),
+          edge("w_a", { batchIndex: 1, reported: completion() }),
+        ],
+      });
+
+      expect(result.alreadyDelivered).toHaveLength(1);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("lets a delivery that raced ahead of the absorb win", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      // The completion landed between register and absorb, so it is already delivered.
+      await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_a",
+        completion: completion(),
+      });
+
+      const result = await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+
+      expect(result.pendingOfRequested).toBe(0);
+      expect(result.storePendingTotal).toBe(0);
+      expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("is idempotent when run twice", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const first = await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+      const second = await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+
+      expect(first.storePendingTotal).toBe(1);
+      expect(second.storePendingTotal).toBe(1);
+      expect((await store.readBlockState(RUN_ID)).edges).toHaveLength(1);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("keeps the first edge's metadata on a retry", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.absorbBlockers({
+        runId: RUN_ID,
+        edges: [edge("w_a", { spanIdToComplete: "span_first" })],
+      });
+      await store.absorbBlockers({
+        runId: RUN_ID,
+        edges: [edge("w_a", { spanIdToComplete: "span_second" })],
+      });
+
+      expect((await store.readBlockState(RUN_ID)).edges[0]!.spanIdToComplete).toBe("span_first");
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("reports the run's real total for an empty edge list", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+
+      const result = await store.absorbBlockers({ runId: RUN_ID, edges: [] });
+
+      // pendingOfRequested is 0 because nothing was requested. storePendingTotal is the
+      // run's whole store-resident set, which is NOT empty.
+      expect(result.pendingOfRequested).toBe(0);
+      expect(result.storePendingTotal).toBe(1);
+      expect(result.alreadyDelivered).toEqual([]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("sets no TTL on any run key", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    const probe = createRedisClient(redisOptions);
+    try {
+      await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+      await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_a",
+        completion: completion(),
+      });
+
+      // -1 is "exists, no expiry"; -2 is "no key". Neither is a TTL. `pend` is emptied by
+      // the delivery, and Redis deletes an empty set, so -2 is expected there.
+      for (const key of [
+        `wp:run:{${RUN_ID}}:pend`,
+        `wp:run:{${RUN_ID}}:done`,
+        `wp:run:{${RUN_ID}}:edge`,
+      ]) {
+        expect(await probe.pttl(key)).toBeLessThan(0);
+      }
+    } finally {
+      probe.disconnect();
+      await store.quit();
+    }
+  });
+});
+
+describe("deliverCompletion", () => {
+  redisTest("removes the blocker and returns the new store total", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a"), edge("w_b")] });
+
+      expect(
+        (
+          await store.deliverCompletion({
+            runId: RUN_ID,
+            waitpointId: "w_a",
+            completion: completion(),
+          })
+        ).storePendingTotal
+      ).toBe(1);
+
+      expect(
+        (
+          await store.deliverCompletion({
+            runId: RUN_ID,
+            waitpointId: "w_b",
+            completion: completion(),
+          })
+        ).storePendingTotal
+      ).toBe(0);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("is idempotent", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+      await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_a",
+        completion: completion(),
+      });
+      const again = await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_a",
+        completion: completion(),
+      });
+
+      expect(again.storePendingTotal).toBe(0);
+    } finally {
+      await store.quit();
+    }
+  });
+});
+
+describe("readBlockState", () => {
+  redisTest(
+    "returns the pending ids, the delivered ids and the edges",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.absorbBlockers({
+          runId: RUN_ID,
+          edges: [
+            edge("w_a", { batchIndex: 0, completedAfter: NOW, type: "DATETIME" }),
+            edge("w_b"),
+          ],
+        });
+        await store.deliverCompletion({
+          runId: RUN_ID,
+          waitpointId: "w_a",
+          completion: completion(),
+        });
+
+        const state = await store.readBlockState(RUN_ID);
+
+        expect(state.pendingIds).toEqual(["w_b"]);
+        expect(state.deliveredIds).toEqual(["w_a"]);
+        expect(state.edges).toHaveLength(2);
+
+        const datetime = state.edges.find((e) => e.waitpointId === "w_a");
+        // type and completedAfter must ride the edge: a frozen return type needs them, and
+        // they live on the waitpoint's own shard, which this read cannot touch.
+        expect(datetime?.type).toBe("DATETIME");
+        expect(datetime?.completedAfter).toBe(NOW);
+        expect(datetime?.edgeId).toBe("w_a#0");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest("returns empty collections for a run with no blockers", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      expect(await store.readBlockState("run_unknown")).toEqual({
+        pendingIds: [],
+        deliveredIds: [],
+        edges: [],
+      });
+    } finally {
+      await store.quit();
+    }
+  });
+});
+
+describe("clearBlockState", () => {
+  redisTest("drains the named edges and reconciles", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a"), edge("w_b")] });
+      await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_a",
+        completion: completion(),
+      });
+
+      expect((await store.clearBlockState({ runId: RUN_ID, edgeIds: ["w_a#"] })).outcome).toBe(
+        "drained"
+      );
+
+      const state = await store.readBlockState(RUN_ID);
+      expect(state.edges.map((e) => e.waitpointId)).toEqual(["w_b"]);
+      expect(state.deliveredIds).toEqual([]);
+      expect(state.pendingIds).toEqual(["w_b"]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "keeps a waitpoint's delivery while another edge for it survives",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.absorbBlockers({
+          runId: RUN_ID,
+          edges: [edge("w_a", { batchIndex: 0 }), edge("w_a", { batchIndex: 1 })],
+        });
+        await store.deliverCompletion({
+          runId: RUN_ID,
+          waitpointId: "w_a",
+          completion: completion(),
+        });
+
+        await store.clearBlockState({ runId: RUN_ID, edgeIds: ["w_a#0"] });
+
+        // One edge remains, so the delivery must remain too — dropping it would make the
+        // surviving edge look undelivered.
+        const state = await store.readBlockState(RUN_ID);
+        expect(state.edges.map((e) => e.edgeId)).toEqual(["w_a#1"]);
+        expect(state.deliveredIds).toEqual(["w_a"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest("reaps a delivered entry that no edge references", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      // The register-before-absorb window: a delivery can land for a waitpoint whose edge
+      // was never written. A name-derived drain could never reach it.
+      await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_kept")] });
+      await store.deliverCompletion({
+        runId: RUN_ID,
+        waitpointId: "w_orphan",
+        completion: completion(),
+      });
+
+      expect((await store.readBlockState(RUN_ID)).deliveredIds).toEqual(["w_orphan"]);
+
+      await store.clearBlockState({ runId: RUN_ID, edgeIds: ["w_nothing#"] });
+
+      const state = await store.readBlockState(RUN_ID);
+      expect(state.deliveredIds).toEqual([]);
+      expect(state.edges.map((e) => e.waitpointId)).toEqual(["w_kept"]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("clears everything when no edge ids are given", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a"), edge("w_b")] });
+
+      expect((await store.clearBlockState({ runId: RUN_ID })).outcome).toBe("cleared");
+      expect(await store.readBlockState(RUN_ID)).toEqual({
+        pendingIds: [],
+        deliveredIds: [],
+        edges: [],
+      });
     } finally {
       await store.quit();
     }
