@@ -177,6 +177,32 @@ describe("append", () => {
     }
   });
 
+  // Pairs with "skips a transition when only the seq key has expired" above: liveness is checked
+  // against BOTH anchors, so either one missing alone must skip.
+  redisTest("skips a transition when only the e key has expired", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "snap_1" }), kind: "birth", isTerminal: false });
+
+      const k = snapshotKeys("run_1");
+      const raw = createRedisClient(redisOptions);
+      try {
+        await raw.del(k.e);
+      } finally {
+        await raw.quit();
+      }
+
+      const r = await store.append({
+        entry: entry({ id: "snap_2" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      expect(r).toEqual({ outcome: "skippedNoKeyspace" });
+    } finally {
+      await store.quit();
+    }
+  });
+
   redisTest(
     "carries the original count forward on a carryForward append",
     async ({ redisOptions }) => {
@@ -340,6 +366,121 @@ describe("cycle keys", () => {
         order: [],
       });
     } finally {
+      await store.quit();
+    }
+  });
+});
+
+describe("TTL rule", () => {
+  redisTest("a non-terminal append leaves every key unexpiring", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    const raw = createRedisClient(redisOptions);
+    try {
+      await store.append({
+        entry: entry({ id: "s1" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+      });
+      for (const key of [
+        "snap:{run_1}:e",
+        "snap:{run_1}:idx",
+        "snap:{run_1}:cur",
+        "snap:{run_1}:seq",
+        "snap:{run_1}:wp:1",
+      ]) {
+        expect(await raw.pttl(key)).toBe(-1);
+      }
+    } finally {
+      raw.disconnect();
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "a terminal append expires every key, cycle keys included",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({
+          entry: entry({ id: "s1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+        });
+        const r = await store.append({
+          entry: entry({ id: "s2", executionStatus: "FINISHED" }),
+          kind: "transition",
+          isTerminal: true,
+        });
+        expect(r).toMatchObject({ ttl: "completion" });
+        for (const key of [
+          "snap:{run_1}:e",
+          "snap:{run_1}:idx",
+          "snap:{run_1}:cur",
+          "snap:{run_1}:seq",
+          "snap:{run_1}:wp:1",
+        ]) {
+          const ttl = await raw.pttl(key);
+          expect(ttl).toBeGreaterThan(0);
+          expect(ttl).toBeLessThanOrEqual(60_000);
+        }
+      } finally {
+        raw.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest("a post-completion append re-applies the completion TTL", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    const raw = createRedisClient(redisOptions);
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      await store.append({
+        entry: entry({ id: "s2", executionStatus: "FINISHED" }),
+        kind: "transition",
+        isTerminal: true,
+      });
+      // A stale client appends a non-terminal, invalid row after FINISHED.
+      const late = await store.append({
+        entry: entry({ id: "s3", error: "stale" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      expect(late).toMatchObject({ outcome: "written", ttl: "reapplied" });
+      // Never a live TTL, and never cleared: the key stays bounded.
+      const ttl = await raw.pttl("snap:{run_1}:e");
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(60_000);
+    } finally {
+      raw.disconnect();
+      await store.quit();
+    }
+  });
+
+  redisTest("a transition after the keyspace expired writes nothing", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    const raw = createRedisClient(redisOptions);
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      await store.append({
+        entry: entry({ id: "s2", executionStatus: "FINISHED" }),
+        kind: "transition",
+        isTerminal: true,
+      });
+      // Simulate the completion TTL firing.
+      await raw.del("snap:{run_1}:e", "snap:{run_1}:idx", "snap:{run_1}:cur", "snap:{run_1}:seq");
+      const after = await store.append({
+        entry: entry({ id: "s4" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      expect(after).toEqual({ outcome: "skippedNoKeyspace" });
+      expect(await raw.exists("snap:{run_1}:e")).toBe(0);
+    } finally {
+      raw.disconnect();
       await store.quit();
     }
   });
