@@ -30,10 +30,6 @@ import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
-// Build env vars expand into --build-arg values, so stay well under exec argv limits
-const BUILD_ENV_VARS_MAX_BYTES = 128 * 1024;
-const BUILD_ENV_VARS_MAX_KEYS = 200;
-
 type DeploymentEventStream = {
   s2: {
     basin: string;
@@ -286,17 +282,19 @@ export class InitializeDeploymentService extends BaseService {
         const buildEnvVars = payload.buildEnvVars;
 
         const keyCount = Object.keys(buildEnvVars).length;
-        if (keyCount > BUILD_ENV_VARS_MAX_KEYS) {
+        if (keyCount > env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS) {
           throw new ServiceValidationError(
-            `Too many build environment variables: ${keyCount} (max ${BUILD_ENV_VARS_MAX_KEYS}).`
+            `Build environment variable count (${keyCount}) exceeds the allowed limit of ${env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS}. Reach out to us if you are seeing this error consistently.`
           );
         }
 
         const serialized = JSON.stringify(buildEnvVars);
         const serializedBytes = Buffer.byteLength(serialized, "utf8");
-        if (serializedBytes > BUILD_ENV_VARS_MAX_BYTES) {
+        if (serializedBytes > env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES) {
+          const sizeKB = parseFloat((serializedBytes / 1024).toFixed(1));
+          const limitKB = parseFloat((env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES / 1024).toFixed(1));
           throw new ServiceValidationError(
-            `Build environment variables are too large: ${serializedBytes} bytes (max ${BUILD_ENV_VARS_MAX_BYTES}). Reduce the size of the env var values used by your build.`
+            `Build environment variables size (${sizeKB} KB) exceeds the allowed limit of ${limitKB} KB. Reach out to us if you are seeing this error consistently.`
           );
         }
 

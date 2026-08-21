@@ -28,8 +28,8 @@ const artifactKeyPrefixByType = {
   deployment_bundle: "bundles",
 } as const;
 const artifactBytesSizeLimitByType = {
-  deployment_context: 100 * 1024 * 1024, // 100MB
-  deployment_bundle: 100 * 1024 * 1024, // 100MB
+  deployment_context: env.DEPLOYMENT_CONTEXT_ARTIFACT_SIZE_LIMIT_BYTES,
+  deployment_bundle: env.DEPLOYMENT_BUNDLE_ARTIFACT_SIZE_LIMIT_BYTES,
 } as const;
 
 export class ArtifactsService extends BaseService {

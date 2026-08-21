@@ -816,6 +816,19 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 15), // 15 minutes
+    DEPLOYMENT_CONTEXT_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUNDLE_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(128 * 1024), // 128KB
+    DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS: z.coerce.number().int().default(400),
 
     // When enabled, reject deploys made by v3 CLI versions (i.e. payloads that
     // omit the `type` field). v4 CLI versions always send `type` ("MANAGED" or "V1"),
