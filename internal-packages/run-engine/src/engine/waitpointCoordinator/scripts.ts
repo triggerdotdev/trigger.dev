@@ -72,7 +72,9 @@ export function registerWaitpointCommands(redis: Redis): void {
       -- The watcher lands before any flip can read the watcher hash, because this script
       -- and wpComplete are both atomic on this same shard. So a register either appears
       -- in the flip's watcher list, or it observes COMPLETED above.
-      redis.call('HSET', watchers, ARGV[1], ARGV[2])
+      --
+      -- HSETNX: the first registration wins, mirroring the edge's ON CONFLICT DO NOTHING.
+      redis.call('HSETNX', watchers, ARGV[1], ARGV[2])
       return { '${REGISTERED}' }
     `,
   });
@@ -115,6 +117,12 @@ export function registerWaitpointCommands(redis: Redis): void {
     lua: `
       local key = KEYS[1]
 
+      -- Guard before the SET: a non-numeric expiry must not land a reservation that can
+      -- never expire because PEXPIREAT then errors out after the write already happened.
+      if ARGV[2] ~= '' and tonumber(ARGV[2]) == nil then
+        return redis.error_reply('wpIdemReserve: ARGV[2] must be numeric or empty')
+      end
+
       -- SET NX returns a status reply on success and false on conflict.
       if redis.call('SET', key, ARGV[1], 'NX') then
         -- Expiry only when the caller has one. A reservation with no expiry is the common
@@ -137,12 +145,16 @@ export function registerWaitpointCommands(redis: Redis): void {
       local pend, done, edge = KEYS[1], KEYS[2], KEYS[3]
       local n = tonumber(ARGV[1])
 
-      -- countedPending and seenDelivered make both outputs DISTINCT BY ID. The count this
-      -- replaces was a COUNT(*) over waitpoint rows, so two edges for one waitpoint
-      -- contributed one. Counting per edge would inflate it.
-      local countedPending = {}
+      -- Guard before any write: a wrong n must not half-apply the script. HDEL/HSETNX below
+      -- are irreversible mid-script, and Redis does not roll back a script that errors.
+      if #ARGV ~= 1 + n * 4 then
+        return redis.error_reply('runAbsorbBlockers: arity mismatch')
+      end
+
+      -- seenDelivered makes the delivered-pair output DISTINCT BY ID: two edges for one
+      -- waitpoint must contribute one pair, not two.
+      local requestedIds = {}
       local seenDelivered = {}
-      local pendingOfRequested = 0
       local out = { '0', '0' }
 
       for i = 0, n - 1 do
@@ -154,6 +166,7 @@ export function registerWaitpointCommands(redis: Redis): void {
         -- HSETNX is the ON CONFLICT DO NOTHING of the edge write: a retry must not
         -- overwrite the first attempt's metadata.
         redis.call('HSETNX', edge, field, edgeJson)
+        requestedIds[id] = true
 
         if reported ~= '' then
           -- Already COMPLETED when the watcher registered. It never becomes pending.
@@ -176,11 +189,18 @@ export function registerWaitpointCommands(redis: Redis): void {
             end
           else
             redis.call('SADD', pend, id)
-            if not countedPending[id] then
-              countedPending[id] = true
-              pendingOfRequested = pendingOfRequested + 1
-            end
           end
+        end
+      end
+
+      -- Computed AFTER every write in this batch, as the count of distinct requested ids
+      -- with no entry in done. Counting incrementally during the loop is order-dependent:
+      -- a later group's completion for an id already counted as pending would leave the
+      -- count stale, reporting a waitpoint as both pending and delivered.
+      local pendingOfRequested = 0
+      for id in pairs(requestedIds) do
+        if redis.call('HEXISTS', done, id) == 0 then
+          pendingOfRequested = pendingOfRequested + 1
         end
       end
 
@@ -233,6 +253,11 @@ export function registerWaitpointCommands(redis: Redis): void {
     lua: `
       local pend, done, edge = KEYS[1], KEYS[2], KEYS[3]
       local n = tonumber(ARGV[1])
+
+      -- Guard before any write, same reasoning as runAbsorbBlockers.
+      if #ARGV ~= 1 + n then
+        return redis.error_reply('runClear: arity mismatch')
+      end
 
       if n == 0 then
         redis.call('DEL', pend, done, edge)

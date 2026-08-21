@@ -147,9 +147,13 @@ export class WaitpointStoreCoordinator {
     return command.call(this.redis, ...keys, ...argv);
   }
 
-  /** Exposed for the guard's own test. Asserts and returns; never invokes a script. */
-  assertKeysForTest(operation: string, keys: string[]): void {
-    assertSingleSlot(operation, keys);
+  /**
+   * Exposed for the guard's own test. Delegates through #call rather than calling
+   * assertSingleSlot directly, so a mutation to the guard inside #call fails this test too
+   * — not only the tests that happen to exercise a real script.
+   */
+  assertKeysForTest(operation: string, keys: string[]) {
+    return this.#call(operation as ScriptName, keys);
   }
 
   async createIfAbsent(args: {
@@ -171,10 +175,18 @@ export class WaitpointStoreCoordinator {
       return { outcome: "created" };
     }
 
+    // reply[1] is '' only if the record hash exists with no 'r' field, which should never
+    // happen — but ?? never fires on '', so a bare JSON.parse('') would throw an
+    // undiagnosable SyntaxError instead of naming the waitpoint.
+    const record = parseJson<WaitpointRecordInput>(reply[1]);
+    if (!record) {
+      throw new Error(`Waitpoint ${args.record.id} exists in the store with no record blob`);
+    }
+
     return {
       outcome: "exists",
-      record: JSON.parse(reply[1] ?? "{}") as WaitpointRecordInput,
-      status: (reply[2] ?? "PENDING") as WaitpointStatus,
+      record,
+      status: reply[2] === "COMPLETED" ? "COMPLETED" : "PENDING",
       completion: parseJson<WaitpointCompletion>(reply[3]),
     };
   }

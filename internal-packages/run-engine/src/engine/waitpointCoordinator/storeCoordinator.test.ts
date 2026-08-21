@@ -3,12 +3,20 @@
 import { createRedisClient, type RedisOptions } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import { describe, expect } from "vitest";
-import { WaitpointKeyTagError } from "./keys.js";
+import {
+  edgeField,
+  idempotencyKey,
+  runBlockKeys,
+  watcherField,
+  WaitpointKeyTagError,
+} from "./keys.js";
+import { registerWaitpointCommands } from "./scripts.js";
 import {
   WaitpointNotFoundError,
   WaitpointStoreCoordinator,
   type WaitpointCompletion,
   type WaitpointRecordInput,
+  type WatcherEntry,
 } from "./storeCoordinator.js";
 
 const ENV_ID = "env_1";
@@ -218,7 +226,7 @@ describe("registerOrReport", () => {
 
       const completed = await store.complete({ waitpointId: "w_a", completion: completion() });
       expect(completed.watchers).toHaveLength(2);
-      expect(completed.watchers.map((w) => w.batchIndex).sort()).toEqual([0, 2]);
+      expect(completed.watchers.map((w) => w.batchIndex).sort((a, b) => a! - b!)).toEqual([0, 2]);
     } finally {
       await store.quit();
     }
@@ -306,6 +314,33 @@ describe("complete", () => {
     }
   });
 
+  redisTest(
+    "keeps the watcher list intact when the completion field is absent on an already-completed record",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      const probe = createRedisClient(redisOptions);
+      try {
+        // registerOrReport never lets a watcher land once status is COMPLETED, so this
+        // shape is forced by hand: it pins that an absent 'c' field decodes to an
+        // undefined completion without disturbing the watchers that follow it in the
+        // reply array.
+        await store.createIfAbsent({ record: record("w_a"), status: "COMPLETED" });
+        const watcher: WatcherEntry = { runId: "run_1", createdAt: NOW };
+        await probe.hset("wp:{w_a}:w", watcherField("run_1"), JSON.stringify(watcher));
+
+        const result = await store.complete({ waitpointId: "w_a", completion: completion() });
+
+        expect(result.outcome).toBe("already");
+        expect(result.completion).toBeUndefined();
+        expect(result.watchers).toHaveLength(1);
+        expect(result.watchers[0]!.runId).toBe("run_1");
+      } finally {
+        probe.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
   redisTest("sets no TTL on the record or the watcher key", async ({ redisOptions }) => {
     const store = coordinator(redisOptions);
     const probe = createRedisClient(redisOptions);
@@ -322,6 +357,141 @@ describe("complete", () => {
       await store.quit();
     }
   });
+});
+
+// No coordinator method calls runAbsorbBlockers/runClear/wpIdemReserve yet — a later task
+// wires those in. Registered directly on a raw client so the Lua itself is exercised now.
+describe("runAbsorbBlockers (direct Lua)", () => {
+  const envelope = JSON.stringify(completion());
+
+  redisTest(
+    "does not double-count a waitpoint reported pending then delivered in the same batch",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const keys = runBlockKeys("run_1");
+        const fieldA = edgeField("w_solo", 0);
+        const fieldB = edgeField("w_solo", 1);
+
+        // Group 0 arrives unreported (still pending); group 1 for the SAME waitpoint
+        // arrives already reported. This is the straddle that broke pendingOfRequested.
+        const reply = await client.runAbsorbBlockers(
+          keys.pend,
+          keys.done,
+          keys.edge,
+          "2",
+          "w_solo",
+          fieldA,
+          "{}",
+          "",
+          "w_solo",
+          fieldB,
+          "{}",
+          envelope
+        );
+
+        expect(reply).toEqual(["0", "0", "w_solo", envelope]);
+        expect(await client.scard(keys.pend)).toBe(0);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  redisTest(
+    "produces the identical result when the same two groups arrive in reverse order",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const keys = runBlockKeys("run_1");
+        const fieldA = edgeField("w_solo", 0);
+        const fieldB = edgeField("w_solo", 1);
+
+        const reply = await client.runAbsorbBlockers(
+          keys.pend,
+          keys.done,
+          keys.edge,
+          "2",
+          "w_solo",
+          fieldB,
+          "{}",
+          envelope,
+          "w_solo",
+          fieldA,
+          "{}",
+          ""
+        );
+
+        expect(reply).toEqual(["0", "0", "w_solo", envelope]);
+        expect(await client.scard(keys.pend)).toBe(0);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  redisTest("rejects an arity mismatch before writing anything", async ({ redisOptions }) => {
+    const client = createRedisClient(redisOptions);
+    registerWaitpointCommands(client);
+    try {
+      const keys = runBlockKeys("run_1");
+      const field = edgeField("w_solo", 0);
+
+      // n says 2 groups but only one group (4 ARGV entries) is supplied.
+      await expect(
+        client.runAbsorbBlockers(keys.pend, keys.done, keys.edge, "2", "w_solo", field, "{}", "")
+      ).rejects.toThrow();
+
+      expect(await client.exists(keys.pend)).toBe(0);
+      expect(await client.exists(keys.done)).toBe(0);
+      expect(await client.exists(keys.edge)).toBe(0);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  redisTest(
+    "runClear rejects an arity mismatch before writing anything",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const keys = runBlockKeys("run_1");
+        const field = edgeField("w_solo", 0);
+        await client.hset(keys.edge, field, "{}");
+        await client.sadd(keys.pend, "w_solo");
+
+        // n says 2 fields but only one field is supplied.
+        await expect(
+          client.runClear(keys.pend, keys.done, keys.edge, "2", field)
+        ).rejects.toThrow();
+
+        expect(await client.hexists(keys.edge, field)).toBe(1);
+        expect(await client.sismember(keys.pend, "w_solo")).toBe(1);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  redisTest(
+    "wpIdemReserve rejects a non-numeric expiry and does not create the reservation",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const key = idempotencyKey(ENV_ID, "key-1");
+
+        await expect(client.wpIdemReserve(key, "w_a", "not-a-number")).rejects.toThrow();
+
+        expect(await client.exists(key)).toBe(0);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
 });
 
 describe("the single-slot guard", () => {
