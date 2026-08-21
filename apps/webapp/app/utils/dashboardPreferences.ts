@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ThemePreference } from "~/utils/themePreference";
+import { SystemDarkTheme, SystemLightTheme, ThemePreference } from "~/utils/themePreference";
 
 /* Schema and pure parsing for the User.dashboardPreferences JSON column.
    Kept out of the .server module so tests can exercise the schema without
@@ -50,8 +50,15 @@ const DashboardPreferences = z.object({
   /* An unknown value (e.g. written by a newer deploy) degrades to undefined
      instead of failing the whole blob and erasing every other setting */
   theme: ThemePreference.optional().catch(undefined),
-  /** Interface contrast for the System themes, 0-100. */
+  /** 0-100, a position within the active theme's own range. */
   contrast: z.number().int().min(0).max(100).optional().catch(undefined),
+  /** Swaps the base icon and badge accents for the high-contrast set. */
+  iconContrast: z.boolean().optional().catch(undefined),
+  /** Underlines inline links. */
+  underlineLinks: z.boolean().optional().catch(undefined),
+  /** Which theme `system` resolves to at each end of the OS setting. */
+  systemLightTheme: SystemLightTheme.optional().catch(undefined),
+  systemDarkTheme: SystemDarkTheme.optional().catch(undefined),
   currentProjectId: z.string().optional(),
   projects: z.record(
     z.string(),

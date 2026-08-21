@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
 import { IconTimeline } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
@@ -397,6 +398,9 @@ export default function Story() {
       defaultStartDate={API_DATA.defaultDateRange.startDate}
       defaultEndDate={API_DATA.defaultDateRange.endDate}
     >
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Chart.tsx", "ChartCompound.tsx", "BigNumberCard.tsx"]} />
+      </div>
       <ChartsDashboard />
     </DateRangeProvider>
   );

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { type ComponentType, type ReactNode } from "react";
 import { AbacusIcon } from "~/assets/icons/AbacusIcon";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
@@ -304,6 +305,9 @@ const sortedIcons = [...icons].sort((a, b) => a.name.localeCompare(b.name));
 export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Icon.tsx"]} />
+      </div>
       <div className="text-sm text-text-dimmed">
         {sortedIcons.length} custom icons, rendered at 24px.
       </div>
