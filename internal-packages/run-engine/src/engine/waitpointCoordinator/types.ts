@@ -1,3 +1,4 @@
+import type { ReadClient } from "@internal/run-store";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 
 /**
@@ -15,6 +16,8 @@ import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database
 export type WaitpointCoordinator = {
   clearRunBlockState(params: ClearRunBlockStateParams): Promise<{ count: number }>;
   readRunBlockState(runId: string): Promise<RunBlockEdge[]>;
+  registerBlocks(params: RegisterBlocksParams): Promise<{ pendingCount: number }>;
+  registerBlocksLockless(params: RegisterBlocksLocklessParams): Promise<void>;
 };
 
 export type ClearRunBlockStateParams = {
@@ -40,3 +43,25 @@ export type RunBlockEdge = {
   batchIndex: number | null;
   waitpoint: Pick<Waitpoint, "id" | "status" | "type" | "completedAfter">;
 };
+
+export type RegisterBlocksParams = {
+  runId: string;
+  waitpointIds: string[];
+  projectId: string;
+  spanIdToComplete?: string;
+  batchId?: string;
+  batchIndex?: number;
+  /**
+   * Read client for the pending count only. The caller resolves `tx ?? prisma` once
+   * and passes the result, so the writer is used when the caller is inside a
+   * transaction and the pending re-read is read-your-writes on the owning primary.
+   * Never forwarded to the edge write.
+   */
+  client: ReadClient;
+};
+
+/**
+ * The lockless variant writes the edge and does not count. Two methods rather than
+ * one method with a flag, so "the batch path issues no extra query" is structural.
+ */
+export type RegisterBlocksLocklessParams = Omit<RegisterBlocksParams, "client">;

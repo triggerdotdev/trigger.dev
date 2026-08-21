@@ -490,24 +490,18 @@ export class WaitpointSystem {
         this.$.runStore
       );
 
-      // Insert the blocking + historical connections via the run-ops store, routed by the owning
-      // run id so the edge co-resides with the run. Never pinned to the caller's control-plane tx:
-      // that joined `Waitpoint` on the wrong DB and wrote 0 edges. The pending check stays a
-      // SEPARATE store call so it gets its own READ COMMITTED snapshot (see the doc comment above).
-      await this.$.runStore.blockRunWithWaitpointEdges({
+      // Insert the blocking + historical connections and re-check the pending count. The
+      // coordinator keeps these as two separate store statements, in this order, for the READ
+      // COMMITTED reason documented on the method and in the doc comment above.
+      const { pendingCount } = await this.coordinator.registerBlocks({
         runId,
         waitpointIds: $waitpoints,
         projectId,
         spanIdToComplete,
         batchId: batch?.id,
         batchIndex: batch?.index,
+        client: prisma,
       });
-
-      // Check if the run is actually blocked using a separate query (see above). Pass the writer so the
-      // pending re-read is read-your-writes on the owning PRIMARY (a lagging replica can strand the run).
-      // Route by the blocked run id: its blocking waitpoints co-locate with the run, so the router
-      // counts on the run's store and only falls back to the other DB for a cross-tree token.
-      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints, prisma, runId);
 
       const isRunBlocked = pendingCount > 0;
 
@@ -606,10 +600,10 @@ export class WaitpointSystem {
   }): Promise<void> {
     const $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
-    // Same routed edge write as blockRunWithWaitpoint, routed by the owning run id. No lock
-    // needed: ON CONFLICT DO NOTHING makes concurrent inserts safe, and the parent snapshot is
-    // already EXECUTING_WITH_WAITPOINTS from blockRunWithCreatedBatch.
-    await this.$.runStore.blockRunWithWaitpointEdges({
+    // Same routed edge write as blockRunWithWaitpoint. No lock needed: ON CONFLICT DO NOTHING
+    // makes concurrent inserts safe, and the parent snapshot is already
+    // EXECUTING_WITH_WAITPOINTS from blockRunWithCreatedBatch. No pending count here.
+    await this.coordinator.registerBlocksLockless({
       runId,
       waitpointIds: $waitpoints,
       projectId,
