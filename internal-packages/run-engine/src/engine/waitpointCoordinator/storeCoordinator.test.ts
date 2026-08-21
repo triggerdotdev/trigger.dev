@@ -361,7 +361,7 @@ describe("complete", () => {
 
 // No coordinator method calls runAbsorbBlockers/runClear/wpIdemReserve yet — a later task
 // wires those in. Registered directly on a raw client so the Lua itself is exercised now.
-describe("runAbsorbBlockers (direct Lua)", () => {
+describe("runAbsorbBlockers, runClear and wpIdemReserve (direct Lua)", () => {
   const envelope = JSON.stringify(completion());
 
   redisTest(
@@ -425,6 +425,126 @@ describe("runAbsorbBlockers (direct Lua)", () => {
         );
 
         expect(reply).toEqual(["0", "0", "w_solo", envelope]);
+        expect(await client.scard(keys.pend)).toBe(0);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  redisTest("counts two distinct unreported ids as fully pending", async ({ redisOptions }) => {
+    const client = createRedisClient(redisOptions);
+    registerWaitpointCommands(client);
+    try {
+      const keys = runBlockKeys("run_1");
+
+      const reply = await client.runAbsorbBlockers(
+        keys.pend,
+        keys.done,
+        keys.edge,
+        "2",
+        "w_a",
+        edgeField("w_a", 0),
+        "{}",
+        "",
+        "w_b",
+        edgeField("w_b", 0),
+        "{}",
+        ""
+      );
+
+      expect(reply).toEqual(["2", "2"]);
+      expect(await client.scard(keys.pend)).toBe(2);
+    } finally {
+      client.disconnect();
+    }
+  });
+
+  redisTest(
+    "counts one reported and one unreported id as one pending, one delivered",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const keys = runBlockKeys("run_1");
+
+        const reply = await client.runAbsorbBlockers(
+          keys.pend,
+          keys.done,
+          keys.edge,
+          "2",
+          "w_a",
+          edgeField("w_a", 0),
+          "{}",
+          "",
+          "w_b",
+          edgeField("w_b", 0),
+          "{}",
+          envelope
+        );
+
+        expect(reply).toEqual(["1", "1", "w_b", envelope]);
+        expect(await client.scard(keys.pend)).toBe(1);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  redisTest(
+    "counts the same unreported id passed twice as one pending, not two",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const keys = runBlockKeys("run_1");
+
+        const reply = await client.runAbsorbBlockers(
+          keys.pend,
+          keys.done,
+          keys.edge,
+          "2",
+          "w_a",
+          edgeField("w_a", 0),
+          "{}",
+          "",
+          "w_a",
+          edgeField("w_a", 1),
+          "{}",
+          ""
+        );
+
+        expect(reply).toEqual(["1", "1"]);
+        expect(await client.scard(keys.pend)).toBe(1);
+      } finally {
+        client.disconnect();
+      }
+    }
+  );
+
+  redisTest(
+    "counts an id already in done, passed unreported, as delivered rather than pending",
+    async ({ redisOptions }) => {
+      const client = createRedisClient(redisOptions);
+      registerWaitpointCommands(client);
+      try {
+        const keys = runBlockKeys("run_1");
+        // A completion that landed between register and absorb — the delivered set
+        // already has this id before the absorb call ever sees it.
+        await client.hset(keys.done, "w_a", envelope);
+
+        const reply = await client.runAbsorbBlockers(
+          keys.pend,
+          keys.done,
+          keys.edge,
+          "1",
+          "w_a",
+          edgeField("w_a", 0),
+          "{}",
+          ""
+        );
+
+        expect(reply).toEqual(["0", "0", "w_a", envelope]);
         expect(await client.scard(keys.pend)).toBe(0);
       } finally {
         client.disconnect();

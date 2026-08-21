@@ -151,9 +151,15 @@ export class WaitpointStoreCoordinator {
    * Exposed for the guard's own test. Delegates through #call rather than calling
    * assertSingleSlot directly, so a mutation to the guard inside #call fails this test too
    * — not only the tests that happen to exercise a real script.
+   *
+   * With cross-tag (invalid) keys, assertSingleSlot throws synchronously inside #call,
+   * before any promise exists, and that throw propagates straight out of this method. With
+   * same-tag (valid) keys, #call would go on to dispatch a real script call; this method
+   * never returns or awaits that promise, and swallows whatever it eventually settles to,
+   * so a valid-key call here can never surface as an unhandled rejection in the caller.
    */
-  assertKeysForTest(operation: string, keys: string[]) {
-    return this.#call(operation as ScriptName, keys);
+  assertKeysForTest(operation: string, keys: string[]): void {
+    this.#call(operation as ScriptName, keys).catch(() => undefined);
   }
 
   async createIfAbsent(args: {

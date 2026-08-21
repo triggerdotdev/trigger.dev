@@ -9,8 +9,14 @@ import type { Callback, Redis, Result } from "@internal/redis";
  *     declared key gives the caller's single-slot assertion nothing to compare.
  *  2. Lua never parses JSON. Each script branches only on a short status string and moves
  *     opaque blobs, so every encoding decision stays in TypeScript.
- *  3. Every returned slot is coerced with `or ''`. A Lua false or nil TRUNCATES the reply
- *     array at that position, silently shortening it.
+ *  3. A missing HGET returns Lua `false`, not `nil` — measured directly against a live
+ *     Redis: `EVAL "return {'a', false, 'c'}"` and a table holding a missing-field HGET
+ *     result both come back as 3 elements; only `EVAL "return {'a', nil, 'c'}"` comes back
+ *     as 1. A `false` element converts to a reply-array null and does NOT shorten anything
+ *     after it — only a genuine Lua nil truncates. Every returned slot is still coerced
+ *     with `or ''` regardless, not to prevent truncation, but so an absent value arrives
+ *     as `''` rather than `null`, giving the TypeScript one shape to decode instead of
+ *     two.
  *
  * STORED_COMPLETED is the value written into the record's `status` field and is
  * UPPERCASE. The outcome tokens below are lowercase and are a separate vocabulary: they
