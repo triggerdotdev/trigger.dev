@@ -235,7 +235,7 @@ export function VercelOnboardingModal({
   const [pullEnvVarsBeforeBuild, setPullEnvVarsBeforeBuild] = useState<EnvSlug[]>(
     () => availableEnvSlugsForOnboardingBuildSettings
   );
-  const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>(() => ["prod"]);
+  const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>([]);
   const [discoverEnvVars, setDiscoverEnvVars] = useState<EnvSlug[]>(
     () => availableEnvSlugsForOnboardingBuildSettings
   );
@@ -1164,7 +1164,7 @@ export function VercelOnboardingModal({
             <div className="flex flex-col gap-4">
               <Header3>Build Settings</Header3>
               <Paragraph className="text-sm">
-                Configure how environment variables are pulled during builds and atomic deployments.
+                Configure how environment variables are pulled during builds.
               </Paragraph>
 
               <BuildSettingsFields
@@ -1176,6 +1176,7 @@ export function VercelOnboardingModal({
                 atomicBuilds={atomicBuilds}
                 onAtomicBuildsChange={setAtomicBuilds}
                 disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
+                showAtomicDeployments={false}
               />
 
               <FormButtons

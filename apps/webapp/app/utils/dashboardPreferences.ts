@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ThemePreference } from "~/utils/themePreference";
+import { SystemDarkTheme, SystemLightTheme, ThemePreference } from "~/utils/themePreference";
 
 /* Schema and pure parsing for the User.dashboardPreferences JSON column.
    Kept out of the .server module so tests can exercise the schema without
@@ -50,8 +50,15 @@ const DashboardPreferences = z.object({
   /* An unknown value (e.g. written by a newer deploy) degrades to undefined
      instead of failing the whole blob and erasing every other setting */
   theme: ThemePreference.optional().catch(undefined),
-  /** Interface contrast for the System themes, 0-100. */
+  /** 0-100, a position within the active theme's own range. */
   contrast: z.number().int().min(0).max(100).optional().catch(undefined),
+  /** Swaps the base icon and badge accents for the high-contrast set. */
+  iconContrast: z.boolean().optional().catch(undefined),
+  /** Underlines inline links. */
+  underlineLinks: z.boolean().optional().catch(undefined),
+  /** Which theme `system` resolves to at each end of the OS setting. */
+  systemLightTheme: SystemLightTheme.optional().catch(undefined),
+  systemDarkTheme: SystemDarkTheme.optional().catch(undefined),
   currentProjectId: z.string().optional(),
   projects: z.record(
     z.string(),
@@ -89,4 +96,46 @@ export function parseDashboardPreferences(
   }
 
   return result.data;
+}
+
+/**
+ * Re-attach keys the schema dropped, so a full-blob write preserves fields this
+ * deploy was not compiled against. The parsed result wins for every key it
+ * carries, including ones it deliberately cleared to undefined.
+ */
+export function preserveUnknownKeys(
+  raw: unknown,
+  updated: DashboardPreferences
+): DashboardPreferences {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return updated;
+  }
+
+  const known = new Set(Object.keys(DashboardPreferences.shape));
+  const unknownKeys = Object.entries(raw as Record<string, unknown>).filter(
+    ([key]) => !known.has(key)
+  );
+
+  return unknownKeys.length > 0 ? { ...Object.fromEntries(unknownKeys), ...updated } : updated;
+}
+
+/**
+ * Fold a customize-sidebar submission into the stored hidden map. `submitted`
+ * only describes `knownItemIds`, so ids outside that list keep what they had -
+ * the dialog's section list depends on which org's feature flags were in scope,
+ * and a narrower list must not un-hide items belonging to a wider one. Without
+ * the list the submission is authoritative, as it was before.
+ */
+export function mergeHiddenItems(
+  current: Record<string, boolean> | undefined,
+  submitted: Record<string, boolean> | null,
+  knownItemIds: string[] | undefined
+): Record<string, boolean> | undefined {
+  const known = knownItemIds ? new Set(knownItemIds) : undefined;
+  const preserved: Array<[string, boolean]> = known
+    ? Object.entries(current ?? {}).filter(([id]) => !known.has(id))
+    : [];
+  const merged = { ...Object.fromEntries(preserved), ...(submitted ?? {}) };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }

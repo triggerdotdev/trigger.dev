@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import {
   BellAlertIcon,
   BookOpenIcon,
@@ -11,10 +12,14 @@ import {
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export default function Story() {
   return (
     <div className="flex h-full flex-col gap-12 p-12">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["InfoPanel.tsx"]} />
+      </div>
       <div className="grid grid-cols-2 gap-8">
         {/* Basic Info Panel */}
         <InfoPanel
@@ -132,6 +137,12 @@ export default function Story() {
           }
         >
           Access our comprehensive documentation
+        </InfoPanel>
+      </div>
+      <div className="flex flex-col gap-2 pt-8">
+        <Paragraph variant="extra-extra-small/caps">variant="info" (default)</Paragraph>
+        <InfoPanel icon={InformationCircleIcon} title="Info variant" variant="info">
+          The default panel style, for neutral guidance.
         </InfoPanel>
       </div>
     </div>

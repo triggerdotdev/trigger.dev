@@ -547,7 +547,7 @@ function ConfirmDialog({
               >
                 <div className="font-sans text-sm text-text-bright">{change.key}</div>
                 {change.type === "added" && (
-                  <div className="mt-1 text-green-400">+ {change.newVal}</div>
+                  <div className="mt-1 text-green-400 system:text-green-700">+ {change.newVal}</div>
                 )}
                 {change.type === "removed" && (
                   <div className="mt-1 text-red-400">- {change.oldVal} (unset)</div>
@@ -555,7 +555,7 @@ function ConfirmDialog({
                 {change.type === "changed" && (
                   <>
                     <div className="mt-1 text-red-400">- {change.oldVal}</div>
-                    <div className="text-green-400">+ {change.newVal}</div>
+                    <div className="text-green-400 system:text-green-700">+ {change.newVal}</div>
                   </>
                 )}
               </div>

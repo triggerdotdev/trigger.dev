@@ -5,6 +5,18 @@ import * as SwitchPrimitives from "@radix-ui/react-switch";
 import { cn } from "~/utils/cn";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 
+/*
+  The thumb sits inside the track's 2px transparent border, so an even gap all
+  round means thumb height == the content box and a travel of (width - thumb).
+  The h-4 w-7.5 track is a 12x26 box, hence a 12px thumb travelling 14px. The
+  press squish widens the thumb and takes the same off the travel, +4/-4, so the
+  leading edge stays pinned. `small` still has the original uneven gap.
+*/
+const MEDIUM_THUMB = cn(
+  "h-3 w-3 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+  "group-active:w-4 group-active:data-[state=checked]:translate-x-2.5"
+);
+
 const small = {
   container:
     "flex items-center h-6 gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 hover:disabled:bg-background-raised transition focus-custom disabled:opacity-50 text-text-dimmed hover:text-text-bright disabled:hover:cursor-not-allowed hover:cursor-pointer disabled:hover:text-rose-500",
@@ -55,10 +67,14 @@ const variations = {
     container:
       "flex items-center gap-x-2 rounded-md hover:bg-tertiary py-1.5 px-2 transition focus-custom",
     root: "h-4 w-7.5",
-    thumb: cn(
-      "h-3.5 w-3.5 data-[state=checked]:translate-x-3 data-[state=unchecked]:translate-x-0",
-      "group-active:w-4.5 group-active:data-[state=checked]:translate-x-2"
-    ),
+    thumb: MEDIUM_THUMB,
+    text: "text-sm text-text-dimmed",
+  },
+  /* Medium without the hover box, for rows that carry their own affordance. */
+  "minimal/medium": {
+    container: "flex items-center gap-x-2 rounded-md focus-custom",
+    root: "h-4 w-7.5",
+    thumb: MEDIUM_THUMB,
     text: "text-sm text-text-dimmed",
   },
 };
@@ -98,14 +114,17 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
     const switchElement = (
       <div
         className={cn(
-          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
+          // Shares --color-accent-fill with the primary button.
+          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-accent-fill group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
           root
         )}
       >
         <SwitchPrimitives.Thumb
           className={cn(
             thumb,
-            "pointer-events-none block rounded-full bg-white transition-[translate,width,background-color] dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-text-bright"
+            /* White in every theme once checked: an off-white thumb was 2.80:1
+               against the fill, under the 3:1 a control's parts need. */
+            "pointer-events-none block rounded-full bg-white transition-[translate,width,background-color] dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-white"
           )}
         />
       </div>

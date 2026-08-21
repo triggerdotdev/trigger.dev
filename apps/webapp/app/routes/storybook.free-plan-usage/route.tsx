@@ -1,8 +1,12 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { FreePlanUsage } from "~/components/billing/FreePlanUsage";
 
 export default function Story() {
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-4 p-12">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["FreePlanUsage.tsx"]} />
+      </div>
       <div className="w-fit">
         <FreePlanUsage to={""} percentage={0.1} />
       </div>

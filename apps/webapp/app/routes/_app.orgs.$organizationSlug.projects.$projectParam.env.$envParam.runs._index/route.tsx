@@ -39,6 +39,7 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { $replica } from "~/db.server";
@@ -52,6 +53,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   setRootOnlyFilterPreference,
@@ -123,6 +125,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
     ...filters,
     includeHasAnyRuns: true,
+    columns: getRunColumnsForSelect(request),
   });
 
   // Only persist rootOnly when no tasks are filtered. While a task filter is active,
@@ -345,7 +348,7 @@ function RunsList({
                   hasFilters={list.hasFilters}
                   rootOnlyDefault={rootOnlyDefault}
                 />
-                <div className="flex items-center justify-end gap-x-2">
+                <div className="flex items-center justify-end gap-x-1.5">
                   {showNewRunsBanner && (
                     <span className="flex duration-150 animate-in fade-in-0">
                       <Button
@@ -401,6 +404,7 @@ function RunsList({
                       )}
                     </span>
                   </Button>
+                  <RunsDisplayOptions />
                   <ListPagination list={list} />
                 </div>
               </div>
