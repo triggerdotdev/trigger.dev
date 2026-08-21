@@ -11,13 +11,20 @@ import {
   RUN_OPS_ID_VERSION,
   RUN_OPS_ID_VERSION_2,
   RUN_OPS_ID_VERSION_INDEX,
+  WAITPOINT_ID_TYPE_INDEX,
+  WAITPOINT_ID_VERSION,
   base32hexDecode,
   base32hexEncode,
+  deriveWaitpointIdFromAnchor,
+  generateFriendlyId,
   generateRunOpsId,
   generateRunOpsIdV2,
+  generateWaitpointId,
   parseRunId,
   parseRunOpsIdBody,
   parseRunOpsIdV2Body,
+  parseWaitpointId,
+  type WaitpointIdType,
 } from "./friendlyId.js";
 
 /** Every legal gen-2 shard char: the full DNS-safe lowercase range. */
@@ -408,5 +415,137 @@ describe("parseRunId — v2 arm", () => {
   it("classifies a gen-2 body without the run_ prefix, and under a wrong prefix, legacy", () => {
     expect(parseRunId(generateRunOpsIdV2("a")).format).toBe("legacy");
     expect(parseRunId(`waitpoint_${generateRunOpsIdV2("a")}`).format).toBe("legacy");
+  });
+});
+
+describe("waitpoint ids: run-ops format with version char w", () => {
+  it("mints a 26-char body per type, with the type char at index 24 and version w at 25", () => {
+    const cases: Array<[WaitpointIdType, string]> = [
+      ["RUN", "r"],
+      ["BATCH", "b"],
+      ["DATETIME", "d"],
+      ["MANUAL", "m"],
+    ];
+
+    for (const [type, typeChar] of cases) {
+      const body = generateWaitpointId(type);
+      expect(body.length).toBe(RUN_OPS_ID_LENGTH);
+      expect(body[WAITPOINT_ID_TYPE_INDEX]).toBe(typeChar);
+      expect(body[RUN_OPS_ID_VERSION_INDEX]).toBe(WAITPOINT_ID_VERSION);
+    }
+  });
+
+  it("round-trips every type char through parseWaitpointId", () => {
+    for (const type of ["RUN", "BATCH", "DATETIME", "MANUAL"] as WaitpointIdType[]) {
+      const parsed = parseWaitpointId(generateWaitpointId(type));
+      expect(parsed.format).toBe("b32hexW");
+      if (parsed.format !== "b32hexW") throw new Error("unreachable");
+      expect(parsed.type).toBe(type);
+    }
+  });
+
+  it("classifies both the prefixed and the bare form identically", () => {
+    const body = generateWaitpointId("MANUAL");
+    expect(parseWaitpointId(body)).toEqual(parseWaitpointId(`waitpoint_${body}`));
+  });
+
+  it("recovers the mint timestamp from the core", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-21T12:00:00.000Z"));
+      const parsed = parseWaitpointId(generateWaitpointId("DATETIME"));
+      if (parsed.format !== "b32hexW") throw new Error("unreachable");
+      expect(parsed.timestamp.toISOString()).toBe("2026-08-21T12:00:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("classifies every legacy shape as legacy", () => {
+    const legacy = [
+      WaitpointId.generate().id,
+      WaitpointId.generate().friendlyId,
+      generateFriendlyId("waitpoint"),
+      "",
+      "waitpoint_",
+      "a".repeat(27),
+      "a".repeat(26),
+    ];
+
+    for (const id of legacy) {
+      expect(parseWaitpointId(id).format).toBe("legacy");
+    }
+  });
+
+  it("rejects a 26-char body whose version is w but whose type char is not r/b/d/m", () => {
+    const body = generateWaitpointId("RUN");
+    const bad = `${body.slice(0, WAITPOINT_ID_TYPE_INDEX)}x${WAITPOINT_ID_VERSION}`;
+    expect(parseWaitpointId(bad).format).toBe("legacy");
+  });
+
+  it("rejects a body whose core is outside the base32hex alphabet", () => {
+    const body = generateWaitpointId("RUN");
+    // "w" is outside [0-9a-v], so the core no longer decodes.
+    expect(parseWaitpointId(`w${body.slice(1)}`).format).toBe("legacy");
+  });
+
+  it("never parses a run id as a waitpoint id, or the reverse", () => {
+    expect(parseWaitpointId(generateRunOpsId()).format).toBe("legacy");
+    expect(parseWaitpointId(generateRunOpsIdV2("7")).format).toBe("legacy");
+    expect(parseRunId(`run_${generateWaitpointId("RUN")}`).format).toBe("legacy");
+  });
+});
+
+describe("deriveWaitpointIdFromAnchor", () => {
+  it("is deterministic: the same anchor and type always give the same id", () => {
+    const anchor = `run_${generateRunOpsId("us-east-1")}`;
+    const first = deriveWaitpointIdFromAnchor(anchor, "RUN");
+    expect(first).toBeDefined();
+    expect(first).toBe(deriveWaitpointIdFromAnchor(anchor, "RUN"));
+  });
+
+  it("shares the anchor's 24-char core and replaces the region and version chars", () => {
+    const anchorBody = generateRunOpsId("us-east-1");
+    const derived = deriveWaitpointIdFromAnchor(`run_${anchorBody}`, "RUN");
+    expect(derived).toBeDefined();
+    expect(derived!.slice(0, WAITPOINT_ID_TYPE_INDEX)).toBe(
+      anchorBody.slice(0, WAITPOINT_ID_TYPE_INDEX)
+    );
+    expect(derived![WAITPOINT_ID_TYPE_INDEX]).toBe("r");
+    expect(derived![RUN_OPS_ID_VERSION_INDEX]).toBe(WAITPOINT_ID_VERSION);
+  });
+
+  it("accepts a bare anchor body as well as a prefixed one", () => {
+    const anchorBody = generateRunOpsId();
+    expect(deriveWaitpointIdFromAnchor(anchorBody, "RUN")).toBe(
+      deriveWaitpointIdFromAnchor(`run_${anchorBody}`, "RUN")
+    );
+  });
+
+  it("accepts a gen-2 anchor", () => {
+    const derived = deriveWaitpointIdFromAnchor(`run_${generateRunOpsIdV2("7")}`, "RUN");
+    expect(derived).toBeDefined();
+    expect(parseWaitpointId(derived!).format).toBe("b32hexW");
+  });
+
+  it("derives a BATCH id from a run-ops format batch anchor", () => {
+    const derived = deriveWaitpointIdFromAnchor(`batch_${generateRunOpsId()}`, "BATCH");
+    expect(derived).toBeDefined();
+    const parsed = parseWaitpointId(derived!);
+    if (parsed.format !== "b32hexW") throw new Error("unreachable");
+    expect(parsed.type).toBe("BATCH");
+  });
+
+  it("returns undefined for a legacy anchor, so the caller falls back to a legacy mint", () => {
+    expect(deriveWaitpointIdFromAnchor(RunId.generate().friendlyId, "RUN")).toBeUndefined();
+    expect(deriveWaitpointIdFromAnchor("run_", "RUN")).toBeUndefined();
+    expect(deriveWaitpointIdFromAnchor("", "RUN")).toBeUndefined();
+  });
+
+  it("gives a different id per type from one anchor", () => {
+    const anchor = `run_${generateRunOpsId()}`;
+    expect(deriveWaitpointIdFromAnchor(anchor, "RUN")).not.toBe(
+      deriveWaitpointIdFromAnchor(anchor, "BATCH")
+    );
   });
 });
