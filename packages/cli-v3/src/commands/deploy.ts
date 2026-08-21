@@ -1776,18 +1776,18 @@ async function handleLocalBundleDeploy({
   }
 
   // Sync BEFORE init: init enqueues the build synchronously, so a post-init sync races a fast build
+  const childVars = buildManifest.deploy.sync?.env ?? {};
+  const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+  const secretChildVars = buildManifest.deploy.sync?.secretEnv ?? {};
+  const secretParentVars = buildManifest.deploy.sync?.secretParentEnv ?? {};
+
+  const hasVarsToSync =
+    Object.keys(childVars).length > 0 ||
+    Object.keys(secretChildVars).length > 0 ||
+    // Only sync parent variables if this is a branch environment
+    (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
+
   if (!options.skipSyncEnvVars) {
-    const childVars = buildManifest.deploy.sync?.env ?? {};
-    const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
-    const secretChildVars = buildManifest.deploy.sync?.secretEnv ?? {};
-    const secretParentVars = buildManifest.deploy.sync?.secretParentEnv ?? {};
-
-    const hasVarsToSync =
-      Object.keys(childVars).length > 0 ||
-      Object.keys(secretChildVars).length > 0 ||
-      // Only sync parent variables if this is a branch environment
-      (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
-
     if (hasVarsToSync) {
       const uploadResult = await syncEnvVarsWithServer(
         apiClient,
@@ -1805,7 +1805,7 @@ async function handleLocalBundleDeploy({
 
       logger.debug("Synced env vars with the server");
     }
-  } else if (Object.keys(buildManifest.deploy.sync?.env ?? {}).length > 0) {
+  } else if (hasVarsToSync) {
     logger.log(
       "Skipping syncing env vars. The environment variables in your project have changed, but the --skip-sync-env-vars flag was provided."
     );
@@ -1836,8 +1836,9 @@ async function handleLocalBundleDeploy({
 
   logger.debug("Artifact created", { artifactKey });
 
-  // The bundle key prefix is the ack that the server understood the deployment_bundle
-  // type; an older server silently stores the upload as a plain source context.
+  // Defense in depth: current older servers already reject the deployment_bundle
+  // type at createArtifact; this catches a server that accepts it but returns a
+  // non-bundle key, which would make the remote build treat the bundle as source.
   if (!artifactKey.startsWith("bundles/")) {
     $deploymentSpinner.stop("Failed creating deployment artifact");
     log.error(
