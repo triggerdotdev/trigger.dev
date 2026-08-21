@@ -123,6 +123,10 @@ export const eventLoopUtilizationMonitor = singleton("eventLoopUtilizationMonito
 
   return {
     enable: () => {
+      if (stop) {
+        return;
+      }
+
       console.log("🥸  Initializing event loop utilization monitor");
 
       stop = startEventLoopUtilizationMonitoring();

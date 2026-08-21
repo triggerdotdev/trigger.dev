@@ -31,8 +31,15 @@ function parseArgs(argv: string[]): {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === "--top") top = Number(argv[++i]);
-    else if (arg === "--json") json = argv[++i];
+    if (arg === "--top") {
+      const raw = argv[++i];
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        console.error(`--top expects a positive number, got "${raw ?? ""}"`);
+        process.exit(1);
+      }
+      top = parsed;
+    } else if (arg === "--json") json = argv[++i];
     else if (arg === "--root") root = resolve(argv[++i]!);
     else if (!arg.startsWith("--")) profilePath = arg;
   }

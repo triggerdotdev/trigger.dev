@@ -97,12 +97,15 @@ export class InProcessProfiler {
     this.eluSamples = [];
     this.lastElu = performance.eventLoopUtilization();
 
-    this.eluTimer = setInterval(() => {
+    const timer = setInterval(() => {
       const current = performance.eventLoopUtilization();
       const diff = performance.eventLoopUtilization(current, this.lastElu!);
       this.lastElu = current;
       this.eluSamples.push(Number.isFinite(diff.utilization) ? diff.utilization : 0);
     }, intervalMs);
+
+    timer.unref();
+    this.eluTimer = timer;
   }
 
   stopEluSampling(): EluStats {

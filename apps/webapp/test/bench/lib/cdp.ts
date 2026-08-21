@@ -68,10 +68,20 @@ class CdpSession {
   private nextId = 1;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
 
+  /**
+   * Anything that ends the socket has to settle the in-flight requests. If the
+   * profiled webapp exits mid-run, an unsettled `send()` would otherwise hang
+   * until the suite-level timeout with nothing explaining why.
+   */
   private constructor(ws: WebSocket) {
     this.ws = ws;
     this.ws.on("message", (data) => {
-      const msg = JSON.parse(data.toString()) as CdpMessage;
+      let msg: CdpMessage;
+      try {
+        msg = JSON.parse(data.toString()) as CdpMessage;
+      } catch {
+        return;
+      }
       if (msg.id === undefined) return;
       const waiter = this.pending.get(msg.id);
       if (!waiter) return;
@@ -79,6 +89,16 @@ class CdpSession {
       if (msg.error) waiter.reject(new Error(`${msg.error.message} (${msg.error.code})`));
       else waiter.resolve(msg.result);
     });
+
+    const rejectAll = (reason: string) => {
+      for (const waiter of this.pending.values()) {
+        waiter.reject(new Error(reason));
+      }
+      this.pending.clear();
+    };
+
+    this.ws.on("error", (err: Error) => rejectAll(`CDP socket error: ${err.message}`));
+    this.ws.on("close", () => rejectAll("CDP socket closed before the response arrived"));
   }
 
   /**
@@ -96,6 +116,10 @@ class CdpSession {
   }
 
   send<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error(`CDP socket is not open, cannot send ${method}`));
+    }
+
     const id = this.nextId++;
     const promise = new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
@@ -155,13 +179,16 @@ export class WebappProfiler {
 
     void this.evaluateElu();
 
-    this.eluTimer = setInterval(() => {
+    const timer = setInterval(() => {
       void this.evaluateElu().then((utilization) => {
         if (utilization !== undefined) {
           this.eluSamples.push({ atMs: Date.now() - this.eluStartedAt, utilization });
         }
       });
     }, intervalMs);
+
+    timer.unref();
+    this.eluTimer = timer;
   }
 
   /**
