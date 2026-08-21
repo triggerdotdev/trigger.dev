@@ -144,6 +144,31 @@ for await (const turn of session) {
 
 Without this, a resumed chat silently loses its history: the model sees only the message that triggered the continuation. In a hand-rolled loop, seed by passing the stored history into the turn-0 `addIncoming` call — shown in the example below.
 
+### Rotating to a new deployment
+
+With `chat.createSession()`, use `chat.requestUpgrade()` and let the iterator exit normally. For an immediate handoff, close the iterator before calling `chat.endAndContinue()`; the method rejects until the iterator and any active `next()` call have settled. In a fully hand-rolled custom agent, call it directly to hand the Session to a fresh run.
+
+Close the iterator between reads. If `return()` races a `next()` that is already waiting for input, it waits for that read to settle before releasing the handoff guard. Input dispatched while the iterator is closing is not yielded as a turn and remains available to the continuation unless you write another turn-complete boundary.
+
+Call it between turns, after detaching the old run's input listeners. If the old run completed its current turn, persist its state and write the turn-complete boundary before the handoff:
+
+```ts
+// Detach any chat.messages.on() subscriptions you created.
+stop.cleanup();
+await persistMessages(conversation.uiMessages);
+await chat.writeTurnComplete();
+await chat.endAndContinue();
+return;
+```
+
+The server starts a continuation run using the Session's existing trigger configuration and atomically makes it the current run. The Session and its streams stay open, so input that the old run has not consumed remains on `.in` for the continuation run. The new run uses the latest deployed task version unless the Session's trigger configuration sets `lockToVersion`.
+
+If input has been dispatched to the old run but should be processed by the continuation, detach the listeners and do not write another turn-complete boundary before handing off. `chat.writeTurnComplete()` acknowledges the latest input dispatched to the old run; writing it after that dispatch would make the continuation resume after the input.
+
+<Warning>
+  `chat.endAndContinue()` starts the new run but does not stop the caller. Await it and return from `run()` immediately; continuing to read or write can race the new run on the same Session. If the handoff fails, the promise rejects.
+</Warning>
+
 ### turn.complete() vs manual control
 
 `turn.complete(result)` is the one-call path — it handles piping, capturing the response, accumulating messages, cleaning up aborted parts on a stop, and writing the turn-complete chunk.
@@ -217,6 +242,7 @@ For full control, skip `createSession` and compose the primitives directly:
 | `chat.createStopSignal()`       | Create a managed stop signal wired to the stop input stream                                  |
 | `chat.pipeAndCapture(result)`   | Pipe a stream and capture the response; returns `{ message, status, error }`                 |
 | `chat.writeTurnComplete()`      | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors             |
+| `chat.endAndContinue()`         | Hand off the Session to a continuation run; call between turns, then return                  |
 | `chat.MessageAccumulator`       | Accumulates conversation messages across turns                                               |
 | `chat.pipe(stream)`             | Pipe a stream to the frontend (no response capture)                                          |
 | `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response                                            |
