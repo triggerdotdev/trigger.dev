@@ -422,11 +422,13 @@ export type StartSessionResult = {
  * Public surface of {@link TriggerChatTransport}'s session state. Everything
  * the customer should persist for resumption across page reloads. The
  * transport addresses by `chatId` everywhere, so this is light: just a PAT,
- * the last SSE event id, and a couple of UX-state flags.
+ * resume cursors, and a couple of UX-state flags.
  */
 export type ChatSessionPersistedState = {
   publicAccessToken: string;
   lastEventId?: string;
+  /** The `.in` append sequence of the last send this client owned; reused as `sinceInSeq` on reconnect. */
+  activeInputSeq?: number;
   isStreaming?: boolean;
 };
 
@@ -631,6 +633,8 @@ type ChatSessionState = {
   publicAccessToken: string;
   /** Last SSE event ID — used to resume the stream without replaying old events. */
   lastEventId?: string;
+  /** `.in` append sequence used to filter stale turn boundaries after reconnecting. */
+  activeInputSeq?: number;
   /** Set when the stream was aborted mid-turn (stop). On reconnect, skip chunks until trigger:turn-complete. */
   skipToTurnComplete?: boolean;
   /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
@@ -718,6 +722,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         this.sessions.set(chatId, {
           publicAccessToken: session.publicAccessToken,
           lastEventId: session.lastEventId,
+          activeInputSeq: session.activeInputSeq,
           isStreaming: session.isStreaming,
         });
       }
@@ -870,6 +875,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       this.activeStreams.delete(chatId);
     }
 
+    state.activeInputSeq = inSeq;
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
@@ -1177,13 +1183,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     return this.subscribeToSessionStream(state, abortSignal, options.chatId, {
       resumed: true,
       sendStopOnAbort: options.stopOnAbort ?? false,
+      sinceInSeq: state.activeInputSeq,
       // Reconnect-on-reload opts into the server's settled-peek shortcut
-      // so the SSE doesn't hang for 60s when no turn is in flight. Active
-      // send-a-message paths must keep wait=60 to avoid racing the
-      // freshly-triggered turn's first chunk. Watch mode must NOT peek: a
-      // settled peek between turns sets sessionSettled and closes the
+      // so the SSE doesn't hang for 60s when no turn is in flight. A known
+      // active input must not peek because the previous turn's completion
+      // can remain at the tail until the current turn writes its first chunk.
+      // Watch mode must NOT peek: a settled peek between turns closes the
       // standing subscription, so the viewer never sees the next turn.
-      peekSettled: !this.watchMode,
+      peekSettled: !this.watchMode && state.activeInputSeq === undefined,
     });
   };
 
@@ -1283,6 +1290,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
     // no-ops when the persisted session says isStreaming: false).
+    state.activeInputSeq = inSeq;
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
@@ -1307,6 +1315,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.sessions.set(chatId, {
       publicAccessToken: session.publicAccessToken,
       lastEventId: session.lastEventId,
+      activeInputSeq: session.activeInputSeq,
       isStreaming: session.isStreaming,
     });
     this.notifySessionChange(chatId, this.toPersisted(this.sessions.get(chatId)!));
@@ -1441,6 +1450,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private toPersisted = (state: ChatSessionState): ChatSessionPersistedState => ({
     publicAccessToken: state.publicAccessToken,
     lastEventId: state.lastEventId,
+    activeInputSeq: state.activeInputSeq,
     isStreaming: state.isStreaming,
   });
 
@@ -1750,6 +1760,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }) as typeof fetch)
           : undefined;
         let sawFirstChunk = false;
+        let sinceInSeq = options?.sinceInSeq;
 
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
@@ -1983,10 +1994,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
               // Skip a turn-complete from an earlier turn (committed `.in` cursor
               // below this send's seq), e.g. an undo action that raced this send.
-              if (options?.sinceInSeq !== undefined) {
+              if (sinceInSeq !== undefined) {
                 const cursorRaw = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
                 const cursor = cursorRaw !== undefined ? Number.parseInt(cursorRaw, 10) : NaN;
-                if (!Number.isNaN(cursor) && cursor < options.sinceInSeq) {
+                if (!Number.isNaN(cursor) && cursor < sinceInSeq) {
                   continue;
                 }
               }
@@ -2004,6 +2015,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 sessionInEventId: headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER),
                 ...this.turnAttribution(chatId),
               });
+              state.activeInputSeq = undefined;
+              sinceInSeq = undefined;
               state.isStreaming = false;
               this.notifySessionChange(chatId, state);
               this.coordinator?.release(chatId);
