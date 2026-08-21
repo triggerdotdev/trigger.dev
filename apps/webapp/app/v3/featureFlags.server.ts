@@ -1,6 +1,6 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
@@ -240,28 +240,36 @@ export async function replaceGlobalFeatureFlags(
   }
 ): Promise<void> {
   const canDeleteLocked = params.unlockLockedFlags && !params.isManagedCloud;
-  const upsertOps: ReturnType<typeof client.featureFlag.upsert>[] = [];
+  const toUpsert: { key: FeatureFlagKey; value: unknown }[] = [];
   const keysToDelete: string[] = [];
 
   for (const key of params.catalogKeys) {
     if (key in params.requestedFlags) {
-      const value = params.requestedFlags[key];
-      upsertOps.push(
-        client.featureFlag.upsert({
-          where: { key },
-          create: { key, value: value as any },
-          update: { value: value as any },
-        })
-      );
+      toUpsert.push({ key, value: params.requestedFlags[key] });
     } else if (canDeleteLocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
       keysToDelete.push(key);
     }
   }
 
-  await client.$transaction([
-    ...upsertOps,
-    ...(keysToDelete.length > 0
-      ? [client.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
-      : []),
-  ]);
+  const applied = await $transaction(client, "replaceGlobalFeatureFlags", async (tx) => {
+    for (const { key, value } of toUpsert) {
+      await tx.featureFlag.upsert({
+        where: { key },
+        create: { key, value: value as any },
+        update: { value: value as any },
+      });
+    }
+
+    if (keysToDelete.length > 0) {
+      await tx.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } });
+    }
+
+    return true;
+  });
+
+  // The helper resolves undefined instead of throwing when Prisma errors are swallowed. This
+  // write deletes flags, so treat a transaction that did not run as a failure the caller sees.
+  if (!applied) {
+    throw new Error("replaceGlobalFeatureFlags: transaction did not complete");
+  }
 }
