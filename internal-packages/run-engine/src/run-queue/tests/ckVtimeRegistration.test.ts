@@ -7,16 +7,13 @@ import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import type { InputPayload } from "../types.js";
 
-// Two things a mutation audit found nothing was running.
+// Two registration paths nothing else covers.
 //
-// The TTL enqueue command carries its own copy of the registration block. Every mutation
-// to the plain copy is caught by between 5 and 19 tests; every mutation to the TTL copy
-// was green, because no test enqueued a message that had a TTL with the flag on.
+// The TTL enqueue command carries its own copy of the registration block, and the only way
+// into it is enqueueing a run that has a TTL while the flag is on.
 //
-// And every test ran at the default quantum of 1, so no tag in the suite ever had a
-// fractional part. Lua numbers are truncated to integers on their way into Redis, which is
-// why the arrival and serve paths wrap their tags in tostring(). With integer tags those
-// calls do nothing, so removing them was green too.
+// The quantum is the other: everything else runs at the default of 1, so no tag anywhere
+// in the suite has a fractional part and the weight dimension goes unexercised.
 
 const testOptions = {
   name: "rq",
