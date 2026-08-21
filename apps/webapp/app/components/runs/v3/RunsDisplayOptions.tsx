@@ -337,7 +337,7 @@ function ColumnRow({
         onDrop();
       }}
     >
-      {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-500" />}
+      {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-indigo-500" />}
       {/* Native label so the whole name area toggles the column, matching CheckboxWithLabel. */}
       <label
         className={cn(
