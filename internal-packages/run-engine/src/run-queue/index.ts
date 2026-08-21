@@ -5526,6 +5526,10 @@ local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
           redis.call('ZREM', fullQueueKey, messageId)
           redis.call('ZREM', envQueueKey, messageId)
           decrLengthCounter()
+          if ttlQueueKey and ttlQueueKey ~= '' then
+            local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+            redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
+          end
         else
           redis.call('ZREM', fullQueueKey, messageId)
           redis.call('ZREM', envQueueKey, messageId)
