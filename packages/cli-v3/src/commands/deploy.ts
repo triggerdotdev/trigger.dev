@@ -1805,6 +1805,10 @@ async function handleLocalBundleDeploy({
 
       logger.debug("Synced env vars with the server");
     }
+  } else if (Object.keys(buildManifest.deploy.sync?.env ?? {}).length > 0) {
+    logger.log(
+      "Skipping syncing env vars. The environment variables in your project have changed, but the --skip-sync-env-vars flag was provided."
+    );
   }
 
   const $deploymentSpinner = spinner();
@@ -2614,7 +2618,12 @@ async function handleFromBundleDeploy({
 
     buildEnvVars = buildEnvVarsResult.data.variables;
   } else if (bundleManifest.build.env && Object.keys(bundleManifest.build.env).length > 0) {
-    buildEnvVars = bundleManifest.build.env;
+    // Extensions can set undefined values at runtime despite the manifest type
+    buildEnvVars = Object.fromEntries(
+      Object.entries(bundleManifest.build.env).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string"
+      )
+    );
   }
 
   if (!existingDeploymentId) {
