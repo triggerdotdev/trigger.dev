@@ -5654,6 +5654,16 @@ local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
       if gatedPending == nil then gatedPending = {} end
       table.insert(gatedPending, ckQueueName)
     end
+    -- NEW: report the gate the same way a future head is reported, so pass 1 declines to
+    -- spend a window slot on a candidate it cannot serve. Previously this fell through
+    -- returning nil and cost a slot, and because a gated variant's tag stops advancing it
+    -- also keeps sorting to the front and being revisited first, so enough of them
+    -- permanently consumed the fair pass and the scheduler ran on pass 2's age order
+    -- instead. Worse than that in the shape where the gated variants also hold the oldest
+    -- heads: pass 2's own window fills with them too and servable work behind them is
+    -- reached by neither pass for as long as the gate holds. Skipping without spending is
+    -- bounded by scanLimit, which is already the cap on how far pass 1 will read.
+    return 'notReady'
   end
 end
 
