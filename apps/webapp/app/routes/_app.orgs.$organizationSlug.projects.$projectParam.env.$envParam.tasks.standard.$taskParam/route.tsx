@@ -46,6 +46,8 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -163,6 +165,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       cursor,
       direction,
       includeHasAnyRuns: true,
+      columns: getRunColumnsForSelect(request),
     })
     .catch(() => null);
 
@@ -266,6 +269,7 @@ export default function Page() {
                           onClick={() => showNewRunsRef.current()}
                         />
                       ) : null}
+                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
                       <Suspense fallback={null}>
                         <TypedAwait resolve={runList} errorElement={null}>
                           {(list) => (list ? <ListPagination list={list} /> : null)}

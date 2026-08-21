@@ -6,6 +6,7 @@ import { ASK_AI_SHORTCUT, askAiCanOpen } from "~/components/dashboard-agent/ask-
 import { useDashboardAgentAvailable } from "~/components/dashboard-agent/dashboardAgentOpenRequest";
 import { NEW_CHAT_SHORTCUT } from "~/components/dashboard-agent/DashboardAgentHeader";
 import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
+import { COLUMNS_SHORTCUT } from "~/components/runs/v3/RunsDisplayOptions";
 import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Header3 } from "./primitives/Headers";
@@ -142,6 +143,9 @@ function ShortcutContent() {
           )}
           <div className="space-y-3">
             <Header3>Runs page</Header3>
+            <Shortcut name="Customize columns">
+              <ShortcutKey shortcut={COLUMNS_SHORTCUT} variant="medium/bright" />
+            </Shortcut>
             <Shortcut name="Bulk action: Cancel runs">
               <ShortcutKey shortcut={{ key: "c" }} variant="medium/bright" />
             </Shortcut>
