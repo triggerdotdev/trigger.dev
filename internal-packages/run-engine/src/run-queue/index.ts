@@ -237,18 +237,13 @@ export type RunQueueOptions = {
     idleMaxEntries?: number;
     /**
      * Bounds how far above the floor a brand-new variant can register, as a multiple of
-     * the quantum. A sanity clamp only: it exists so one corrupted tag cannot propagate
-     * to every future arrival, and the default is set far beyond any reachable spread.
+     * the quantum. A sanity clamp only, so one corrupted tag cannot reach every future
+     * arrival, and the default sits far beyond any spread a queue can produce.
      *
-     * Do not lower it to a value a busy queue can reach. A cap the arrivals actually hit
-     * stops being a bound and becomes a collision point: clamped arrivals pile up at the
-     * cap line instead of stacking one quantum apart, the serving front crosses that
-     * dense band slower than the floor rises, and a backlogged variant's tag climbs into
-     * the band and ties with the crowd, at which point key-name order decides service.
-     * Measured on Redis, 40 fresh keys per call over 300 calls: a backlog kept 293 of
-     * 1500 slots uncapped and 92 with the cap at 64, so a reachable cap quietly restores
-     * a milder form of the starvation this rule exists to prevent, and does it in the
-     * hostile-tenant case specifically.
+     * Do not lower it to a value a busy queue can reach. Arrivals that hit the cap pile up
+     * on the cap line instead of stacking a quantum apart, and a backlogged tag eventually
+     * climbs into that band and ties with the crowd, which is the starvation the stacking
+     * rule exists to prevent. Pinned by ckVtimeStarvation.test.ts.
      */
     arrivalCapMultiplier?: number;
   };
@@ -4389,16 +4384,12 @@ if #earliest > 0 then
 end
 
 -- Register this variant in the virtual-time index. NX means an already-advanced tag is
--- never rewound. A returning variant starts at max(floor, remembered idle tag): it would
--- otherwise be handed full credit at the floor on every re-enqueue, which starves any
--- variant carrying a persistent backlog. A never-seen variant instead joins one quantum
--- behind the highest tag on record (capped at floor + arrivalCap): registered at a frozen
--- floor it would permanently outrank anything that has ever been served.
--- The idle lookup only matters when this call is what registers the variant: ZADD NX is
--- a no-op on an already-registered one, and its tag is already correct. Doing the ZADD
--- first and the ZSCORE only on the registering call takes the common path from two ops to
--- one. Measured saturated: 0.33 usec of Redis CPU per redis.call removed, and the pair of
--- reductions here is ~30% of the vtime enqueue overhead.
+-- never rewound. A returning variant starts at max(floor, remembered idle tag), because
+-- full credit at the floor on every re-enqueue starves anything carrying a persistent
+-- backlog. A never-seen one joins a quantum behind the highest tag on record, capped at
+-- floor + arrivalCap, because a frozen floor would let it outrank everything ever served.
+-- The idle lookup runs only on the call that registers, since ZADD NX no-ops on a member
+-- whose tag is already correct, which keeps the common path at one op instead of two.
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
@@ -4407,12 +4398,10 @@ if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
       redis.call('ZADD', ckVtimeKey, 'XX', vidle, queueName)
     end
   else
-    -- Brand new (or reaped): join at the back of the current round rather than the
-    -- floor, so it cannot undercut consumed service credit. The ckVtime read includes
-    -- self at vfloor, so base only exceeds the floor on some OTHER variant's credit.
-    -- When nothing in ckVtime is above the floor the credit may have drained out with
-    -- a parked variant, so fall back to the idle set's max; skipping that read when
-    -- ckVtime already proves credit keeps steady minting at one extra read.
+    -- Brand new (or reaped): join at the back of the current round so it cannot undercut
+    -- consumed credit. The ckVtime read includes self at vfloor, so base only rises on
+    -- some OTHER variant's credit, and the idle max is the fallback for when that credit
+    -- drained out with a parked variant.
     local base = tonumber(vfloor)
     local vmax = redis.call('ZRANGE', ckVtimeKey, -1, -1, 'WITHSCORES')
     if #vmax > 0 and tonumber(vmax[2]) > base then
@@ -4571,17 +4560,8 @@ if #earliest > 0 then
   redis.call('ZADD', ckIndexKey, earliest[2], queueName)
 end
 
--- Register this variant in the virtual-time index. NX means an already-advanced tag is
--- never rewound. A returning variant starts at max(floor, remembered idle tag): it would
--- otherwise be handed full credit at the floor on every re-enqueue, which starves any
--- variant carrying a persistent backlog. A never-seen variant instead joins one quantum
--- behind the highest tag on record (capped at floor + arrivalCap): registered at a frozen
--- floor it would permanently outrank anything that has ever been served.
--- The idle lookup only matters when this call is what registers the variant: ZADD NX is
--- a no-op on an already-registered one, and its tag is already correct. Doing the ZADD
--- first and the ZSCORE only on the registering call takes the common path from two ops to
--- one. Measured saturated: 0.33 usec of Redis CPU per redis.call removed, and the pair of
--- reductions here is ~30% of the vtime enqueue overhead.
+-- Register this variant in the virtual-time index. Identical to the block in
+-- enqueueMessageCkVtimeTracked; see there for why the tag is chosen the way it is.
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
   local vidle = redis.call('ZSCORE', ckVtimeIdleKey, queueName)
@@ -4590,12 +4570,8 @@ if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
       redis.call('ZADD', ckVtimeKey, 'XX', vidle, queueName)
     end
   else
-    -- Brand new (or reaped): join at the back of the current round rather than the
-    -- floor, so it cannot undercut consumed service credit. The ckVtime read includes
-    -- self at vfloor, so base only exceeds the floor on some OTHER variant's credit.
-    -- When nothing in ckVtime is above the floor the credit may have drained out with
-    -- a parked variant, so fall back to the idle set's max; skipping that read when
-    -- ckVtime already proves credit keeps steady minting at one extra read.
+    -- Brand new (or reaped): joins at the back of the current round. Same rule and same
+    -- reasoning as enqueueMessageCkVtimeTracked.
     local base = tonumber(vfloor)
     local vmax = redis.call('ZRANGE', ckVtimeKey, -1, -1, 'WITHSCORES')
     if #vmax > 0 and tonumber(vmax[2]) > base then
@@ -4953,9 +4929,9 @@ for i, member in ipairs(expiredMembers) do
         local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
         if #earliest == 0 then
           redis.call('ZREM', ckIndexKey, rawQueueKey)
-          -- NEW: derived rather than passed in, because this sweep discovers the queues it
+          -- Derived rather than passed in, because this sweep discovers the queues it
           -- touches inside the script, exactly as ckIndexKey above is derived.
-          -- NEW: park the tag first so the variant's next enqueue re-registers with the
+          -- Park the tag first so the variant's next enqueue re-registers with the
           -- credit it earned rather than at the floor.
           local ckVtimeKey = keyPrefix .. ckMatch .. ":ckVtime"
           local ckVtimeIdleKey = keyPrefix .. ckMatch .. ":ckVtimeIdle"
@@ -5517,15 +5493,15 @@ local dequeuedCount = 0
 local attempted = {}
 local gatedPending = nil
 
--- Per-candidate serve. Body is dequeueMessagesFromCkQueueTracked's per-candidate
--- block, verbatim, with the marked NEW lines added. knownRegistered means the caller can
+-- Per-candidate serve, mirroring dequeueMessagesFromCkQueueTracked's per-candidate
+-- block. knownRegistered means the caller can
 -- vouch the candidate is a ckVtime member (pass 1's scan read it out of that set, and
 -- nothing removes a member this call has not served), so the gated branch below can skip
 -- its registration check for it.
 local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
   attempted[ckQueueName] = true
   local fullQueueKey = keyPrefix .. ckQueueName
-  -- NEW: the tag this call wrote back, if it served. Site A below reuses it rather than
+  -- The tag this call wrote back, if it served. Site A below reuses it rather than
   -- re-reading the score it just wrote.
   local servedTag = nil
 
@@ -5568,7 +5544,7 @@ local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
 
           dequeuedCount = dequeuedCount + 1
 
-          -- NEW: advance this variant's virtual time (weight hook: fixed 1 today)
+          -- Advance this variant's virtual time (weight hook: fixed 1 today)
           local weight = 1
           local tag = tonumber(redis.call('ZSCORE', ckVtimeKey, ckQueueName) or floor)
           if tag < floor then tag = floor end
@@ -5594,7 +5570,7 @@ local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
       local earliest = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
       if #earliest == 0 then
         redis.call('ZREM', ckIndexKey, ckQueueName)
-        -- NEW: park the tag in the idle set so the next enqueue re-registers with the
+        -- Park the tag in the idle set so the next enqueue re-registers with the
         -- credit this variant earned instead of full credit at the floor. Only above the
         -- floor is worth keeping: registration takes max(floor, idleTag), so an entry at
         -- or below the floor confers nothing and just grows the set.
@@ -5612,7 +5588,7 @@ local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
           redis.call('ZADD', ckVtimeIdleKey, tostring(parkTag), ckQueueName)
           redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
         end
-        redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
+        redis.call('ZREM', ckVtimeKey, ckQueueName)
       else
         redis.call('ZADD', ckIndexKey, earliest[2], ckQueueName)
       end
@@ -5620,56 +5596,40 @@ local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
       local any = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
       if #any == 0 then
         redis.call('ZREM', ckIndexKey, ckQueueName)
-        -- NEW: nothing was served, so no tag is in hand. Read it before the ZREM discards
+        -- Nothing was served, so no tag is in hand. Read it before the ZREM discards
         -- it, and keep it only if it is above the floor (see Site A).
         local idleTag = redis.call('ZSCORE', ckVtimeKey, ckQueueName)
         if idleTag and tonumber(idleTag) > floor then
           redis.call('ZADD', ckVtimeIdleKey, idleTag, ckQueueName)
           redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
         end
-        redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
+        redis.call('ZREM', ckVtimeKey, ckQueueName)
       else
         redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
-        -- NEW: backlog, but the head is scheduled later, so nothing here is servable this
+        -- Backlog, but the head is scheduled later, so nothing here is servable this
         -- call. The readiness is already known from the ZRANGEBYSCORE above, so reporting
         -- it costs nothing and lets pass 1 decline to spend a window slot on it.
         return 'notReady'
       end
     end
   else
-    -- NEW: gated on the per-key ceiling, so nothing above ran, including the registration
-    -- that a serve would have done. Pass 2 marks a variant attempted before this gate, and
-    -- its discovery step skips anything attempted, so an UNREGISTERED variant that is gated
-    -- was invisible to pass 1 and stayed that way on every call for as long as the gate
-    -- held. Unregistered here means it reached ckIndex without ever passing through a
-    -- vtime-aware write: a backlog queued before the flag went on, an enqueue from an
-    -- instance that still has it off, or a ckVtime that expired while ckIndex lived, which
-    -- are the same cases pass 2's discovery exists to repair.
-    -- NEW: a knownRegistered candidate needs none of that, so its gated visit costs just
-    -- the SCARD above, same as the flag-off command. The rest are collected and resolved
-    -- after pass 2 by one variadic ZADD NX, where the rare genuinely unregistered candidate
-    -- registers at max(floor, remembered idle tag), same rule as the enqueue path, so a
-    -- variant that drained under the gate does not come back with full credit.
+    -- The gate skipped the registration a serve would have done, and pass 2's discovery
+    -- skips anything already attempted, so an unregistered gated variant would stay
+    -- invisible to pass 1 for as long as the gate holds. Collect it for the batch below.
+    -- A knownRegistered one needs nothing, keeping its gated visit as cheap as flag-off.
     if not knownRegistered then
       if gatedPending == nil then gatedPending = {} end
       table.insert(gatedPending, ckQueueName)
     end
-    -- NEW: report the gate the same way a future head is reported, so pass 1 declines to
-    -- spend a window slot on a candidate it cannot serve. Previously this fell through
-    -- returning nil and cost a slot, and because a gated variant's tag stops advancing it
-    -- also keeps sorting to the front and being revisited first, so enough of them
-    -- permanently consumed the fair pass and the scheduler ran on pass 2's age order
-    -- instead. Worse than that in the shape where the gated variants also hold the oldest
-    -- heads: pass 2's own window fills with them too and servable work behind them is
-    -- reached by neither pass for as long as the gate holds. Skipping without spending is
-    -- bounded by scanLimit, which is already the cap on how far pass 1 will read.
+    -- A gated candidate cannot be served on this call and its tag does not advance, so
+    -- letting it spend a window slot would hand the whole fair pass to the gate.
     return 'notReady'
   end
 end
 
 -- Pass 1: fair order (lowest virtual start tag first)
 local vtimeCandidates = redis.call('ZRANGE', ckVtimeKey, 0, scanLimit - 1)
--- NEW: the scan read doubles as a free membership set for pass 2's discovery
+-- The scan read doubles as a free membership set for pass 2's discovery
 -- step. It is complete whenever ckVtime holds no more than scanLimit variants,
 -- which is the common case; when it is truncated the discovery ZADD is NX so the
 -- variants it cannot rule out cost correctness nothing.
@@ -5677,7 +5637,7 @@ local registered = {}
 for _, ckQueueName in ipairs(vtimeCandidates) do
   registered[ckQueueName] = true
 end
--- NEW: a variant whose head is scheduled in the future stays registered and stays
+-- A variant whose head is scheduled in the future stays registered and stays
 -- scanned, it just does not spend one of the window's slots. Without this a retry storm
 -- across enough keys fills the window with variants that cannot be served, pass 1 serves
 -- nothing, and because minServableTag is the only route that can lift the floor over a
@@ -5695,23 +5655,15 @@ end
 -- Clamp to at least 3x so pass 2 never scans fewer index variants than the old command, preserving work conservation regardless of the configured multiplier
 local pass2Window = math.max(window, actualMaxCount * 3)
 local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, pass2Window)
--- NEW: pass 2 runs even when pass 1 filled the batch. A variant that reached
--- ckIndex without a ckVtime entry (queued before the flag went on, enqueued by an
--- instance that still has it off, or left behind by an expired ckVtime) is invisible
--- to pass 1, and pass 1 filling the batch off the registered variants alone kept it
--- that way until one of them drained. With no batch slot left we only register it,
--- at the floor, so the next call's pass 1 leads with it. Serving is still capped at
--- actualMaxCount, so this adds no serve the old gate would have refused.
+-- Pass 2 runs even when pass 1 filled the batch, because a variant sitting in ckIndex
+-- with no ckVtime entry is invisible to pass 1 and stays that way until a registered one
+-- drains. With no slot left it is only registered, so the next pass 1 leads with it.
 --
--- This site and the gated-pending batch below register at the FLOOR, deliberately, and
--- not by the stacked rule the enqueue paths use. They are repair affordances: everything
--- they see is established work that was already waiting and lost its tag (queued before
--- the flag, enqueued by a flag-off instance, or ckVtime expired under a live ckIndex), so
--- "serve next" is the right semantics and there is nothing here to stack behind. A tenant
--- cannot mint into them while the flag is on, because a flag-on enqueue always registers
--- the variant first. That is the invariant: floor registration is for repair only. Any NEW
--- enqueue-side path must use the stacked rule instead, or fresh keys start entering at the
--- floor again and the starvation this all exists to prevent comes straight back.
+-- Invariant: this site and the gated batch below register at the FLOOR while the enqueue
+-- paths stack, deliberately. Floor registration is for repair only, and it is safe here
+-- because everything these two see is established work that lost its tag, which a tenant
+-- cannot mint into while the flag is on. A new enqueue-side path has to stack instead, or
+-- fresh keys start entering at the floor again.
 local discovered = nil
 for _, ckQueueName in ipairs(ckQueues) do
   if not attempted[ckQueueName] then
@@ -5769,7 +5721,7 @@ if gatedPending ~= nil then
   end
 end
 
--- NEW: persist floor and refresh TTLs. A call that served nothing writes nothing: the two
+-- Persist floor and refresh TTLs. A call that served nothing writes nothing: the two
 -- things this block would persist are both re-derivable, since minServableTag is only set
 -- inside a successful serve and pass 2's discovery only runs once the batch is full, so
 -- the only floor movement on a zero-serve call is the min-tag read-repair, which is
@@ -5781,10 +5733,10 @@ if dequeuedCount > 0 then
     floor = minServableTag
   end
   redis.call('SET', ckVtimeFloorKey, tostring(floor), 'EX', stateTtl)
-  -- NEW: an idle entry at or below the floor confers no credit, because registration takes
+  -- An idle entry at or below the floor confers no credit, because registration takes
   -- max(floor, idleTag). Dropping it bounds the idle set at one op per serving call.
   redis.call('ZREMRANGEBYSCORE', ckVtimeIdleKey, '-inf', tostring(floor))
-  -- NEW: the reap above is worth nothing while the floor is pinned, which a workload that
+  -- The reap above is worth nothing while the floor is pinned, which a workload that
   -- keeps minting fresh concurrency keys does indefinitely (each one registers at the floor
   -- and is served at it, so minServableTag never rises). Measured: the set grew by the drain
   -- count every round and never shrank. Cap by rank as well, which does not depend on the
@@ -6382,12 +6334,9 @@ end
 local earliestInCkQueue = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
 if #earliestInCkQueue == 0 then
   redis.call('ZREM', ckIndexKey, messageQueueName)
-  -- NEW: the variant has drained, so it leaves the fair order too. Previously only the
-  -- vtime dequeue removed a ckVtime entry, so an ack left one behind whose tag had
-  -- stopped advancing until some later scan happened to visit and collect it.
-  -- NEW: park the tag first, so the variant's next enqueue re-registers with the credit it
-  -- earned rather than at the floor. No floor key here, so this saves unconditionally; the
-  -- dequeue command reaps everything at or below the floor on its next serving call.
+  -- Park the tag before the variant leaves the fair order, so its next enqueue
+  -- re-registers with the credit it earned rather than at the floor. Unconditional: there
+  -- is no floor key here, and the dequeue reaps at or below the floor on its next serve.
   local idleTag = redis.call('ZSCORE', ckVtimeKey, messageQueueName)
   if idleTag then
     redis.call('ZADD', ckVtimeIdleKey, idleTag, messageQueueName)
@@ -6799,10 +6748,7 @@ end
 local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 if #earliest == 0 then
   redis.call('ZREM', ckIndexKey, messageQueueName)
-  -- NEW: the variant has drained, so it leaves the fair order too. Previously only the
-  -- vtime dequeue removed a ckVtime entry, so an ack left one behind whose tag had
-  -- stopped advancing until some later scan happened to visit and collect it.
-  -- NEW: park the tag first, same rule as the ack path.
+  -- Park the tag before the variant leaves the fair order, same rule as the ack path.
   local idleTag = redis.call('ZSCORE', ckVtimeKey, messageQueueName)
   if idleTag then
     redis.call('ZADD', ckVtimeIdleKey, idleTag, messageQueueName)

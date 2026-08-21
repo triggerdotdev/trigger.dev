@@ -509,10 +509,9 @@ describe("CK vtime starvation by drain-and-re-register", () => {
       await queue.quit();
     }
   });
-  // The defect Devin reported: a workload minting a previously-unseen concurrency key per
-  // run pinned the floor at the epoch, so a variant that had ever been served sat above
-  // every arrival and lost forever. Being served once was a permanent penalty. Measured at
-  // 1/600 before the fix against flag-off's 120/600.
+  // A workload minting a previously-unseen concurrency key per run pins the floor at the
+  // epoch, so any variant that has ever been served sits above every arrival and loses
+  // forever. Being served once must not be a permanent penalty.
   redisTest(
     "a persistent backlog survives a flood of brand-new keys",
     async ({ redisContainer }) => {
