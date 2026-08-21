@@ -1,11 +1,12 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
   type FeatureFlagKey,
   FeatureFlagCatalog,
+  GLOBAL_LOCKED_FLAGS,
 } from "~/v3/featureFlags";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 
@@ -219,4 +220,48 @@ export async function applyGlobalMintKindFlip(
 
     return makeSetMultipleFlags(tx)(stamped);
   });
+}
+
+/**
+ * Replace-semantics write for the global admin flags page: catalog keys present in
+ * `requestedFlags` are upserted, catalog keys absent from it are deleted.
+ *
+ * A locked flag absent from the payload means the page never offered it for editing, not that
+ * the admin unset it, so it survives the sweep. Only a self-hosted page that says it unlocked
+ * them can delete one.
+ */
+export async function replaceGlobalFeatureFlags(
+  client: PrismaClient,
+  params: {
+    requestedFlags: Record<string, unknown>;
+    catalogKeys: FeatureFlagKey[];
+    isManagedCloud: boolean;
+    unlockLockedFlags: boolean;
+  }
+): Promise<void> {
+  const canDeleteLocked = params.unlockLockedFlags && !params.isManagedCloud;
+  const upsertOps: ReturnType<typeof client.featureFlag.upsert>[] = [];
+  const keysToDelete: string[] = [];
+
+  for (const key of params.catalogKeys) {
+    if (key in params.requestedFlags) {
+      const value = params.requestedFlags[key];
+      upsertOps.push(
+        client.featureFlag.upsert({
+          where: { key },
+          create: { key, value: value as any },
+          update: { value: value as any },
+        })
+      );
+    } else if (canDeleteLocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
+      keysToDelete.push(key);
+    }
+  }
+
+  await client.$transaction([
+    ...upsertOps,
+    ...(keysToDelete.length > 0
+      ? [client.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
+      : []),
+  ]);
 }
