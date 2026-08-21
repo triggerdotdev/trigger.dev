@@ -243,6 +243,7 @@ export class RunEngine {
             workerItemsSuffix: "ttl-worker:{queue:ttl-expiration:}items",
             visibilityTimeoutMs: options.queue?.ttlSystem?.visibilityTimeoutMs ?? 30_000,
           },
+      ckVirtualTimeScheduling: options.queue?.ckVirtualTimeScheduling,
     });
 
     this.worker = new Worker({
