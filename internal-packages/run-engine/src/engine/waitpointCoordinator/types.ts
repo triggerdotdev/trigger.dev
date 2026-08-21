@@ -19,6 +19,16 @@ export type WaitpointCoordinator = {
   registerBlocks(params: RegisterBlocksParams): Promise<{ pendingCount: number }>;
   registerBlocksLockless(params: RegisterBlocksLocklessParams): Promise<void>;
   complete(params: CompleteParams): Promise<CompleteResult>;
+  createDateTimeWaitpoint(params: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult>;
+  createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult>;
+  mintAssociatedWaitpointData(params: {
+    projectId: string;
+    environmentId: string;
+  }): AssociatedWaitpointData;
+  createAssociatedWaitpoint(params: {
+    runId: string;
+    data: AssociatedWaitpointData;
+  }): Promise<Waitpoint>;
 };
 
 export type ClearRunBlockStateParams = {
@@ -86,4 +96,51 @@ export type BlockedRun = {
 export type CompleteResult = {
   waitpoint: Waitpoint;
   blockedRuns: BlockedRun[];
+};
+
+/**
+ * Discriminated on purpose. The caller enqueues the `finishWaitpoint` job only in the
+ * `created` branch, because today's create methods return before their enqueue on the
+ * cached path. A boolean would let a later edit enqueue on both branches.
+ */
+export type CreateWaitpointResult =
+  | { kind: "cached"; waitpoint: Waitpoint }
+  | { kind: "created"; waitpoint: Waitpoint };
+
+export type CreateDateTimeWaitpointParams = {
+  /** When set, the waitpoint co-locates with this run's DB and the dedup probe targets it. */
+  runId?: string;
+  projectId: string;
+  environmentId: string;
+  completedAfter: Date;
+  idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
+};
+
+export type CreateManualWaitpointParams = {
+  runId?: string;
+  environmentId: string;
+  projectId: string;
+  idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
+  timeout?: Date;
+  tags?: string[];
+  /**
+   * For a STANDALONE token (no owning `runId`): the residency the env's mint kind resolves
+   * to. Ignored when `runId` is set, because co-location wins. Only a Postgres
+   * implementation reads this.
+   */
+  standaloneResidency?: "NEW" | "LEGACY";
+};
+
+/** The RUN-waitpoint row data. Pure — no store touch — so the mint is coordinator-owned. */
+export type AssociatedWaitpointData = {
+  id: string;
+  friendlyId: string;
+  type: "RUN";
+  status: "PENDING";
+  idempotencyKey: string;
+  userProvidedIdempotencyKey: false;
+  projectId: string;
+  environmentId: string;
 };
