@@ -150,4 +150,78 @@ describe("CK vtime: gated variants and the pass-1 window", () => {
     },
     60_000
   );
+  // The sibling case, and a mutation audit found nothing was testing it: a variant whose
+  // head is scheduled in the future already reports 'notReady' so pass 1 declines to spend
+  // a slot on it. Deleting that report left the whole vtime suite green, meaning the
+  // behaviour was load-bearing by comment only. Same shape as the gated test above: enough
+  // unservable variants sorted ahead on tag to eat the window, and a servable one behind
+  // them that fair order says to serve first.
+  redisTest(
+    "future-headed variants must not spend the fair pass's budget",
+    async ({ redisContainer }) => {
+      const MAX = 2; // window = 6
+      const FUTURE = 8;
+      const queue = createQueue(redisContainer, "runqueue:test:futurewin:");
+
+      try {
+        const env = baseEnv;
+        await queue.updateEnvConcurrencyLimits(env);
+        const shard = testOptions.keys.masterQueueShardForEnvironment(env.id, 2);
+        const t0 = Date.now() - 5_000_000;
+        const future = Date.now() + 60 * 60 * 1000;
+
+        // Unservable: heads scheduled an hour out. Nothing can serve these this call.
+        for (let i = 0; i < FUTURE; i++) {
+          await queue.enqueueMessage({
+            env,
+            message: makeMessage({
+              runId: `f-${i}`,
+              concurrencyKey: `future-${i}`,
+              timestamp: future + i,
+            }),
+            workerQueue: env.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        // Lowest tag among servable variants, newest head: fair order first, age order last.
+        await queue.enqueueMessage({
+          env,
+          message: makeMessage({
+            runId: "owed-0",
+            concurrencyKey: "owed",
+            timestamp: t0 + 900_000,
+          }),
+          workerQueue: env.id,
+          skipDequeueProcessing: true,
+        });
+        await queue.enqueueMessage({
+          env,
+          message: makeMessage({ runId: "old-0", concurrencyKey: "old", timestamp: t0 + 100 }),
+          workerQueue: env.id,
+          skipDequeueProcessing: true,
+        });
+
+        const ckv = testOptions.keys.ckVtimeKeyFromQueue(variantName("owed"));
+        for (let i = 0; i < FUTURE; i++) await queue.redis.zadd(ckv, 0, variantName(`future-${i}`));
+        await queue.redis.zadd(ckv, 1, variantName("owed"));
+        await queue.redis.zadd(ckv, 5, variantName("old"));
+
+        const served: string[] = [];
+        for (let c = 0; c < 4 && served.length < 1; c++) {
+          for (const m of await queue.testDequeueFromMasterQueue(shard, env.id, MAX)) {
+            served.push(m.message.concurrencyKey as string);
+            await queue.acknowledgeMessage(env.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        expect(served[0]).toBe("owed");
+      } finally {
+        await queue.quit();
+      }
+    },
+    60_000
+  );
 });
