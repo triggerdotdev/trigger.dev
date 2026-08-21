@@ -449,7 +449,11 @@ function RunBody({
           <Header2
             className={cn(
               "overflow-x-hidden",
-              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-tasks"
+              // The run-type accents are drawn for 3:1 as icons; as 16px text the
+              // tasks and agents blues fall under 4.5:1 on the light themes, so
+              // the title takes the text colour there and the icon carries type.
+              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-tasks",
+              "light:text-text-bright"
             )}
           >
             <span className="truncate">

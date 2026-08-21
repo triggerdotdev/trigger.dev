@@ -166,8 +166,11 @@ export function Slider({
             <span
               className={cn(
                 "pointer-events-none absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2 rounded border border-grid-bright bg-background-bright px-1.5 py-0.5 text-xs tabular-nums text-text-bright shadow-md transition-opacity",
-                // Not keyed off focus: the thumb keeps it after a click.
-                isDragging ? "opacity-100" : "opacity-0 group-hover/thumb:opacity-100"
+                // focus-visible, not focus: a click leaves the thumb focused,
+                // which would strand the label on screen.
+                isDragging
+                  ? "opacity-100"
+                  : "opacity-0 group-hover/thumb:opacity-100 group-focus-visible/thumb:opacity-100"
               )}
             >
               {valueTooltip(currentValue)}

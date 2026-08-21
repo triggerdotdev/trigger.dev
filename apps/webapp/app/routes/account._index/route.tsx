@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher, useLoaderData } from "@remix-run/react";
-import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import {
+  type ActionFunction,
+  json,
+  type LoaderFunctionArgs,
+  type SerializeFrom,
+} from "@remix-run/server-runtime";
 import { z } from "zod";
 import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
@@ -54,7 +59,6 @@ import {
 } from "~/components/themeOptions";
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
-import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import {
   applyThemeContrast,
   applyThemePreference,
@@ -64,6 +68,7 @@ import {
 import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { updateUserEmail, updateUserMarketingEmails, updateUserName } from "~/models/user.server";
+import { logger } from "~/services/logger.server";
 import { profileUpdateRateLimiter } from "~/services/profileUpdateRateLimiter.server";
 import { type EmailOwnership, getEmailOwnership } from "~/services/ssoManagedIdentity.server";
 import {
@@ -82,9 +87,9 @@ import {
   normalizeThemePreference,
   SystemDarkTheme,
   SystemLightTheme,
-  type ThemePreference,
+  ThemePreference,
 } from "~/utils/themePreference";
-import { cachedFlag } from "~/v3/featureFlags.server";
+import { cachedFlag, resolveOrganizationFeatureFlags } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { pageMeta } from "~/utils/pageTitle";
@@ -194,6 +199,25 @@ function profileUpdateError(error: string, status: number) {
   return json({ success: false as const, error }, { status });
 }
 
+/**
+ * Shared gate for the appearance writes: same rate limit as the profile writes,
+ * then the theme-switcher flag. Returns the user so the caller needn't load it
+ * a second time.
+ */
+async function requireAppearanceAccess(request: Request, userId: string) {
+  const rateLimited = await checkProfileUpdateRateLimit(userId);
+  if (rateLimited) return { error: rateLimited };
+
+  const user = await requireUser(request);
+  const showThemeSwitcher =
+    user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
+  if (!showThemeSwitcher) {
+    return { error: profileUpdateError("Not available", 404) };
+  }
+
+  return { user };
+}
+
 /** The only limit a scripted POST can't skip. */
 async function checkProfileUpdateRateLimit(userId: string) {
   const limit = await profileUpdateRateLimiter.limit(`user:${userId}`);
@@ -216,6 +240,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     organization: { slug: string };
     project: { slug: string };
     environment: { slug: string };
+    // Resolved here, not from route matches: /account sits outside an org, so
+    // `useFeatureFlags` would see none and the dialog would offer a shorter
+    // section list than the side menu - and saving it drops the rest.
+    featureFlags: Awaited<ReturnType<typeof resolveOrganizationFeatureFlags>>;
   } | null = null;
   try {
     const { organization, project, environment } = await new SelectBestEnvironmentPresenter().call({
@@ -225,8 +253,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
       organization: { slug: organization.slug },
       project: { slug: project.slug },
       environment: { slug: environment.slug },
+      featureFlags: await resolveOrganizationFeatureFlags(organization.featureFlags),
     };
-  } catch {}
+  } catch (error) {
+    logger.debug("Account page: no sidebar context for this user", {
+      userId: user.id,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
 
   return json({ showThemeSwitcher, sidebarContext, emailOwnership });
 }
@@ -237,79 +271,70 @@ export const action: ActionFunction = async ({ request }) => {
   const formData = await request.formData();
 
   if (formData.get("action") === "update-theme") {
-    const user = await requireUser(request);
-    const showThemeSwitcher =
-      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-    if (!showThemeSwitcher) {
-      return json({ error: "Not available" }, { status: 404 });
-    }
-    const theme = normalizeThemePreference(formData.get("theme"));
-    await updateThemePreference({ user, theme });
+    const gate = await requireAppearanceAccess(request, userId);
+    if ("error" in gate) return gate.error;
+    // Strict, matching /resources/preferences/theme: an unknown value must fail
+    // rather than quietly resetting a saved theme to the default.
+    const theme = ThemePreference.safeParse(formData.get("theme"));
+    if (!theme.success) return profileUpdateError("Invalid theme", 400);
+    await updateThemePreference({ user: gate.user, theme: theme.data });
     return json({ success: true });
   }
 
   if (formData.get("action") === "update-contrast") {
-    const user = await requireUser(request);
-    const showThemeSwitcher =
-      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-    if (!showThemeSwitcher) {
-      return json({ error: "Not available" }, { status: 404 });
-    }
+    const gate = await requireAppearanceAccess(request, userId);
+    if ("error" in gate) return gate.error;
     const contrast = normalizeThemeContrast(formData.get("contrast"));
-    await updateContrastPreference({ user, contrast });
+    await updateContrastPreference({ user: gate.user, contrast });
     return json({ success: true });
   }
 
   if (formData.get("action") === "update-icon-contrast") {
-    const user = await requireUser(request);
-    const showThemeSwitcher =
-      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-    if (!showThemeSwitcher) {
-      return json({ error: "Not available" }, { status: 404 });
-    }
+    const gate = await requireAppearanceAccess(request, userId);
+    if ("error" in gate) return gate.error;
     await updateIconContrastPreference({
-      user,
+      user: gate.user,
       iconContrast: formData.get("iconContrast") === "true",
     });
     return json({ success: true });
   }
 
   if (formData.get("action") === "update-underline-links") {
-    const user = await requireUser(request);
-    const showThemeSwitcher =
-      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-    if (!showThemeSwitcher) {
-      return json({ error: "Not available" }, { status: 404 });
-    }
+    const gate = await requireAppearanceAccess(request, userId);
+    if ("error" in gate) return gate.error;
     await updateUnderlineLinksPreference({
-      user,
+      user: gate.user,
       underlineLinks: formData.get("underlineLinks") === "true",
     });
     return json({ success: true });
   }
 
   if (formData.get("action") === "update-system-theme") {
-    const user = await requireUser(request);
-    const showThemeSwitcher =
-      user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
-    if (!showThemeSwitcher) {
-      return json({ error: "Not available" }, { status: 404 });
-    }
+    const gate = await requireAppearanceAccess(request, userId);
+    if ("error" in gate) return gate.error;
     // Strict: an unknown value must fail, not silently reset.
     const end = formData.get("end");
     if (end === "light") {
       const theme = SystemLightTheme.safeParse(formData.get("theme"));
-      if (!theme.success) return json({ error: "Invalid theme" }, { status: 400 });
-      await updateSystemThemePreference({ user, end: "systemLightTheme", theme: theme.data });
+      if (!theme.success) return profileUpdateError("Invalid theme", 400);
+      await updateSystemThemePreference({
+        user: gate.user,
+        end: "systemLightTheme",
+        theme: theme.data,
+      });
       return json({ success: true });
     }
     if (end === "dark") {
       const theme = SystemDarkTheme.safeParse(formData.get("theme"));
-      if (!theme.success) return json({ error: "Invalid theme" }, { status: 400 });
-      await updateSystemThemePreference({ user, end: "systemDarkTheme", theme: theme.data });
+      if (!theme.success) return profileUpdateError("Invalid theme", 400);
+      await updateSystemThemePreference({
+        user: gate.user,
+        end: "systemDarkTheme",
+        theme: theme.data,
+      });
       return json({ success: true });
     }
-    return json({ error: "Invalid end" }, { status: 400 });
+    return profileUpdateError("Invalid end", 400);
   }
 
   if (formData.get("action") === "update-name") {
@@ -648,15 +673,10 @@ function MarketingEmailsSwitch() {
 function CustomizeSidebarButton({
   context,
 }: {
-  context: {
-    organization: { slug: string };
-    project: { slug: string };
-    environment: { slug: string };
-  };
+  context: NonNullable<SerializeFrom<typeof loader>["sidebarContext"]>;
 }) {
   const user = useUser();
   const isAdmin = useHasAdminAccess();
-  const featureFlags = useFeatureFlags();
   const { isManagedCloud } = useFeatures();
   const favorites = useFavorites();
   const [isOpen, setIsOpen] = useState(false);
@@ -699,18 +719,16 @@ function CustomizeSidebarButton({
           },
         ]
       : []),
-    ...buildSideMenuSections({ ...context, isAdmin, featureFlags, isManagedCloud }).map(
-      (section) => ({
-        id: section.id,
-        title: section.title,
-        items: section.items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          icon: item.icon,
-          defaultHidden: item.defaultHidden,
-        })),
-      })
-    ),
+    ...buildSideMenuSections({ ...context, isAdmin, isManagedCloud }).map((section) => ({
+      id: section.id,
+      title: section.title,
+      items: section.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        icon: item.icon,
+        defaultHidden: item.defaultHidden,
+      })),
+    })),
   ];
 
   return (

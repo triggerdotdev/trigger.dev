@@ -122,7 +122,7 @@ export function buildSideMenuSections({
     });
   }
 
-  if (isAdmin || featureFlags.hasQueryAccess) {
+  if (isAdmin || featureFlags.hasQueryAccess || featureFlags.hasLogsPageAccess) {
     staticSections.push({
       id: "metrics",
       title: "Observability",
