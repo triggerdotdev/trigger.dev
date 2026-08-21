@@ -245,13 +245,19 @@ export class RedisSnapshotStore {
       const cycleBytes = Buffer.byteLength(orderJson, "utf8");
       this.metrics?.recordCycleKeyBytes(cycleBytes);
       if (this.highWater.cycleKeyBytes !== undefined && cycleBytes > this.highWater.cycleKeyBytes) {
-        this.logger.warn("RedisSnapshotStore cycle key above high-water mark", { runId, cycleBytes });
+        this.logger.warn("RedisSnapshotStore cycle key above high-water mark", {
+          runId,
+          cycleBytes,
+        });
       }
     }
     if (cycleSeq > 0) {
       this.metrics?.recordCycleCount(cycleSeq);
       if (this.highWater.cycleCount !== undefined && cycleSeq > this.highWater.cycleCount) {
-        this.logger.warn("RedisSnapshotStore cycle count above high-water mark", { runId, cycleSeq });
+        this.logger.warn("RedisSnapshotStore cycle count above high-water mark", {
+          runId,
+          cycleSeq,
+        });
       }
     }
   }
