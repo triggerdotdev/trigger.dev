@@ -1290,6 +1290,9 @@ importers:
 
   internal-packages/run-store:
     dependencies:
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../redis
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
