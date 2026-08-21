@@ -1,5 +1,6 @@
 import { Switch } from "~/components/primitives/Switch";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Badge } from "~/components/primitives/Badge";
 import { Label } from "~/components/primitives/Label";
 import {
   SettingsRow,
@@ -7,6 +8,7 @@ import {
   SettingsRowTitle,
 } from "~/components/primitives/SettingsLayout";
 import { cn } from "~/utils/cn";
+import { docsPath } from "~/utils/pathBuilder";
 import { Hint } from "~/components/primitives/Hint";
 import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -16,6 +18,16 @@ import {
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { envSlugToType, type EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
+
+export const SKEW_PROTECTION_DOCS_PATH = docsPath("deployment/version-skew-protection");
+
+const SKEW_PROTECTION_MIN_SDK_VERSION: string | null = "4.5.12";
+
+export function skewProtectionVersionRequirement(): string {
+  return SKEW_PROTECTION_MIN_SDK_VERSION
+    ? `from SDK and CLI v${SKEW_PROTECTION_MIN_SDK_VERSION} and later`
+    : "from a recent SDK and CLI — see the docs for the exact version";
+}
 
 type BuildSettingsFieldsProps = {
   availableEnvSlugs: EnvSlug[];
@@ -38,6 +50,7 @@ type BuildSettingsFieldsProps = {
   currentTriggerVersionFetchFailed?: boolean;
   /** Hide the section-level master toggles for "Pull env vars" and "Discover new env vars". */
   hideSectionToggles?: boolean;
+  showAtomicDeployments?: boolean;
   layout?: "settings" | "card";
 };
 
@@ -56,6 +69,7 @@ export function BuildSettingsFields({
   currentTriggerVersion,
   currentTriggerVersionFetchFailed,
   hideSectionToggles,
+  showAtomicDeployments = true,
   layout = "card",
 }: BuildSettingsFieldsProps) {
   const isSlugDisabled = (slug: EnvSlug) => !!disabledEnvSlugs?.[slug];
@@ -126,7 +140,7 @@ export function BuildSettingsFields({
     ) : null;
 
   const atomicSections =
-    layout === "settings" ? (
+    layout === "settings" && showAtomicDeployments ? (
       <>
         <SettingsRow
           action={
@@ -140,11 +154,25 @@ export function BuildSettingsFields({
           }
         >
           <div className="flex-1 space-y-1">
-            <SettingsRowTitle>Atomic deployments</SettingsRowTitle>
+            <SettingsRowTitle>
+              <span className="flex items-center gap-2">
+                Atomic deployments <DeprecatedBadge />
+              </span>
+            </SettingsRowTitle>
             <SettingsRowDescription>
-              Promotes your Vercel deployment and your tasks together in Production, so your app
-              never runs against a mismatched task version. Requires turning off "Auto-assign Custom
-              Production Domains" on your Vercel project, which Trigger.dev does for you.{" "}
+              Version skew protection replaces this. It pins every run to the deployment that
+              triggered it, and works on its own {skewProtectionVersionRequirement()}. Atomic
+              deployments still work, so turn this off whenever you're ready.{" "}
+              <TextLink href={SKEW_PROTECTION_DOCS_PATH} target="_blank">
+                Read about version skew protection
+              </TextLink>
+              .
+            </SettingsRowDescription>
+            <SettingsRowDescription>
+              Atomic deployments promote your Vercel deployment and your tasks together in
+              Production, so your app never runs against a mismatched task version. This needs
+              "Auto-assign Custom Production Domains" turned off on your Vercel project, and
+              Trigger.dev takes care of that for you.{" "}
               <TextLink
                 href="https://trigger.dev/docs/vercel-integration#atomic-deployments"
                 target="_blank"
@@ -172,7 +200,7 @@ export function BuildSettingsFields({
         {atomicBuilds.includes("prod") && onAutoPromoteChange !== undefined && (
           <SettingsRow
             title="Auto promotion"
-            description="Once your tasks finish deploying, Trigger.dev promotes the Vercel deployment for you. Turn this off to promote from the Vercel dashboard yourself, and Trigger.dev will follow as soon as you do."
+            description="Part of atomic deployments, and only used while they are on. Once your tasks finish deploying, Trigger.dev promotes the Vercel deployment for you. Turn this off to promote from the Vercel dashboard yourself, and Trigger.dev will follow as soon as you do."
             action={
               <Switch
                 variant="medium"
@@ -333,10 +361,14 @@ export function BuildSettingsFields({
       {atomicSections}
 
       {/* Atomic deployments */}
-      {layout === "card" && (
+      {layout === "card" && showAtomicDeployments && (
         <div>
           <div className="flex items-center justify-between">
-            <Label>Atomic deployments</Label>
+            <Label>
+              <span className="flex items-center gap-2">
+                Atomic deployments <DeprecatedBadge />
+              </span>
+            </Label>
             <Switch
               variant="small"
               checked={atomicBuilds.includes("prod")}
@@ -346,10 +378,18 @@ export function BuildSettingsFields({
             />
           </div>
           <Hint className="pr-6">
-            When enabled, production deployments wait for Vercel deployment to complete before
-            promoting the Trigger.dev deployment. This will disable the "Auto-assign Custom
-            Production Domains" option in your Vercel project settings to perform staged
-            deployments.{" "}
+            Version skew protection replaces this, and works on its own{" "}
+            {skewProtectionVersionRequirement()}.{" "}
+            <TextLink href={SKEW_PROTECTION_DOCS_PATH} target="_blank">
+              Read about version skew protection
+            </TextLink>
+            .
+          </Hint>
+          <Hint className="pr-6">
+            Atomic deployments promote your Vercel deployment and your tasks together in Production,
+            so your app never runs against a mismatched task version. This needs "Auto-assign Custom
+            Production Domains" turned off on your Vercel project, and Trigger.dev takes care of
+            that for you.{" "}
             <TextLink
               href="https://trigger.dev/docs/vercel-integration#atomic-deployments"
               target="_blank"
@@ -375,24 +415,45 @@ export function BuildSettingsFields({
       )}
 
       {/* Auto promotion — only visible when atomic deployments are on */}
-      {layout === "card" && atomicBuilds.includes("prod") && onAutoPromoteChange !== undefined && (
-        <div>
-          <div className="flex items-center justify-between">
-            <Label>Auto promotion</Label>
-            <Switch
-              variant="small"
-              checked={autoPromote ?? true}
-              onCheckedChange={onAutoPromoteChange}
-            />
+      {layout === "card" &&
+        showAtomicDeployments &&
+        atomicBuilds.includes("prod") &&
+        onAutoPromoteChange !== undefined && (
+          <div>
+            <div className="flex items-center justify-between">
+              <Label>Auto promotion</Label>
+              <Switch
+                variant="small"
+                checked={autoPromote ?? true}
+                onCheckedChange={onAutoPromoteChange}
+              />
+            </div>
+            <Hint className="pr-6">
+              When enabled, the integration automatically promotes the Vercel deployment after the
+              Trigger.dev build completes. Turn off to manually promote from your Vercel dashboard —
+              Trigger.dev will then promote automatically once you do.
+            </Hint>
           </div>
-          <Hint className="pr-6">
-            When enabled, the integration automatically promotes the Vercel deployment after the
-            Trigger.dev build completes. Turn off to manually promote from your Vercel dashboard —
-            Trigger.dev will then promote automatically once you do.
-          </Hint>
-        </div>
-      )}
+        )}
     </>
+  );
+}
+
+function DeprecatedBadge() {
+  return (
+    <SimpleTooltip
+      asChild
+      button={
+        <Badge
+          variant="extra-small"
+          className="text-warning system:border-transparent system:bg-warning system:text-white"
+        >
+          Deprecated
+        </Badge>
+      }
+      content="Use version skew protection instead"
+      disableHoverableContent
+    />
   );
 }
 

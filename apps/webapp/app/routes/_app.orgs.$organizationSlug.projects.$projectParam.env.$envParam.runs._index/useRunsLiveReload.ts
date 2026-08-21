@@ -87,6 +87,12 @@ function patchVisibleRunsWithLiveUpdates(currentRuns: ListedRun[], liveRuns: Liv
       usageDurationMs: update.usageDurationMs,
       costInCents: update.costInCents,
       baseCostInCents: update.baseCostInCents,
+      metadata: update.metadata !== undefined ? update.metadata : run.metadata,
+      metadataType: update.metadataType !== undefined ? update.metadataType : run.metadataType,
+      payload: update.payload !== undefined ? update.payload : run.payload,
+      payloadType: update.payloadType !== undefined ? update.payloadType : run.payloadType,
+      output: update.output !== undefined ? update.output : run.output,
+      outputType: update.outputType !== undefined ? update.outputType : run.outputType,
     };
   });
 }
@@ -244,6 +250,13 @@ export function useRunsLiveReload({
       if (hasActiveRuns) {
         searchParams.set("runIds", activeRunIdsParam);
       }
+
+      const locationParams = new URLSearchParams(location.search);
+      const colsValue = locationParams.get("cols");
+      if (colsValue) searchParams.set("cols", colsValue);
+      const hideValue = locationParams.get("hide");
+      if (hideValue) searchParams.set("hide", hideValue);
+      for (const smart of locationParams.getAll("sc")) searchParams.append("sc", smart);
 
       if (checkForNewRuns) {
         appendNewRunsSearchParams(searchParams, {

@@ -187,6 +187,7 @@
               "github-actions",
               "deployment/preview-branches",
               "deployment/dev-branches",
+              "deployment/version-skew-protection",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
@@ -893,6 +894,11 @@
     {
       "source": "/guides/ai-chat",
       "destination": "/ai-chat/overview"
+    },
+    {
+      "source": "/deployment/vercel-skew-protection",
+      "destination": "/deployment/version-skew-protection",
+      "permanent": true
     }
   ]
 }
