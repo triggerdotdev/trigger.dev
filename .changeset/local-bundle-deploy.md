@@ -3,4 +3,4 @@
 "trigger.dev": patch
 ---
 
-Add an experimental `--local-bundle` deploy flag: your project is installed and bundled locally (like classic deploys) and only the build output is uploaded, while the image is still built remotely. Useful when the remote build's install step doesn't work for your project setup.
+Add an experimental `--local-bundle` deploy flag that runs the install and bundling steps on your machine and uploads only the build output; the image is still built remotely. Useful when your project's install step needs tooling or credentials that only exist locally.
