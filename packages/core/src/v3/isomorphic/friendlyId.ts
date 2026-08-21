@@ -291,7 +291,7 @@ export function deriveWaitpointIdFromAnchor(
   anchorId: string,
   type: WaitpointIdType
 ): string | undefined {
-  const body = stripIdPrefix(anchorId);
+  const body = stripAnchorPrefix(anchorId);
   if (!parseRunOpsIdBody(body) && !parseRunOpsIdV2Body(body)) {
     return undefined;
   }
@@ -300,12 +300,14 @@ export function deriveWaitpointIdFromAnchor(
 }
 
 /**
- * Classify a waitpoint id. Accepts the prefixed form (`waitpoint_<body>`) and the bare
- * internal form, because both circulate: IdUtil.generate() returns each, and the store's
- * own call sites carry the internal one. Total: never throws.
+ * Classify a waitpoint id. Accepts the prefixed (`waitpoint_<body>`) and bare forms, but
+ * NOT another entity's prefix (`run_`, `batch_`, ...) — this is the discriminator a
+ * later ticket uses to route a possibly customer-supplied id, so a foreign prefix must
+ * classify legacy rather than have its body reinterpreted as a waitpoint id. Total:
+ * never throws.
  */
 export function parseWaitpointId(id: string): ParsedWaitpointId {
-  const body = stripIdPrefix(id);
+  const body = stripWaitpointIdPrefix(id);
   if (body.length !== RUN_OPS_ID_LENGTH) return LEGACY_WAITPOINT_ID;
   if (body[RUN_OPS_ID_VERSION_INDEX] !== WAITPOINT_ID_VERSION) return LEGACY_WAITPOINT_ID;
 
@@ -318,12 +320,21 @@ export function parseWaitpointId(id: string): ParsedWaitpointId {
   return { format: "b32hexW", type, timestamp };
 }
 
-// Strip a single leading `<prefix>_` if present, so the friendly and internal forms
-// classify identically. Only the FIRST underscore separates the prefix, mirroring
-// fromFriendlyId's two-part contract.
-function stripIdPrefix(id: string): string {
+// Strip any `<prefix>_` if present. Prefix-agnostic is correct ONLY here: the caller
+// already knows anchorId names a run or batch anchor, so there is no foreign prefix to
+// guard against. Do not reuse for parseWaitpointId — see stripWaitpointIdPrefix.
+function stripAnchorPrefix(id: string): string {
   const underscore = id.indexOf("_");
   return underscore === -1 ? id : id.slice(underscore + 1);
+}
+
+const WAITPOINT_ID_PREFIX = "waitpoint_";
+
+// Strip the `waitpoint_` prefix if present; any other prefix, or a bare body, is left
+// as-is. Unlike stripAnchorPrefix, this must never strip a foreign prefix down to a body
+// that then happens to pass the run-ops shape check.
+function stripWaitpointIdPrefix(id: string): string {
+  return id.startsWith(WAITPOINT_ID_PREFIX) ? id.slice(WAITPOINT_ID_PREFIX.length) : id;
 }
 
 export function generateInternalId(): string {

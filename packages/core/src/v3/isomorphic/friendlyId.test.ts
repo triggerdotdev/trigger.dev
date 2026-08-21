@@ -446,7 +446,10 @@ describe("waitpoint ids: run-ops format with version char w", () => {
 
   it("classifies both the prefixed and the bare form identically", () => {
     const body = generateWaitpointId("MANUAL");
-    expect(parseWaitpointId(body)).toEqual(parseWaitpointId(`waitpoint_${body}`));
+    const bare = parseWaitpointId(body);
+    const prefixed = parseWaitpointId(`waitpoint_${body}`);
+    expect(bare).toEqual(prefixed);
+    expect(bare).toEqual({ format: "b32hexW", type: "MANUAL", timestamp: expect.any(Date) });
   });
 
   it("recovers the mint timestamp from the core", () => {
@@ -493,6 +496,26 @@ describe("waitpoint ids: run-ops format with version char w", () => {
     expect(parseWaitpointId(generateRunOpsId()).format).toBe("legacy");
     expect(parseWaitpointId(generateRunOpsIdV2("7")).format).toBe("legacy");
     expect(parseRunId(`run_${generateWaitpointId("RUN")}`).format).toBe("legacy");
+  });
+
+  it("rejects a well-formed waitpoint body wearing a foreign prefix", () => {
+    const body = `${"0".repeat(24)}rw`; // valid core + RUN type char + version w
+    expect(parseWaitpointId(`run_${body}`).format).toBe("legacy");
+    expect(parseWaitpointId(`batch_${body}`).format).toBe("legacy");
+    expect(parseWaitpointId(`waitpoint_${body}`)).toEqual({
+      format: "b32hexW",
+      type: "RUN",
+      timestamp: expect.any(Date),
+    });
+    expect(parseWaitpointId(body).format).toBe("b32hexW");
+  });
+
+  it("handles a bare body that happens to contain an underscore sanely (never throws, never misclassifies)", () => {
+    const body = generateWaitpointId("BATCH");
+    const withUnderscore = `_${body.slice(1)}`;
+    expect(() => parseWaitpointId(withUnderscore)).not.toThrow();
+    // "_" is outside the base32hex alphabet, so this can never be a real waitpoint id.
+    expect(parseWaitpointId(withUnderscore).format).toBe("legacy");
   });
 });
 
