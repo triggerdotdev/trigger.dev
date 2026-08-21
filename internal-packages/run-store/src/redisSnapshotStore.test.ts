@@ -743,3 +743,29 @@ describe("getSince", () => {
     }
   );
 });
+
+describe("environment scoping", () => {
+  redisTest("getLatest and getById return null for a foreign env", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+
+      expect(await store.getLatest("run_1", { environmentId: "env_1" })).not.toBeNull();
+      expect(await store.getLatest("run_1", { environmentId: "env_other" })).toBeNull();
+      expect(await store.getById("run_1", "s1", { environmentId: "env_1" })).not.toBeNull();
+      expect(await store.getById("run_1", "s1", { environmentId: "env_other" })).toBeNull();
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("getLatest returns null for a run with no keys", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      expect(await store.getLatest("run_absent")).toBeNull();
+      expect(await store.getById("run_absent", "nope")).toBeNull();
+    } finally {
+      await store.quit();
+    }
+  });
+});
