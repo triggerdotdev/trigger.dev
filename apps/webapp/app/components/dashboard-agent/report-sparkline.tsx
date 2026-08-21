@@ -187,7 +187,7 @@ export function ReportFindingLine({
  * entities mono, verdict phrases bright and medium, everything else dimmed.
  * Colour stays reserved for severity, so emphasis here is weight only.
  */
-const QUANTITY_RE = /~?\d[\d,.]*\s?(?:%|×|\/min|ms\b|s\b|min\b|h\b)?/g;
+const QUANTITY_RE = /~?\d[\d,.]*\s?(?:%|×|\/min|ms\b|s\b|min\b|h\b)?/;
 
 const VERDICT_PHRASES = [
   "not your code",
@@ -249,7 +249,6 @@ export function ReportProse({ text, entities }: { text: string; entities?: strin
   segments = splitBy(
     segments,
     (t) => {
-      QUANTITY_RE.lastIndex = 0;
       const m = QUANTITY_RE.exec(t);
       return m && m[0].trim().length > 0 ? { start: m.index, end: m.index + m[0].length } : null;
     },

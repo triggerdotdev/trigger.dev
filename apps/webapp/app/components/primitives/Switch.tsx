@@ -8,16 +8,22 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 const small = {
   container:
     "flex items-center h-6 gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 hover:disabled:bg-background-raised transition focus-custom disabled:opacity-50 text-text-dimmed hover:text-text-bright disabled:hover:cursor-not-allowed hover:cursor-pointer disabled:hover:text-rose-500",
-  root: "h-3 w-6",
-  thumb: "size-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
+  root: "h-3 w-5.5",
+  thumb: cn(
+    "h-2.5 w-2.5 data-[state=checked]:translate-x-2 data-[state=unchecked]:translate-x-0",
+    "group-active:w-3.25 group-active:data-[state=checked]:translate-x-1.25"
+  ),
   text: "text-xs text-text-dimmed",
 };
 
 const variations = {
   large: {
     container: "flex items-center gap-x-2 rounded-md hover:bg-tertiary p-2 transition focus-custom",
-    root: "h-6 w-11",
-    thumb: "size-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
+    root: "h-6 w-10.5",
+    thumb: cn(
+      "h-5 w-5 data-[state=checked]:translate-x-4.5 data-[state=unchecked]:translate-x-0",
+      "group-active:w-6.5 group-active:data-[state=checked]:translate-x-3"
+    ),
     text: "text-sm text-text-dimmed",
   },
   small,
@@ -48,8 +54,11 @@ const variations = {
   medium: {
     container:
       "flex items-center gap-x-2 rounded-md hover:bg-tertiary py-1.5 px-2 transition focus-custom",
-    root: "h-4 w-8",
-    thumb: "size-3.5 data-[state=checked]:translate-x-3.5 data-[state=unchecked]:translate-x-0",
+    root: "h-4 w-7.5",
+    thumb: cn(
+      "h-3.5 w-3.5 data-[state=checked]:translate-x-3 data-[state=unchecked]:translate-x-0",
+      "group-active:w-4.5 group-active:data-[state=checked]:translate-x-2"
+    ),
     text: "text-sm text-text-dimmed",
   },
 };
@@ -68,17 +77,15 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
 
     const { container, root, thumb, text } = variations[variant];
 
-    if (props.shortcut) {
-      useShortcutKeys({
-        shortcut: props.shortcut,
-        action: () => {
-          if (innerRef.current) {
-            innerRef.current.click();
-          }
-        },
-        disabled: props.disabled,
-      });
-    }
+    useShortcutKeys({
+      shortcut: props.shortcut,
+      action: () => {
+        if (innerRef.current) {
+          innerRef.current.click();
+        }
+      },
+      disabled: props.disabled,
+    });
 
     const labelElement = label ? (
       <label
@@ -98,7 +105,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         <SwitchPrimitives.Thumb
           className={cn(
             thumb,
-            "pointer-events-none block rounded-full bg-white transition dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-text-bright"
+            "pointer-events-none block rounded-full bg-white transition-[translate,width,background-color] dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-text-bright"
           )}
         />
       </div>

@@ -377,22 +377,25 @@ export function QueryEditor({
 
   // Use defaultData as initial results, then switch to fetcher data once a query is run
   const fetcherResults = fetcher.data;
-  const results =
-    fetcherResults ??
-    (defaultData
-      ? {
-          error: null,
-          rows: defaultData.rows,
-          columns: defaultData.columns,
-          stats: null,
-          hiddenColumns: null,
-          reachedMaxRows: false,
-          explainOutput: null,
-          generatedSql: null,
-          queryId: null,
-          periodClipped: null,
-        }
-      : null);
+  const results = useMemo(
+    () =>
+      fetcherResults ??
+      (defaultData
+        ? {
+            error: null,
+            rows: defaultData.rows,
+            columns: defaultData.columns,
+            stats: null,
+            hiddenColumns: null,
+            reachedMaxRows: false,
+            explainOutput: null,
+            generatedSql: null,
+            queryId: null,
+            periodClipped: null,
+          }
+        : null),
+    [defaultData, fetcherResults]
+  );
 
   const organization = useOrganization();
   const project = useProject();
@@ -502,6 +505,7 @@ export function QueryEditor({
 
   // Use a ref so the effect can read chartConfig without re-firing on every config tweak
   const chartConfigRef = useRef(chartConfig);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   chartConfigRef.current = chartConfig;
 
   // Reset chart config only when a column referenced by the current config is no
@@ -559,6 +563,7 @@ export function QueryEditor({
   }, []);
 
   // Compute current save data for the save render prop
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   const currentQuery = editorRef.current?.getQuery() ?? "";
   const saveData: QueryEditorSaveData = {
     title: queryTitle ?? "Untitled Query",
@@ -787,6 +792,7 @@ export function QueryEditor({
                                 onRename={handleRenameTitle}
                               />
                             }
+                            // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                             query={editorRef.current?.getQuery() ?? defaultQuery}
                             data={{
                               rows: results.rows,
@@ -841,6 +847,7 @@ export function QueryEditor({
                         <ResultsChart
                           rows={results.rows}
                           columns={results.columns}
+                          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
                           chartConfig={chartConfig}
                           onChartConfigChange={handleChartConfigChange}
@@ -890,6 +897,7 @@ export function QueryEditor({
                         <ResultsBigNumber
                           rows={results.rows}
                           columns={results.columns}
+                          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
                           bigNumberConfig={bigNumberConfig}
                           onBigNumberConfigChange={setBigNumberConfig}
@@ -952,6 +960,7 @@ export function QueryEditor({
       {mode.type === "standalone" && (
         <SaveToDashboardDialog
           title={queryTitle ?? "Untitled Query"}
+          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
           query={editorRef.current?.getQuery() ?? ""}
           config={
             resultsView === "table"
@@ -982,6 +991,7 @@ function QueryTitle({
 
   // Update rename value when title changes
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setRenameValue(title ?? "");
   }, [title]);
 
@@ -1255,13 +1265,13 @@ function ResultsBigNumber({
   accessory?: ReactNode;
 }) {
   // Auto-select first numeric column if none selected
-  const numericColumns = columns.filter((c) => isNumericColumnType(c.type));
+  const firstNumericColumn = columns.find((column) => isNumericColumnType(column.type));
 
   useEffect(() => {
-    if (!bigNumberConfig.column && numericColumns.length > 0) {
-      onBigNumberConfigChange({ ...bigNumberConfig, column: numericColumns[0].name });
+    if (!bigNumberConfig.column && firstNumericColumn) {
+      onBigNumberConfigChange({ ...bigNumberConfig, column: firstNumericColumn.name });
     }
-  }, [columns]);
+  }, [bigNumberConfig, firstNumericColumn, onBigNumberConfigChange]);
 
   return (
     <ResizablePanelGroup className="overflow-hidden">

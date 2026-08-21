@@ -70,12 +70,13 @@ export function Feedback({
     ) {
       setOpen(false);
     }
-  }, [navigation.formAction, navigation.state, form.allErrors]);
+  }, [navigation.formAction, navigation.state, form.allErrors, setOpen]);
 
   // Handle URL param functionality
   useEffect(() => {
     const open = searchParams.get("feedbackPanel");
     if (open) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setType(open as FeedbackType);
       setOpen(true);
       // Clone instead of mutating in place
@@ -83,7 +84,7 @@ export function Feedback({
       next.delete("feedbackPanel");
       setSearchParams(next);
     }
-  }, [searchParams]);
+  }, [searchParams, setOpen, setSearchParams]);
 
   // Reset the topic to the default once the dialog closes, so reopening always starts fresh. The
   // dialog is now persistently mounted (hosted outside the popover), so without this it would keep

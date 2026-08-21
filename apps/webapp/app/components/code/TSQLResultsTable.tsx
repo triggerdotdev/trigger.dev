@@ -14,6 +14,7 @@ import {
   type ColumnFiltersState,
   type ColumnResizeMode,
   type FilterFn,
+  type Header,
   type SortDirection,
   type SortingState,
 } from "@tanstack/react-table";
@@ -223,6 +224,7 @@ const DebouncedInput = forwardRef<
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Programmatic filter changes intentionally reset the debounced input draft.
     setValue(initialValue);
   }, [initialValue]);
 
@@ -241,6 +243,7 @@ const DebouncedInput = forwardRef<
 interface ColumnMeta {
   outputColumn: OutputColumnMetadata;
   alignment: "left" | "right";
+  prettyFormatting: boolean;
 }
 
 /**
@@ -489,6 +492,19 @@ function CellValueWrapper({
 /**
  * Render a cell value based on its type and optional customRenderType
  */
+function TSQLResultsCell(info: CellContext<RowData, unknown>) {
+  const meta = info.column.columnDef.meta as ColumnMeta;
+
+  return (
+    <CellValueWrapper
+      value={info.getValue()}
+      column={meta.outputColumn}
+      prettyFormatting={meta.prettyFormatting}
+      row={info.row.original}
+    />
+  );
+}
+
 function CellValue({
   value,
   column,
@@ -829,6 +845,37 @@ function CopyableCell({
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(value);
 
+  // The button (with its aria-label) always sits in the same position in the tree, wrapped by
+  // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
+  // keyboard focus). The tooltip is left uncontrolled so Radix opens it only when the pointer or
+  // keyboard focus is actually on the button, not whenever the pointer is anywhere in this
+  // virtualized grid's cell. `focus-visible:` (not `focus:`) ensures keyboard focus reveals the
+  // button without leaving it visible after a mouse click moves outside the cell.
+  const copyButton = (
+    <button
+      type="button"
+      aria-label={copied ? "Copied" : "Copy"}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        copy();
+      }}
+      className={cn(
+        "absolute right-1 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
+        isHovered ? "opacity-100" : "pointer-events-none opacity-0",
+        copied
+          ? "text-green-500"
+          : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
+      )}
+    >
+      {copied ? (
+        <ClipboardCheckIcon className="size-3.5" />
+      ) : (
+        <ClipboardIcon className="size-3.5" />
+      )}
+    </button>
+  );
+
   return (
     <div
       className={cn(
@@ -842,37 +889,13 @@ function CopyableCell({
       onMouseLeave={() => setIsHovered(false)}
     >
       <span className="flex items-center truncate">{children}</span>
-      {isHovered && (
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            copy();
-          }}
-          className="absolute right-1 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
-        >
-          <SimpleTooltip
-            button={
-              <span
-                className={cn(
-                  "flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
-                  copied
-                    ? "text-green-500"
-                    : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
-                )}
-              >
-                {copied ? (
-                  <ClipboardCheckIcon className="size-3.5" />
-                ) : (
-                  <ClipboardIcon className="size-3.5" />
-                )}
-              </span>
-            }
-            content={copied ? "Copied!" : "Copy"}
-            disableHoverableContent
-          />
-        </span>
-      )}
+      <SimpleTooltip
+        asChild
+        tabbable
+        button={copyButton}
+        content={copied ? "Copied!" : "Copy"}
+        disableHoverableContent
+      />
     </div>
   );
 }
@@ -906,6 +929,8 @@ function HeaderCellContent({
 
   const sortHighlighted = isCellHovered && !isFilterHovered;
 
+  /* oxlint-disable jsx-a11y/click-events-have-key-events -- The sortable header contains separate tooltip and filter controls that cannot be nested in a button. */
+  /* oxlint-disable jsx-a11y/no-static-element-interactions -- Preserve the existing full-header pointer target rather than nesting its child controls. */
   return (
     <div
       className={cn(
@@ -925,7 +950,7 @@ function HeaderCellContent({
           })}
         >
           <span className="truncate text-left">{children}</span>
-          <span className="flex shrink-0">
+          <span className="flex shrink-0" onClick={(event) => event.stopPropagation()}>
             <InfoIconTooltip
               content={tooltip}
               contentClassName="normal-case tracking-normal"
@@ -937,11 +962,17 @@ function HeaderCellContent({
       ) : (
         <span className="min-w-0 flex-1 truncate text-left">{children}</span>
       )}
-      {/* Sort indicator */}
+      {/* The full header remains a pointer target, while this dedicated control makes sorting keyboard-accessible without nesting the tooltip or filter controls. */}
       {canSort && (
-        <span
+        <button
+          type="button"
+          aria-label="Toggle sort"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSortClick?.(event);
+          }}
           className={cn(
-            "shrink-0 transition-colors",
+            "shrink-0 rounded transition-colors focus-custom",
             sortHighlighted ? "text-text-bright" : "text-text-dimmed"
           )}
         >
@@ -952,10 +983,11 @@ function HeaderCellContent({
           ) : (
             <ChevronUpDownIcon className="size-4" />
           )}
-        </span>
+        </button>
       )}
       {onFilterClick && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onFilterClick();
@@ -971,6 +1003,8 @@ function HeaderCellContent({
     </div>
   );
 }
+/* oxlint-enable jsx-a11y/click-events-have-key-events */
+/* oxlint-enable jsx-a11y/no-static-element-interactions */
 
 /**
  * Filter input cell for the filter row
@@ -1013,6 +1047,24 @@ function FilterCell({
   );
 }
 
+/* oxlint-disable jsx-a11y/no-static-element-interactions -- Column resizing is a pointer-drag interaction provided by TanStack Table. */
+function ColumnResizeHandle({ header }: { header: Header<RowData, unknown> }) {
+  return (
+    <div
+      onDoubleClick={() => header.column.resetSize()}
+      onMouseDown={header.getResizeHandler()}
+      onTouchStart={header.getResizeHandler()}
+      className={cn(
+        "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
+        "opacity-0 group-hover/header:opacity-100",
+        "bg-surface-control hover:bg-indigo-500",
+        header.column.getIsResizing() && "bg-indigo-500 opacity-100"
+      )}
+    />
+  );
+}
+/* oxlint-enable jsx-a11y/no-static-element-interactions */
+
 export const TSQLResultsTable = memo(function TSQLResultsTable({
   rows,
   columns,
@@ -1053,17 +1105,11 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
         id: col.name,
         accessorKey: col.name,
         header: () => col.name,
-        cell: (info: CellContext<RowData, unknown>) => (
-          <CellValueWrapper
-            value={info.getValue()}
-            column={col}
-            prettyFormatting={prettyFormatting}
-            row={info.row.original}
-          />
-        ),
+        cell: TSQLResultsCell,
         meta: {
           outputColumn: col,
           alignment: isRightAlignedColumn(col) ? "right" : "left",
+          prettyFormatting,
         } as ColumnMeta,
         size: calculateColumnWidth(col.name, rows, col),
         filterFn: fuzzyFilter,
@@ -1075,6 +1121,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   // Column resize mode: 'onChange' for real-time feedback, 'onEnd' for performance
   const columnResizeMode: ColumnResizeMode = "onChange";
 
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Table is not compatible with compiler memoization.
   const table = useReactTable({
     data: rows,
     columns: columnDefs,
@@ -1211,18 +1258,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </HeaderCellContent>
-                    {/* Column resizer */}
-                    <div
-                      onDoubleClick={() => header.column.resetSize()}
-                      onMouseDown={header.getResizeHandler()}
-                      onTouchStart={header.getResizeHandler()}
-                      className={cn(
-                        "absolute right-0 top-0 h-full w-0.5 cursor-col-resize touch-none select-none",
-                        "opacity-0 group-hover/header:opacity-100",
-                        "bg-surface-control hover:bg-indigo-500",
-                        header.column.getIsResizing() && "bg-indigo-500 opacity-100"
-                      )}
-                    />
+                    <ColumnResizeHandle header={header} />
                   </th>
                 );
               })}

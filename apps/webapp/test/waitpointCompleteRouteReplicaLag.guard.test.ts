@@ -1,7 +1,7 @@
 // Property: under split replica lag the dashboard "complete waitpoint" route action still completes a
-// just-minted token. It resolves the waitpoint by id via findWaitpoint (owning REPLICA), and on a null
-// re-reads via findWaitpointOnPrimary before the projectId guard, so a token invisible on the lagging
-// replica passes the guard and completion proceeds instead of failing with "No waitpoint found".
+// just-minted token. It resolves the waitpoint by project and environment via findWaitpoint (owning
+// REPLICA), and on a null re-reads via findWaitpointOnPrimary before returning "No waitpoint found".
+// A token invisible on the lagging replica still completes after the primary fallback.
 // Drives the REAL exported action; only peripheral collaborators are mocked. The seam — runStore over a
 // split topology whose owning replica is frozen — is a REAL RoutingRunStore over real testcontainer
 // Postgres.
@@ -64,8 +64,8 @@ vi.mock("~/models/message.server", () => ({
     }),
 }));
 
-// MANUAL-branch collaborators — the token completion path resolves the env then completes. Return an
-// env whose id matches the seeded waitpoint's environmentId so the env guard passes.
+// The completion path resolves the environment before loading the waitpoint. Return an environment
+// whose id matches the seeded waitpoint so the scoped lookup can authorize it.
 const envHolder = vi.hoisted(() => ({ id: undefined as string | undefined }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
   findEnvironmentBySlug: async () => (envHolder.id ? { id: envHolder.id } : null),
@@ -147,8 +147,8 @@ const params = (friendlyId: string) => ({
 
 describe("complete-waitpoint dashboard route reads-your-writes under split replica lag", () => {
   // LEGACY-resident (cuid) token minted on the control-plane writer; its replica lags. The action's
-  // findWaitpoint(id) misses, and the findWaitpointOnPrimary fallback must resolve it so the just-
-  // minted token passes the projectId guard and completes — NOT "No waitpoint found".
+  // environment-scoped findWaitpoint misses, and the findWaitpointOnPrimary fallback must resolve it
+  // so the just-minted token completes instead of returning "No waitpoint found".
   heteroRunOpsPostgresTest(
     "MANUAL token invisible on the lagging owning replica completes via the primary fallback",
     async ({ prisma14, prisma17 }) => {
@@ -200,8 +200,8 @@ describe("complete-waitpoint dashboard route reads-your-writes under split repli
     }
   );
 
-  // Same seam via the DATETIME "skip" branch (also gated by the shared projectId guard). Kept as a
-  // second, mock-light assertion of the fallback so the guard doesn't hinge on MANUAL-branch helpers.
+  // Same seam via the DATETIME "skip" branch. Kept as a second, mock-light assertion of the fallback
+  // so the authorization behavior doesn't hinge on MANUAL-branch helpers.
   heteroRunOpsPostgresTest(
     "DATETIME skip on a lag-invisible token resolves via the primary fallback",
     async ({ prisma14, prisma17 }) => {

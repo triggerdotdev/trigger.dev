@@ -1126,6 +1126,36 @@ describe("clientDataSchema", () => {
     });
     expect(parsed.success).toBe(false);
   });
+
+  // The snapshot URL is fetched and extracted on the worker, so the schema refuses
+  // anything but plain https (the host allowlist is enforced at the fetch site).
+  it("rejects a repoSnapshot whose tarballUrl is not an https URL", () => {
+    for (const tarballUrl of [
+      "http://codeload.github.com/acme/demo/tar.gz/abc",
+      "ftp://example.com/x.tar.gz",
+      "file:///etc/passwd",
+      "not a url",
+    ]) {
+      const parsed = clientDataSchema.safeParse({
+        userId: "user_1",
+        organizationId: "org_1",
+        repoSnapshot: { tarballUrl, owner: "acme", repo: "demo", sha: "c".repeat(40) },
+      });
+      expect(parsed.success).toBe(false);
+    }
+
+    const ok = clientDataSchema.safeParse({
+      userId: "user_1",
+      organizationId: "org_1",
+      repoSnapshot: {
+        tarballUrl: "https://codeload.github.com/acme/demo/tar.gz/abc",
+        owner: "acme",
+        repo: "demo",
+        sha: "c".repeat(40),
+      },
+    });
+    expect(ok.success).toBe(true);
+  });
 });
 
 describe("buildDashboardAgentTools", () => {

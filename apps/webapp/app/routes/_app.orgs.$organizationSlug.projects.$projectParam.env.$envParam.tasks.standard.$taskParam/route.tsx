@@ -121,7 +121,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Live queue counts (two O(1) Redis reads) shown in the sidebar; history charts fetch
   // client-side through the metric resource. Flag off = no extra reads at all.
   let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
-  if (task.queue && (await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+  if (task.queue && (await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
     const queueName = task.queue.name;
     const [lengths, concurrency] = await Promise.all([
       engine.lengthOfQueues(environment, [queueName]),

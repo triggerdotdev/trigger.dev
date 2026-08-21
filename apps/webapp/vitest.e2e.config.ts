@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
+import { DurationShardingSequencer } from "@internal/testcontainers/sequencer";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   test: {
+    sequence: { sequencer: DurationShardingSequencer },
     include: ["test/**/*.e2e.test.ts"],
     globals: true,
     pool: "forks",

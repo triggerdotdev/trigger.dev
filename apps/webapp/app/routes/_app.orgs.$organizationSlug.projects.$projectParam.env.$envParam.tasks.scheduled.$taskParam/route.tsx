@@ -161,7 +161,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Live queue counts for the sidebar Queue property (flag on only; the property itself
   // is not rendered without them, so flag off = no extra reads and no UI change).
   let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
-  if (task.queue && (await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+  if (task.queue && (await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
     const queueName = task.queue.name;
     const [lengths, concurrency] = await Promise.all([
       engine.lengthOfQueues(environment, [queueName]),
@@ -207,6 +207,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tasks: [task.slug],
       page: schedulesPage,
       pageSize: 25,
+      includeLastRun: true,
     })
     .catch(() => null);
 
@@ -556,6 +557,7 @@ function CreateScheduleSheet({
   onClose: () => void;
 }) {
   const fetcher = useTypedFetcher<typeof scheduleNewLoader>();
+  const loadScheduleForm = fetcher.load;
   // Embedded create — stays on this page via `_format=json`.
   const createFetcher = useFetcher<{ ok: boolean; message?: string }>();
   const toast = useToast();
@@ -566,8 +568,8 @@ function CreateScheduleSheet({
   const newPath = v3NewSchedulePath(organization, project, environment);
 
   useEffect(() => {
-    if (open) fetcher.load(newPath);
-  }, [open, newPath]);
+    if (open) loadScheduleForm(newPath);
+  }, [open, newPath, loadScheduleForm]);
 
   // Toast + close + revalidate so the new schedule appears.
   useEffect(() => {
@@ -627,7 +629,9 @@ function ScheduleSheet({
   onClose: () => void;
 }) {
   const detailFetcher = useTypedFetcher<typeof scheduleDetailLoader>();
+  const loadScheduleDetail = detailFetcher.load;
   const editFetcher = useTypedFetcher<typeof scheduleEditLoader>();
+  const loadScheduleEditor = editFetcher.load;
   // Embedded enable/disable — stays in the sheet via `_format=json`.
   const activeToggleFetcher = useFetcher<{ ok: boolean; active?: boolean; message?: string }>();
   // Embedded update submission — same idea.
@@ -651,16 +655,17 @@ function ScheduleSheet({
 
   // Always reopen in inspect mode.
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setMode("inspect");
   }, [openScheduleId]);
 
   useEffect(() => {
-    if (detailPath) detailFetcher.load(detailPath);
-  }, [detailPath]);
+    if (detailPath) loadScheduleDetail(detailPath);
+  }, [detailPath, loadScheduleDetail]);
 
   useEffect(() => {
-    if (mode === "edit" && editPath) editFetcher.load(editPath);
-  }, [mode, editPath]);
+    if (mode === "edit" && editPath) loadScheduleEditor(editPath);
+  }, [mode, editPath, loadScheduleEditor]);
 
   // Reload inspector data so Enable/Disable label flips; revalidate the
   // route loader so the sidebar's list/Overview stay in sync; toast on error.
@@ -670,12 +675,19 @@ function ScheduleSheet({
     if (handledToggleRef.current === data) return;
     handledToggleRef.current = data;
     if (data.ok) {
-      if (detailPath) detailFetcher.load(detailPath);
+      if (detailPath) loadScheduleDetail(detailPath);
       revalidator.revalidate();
     } else if (data.message) {
       toast.error(data.message);
     }
-  }, [activeToggleFetcher.state, activeToggleFetcher.data, detailPath, toast, revalidator]);
+  }, [
+    activeToggleFetcher.state,
+    activeToggleFetcher.data,
+    detailPath,
+    toast,
+    revalidator,
+    loadScheduleDetail,
+  ]);
 
   // Toast + back to inspect + reload + revalidate so both the inspector
   // and the sidebar reflect the update.
@@ -686,13 +698,14 @@ function ScheduleSheet({
     handledUpdateRef.current = data;
     if (data.ok) {
       toast.success(data.message ?? "Schedule updated");
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setMode("inspect");
-      if (detailPath) detailFetcher.load(detailPath);
+      if (detailPath) loadScheduleDetail(detailPath);
       revalidator.revalidate();
     } else if (data.message) {
       toast.error(data.message);
     }
-  }, [updateFetcher.state, updateFetcher.data, detailPath, toast, revalidator]);
+  }, [updateFetcher.state, updateFetcher.data, detailPath, toast, revalidator, loadScheduleDetail]);
 
   // Toast + close + revalidate so the deleted row disappears.
   useEffect(() => {
@@ -795,7 +808,7 @@ function ScheduledTaskDetailSidebar({
       if (a.type === b.type) return 0;
       return a.type === "DECLARATIVE" ? -1 : 1;
     });
-  }, [scheduleList?.schedules]);
+  }, [scheduleList]);
   const firstSchedule = sortedSchedules[0];
   const [activeTab, setActiveTab] = useState<"overview" | "schedules">("overview");
   return (

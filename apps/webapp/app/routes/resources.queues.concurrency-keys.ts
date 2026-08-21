@@ -107,6 +107,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // this endpoint's data isn't reachable for orgs that can't see the UI. 404 (not 403) to hide it.
   if (
     !(await canAccessQueueMetricsUi({
+      request,
       userId,
       organizationSlug: environment.organization.slug,
     }))

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useFetcher } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
@@ -313,6 +313,7 @@ function DeleteButton({ name }: { name: string }) {
 
 function EditButton({ name, organizationIds }: { name: string; organizationIds: string[] }) {
   const [open, setOpen] = useState(false);
+  const fieldId = useId();
   const fetcher = useFetcher<{ success?: boolean; error?: string }>();
   const isSubmitting = fetcher.state !== "idle";
 
@@ -336,8 +337,11 @@ function EditButton({ name, organizationIds }: { name: string; organizationIds: 
             <input type="hidden" name="key" value={name} />
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-dimmed">Key</label>
+              <label htmlFor={`${fieldId}-key`} className="text-xs font-medium text-text-dimmed">
+                Key
+              </label>
               <Input
+                id={`${fieldId}-key`}
                 name="_key_display"
                 value={name}
                 readOnly
@@ -347,10 +351,14 @@ function EditButton({ name, organizationIds }: { name: string; organizationIds: 
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-text-dimmed">
+              <label
+                htmlFor={`${fieldId}-organizationIds`}
+                className="text-xs font-medium text-text-dimmed"
+              >
                 Organization IDs <span className="text-rose-400">*</span>
               </label>
               <Input
+                id={`${fieldId}-organizationIds`}
                 name="organizationIds"
                 defaultValue={organizationIds.join(", ")}
                 placeholder="clxxxxx, clyyyyy, clzzzzz"
@@ -394,6 +402,7 @@ function AddDataStoreDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const fetcher = useFetcher<{ success?: boolean; error?: string }>();
+  const fieldId = useId();
   const isSubmitting = fetcher.state !== "idle";
 
   // Close dialog on success
@@ -412,10 +421,11 @@ function AddDataStoreDialog({
           <input type="hidden" name="_action" value="add" />
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-text-dimmed">
+            <label htmlFor={`${fieldId}-key`} className="text-xs font-medium text-text-dimmed">
               Key <span className="text-rose-400">*</span>
             </label>
             <Input
+              id={`${fieldId}-key`}
               name="key"
               placeholder="e.g. hipaa-clickhouse-us-east"
               variant="medium"
@@ -428,10 +438,11 @@ function AddDataStoreDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-text-dimmed">
+            <label htmlFor={`${fieldId}-kind`} className="text-xs font-medium text-text-dimmed">
               Kind <span className="text-rose-400">*</span>
             </label>
             <Input
+              id={`${fieldId}-kind`}
               name="kind"
               value="CLICKHOUSE"
               readOnly
@@ -441,10 +452,14 @@ function AddDataStoreDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-text-dimmed">
+            <label
+              htmlFor={`${fieldId}-organizationIds`}
+              className="text-xs font-medium text-text-dimmed"
+            >
               Organization IDs <span className="text-rose-400">*</span>
             </label>
             <Input
+              id={`${fieldId}-organizationIds`}
               name="organizationIds"
               placeholder="clxxxxx, clyyyyy, clzzzzz"
               variant="medium"
@@ -454,10 +469,14 @@ function AddDataStoreDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-text-dimmed">
+            <label
+              htmlFor={`${fieldId}-connectionUrl`}
+              className="text-xs font-medium text-text-dimmed"
+            >
               ClickHouse connection URL <span className="text-rose-400">*</span>
             </label>
             <Input
+              id={`${fieldId}-connectionUrl`}
               name="connectionUrl"
               type="password"
               placeholder="https://user:password@host:8443"

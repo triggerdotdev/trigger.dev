@@ -549,7 +549,7 @@ function ColumnHeader({ column }: { column: ResolvedColumn }) {
   if (column.kind === "smart") {
     return <SmartColumnHeader def={column.def} />;
   }
-  return <>{STANDARD_RENDERERS[column.def.id]?.header ?? null}</>;
+  return STANDARD_RENDERERS[column.def.id]?.header ?? null;
 }
 
 function ColumnCell({ column, ctx }: { column: ResolvedColumn; ctx: CellRenderContext }) {
@@ -563,7 +563,7 @@ function ColumnCell({ column, ctx }: { column: ResolvedColumn; ctx: CellRenderCo
       />
     );
   }
-  return <>{STANDARD_RENDERERS[column.def.id]?.cell(ctx) ?? null}</>;
+  return STANDARD_RENDERERS[column.def.id]?.cell(ctx) ?? null;
 }
 
 export function TaskRunsTable({
@@ -662,7 +662,7 @@ export function TaskRunsTable({
         }
       }
     },
-    [checkboxes, runs]
+    [checkboxes, runs, select]
   );
 
   return (

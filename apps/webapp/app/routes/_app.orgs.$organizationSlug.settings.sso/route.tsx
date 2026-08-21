@@ -375,6 +375,7 @@ function useOverrideDraft<T>(serverValue: T): {
   const [override, setOverride] = useState<{ value: T } | null>(null);
   useEffect(() => {
     // Server matches the pending edit → clear the override.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setOverride((current) => (current && Object.is(current.value, serverValue) ? null : current));
   }, [serverValue]);
   const value = override ? override.value : serverValue;
@@ -419,6 +420,7 @@ export default function Page() {
 
   useEffect(() => {
     if (portalFetcher.data?.ok && portalFetcher.data.url) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setPortalUrl(portalFetcher.data.url);
     }
   }, [portalFetcher.data]);
@@ -917,6 +919,7 @@ function DirectorySyncSection({
   // server value so polled-in groups appear and matched overrides drop.
   const [draftGroupRoles, setDraftGroupRoles] = useState<Record<string, string>>({});
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setDraftGroupRoles((current) => {
       const next: Record<string, string> = {};
       for (const g of directorySync.groups) {

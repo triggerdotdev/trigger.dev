@@ -105,7 +105,7 @@ function Menu(props: MenuProps) {
     case "environment":
       return <Environments {...props} />;
   }
-  return <></>;
+  return null;
 }
 
 function MainMenu({ searchValue, clearSearchValue, setFilterType, trigger, shortcut }: MenuProps) {
@@ -124,6 +124,7 @@ function MainMenu({ searchValue, clearSearchValue, setFilterType, trigger, short
           {filtered.map((type, index) => (
             <SelectButtonItem
               key={type.name}
+              accessibleLabel={type.title}
               onClick={() => {
                 clearSearchValue();
                 setFilterType(type.name);
@@ -148,10 +149,13 @@ const statuses = allTaskRunStatuses.map((status) => ({
 function Statuses({ trigger, clearSearchValue, shortcut, searchValue, setFilterType }: MenuProps) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = useCallback((values: string[]) => {
-    clearSearchValue();
-    replace({ status: values });
-  }, []);
+  const handleChange = useCallback(
+    (values: string[]) => {
+      clearSearchValue();
+      replace({ status: values });
+    },
+    [clearSearchValue, replace]
+  );
 
   const filtered = useMemo(() => {
     return statuses.filter((item) => item.title.toLowerCase().includes(searchValue.toLowerCase()));
@@ -204,10 +208,13 @@ function Environments({
 }: MenuProps) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = useCallback((values: string[]) => {
-    clearSearchValue();
-    replace({ environment: values });
-  }, []);
+  const handleChange = useCallback(
+    (values: string[]) => {
+      clearSearchValue();
+      replace({ environment: values });
+    },
+    [clearSearchValue, replace]
+  );
 
   const filtered = useMemo(() => {
     return environments.filter((item) =>

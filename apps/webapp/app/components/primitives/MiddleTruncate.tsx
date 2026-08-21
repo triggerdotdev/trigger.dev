@@ -117,6 +117,7 @@ export function MiddleTruncate({ text, className }: MiddleTruncateProps) {
   }, [text]);
 
   useLayoutEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     calculateTruncation();
 
     // Recalculate on resize (guard for jsdom/older browsers)

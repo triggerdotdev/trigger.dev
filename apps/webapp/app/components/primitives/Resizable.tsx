@@ -100,7 +100,9 @@ function collapsibleHandleClassName(show: boolean) {
 
 function useFrozenValue<T>(value: T | null | undefined): T | null | undefined {
   const ref = useRef(value);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   if (value != null) ref.current = value;
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   return ref.current;
 }
 

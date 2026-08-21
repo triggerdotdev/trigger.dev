@@ -1,8 +1,8 @@
 diff --git a/dist/router.cjs.js b/dist/router.cjs.js
-index 6aa7db6fb5a7182afcdf17b16a3356abfa1e7945..95edbde228beff8dbd13fb2800302e31a932ef25 100644
+index 6aa7db6fb5a7182afcdf17b16a3356abfa1e7945..5ae0b0e632a356493c3a8b0c88ebd396e8f5305b 100644
 --- a/dist/router.cjs.js
 +++ b/dist/router.cjs.js
-@@ -783,6 +783,11 @@ function convertRoutesToDataRoutes(routes, mapRouteProperties, parentPath, manif
+@@ -783,6 +783,51 @@ function convertRoutesToDataRoutes(routes, mapRouteProperties, parentPath, manif
   *
   * @see https://reactrouter.com/v6/utils/match-routes
   */
@@ -11,10 +11,50 @@ index 6aa7db6fb5a7182afcdf17b16a3356abfa1e7945..95edbde228beff8dbd13fb2800302e31
 +// fix #14967; maintainer suggested patch-package until the Remix 3 route-pattern rewrite).
 +let __branchCache = new WeakMap();
 +let __compileCache = new Map();
++/**
++ * trigger.dev perf patch 2 — bucket ranked branches by their first static path
++ * segment so a request scans only branches that could match it, rather than the
++ * whole 500+ route table. See patches/README.md.
++ */
++let __bucketCache = new WeakMap();
++/**
++ * Returns the lowercased leading segment when it is static, or null when the
++ * branch can match any first segment (dynamic, splat or optional leading
++ * segment, or a root/pathless path) and so must always be considered.
++ */
++function __firstStaticSegment(path) {
++  if (!path || path === "/") return null;
++  let start = path.charCodeAt(0) === 47 ? 1 : 0;
++  let end = path.indexOf("/", start);
++  let seg = end === -1 ? path.slice(start) : path.slice(start, end);
++  if (seg === "") return null;
++  if (seg.indexOf(":") !== -1 || seg.indexOf("*") !== -1 || seg.indexOf("(") !== -1 || seg.indexOf("?") !== -1) {
++    return null;
++  }
++  return seg.toLowerCase();
++}
++function __buildBuckets(branches) {
++  let byFirstSegment = new Map();
++  let always = [];
++  for (let i = 0; i < branches.length; ++i) {
++    let seg = __firstStaticSegment(branches[i].path);
++    if (seg === null) {
++      always.push(i);
++      continue;
++    }
++    let list = byFirstSegment.get(seg);
++    if (!list) {
++      list = [];
++      byFirstSegment.set(seg, list);
++    }
++    list.push(i);
++  }
++  return { byFirstSegment, always };
++}
  function matchRoutes(routes, locationArg, basename) {
    if (basename === void 0) {
      basename = "/";
-@@ -795,8 +800,13 @@ function matchRoutesImpl(routes, locationArg, basename, allowPartial) {
+@@ -795,18 +840,51 @@ function matchRoutesImpl(routes, locationArg, basename, allowPartial) {
    if (pathname == null) {
      return null;
    }
@@ -29,8 +69,54 @@ index 6aa7db6fb5a7182afcdf17b16a3356abfa1e7945..95edbde228beff8dbd13fb2800302e31
 +  }
    let matches = null;
    let decoded = decodePath(pathname);
-   for (let i = 0; matches == null && i < branches.length; ++i) {
-@@ -1115,6 +1125,12 @@ function compilePath(path, caseSensitive, end) {
+-  for (let i = 0; matches == null && i < branches.length; ++i) {
+-    // Incoming pathnames are generally encoded from either window.location
+-    // or from router.navigate, but we want to match against the unencoded
+-    // paths in the route definitions.  Memory router locations won't be
+-    // encoded here but there also shouldn't be anything to decode so this
+-    // should be a safe operation.  This avoids needing matchRoutes to be
+-    // history-aware.
+-    matches = matchRouteBranch(branches[i], decoded, allowPartial);
++  // Incoming pathnames are generally encoded from either window.location
++  // or from router.navigate, but we want to match against the unencoded
++  // paths in the route definitions.  Memory router locations won't be
++  // encoded here but there also shouldn't be anything to decode so this
++  // should be a safe operation.  This avoids needing matchRoutes to be
++  // history-aware.
++  let buckets = __bucketCache.get(branches);
++  if (!buckets) {
++    buckets = __buildBuckets(branches);
++    __bucketCache.set(branches, buckets);
++  }
++  let requestSegment = __firstStaticSegment(decoded);
++  if (requestSegment === null) {
++    for (let i = 0; matches == null && i < branches.length; ++i) {
++      matches = matchRouteBranch(branches[i], decoded, allowPartial);
++    }
++    return matches;
++  }
++  /**
++   * Both lists hold indexes into the already rank-sorted `branches`, so walking
++   * them in ascending-index order preserves the exact evaluation order the
++   * unbucketed scan would have used.
++   */
++  let scoped = buckets.byFirstSegment.get(requestSegment);
++  let always = buckets.always;
++  let si = 0;
++  let ai = 0;
++  let scopedLength = scoped === undefined ? 0 : scoped.length;
++  while (matches == null && (si < scopedLength || ai < always.length)) {
++    let index;
++    if (si < scopedLength && (ai >= always.length || scoped[si] < always[ai])) {
++      index = scoped[si++];
++    } else {
++      index = always[ai++];
++    }
++    matches = matchRouteBranch(branches[index], decoded, allowPartial);
+   }
+   return matches;
+ }
+@@ -1115,6 +1193,12 @@ function compilePath(path, caseSensitive, end) {
    if (end === void 0) {
      end = true;
    }
@@ -43,7 +129,7 @@ index 6aa7db6fb5a7182afcdf17b16a3356abfa1e7945..95edbde228beff8dbd13fb2800302e31
    warning(path === "*" || !path.endsWith("*") || path.endsWith("/*"), "Route path \"" + path + "\" will be treated as if it were " + ("\"" + path.replace(/\*$/, "/*") + "\" because the `*` character must ") + "always follow a `/` in the pattern. To get rid of this warning, " + ("please change the route path to \"" + path.replace(/\*$/, "/*") + "\"."));
    let params = [];
    let regexpSource = "^" + path.replace(/\/*\*?$/, "") // Ignore trailing / and /*, we'll handle it below
-@@ -1147,7 +1163,11 @@ function compilePath(path, caseSensitive, end) {
+@@ -1147,7 +1231,11 @@ function compilePath(path, caseSensitive, end) {
      regexpSource += "(?:(?=\\/|$))";
    } else ;
    let matcher = new RegExp(regexpSource, caseSensitive ? undefined : "i");

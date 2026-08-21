@@ -87,3 +87,6 @@ ailogger-output.log
 observability-map.json
 
 .claude/worktrees/
+
+# CPU benchmark artifacts (profiles + summaries)
+.bench/

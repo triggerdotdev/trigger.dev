@@ -2288,6 +2288,7 @@ model WorkerDeployment {
   triggeredById String?
   triggeredVia  String?
   commitSHA     String?
+  externalId    String?
 
   startedAt   DateTime?
   installedAt DateTime?
@@ -2316,6 +2317,7 @@ model WorkerDeployment {
   @@index([commitSHA])
   @@index([environmentId, createdAt])
   @@index([environmentId, status, id])
+  @@index([environmentId, externalId])
 }
 
 enum WorkerDeploymentStatus {
@@ -3179,6 +3181,11 @@ model PlatformNotification {
 
   /// Ordering within same scope level (higher = more important)
   priority Int @default(0)
+
+  /// Staged-but-unpublished. While true the notification is hidden from all
+  /// user-facing reads regardless of startsAt/endsAt; publishing sets real
+  /// dates and flips this to false.
+  isDraft Boolean @default(false)
 
   /// Soft delete
   archivedAt DateTime?

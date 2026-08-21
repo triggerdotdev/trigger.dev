@@ -55,7 +55,7 @@ export function useFuzzyFilter<T extends object>({
         }),
       items
     );
-  }, [items, filterText]);
+  }, [items, keys, filterText]);
 
   return {
     filterText,

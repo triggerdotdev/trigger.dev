@@ -46,6 +46,7 @@ vi.mock("~/services/dashboardAgentWatches.server", () => ({
 const mints = vi.hoisted(() => [] as Array<{ userId: string; environmentId?: string }>);
 vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentApiOrigin: () => "https://api.example.com",
+  dashboardAgentUserApiOrigin: () => "https://api.example.com",
   dashboardAgentEnvironmentName: (type: string | undefined) =>
     type === "PRODUCTION" ? "prod" : undefined,
   mintDashboardAgentUserActorToken: async (

@@ -607,9 +607,10 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
   return (
     <Popover>
       <PopoverTrigger
+        aria-label="Choose custom avatar color"
         className={cn(iconTileClass, "border-grid-dimmed hover:border-border-bright")}
       >
-        <img src={colorWheelIcon} className="m-0 block size-[30px] p-0" />
+        <img src={colorWheelIcon} alt="" className="m-0 block size-[30px] p-0" />
       </PopoverTrigger>
       <PopoverContent
         className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
