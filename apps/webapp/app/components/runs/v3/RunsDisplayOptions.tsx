@@ -256,26 +256,16 @@ export function RunsDisplayOptions({
                 className="h-8"
               />
             )}
-            <SimpleTooltip
-              asChild
-              side="bottom"
-              disableHoverableContent
-              hidden={layout.isCustomized}
-              button={
-                // The disabled button has pointer-events-none, so it can host neither the
-                // not-allowed cursor nor a tooltip; the wrapper carries both.
-                <div className={cn("flex", !layout.isCustomized && "cursor-not-allowed")}>
-                  <PopoverMenuItem
-                    icon={ArrowUturnLeftIcon}
-                    title="Reset to default"
-                    onClick={reset}
-                    disabled={!layout.isCustomized}
-                    className="h-8 group-disabled/button:opacity-50 group-disabled/button:[&_span]:text-text-dimmed"
-                  />
-                </div>
-              }
-              content="Columns are already at their default"
-            />
+            {/* Wrapper carries the cursor: the disabled button has pointer-events-none. */}
+            <div className={cn("flex", !layout.isCustomized && "cursor-not-allowed")}>
+              <PopoverMenuItem
+                icon={ArrowUturnLeftIcon}
+                title="Reset to default"
+                onClick={reset}
+                disabled={!layout.isCustomized}
+                className="h-8 group-disabled/button:opacity-50 group-disabled/button:[&_span]:text-text-dimmed"
+              />
+            </div>
           </div>
         </PopoverContent>
       </Popover>

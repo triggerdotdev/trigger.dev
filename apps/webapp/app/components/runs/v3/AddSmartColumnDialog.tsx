@@ -2,8 +2,7 @@ import { BoltIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20
 import { useEffect, useMemo, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
-import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "~/components/primitives/Dialog";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -164,18 +163,21 @@ export function AddSmartColumnDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[1040px]!">
+      {/* Bounded height with the columns absorbing it, so the stacked form can't push the
+          header or footer off a short screen. */}
+      <DialogContent className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-[860px]!">
         <DialogHeader>{editing ? "Edit smart column" : "Add smart column"}</DialogHeader>
-        <div className="flex flex-col gap-5 p-1">
-          <Callout variant="info">
-            Smart columns are display only. You can't sort or filter by them.
-          </Callout>
+        <div className="flex min-h-0 flex-col gap-5">
+          <Paragraph variant="small/dimmed">
+            Pull a single value out of a run's payload, metadata, or output by JSON path. Smart
+            columns are display only — you can't sort or filter by them.
+          </Paragraph>
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1fr)_260px_220px]">
-            <div className="flex flex-col gap-5">
+          <div className="grid min-h-0 grid-cols-1 items-stretch gap-5 md:grid-cols-3">
+            <div className="flex flex-col gap-4 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
               <div className="flex flex-col gap-1.5">
                 <Label>Source</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-col gap-2">
                   {SOURCE_CARDS.map((card) => (
                     <SourceCard
                       key={card.value}
@@ -188,58 +190,50 @@ export function AddSmartColumnDialog({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label>JSON path</Label>
-                  <Input
-                    value={path}
-                    onChange={(e) => setPath(e.target.value)}
-                    placeholder="$.order.total"
-                    spellCheck={false}
-                  />
-                  <Paragraph variant="extra-small" className="text-balance text-text-dimmed">
-                    e.g. <code>$.order.total</code>, <code>$.items[0].sku</code>,{" "}
-                    <code>$.items.length</code>
-                  </Paragraph>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>Column label</Label>
-                  <Input
-                    value={effectiveLabel}
-                    onChange={(e) => {
-                      setLabel(e.target.value);
-                      setLabelEdited(true);
-                    }}
-                    placeholder={labelFromPath(path)}
-                  />
-                </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>JSON path</Label>
+                <Input
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder="$.order.total"
+                  spellCheck={false}
+                />
+                <Paragraph variant="extra-small" className="text-balance text-text-dimmed">
+                  e.g. <code>$.order.total</code>, <code>$.items[0].sku</code>,{" "}
+                  <code>$.items.length</code>
+                </Paragraph>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Column label</Label>
+                <Input
+                  value={effectiveLabel}
+                  onChange={(e) => {
+                    setLabel(e.target.value);
+                    setLabelEdited(true);
+                  }}
+                  placeholder={labelFromPath(path)}
+                />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label>Display as</Label>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {DISPLAY_OPTIONS.map((option) => (
-                    <button
+                    <SourceCard
                       key={option.value}
-                      type="button"
-                      onClick={() => setDisplayAs(option.value)}
-                      className={cn(
-                        "rounded-full border px-3.5 py-1 text-sm transition",
-                        displayAs === option.value
-                          ? "border-blue-500 bg-blue-500/10 text-text-bright"
-                          : "border-grid-bright text-text-dimmed hover:text-text-bright"
-                      )}
-                    >
-                      {option.label}
-                    </button>
+                      label={option.label}
+                      selected={displayAs === option.value}
+                      onSelect={() => setDisplayAs(option.value)}
+                    />
                   ))}
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 self-start">
-              <div className="flex h-5 items-center justify-between gap-2">
-                <Paragraph variant="extra-extra-small/dimmed/caps">Sample {source}</Paragraph>
+            <div className="flex min-h-0 flex-col gap-1.5">
+              <div className="flex min-h-6 items-center justify-between gap-2">
+                <Label>Sample {source}</Label>
                 {usable.length > 1 && (
                   <SampleRunPicker
                     index={activeIndex}
@@ -249,7 +243,7 @@ export function AddSmartColumnDialog({
                   />
                 )}
               </div>
-              <div className="overflow-hidden rounded-lg border border-grid-dimmed bg-charcoal-900 p-3">
+              <div className="flex-1 overflow-auto rounded-lg border border-grid-dimmed bg-charcoal-900 p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                 {!sampleLoaded ? (
                   <Paragraph variant="extra-small" className="text-text-dimmed">
                     Loading…
@@ -276,22 +270,22 @@ export function AddSmartColumnDialog({
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 self-start">
-              <div className="flex h-5 items-center">
-                <Paragraph variant="extra-extra-small/dimmed/caps">Preview</Paragraph>
+            <div className="flex min-h-0 flex-col gap-1.5">
+              <div className="flex min-h-6 items-center">
+                <Label>Preview</Label>
               </div>
               <SmartColumnPreview rows={perRun} def={previewDef} loaded={sampleLoaded} />
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed p-3">
+        <DialogFooter>
           <Button variant="tertiary/medium" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button variant="primary/medium" disabled={!canSubmit} onClick={handleSubmit}>
             {editing ? "Save changes" : "Add column"}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -332,6 +326,7 @@ function SampleRunPicker({
   );
 }
 
+/** Radio card used for both Source (with a description) and Display as (without). */
 function SourceCard({
   label,
   description,
@@ -339,7 +334,7 @@ function SourceCard({
   onSelect,
 }: {
   label: string;
-  description: string;
+  description?: string;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -349,7 +344,7 @@ function SourceCard({
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition",
+        "flex cursor-pointer flex-col gap-1 rounded-lg border p-2.5 text-left transition",
         selected
           ? "border-blue-500 bg-blue-500/10"
           : "border-grid-bright bg-background-dimmed hover:border-text-dimmed"
@@ -366,7 +361,7 @@ function SourceCard({
         </span>
         {label}
       </span>
-      <span className="text-xs text-text-dimmed">{description}</span>
+      {description && <span className="text-xs text-text-dimmed">{description}</span>}
     </button>
   );
 }
@@ -384,14 +379,14 @@ function SmartColumnPreview({
   const alignClass = numeric ? "justify-end text-right tabular-nums" : "justify-start text-left";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-grid-dimmed">
-      <div className="flex items-center gap-1 border-b border-grid-dimmed bg-background-dimmed px-2.5 py-1.5">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-grid-dimmed">
+      <div className="flex flex-none items-center gap-1 border-b border-grid-dimmed bg-background-dimmed px-2.5 py-1.5">
         <BoltIcon className="size-3.5 flex-none text-text-dimmed" />
         <span className="truncate text-xs font-medium text-text-bright">
           {def.label || "Column"}
         </span>
       </div>
-      <div className="max-h-80 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {!loaded ? (
           <div className="px-2.5 py-2 text-xs text-text-dimmed">Loading…</div>
         ) : rows.length === 0 ? (
