@@ -10,7 +10,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { TabButton } from "~/components/primitives/Tabs";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
@@ -487,11 +487,14 @@ function TaskActivityCard({
   const [view, setView] = useState<"runs" | "queue">("runs");
   return (
     <ChartCard
+      headerVariant="tabs"
       title={
-        <TabContainer>
+        <>
           <TabButton
             isActive={view === "runs"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("runs")}
           >
             Runs by status
@@ -499,11 +502,13 @@ function TaskActivityCard({
           <TabButton
             isActive={view === "queue"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("queue")}
           >
             Queue backlog
           </TabButton>
-        </TabContainer>
+        </>
       }
     >
       {view === "queue" ? (

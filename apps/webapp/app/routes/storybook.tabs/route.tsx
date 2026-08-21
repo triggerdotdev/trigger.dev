@@ -1,5 +1,6 @@
 import { ComponentNames } from "../storybook/StoryKit";
 import { Outlet } from "@remix-run/react";
+import { useState } from "react";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -8,7 +9,7 @@ import {
 } from "~/components/primitives/ClientTabs";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Tabs } from "~/components/primitives/Tabs";
+import { TabButton, TabContainer, Tabs } from "~/components/primitives/Tabs";
 
 export default function Story() {
   return (
@@ -58,6 +59,15 @@ export default function Story() {
             variant="segmented"
           />
           <Outlet />
+        </div>
+        <div className="flex h-fit flex-col gap-2">
+          <Header1 spacing>{"<TabButton/>"} (local state)</Header1>
+          <Paragraph>
+            Variant="title" — a filter-bar-height row, label centred, underline on the border
+          </Paragraph>
+          <TitleTabButtons layoutId="story-title-tabs" />
+          <Paragraph>Variant="title" size="small"</Paragraph>
+          <TitleTabButtons layoutId="story-title-tabs-small" size="small" />
         </div>
       </div>
       <div className="flex w-full max-w-2xl flex-col gap-4">
@@ -188,5 +198,27 @@ export default function Story() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** The button form of the title variant, at both label sizes. */
+function TitleTabButtons({ layoutId, size }: { layoutId: string; size?: "base" | "small" }) {
+  const [active, setActive] = useState("first");
+
+  return (
+    <TabContainer variant="title" className="justify-start gap-x-4 px-2">
+      {["first", "second"].map((value) => (
+        <TabButton
+          key={value}
+          isActive={active === value}
+          layoutId={layoutId}
+          variant="title"
+          size={size}
+          onClick={() => setActive(value)}
+        >
+          {value === "first" ? "Runs by status" : "Queue backlog"}
+        </TabButton>
+      ))}
+    </TabContainer>
   );
 }
