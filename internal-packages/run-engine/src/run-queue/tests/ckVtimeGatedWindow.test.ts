@@ -6,14 +6,11 @@ import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 
-// Devin's finding B on #4367: a concurrency-gated candidate returns from tryServe without
-// the 'notReady' marker, so it spends one of pass 1's window slots even though it can
-// never be served. A gated variant also stops advancing its tag, so it keeps sorting to
-// the front and is revisited first on every call. Fill the window with them and pass 1
-// serves nothing, every call, and the scheduler silently degrades to pass 2's age order.
-//
-// Work conservation survives that, which is why it was originally waved through. What does
-// not survive is the feature's whole purpose: fair order. This pins the difference.
+// A concurrency-gated candidate cannot be served, and its tag stops advancing, so it keeps
+// sorting to the front and is revisited first on every call. Let it spend one of pass 1's
+// window slots anyway and enough of them make pass 1 serve nothing at all, on every call,
+// with the scheduler silently degrading to pass 2's age order. Work conservation survives
+// that; fair order, which is the point of the feature, does not.
 
 const testOptions = {
   name: "rq",
@@ -150,12 +147,10 @@ describe("CK vtime: gated variants and the pass-1 window", () => {
     },
     60_000
   );
-  // The sibling case, and a mutation audit found nothing was testing it: a variant whose
-  // head is scheduled in the future already reports 'notReady' so pass 1 declines to spend
-  // a slot on it. Deleting that report left the whole vtime suite green, meaning the
-  // behaviour was load-bearing by comment only. Same shape as the gated test above: enough
-  // unservable variants sorted ahead on tag to eat the window, and a servable one behind
-  // them that fair order says to serve first.
+  // The sibling case: a variant whose head is scheduled in the future reports 'notReady'
+  // for the same reason, so pass 1 declines to spend a slot on it. Same shape as the gated
+  // test above, with enough unservable variants sorted ahead on tag to eat the window and a
+  // servable one behind them that fair order says to serve first.
   redisTest(
     "future-headed variants must not spend the fair pass's budget",
     async ({ redisContainer }) => {

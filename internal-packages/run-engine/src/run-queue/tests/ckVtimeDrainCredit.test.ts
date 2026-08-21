@@ -8,10 +8,8 @@ import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import type { InputPayload } from "../types.js";
 
 // A draining variant parks its tag in :ckVtimeIdle before it leaves :ckVtime, so its next
-// enqueue re-registers with the credit it earned instead of at the floor. A mutation audit
-// found that park is checked on the dequeue path and nowhere else: removing it from ack,
-// dead-letter and TTL expiry left every vtime suite green, as did removing the restore
-// from nack's registration. Those four are what this file pins.
+// enqueue re-registers with the credit it earned instead of at the floor. This pins that
+// on every route out: ack, dead-letter and TTL expiry parking it, and nack restoring it.
 //
 // Each test gives the variant credit first. Parking a tag that equals the floor proves
 // nothing, because the dequeue reaps everything at or below the floor on its next call.

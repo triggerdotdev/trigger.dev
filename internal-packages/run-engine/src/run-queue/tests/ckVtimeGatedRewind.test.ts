@@ -7,15 +7,14 @@ import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import type { InputPayload } from "../types.js";
 
-// Devin on #4367: the gated-candidate block corrects every member of gatedPending with its
-// parked idle tag once the batched ZADD NX has added at least one member, rather than only
-// the members it actually added. A candidate that is already registered with an advanced
-// tag can therefore have that tag overwritten by an older parked one, which rewinds its
-// virtual clock and hands it a turn it has already taken.
+// The gated-candidate block registers its batch with one variadic ZADD NX, which reports
+// how many members it added but not which. Correcting every member with its parked tag
+// therefore reaches candidates it never registered, overwriting a live advanced tag with
+// an older parked one and handing that variant a turn it has already taken.
 //
-// Reaching it needs the pass-1 scan to be incomplete, because that scan is the only thing
-// that decides knownRegistered. It reads scanLimit entries, so a queue holding more
-// variants than that pushes already-registered ones into pass 2 as if they were new.
+// The fixture is contrived because reaching it needs an incomplete pass-1 scan: that scan
+// is the only thing deciding knownRegistered, so a queue holding more than scanLimit
+// variants is what pushes already-registered ones into pass 2 as if they were new.
 
 const testOptions = {
   name: "rq",
