@@ -769,3 +769,87 @@ describe("environment scoping", () => {
     }
   });
 });
+
+describe("expectedCur compare-and-set", () => {
+  redisTest("absent by default: cur advances unconditionally", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      const r = await store.append({
+        entry: entry({ id: "s2", previousSnapshotId: "stale" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      expect(r).toMatchObject({ outcome: "written" });
+      expect((await store.getLatest("run_1"))?.id).toBe("s2");
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("supplied and matching: the append proceeds", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      const r = await store.append({
+        entry: entry({ id: "s2" }),
+        kind: "transition",
+        isTerminal: false,
+        expectedCur: "s1",
+      });
+      expect(r).toMatchObject({ outcome: "written", seq: 2 });
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("supplied and stale: writes NOTHING and reports the fork", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      await store.append({ entry: entry({ id: "s2" }), kind: "transition", isTerminal: false });
+
+      // A second concurrent transition that read cur = s1 before s2 landed.
+      const r = await store.append({
+        entry: entry({ id: "s3" }),
+        kind: "transition",
+        isTerminal: false,
+        expectedCur: "s1",
+      });
+      expect(r).toEqual({ outcome: "forked", actualCur: "s2" });
+
+      // Nothing was written: no entry, and the seq counter did not move.
+      expect(await store.getById("run_1", "s3")).toBeNull();
+      const next = await store.append({
+        entry: entry({ id: "s4" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      expect(next).toMatchObject({ seq: 3 });
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "supplied as empty string: still enforces a check against an unset cur",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        // The birth sets cur to "s1", so a caller claiming cur is UNSET (expectedCur: "") must
+        // fork rather than have "" silently treated as "no compare-and-set requested".
+        await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+        const r = await store.append({
+          entry: entry({ id: "s2" }),
+          kind: "transition",
+          isTerminal: false,
+          expectedCur: "",
+        });
+        expect(r).toEqual({ outcome: "forked", actualCur: "s1" });
+        expect(await store.getById("run_1", "s2")).toBeNull();
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+});
