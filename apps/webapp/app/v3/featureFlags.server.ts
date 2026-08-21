@@ -1,11 +1,12 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
   type FeatureFlagKey,
   FeatureFlagCatalog,
+  GLOBAL_LOCKED_FLAGS,
 } from "~/v3/featureFlags";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 
@@ -219,4 +220,56 @@ export async function applyGlobalMintKindFlip(
 
     return makeSetMultipleFlags(tx)(stamped);
   });
+}
+
+/**
+ * Replace-semantics write for the global admin flags page: catalog keys present in
+ * `requestedFlags` are upserted, catalog keys absent from it are deleted.
+ *
+ * A locked flag absent from the payload means the page never offered it for editing, not that
+ * the admin unset it, so it survives the sweep. Only a self-hosted page that says it unlocked
+ * them can delete one.
+ */
+export async function replaceGlobalFeatureFlags(
+  client: PrismaClient,
+  params: {
+    requestedFlags: Record<string, unknown>;
+    catalogKeys: FeatureFlagKey[];
+    isManagedCloud: boolean;
+    unlockLockedFlags: boolean;
+  }
+): Promise<void> {
+  const canDeleteLocked = params.unlockLockedFlags && !params.isManagedCloud;
+  const toUpsert: { key: FeatureFlagKey; value: unknown }[] = [];
+  const keysToDelete: string[] = [];
+
+  for (const key of params.catalogKeys) {
+    if (key in params.requestedFlags) {
+      toUpsert.push({ key, value: params.requestedFlags[key] });
+    } else if (canDeleteLocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
+      keysToDelete.push(key);
+    }
+  }
+
+  const applied = await $transaction(client, "replaceGlobalFeatureFlags", async (tx) => {
+    for (const { key, value } of toUpsert) {
+      await tx.featureFlag.upsert({
+        where: { key },
+        create: { key, value: value as any },
+        update: { value: value as any },
+      });
+    }
+
+    if (keysToDelete.length > 0) {
+      await tx.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } });
+    }
+
+    return true;
+  });
+
+  // The helper resolves undefined instead of throwing when Prisma errors are swallowed. This
+  // write deletes flags, so treat a transaction that did not run as a failure the caller sees.
+  if (!applied) {
+    throw new Error("replaceGlobalFeatureFlags: transaction did not complete");
+  }
 }

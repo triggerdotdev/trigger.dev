@@ -5,17 +5,18 @@ import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LockClosedIcon } from "@heroicons/react/20/solid";
-import { boundedIn, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   FEATURE_FLAG,
   GLOBAL_LOCKED_FLAGS,
+  type FeatureFlagKey,
   type FlagControlType,
   getAllFlagControlTypes,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
-import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
+import { flags as getGlobalFlags, replaceGlobalFeatureFlags } from "~/v3/featureFlags.server";
 import { featuresForRequest } from "~/features.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -87,7 +88,13 @@ export const action = dashboardAction(
       return json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const payloadSchema = z.object({ flags: z.record(z.unknown()) });
+    const payloadSchema = z.object({
+      flags: z.record(z.unknown()),
+      // The page only submits the flags it is managing, so an omitted key is ambiguous for the
+      // locked flags: this says whether the admin unlocked them and is therefore authoritative
+      // over them too.
+      unlockLockedFlags: z.boolean().optional(),
+    });
     const parsed = payloadSchema.safeParse(body);
     if (!parsed.success) {
       return json({ error: "Invalid payload" }, { status: 400 });
@@ -116,39 +123,12 @@ export const action = dashboardAction(
       );
     }
 
-    const validatedFlags = validationResult.data as Record<string, unknown>;
-    const controlTypes = getAllFlagControlTypes();
-    const catalogKeys = Object.keys(controlTypes);
-
-    const keysToDelete: string[] = [];
-    const upsertOps: ReturnType<typeof prisma.featureFlag.upsert>[] = [];
-
-    for (const key of catalogKeys) {
-      if (key in validatedFlags) {
-        upsertOps.push(
-          prisma.featureFlag.upsert({
-            where: { key },
-            create: { key, value: validatedFlags[key] as any },
-            update: { value: validatedFlags[key] as any },
-          })
-        );
-      } else {
-        // On cloud, never delete locked flags (they're not in the payload
-        // because the UI doesn't include them). Locally, delete everything
-        // the user didn't include - full control.
-        const isProtected = isManagedCloud && GLOBAL_LOCKED_FLAGS.includes(key);
-        if (!isProtected) {
-          keysToDelete.push(key);
-        }
-      }
-    }
-
-    await prisma.$transaction([
-      ...upsertOps,
-      ...(keysToDelete.length > 0
-        ? [prisma.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
-        : []),
-    ]);
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: validationResult.data as Record<string, unknown>,
+      catalogKeys: Object.keys(getAllFlagControlTypes()) as FeatureFlagKey[],
+      isManagedCloud,
+      unlockLockedFlags: parsed.data.unlockLockedFlags ?? false,
+    });
 
     return json({ success: true });
   }
@@ -213,7 +193,7 @@ export default function AdminFeatureFlagsRoute() {
   };
 
   const handleSave = () => {
-    saveFetcher.submit(JSON.stringify({ flags: values }), {
+    saveFetcher.submit(JSON.stringify({ flags: values, unlockLockedFlags: unlocked }), {
       method: "POST",
       encType: "application/json",
     });
