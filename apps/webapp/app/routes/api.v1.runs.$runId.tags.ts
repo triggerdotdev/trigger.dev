@@ -1,10 +1,10 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { AddTagsRequestBody } from "@trigger.dev/core/v3";
+import { AddTagsRequestBody, RemoveTagsRequestBody } from "@trigger.dev/core/v3";
 import type { BufferEntry } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment, authenticateApiRequest } from "~/services/apiAuth.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
@@ -31,23 +31,59 @@ const ParamsSchema = z.object({
   runId: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "POST") {
-    return { status: 405, body: "Method Not Allowed" };
-  }
+type ResolvedRequest =
+  | { kind: "ok"; environment: AuthenticatedEnvironment; runId: string }
+  | { kind: "error"; response: Response };
 
+// Auth + params, shared by both methods. Secret-key auth only, deliberately: adding
+// an RBAC `authorization` gate here would change behaviour for narrowly-scoped JWTs.
+async function resolveRequest(
+  request: Request,
+  params: ActionFunctionArgs["params"]
+): Promise<ResolvedRequest> {
   const authenticationResult = await authenticateApiRequest(request);
   if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
+    return {
+      kind: "error",
+      response: json({ error: "Invalid or Missing API Key" }, { status: 401 }),
+    };
   }
 
   const parsedParams = ParamsSchema.safeParse(params);
   if (!parsedParams.success) {
-    return json(
-      { error: "Invalid request parameters", issues: parsedParams.error.issues },
-      { status: 400 }
-    );
+    return {
+      kind: "error",
+      response: json(
+        { error: "Invalid request parameters", issues: parsedParams.error.issues },
+        { status: 400 }
+      ),
+    };
   }
+
+  return {
+    kind: "ok",
+    environment: authenticationResult.environment,
+    runId: parsedParams.data.runId,
+  };
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  switch (request.method.toUpperCase()) {
+    case "POST":
+      return addRunTags(request, params);
+    case "DELETE":
+      return removeRunTags(request, params);
+    default:
+      return json({ error: "Method Not Allowed" }, { status: 405 });
+  }
+}
+
+async function addRunTags(request: Request, params: ActionFunctionArgs["params"]) {
+  const resolved = await resolveRequest(request, params);
+  if (resolved.kind === "error") {
+    return resolved.response;
+  }
+  const { environment: env, runId } = resolved;
 
   try {
     const anyBody = await request.json();
@@ -62,9 +98,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ message: "No new tags to add" }, { status: 200 });
     }
 
-    const env = authenticationResult.environment;
     const outcome = await mutateWithFallback<Response>({
-      runId: parsedParams.data.runId,
+      runId,
       environmentId: env.id,
       organizationId: env.organizationId,
       bufferPatch: { type: "append_tags", tags: nonEmptyTags, maxTags: MAX_TAGS_PER_RUN },
@@ -138,6 +173,105 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return outcome.response;
   } catch (error) {
     logger.error("Failed to add run tags", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
+  }
+}
+
+// Removes tags from THIS run only. Tags aren't a shared entity — they're strings in
+// the run's own `runTags` array — so there is nothing org-wide to delete, and other
+// runs carrying the same tag are untouched.
+async function removeRunTags(request: Request, params: ActionFunctionArgs["params"]) {
+  const resolved = await resolveRequest(request, params);
+  if (resolved.kind === "error") {
+    return resolved.response;
+  }
+  const { environment: env, runId } = resolved;
+
+  try {
+    const anyBody = await request.json();
+    const body = RemoveTagsRequestBody.safeParse(anyBody);
+    if (!body.success) {
+      return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
+    }
+    const bodyTags = typeof body.data.tags === "string" ? [body.data.tags] : body.data.tags;
+    const nonEmptyTags = bodyTags.filter((t) => t.trim().length > 0);
+
+    // Nothing asked for. No MAX_TAGS_PER_RUN check applies to a removal — it can
+    // only ever shrink the list.
+    if (nonEmptyTags.length === 0) {
+      return json({ message: "No tags to remove" }, { status: 200 });
+    }
+
+    const outcome = await mutateWithFallback<Response>({
+      runId,
+      environmentId: env.id,
+      organizationId: env.organizationId,
+      bufferPatch: { type: "remove_tags", tags: nonEmptyTags },
+      pgMutation: async (taskRun) => {
+        const existing = taskRun.runTags ?? [];
+        const doomed = new Set(nonEmptyTags);
+        const remaining = existing.filter((t) => !doomed.has(t));
+        const removedCount = existing.length - remaining.length;
+
+        // Removing tags the run doesn't have is an idempotent success, not a 404.
+        // Skip the write entirely so we don't bump `updatedAt`, replicate a row that
+        // didn't change, or publish a no-op realtime record.
+        if (removedCount === 0) {
+          return json({ message: "Successfully removed 0 tags." }, { status: 200 });
+        }
+
+        const updated = await runStore.removeTags(
+          taskRun.id,
+          nonEmptyTags,
+          { runtimeEnvironmentId: env.id },
+          prisma
+        );
+
+        // The run vanished (or moved environment) between the read and this write.
+        if (!updated) {
+          return json({ error: "Run not found" }, { status: 404 });
+        }
+
+        // Publish a run-changed record with the REMAINING tag set so tag feeds
+        // reindex (no-op unless enabled). updatedAt is the read-your-writes
+        // watermark. Note this record no longer carries the removed tag, so a feed
+        // subscribed to that tag simply stops receiving this run — there is no
+        // "tag removed" un-subscribe signal.
+        publishChangeRecord({
+          runId: taskRun.id,
+          envId: env.id,
+          tags: remaining,
+          batchId: taskRun.batchId,
+          updatedAtMs: updated.updatedAt.getTime(),
+        });
+
+        return json({ message: `Successfully removed ${removedCount} tags.` }, { status: 200 });
+      },
+      // Buffer-applied patch path. The Lua removed the tags from the snapshot
+      // atomically. Count off the pre-mutation entry (already fetched by
+      // mutateWithFallback's env-auth pre-check, so no extra Redis read) so the
+      // message reports the same number the PG path would for the same input.
+      synthesisedResponse: ({ bufferEntry }) => {
+        const existing = parseSnapshotTags(bufferEntry);
+        const removedCount = existing
+          ? existing.filter((t) => nonEmptyTags.includes(t)).length
+          : nonEmptyTags.length;
+        return json({ message: `Successfully removed ${removedCount} tags.` }, { status: 200 });
+      },
+      // No `rejectedResponse`: a `remove_tags` patch carries no cap, so the buffer
+      // never reports `limit_exceeded` for it.
+      abortSignal: getRequestAbortSignal(),
+    });
+
+    if (outcome.kind === "not_found") {
+      return json({ error: "Run not found" }, { status: 404 });
+    }
+    if (outcome.kind === "timed_out") {
+      return json({ error: "Run materialisation timed out" }, { status: 503 });
+    }
+    return outcome.response;
+  } catch (error) {
+    logger.error("Failed to remove run tags", { error });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

@@ -1592,6 +1592,60 @@ export class PostgresRunStore implements RunStore {
     });
   }
 
+  /**
+   * Removes `tags` from a run's `runTags`. Deliberately a SINGLE statement: Prisma has no
+   * array-pull operator, and a read-modify-write `{ set }` would open a window where a
+   * concurrent `pushTags` is lost. Rebuilding the array with `unnest` preserves the order
+   * (and any duplicates) of the surviving tags — `EXCEPT` would dedupe and reorder them.
+   *
+   * Raw SQL does not fire Prisma's `@updatedAt`, so `"updatedAt"` is set explicitly and
+   * returned: realtime uses it as the read-your-writes watermark.
+   *
+   * Resolves to `null` when no run matched the id + environment.
+   */
+  async removeTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ updatedAt: Date } | null> {
+    const prisma = tx ?? this.prisma;
+
+    // Nothing to remove. Don't touch the row: bumping "updatedAt" would emit a pointless
+    // replication event, and Prisma.join would build an invalid `IN ()` clause below.
+    if (tags.length === 0) {
+      return prisma.taskRun.findFirst({
+        where: { id: runId, runtimeEnvironmentId: where.runtimeEnvironmentId },
+        select: { updatedAt: true },
+      });
+    }
+
+    // Dedicated: the run-ops generated client binds a bare value array ambiguously (jsonb), so we
+    // pass the tag list as a single `text[]` param and match with `= ANY`, mirroring expireRunsBatch.
+    const rows =
+      this.schemaVariant === "dedicated"
+        ? await prisma.$queryRaw<{ updatedAt: Date }[]>`
+            UPDATE "TaskRun"
+            SET "runTags" = ARRAY(
+                  SELECT t FROM unnest("runTags") AS t WHERE NOT (t = ANY(${tags}::text[]))
+                ),
+                "updatedAt" = NOW()
+            WHERE "id" = ${runId} AND "runtimeEnvironmentId" = ${where.runtimeEnvironmentId}
+            RETURNING "updatedAt"
+          `
+        : await prisma.$queryRaw<{ updatedAt: Date }[]>`
+            UPDATE "TaskRun"
+            SET "runTags" = ARRAY(
+                  SELECT t FROM unnest("runTags") AS t WHERE t NOT IN (${Prisma.join(tags)})
+                ),
+                "updatedAt" = NOW()
+            WHERE "id" = ${runId} AND "runtimeEnvironmentId" = ${where.runtimeEnvironmentId}
+            RETURNING "updatedAt"
+          `;
+
+    return rows[0] ?? null;
+  }
+
   async pushRealtimeStream(
     runId: string,
     streamId: string,

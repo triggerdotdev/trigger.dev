@@ -1687,6 +1687,252 @@ describe("PostgresRunStore — delayed / debounce / metadata / idempotency / arr
   );
 
   // ---------------------------------------------------------------------------
+  // removeTags
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "removeTags removes a single tag (seed [a,b,c], remove [b] → [a,c])",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_remove_tags_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_remove_tags_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["a", "b", "c"],
+      });
+
+      const result = await store.removeTags(runId, ["b"], {
+        runtimeEnvironmentId: environment.id,
+      });
+
+      expect(result?.updatedAt).toBeInstanceOf(Date);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { runTags: true },
+      });
+      expect(row?.runTags).toEqual(["a", "c"]);
+    }
+  );
+
+  postgresTest(
+    "removeTags removes several tags at once (seed [a,b,c,d], remove [b,d] → [a,c])",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_remove_tags_2";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_remove_tags_friendly_2",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["a", "b", "c", "d"],
+      });
+
+      await store.removeTags(runId, ["b", "d"], { runtimeEnvironmentId: environment.id });
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { runTags: true },
+      });
+      expect(row?.runTags).toEqual(["a", "c"]);
+    }
+  );
+
+  postgresTest(
+    "removeTags is a no-op success when the tag isn't on the run",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_remove_tags_3";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_remove_tags_friendly_3",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["a", "b"],
+      });
+
+      const result = await store.removeTags(runId, ["nope"], {
+        runtimeEnvironmentId: environment.id,
+      });
+
+      // Matched the run, so we get an updatedAt back — just nothing changed.
+      expect(result?.updatedAt).toBeInstanceOf(Date);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { runTags: true },
+      });
+      expect(row?.runTags).toEqual(["a", "b"]);
+    }
+  );
+
+  postgresTest("removeTags removing every tag leaves an empty array", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_remove_tags_4";
+
+    await seedRun(prisma, {
+      runId,
+      friendlyId: "run_remove_tags_friendly_4",
+      organizationId: organization.id,
+      projectId: project.id,
+      runtimeEnvironmentId: environment.id,
+      runTags: ["a", "b"],
+    });
+
+    await store.removeTags(runId, ["a", "b"], { runtimeEnvironmentId: environment.id });
+
+    const row = await prisma.taskRun.findFirst({
+      where: { id: runId },
+      select: { runTags: true },
+    });
+    expect(row?.runTags).toEqual([]);
+  });
+
+  postgresTest("removeTags preserves the order of the surviving tags", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_remove_tags_5";
+
+    await seedRun(prisma, {
+      runId,
+      friendlyId: "run_remove_tags_friendly_5",
+      organizationId: organization.id,
+      projectId: project.id,
+      runtimeEnvironmentId: environment.id,
+      runTags: ["z", "a", "m", "b", "c"],
+    });
+
+    await store.removeTags(runId, ["a", "b"], { runtimeEnvironmentId: environment.id });
+
+    const row = await prisma.taskRun.findFirst({
+      where: { id: runId },
+      select: { runTags: true },
+    });
+    // Insertion order, NOT sorted — an EXCEPT-based rewrite would reorder these.
+    expect(row?.runTags).toEqual(["z", "m", "c"]);
+  });
+
+  postgresTest(
+    "removeTags preserves duplicates among the survivors (no dedupe)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_remove_tags_6";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_remove_tags_friendly_6",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["a", "b", "a"],
+      });
+
+      await store.removeTags(runId, ["b"], { runtimeEnvironmentId: environment.id });
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { runTags: true },
+      });
+      // An EXCEPT-based rewrite would collapse this to ["a"].
+      expect(row?.runTags).toEqual(["a", "a"]);
+    }
+  );
+
+  postgresTest(
+    "removeTags does not touch a run in a different runtimeEnvironmentId",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_remove_tags_7";
+
+      const otherEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          type: "PREVIEW",
+          slug: "other-env",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "tr_other_apikey",
+          pkApiKey: "pk_other_apikey",
+          shortcode: "other_short_code",
+        },
+      });
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_remove_tags_friendly_7",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["a", "b"],
+      });
+
+      const result = await store.removeTags(runId, ["a"], {
+        runtimeEnvironmentId: otherEnvironment.id,
+      });
+
+      // No row matched, so the caller can 404 rather than report a phantom success.
+      expect(result).toBeNull();
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { runTags: true },
+      });
+      expect(row?.runTags).toEqual(["a", "b"]);
+    }
+  );
+
+  postgresTest(
+    "removeTags returns a fresh updatedAt that matches what was stored",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_remove_tags_8";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_remove_tags_friendly_8",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["a", "b"],
+      });
+
+      // Force updatedAt well into the past so the freshness assertion below can't
+      // flake on two statements landing in the same millisecond.
+      const stale = new Date("2020-01-01T00:00:00.000Z");
+      await prisma.$executeRaw`UPDATE "TaskRun" SET "updatedAt" = ${stale} WHERE "id" = ${runId}`;
+
+      const result = await store.removeTags(runId, ["a"], {
+        runtimeEnvironmentId: environment.id,
+      });
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { updatedAt: true },
+      });
+
+      // Raw SQL doesn't fire Prisma's @updatedAt, so the statement sets it explicitly.
+      expect(result?.updatedAt.getTime()).toBeGreaterThan(stale.getTime());
+      // The returned value is the read-your-writes watermark, so it must be exactly
+      // what landed on the row.
+      expect(result?.updatedAt.getTime()).toBe(row?.updatedAt.getTime());
+    }
+  );
+
+  // ---------------------------------------------------------------------------
   // pushRealtimeStream
   // ---------------------------------------------------------------------------
 

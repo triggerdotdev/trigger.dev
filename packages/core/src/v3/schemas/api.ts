@@ -609,6 +609,12 @@ export const AddTagsRequestBody = z.object({
 
 export type AddTagsRequestBody = z.infer<typeof AddTagsRequestBody>;
 
+export const RemoveTagsRequestBody = z.object({
+  tags: RunTags,
+});
+
+export type RemoveTagsRequestBody = z.infer<typeof RemoveTagsRequestBody>;
+
 export const RescheduleRunRequestBody = z.object({
   delay: z.string().or(z.coerce.date()),
 });

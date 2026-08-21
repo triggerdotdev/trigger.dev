@@ -143,6 +143,9 @@ class RoutingRunStore implements RunStore {
   pushTags(runId: string, ...a: any[]): any {
     return (this.#resolveById(runId).pushTags as any)(runId, ...a);
   }
+  removeTags(runId: string, ...a: any[]): any {
+    return (this.#resolveById(runId).removeTags as any)(runId, ...a);
+  }
   pushRealtimeStream(runId: string, ...a: any[]): any {
     return (this.#resolveById(runId).pushRealtimeStream as any)(runId, ...a);
   }

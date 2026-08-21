@@ -724,6 +724,15 @@ export class RoutingRunStore implements RunStore {
     return (await this.#routeForWrite(runId)).pushTags(runId, tags, where);
   }
 
+  async removeTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ updatedAt: Date } | null> {
+    return (await this.#routeForWrite(runId)).removeTags(runId, tags, where);
+  }
+
   async pushRealtimeStream(
     runId: string,
     streamId: string,
