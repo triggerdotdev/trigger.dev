@@ -57,6 +57,10 @@ export type SnapshotEntryInput = {
 
 export type WaitpointIds = { present: boolean; distinctIds: string[]; order: string[] };
 
+export type GetSinceResult =
+  | { kind: "miss" }
+  | { kind: "hit"; entries: SnapshotRead[]; headWaitpointIds: WaitpointIds };
+
 export type SnapshotRead = {
   id: string;
   seq: number;
@@ -284,6 +288,55 @@ export class RedisSnapshotStore {
     });
   }
 
+  // A miss is not an error. It is the coexistence path: a pre-cutover snapshot id, expired history,
+  // or an org not yet enabled. The caller falls back to Postgres.
+  async getSince(
+    runId: string,
+    sinceId: string,
+    opts?: { environmentId?: string; limit?: number }
+  ): Promise<GetSinceResult> {
+    return this.#timed("getSince", async () => {
+      const k = snapshotKeys(runId);
+      const limit = opts?.limit ?? this.sinceLimit;
+      const reply = await this.redis.readSnapshotsSince(
+        k.e,
+        k.idx,
+        k.cur,
+        k.seq,
+        sinceId,
+        String(limit)
+      );
+      if (reply === null) return { kind: "miss" };
+
+      const headOrder = reply[0] ?? "";
+      const rows: SnapshotRead[] = [];
+      for (let i = 1; i + 3 < reply.length + 1; i += 4) {
+        const decoded = this.#decode(
+          [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
+          opts?.environmentId
+        );
+        if (decoded) rows.push(decoded);
+      }
+
+      // The since id itself is env-scoped in the engine, so a foreign environment must miss rather
+      // than return an empty hit: an empty hit would read as "nothing new", not "not found".
+      if (opts?.environmentId !== undefined && rows.length === 0 && reply.length > 1) {
+        return { kind: "miss" };
+      }
+
+      rows.reverse();
+      const head = rows[rows.length - 1];
+      const headWaitpointIds = decodeWaitpointIds(head !== undefined, headOrder);
+      if (head) {
+        head.completedWaitpointIds = headWaitpointIds;
+      }
+      for (const row of rows.slice(0, -1)) {
+        delete row.completedWaitpointIds;
+      }
+      return { kind: "hit", entries: rows, headWaitpointIds };
+    });
+  }
+
   // [id, raw, seq, pointer, order] -> SnapshotRead. The environment compare is app-side, per the
   // plan: the store returns null for a foreign environment and the 404 throw stays in the engine.
   #decode(reply: string[] | null, environmentId?: string): SnapshotRead | null {
@@ -462,6 +515,41 @@ export class RedisSnapshotStore {
         return { '1', orderFor(pointer) }
       `,
     });
+
+    this.redis.defineCommand("readSnapshotsSince", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        local sinceId = ARGV[1]
+        local limit = tonumber(ARGV[2])
+
+        -- The index holds valid entries only, so an invalid since id misses ZSCORE. Its seq is still
+        -- on its own '#s' field, which keeps the id resolvable without indexing invalid rows.
+        local score = redis.call('ZSCORE', idxKey, sinceId)
+        if not score then
+          score = redis.call('HGET', eKey, sinceId .. '#s')
+          if not score then return nil end
+        end
+
+        -- NEWEST-first with a limit, then reversed app-side. The engine reads createdAt desc /
+        -- take N / reverse, so the oldest-first form would return the wrong window entirely.
+        local ids = redis.call('ZREVRANGEBYSCORE', idxKey, '+inf', '(' .. score, 'LIMIT', 0, limit)
+        if #ids == 0 then return { '' } end
+
+        -- The head is the newest entry, and it is the ONLY one whose cycle key is read. That makes
+        -- head-only hydration structural: the tail's cycle keys are never touched.
+        local out = { orderFor(redis.call('HGET', eKey, ids[1] .. '#c')) }
+        for i = 1, #ids do
+          local id = ids[i]
+          local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
+          out[#out + 1] = id
+          out[#out + 1] = vals[1] or ''
+          out[#out + 1] = vals[2] or ''
+          out[#out + 1] = vals[3] or ''
+        end
+        return out
+      `,
+    });
   }
 }
 
@@ -515,5 +603,14 @@ declare module "@internal/redis" {
       id: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+    readSnapshotsSince(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      sinceId: string,
+      limit: string,
+      callback?: Callback<string[] | null>
+    ): Result<string[] | null, Context>;
   }
 }

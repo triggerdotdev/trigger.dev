@@ -519,3 +519,114 @@ describe("TTL rule", () => {
     }
   });
 });
+
+describe("getSince", () => {
+  redisTest("misses on an unknown since id", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      expect(await store.getSince("run_1", "unknown")).toEqual({ kind: "miss" });
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("resolves an INVALID since id through its own seq field", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+      await store.append({
+        entry: entry({ id: "s_bad", error: "x" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      await store.append({ entry: entry({ id: "s3" }), kind: "transition", isTerminal: false });
+
+      // s_bad is not in the valid-only index, so ZSCORE misses and the '#s' field answers instead.
+      const r = await store.getSince("run_1", "s_bad");
+      expect(r.kind).toBe("hit");
+      if (r.kind !== "hit") throw new Error("unreachable");
+      expect(r.entries.map((e) => e.id)).toEqual(["s3"]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("returns the NEWEST N ascending, not the oldest", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000, sinceLimit: 5 });
+    try {
+      await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+      for (let i = 1; i <= 12; i++) {
+        await store.append({
+          entry: entry({ id: `s${i}` }),
+          kind: "transition",
+          isTerminal: false,
+        });
+      }
+      const r = await store.getSince("run_1", "s0");
+      if (r.kind !== "hit") throw new Error("expected a hit");
+      // The engine reads createdAt desc / take N / reverse, so the window is the newest N ascending.
+      expect(r.entries.map((e) => e.id)).toEqual(["s8", "s9", "s10", "s11", "s12"]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("excludes invalid entries from the window", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+      await store.append({
+        entry: entry({ id: "s_bad", error: "x" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      await store.append({ entry: entry({ id: "s2" }), kind: "transition", isTerminal: false });
+      const r = await store.getSince("run_1", "s0");
+      if (r.kind !== "hit") throw new Error("expected a hit");
+      expect(r.entries.map((e) => e.id)).toEqual(["s2"]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("resolves waitpoint ids for the HEAD only", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+      await store.append({
+        entry: entry({ id: "s1" }),
+        kind: "transition",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_old", index: 0 }] },
+      });
+      await store.append({
+        entry: entry({ id: "s2" }),
+        kind: "transition",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_new", index: 0 }] },
+      });
+      const r = await store.getSince("run_1", "s0");
+      if (r.kind !== "hit") throw new Error("expected a hit");
+      // The head is the NEWEST entry, and only it carries resolved ids.
+      expect(r.headWaitpointIds.order).toEqual(["w_new"]);
+      expect(r.entries.at(-1)?.id).toBe("s2");
+      expect(r.entries[0]?.completedWaitpointIds).toBeUndefined();
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("misses for a foreign environment", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+      await store.append({ entry: entry({ id: "s1" }), kind: "transition", isTerminal: false });
+      expect(await store.getSince("run_1", "s0", { environmentId: "env_other" })).toEqual({
+        kind: "miss",
+      });
+    } finally {
+      await store.quit();
+    }
+  });
+});
