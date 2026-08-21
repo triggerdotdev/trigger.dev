@@ -995,7 +995,8 @@ const EnvironmentSchema = z
 
     CENTS_PER_RUN: z.coerce.number().default(0),
 
-    EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+    EVENT_LOOP_MONITOR_ENABLED: z.string().default("0"),
+    EVENT_LOOP_UTILIZATION_MONITOR_ENABLED: z.string().default("1"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),

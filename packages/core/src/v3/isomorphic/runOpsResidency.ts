@@ -1,7 +1,16 @@
-import { isRunOpsIdBody } from "./friendlyId.js";
+import { isRunOpsIdBody, parseRunOpsIdV2Body } from "./friendlyId.js";
 
-/** The two run-ops stores a run/waitpoint can reside in. */
+/**
+ * The two store FAMILIES a run/waitpoint can reside in. "NEW" is the dedicated
+ * family: one store under gen-1, one per shard under gen-2. Use
+ * {@link resolveShard} when the specific store matters.
+ */
 export type Residency = "LEGACY" | "NEW";
+
+// A routing key naming one store: the reserved gen-1 keys, or a gen-2 shard char.
+// Reserved keys are multi-char, so a shard char can never collide with them.
+// Note: TS reduces this union to `string` — it documents intent, it does not narrow.
+export type ShardKey = "legacy" | "new" | string;
 
 /**
  * Underlying id lineage. "runOpsId" is the label for the NEW-store mint path
@@ -42,15 +51,32 @@ function internalForm(id: string): string {
 }
 
 /**
- * Returns the id lineage by the version-char rule: a well-formed run-ops v1
- * body (26 chars, version "1" at index 25, base32hex alphabet) is "runOpsId"
- * (NEW store); everything else — including malformed v1 shapes — is "cuid"
- * (legacy). Total: never throws. Transition: pre-cutover 27-char base62 ids (the old
- * NEW-mint format) now classify LEGACY, so ship this with the base32hex generator only once
- * any 27-char NEW-resident runs are drained/disposable — no live run is misrouted mid-cutover.
+ * Resolve the store that owns an id. A gen-2 body names its own shard; a gen-1
+ * v1 body resolves to the single dedicated store; everything else is legacy.
+ *
+ * The version char at index 25 is one character, so the v1 and gen-2 shape
+ * checks are mutually exclusive by construction — a gen-1 id can never resolve
+ * to a shard, and a gen-2 id can never resolve to "new". Total: never throws.
+ */
+export function resolveShard(id: string): ShardKey {
+  const body = internalForm(id);
+
+  const genTwo = parseRunOpsIdV2Body(body);
+  if (genTwo) return genTwo.shard;
+
+  return isRunOpsIdBody(body) ? "new" : "legacy";
+}
+
+/**
+ * Returns the id lineage by the version-char rule: a well-formed run-ops v1 body
+ * (version "1") or gen-2 body (version "2") is "runOpsId"; everything else —
+ * including malformed shapes of either — is "cuid" (legacy). Total: never throws.
+ * Transition: pre-cutover 27-char base62 ids (the old NEW-mint format) classify
+ * LEGACY, so ship this with the base32hex generator only once any 27-char
+ * NEW-resident runs are drained/disposable — no live run is misrouted mid-cutover.
  */
 export function classifyKind(id: string): ResidencyKind {
-  return isRunOpsIdBody(internalForm(id)) ? "runOpsId" : "cuid";
+  return resolveShard(id) === "legacy" ? "cuid" : "runOpsId";
 }
 
 /** Classification is total now; kept for API compatibility. */
