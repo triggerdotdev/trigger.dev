@@ -69,7 +69,6 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { updateUserEmail, updateUserMarketingEmails, updateUserName } from "~/models/user.server";
 import { logger } from "~/services/logger.server";
-import { profileUpdateRateLimiter } from "~/services/profileUpdateRateLimiter.server";
 import { type EmailOwnership, getEmailOwnership } from "~/services/ssoManagedIdentity.server";
 import {
   updateContrastPreference,
@@ -200,14 +199,10 @@ function profileUpdateError(error: string, status: number) {
 }
 
 /**
- * Shared gate for the appearance writes: same rate limit as the profile writes,
- * then the theme-switcher flag. Returns the user so the caller needn't load it
- * a second time.
+ * Shared gate for the appearance writes: the theme-switcher flag. Returns the
+ * user so the caller needn't load it a second time.
  */
-async function requireAppearanceAccess(request: Request, userId: string) {
-  const rateLimited = await checkProfileUpdateRateLimit(userId);
-  if (rateLimited) return { error: rateLimited };
-
+async function requireAppearanceAccess(request: Request) {
   const user = await requireUser(request);
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
@@ -216,15 +211,6 @@ async function requireAppearanceAccess(request: Request, userId: string) {
   }
 
   return { user };
-}
-
-/** The only limit a scripted POST can't skip. */
-async function checkProfileUpdateRateLimit(userId: string) {
-  const limit = await profileUpdateRateLimiter.limit(`user:${userId}`);
-  if (limit.success) {
-    return undefined;
-  }
-  return profileUpdateError("Too many changes at once. Please wait a moment and try again.", 429);
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -271,7 +257,7 @@ export const action: ActionFunction = async ({ request }) => {
   const formData = await request.formData();
 
   if (formData.get("action") === "update-theme") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     // Strict, matching /resources/preferences/theme: an unknown value must fail
     // rather than quietly resetting a saved theme to the default.
@@ -282,7 +268,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-contrast") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     const contrast = normalizeThemeContrast(formData.get("contrast"));
     await updateContrastPreference({ user: gate.user, contrast });
@@ -290,7 +276,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-icon-contrast") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     await updateIconContrastPreference({
       user: gate.user,
@@ -300,7 +286,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-underline-links") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     await updateUnderlineLinksPreference({
       user: gate.user,
@@ -310,7 +296,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-system-theme") {
-    const gate = await requireAppearanceAccess(request, userId);
+    const gate = await requireAppearanceAccess(request);
     if ("error" in gate) return gate.error;
     // Strict: an unknown value must fail, not silently reset.
     const end = formData.get("end");
@@ -338,9 +324,6 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-name") {
-    const rateLimited = await checkProfileUpdateRateLimit(userId);
-    if (rateLimited) return rateLimited;
-
     const submission = NameSchema.safeParse({ name: formData.get("name") });
     if (!submission.success) {
       return profileUpdateError(
@@ -354,9 +337,6 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-email") {
-    const rateLimited = await checkProfileUpdateRateLimit(userId);
-    if (rateLimited) return rateLimited;
-
     // Re-checked: the loader only picked the modal.
     const user = await requireUser(request);
     const ownership = await getEmailOwnership(user);
@@ -392,9 +372,6 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (formData.get("action") === "update-marketing-emails") {
-    const rateLimited = await checkProfileUpdateRateLimit(userId);
-    if (rateLimited) return rateLimited;
-
     const submission = MarketingEmailsSchema.safeParse({
       marketingEmails: formData.get("marketingEmails"),
     });
