@@ -33,8 +33,19 @@ function toFiniteNumber(value: unknown): number {
   return NaN;
 }
 
-/** How wide a truncated text cell may get before the middle is elided. */
-const TEXT_CELL_MAX_WIDTH = "max-w-[600px]";
+/**
+ * Long text renders in a fixed-width box, not a max-width one. MiddleTruncate measures its
+ * parent, and a runs table column is auto-width: a max-width box narrows as the text is
+ * elided, which shrinks the column, which re-triggers truncation, and so on -- the text
+ * visibly ate itself a character at a time and never settled. A definite width can't be
+ * influenced by its own content, so the measurement converges on the first pass.
+ */
+const TEXT_CELL_WIDTH = "w-[600px]";
+/**
+ * Whether a value is long enough to need the fixed box, decided from the raw string so the
+ * choice never depends on layout (which is what made the loop possible). ~600px of 13px text.
+ */
+const TEXT_CELL_CHAR_BUDGET = 100;
 /** Long values are common enough that an instant tooltip would fire while just scanning rows. */
 const TEXT_CELL_TOOLTIP_DELAY_MS = 500;
 /** A whole payload string can be arbitrarily long, so the tooltip is capped and scrolls. */
@@ -61,14 +72,14 @@ function renderSmartValue(
       return <Badge variant="extra-small">{stringifySmartValue(value)}</Badge>;
     default: {
       const text = stringifySmartValue(value);
-      if (!truncate) return text;
-      // MiddleTruncate measures against its parent, so it needs the width cap around it.
+      if (!truncate || text.length <= TEXT_CELL_CHAR_BUDGET) return text;
       return (
-        <span className={cn("block min-w-0", TEXT_CELL_MAX_WIDTH)}>
+        <span className={cn("block", TEXT_CELL_WIDTH)}>
           <MiddleTruncate
             text={text}
             tooltipDelay={TEXT_CELL_TOOLTIP_DELAY_MS}
             tooltipContentClassName={TEXT_CELL_TOOLTIP_CLASS}
+            initialCharBudget={TEXT_CELL_CHAR_BUDGET}
           />
         </span>
       );

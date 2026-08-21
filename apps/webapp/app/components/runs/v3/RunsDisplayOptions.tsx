@@ -366,15 +366,6 @@ function ColumnRow({
         {isSmart && <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />}
       </label>
       <div className="flex flex-none items-center gap-0.5 pr-1">
-        {onEdit && (
-          <Button
-            variant="minimal/small"
-            onClick={onEdit}
-            aria-label={`Edit ${col.def.label}`}
-            LeadingIcon={<PencilSquareIcon className="size-4" />}
-            className={ROW_ACTION_CLASS}
-          />
-        )}
         {onRemove && (
           <Button
             variant="minimal/small"
@@ -382,6 +373,15 @@ function ColumnRow({
             aria-label={`Remove ${col.def.label}`}
             LeadingIcon={<XMarkIcon className="size-4" />}
             className={cn(ROW_ACTION_CLASS, "group-hover/button:text-error")}
+          />
+        )}
+        {onEdit && (
+          <Button
+            variant="minimal/small"
+            onClick={onEdit}
+            aria-label={`Edit ${col.def.label}`}
+            LeadingIcon={<PencilSquareIcon className="size-4" />}
+            className={ROW_ACTION_CLASS}
           />
         )}
         {/* Button forwards no onKeyDown, so the arrow-key reorder listens on the wrapper

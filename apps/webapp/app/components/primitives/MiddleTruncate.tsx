@@ -9,7 +9,21 @@ type MiddleTruncateProps = {
   tooltipDelay?: number;
   /** Merged onto the tooltip body, for callers whose text needs a bigger or scrollable box. */
   tooltipContentClassName?: string;
+  /**
+   * Roughly how many characters fit, used only for the very first render. Truncation needs
+   * layout, so the server (and the pre-hydration client) can only render the full string --
+   * long values visibly snapped shorter once React hydrated. Seeding from a character count
+   * is deterministic, so it matches on both sides and the measured pass just refines it.
+   */
+  initialCharBudget?: number;
 };
+
+/** Deterministic, layout-free middle truncation used to seed the first render. */
+function seedTruncation(text: string, budget: number | undefined): string {
+  if (budget === undefined || text.length <= budget) return text;
+  const keep = Math.max(1, Math.floor((budget - 1) / 2));
+  return `${text.slice(0, keep)}…${text.slice(-keep)}`;
+}
 
 /**
  * A component that truncates text in the middle, showing the beginning and end.
@@ -22,11 +36,13 @@ export function MiddleTruncate({
   className,
   tooltipDelay,
   tooltipContentClassName,
+  initialCharBudget,
 }: MiddleTruncateProps) {
+  const seed = seedTruncation(text, initialCharBudget);
   const containerRef = useRef<HTMLSpanElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
-  const [displayText, setDisplayText] = useState(text);
-  const [isTruncated, setIsTruncated] = useState(false);
+  const [displayText, setDisplayText] = useState(seed);
+  const [isTruncated, setIsTruncated] = useState(seed !== text);
 
   const calculateTruncation = useCallback(() => {
     const container = containerRef.current;

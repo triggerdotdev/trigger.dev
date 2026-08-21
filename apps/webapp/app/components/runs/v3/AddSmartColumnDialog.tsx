@@ -58,6 +58,16 @@ const DISPLAY_OPTIONS = SMART_COLUMN_DISPLAYS.map((display) => ({
 
 const DEFAULT_SOURCE: SmartColumnSource = "payload";
 
+/** One title row for all three columns, so their labels and content line up. */
+const TITLE_ROW_CLASS = "flex min-h-6 items-center";
+
+/**
+ * The sample and preview panels fill their column but contribute no height to it, so the
+ * dialog is sized by the form alone. Without this, wrapped preview text pushed the whole
+ * dialog taller as you typed.
+ */
+const PANEL_FRAME_CLASS = "relative min-h-0 flex-1";
+
 export function AddSmartColumnDialog({
   open,
   editing,
@@ -180,7 +190,9 @@ export function AddSmartColumnDialog({
           <div className="grid min-h-0 grid-cols-1 items-stretch gap-2.5 md:grid-cols-3">
             <div className="flex flex-col gap-4 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
               <InputGroup fullWidth>
-                <Label>Source</Label>
+                <div className={TITLE_ROW_CLASS}>
+                  <Label>Source</Label>
+                </div>
                 <RadioGroup
                   className="flex flex-col gap-2"
                   value={source}
@@ -247,7 +259,7 @@ export function AddSmartColumnDialog({
             </div>
 
             <div className="flex min-h-0 flex-col gap-1.5">
-              <div className="flex min-h-6 items-center justify-between gap-2">
+              <div className={cn(TITLE_ROW_CLASS, "justify-between gap-2")}>
                 <Label>Sample {source}</Label>
                 {usable.length > 1 && (
                   <SampleRunPicker
@@ -258,38 +270,42 @@ export function AddSmartColumnDialog({
                   />
                 )}
               </div>
-              <div className="flex-1 overflow-auto rounded-lg border border-grid-dimmed bg-charcoal-900 p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-                {!sampleLoaded ? (
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    Loading…
-                  </Paragraph>
-                ) : activeSample ? (
-                  <SmartColumnSample
-                    value={activeSample.value}
-                    activePath={path.trim()}
-                    onSelectPath={setPath}
-                  />
-                ) : runCount === 0 ? (
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    No runs to sample yet.
-                  </Paragraph>
-                ) : anyOffloaded ? (
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    Recent {source}s are too large to sample here.
-                  </Paragraph>
-                ) : (
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    No recent run has a {source} to sample.
-                  </Paragraph>
-                )}
+              <div className={PANEL_FRAME_CLASS}>
+                <div className="absolute inset-0 overflow-auto rounded-lg border border-grid-dimmed bg-charcoal-900 p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+                  {!sampleLoaded ? (
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      Loading…
+                    </Paragraph>
+                  ) : activeSample ? (
+                    <SmartColumnSample
+                      value={activeSample.value}
+                      activePath={path.trim()}
+                      onSelectPath={setPath}
+                    />
+                  ) : runCount === 0 ? (
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      No runs to sample yet.
+                    </Paragraph>
+                  ) : anyOffloaded ? (
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      Recent {source}s are too large to sample here.
+                    </Paragraph>
+                  ) : (
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      No recent run has a {source} to sample.
+                    </Paragraph>
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="flex min-h-0 flex-col gap-1.5">
-              <div className="flex min-h-6 items-center">
+              <div className={TITLE_ROW_CLASS}>
                 <Label>Preview</Label>
               </div>
-              <SmartColumnPreview rows={perRun} def={previewDef} loaded={sampleLoaded} />
+              <div className={PANEL_FRAME_CLASS}>
+                <SmartColumnPreview rows={perRun} def={previewDef} loaded={sampleLoaded} />
+              </div>
             </div>
           </div>
         </div>
@@ -354,7 +370,7 @@ function SmartColumnPreview({
   const alignClass = numeric ? "justify-end text-right tabular-nums" : "justify-start text-left";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-grid-dimmed">
+    <div className="absolute inset-0 flex flex-col overflow-hidden rounded-lg border border-grid-dimmed">
       <div className="flex flex-none items-center gap-1 border-b border-grid-dimmed bg-background-dimmed px-2.5 py-1.5">
         <span className="truncate text-xs font-medium text-text-bright">
           {def.label || "Column"}
