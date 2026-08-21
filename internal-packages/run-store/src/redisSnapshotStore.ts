@@ -272,6 +272,18 @@ export class RedisSnapshotStore {
     });
   }
 
+  // Returns all three shapes the Postgres surface needs from one read: `distinctIds` matches the
+  // deduped join that findSnapshotCompletedWaitpointIds returns, `present` serves the WithPresence
+  // variant (which distinguishes "no waitpoints" from "snapshot not visible"), and `order` keeps the
+  // repeats that the engine expands into one CompletedWaitpoint per position.
+  async getSnapshotWaitpointIds(runId: string, snapshotId: string): Promise<WaitpointIds> {
+    return this.#timed("getSnapshotWaitpointIds", async () => {
+      const k = snapshotKeys(runId);
+      const reply = await this.redis.readSnapshotWaitpointIds(k.e, k.idx, k.cur, k.seq, snapshotId);
+      return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "");
+    });
+  }
+
   // [id, raw, seq, pointer, order] -> SnapshotRead. The environment compare is app-side, per the
   // plan: the store returns null for a foreign environment and the 404 throw stays in the engine.
   #decode(reply: string[] | null, environmentId?: string): SnapshotRead | null {
@@ -437,6 +449,19 @@ export class RedisSnapshotStore {
         return { cur, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]) }
       `,
     });
+
+    this.redis.defineCommand("readSnapshotWaitpointIds", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        local id = ARGV[1]
+        if redis.call('HEXISTS', eKey, id) == 0 then
+          return { '0', '' }
+        end
+        local pointer = redis.call('HGET', eKey, id .. '#c')
+        return { '1', orderFor(pointer) }
+      `,
+    });
   }
 }
 
@@ -482,5 +507,13 @@ declare module "@internal/redis" {
       seqKey: string,
       callback?: Callback<string[] | null>
     ): Result<string[] | null, Context>;
+    readSnapshotWaitpointIds(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      id: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
   }
 }

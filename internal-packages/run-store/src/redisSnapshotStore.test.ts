@@ -243,3 +243,104 @@ describe("append", () => {
     }
   );
 });
+
+describe("cycle keys", () => {
+  redisTest(
+    "mints an increasing cycleSeq across successive new cycles",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({ entry: entry({ id: "snap_1" }), kind: "birth", isTerminal: false });
+        const a = await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+        });
+        const b = await store.append({
+          entry: entry({ id: "snap_3" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_b", index: 0 }] },
+        });
+        expect(a).toMatchObject({ cycleSeq: 1 });
+        expect(b).toMatchObject({ cycleSeq: 2 });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a carry-forward reuses the cycle and does not rewrite it",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({ entry: entry({ id: "snap_1" }), kind: "birth", isTerminal: false });
+        await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [
+              { id: "w_a", index: 0 },
+              { id: "w_a", index: 1 },
+            ],
+          },
+        });
+        const carried = await store.append({
+          entry: entry({ id: "snap_3" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "carryForward", cycleSeq: 1 },
+        });
+        expect(carried).toMatchObject({ cycleSeq: 1, cycleMismatch: false });
+
+        // Both entries resolve to the SAME cycle contents, written once.
+        const first = await store.getSnapshotWaitpointIds("run_1", "snap_2");
+        const second = await store.getSnapshotWaitpointIds("run_1", "snap_3");
+        expect(first.order).toEqual(["w_a", "w_a"]);
+        expect(first.distinctIds).toEqual(["w_a"]);
+        expect(second).toEqual(first);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest("a carry-forward naming a missing cycle still appends", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "snap_1" }), kind: "birth", isTerminal: false });
+      const r = await store.append({
+        entry: entry({ id: "snap_2" }),
+        kind: "transition",
+        isTerminal: false,
+        cycle: { kind: "carryForward", cycleSeq: 99 },
+      });
+      expect(r).toMatchObject({ outcome: "written", cycleMismatch: true });
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("reports presence and emptiness separately", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "snap_1" }), kind: "birth", isTerminal: false });
+      expect(await store.getSnapshotWaitpointIds("run_1", "nope")).toEqual({
+        present: false,
+        distinctIds: [],
+        order: [],
+      });
+      expect(await store.getSnapshotWaitpointIds("run_1", "snap_1")).toEqual({
+        present: true,
+        distinctIds: [],
+        order: [],
+      });
+    } finally {
+      await store.quit();
+    }
+  });
+});
