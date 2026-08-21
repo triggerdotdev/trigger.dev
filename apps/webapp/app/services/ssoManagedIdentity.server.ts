@@ -1,44 +1,83 @@
+import type { OrgSsoStatus } from "@trigger.dev/plugins";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { ssoController } from "~/services/sso.server";
 
 /**
- * Whether an identity provider owns this user's identity rather than the user.
- * Any org they belong to counts. Fails closed: if the plugin can't answer, treat
- * the account as IdP-managed rather than allowing an unverifiable write.
+ * Who owns a user's email address.
+ *
+ * - `user`    - theirs to change.
+ * - `idp`     - an identity provider asserts it, so changing it here would break
+ *               their next login.
+ * - `unknown` - SSO couldn't be reached. Refuse the write, but don't claim an IdP
+ *               owns it.
  */
-export async function isSsoManagedUser(userId: string): Promise<boolean> {
+export type EmailOwnership = "user" | "idp" | "unknown";
+
+/**
+ * An org owns a member's email only when SSO is enforced, a connection is live,
+ * and the member's domain is one the org has verified. Enforcement alone isn't
+ * enough: members on other domains (contractors) keep their own sign-in, so
+ * their address is still theirs.
+ */
+export function idpOwnsEmailDomain(status: OrgSsoStatus, emailDomain: string): boolean {
+  if (!status.enforced) return false;
+  if (!status.connections.some((connection) => connection.state === "active")) return false;
+  return status.domains.some(
+    (domain) => domain.verified && domain.domain.toLowerCase() === emailDomain
+  );
+}
+
+function domainOf(email: string): string | undefined {
+  const domain = email.toLowerCase().trim().split("@")[1];
+  return domain || undefined;
+}
+
+export async function getEmailOwnership(user: {
+  id: string;
+  email: string;
+}): Promise<EmailOwnership> {
   if (!(await ssoController.isUsingPlugin())) {
-    return false;
+    return "user";
+  }
+
+  const emailDomain = domainOf(user.email);
+  if (!emailDomain) {
+    return "user";
   }
 
   const memberships = await prisma.orgMember.findMany({
-    where: { userId, organization: { deletedAt: null } },
+    where: { userId: user.id, organization: { deletedAt: null } },
     select: { organizationId: true },
   });
 
   if (memberships.length === 0) {
-    return false;
+    return "user";
   }
 
   const statuses = await Promise.all(
     memberships.map((membership) => ssoController.getStatus(membership.organizationId))
   );
 
+  // A definite answer from any org wins over an org we couldn't read, so one
+  // unreachable org doesn't mask a real IdP claim - or block a write on its own.
+  let unreadable = false;
+
   for (const [index, status] of statuses.entries()) {
     if (status.isErr()) {
-      logger.warn("SSO status lookup failed; treating the account as IdP-managed", {
-        userId,
+      unreadable = true;
+      logger.warn("SSO status lookup failed; can't establish email ownership", {
+        userId: user.id,
         organizationId: memberships[index].organizationId,
         reason: status.error,
       });
-      return true;
+      continue;
     }
 
-    if (status.value.hasIdpOrg && status.value.connections.some((c) => c.state === "active")) {
-      return true;
+    if (idpOwnsEmailDomain(status.value, emailDomain)) {
+      return "idp";
     }
   }
 
-  return false;
+  return unreadable ? "unknown" : "user";
 }

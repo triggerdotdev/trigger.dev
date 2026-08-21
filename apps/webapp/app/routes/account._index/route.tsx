@@ -65,7 +65,7 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { updateUserEmail, updateUserMarketingEmails, updateUserName } from "~/models/user.server";
 import { profileUpdateRateLimiter } from "~/services/profileUpdateRateLimiter.server";
-import { isSsoManagedUser } from "~/services/ssoManagedIdentity.server";
+import { type EmailOwnership, getEmailOwnership } from "~/services/ssoManagedIdentity.server";
 import {
   updateContrastPreference,
   updateIconContrastPreference,
@@ -209,7 +209,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));
 
   // Picks the modal only; the action re-checks before writing.
-  const isSsoManaged = await isSsoManagedUser(user.id);
+  const emailOwnership = await getEmailOwnership(user);
 
   // Null when the user has no project yet; the row hides itself.
   let sidebarContext: {
@@ -228,7 +228,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     };
   } catch {}
 
-  return json({ showThemeSwitcher, sidebarContext, isSsoManaged });
+  return json({ showThemeSwitcher, sidebarContext, emailOwnership });
 }
 
 export const action: ActionFunction = async ({ request }) => {
@@ -333,10 +333,18 @@ export const action: ActionFunction = async ({ request }) => {
     if (rateLimited) return rateLimited;
 
     // Re-checked: the loader only picked the modal.
-    if (await isSsoManagedUser(userId)) {
+    const user = await requireUser(request);
+    const ownership = await getEmailOwnership(user);
+    if (ownership === "idp") {
       return profileUpdateError(
         "Your email address is managed by your organization's identity provider.",
         403
+      );
+    }
+    if (ownership === "unknown") {
+      return profileUpdateError(
+        "We couldn't check your single sign-on settings just now. Please try again shortly.",
+        503
       );
     }
 
@@ -486,7 +494,7 @@ function EditNameButton() {
   );
 }
 
-function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
+function EditEmailButton({ ownership }: { ownership: EmailOwnership }) {
   const user = useUser();
   const [isOpen, setIsOpen] = useState(false);
   const { fetcher, error, setError, isSubmitting } = useProfileFieldUpdate({
@@ -517,11 +525,16 @@ function EditEmailButton({ isSsoManaged }: { isSsoManaged: boolean }) {
           <DialogHeader>
             <DialogTitle>Email address</DialogTitle>
           </DialogHeader>
-          {isSsoManaged ? (
+          {ownership === "idp" ? (
             <Paragraph variant="small" className="pt-2">
               Your organization uses single sign-on, so your email address is managed by your
               identity provider rather than here. To change it, ask an organization admin to update
               it for you.
+            </Paragraph>
+          ) : ownership === "unknown" ? (
+            <Paragraph variant="small" className="pt-2">
+              We couldn't check your organization's single sign-on settings just now, so this can't
+              be edited yet. Please try again shortly.
             </Paragraph>
           ) : (
             <fetcher.Form method="post">
@@ -742,7 +755,7 @@ function CustomizeSidebarButton({
 
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher, sidebarContext, isSsoManaged } = useLoaderData<typeof loader>();
+  const { showThemeSwitcher, sidebarContext, emailOwnership } = useLoaderData<typeof loader>();
   const themeFetcher = useFetcher();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
@@ -860,7 +873,7 @@ export default function Page() {
                 <Paragraph variant="small" className="min-w-0 break-all text-right">
                   {user.email}
                 </Paragraph>
-                <EditEmailButton isSsoManaged={isSsoManaged} />
+                <EditEmailButton ownership={emailOwnership} />
               </div>
             </div>
           </div>
