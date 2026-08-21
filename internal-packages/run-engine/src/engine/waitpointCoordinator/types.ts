@@ -126,9 +126,8 @@ export type CreateManualWaitpointParams = {
   timeout?: Date;
   tags?: string[];
   /**
-   * For a STANDALONE token (no owning `runId`): the residency the env's mint kind resolves
-   * to. Ignored when `runId` is set, because co-location wins. Only a Postgres
-   * implementation reads this.
+   * See the `standaloneResidency` param doc on `WaitpointSystem.createManualWaitpoint` for the
+   * full rationale. Only a Postgres implementation reads this.
    */
   standaloneResidency?: "NEW" | "LEGACY";
 };
