@@ -26,6 +26,9 @@ export const FEATURE_FLAG = {
   // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
+  // Gen-2 mint shard pins, read from the org override blob only. See runOpsMintShard.server.ts.
+  runOpsMintShard: "runOpsMintShard",
+  runOpsMintShardEnvPins: "runOpsMintShardEnvPins",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Per-organization rollout for creating additional environment API keys.
   additionalApiKeysEnabled: "additionalApiKeysEnabled",
@@ -89,6 +92,32 @@ export const FeatureFlagCatalog = {
   // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
+  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is how
+  // a canary keeps the fleet's default while one org moves. Only honored while the key is in
+  // the active set (RUN_OPS_MINT_SHARDS); a drained key falls through to the hash.
+  [FEATURE_FLAG.runOpsMintShard]: z
+    .string()
+    .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
+  // Per-environment pins as JSON: {"<environmentId>": "<shard key>"}. A JSON string because
+  // this catalog is scalar-only. Rejected at write, so a typo cannot silently un-pin an env.
+  [FEATURE_FLAG.runOpsMintShardEnvPins]: z.string().superRefine((raw, ctx) => {
+    const fail = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return fail("must be valid JSON");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return fail("must be a JSON object mapping environment id to shard key");
+    }
+    for (const [environmentId, value] of Object.entries(parsed)) {
+      if (typeof value !== "string" || !(value === "new" || /^[a-z0-9]$/.test(value))) {
+        fail(`"${environmentId}" must map to a single [a-z0-9] char, or "new"`);
+      }
+    }
+  }),
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
@@ -101,11 +130,15 @@ export const FeatureFlagCatalog = {
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
 
-// Infrastructure flags that are read-only on the global flags page.
-// Shown with current/resolved value but no controls.
+// Infrastructure flags, plus org-scoped-only flags, that are read-only on the global flags
+// page. Shown with current/resolved value but no controls. An org-scoped-only flag belongs
+// here because its resolver never reads a global row, so an editable global control would
+// offer a setting that does nothing.
 export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
   FEATURE_FLAG.taskEventRepository,
+  FEATURE_FLAG.runOpsMintShard,
+  FEATURE_FLAG.runOpsMintShardEnvPins,
 ];
 
 // Flags that are read-only on the org-level dialog.
