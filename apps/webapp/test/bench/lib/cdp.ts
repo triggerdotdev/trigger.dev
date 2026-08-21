@@ -169,15 +169,17 @@ export class WebappProfiler {
   }
 
   /**
-   * The first evaluate seeds a baseline reading so that the first recorded
-   * delta is measured from the moment sampling started rather than from
-   * process boot.
+   * Awaits a baseline reading before the interval starts, so the first recorded
+   * delta is measured from the moment sampling started rather than from process
+   * boot. Awaiting matters: the baseline is a round trip to the target, and a
+   * tick that landed before it resolved would report a zero delta and drag the
+   * average down.
    */
-  startEluSampling(intervalMs = 250): void {
+  async startEluSampling(intervalMs = 250): Promise<void> {
     this.eluSamples = [];
     this.eluStartedAt = Date.now();
 
-    void this.evaluateElu();
+    await this.evaluateElu();
 
     const timer = setInterval(() => {
       void this.evaluateElu().then((utilization) => {
@@ -216,17 +218,13 @@ export class WebappProfiler {
     }
   }
 
-  /**
-   * Drops the seeded first sample, which spans the gap between attach and the
-   * start of load and therefore reads artificially low.
-   */
   stopEluSampling(): { stats: EluStats; samples: EluSample[] } {
     if (this.eluTimer) {
       clearInterval(this.eluTimer);
       this.eluTimer = null;
     }
 
-    const samples = this.eluSamples.slice(1);
+    const samples = this.eluSamples;
     if (samples.length === 0) {
       return { stats: { mean: 0, p50: 0, p95: 0, p99: 0, max: 0, sampleCount: 0 }, samples };
     }

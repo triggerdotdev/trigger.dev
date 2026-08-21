@@ -147,7 +147,7 @@ describe("engine worker-action HTTP CPU benchmark", () => {
     let emptyDequeues = 0;
 
     await profiler.startCpuProfile(SAMPLING_INTERVAL_US);
-    profiler.startEluSampling();
+    await profiler.startEluSampling();
     recorder.begin();
 
     await runLoad({
