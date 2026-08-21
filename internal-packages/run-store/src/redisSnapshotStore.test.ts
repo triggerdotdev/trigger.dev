@@ -853,3 +853,88 @@ describe("expectedCur compare-and-set", () => {
     }
   );
 });
+
+// CRC16/XMODEM over a key's hash tag, per Redis's cluster hashing rule. CLUSTER KEYSLOT is
+// unavailable on this standalone container ("cluster support disabled"), so the slot is computed
+// here instead. Verified against the `cluster-key-slot` package's output for our key shapes.
+function crc16(str: string): number {
+  let crc = 0;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+      crc &= 0xffff;
+    }
+  }
+  return crc;
+}
+
+function hashSlot(key: string): number {
+  const start = key.indexOf("{");
+  const end = start === -1 ? -1 : key.indexOf("}", start + 1);
+  const tag = start !== -1 && end !== -1 && end > start + 1 ? key.slice(start + 1, end) : key;
+  return crc16(tag) % 16384;
+}
+
+describe("hash tag and keyPrefix", () => {
+  it("every key for one run lands in one cluster slot", () => {
+    // Keys come from snapshotKeys() plus the wp:<n> suffix the Lua prelude derives the same way,
+    // with a keyPrefix prepended by hand as ioredis would. A dropped hash tag would split the slots.
+    const k = snapshotKeys("run_1");
+    const base = k.e.slice(0, -2);
+    const keys = [k.e, k.idx, k.cur, k.seq, `${base}:wp:1`, `${base}:wp:2`].map(
+      (key) => `engine:${key}`
+    );
+    const slots = new Set(keys.map(hashSlot));
+    expect(slots.size).toBe(1);
+  });
+
+  redisTest("the terminal append expires the PREFIXED cycle keys", async ({ redisOptions }) => {
+    // This is the guard for the trap: ioredis prefixes only the KEYS array, so a cycle key minted
+    // inside Lua would be UNPREFIXED while the client wrote a prefixed one. Deriving it from KEYS[1]
+    // inherits both the prefix and the hash tag. If someone later mints it in Lua, this fails.
+    const prefixed = { ...redisOptions, keyPrefix: "engine:" };
+    const store = new RedisSnapshotStore({ redisOptions: prefixed, completedTtlMs: 60_000 });
+    const raw = createRedisClient(redisOptions);
+    try {
+      await store.append({
+        entry: entry({ id: "s1" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+      });
+      expect(await raw.exists("engine:snap:{run_1}:wp:1")).toBe(1);
+      expect(await raw.exists("snap:{run_1}:wp:1")).toBe(0);
+
+      await store.append({
+        entry: entry({ id: "s2", executionStatus: "FINISHED" }),
+        kind: "transition",
+        isTerminal: true,
+      });
+      const ttl = await raw.pttl("engine:snap:{run_1}:wp:1");
+      expect(ttl).toBeGreaterThan(0);
+    } finally {
+      raw.disconnect();
+      await store.quit();
+    }
+  });
+
+  redisTest("reads work through a keyPrefix", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({
+      redisOptions: { ...redisOptions, keyPrefix: "engine:" },
+      completedTtlMs: 60_000,
+    });
+    try {
+      await store.append({
+        entry: entry({ id: "s1" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+      });
+      expect((await store.getLatest("run_1"))?.id).toBe("s1");
+      expect((await store.getSnapshotWaitpointIds("run_1", "s1")).order).toEqual(["w_a"]);
+    } finally {
+      await store.quit();
+    }
+  });
+});
