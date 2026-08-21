@@ -67,7 +67,7 @@ const DashboardPreferences = z.object({
     })
   ),
   sideMenu: SideMenuPreferences.optional(),
-});
+}).passthrough();
 
 export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
 

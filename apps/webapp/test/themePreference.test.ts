@@ -58,4 +58,15 @@ describe("DashboardPreferences theme schema", () => {
     expect(result.currentProjectId).toBe("proj_123");
     expect(result.sideMenu?.isCollapsed).toBe(true);
   });
+
+  it("keeps keys it does not know about, so a full-blob write cannot erase them", () => {
+    const result = parseDashboardPreferences({
+      version: "1",
+      projects: {},
+      theme: "dark",
+      somethingANewerDeployAdded: { nested: true },
+    });
+    expect(result.theme).toBe("dark");
+    expect(result).toHaveProperty("somethingANewerDeployAdded", { nested: true });
+  });
 });
