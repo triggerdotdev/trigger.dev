@@ -809,6 +809,25 @@
 }
 
 /*
+  The contrast slider stores a plain 0-100, and it means "how far along this
+  theme's range" rather than a position on one shared scale. That keeps the
+  number portable: 35% is 35% whichever theme you switch to, even though the two
+  themes put their 35% in different places.
+
+  Every ramp reads `--theme-contrast` (strengthen) and `--theme-fade` (fade below
+  the base, Black only). Mapping the percent onto those here rather than in JS
+  means nothing on the client has to know which theme resolved - which matters
+  for `system`, where that isn't settled until hydration.
+
+  Default range: 0 to 100, so the percent passes straight through and there's
+  nothing to fade.
+*/
+:root {
+  --theme-contrast: var(--theme-contrast-percent, 0);
+  --theme-fade: 0;
+}
+
+/*
   Light theme. Overrides the themable variables only; raw palettes stay put.
   Code/editor values come from the trigger.light VS Code theme.
 */
@@ -1216,6 +1235,16 @@
   --color-background-deep: #000000;
   --color-background-dimmed: #000000;
   --color-background-bright: #000000;
+  /*
+    Black's range is -30 to 100 rather than 0 to 100: its 0% fades the grid lines
+    below the base palette, which is where this theme wants to start, and its
+    100% is full strength like everywhere else. r = p * 1.3 - 0.3, split into the
+    two always-positive halves the ramps need - `color-mix` rejects a negative
+    percentage outright.
+  */
+  --theme-contrast: max(0, var(--theme-contrast-percent, 0) * 1.3 - 0.3);
+  --theme-fade: max(0, 0.3 - var(--theme-contrast-percent, 0) * 1.3);
+
   /*
     Grid lines get the extra travel below the base that the other themes don't
     have. Everything here sits flat on #000, so the rules are the only thing

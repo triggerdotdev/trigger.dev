@@ -63,17 +63,13 @@ export function resolveThemePreference(
 /**
  * Write the contrast preference to the document.
  *
- * The value is signed: above zero strengthens the palette, below zero fades it
- * (Black only). The ramps can't take a negative percentage - `color-mix` treats
- * one as invalid and drops the whole declaration - so it's split into two
- * always-positive variables. Anything writing this must go through here; the
- * live preview used to set `--theme-contrast` on its own and silently did
- * nothing at all below zero.
+ * Just the percent: each theme maps it onto its own range in CSS, so there's
+ * nothing here that needs to know which theme resolved. That used to write
+ * `--theme-contrast` directly, which meant the live preview and the server
+ * render could disagree, and a value outside 0-100 silently did nothing.
  */
-export function applyThemeContrast(contrast: number) {
-  const root = document.documentElement;
-  root.style.setProperty("--theme-contrast", String(Math.max(0, contrast) / 100));
-  root.style.setProperty("--theme-fade", String(Math.max(0, -contrast) / 100));
+export function applyThemeContrast(percent: number) {
+  document.documentElement.style.setProperty("--theme-contrast-percent", String(percent / 100));
 }
 
 export function applyThemePreference(

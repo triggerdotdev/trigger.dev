@@ -226,15 +226,8 @@ export default function App() {
         // Underlines links carrying the inline-text-link marker class
         data-underline-links={underlineLinks ? "true" : "false"}
         // Contrast overlay input for the System themes; Classic never reads it
-        style={
-          {
-            // Split at 0 so the existing ramps never see a negative percentage:
-            // `--theme-contrast` strengthens as before, `--theme-fade` carries
-            // the Black-only half below the base.
-            "--theme-contrast": Math.max(0, themeContrast) / 100,
-            "--theme-fade": Math.max(0, -themeContrast) / 100,
-          } as CSSProperties
-        }
+        // Just the percent; each theme maps it onto its own contrast range in CSS
+        style={{ "--theme-contrast-percent": themeContrast / 100 } as CSSProperties}
       >
         <head>
           <script

@@ -80,7 +80,6 @@ import {
   normalizeThemeContrast,
   normalizeUnderlineLinks,
   normalizeThemePreference,
-  BLACK_CONTRAST_OFFSET,
   SystemDarkTheme,
   SystemLightTheme,
   type ThemePreference,
@@ -97,9 +96,9 @@ export const meta = pageMeta("Your profile");
  *  Classic theme shipped, so the bottom of the range has to stay reachable. */
 const MIN_CONTRAST = 0;
 
-/** Where the slider ticks and labels "Default", in the 0-100 the user sees. On
- *  Black that lands on the theme's faint floor rather than the base palette; the
- *  offset below does the translating. */
+/** Where the slider ticks and labels "Default". 0 is the bottom of whichever
+ *  theme's range is active - the base palette on most, the faded grid lines on
+ *  Black. */
 const DEFAULT_CONTRAST_MARK = 0;
 
 function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
@@ -877,11 +876,6 @@ export default function Page() {
   );
   const systemThemes = { light: systemLightTheme, dark: systemDarkTheme };
 
-  /* Which of the four is on screen, resolving `system` through the OS
-     appearance. Only Black gets the extra travel below the base, so the slider
-     needs to know rather than reading the raw preference. */
-  const activeTheme = theme === "system" ? systemThemes[appearance] : theme;
-
   const saveSystemTheme = (end: "light" | "dark", value: string) => {
     const fetcher = end === "light" ? systemLightFetcher : systemDarkFetcher;
     // Re-resolve straight away: on `system` this changes which theme is showing
@@ -914,18 +908,6 @@ export default function Page() {
       { action: "update-contrast", contrast: String(value) },
       { method: "post" }
     );
-
-  /* The slider always runs 0-100 as far as the user is concerned. Black's range
-     sits that whole window lower, so its stored value is the displayed one minus
-     the offset: 0% on screen is -30 in the ramp, and nothing negative is ever
-     shown or reachable by dragging. */
-  const contrastOffset = activeTheme === "black" ? BLACK_CONTRAST_OFFSET : 0;
-  const displayedContrast = Math.max(MIN_CONTRAST, contrastPreview + contrastOffset);
-  const resetContrast = () => {
-    const stored = DEFAULT_CONTRAST_MARK - contrastOffset;
-    previewContrast(stored);
-    saveContrast(stored);
-  };
 
   return (
     <PageContainer>
@@ -1120,15 +1102,18 @@ export default function Page() {
                         {
                           value: DEFAULT_CONTRAST_MARK,
                           label: "Reset to default",
-                          onSelect: resetContrast,
+                          onSelect: () => {
+                            previewContrast(DEFAULT_CONTRAST_MARK);
+                            saveContrast(DEFAULT_CONTRAST_MARK);
+                          },
                         },
                       ]}
                       valueTooltip={(value) =>
                         value === DEFAULT_CONTRAST_MARK ? "Default" : `${value}%`
                       }
-                      value={[displayedContrast]}
-                      onValueChange={(values) => previewContrast((values[0] ?? 0) - contrastOffset)}
-                      onValueCommit={(values) => saveContrast((values[0] ?? 0) - contrastOffset)}
+                      value={[contrastPreview]}
+                      onValueChange={(values) => previewContrast(values[0] ?? 0)}
+                      onValueCommit={(values) => saveContrast(values[0] ?? 0)}
                     />
                   </div>
                 </div>

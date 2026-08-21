@@ -53,22 +53,16 @@ export function normalizeUnderlineLinks(value: unknown): boolean {
 
 /** Interface contrast for the System themes, 0 to 100. Missing or invalid
  * values fall back to the default bump. */
-/**
- * How far below the base palette the Black theme's grid lines may fade.
- *
- * Black pins every surface flat on #000, so the rules are the only thing giving
- * a page structure - and the base palette draws them heavier than that theme
- * wants. This is also Black's default: the faint end is where it should start,
- * and the slider only goes up from there.
- *
- * The slider hides this entirely. It works in 0-100 whatever the theme, adding
- * the offset on the way in and taking it off on the way out, so Black's floor
- * reads as 0% and the user never sees a negative number.
+/*
+ * Contrast is stored as a plain 0-100: "how far along the active theme's range",
+ * not a position on one shared scale. Each theme maps it onto its own range in
+ * tailwind.css - Black's starts below the base palette so its 0% fades the grid
+ * lines, while the others start at the base. Keeping the stored value a
+ * percentage is what lets 35% stay 35% when you switch themes.
  */
-export const BLACK_CONTRAST_OFFSET = 30;
 
 export function normalizeThemeContrast(value: unknown): number {
   const num = typeof value === "string" ? Number(value) : value;
   if (typeof num !== "number" || !Number.isFinite(num)) return DEFAULT_THEME_CONTRAST;
-  return Math.min(100, Math.max(-BLACK_CONTRAST_OFFSET, Math.round(num)));
+  return Math.min(100, Math.max(0, Math.round(num)));
 }
