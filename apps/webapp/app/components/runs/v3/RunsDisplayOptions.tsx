@@ -8,7 +8,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
 import { GripVerticalIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ColumnsIcon } from "~/assets/icons/ColumnsIcon";
 import { useFavoritePageToggle } from "~/components/navigation/favoritePages";
 import { Button } from "~/components/primitives/Buttons";
@@ -19,10 +19,13 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import {
   encodeColumnLayout,
@@ -41,6 +44,9 @@ function keyFor(col: ResolvedColumn): string {
 
 type SmartEditTarget = { index: number; def: SmartColumnDef };
 
+/** Opens the Columns popover. "l" is free on every list this control appears on. */
+export const COLUMNS_SHORTCUT = { key: "l" as const };
+
 export function RunsDisplayOptions({
   sampleFilters,
 }: {
@@ -56,6 +62,16 @@ export function RunsDisplayOptions({
   const [editing, setEditing] = useState<SmartEditTarget | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: COLUMNS_SHORTCUT,
+    action: (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   const runtime: RunColumnRuntime = {
     isManagedCloud,
@@ -141,11 +157,28 @@ export function RunsDisplayOptions({
   return (
     <>
       <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="secondary/small" LeadingIcon={ColumnsIcon}>
-            Columns
-          </Button>
-        </PopoverTrigger>
+        <SimpleTooltip
+          asChild
+          side="bottom"
+          disableHoverableContent
+          button={
+            // Plain wrapper: Button drops the pointer-event props Radix injects via asChild,
+            // so the tooltip anchor can't be the Button itself (same as NotificationPanel).
+            <div className="flex">
+              <PopoverTrigger asChild>
+                <Button ref={triggerRef} variant="secondary/small" LeadingIcon={ColumnsIcon}>
+                  Columns
+                </Button>
+              </PopoverTrigger>
+            </div>
+          }
+          content={
+            <span className="flex items-center gap-2">
+              Customize columns
+              <ShortcutKey shortcut={COLUMNS_SHORTCUT} variant="small" />
+            </span>
+          }
+        />
         <PopoverContent
           align="end"
           className="w-64 p-0"
@@ -194,6 +227,7 @@ export function RunsDisplayOptions({
               icon={PlusIcon}
               title="Add smart column…"
               onClick={() => setAddOpen(true)}
+              className="h-8"
             />
             {canFavorite && (
               <PopoverMenuItem
@@ -206,6 +240,7 @@ export function RunsDisplayOptions({
                 }
                 title={isFavorited ? "Remove from favorites" : "Save to favorites"}
                 onClick={toggleFavorite}
+                className="h-8"
               />
             )}
             <PopoverMenuItem
@@ -213,6 +248,7 @@ export function RunsDisplayOptions({
               title="Reset to default"
               onClick={reset}
               disabled={!layout.isCustomized}
+              className="h-8"
             />
           </div>
         </PopoverContent>
@@ -268,7 +304,7 @@ function ColumnRow({
   return (
     <div
       className={cn(
-        "group relative flex h-[1.8rem] items-center rounded-sm transition-colors hover:bg-background-hover",
+        "group relative flex h-8 items-center rounded-sm transition-colors hover:bg-background-hover",
         dragging && "opacity-40"
       )}
       draggable
@@ -289,7 +325,7 @@ function ColumnRow({
       {/* Native label so the whole name area toggles the column, matching CheckboxWithLabel. */}
       <label
         className={cn(
-          "flex h-full min-w-0 flex-1 items-center gap-x-1.5 pl-[0.4rem]",
+          "flex h-full min-w-0 flex-1 items-center gap-x-2 pl-2",
           locked ? "cursor-default" : "cursor-pointer"
         )}
       >
@@ -305,13 +341,13 @@ function ColumnRow({
         </span>
         {isSmart && <BoltIcon className="size-3.5 flex-none text-text-dimmed" />}
       </label>
-      <div className="flex flex-none items-center gap-0.5 pr-[0.4rem]">
+      <div className="flex flex-none items-center gap-0.5 pr-1">
         {onEdit && (
           <button
             type="button"
             onClick={onEdit}
             aria-label={`Edit ${col.def.label}`}
-            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
+            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom focus-visible:opacity-100 group-hover:opacity-100"
           >
             <PencilSquareIcon className="size-4" />
           </button>
@@ -321,7 +357,7 @@ function ColumnRow({
             type="button"
             onClick={onRemove}
             aria-label={`Remove ${col.def.label}`}
-            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom group-hover:opacity-100 group-focus-within:opacity-100"
+            className="flex size-6 cursor-pointer items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-error focus-custom focus-visible:opacity-100 group-hover:opacity-100"
           >
             <XMarkIcon className="size-4" />
           </button>
@@ -338,7 +374,7 @@ function ColumnRow({
               onMove(1);
             }
           }}
-          className="flex size-6 cursor-grab items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom group-hover:opacity-100 group-focus-within:opacity-100 active:cursor-grabbing"
+          className="flex size-6 cursor-grab items-center justify-center rounded-sm text-text-dimmed opacity-0 transition hover:bg-charcoal-700 hover:text-text-bright focus-custom focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
         >
           <GripVerticalIcon className="size-4" />
         </button>
