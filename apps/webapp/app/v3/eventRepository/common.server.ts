@@ -25,7 +25,7 @@ export function extractContextFromCarrier(carrier: Record<string, unknown>) {
 }
 
 export function getNowInNanoseconds(): bigint {
-  return BigInt(new Date().getTime() * 1_000_000);
+  return convertDateToNanoseconds(new Date());
 }
 
 export function getDateFromNanoseconds(nanoseconds: bigint): Date {
@@ -39,7 +39,7 @@ export function calculateDurationFromStart(
 ) {
   const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
 
-  const duration = Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
+  const duration = Number(convertDateToNanoseconds($endtime) - startTime);
 
   if (minimumDuration && duration < minimumDuration) {
     return minimumDuration;

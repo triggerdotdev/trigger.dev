@@ -9,10 +9,10 @@ import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { convertDateToNanoseconds } from "./common.server";
 
 export const EVENT_STORE_TYPES = {
-  POSTGRES: "postgres",
-  CLICKHOUSE: "clickhouse",
+  POSTGRES: "postgres",  CLICKHOUSE: "clickhouse",
   CLICKHOUSE_V2: "clickhouse_v2",
 } as const;
 
@@ -208,10 +208,9 @@ async function recordRunEvent(
         runId: foundRun.friendlyId,
         ...attributes,
       },
-      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      startTime: convertDateToNanoseconds(startTime ?? new Date()),
       ...optionsRest,
     });
-
     return {
       success: true,
     };
