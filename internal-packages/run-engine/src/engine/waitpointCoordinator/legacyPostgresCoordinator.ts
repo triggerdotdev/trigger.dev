@@ -1,9 +1,13 @@
 import type { RunStore } from "@internal/run-store";
+import { tryCatch } from "@trigger.dev/core/v3";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient } from "@trigger.dev/database";
 import { boundedIn } from "@trigger.dev/database";
+import { UnclassifiableWaitpointId } from "../errors.js";
 import type {
   ClearRunBlockStateParams,
+  CompleteParams,
+  CompleteResult,
   RegisterBlocksLocklessParams,
   RegisterBlocksParams,
   RunBlockEdge,
@@ -96,6 +100,80 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
 
   async registerBlocksLockless(params: RegisterBlocksLocklessParams): Promise<void> {
     await this.#writeBlockEdges(params);
+  }
+
+  async complete({ waitpointId, output }: CompleteParams): Promise<CompleteResult> {
+    // Residency store-selection guard. complete arrives with only (waitpointId, output) — no run
+    // id — so the owning run-ops store is selected by the waitpoint's own residency. In single-DB
+    // this is the one store (no classification). An unclassifiable id throws loud — never
+    // default-routes. The try wraps ONLY the resolve: widening it would swallow the
+    // "Waitpoint not found" path that a single store relies on.
+    let store: RunStore;
+    try {
+      store = await this.runStore.forWaitpointCompletion(waitpointId, { routeKind: "MANUAL" });
+    } catch (error) {
+      this.logger.error("completeWaitpoint: unclassifiable waitpointId", {
+        waitpointId,
+        error,
+      });
+      throw new UnclassifiableWaitpointId(waitpointId, { cause: error });
+    }
+
+    // 1. Complete the Waitpoint (if not completed)
+    const [updateError, updateResult] = await tryCatch(
+      store.updateManyWaitpoints({
+        where: { id: waitpointId, status: "PENDING" },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          output: output?.value,
+          outputType: output?.type,
+          outputIsError: output?.isError,
+        },
+      })
+    );
+
+    if (updateError) {
+      this.logger.error("completeWaitpoint: error updating waitpoint:", { updateError });
+      throw updateError;
+    }
+
+    if (updateResult.count === 0) {
+      this.logger.info("completeWaitpoint: attempted to complete a waitpoint that is not PENDING", {
+        waitpointId,
+      });
+    }
+
+    // Re-read the just-written row from the RESOLVED store's PRIMARY: the replica (findWaitpoint's
+    // default) can miss it under lag → false "not found" → the parent hangs. Going back through
+    // the router would re-resolve the store and change the routing, so use the handle.
+    const waitpoint = await store.findWaitpointOnPrimary({
+      where: { id: waitpointId },
+    });
+
+    if (!waitpoint) {
+      this.logger.error("completeWaitpoint: waitpoint not found", { waitpointId });
+      throw new Error("Waitpoint not found");
+    }
+
+    if (waitpoint.status !== "COMPLETED") {
+      this.logger.error(`completeWaitpoint: waitpoint is not completed`, { waitpointId });
+      throw new Error("Waitpoint not completed");
+    }
+
+    // 2. Find the TaskRuns blocked by this waitpoint. The edge (TaskRunWaitpoint) co-locates
+    // with its RUN, not this token, so it can live on the OTHER run-ops DB: read via the router
+    // (which fans the waitpointId lookup across both DBs) rather than the token's own `store`,
+    // or a cross-DB blocked run is never found and hangs forever.
+    const blockedRuns = await this.runStore.findManyTaskRunWaitpoints(
+      {
+        where: { waitpointId },
+        select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
+      },
+      this.prisma
+    );
+
+    return { waitpoint, blockedRuns };
   }
 
   /**

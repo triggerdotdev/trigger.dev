@@ -1,4 +1,4 @@
-import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
+import { timeoutError } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
@@ -8,10 +8,8 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import { Prisma } from "@trigger.dev/database";
-import type { RunStore } from "@internal/run-store";
 import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
-import { UnclassifiableWaitpointId } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
@@ -85,86 +83,19 @@ export class WaitpointSystem {
       isError: boolean;
     };
   }): Promise<Waitpoint> {
-    // Residency store-selection guard. completeWaitpoint arrives with only
-    // (waitpointId, output) — no run id — so the owning run-ops store is selected
-    // by the waitpoint's own residency. In single-DB this is the one store
-    // (no classification). An unclassifiable id throws loud — never default-routes.
-    let store: RunStore;
-    try {
-      store = await this.$.runStore.forWaitpointCompletion(id, { routeKind: "MANUAL" });
-    } catch (error) {
-      this.$.logger.error("completeWaitpoint: unclassifiable waitpointId", {
-        waitpointId: id,
-        error,
-      });
-      throw new UnclassifiableWaitpointId(id, { cause: error });
-    }
-
-    // 1. Complete the Waitpoint (if not completed)
-    const [updateError, updateResult] = await tryCatch(
-      store.updateManyWaitpoints({
-        where: { id, status: "PENDING" },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-          output: output?.value,
-          outputType: output?.type,
-          outputIsError: output?.isError,
-        },
-      })
-    );
-
-    if (updateError) {
-      this.$.logger.error("completeWaitpoint: error updating waitpoint:", { updateError });
-      throw updateError;
-    }
-
-    if (updateResult.count === 0) {
-      this.$.logger.info(
-        "completeWaitpoint: attempted to complete a waitpoint that is not PENDING",
-        { waitpointId: id }
-      );
-    }
-
-    // Re-read the just-written row from the RESOLVED store's PRIMARY: the replica (findWaitpoint's
-    // default) can miss it under lag → false "not found" → the parent hangs; this.$.prisma would
-    // instead hit the wrong DB. findWaitpointOnPrimary reads the owning store's primary.
-    const waitpoint = await store.findWaitpointOnPrimary({
-      where: { id },
+    const { waitpoint, blockedRuns } = await this.coordinator.complete({
+      waitpointId: id,
+      output,
     });
 
-    if (!waitpoint) {
-      this.$.logger.error("completeWaitpoint: waitpoint not found", { waitpointId: id });
-      throw new Error("Waitpoint not found");
-    }
-
-    if (waitpoint.status !== "COMPLETED") {
-      this.$.logger.error(`completeWaitpoint: waitpoint is not completed`, {
-        waitpointId: id,
-      });
-      throw new Error("Waitpoint not completed");
-    }
-
-    // 2. Find the TaskRuns blocked by this waitpoint. The edge (TaskRunWaitpoint) co-locates
-    // with its RUN, not this token, so it can live on the OTHER run-ops DB: read via the router
-    // (which fans the waitpointId lookup across both DBs) rather than the token's own `store`,
-    // or a cross-DB blocked run is never found and hangs forever.
-    const affectedTaskRuns = await this.$.runStore.findManyTaskRunWaitpoints(
-      {
-        where: { waitpointId: id },
-        select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
-      },
-      this.$.prisma
-    );
-
-    if (affectedTaskRuns.length === 0) {
+    if (blockedRuns.length === 0) {
       this.$.logger.debug(`completeWaitpoint: no TaskRunWaitpoints found for waitpoint`, {
         waitpointId: id,
       });
     }
 
     // 3. Schedule trying to continue the runs
-    for (const run of affectedTaskRuns) {
+    for (const run of blockedRuns) {
       const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
       //50ms in the future
       const availableAt = new Date(Date.now() + 50);

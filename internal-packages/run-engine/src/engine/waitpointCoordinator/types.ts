@@ -18,6 +18,7 @@ export type WaitpointCoordinator = {
   readRunBlockState(runId: string): Promise<RunBlockEdge[]>;
   registerBlocks(params: RegisterBlocksParams): Promise<{ pendingCount: number }>;
   registerBlocksLockless(params: RegisterBlocksLocklessParams): Promise<void>;
+  complete(params: CompleteParams): Promise<CompleteResult>;
 };
 
 export type ClearRunBlockStateParams = {
@@ -65,3 +66,24 @@ export type RegisterBlocksParams = {
  * one method with a flag, so "the batch path issues no extra query" is structural.
  */
 export type RegisterBlocksLocklessParams = Omit<RegisterBlocksParams, "client">;
+
+export type CompleteParams = {
+  waitpointId: string;
+  output?: {
+    value: string;
+    type?: string;
+    isError: boolean;
+  };
+};
+
+/** One run blocked by the completed waitpoint, with the fields the caller's fan-out loop reads. */
+export type BlockedRun = {
+  taskRunId: string;
+  spanIdToComplete: string | null;
+  createdAt: Date;
+};
+
+export type CompleteResult = {
+  waitpoint: Waitpoint;
+  blockedRuns: BlockedRun[];
+};
