@@ -1,13 +1,19 @@
 import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
+import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
-import type { PrismaClient } from "@trigger.dev/database";
-import { boundedIn } from "@trigger.dev/database";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
+import { boundedIn, Prisma } from "@trigger.dev/database";
+import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
 import type {
+  AssociatedWaitpointData,
   ClearRunBlockStateParams,
   CompleteParams,
   CompleteResult,
+  CreateDateTimeWaitpointParams,
+  CreateManualWaitpointParams,
+  CreateWaitpointResult,
   RegisterBlocksLocklessParams,
   RegisterBlocksParams,
   RunBlockEdge,
@@ -174,6 +180,233 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     );
 
     return { waitpoint, blockedRuns };
+  }
+
+  async createDateTimeWaitpoint({
+    runId,
+    projectId,
+    environmentId,
+    completedAfter,
+    idempotencyKey,
+    idempotencyKeyExpiresAt,
+  }: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult> {
+    // Co-location invariant: a DATETIME wait waitpoint lives on the same run-ops DB as the run
+    // that blocks on it. The minted waitpoint id is always a cuid, so without `coLocateWithRunId`
+    // the upsert would always route to LEGACY and a run-ops run on NEW would hang. The
+    // (env,idempotencyKey) dedup is within the owning run/tree, so the dedup probe + rotation
+    // target the SAME store. With no run id the lookup falls back to a cross-DB NEW-then-LEGACY
+    // scan and the upsert routes by id-shape. Always routed through the run store (never a caller
+    // tx) so it can never bypass residency onto the wrong DB.
+    const colocate = runId ? { coLocateWithRunId: runId } : undefined;
+    const existingWaitpoint = idempotencyKey
+      ? await this.runStore.findWaitpoint(
+          {
+            where: {
+              environmentId,
+              idempotencyKey,
+            },
+          },
+          undefined,
+          colocate
+        )
+      : undefined;
+
+    if (existingWaitpoint) {
+      if (
+        existingWaitpoint.idempotencyKeyExpiresAt &&
+        new Date() > existingWaitpoint.idempotencyKeyExpiresAt
+      ) {
+        //the idempotency key has expired
+        //remove the waitpoint idempotencyKey
+        const rotateArgs = {
+          where: {
+            id: existingWaitpoint.id,
+          },
+          data: {
+            idempotencyKey: nanoid(24),
+            inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
+          },
+        };
+        await this.runStore.updateWaitpoint(rotateArgs, undefined, colocate);
+
+        //let it fall through to create a new waitpoint
+      } else {
+        return { kind: "cached", waitpoint: existingWaitpoint };
+      }
+    }
+
+    // The two `nanoid(24)` calls below are deliberately separate and produce DIFFERENT values:
+    // the upsert `where` key must not match the `create` key, or a guaranteed-miss upsert becomes
+    // a possible update. Do not hoist either to a shared constant.
+    const upsertArgs = {
+      where: {
+        environmentId_idempotencyKey: {
+          environmentId,
+          idempotencyKey: idempotencyKey ?? nanoid(24),
+        },
+      },
+      create: {
+        ...WaitpointId.generate(),
+        type: "DATETIME" as const,
+        idempotencyKey: idempotencyKey ?? nanoid(24),
+        idempotencyKeyExpiresAt,
+        userProvidedIdempotencyKey: !!idempotencyKey,
+        environmentId,
+        projectId,
+        completedAfter,
+      },
+      update: {},
+    };
+    const waitpoint = await this.runStore.upsertWaitpoint(upsertArgs, undefined, colocate);
+
+    return { kind: "created", waitpoint };
+  }
+
+  async createManualWaitpoint({
+    runId,
+    environmentId,
+    projectId,
+    idempotencyKey,
+    idempotencyKeyExpiresAt,
+    timeout,
+    tags,
+    standaloneResidency,
+  }: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
+    // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the
+    // waitpoint co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run. A
+    // standalone token passes no run id — it is created without an owner, blocked later by
+    // whichever run waits on it (possibly cross-DB, resolved by the run-co-resident block edge +
+    // completion fan-out). With no owner it reads the env mint kind via `standaloneResidency` so
+    // a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
+    const colocate = runId
+      ? { coLocateWithRunId: runId }
+      : standaloneResidency
+        ? { residency: standaloneResidency }
+        : undefined;
+    const existingWaitpoint = idempotencyKey
+      ? await this.runStore.findWaitpoint(
+          {
+            where: {
+              environmentId,
+              idempotencyKey,
+            },
+          },
+          undefined,
+          colocate
+        )
+      : undefined;
+
+    if (existingWaitpoint) {
+      if (
+        existingWaitpoint.idempotencyKeyExpiresAt &&
+        new Date() > existingWaitpoint.idempotencyKeyExpiresAt
+      ) {
+        //the idempotency key has expired
+        //remove the waitpoint idempotencyKey
+        await this.runStore.updateWaitpoint(
+          {
+            where: {
+              id: existingWaitpoint.id,
+            },
+            data: {
+              idempotencyKey: nanoid(24),
+              inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
+            },
+          },
+          undefined,
+          colocate
+        );
+
+        //let it fall through to create a new waitpoint
+      } else {
+        return { kind: "cached", waitpoint: existingWaitpoint };
+      }
+    }
+
+    const maxRetries = 5;
+    let attempts = 0;
+
+    while (attempts < maxRetries) {
+      try {
+        // As in createDateTimeWaitpoint, the two `nanoid(24)` calls are deliberately separate and
+        // differ. Both, and `WaitpointId.generate()`, are re-evaluated on every attempt: that is
+        // what makes a retry after a unique-constraint conflict try a fresh key.
+        const waitpoint = await this.runStore.upsertWaitpoint(
+          {
+            where: {
+              environmentId_idempotencyKey: {
+                environmentId,
+                idempotencyKey: idempotencyKey ?? nanoid(24),
+              },
+            },
+            create: {
+              ...WaitpointId.generate(),
+              type: "MANUAL",
+              idempotencyKey: idempotencyKey ?? nanoid(24),
+              idempotencyKeyExpiresAt,
+              userProvidedIdempotencyKey: !!idempotencyKey,
+              environmentId,
+              projectId,
+              completedAfter: timeout,
+              tags,
+            },
+            update: {},
+          },
+          undefined,
+          colocate
+        );
+
+        return { kind: "created", waitpoint };
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          // Handle unique constraint violation (conflict)
+          attempts++;
+          if (attempts >= maxRetries) {
+            throw new Error(
+              `Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`
+            );
+          }
+        } else {
+          throw error; // Re-throw other errors
+        }
+      }
+    }
+
+    throw new Error(`Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`);
+  }
+
+  mintAssociatedWaitpointData({
+    projectId,
+    environmentId,
+  }: {
+    projectId: string;
+    environmentId: string;
+  }): AssociatedWaitpointData {
+    return {
+      ...WaitpointId.generate(),
+      type: "RUN" as const,
+      status: "PENDING" as const,
+      idempotencyKey: nanoid(24),
+      userProvidedIdempotencyKey: false,
+      projectId,
+      environmentId,
+    };
+  }
+
+  async createAssociatedWaitpoint({
+    runId,
+    data,
+  }: {
+    runId: string;
+    data: AssociatedWaitpointData;
+  }): Promise<Waitpoint> {
+    // RUN-type within-tree waitpoint that belongs to runId; routes by owning run id.
+    return this.runStore.createWaitpoint({
+      data: {
+        ...data,
+        completedByTaskRunId: runId,
+      },
+    });
   }
 
   /**
