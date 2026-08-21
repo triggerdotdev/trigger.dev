@@ -9131,10 +9131,14 @@ function createStopSignal(): {
  * task instead of round-tripping them back from the client:
  * - `lastEventId` — the turn-complete control record's seq_num on
  *   `session.out`; where the next turn's output stream resumes.
- * - `sessionInEventId` — the committed-consume cursor on `session.in` as of
- *   this turn-complete, letting a raw loop correlate the boundary with the
- *   exact input record it acknowledged. Trigger owns input-cursor recovery,
- *   so this is for correlation / out-of-sync detection, not required.
+ * - `sessionInEventId` — the safe-to-resume-from cursor on `session.in` as of
+ *   this turn-complete. It is the highest sequence that can be resumed past
+ *   without skipping an unhandled message, so it is held back behind any
+ *   message still buffered unconsumed and is NOT necessarily the sequence of
+ *   the record this turn answered. Trigger owns input-cursor recovery, so this
+ *   is for correlation / out-of-sync detection, not required. Treat it as a
+ *   lower bound: a value below the record you just handled is expected, not a
+ *   sign of a lost turn.
  *
  * Either is `undefined` when the corresponding cursor isn't available.
  *
