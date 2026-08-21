@@ -683,20 +683,7 @@ export class WaitpointSystem {
 
     return await this.$.runLock.lock("continueRunIfUnblocked", [runId], async () => {
       // 1. Get the any blocking waitpoints
-      const blockingWaitpoints = await this.$.runStore.findManyTaskRunWaitpoints(
-        {
-          where: { taskRunId: runId },
-          select: {
-            id: true,
-            batchId: true,
-            batchIndex: true,
-            waitpoint: {
-              select: { id: true, status: true, type: true, completedAfter: true },
-            },
-          },
-        },
-        this.$.prisma
-      );
+      const blockingWaitpoints = await this.coordinator.readRunBlockState(runId);
 
       // 2. There are blockers still, so do nothing
       if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {

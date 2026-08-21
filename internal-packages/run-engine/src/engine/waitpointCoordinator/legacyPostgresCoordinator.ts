@@ -2,7 +2,7 @@ import type { RunStore } from "@internal/run-store";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient } from "@trigger.dev/database";
 import { boundedIn } from "@trigger.dev/database";
-import type { ClearRunBlockStateParams, WaitpointCoordinator } from "./types.js";
+import type { ClearRunBlockStateParams, RunBlockEdge, WaitpointCoordinator } from "./types.js";
 
 export type LegacyPostgresWaitpointCoordinatorOptions = {
   runStore: RunStore;
@@ -47,5 +47,22 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // this taskRunId-keyed delete to the run's store rather than fanning out. The caller's `tx` is
     // passed through: a routing store strips it, and a single store joins it.
     return this.runStore.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } }, tx);
+  }
+
+  async readRunBlockState(runId: string): Promise<RunBlockEdge[]> {
+    return this.runStore.findManyTaskRunWaitpoints(
+      {
+        where: { taskRunId: runId },
+        select: {
+          id: true,
+          batchId: true,
+          batchIndex: true,
+          waitpoint: {
+            select: { id: true, status: true, type: true, completedAfter: true },
+          },
+        },
+      },
+      this.prisma
+    );
   }
 }

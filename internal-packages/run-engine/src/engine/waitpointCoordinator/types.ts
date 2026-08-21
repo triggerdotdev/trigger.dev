@@ -1,4 +1,4 @@
-import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 
 /**
  * The waitpoint and edge state operations that `WaitpointSystem` delegates.
@@ -14,6 +14,7 @@ import type { PrismaClientOrTransaction } from "@trigger.dev/database";
  */
 export type WaitpointCoordinator = {
   clearRunBlockState(params: ClearRunBlockStateParams): Promise<{ count: number }>;
+  readRunBlockState(runId: string): Promise<RunBlockEdge[]>;
 };
 
 export type ClearRunBlockStateParams = {
@@ -25,4 +26,17 @@ export type ClearRunBlockStateParams = {
    * or an edge write. A routing store strips it; a single store joins it.
    */
   tx?: PrismaClientOrTransaction;
+};
+
+/**
+ * One block edge, with the fields the unblock decision reads.
+ *
+ * `batchId` is read by no logic. It rides inside two `logger.debug` payloads
+ * (`waitpointSystem.ts:702-705` and `:936-939`), so removing it changes log output.
+ */
+export type RunBlockEdge = {
+  id: string;
+  batchId: string | null;
+  batchIndex: number | null;
+  waitpoint: Pick<Waitpoint, "id" | "status" | "type" | "completedAfter">;
 };
