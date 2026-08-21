@@ -938,3 +938,53 @@ describe("hash tag and keyPrefix", () => {
     }
   });
 });
+
+describe("observability", () => {
+  redisTest("records sizes and outcomes without ever rejecting", async ({ redisOptions }) => {
+    const calls: string[] = [];
+    const metrics = {
+      recordAppend: (o: string, t: string) => calls.push(`append:${o}:${t}`),
+      recordEntryBytes: (b: number) => calls.push(`entryBytes:${b > 0}`),
+      recordCycleKeyBytes: (b: number) => calls.push(`cycleBytes:${b > 0}`),
+      recordCycleCount: (c: number) => calls.push(`cycleCount:${c}`),
+      recordSkippedNoKeyspace: () => calls.push("skipped"),
+      recordCycleMismatch: () => calls.push("mismatch"),
+      recordLatency: (op: string) => calls.push(`latency:${op}`),
+    };
+    const store = new RedisSnapshotStore({
+      redisOptions,
+      completedTtlMs: 60_000,
+      metrics,
+      highWater: { entryBytes: 1 },
+    });
+    try {
+      // A huge inline value is observed, never rejected or truncated: Postgres had no cap either.
+      const big = "x".repeat(20_000);
+      const r = await store.append({
+        entry: entry({ id: "s1", description: big }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+      });
+      expect(r).toMatchObject({ outcome: "written" });
+      expect((await store.getById("run_1", "s1"))?.entry.description).toBe(big);
+
+      await store.append({
+        entry: entry({ id: "s2", runId: "run_absent" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+
+      expect(calls).toContain("append:written:none");
+      expect(calls).toContain("entryBytes:true");
+      expect(calls).toContain("cycleBytes:true");
+      expect(calls).toContain("cycleCount:1");
+      expect(calls).toContain("skipped");
+      // recordLatency is wired through #timed for every public method, not just a no-op stub.
+      expect(calls).toContain("latency:append");
+      expect(calls).toContain("latency:getById");
+    } finally {
+      await store.quit();
+    }
+  });
+});
