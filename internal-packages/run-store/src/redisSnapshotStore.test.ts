@@ -2,6 +2,7 @@
 // reference, so no Postgres container is needed.
 import { expect, describe } from "vitest";
 import { redisTest } from "@internal/testcontainers";
+import { createRedisClient } from "@internal/redis";
 import {
   snapshotKeys,
   deriveOrder,
@@ -139,8 +140,106 @@ describe("append", () => {
       });
       expect(r).toEqual({ outcome: "skippedNoKeyspace" });
       expect(await store.getLatest("run_never")).toBeNull();
+
+      const k = snapshotKeys("run_never");
+      const raw = createRedisClient(redisOptions);
+      try {
+        expect(await raw.exists(k.e, k.idx, k.cur, k.seq)).toBe(0);
+      } finally {
+        await raw.quit();
+      }
     } finally {
       await store.quit();
     }
   });
+
+  redisTest("skips a transition when only the seq key has expired", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "snap_1" }), kind: "birth", isTerminal: false });
+
+      const k = snapshotKeys("run_1");
+      const raw = createRedisClient(redisOptions);
+      try {
+        await raw.del(k.seq);
+      } finally {
+        await raw.quit();
+      }
+
+      const r = await store.append({
+        entry: entry({ id: "snap_2" }),
+        kind: "transition",
+        isTerminal: false,
+      });
+      expect(r).toEqual({ outcome: "skippedNoKeyspace" });
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "carries the original count forward on a carryForward append",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [
+              { id: "w_a", index: 0 },
+              { id: "w_b", index: 1 },
+            ],
+          },
+        });
+        await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "carryForward", cycleSeq: 1 },
+        });
+
+        const read = await store.getById("run_1", "snap_2");
+        expect(read?.cycle).toEqual({ cycleSeq: 1, count: 2 });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "reports a duplicate id without overwriting the original entry",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        const first = await store.append({
+          entry: entry({ id: "snap_1", description: "created" }),
+          kind: "birth",
+          isTerminal: false,
+        });
+        expect(first).toMatchObject({ outcome: "written", seq: 1 });
+
+        const dup = await store.append({
+          entry: entry({ id: "snap_1", description: "different" }),
+          kind: "transition",
+          isTerminal: false,
+        });
+        expect(dup).toEqual({ outcome: "duplicate", seq: 1 });
+
+        const read = await store.getById("run_1", "snap_1");
+        expect(read?.entry.description).toBe("created");
+
+        const next = await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "transition",
+          isTerminal: false,
+        });
+        expect(next).toMatchObject({ outcome: "written", seq: 2 });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 });

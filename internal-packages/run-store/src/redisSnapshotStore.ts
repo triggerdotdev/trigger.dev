@@ -76,7 +76,8 @@ export type AppendResult =
       cycleMismatch: boolean;
     }
   | { outcome: "skippedNoKeyspace" }
-  | { outcome: "forked"; actualCur: string };
+  | { outcome: "forked"; actualCur: string }
+  | { outcome: "duplicate"; seq: number };
 
 export type SnapshotStoreMetrics = {
   recordAppend(outcome: string, ttl: string): void;
@@ -100,6 +101,7 @@ export type RedisSnapshotStoreOptions = {
 const SKIPPED = "skipped";
 const FORKED = "forked";
 const WRITTEN = "written";
+const DUPLICATE = "duplicate";
 
 export class RedisSnapshotStore {
   private readonly redis: Redis;
@@ -189,7 +191,8 @@ export class RedisSnapshotStore {
         orderJson,
         records,
         orderCount,
-        args.expectedCur ?? ""
+        args.expectedCur ?? "",
+        args.expectedCur !== undefined ? "1" : "0"
       )) as string[];
 
       return this.#interpretAppend(reply, raw, orderJson);
@@ -205,6 +208,10 @@ export class RedisSnapshotStore {
     if (reply[0] === FORKED) {
       this.metrics?.recordAppend("forked", "none");
       return { outcome: "forked", actualCur: reply[1] ?? "" };
+    }
+    if (reply[0] === DUPLICATE) {
+      this.metrics?.recordAppend("duplicate", "none");
+      return { outcome: "duplicate", seq: Number(reply[1]) };
     }
     const seq = Number(reply[1]);
     const cycleSeq = Number(reply[2]);
@@ -319,23 +326,31 @@ export class RedisSnapshotStore {
         local records     = ARGV[10]
         local orderCount  = ARGV[11]
         local expectedCur = ARGV[12]
+        local casEnabled  = ARGV[13] == '1'
 
-        -- Liveness is ONE anchor. All keys get the same PEXPIRE but expire independently, so seq can
-        -- vanish while e and cur linger; anchoring on e treats a partly expired keyspace as gone,
-        -- once and consistently. A birth creates the keyspace; a transition that finds none writes
-        -- nothing. That state has two causes the caller must not merge: a completed run whose TTL
-        -- fired, and a run that predates this org's dual-write.
-        if kind == 'transition' and redis.call('EXISTS', eKey) == 0 then
+        -- Liveness is TWO anchors: e and seq. All keys get the same PEXPIRE but expire independently
+        -- (or seq can vanish under maxmemory eviction while e survives), so checking e alone lets a
+        -- late transition recreate seq with no TTL and restart it at 1 beside a surviving idx. A
+        -- birth always creates both in this same script, so this never rejects a live keyspace.
+        if kind == 'transition' and (redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', seqKey) == 0) then
           return { '${SKIPPED}' }
         end
 
-        -- Optional compare-and-set on cur, checked BEFORE any mutation. Absent by default, which
-        -- matches Postgres: it has no such guard either.
-        if expectedCur ~= '' then
+        -- Optional compare-and-set on cur, checked BEFORE any mutation. Gated on an explicit flag
+        -- (not on expectedCur ~= ''), so a caller asserting cur is unset (expectedCur = '') still
+        -- gets a real check instead of silently skipping it.
+        if casEnabled then
           local actual = redis.call('GET', curKey)
           if (actual or '') ~= expectedCur then
             return { '${FORKED}', actual or '' }
           end
+        end
+
+        -- Append-only: a retried append (eg. ioredis reconnect-and-retry on a READONLY/UNBLOCKED
+        -- reply error) must not overwrite an existing entry's bytes or rescore it in idx.
+        local prior = redis.call('HGET', eKey, id .. '#s')
+        if prior then
+          return { '${DUPLICATE}', prior }
         end
 
         local seq = redis.call('HINCRBY', seqKey, 'e', 1)
@@ -346,14 +361,17 @@ export class RedisSnapshotStore {
           -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
           -- PEXPIRE loop from 1..c is correct.
           cycleSeq = redis.call('HINCRBY', seqKey, 'c', 1)
-          redis.call('HSET', wpKey(cycleSeq), 'order', orderJson)
+          redis.call('HSET', wpKey(cycleSeq), 'order', orderJson, 'count', orderCount)
           if records ~= '' then
             redis.call('HSET', wpKey(cycleSeq), 'records', records)
           end
         elseif cycleMode == 'carry' then
           cycleSeq = cycleSeqIn
-          if redis.call('EXISTS', wpKey(cycleSeq)) == 0 then
+          local c = redis.call('HGET', wpKey(cycleSeq), 'count')
+          if not c then
             mismatch = 1
+          else
+            orderCount = c
           end
         end
 
@@ -363,7 +381,9 @@ export class RedisSnapshotStore {
         end
 
         -- idx indexes VALID entries only, which makes the since-cap exact. An invalid entry is still
-        -- reachable by id, and its seq is still readable from its own '#s' field.
+        -- reachable by id, and its seq is still readable from its own '#s' field. ZADD before SET cur
+        -- because Redis never rolls back a partially applied script: if a later call in this script
+        -- errored, having idx already written is the recoverable half of the pair.
         if isValid then
           redis.call('ZADD', idxKey, seq, id)
           redis.call('SET', curKey, id)
@@ -444,6 +464,7 @@ declare module "@internal/redis" {
       records: string,
       orderCount: string,
       expectedCur: string,
+      casEnabled: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     readSnapshotById(
