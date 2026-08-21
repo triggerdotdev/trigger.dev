@@ -1,6 +1,6 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import { assertSingleSlot, waitpointKeys, watcherField } from "./keys.js";
+import { assertSingleSlot, idempotencyKey, waitpointKeys, watcherField } from "./keys.js";
 import { registerWaitpointCommands } from "./scripts.js";
 
 /** The values written into a record's `status` field. Uppercase, and never a token. */
@@ -12,6 +12,7 @@ type ScriptName =
   | "wpRegisterOrReport"
   | "wpComplete"
   | "wpIdemReserve"
+  | "wpDiscard"
   | "runAbsorbBlockers"
   | "runDeliverCompletion"
   | "runReadBlockState"
@@ -253,5 +254,54 @@ export class WaitpointStoreCoordinator {
       completion: parseJson<WaitpointCompletion>(reply[1]),
       watchers: reply.slice(2).map((entry) => JSON.parse(entry) as WatcherEntry),
     };
+  }
+
+  /**
+   * Create a waitpoint under an idempotency key.
+   *
+   * The reservation and the record sit under different hash tags, so no script spans
+   * them. That makes the ORDER load-bearing: create first, then reserve.
+   *
+   * Reserve-first would mean a crash between the two steps leaves a reservation naming a
+   * waitpoint that does not exist. Every later request with that key loses the
+   * reservation, blocks on the winner's id, and throws when it registers — correctly, but
+   * forever, because an idempotency key commonly carries no expiry to clear it.
+   *
+   * Create-first inverts the failure: a crash leaves an orphan record that nothing ever
+   * referenced, because its id is random and unpublished. No caller hangs, and the orphan
+   * is reaped by the store's own garbage collection rather than by an expiry, which
+   * pending keys never carry.
+   */
+  async createWithIdempotencyKey(args: {
+    record: WaitpointRecordInput;
+    environmentId: string;
+    idempotencyKey: string;
+  }): Promise<{ waitpointId: string; created: boolean }> {
+    await this.createIfAbsent({ record: args.record, status: "PENDING" });
+
+    const expiresAtMs = args.record.idempotencyKeyExpiresAt
+      ? String(new Date(args.record.idempotencyKeyExpiresAt).getTime())
+      : "";
+
+    const reply = await this.#call(
+      "wpIdemReserve",
+      [idempotencyKey(args.environmentId, args.idempotencyKey)],
+      args.record.id,
+      expiresAtMs
+    );
+
+    if (reply[0] === "reserved") {
+      return { waitpointId: args.record.id, created: true };
+    }
+
+    const winner = reply[1] ?? args.record.id;
+    if (winner !== args.record.id) {
+      // Safe to discard: this id is random and was never handed to any caller, so no
+      // watcher can reference it. Both keys share the record's tag.
+      const keys = waitpointKeys(args.record.id);
+      await this.#call("wpDiscard", [keys.record, keys.watchers]);
+    }
+
+    return { waitpointId: winner, created: false };
   }
 }

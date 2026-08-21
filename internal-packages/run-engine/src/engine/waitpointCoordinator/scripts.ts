@@ -35,6 +35,7 @@ const ALREADY = "already";
 const RESERVED = "reserved";
 const CLEARED = "cleared";
 const DRAINED = "drained";
+const DISCARDED = "discarded";
 
 export function registerWaitpointCommands(redis: Redis): void {
   // KEYS: record. ARGV: recordJson, status ('PENDING'|'COMPLETED'), completionJson ('').
@@ -140,6 +141,15 @@ export function registerWaitpointCommands(redis: Redis): void {
       end
 
       return { '${EXISTS}', redis.call('GET', key) or '' }
+    `,
+  });
+
+  // KEYS: record, watchers. No ARGV. Discards a losing reservation's orphan record.
+  redis.defineCommand("wpDiscard", {
+    numberOfKeys: 2,
+    lua: `
+      redis.call('DEL', KEYS[1], KEYS[2])
+      return { '${DISCARDED}' }
     `,
   });
 
@@ -336,6 +346,11 @@ declare module "@internal/redis" {
       key: string,
       waitpointId: string,
       expiresAtMs: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+    wpDiscard(
+      recordKey: string,
+      watchersKey: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     runAbsorbBlockers(

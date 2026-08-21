@@ -614,6 +614,111 @@ describe("runAbsorbBlockers, runClear and wpIdemReserve (direct Lua)", () => {
   );
 });
 
+describe("createWithIdempotencyKey", () => {
+  redisTest("creates the waitpoint and wins the reservation", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const result = await store.createWithIdempotencyKey({
+        record: record("w_a", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        environmentId: ENV_ID,
+        idempotencyKey: "key-1",
+      });
+
+      expect(result).toEqual({ waitpointId: "w_a", created: true });
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("returns the winner's id and deletes the loser", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    const probe = createRedisClient(redisOptions);
+    try {
+      await store.createWithIdempotencyKey({
+        record: record("w_first", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        environmentId: ENV_ID,
+        idempotencyKey: "key-1",
+      });
+
+      const second = await store.createWithIdempotencyKey({
+        record: record("w_second", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        environmentId: ENV_ID,
+        idempotencyKey: "key-1",
+      });
+
+      expect(second).toEqual({ waitpointId: "w_first", created: false });
+      // The loser cleans up after itself: nothing ever referenced its id.
+      expect(await probe.exists("wp:{w_second}")).toBe(0);
+      expect(await probe.exists("wp:{w_first}")).toBe(1);
+    } finally {
+      probe.disconnect();
+      await store.quit();
+    }
+  });
+
+  redisTest("sets no expiry when the record carries none", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    const probe = createRedisClient(redisOptions);
+    try {
+      await store.createWithIdempotencyKey({
+        record: record("w_a", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        environmentId: ENV_ID,
+        idempotencyKey: "key-1",
+      });
+
+      // The common case. An expiry appearing here would be a retention rule violation.
+      expect(await probe.pttl(`wp:idem:{${ENV_ID}}:key-1`)).toBe(-1);
+    } finally {
+      probe.disconnect();
+      await store.quit();
+    }
+  });
+
+  redisTest("sets the expiry the record carries", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    const probe = createRedisClient(redisOptions);
+    try {
+      await store.createWithIdempotencyKey({
+        record: record("w_a", {
+          idempotencyKey: "key-1",
+          userProvidedIdempotencyKey: true,
+          idempotencyKeyExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+        }),
+        environmentId: ENV_ID,
+        idempotencyKey: "key-1",
+      });
+
+      const ttl = await probe.pttl(`wp:idem:{${ENV_ID}}:key-1`);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(60_000);
+    } finally {
+      probe.disconnect();
+      await store.quit();
+    }
+  });
+
+  redisTest("scopes reservations by environment", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createWithIdempotencyKey({
+        record: record("w_a", { idempotencyKey: "key-1" }),
+        environmentId: "env_1",
+        idempotencyKey: "key-1",
+      });
+
+      const other = await store.createWithIdempotencyKey({
+        record: record("w_b", { idempotencyKey: "key-1", environmentId: "env_2" }),
+        environmentId: "env_2",
+        idempotencyKey: "key-1",
+      });
+
+      expect(other).toEqual({ waitpointId: "w_b", created: true });
+    } finally {
+      await store.quit();
+    }
+  });
+});
+
 describe("the single-slot guard", () => {
   redisTest("rejects an invocation whose keys span two tags", async ({ redisOptions }) => {
     const store = coordinator(redisOptions);
