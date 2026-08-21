@@ -26,8 +26,7 @@ const variants = {
     root: "h-4",
     track: "h-1 bg-grid-bright group-hover:bg-background-dimmed",
     range: "bg-transparent group-hover:bg-secondary",
-    thumb:
-      "h-3 w-3 border-2 border-text-dimmed bg-grid-bright shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] hover:border-text-dimmed focus:shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)]",
+    thumb: "h-3 w-3 border-2 border-text-dimmed bg-grid-bright",
     thumbSize: 12,
     mark: "bg-grid-bright border-background-dimmed",
     markHover: "hover:bg-text-dimmed",
