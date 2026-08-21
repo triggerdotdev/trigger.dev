@@ -26,6 +26,7 @@ import {
   resourceCatalog,
   type SessionTriggerConfig,
   SemanticInternalAttributes,
+  SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
   sessionStreams,
   taskContext,
@@ -220,6 +221,42 @@ async function findLatestSessionInCursor(chatId: string): Promise<number | undef
     if (Number.isFinite(parsed)) latestCursor = parsed;
   }
   return latestCursor;
+}
+
+/**
+ * {@link findLatestSessionInConsumed} that never throws. A boot must not fail
+ * because an optional bound could not be read; without it nothing is dropped,
+ * which is the previous release's behaviour.
+ * @internal
+ */
+async function findLatestSessionInConsumedSafe(chatId: string): Promise<number | undefined> {
+  try {
+    return await findLatestSessionInConsumed(chatId);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The highest `.in` sequence a previous run had already consumed, read from the
+ * latest `turn-complete` on `.out`.
+ *
+ * Absent for a chat whose turns predate the header, in which case no record is
+ * dropped and behaviour matches the previous release.
+ * @internal
+ */
+async function findLatestSessionInConsumed(chatId: string): Promise<number | undefined> {
+  const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(chatId, "out");
+  let latest: number | undefined;
+  for (const record of response.records) {
+    if (controlSubtype(record.headers) !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
+    const raw = headerValue(record.headers, SESSION_IN_CONSUMED_ID_HEADER);
+    if (!raw) continue;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed)) latest = parsed;
+  }
+  return latest;
 }
 
 /** Test-only entry point for the records-based cursor scan. @internal */
@@ -2024,6 +2061,34 @@ function releaseChatInputKinds(kinds: readonly string[]): void {
  */
 function setChatCursorBarrier(chatId: string): void {
   sessionStreams.setCursorBarrier(chatId, "in", isChatCursorBarrier);
+}
+
+/**
+ * Stop already-handled control records from being applied a second time after a
+ * resume.
+ *
+ * The cursor is deliberately held back behind messages still waiting to be
+ * handled, so resuming from it re-delivers everything after that point. For a
+ * message that is the whole purpose. For a control record it is a fault: a stop
+ * carries no record of which turn it belonged to, so on redelivery it would
+ * abort whichever turn happens to be live, which is usually the turn answering
+ * the very message the cursor was held back to protect.
+ *
+ * `consumedThrough` is the highest sequence a previous run reported consuming.
+ * Control records at or below it have already been applied and are dropped
+ * before any consumer sees them. Messages are never dropped. Absent for a chat
+ * whose turns predate the header, in which case nothing is dropped.
+ * @internal
+ */
+function setChatReplayGuard(chatId: string, consumedThrough: number | undefined): void {
+  if (consumedThrough === undefined) {
+    sessionStreams.setDropPredicate(chatId, "in", undefined);
+    return;
+  }
+  sessionStreams.setDropPredicate(chatId, "in", (record) => {
+    if (record.seqNum > consumedThrough) return false;
+    return !isChatCursorBarrier(record);
+  });
 }
 
 /**
@@ -5575,6 +5640,7 @@ function chatCustomAgent<
       // listener — otherwise a continuation boot replays already-answered
       // messages into the loop's first wait.
       await seedSessionInResumeCursorForCustomLoop(payload);
+      setChatReplayGuard(payload.chatId, await findLatestSessionInConsumedSafe(payload.chatId));
       attachChatInputDrain(payload);
       return userRun(payload, runOptions);
     },
@@ -5969,6 +6035,7 @@ function chatAgent<
         }
       }
 
+      setChatReplayGuard(payload.chatId, await findLatestSessionInConsumedSafe(payload.chatId));
       attachChatInputDrain(payload);
 
       // ── Recovery boot + chain reconstruction ────────────────────────
@@ -11033,6 +11100,10 @@ async function writeTurnCompleteChunk(
   const inCursor = session.in.lastDispatchedSeqNum();
   if (inCursor !== undefined) {
     extraHeaders.push([SESSION_IN_EVENT_ID_HEADER, String(inCursor)]);
+  }
+  const consumedCursor = sessionStreams.highestConsumedSeqNum(session.id, "in");
+  if (consumedCursor !== undefined) {
+    extraHeaders.push([SESSION_IN_CONSUMED_ID_HEADER, String(consumedCursor)]);
   }
   const result = await session.out.writeControl(
     TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,

@@ -42,6 +42,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
   private dispatchedSeqNums = new Map<string, number>();
   private unconsumedSeqNums = new Map<string, Set<number>>();
   private cursorBarriers = new Map<string, SessionStreamRecordPredicate>();
+  private dropPredicates = new Map<string, SessionStreamRecordPredicate>();
 
   on(sessionId: string, io: SessionChannelIO, handler: Handler): { off: () => void } {
     const key = keyFor(sessionId, io);
@@ -196,6 +197,20 @@ export class TestSessionStreamManager implements SessionStreamManager {
 
   peek(sessionId: string, io: SessionChannelIO): unknown | undefined {
     return this.peekRecord(sessionId, io)?.data;
+  }
+
+  highestConsumedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
+    return this.dispatchedSeqNums.get(keyFor(sessionId, io));
+  }
+
+  setDropPredicate(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void {
+    const key = keyFor(sessionId, io);
+    if (predicate) this.dropPredicates.set(key, predicate);
+    else this.dropPredicates.delete(key);
   }
 
   setCursorBarrier(

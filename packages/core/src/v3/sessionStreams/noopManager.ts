@@ -55,6 +55,16 @@ export class NoopSessionStreamManager implements SessionStreamManager {
     return undefined;
   }
 
+  highestConsumedSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
+    return undefined;
+  }
+
+  setDropPredicate(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _predicate: SessionStreamRecordPredicate | undefined
+  ): void {}
+
   setCursorBarrier(
     _sessionId: string,
     _io: SessionChannelIO,

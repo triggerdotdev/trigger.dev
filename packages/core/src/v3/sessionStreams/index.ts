@@ -86,6 +86,18 @@ export class SessionStreamsAPI implements SessionStreamManager {
     return manager.peekRecord(sessionId, io);
   }
 
+  public highestConsumedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
+    return this.#getManager().highestConsumedSeqNum?.(sessionId, io);
+  }
+
+  public setDropPredicate(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void {
+    this.#getManager().setDropPredicate?.(sessionId, io, predicate);
+  }
+
   public setCursorBarrier(
     sessionId: string,
     io: SessionChannelIO,

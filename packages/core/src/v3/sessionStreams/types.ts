@@ -86,6 +86,16 @@ export interface SessionStreamManager {
    * Narrow which buffered records hold the persisted cursor back. Absent means
    * every record does.
    */
+  /** The highest consumed sequence, unclamped. */
+  highestConsumedSeqNum?(sessionId: string, io: SessionChannelIO): number | undefined;
+
+  /** Mark records that must never be delivered again on this boot. */
+  setDropPredicate?(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void;
+
   setCursorBarrier?(
     sessionId: string,
     io: SessionChannelIO,

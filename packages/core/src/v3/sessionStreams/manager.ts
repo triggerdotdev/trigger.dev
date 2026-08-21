@@ -78,6 +78,16 @@ export class StandardSessionStreamManager implements SessionStreamManager {
    * only held behind records whose loss would matter.
    */
   private cursorBarriers = new Map<string, SessionStreamRecordPredicate>();
+
+  /**
+   * Per-channel predicate marking records that must not be delivered again.
+   * A resume cursor held back behind an unhandled record necessarily replays
+   * everything after it, including records that WERE handled before the
+   * previous run ended. Re-delivering those is not harmless: a control record
+   * applies a second time to whatever turn happens to be live. This lets the
+   * consumer name the ones to drop.
+   */
+  private dropPredicates = new Map<string, SessionStreamRecordPredicate>();
   // High-water mark of seq_nums that have been *consumed* (delivered to a
   // once() waiter or shifted off the buffer into a once() caller) on a channel.
   // Distinct from `seqNums`, which advances whenever any record is
@@ -337,6 +347,24 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
+  /** The highest consumed sequence, unclamped. @see lastDispatchedSeqNum */
+  highestConsumedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
+    return this.lastDispatchedSeqNums.get(keyFor(sessionId, io));
+  }
+
+  setDropPredicate(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate | undefined
+  ): void {
+    const key = keyFor(sessionId, io);
+    if (predicate) {
+      this.dropPredicates.set(key, predicate);
+    } else {
+      this.dropPredicates.delete(key);
+    }
+  }
+
   setCursorBarrier(
     sessionId: string,
     io: SessionChannelIO,
@@ -463,6 +491,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.lastDispatchedSeqNums.clear();
     this.unconsumedSeqNums.clear();
     this.cursorBarriers.clear();
+    this.dropPredicates.clear();
     this.minTimestamps.clear();
     this.handlers.clear();
     this.reconnectAttempts.clear();
@@ -605,6 +634,24 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   }
 
   #dispatch(key: string, record: SessionStreamRecord): void {
+    const drop = this.dropPredicates.get(key);
+    if (drop) {
+      let shouldDrop = false;
+      try {
+        shouldDrop = drop(record);
+      } catch (error) {
+        if (this.debug) {
+          console.error("[SessionStreamManager] Drop predicate error:", error);
+        }
+      }
+      if (shouldDrop) {
+        // Acknowledge it so the tail does not fetch it again, but never hand
+        // it to a waiter or a handler.
+        this.#advanceLastDispatched(key, record.seqNum);
+        return;
+      }
+    }
+
     // Any record flowing through = healthy connection; reset the backoff
     // counter so the next disconnect starts fresh.
     this.reconnectAttempts.delete(key);
