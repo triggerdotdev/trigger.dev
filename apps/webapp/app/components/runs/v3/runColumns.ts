@@ -151,6 +151,12 @@ const SMART_SOURCE_FIELDS: Record<SmartColumnSource, readonly RunSelectField[]> 
   output: ["output", "outputType"],
 };
 
+/**
+ * The search params the column layout lives in. Exported so callers that reason about the
+ * runs URL as a whole (e.g. summarising a favorite's filters) can tell layout from filters.
+ */
+export const RUN_COLUMN_SEARCH_PARAMS = ["cols", "sc", "hide"] as const;
+
 const SMART_REF_PREFIX = "sc";
 
 function smartColumnRef(index: number): string {

@@ -45,6 +45,7 @@ import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
+import { RUN_COLUMN_SEARCH_PARAMS } from "../runs/v3/runColumns";
 import { type RenderIcon } from "../primitives/Icon";
 
 export const FAVORITES_ACTION_PATH = "/resources/preferences/favorites";
@@ -366,7 +367,14 @@ function humanizeValue(value: string): string {
 }
 
 /** Pagination/UI-state params that never describe what the user filtered. */
-const NON_FILTER_PARAMS = [FAVORITE_SEARCH_PARAM, ...PAGINATION_PARAMS, "span"];
+const NON_FILTER_PARAMS = [
+  FAVORITE_SEARCH_PARAM,
+  ...PAGINATION_PARAMS,
+  "span",
+  // The runs list stores its column layout in the URL; that's presentation, not a filter,
+  // so it must not count toward the tally ("Runs: 3 filters" for an unfiltered view).
+  ...RUN_COLUMN_SEARCH_PARAMS,
+];
 
 /**
  * Summarize a filtered view's search params into a short, selective descriptor for the favorite
