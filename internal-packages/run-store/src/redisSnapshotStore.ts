@@ -1,5 +1,5 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
-import { Logger } from "@trigger.dev/core/logger";
+import type { RedisOptions } from "@internal/redis";
+import type { Logger } from "@trigger.dev/core/logger";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
 
