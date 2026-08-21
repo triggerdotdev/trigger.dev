@@ -133,4 +133,55 @@ describe("CK vtime: the gated batch must not rewind a live tag", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "a variant registering here still gets its parked tag back",
+    async ({ redisContainer }) => {
+      // The other half of the same branch. Deleting the idle correction outright used to
+      // leave every vtime suite green, so the rewind guard was pinned while the behaviour it
+      // guards was not.
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        const cks = ["returner", "aa", "bb"];
+        for (let i = 0; i < cks.length; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-${cks[i]}`,
+              concurrencyKey: cks[i],
+              timestamp: t0 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const returner = variantName("returner");
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(returner);
+        const ckVtimeIdleKey = testOptions.keys.ckVtimeIdleKeyFromQueue(returner);
+
+        await queue.redis.zadd(ckVtimeKey, 0, variantName("aa"), 1, variantName("bb"));
+        await queue.redis.zrem(ckVtimeKey, returner);
+        await queue.redis.zadd(ckVtimeIdleKey, 5, returner);
+
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
+        for (const ck of cks) {
+          await queue.redis.sadd(
+            testOptions.keys.queueCurrentConcurrencyKeyFromQueue(variantName(ck)),
+            "occupant"
+          );
+        }
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+
+        // Registering at the floor instead would hand it a turn it already spent.
+        expect(await queue.redis.zscore(ckVtimeKey, returner)).toBe("5");
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });
