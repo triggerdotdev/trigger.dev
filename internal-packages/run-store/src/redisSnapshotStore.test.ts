@@ -10,6 +10,7 @@ import {
   isValidFor,
   RedisSnapshotStore,
   type SnapshotEntryInput,
+  type CompletedWaitpointsPointer,
 } from "./redisSnapshotStore.js";
 
 describe("snapshotKeys", () => {
@@ -1223,4 +1224,41 @@ describe("observability", () => {
       }
     }
   );
+});
+
+describe("the reserved completedWaitpoints field", () => {
+  redisTest("append rejects an entry that sets it", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    try {
+      const runId = "run_reserved_throw";
+      const pointer: CompletedWaitpointsPointer = { cycleSeq: 1, count: 0 };
+      await expect(
+        store.append({
+          entry: { ...entry({ id: "snap_1", runId }), completedWaitpoints: pointer },
+          kind: "birth",
+          isTerminal: false,
+        })
+      ).rejects.toThrow(/reserved/i);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("a stored entry never holds the key", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    try {
+      const runId = "run_reserved_absent";
+      await store.append({
+        entry: entry({ id: "snap_1", runId }),
+        kind: "birth",
+        isTerminal: false,
+      });
+      const read = await store.getLatest(runId);
+      expect(read).not.toBeNull();
+      expect(read!.raw).not.toContain("completedWaitpoints");
+      expect(read!.entry).not.toHaveProperty("completedWaitpoints");
+    } finally {
+      await store.quit();
+    }
+  });
 });

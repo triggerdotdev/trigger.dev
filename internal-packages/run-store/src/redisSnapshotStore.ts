@@ -6,6 +6,7 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
+import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
 
@@ -33,6 +34,83 @@ export function isValidFor(entry: { error?: unknown }): boolean {
   return !entry.error;
 }
 
+// ---------------------------------------------------------------------------
+// The completed-waitpoints freeze. Frozen jointly with the waitpoint lane.
+// Do not change a field here without re-agreeing the contract with that lane.
+// ---------------------------------------------------------------------------
+
+/**
+ * The once-per-wait-cycle pointer. `cycleSeq` names the snap:{runId}:wp:<cycleSeq>
+ * key. `count` is order.length -- NOT the record count -- so it is zero for any
+ * wait that carries no batch index.
+ */
+export type CompletedWaitpointsPointer = {
+  cycleSeq: number;
+  count: number;
+};
+
+/**
+ * A record's output.
+ * - `inline` holds the literal value, bounded by the pre-existing offload thresholds.
+ * - `ref` holds an application/store reference that was already offloaded.
+ * - `deriveFromRun` means the resolver reads TaskRun.output for completedByTaskRunId.
+ *   Only a RUN record with outputIsError false uses it: TaskRun.output is a String
+ *   column holding the same string verbatim, so the re-read is byte-identical. A RUN
+ *   error cannot use it, because TaskRun.error is jsonb and never round-trips.
+ */
+export type CompletedWaitpointRecordOutput =
+  | { inline: string }
+  | { ref: string }
+  | { deriveFromRun: true }
+  | null;
+
+/**
+ * One completed waitpoint, one per DISTINCT id in a wait cycle. The resolver expands
+ * this into one CompletedWaitpoint per position of the id in the cycle's order list.
+ */
+export type CompletedWaitpointRecord = {
+  id: string;
+  friendlyId: string;
+  type: "RUN" | "BATCH" | "DATETIME" | "MANUAL";
+  /** ISO. The writer pins it, applying the null fallback once. */
+  completedAt: string;
+  /** Defaults to "application/json" at source. */
+  outputType: string;
+  outputIsError: boolean;
+  output: CompletedWaitpointRecordOutput;
+  /** RUN. The resolver derives friendlyId, and batch{} from the READING entry's batchId. */
+  completedByTaskRunId?: string;
+  /** BATCH. The resolver derives friendlyId. */
+  completedByBatchId?: string;
+  /** ISO. Any type may set it: a MANUAL waitpoint with a timeout does. */
+  completedAfter?: string;
+  /** Already resolved: userProvidedIdempotencyKey && !inactiveIdempotencyKey. */
+  idempotencyKey?: string;
+};
+
+/**
+ * What the store hands the resolver. The store owns the keyspace, so the store reads
+ * and parses the cycle hash. The resolver never touches Redis and never derives a key.
+ */
+export type ResolveCompletedWaitpointsArgs = {
+  runId: string;
+  /** The batchId of the entry being READ, never the entry that minted the cycle. */
+  batchId?: string;
+  pointer: CompletedWaitpointsPointer;
+  /** Index oracle only. A SUBSET of the record ids. Repeats preserved. */
+  order: string[];
+  /** The authoritative, complete set. Iterate this, never `order`. */
+  records: CompletedWaitpointRecord[];
+};
+
+/**
+ * This lane owns the signature. The waitpoint lane owns the implementation, which
+ * lives in run-engine because a deriveFromRun record needs a Postgres read.
+ */
+export type CompletedWaitpointResolver = (
+  args: ResolveCompletedWaitpointsArgs
+) => Promise<CompletedWaitpoint[]>;
+
 export type SnapshotEntryInput = {
   id: string;
   engine: "V2";
@@ -53,6 +131,16 @@ export type SnapshotEntryInput = {
   runnerId?: string;
   metadata?: unknown;
   error?: string;
+  /**
+   * RESERVED. Always unset. `append` rejects a set value.
+   *
+   * The pointer's physical form is the `<snapshotId>#c` sidecar field on the `e` hash,
+   * because the append Lua mints both halves after the client serializes the entry.
+   * The entry JSON must stay byte-identical to the caller's document, and the Postgres
+   * snapshot row has no pointer column, so a pointer inside the JSON would stop the two
+   * documents from being comparable for the dual-write comparator.
+   */
+  completedWaitpoints?: CompletedWaitpointsPointer;
 };
 
 export type WaitpointIds = { present: boolean; distinctIds: string[]; order: string[] };
@@ -67,7 +155,7 @@ export type SnapshotRead = {
   isValid: boolean;
   entry: Record<string, unknown>;
   raw: string;
-  cycle?: { cycleSeq: number; count: number };
+  cycle?: CompletedWaitpointsPointer;
   completedWaitpointIds?: WaitpointIds;
 };
 
@@ -158,6 +246,13 @@ export class RedisSnapshotStore {
       | { kind: "new"; completedWaitpoints: CompletedWaitpointRef[]; records?: string }
       | { kind: "carryForward"; cycleSeq: number };
   }): Promise<AppendResult> {
+    if (args.entry.completedWaitpoints !== undefined) {
+      throw new Error(
+        "completedWaitpoints is a reserved entry field and must stay unset. The pointer's " +
+          "physical form is the `<snapshotId>#c` sidecar field, which the append script mints. " +
+          "Writing it into the entry JSON breaks byte-comparability with the Postgres row."
+      );
+    }
     return this.#timed("append", async () => {
       const k = snapshotKeys(args.entry.runId);
       const raw = JSON.stringify(args.entry);
