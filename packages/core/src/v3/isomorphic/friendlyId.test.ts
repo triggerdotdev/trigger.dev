@@ -181,7 +181,7 @@ describe("parseRunId — version-char discrimination (not length)", () => {
 
   it("falls back to legacy on a malformed v1 (bad alphabet / wrong version char)", () => {
     expect(parseRunId(`run_${"A".repeat(25)}1`).format).toBe("legacy"); // uppercase core
-    expect(parseRunId(`run_${"a".repeat(25)}3`).format).toBe("legacy"); // unknown version
+    expect(parseRunId(`run_${"a".repeat(25)}9`).format).toBe("legacy"); // unallocated version
     expect(parseRunId(`run_${"a".repeat(25)}2`).format).toBe("b32hexV2"); // "2" is now gen-2
     expect(parseRunId(`run_${"a".repeat(24)}-1`).format).toBe("legacy"); // region char not [a-z0-9]
     expect(parseRunId(`run_${"a".repeat(27)}`).format).toBe("legacy"); // old 27-char shape

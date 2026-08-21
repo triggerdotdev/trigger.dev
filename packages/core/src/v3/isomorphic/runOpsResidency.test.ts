@@ -46,7 +46,7 @@ describe("ownerEngine — residency classifier (version char at fixed position, 
     const v1 = "a".repeat(24) + "e1";
     expect(ownerEngine(v1)).toBe("NEW");
     expect(ownerEngine("a".repeat(24) + "e2")).toBe("NEW"); // gen-2: shard "e"
-    expect(ownerEngine("a".repeat(24) + "e3")).toBe("LEGACY"); // unknown version char
+    expect(ownerEngine("a".repeat(24) + "e9")).toBe("LEGACY"); // unallocated version char
     expect(ownerEngine("a".repeat(26))).toBe("LEGACY"); // 26 chars but no version marker
   });
 
@@ -110,7 +110,7 @@ describe("resolveShard — the gen-2 refinement inside the dedicated family", ()
       "a".repeat(24) + "-1", // hyphen positional char
       "a".repeat(24) + "-2", // hyphen positional char, gen-2 version
       "a".repeat(26), // 26 chars, no version marker
-      "a".repeat(24) + "e3", // unknown version char
+      "a".repeat(24) + "e9", // unallocated version char
       "x".repeat(40),
     ]) {
       expect(resolveShard(bad)).toBe("legacy");
