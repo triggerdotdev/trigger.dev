@@ -195,23 +195,38 @@ export function SessionsTable({
 }
 
 function SessionDuration({ session }: { session: SessionListItem }) {
-  // Active sessions tick live; closed/expired sessions freeze at the
-  // moment they ended (closedAt for explicit closes, expiresAt when the
-  // TTL ran out without a close call).
-  const endedAt =
+  // Closed and expired sessions freeze at the moment they ended.
+  const terminalEnd =
     session.status === "CLOSED"
       ? session.closedAt
       : session.status === "EXPIRED"
         ? session.expiresAt
         : undefined;
 
-  if (endedAt) {
+  if (terminalEnd) {
     return (
-      <>{formatDuration(new Date(session.createdAt), new Date(endedAt), { style: "short" })}</>
+      <>{formatDuration(new Date(session.createdAt), new Date(terminalEnd), { style: "short" })}</>
     );
   }
 
-  return <LiveTimer startTime={new Date(session.createdAt)} />;
+  // An open session ticks only while a run is genuinely executing; otherwise it
+  // freezes at the last run's completion so the duration doesn't climb forever.
+  if (session.hasLiveRun) {
+    return <LiveTimer startTime={new Date(session.createdAt)} />;
+  }
+
+  if (session.currentRunCompletedAt) {
+    return (
+      <>
+        {formatDuration(new Date(session.createdAt), new Date(session.currentRunCompletedAt), {
+          style: "short",
+        })}
+      </>
+    );
+  }
+
+  // Open session that never ran — nothing to measure.
+  return <span className="text-text-dimmed">–</span>;
 }
 
 function SessionActionsCell({ runPath, allRunsPath }: { runPath?: string; allRunsPath: string }) {

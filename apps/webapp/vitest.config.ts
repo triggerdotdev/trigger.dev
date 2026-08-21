@@ -22,7 +22,7 @@ export default defineConfig({
       "app/components/dashboard-agent/**/*.test.ts",
       "app/components/queues/**/*.test.ts",
       "app/routes/storybook.agent-ui/*.test.ts",
-      "app/presenters/v3/reports/**/*.test.ts",
+      "app/presenters/**/*.test.ts",
     ],
     // *.e2e.test.ts: smoke matrix, run via vitest.e2e.config.ts.
     // *.e2e.full.test.ts: full auth suite, runs via vitest.e2e.full.config.ts

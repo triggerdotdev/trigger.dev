@@ -14,6 +14,7 @@ import {
   LEGACY_PLAYGROUND_TAG,
 } from "~/services/sessionsRepository/sessionsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { isSessionLive } from "./isSessionLive";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { runStore } from "~/v3/runStore.server";
 import { startActiveSpan } from "~/v3/tracer.server";
@@ -195,7 +196,7 @@ export class SessionListPresenter {
                   projectId,
                   runtimeEnvironmentId: environmentId,
                 },
-                select: { id: true, friendlyId: true },
+                select: { id: true, friendlyId: true, status: true, completedAt: true },
               },
               this.replica
             )
@@ -208,6 +209,8 @@ export class SessionListPresenter {
 
     return {
       sessions: sessions.map((session) => {
+        const currentRun = session.currentRunId ? runById.get(session.currentRunId) : undefined;
+
         const status: SessionStatus =
           session.closedAt != null
             ? "CLOSED"
@@ -215,7 +218,12 @@ export class SessionListPresenter {
               ? "EXPIRED"
               : "ACTIVE";
 
-        const currentRun = session.currentRunId ? runById.get(session.currentRunId) : undefined;
+        // Whether a run is genuinely executing right now. Drives the duration
+        // cell (tick vs freeze); it does NOT affect the filterable status.
+        const hasLiveRun = isSessionLive({
+          hasCurrentRun: session.currentRunId != null,
+          currentRunStatus: currentRun?.status,
+        });
 
         return {
           id: session.id,
@@ -238,6 +246,12 @@ export class SessionListPresenter {
           updatedAt: session.updatedAt.toISOString(),
           environment: displayableEnvironment,
           currentRunFriendlyId: currentRun?.friendlyId,
+          hasLiveRun,
+          // Freeze point for the duration when the session isn't live: when its
+          // current run finished. Undefined when it never ran (renders a dash).
+          currentRunCompletedAt: currentRun?.completedAt
+            ? currentRun.completedAt.toISOString()
+            : undefined,
         };
       }),
       pagination: {
