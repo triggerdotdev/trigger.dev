@@ -34,6 +34,19 @@ type ChatWirePayload = {
   messageId?: string;
   metadata?: unknown;
   action?: unknown;
+  /**
+   * A channel-delivered turn (Slack or any `chat.channels.*` connector). Carries
+   * the raw verified provider event; the run resolves the connector by
+   * `connectorId` from `chat.agent({ channels })` and applies its `inbound()`
+   * mapper to produce the turn's message. Present instead of `message`.
+   */
+  channelEvent?: {
+    connectorId: string;
+    event: unknown;
+    source: string;
+    headers: Record<string, string>;
+    deliveryId: string;
+  };
   continuation?: boolean;
   previousRunId?: string;
   idleTimeoutInSeconds?: number;
@@ -185,6 +198,41 @@ export type MockChatAgentHarness = {
   /** Send a custom action and wait for the next turn-complete. */
   sendAction(action: unknown): Promise<MockChatAgentTurn>;
 
+  /**
+   * Deliver a verified channel event (Slack or any `chat.channels.*`
+   * connector) and wait for the next turn-complete. Mirrors what the hosted
+   * webhook ingress appends to `session.in`: a `submit-message` wire payload
+   * carrying `channelEvent` instead of `message`. The run resolves the
+   * connector by `connectorId`, maps the event with its `inbound()`, runs the
+   * turn, and posts the reply back through the connector's `send()`.
+   *
+   * `connectorId` defaults to `DEFAULT_TEST_CONNECTOR_ID`, which is also the id
+   * `recordingChannelConnector()` uses when you don't set one, so the common
+   * single-connector case lines up. Pass it explicitly for a connector with a
+   * custom id or for multi-connector agents.
+   */
+  sendChannelEvent(args: {
+    event: unknown;
+    connectorId?: string;
+    source?: string;
+    headers?: Record<string, string>;
+    deliveryId?: string;
+  }): Promise<MockChatAgentTurn>;
+
+  /**
+   * Deliver a channel event without waiting for a turn. Mirrors an event that
+   * the run may not turn into a turn: a filtered or deduped delivery, or a
+   * stale interaction callback that is dropped (matches no pending tool call).
+   * Resolves once the run has had a chance to process and possibly drop it.
+   */
+  deliverChannelEvent(args: {
+    event: unknown;
+    connectorId?: string;
+    source?: string;
+    headers?: Record<string, string>;
+    deliveryId?: string;
+  }): Promise<void>;
+
   /** Fire a stop signal. Does not wait for the turn — the task keeps running. */
   sendStop(message?: string): Promise<void>;
 
@@ -276,6 +324,28 @@ export type MockChatAgentHarness = {
   readonly allRawChunks: unknown[];
 };
 
+/**
+ * Default `connectorId` used by {@link MockChatAgentHarness.sendChannelEvent}
+ * when the caller omits it. Matches the default `id` of
+ * {@link recordingChannelConnector}, so a single-connector agent needs no
+ * explicit id on either side.
+ */
+export const DEFAULT_TEST_CONNECTOR_ID = "test-channel";
+
+/**
+ * Wait for a channel turn's post-completion egress to land. The run loop
+ * writes the `trigger:turn-complete` chunk (which unblocks the harness's
+ * turn-complete latch) BEFORE it awaits the connector's final `send()` and
+ * its done/error reactions. Draining a handful of macrotasks lets those
+ * awaited-but-immediate calls settle so `sendChannelEvent` callers can assert
+ * against the connector's recorded sends/reactions deterministically.
+ */
+async function settlePostTurnChannelEgress(): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 const CONTROL_CHUNK_TYPES = new Set(["trigger:turn-complete", "trigger:upgrade-required"]);
 
 function isControlChunk(chunk: unknown): boolean {
@@ -363,6 +433,8 @@ export function mockChatAgent(
   let sendSessionInput!: (sessionId: string, data: unknown) => Promise<void>;
   let closeSessionInput: ((sessionId: string) => void) | undefined;
   let runSignal!: AbortController;
+
+  let channelDeliveryCounter = 0;
 
   // A latch that resolves every time `trigger:turn-complete` appears on the chat stream.
   // We use a shared pending promise and replace it after each completion.
@@ -613,6 +685,45 @@ export function mockChatAgent(
         action,
         metadata: clientData,
       });
+    },
+
+    async sendChannelEvent(args) {
+      const deliveryId = args.deliveryId ?? `dlv_${++channelDeliveryCounter}`;
+      const turn = await sendPayloadAndWait({
+        chatId,
+        trigger: "submit-message",
+        channelEvent: {
+          connectorId: args.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
+          event: args.event,
+          source: args.source ?? "custom",
+          headers: args.headers ?? {},
+          deliveryId,
+        },
+        metadata: clientData,
+      });
+      await settlePostTurnChannelEgress();
+      return turn;
+    },
+
+    async deliverChannelEvent(args) {
+      await harnessReady;
+      const deliveryId = args.deliveryId ?? `dlv_${++channelDeliveryCounter}`;
+      await sendSessionInput(sessionId, {
+        kind: "message",
+        payload: {
+          chatId,
+          trigger: "submit-message",
+          channelEvent: {
+            connectorId: args.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
+            event: args.event,
+            source: args.source ?? "custom",
+            headers: args.headers ?? {},
+            deliveryId,
+          },
+          metadata: clientData,
+        },
+      });
+      await settlePostTurnChannelEgress();
     },
 
     async sendStop(message) {

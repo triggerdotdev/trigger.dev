@@ -1,0 +1,96 @@
+---
+title: "Routing to a session"
+description: "Route verified webhook deliveries to a durable per-key session instead of a fresh run."
+sidebarTitle: "Session routing"
+---
+
+A plain [`webhook()`](/webhooks/overview) runs a fresh, stateless run for every delivery. Sometimes you want the opposite: deliveries that share a key (a customer, an installation, an issue) should land on **one durable [session](/ai-chat/sessions)** and be handled in order, with state carried across them. That is what session routing does.
+
+Instead of a handler, you declare a `chat.event` and list it on an agent. The verified delivery is routed to a find-or-created session and arrives as an [action](/ai-chat/actions).
+
+## Declaring a chat event
+
+`chat.event` describes the routing only: the [source](/webhooks/sources) to verify, a `key` that identifies the session, and a `type` label for the delivered action. It has no handler.
+
+```ts
+import { webhooks } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const orderEvents = chat.event({
+  id: "order-events",
+  source: webhooks.stripe(),
+  // one session per customer
+  key: "{body.data.object.customer}",
+  type: "order.event",
+});
+```
+
+### The key
+
+The `key` is what makes routing durable: two deliveries that resolve to the same key reach the same session; a different key gets its own. It is a template string, evaluated server-side at ingest, whose `{...}` placeholders read three namespaces:
+
+- `{body.*}`: the parsed body (a bare `{customer}` defaults to the body namespace).
+- `{webhook.*}`: endpoint metadata (`externalRef`, `tenantId`, `id`, `source`, `deliveryId`).
+- `{header.name}`: an inbound header.
+
+[Filter](/webhooks/filters) expressions read this same parsed body, but spell it `event.*` rather than `{body.*}`.
+
+Compose several placeholders into one key: `"{webhook.externalRef}-{body.issue.id}"`. Each placeholder is checked against the event type at build time, so a bad field is a red squiggle on the `key` line, not a runtime surprise.
+
+### The `type` label
+
+`type` is a name you choose for the delivered action. It flows straight through to `action.type` on the envelope, so your handler can tell webhook actions apart from each other and from browser actions. It is optional and defaults to the descriptor `id`.
+
+## Handling deliveries on an agent
+
+List the descriptor on a [`chat.agent`](/ai-chat/overview) (or a session agent). The delivery arrives at `onAction`, not as a chat message:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { orderEvents } from "./order-events";
+
+export const orderAgent = chat.agent({
+  id: "order-agent",
+  events: [orderEvents],
+  onAction: async ({ action }) => {
+    switch (action.type) {
+      case "order.event":
+        // action.event is the verified Stripe event, fully typed
+        console.log("order for", action.event.data.object.customer);
+        break;
+    }
+  },
+  run: async ({ messages, signal }) => {
+    /* ... */
+  },
+});
+```
+
+`action.type` is a closed union of the `type` labels of the events you listed, and each arm narrows `action.event` to that event's payload type. The full envelope is `{ type, event, source, headers, deliveryId }`.
+
+Because it is an [action](/ai-chat/actions), the handler is not a turn: it can mutate session state and, if you return a `streamText` result, produce a model response. Webhook actions bypass your `actionSchema` (their shape is fixed and already typed).
+
+<Note>
+  The descriptor never names the agent, and the agent references the descriptor, so there is no
+  circular dependency. Whichever agent lists it becomes the routing target.
+</Note>
+
+## One endpoint per agent
+
+Listing a descriptor on an agent creates that agent's own endpoint, with its own [webhook URL and signing secret](/webhooks/connect). If two agents list the same descriptor, you get two endpoints, each routing to its own agent, and you point the provider at both URLs.
+
+An exported `chat.event` that no agent lists routes nothing. `trigger dev` warns about it (it is not an error, since declaring the descriptor before wiring the agent is a normal step), so wire it onto an agent once you are ready.
+
+## Filtering
+
+A [`filter`](/webhooks/filters) works here exactly as on a fan-out webhook: a non-matching delivery is recorded `FILTERED` and never reaches the session.
+
+```ts
+export const orderEvents = chat.event({
+  id: "order-events",
+  source: webhooks.stripe(),
+  key: "{body.data.object.customer}",
+  type: "order.event",
+  filter: "event.type == 'payment_intent.succeeded'",
+});
+```

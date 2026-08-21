@@ -36,6 +36,14 @@ import {
   type TaskWithSchema,
   TRIGGER_CONTROL_SUBTYPE,
   type StreamWriteResult,
+  type AnyChatEvent,
+  type ChatEventActions,
+  type ValidatedWebhookKey,
+  type ValidateWebhookFilter,
+  type WebhookVerifierArtifact,
+  type WebhookSecretProvisioning,
+  type AnyWebhookSource,
+  type InferWebhookEvent,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -50,6 +58,7 @@ import type {
   JSONSchema7,
   Schema,
 } from "ai";
+import { chatEvent, normalizeKeyString } from "./webhooks.js";
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
 import { type Attributes, trace } from "@opentelemetry/api";
@@ -170,6 +179,17 @@ const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
 // is documented to carry. Custom-agent loops never set per-turn context, so subtask tool
 // metadata reads this directly rather than the Session handle id.
 const chatExternalIdKey = locals.create<string>("chat.externalId");
+
+/**
+ * Set at boot when a continuation run inherited an interrupted turn (a
+ * partial assistant reply on `session.out`). Consumed by the first channel
+ * turn's ack so the re-emitted placeholder reads as a recovery resume rather
+ * than a silent duplicate. Boxed so the ack site can flip it to false.
+ * @internal
+ */
+const chatChannelRecoveryPendingKey = locals.create<{ value: boolean }>(
+  "chat.channelRecoveryPending"
+);
 
 /**
  * S2 seq_num of the most recent `turn-complete` control record written by
@@ -1243,6 +1263,41 @@ function createChatAccessToken<TTask extends AnyTask>(
   return auth.createTriggerPublicToken(taskId as string, { expirationTime: "24h" });
 }
 
+/**
+ * Mint a read-only, session-scoped token for WATCHING a chat session by its `externalId`.
+ *
+ * A session is addressed by `externalId`, so the same session is reachable from any surface that
+ * knows it: a web `useChat` client and a Slack thread converge on one session when they share an
+ * `externalId` (for a channel, the connector's `key` template produces it). This token carries
+ * `read:sessions:{externalId}` only (no write): the holder can subscribe to the session's `.out`
+ * stream (observe the conversation, hydrating history from the snapshot) but cannot append to `.in`.
+ *
+ * Use it for a dashboard viewer or a cross-surface watcher of a Slack-thread session. Run server-side
+ * (needs the secret key). To CONTINUE a session from another surface (drive it, not just watch), mint
+ * a read+write token instead ({@link createChatStartSessionAction}).
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * export const watchChat = (externalId: string) => chat.createWatchToken(externalId);
+ * ```
+ */
+function createChatWatchToken(
+  externalId: string,
+  options?: { tokenTTL?: string }
+): Promise<string> {
+  if (!externalId) {
+    throw new Error("chat.createWatchToken: externalId is required (the session addressing key).");
+  }
+  return auth.createPublicToken({
+    scopes: { read: { sessions: externalId } },
+    expirationTime: options?.tokenTTL ?? "1h",
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Chat transport helpers — backend side
 // ---------------------------------------------------------------------------
@@ -1532,6 +1587,11 @@ export type ChatTaskRunPayload<
      * `tools` option on `chat.agent`). Empty object when no `tools` were declared.
      */
     tools: TTools;
+    /**
+     * Present only for a channel-delivered turn whose connector supports reactions. Lets the agent
+     * react to the triggering message to signal meaning (e.g. `channel.react("white_check_mark")`).
+     */
+    channel?: ChannelRunSurface;
   };
 
 // Input streams for bidirectional chat communication
@@ -4642,12 +4702,485 @@ export type ChatResumeEvent<TClientData = unknown, TUIM extends UIMessage = UIMe
       clientData?: TClientData;
     };
 
+// ── Channels: a webhook that IS the chat frontend (Slack, etc.), delivered as a TURN not an action ──
+// A connector registers an agent-scoped endpoint that delivers each verified event as a channel
+// message; the run applies inbound() to the raw event to get the turn's message. The loop guard is the
+// server-side `filter` (an ignored event never becomes a delivery), so inbound is a pure mapper.
+// The reply round-trips (egress) in-run: outbound() maps the turn's reply to a channel message, send()
+// posts/edits it. delivery "final" posts an ack at turn start then edits it to the answer at turn end.
+export type ChannelMessageInput = string | UIMessage;
+
+// The channel message a provider posts. Framework requires `text`; providers extend (Slack adds blocks).
+export type ChannelMessage = { text: string; [key: string]: unknown };
+
+// What outbound() receives: enough to decide what (or whether, null) to post. For "stream", `text` is
+// the accumulated text so far.
+export type ChannelReply = {
+  text: string;
+  message: UIMessage;
+  final: boolean;
+  stopped: boolean;
+  error?: unknown;
+};
+
+export type ChannelSendCtx<TEvent = unknown> = {
+  event: TEvent;
+  deliveryId: string;
+  previousRef?: string;
+  mode: "final" | "stream";
+  final: boolean;
+};
+
+export type ChannelAckCtx = {
+  /**
+   * True when this ack is being re-posted because the run is recovering an
+   * interrupted turn after a crash/continuation. The prior run's message ref
+   * is gone, so egress re-emits into the thread as a fresh message; a
+   * connector can vary the placeholder text to read as a deliberate resume
+   * ("picking this back up...") rather than a silent duplicate.
+   */
+  recovered: boolean;
+};
+
+/**
+ * A tool call the turn paused on, awaiting a human decision (HITL). `renderInteraction` maps these to
+ * the controls posted in the thread; the callback resolves one by `toolCallId`.
+ */
+export type ChannelPendingToolCall = { toolCallId: string; toolName: string; input?: unknown };
+
+/**
+ * A verified interaction callback resolved to a tool output. `onInteraction` returns this to resume the
+ * paused run: the framework stitches `output` onto the pending tool part (by `toolCallId`) and continues.
+ */
+export type ChannelInteractionResolution = { toolCallId: string; output: unknown };
+
+export type ChannelInteractionCtx<TEvent = unknown> = { event: TEvent; deliveryId: string };
+
+// A reaction to add (or remove) on the triggering message. `name` is a provider emoji id (e.g. "eyes").
+export type ChannelReaction = { name: string; remove?: boolean };
+export type ChannelReactCtx<TEvent = unknown> = { event: TEvent; deliveryId: string };
+
+// A lifecycle reaction choice: one emoji name, an array (one picked at random per turn), or a resolver
+// of the event returning either (null/undefined to skip). Names are provider emoji ids without colons.
+export type ChannelReactionChoice<TEvent = unknown> =
+  | string
+  | string[]
+  | ((
+      event: TEvent
+    ) => string | string[] | null | undefined | Promise<string | string[] | null | undefined>);
+
+// Lifecycle reactions the run loop applies to the user's message around a turn (add working at start,
+// swap to done at complete, error on failure). Any subset; requires the connector's `react`.
+export type ChannelReactions<TEvent = unknown> = {
+  working?: ChannelReactionChoice<TEvent>;
+  done?: ChannelReactionChoice<TEvent>;
+  error?: ChannelReactionChoice<TEvent>;
+};
+
+// Handed to run() for a channel-delivered turn (when the connector supports reactions), so the agent can
+// react to the triggering message to signal meaning. Best-effort: a failed reaction never throws.
+export type ChannelRunSurface = {
+  react: (name: string) => Promise<void>;
+  unreact: (name: string) => Promise<void>;
+};
+
+// Reserved for 2c: resolve a provider credential keyed by the incoming event's installation (team_id),
+// not the connector (one connector serves many Slack workspaces). The in-run send() calls it at post time.
+export type ResolveChannelToken<TEvent = unknown> = (event: TEvent) => Promise<string>;
+
+declare const channelEventPhantom: unique symbol;
+
+export interface ChannelConnector<TEvent = unknown> {
+  id: string;
+  source: string;
+  key: string; // compiled canonical key template
+  verifierArtifact: WebhookVerifierArtifact;
+  secretProvisioning?: WebhookSecretProvisioning;
+  filter?: string;
+  // Gate session creation: a resolved key with no session is only started when the event matches this
+  // filter (existing sessions always resume). Absent => every routed event can start one.
+  startOn?: string;
+  inbound: (event: TEvent) => ChannelMessageInput;
+  // Egress (optional; a channel can be inbound-only). Fires only when `send` is set.
+  outbound?: (reply: ChannelReply) => ChannelMessage | null;
+  ack?: (event: TEvent, ctx: ChannelAckCtx) => ChannelMessage | null; // placeholder posted at turn start ("final" mode)
+  send?: (message: ChannelMessage, ctx: ChannelSendCtx<TEvent>) => Promise<{ ref?: string }>;
+  /** HITL: controls posted when a turn pauses on a human-decision tool (a tool with no `execute`). */
+  renderInteraction?: (
+    pending: ChannelPendingToolCall[],
+    ctx: ChannelInteractionCtx<TEvent>
+  ) => ChannelMessage | null;
+  /**
+   * HITL: map a verified callback event to a tool resolution. Non-null resumes the paused run; null
+   * means treat the event as a normal inbound message (a new turn).
+   */
+  onInteraction?: (event: TEvent) => ChannelInteractionResolution | null;
+  /**
+   * HITL: finalize the posted controls once a decision is made (edit them away, show the outcome), so
+   * the buttons can't be clicked again. Called with the same verified callback event when
+   * `onInteraction` resolves, before the run resumes. Best-effort: a throw is logged and the run continues.
+   */
+  finalizeInteraction?: (
+    event: TEvent,
+    resolution: ChannelInteractionResolution
+  ) => Promise<void> | void;
+  delivery: "final" | "stream"; // "final" (ack + edit) is v1; "stream" (debounced edits) is a fast-follow
+  // Add/remove a reaction on the triggering message. Powers lifecycle reactions + run()'s channel surface.
+  react?: (reaction: ChannelReaction, ctx: ChannelReactCtx<TEvent>) => Promise<void>;
+  reactions?: ChannelReactions<TEvent>;
+  readonly [channelEventPhantom]?: TEvent;
+}
+export type AnyChannelConnector = ChannelConnector<any>;
+
+/**
+ * A generic chat-frontend channel over any verified source. Unlike `slack()`, you supply the egress
+ * `send` yourself (post/edit the reply back to your surface), so the whole round-trip is under your
+ * control. Use for providers without a preset, or to test the channel round-trip end to end.
+ */
+export function chatChannelCustom<
+  TSource extends AnyWebhookSource,
+  const TKey extends string = string,
+  const TFilter extends string = string,
+  const TStartOn extends string = string,
+>(options: {
+  id: string;
+  source: TSource;
+  key: ValidatedWebhookKey<InferWebhookEvent<TSource>, TKey>;
+  inbound: (event: InferWebhookEvent<TSource>) => ChannelMessageInput;
+  outbound?: (reply: ChannelReply) => ChannelMessage | null;
+  ack?: (event: InferWebhookEvent<TSource>, ctx: ChannelAckCtx) => ChannelMessage | null;
+  send?: (
+    message: ChannelMessage,
+    ctx: ChannelSendCtx<InferWebhookEvent<TSource>>
+  ) => Promise<{ ref?: string }>;
+  renderInteraction?: (
+    pending: ChannelPendingToolCall[],
+    ctx: ChannelInteractionCtx<InferWebhookEvent<TSource>>
+  ) => ChannelMessage | null;
+  onInteraction?: (event: InferWebhookEvent<TSource>) => ChannelInteractionResolution | null;
+  finalizeInteraction?: (
+    event: InferWebhookEvent<TSource>,
+    resolution: ChannelInteractionResolution
+  ) => Promise<void> | void;
+  react?: (
+    reaction: ChannelReaction,
+    ctx: ChannelReactCtx<InferWebhookEvent<TSource>>
+  ) => Promise<void>;
+  reactions?: ChannelReactions<InferWebhookEvent<TSource>>;
+  filter?: TFilter & ValidateWebhookFilter<InferWebhookEvent<TSource>, TFilter>;
+  // Only start a new session when the event matches this filter (existing sessions always resume).
+  startOn?: TStartOn & ValidateWebhookFilter<InferWebhookEvent<TSource>, TStartOn>;
+  delivery?: "final" | "stream";
+}): ChannelConnector<InferWebhookEvent<TSource>> {
+  const {
+    id,
+    source,
+    key,
+    inbound,
+    outbound,
+    ack,
+    send,
+    renderInteraction,
+    onInteraction,
+    finalizeInteraction,
+    react,
+    reactions,
+    filter,
+    startOn,
+    delivery,
+  } = options;
+  resourceCatalog.registerDeclaredSessionWebhook(id);
+  return {
+    id,
+    source: source.provider,
+    key: normalizeKeyString(key as string),
+    verifierArtifact: source.verifier,
+    secretProvisioning: source.secretProvisioning,
+    filter,
+    startOn,
+    inbound,
+    outbound,
+    ack,
+    send,
+    renderInteraction,
+    onInteraction,
+    finalizeInteraction,
+    react,
+    reactions,
+    delivery: delivery ?? "final",
+  } as ChannelConnector<InferWebhookEvent<TSource>>;
+}
+
+const chatChannels = {
+  /** A generic chat-frontend channel over any source, with your own egress. See {@link chatChannelCustom}. */
+  custom: chatChannelCustom,
+};
+
+// Turn a channel connector's inbound() result into a user UIMessage for the turn.
+function toUserUIMessage(input: ChannelMessageInput, messageId: string): UIMessage {
+  if (typeof input !== "string") return input;
+  return { id: messageId, role: "user", parts: [{ type: "text", text: input }] } as UIMessage;
+}
+
+/**
+ * The assistant's closing text for a channel reply: the text after the last tool part in the message,
+ * so a pre-tool preamble (e.g. the HITL "I'll need approval first" line, or a "let me look that up")
+ * is dropped and only the answer is posted. Falls back to all text when there's no trailing text or no
+ * tool parts (an ordinary turn), so a plain reply is unchanged.
+ */
+function channelReplyText(message: UIMessage): string {
+  const parts = (message.parts ?? []) as any[];
+  const isTool = (p: any) => {
+    const t = p?.type;
+    return typeof t === "string" && (t.startsWith("tool-") || t === "dynamic-tool");
+  };
+  let lastToolIdx = -1;
+  parts.forEach((p, i) => {
+    if (isTool(p)) lastToolIdx = i;
+  });
+  const textFrom = (from: number) =>
+    parts
+      .slice(from)
+      .map((p) =>
+        p && typeof p === "object" && (p as { type?: unknown }).type === "text"
+          ? String((p as { text: unknown }).text)
+          : ""
+      )
+      .join("");
+  const trailing = textFrom(lastToolIdx + 1);
+  return trailing.trim().length > 0 ? trailing : textFrom(0);
+}
+
+/** Tool parts of a UIMessage awaiting a human answer (`input-available`), for `renderInteraction`. */
+function pendingToolCallsInMessage(message: UIMessage): ChannelPendingToolCall[] {
+  const out: ChannelPendingToolCall[] = [];
+  for (const part of (message.parts ?? []) as any[]) {
+    if (!part || typeof part !== "object") continue;
+    const type = part.type;
+    const isTool =
+      typeof type === "string" && (type.startsWith("tool-") || type === "dynamic-tool");
+    if (!isTool || part.state !== "input-available") continue;
+    const toolName =
+      type === "dynamic-tool" ? String(part.toolName ?? "") : String(type).slice("tool-".length);
+    if (typeof part.toolCallId === "string")
+      out.push({ toolCallId: part.toolCallId, toolName, input: part.input });
+  }
+  return out;
+}
+
+/**
+ * Build the slim assistant message the HITL resume path expects (mirrors `slimSubmitMessageForWire`):
+ * the pending tool part matched by `toolCallId` across `messages`, advanced to `output-available` with
+ * the interaction's output. Returns undefined when no pending part matches (a stale/duplicate callback).
+ */
+function buildInteractionResolutionMessage(
+  resolution: ChannelInteractionResolution,
+  messages: UIMessage[]
+): UIMessage | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]!;
+    if (message.role !== "assistant") continue;
+    for (const part of (message.parts ?? []) as any[]) {
+      if (!part || typeof part !== "object" || part.toolCallId !== resolution.toolCallId) continue;
+      const type = part.type;
+      const isTool =
+        typeof type === "string" && (type.startsWith("tool-") || type === "dynamic-tool");
+      if (!isTool) continue;
+      if (part.state !== "input-available") return undefined;
+      const slimPart: Record<string, unknown> = {
+        type,
+        toolCallId: resolution.toolCallId,
+        state: "output-available",
+        output: resolution.output,
+      };
+      if (type === "dynamic-tool" && typeof part.toolName === "string")
+        slimPart.toolName = part.toolName;
+      return { id: message.id, role: "assistant", parts: [slimPart] } as unknown as UIMessage;
+    }
+  }
+  return undefined;
+}
+
+// Default outbound: post the reply text, or nothing when empty (a tool-only / empty turn).
+function defaultChannelOutbound(reply: ChannelReply): ChannelMessage | null {
+  return reply.text ? { text: reply.text } : null;
+}
+
+// Resolve a lifecycle reaction choice to one emoji name for this turn: call a resolver if given, then
+// pick one at random from an array. Returns undefined to skip (no choice / empty).
+export async function resolveReactionChoice(
+  choice: ChannelReactionChoice | undefined,
+  event: unknown
+): Promise<string | undefined> {
+  if (choice == null) return undefined;
+  let value: string | string[] | null | undefined =
+    typeof choice === "function" ? await choice(event) : choice;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return undefined;
+    value = value[Math.floor(Math.random() * value.length)];
+  }
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+// Best-effort reaction on the triggering message; a failure never breaks the turn.
+async function applyChannelReaction(
+  connector: AnyChannelConnector | undefined,
+  wireEvent: { event: unknown; deliveryId: string } | undefined,
+  reaction: ChannelReaction
+): Promise<void> {
+  if (!connector?.react || !wireEvent || !reaction.name) return;
+  try {
+    await connector.react(reaction, { event: wireEvent.event, deliveryId: wireEvent.deliveryId });
+  } catch (error) {
+    logger.warn("chat.agent: channel reaction failed", { error, name: reaction.name });
+  }
+}
+
+// The run()-facing reaction surface for a channel turn (flavor 2). Undefined when the connector has no
+// `react`, so `payload.channel` is only present when reacting is actually possible.
+function buildChannelRunSurface(
+  connector: AnyChannelConnector | undefined,
+  wireEvent: { event: unknown; deliveryId: string } | undefined
+): ChannelRunSurface | undefined {
+  if (!connector?.react || !wireEvent) return undefined;
+  return {
+    react: (name) => applyChannelReaction(connector, wireEvent, { name }),
+    unreact: (name) => applyChannelReaction(connector, wireEvent, { name, remove: true }),
+  };
+}
+
+// "stream" egress: as the reply streams, debounce-edit the ack message (previousRef) with the growing
+// text. Trailing-edge, one edit per interval (Slack chat.update ~1/s); the turn-complete final edit is
+// the authoritative last write. Best-effort: an edit failure is logged, never fatal.
+const CHANNEL_STREAM_EDIT_INTERVAL_MS = 1000;
+function makeChannelStreamEditor<TEvent>(
+  connector: ChannelConnector<TEvent>,
+  channelEvent: { event: unknown; deliveryId: string },
+  ackRef: string
+) {
+  const outbound = connector.outbound ?? defaultChannelOutbound;
+  let latest = "";
+  let lastSent = "";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlightPromise: Promise<void> | undefined;
+  let stopped = false;
+
+  const arm = () => {
+    if (stopped || timer) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      void edit();
+    }, CHANNEL_STREAM_EDIT_INTERVAL_MS);
+  };
+
+  const edit = async () => {
+    if (stopped || inFlightPromise) return;
+    const text = latest;
+    if (text === lastSent) return;
+    const message = outbound({
+      text,
+      message: { id: ackRef, role: "assistant", parts: [{ type: "text", text }] } as UIMessage,
+      final: false,
+      stopped: false,
+    });
+    if (!message) return;
+    inFlightPromise = (async () => {
+      try {
+        await connector.send!(message, {
+          event: channelEvent.event as TEvent,
+          deliveryId: channelEvent.deliveryId,
+          previousRef: ackRef,
+          mode: "stream",
+          final: false,
+        });
+        lastSent = text;
+      } catch (error) {
+        logger.warn("chat.agent: channel stream edit failed", { error });
+      } finally {
+        inFlightPromise = undefined;
+        if (!stopped && latest !== lastSent) arm();
+      }
+    })();
+    await inFlightPromise;
+  };
+
+  return {
+    observe(chunk: unknown) {
+      if (stopped) return;
+      const c = chunk as { type?: string; delta?: unknown };
+      if (c?.type === "text-delta" && typeof c.delta === "string") {
+        latest += c.delta;
+        arm();
+      }
+    },
+    async stop() {
+      stopped = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      if (inFlightPromise) {
+        try {
+          await inFlightPromise;
+        } catch {}
+      }
+    },
+  };
+}
+
+type ChannelStreamEditor = { observe(chunk: unknown): void; stop(): void | Promise<void> };
+
+/**
+ * Wrap the reply stream so it debounce-edits the channel message as it streams.
+ * Both `flush` (the stream completed) and `cancel` (the stream was aborted or
+ * cancelled downstream) stop the editor, so a pending debounce timer can never
+ * fire an edit after the turn ended, onto a message the next turn already owns.
+ */
+function makeChannelStreamTap(editor: ChannelStreamEditor): TransformStream<unknown, unknown> {
+  const transformer: {
+    transform(chunk: unknown, controller: TransformStreamDefaultController<unknown>): void;
+    flush(): Promise<void>;
+    cancel?: (reason?: unknown) => Promise<void>;
+  } = {
+    transform(chunk, controller) {
+      editor.observe(chunk);
+      controller.enqueue(chunk);
+    },
+    async flush() {
+      await editor.stop();
+    },
+    async cancel() {
+      await editor.stop();
+    },
+  };
+  return new TransformStream<unknown, unknown>(transformer);
+}
+
+export {
+  makeChannelStreamEditor as __makeChannelStreamEditorForTests,
+  makeChannelStreamTap as __makeChannelStreamTapForTests,
+};
+
+// The `action` type onAction receives: the actionSchema output (when set) unioned with the action
+// envelopes of any listed chat.event descriptors. ChatEventActions<[]> is `never`, so it collapses
+// cleanly when no events are listed; `unknown` is kept only when neither source is present.
+type ChatActionType<
+  TActionSchema extends TaskSchema | undefined,
+  TW extends readonly AnyChatEvent[],
+> = [TActionSchema] extends [TaskSchema]
+  ? inferSchemaOut<TActionSchema> | ChatEventActions<TW>
+  : [TW] extends [readonly []]
+    ? unknown
+    : ChatEventActions<TW>;
+
 export type ChatAgentOptions<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
   TTools extends ToolSet = ToolSet,
+  TW extends readonly AnyChatEvent[] = [],
+  TChannels extends readonly AnyChannelConnector[] = [],
 > = Omit<
   TaskOptions<
     TIdentifier,
@@ -4750,9 +5283,25 @@ export type ChatAgentOptions<
    * `StreamTextResult` (auto-piped), `string`, or `UIMessage`. Returning
    * `void` or nothing is the side-effect-only default.
    */
+  /**
+   * Inbound `chat.event(...)` descriptors this agent handles. Listing one registers an agent-scoped
+   * webhook endpoint that routes verified deliveries to this agent's session; the delivery arrives at
+   * `onAction` as a `{ type, event, source, headers, deliveryId }` envelope whose `type` is the
+   * descriptor's `type`. The same descriptor listed on another agent gets its own endpoint.
+   */
+  events?: TW;
+
+  /**
+   * Inbound chat frontends (Slack, etc.) via `chat.channels.*`. Listing one registers an agent-scoped
+   * webhook endpoint that routes verified events to a durable per-key session and delivers them as
+   * turns: the connector's `inbound()` maps the raw event to the turn's message, `run()` fires as
+   * normal, and the reply streams back to the channel. Use the connector's `filter` to ignore events.
+   */
+  channels?: TChannels;
+
   onAction?: (
     event: ActionEvent<
-      [TActionSchema] extends [TaskSchema] ? inferSchemaOut<TActionSchema> : unknown,
+      ChatActionType<TActionSchema, TW>,
       inferSchemaOut<TClientDataSchema>,
       TUIMessage
     >
@@ -4981,6 +5530,13 @@ export type ChatAgentOptions<
    *   },
    * });
    * ```
+   *
+   * Note: on a channel HITL resume turn (a button click that lands on a fresh
+   * run whose accumulator doesn't yet hold the pending tool call), this hook is
+   * called twice for the one delivery: once with `incomingMessages: []` to load
+   * the chain and locate the pending tool call, then again with the synthesized
+   * resolution message so it can be persisted. Keep the hook's read path
+   * idempotent.
    */
   hydrateMessages?: (
     event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
@@ -5395,8 +5951,18 @@ function chatAgent<
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
   TTools extends ToolSet = ToolSet,
+  const TW extends readonly AnyChatEvent[] = [],
+  const TChannels extends readonly AnyChannelConnector[] = [],
 >(
-  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema, TTools>
+  options: ChatAgentOptions<
+    TIdentifier,
+    TClientDataSchema,
+    TUIMessage,
+    TActionSchema,
+    TTools,
+    TW,
+    TChannels
+  >
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
@@ -5408,6 +5974,8 @@ function chatAgent<
     onValidateMessages,
     hydrateMessages,
     actionSchema,
+    events,
+    channels,
     onAction,
     onTurnStart,
     onBeforeTurnComplete,
@@ -5780,6 +6348,10 @@ function chatAgent<
         // predecessor chose to end before processing the message;
         // those route through the normal continuation-wait path.
         const hasRecoveredState = partialAssistant !== undefined;
+
+        if (couldHavePriorState && hasRecoveredState) {
+          locals.set(chatChannelRecoveryPendingKey, { value: true });
+        }
 
         let hookChain: TUIMessage[] | undefined;
         let hookRecoveredTurns: TUIMessage[] | undefined;
@@ -6408,6 +6980,14 @@ function chatAgent<
           let capturedPartialResponse: TUIMessage | undefined;
           let responseCommitted = false;
           const turnBufferedChunks: UIMessageChunk[] = [];
+          let channelConn: AnyChannelConnector | undefined;
+          let channelWorkingReaction: string | undefined;
+          let channelWireEvent: { event: unknown; deliveryId: string } | undefined;
+          let channelAckRef: string | undefined;
+          let channelStreamEditor: ChannelStreamEditor | undefined;
+          let droppedStaleInteraction = false;
+          let droppedUnknownConnector = false;
+          let channelFinalAnswerPosted = false;
           try {
             // Extract turn-level context before entering the span. Slim
             // wire: at most one delta message per record. `headStartMessages`
@@ -6417,11 +6997,128 @@ function chatAgent<
               metadata: wireMetadata,
               message: incomingMessage,
               headStartMessages: _hsm,
+              channelEvent: wireChannelEvent,
               ...restWire
             } = currentWirePayload;
             void _hsm;
-            const incomingMessages: TUIMessage[] = incomingMessage
-              ? [incomingMessage as TUIMessage]
+            channelWireEvent = wireChannelEvent;
+            let effectiveIncomingMessage = incomingMessage;
+            const clientData = (
+              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+            ) as inferSchemaOut<TClientDataSchema>;
+            if (wireChannelEvent) {
+              channelConn = channels?.find((c) => c.id === wireChannelEvent.connectorId);
+              if (channelConn) {
+                const interaction = channelConn.onInteraction?.(wireChannelEvent.event) ?? null;
+                const accumulatorHasInteractionToolCall =
+                  interaction != null &&
+                  accumulatedUIMessages.some((m) =>
+                    ((m.parts ?? []) as { toolCallId?: unknown }[]).some(
+                      (p) => p?.toolCallId === interaction.toolCallId
+                    )
+                  );
+                if (interaction && hydrateMessages && !accumulatorHasInteractionToolCall) {
+                  try {
+                    const hydratedForInteraction = (await hydrateMessages({
+                      chatId: currentWirePayload.chatId,
+                      turn,
+                      trigger: "submit-message",
+                      incomingMessages: [],
+                      previousMessages: [...accumulatedUIMessages],
+                      clientData,
+                      continuation,
+                      previousRunId,
+                    })) as TUIMessage[];
+                    accumulatedUIMessages = hydratedForInteraction;
+                    accumulatedMessages = await toModelMessages(hydratedForInteraction);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                  } catch (hydrateError) {
+                    logger.warn(
+                      "chat.agent: hydrateMessages for channel interaction resolution failed",
+                      { error: hydrateError }
+                    );
+                  }
+                }
+                const resolutionMessage = interaction
+                  ? buildInteractionResolutionMessage(
+                      interaction,
+                      accumulatedUIMessages as UIMessage[]
+                    )
+                  : undefined;
+                if (resolutionMessage) {
+                  effectiveIncomingMessage = resolutionMessage as typeof incomingMessage;
+                  if (interaction && channelConn.finalizeInteraction) {
+                    try {
+                      await channelConn.finalizeInteraction(wireChannelEvent.event, interaction);
+                    } catch (finalizeError) {
+                      logger.warn("chat.agent: channel finalizeInteraction failed; continuing", {
+                        error: finalizeError,
+                      });
+                    }
+                  }
+                } else if (interaction) {
+                  droppedStaleInteraction = true;
+                  logger.debug(
+                    "chat.agent: dropping stale channel interaction that matched no pending tool call",
+                    {
+                      deliveryId: wireChannelEvent.deliveryId,
+                    }
+                  );
+                } else {
+                  effectiveIncomingMessage = toUserUIMessage(
+                    channelConn.inbound(wireChannelEvent.event),
+                    currentWirePayload.messageId ?? wireChannelEvent.deliveryId
+                  ) as typeof incomingMessage;
+                  if (channelConn.send && channelConn.ack) {
+                    const recoveryPending = locals.get(chatChannelRecoveryPendingKey);
+                    const recovered = recoveryPending?.value === true;
+                    if (recovered) recoveryPending!.value = false;
+                    const ackMessage = channelConn.ack(wireChannelEvent.event, { recovered });
+                    if (ackMessage) {
+                      try {
+                        const ackResult = await channelConn.send(ackMessage, {
+                          event: wireChannelEvent.event,
+                          deliveryId: wireChannelEvent.deliveryId,
+                          mode: channelConn.delivery,
+                          final: false,
+                        });
+                        channelAckRef = ackResult?.ref;
+                      } catch (ackError) {
+                        logger.warn("chat.agent: channel ack post failed; continuing", {
+                          error: ackError,
+                        });
+                      }
+                    }
+                  }
+                  try {
+                    channelWorkingReaction = await resolveReactionChoice(
+                      channelConn.reactions?.working,
+                      wireChannelEvent.event
+                    );
+                    if (channelWorkingReaction) {
+                      await applyChannelReaction(channelConn, wireChannelEvent, {
+                        name: channelWorkingReaction,
+                      });
+                    }
+                  } catch (reactionError) {
+                    logger.warn("chat.agent: channel working reaction failed", {
+                      error: reactionError,
+                    });
+                  }
+                }
+              } else {
+                droppedUnknownConnector = true;
+                logger.warn(
+                  "chat.agent: no channel connector matches this delivery; skipping turn",
+                  {
+                    connectorId: wireChannelEvent.connectorId,
+                    deliveryId: wireChannelEvent.deliveryId,
+                  }
+                );
+              }
+            }
+            const incomingMessages: TUIMessage[] = effectiveIncomingMessage
+              ? [effectiveIncomingMessage as TUIMessage]
               : [];
             // Cleaning happens once here so `extractLastUserMessageText` and
             // every downstream consumer see the same message shape — and
@@ -6429,9 +7126,6 @@ function chatAgent<
             const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
               msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
             );
-            const clientData = (
-              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
-            ) as inferSchemaOut<TClientDataSchema>;
             const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
 
             // Actions are not turns. They use a different span name
@@ -6515,6 +7209,12 @@ function chatAgent<
                   // instead of the wire buffer. The frontend handles re-sending
                   // non-injected messages via sendMessage on turn complete.
                   if (pmConfig) {
+                    if ((msg as { channelEvent?: unknown }).channelEvent != null) {
+                      pendingWireMessages.push(
+                        msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+                      );
+                      return;
+                    }
                     // Slim wire: at most one delta message per record. The
                     // pendingMessages handler reads `msg.message` directly
                     // instead of slicing an array — a wire record arrives
@@ -6580,9 +7280,11 @@ function chatAgent<
                 let actionStreamResult: unknown = undefined;
                 if (isAction) {
                   // Parse and validate the action payload
-                  const parsedAction = parseAction
-                    ? await parseAction(currentWirePayload.action)
-                    : currentWirePayload.action;
+                  const isWebhookAction = currentWirePayload.actionSource === "webhook";
+                  const parsedAction =
+                    parseAction && !isWebhookAction
+                      ? await parseAction(currentWirePayload.action)
+                      : currentWirePayload.action;
 
                   // Hydrate messages from backend if configured
                   if (hydrateMessages) {
@@ -6662,7 +7364,11 @@ function chatAgent<
                 // snapshot + `session.out` replay (or `hydrateMessages`,
                 // which also fires per-turn below). Per-turn handling is
                 // therefore a delta merge, not a full-history reset.
-                if (currentWirePayload.trigger !== "action") {
+                if (
+                  currentWirePayload.trigger !== "action" &&
+                  !droppedStaleInteraction &&
+                  !droppedUnknownConnector
+                ) {
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
                   // Turn-0 head-start with hydrateMessages: the boot seeding from
@@ -6961,7 +7667,12 @@ function chatAgent<
                   turn--;
                 }
 
-                if (!isAction) {
+                if (droppedStaleInteraction || droppedUnknownConnector) {
+                  msgSub.off();
+                  turn--;
+                }
+
+                if (!isAction && !droppedStaleInteraction && !droppedUnknownConnector) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
@@ -7157,6 +7868,7 @@ function chatAgent<
                         signal: combinedSignal,
                         cancelSignal,
                         stopSignal,
+                        channel: buildChannelRunSurface(channelConn, wireChannelEvent),
                       } as any);
                     }
 
@@ -7199,7 +7911,24 @@ function chatAgent<
                           resolveOnFinish!();
                         },
                       });
-                      await pipeChat(tapUIMessageChunks(uiStream, turnBufferedChunks), {
+                      let streamForPipe: typeof uiStream = uiStream;
+                      if (
+                        wireChannelEvent &&
+                        channelConn?.send &&
+                        channelConn.delivery === "stream" &&
+                        channelAckRef &&
+                        uiStream instanceof ReadableStream
+                      ) {
+                        channelStreamEditor = makeChannelStreamEditor(
+                          channelConn,
+                          wireChannelEvent,
+                          channelAckRef
+                        );
+                        streamForPipe = uiStream.pipeThrough(
+                          makeChannelStreamTap(channelStreamEditor)
+                        );
+                      }
+                      await pipeChat(tapUIMessageChunks(streamForPipe, turnBufferedChunks), {
                         signal: combinedSignal,
                         spanName: "stream response",
                       });
@@ -7216,6 +7945,7 @@ function chatAgent<
                     }
                   } finally {
                     msgSub.off();
+                    await channelStreamEditor?.stop();
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
@@ -7650,6 +8380,68 @@ function chatAgent<
                     turnAccessToken
                   );
 
+                  // Channel egress ("final"): map the turn's reply via outbound() and send it, editing
+                  // the ack placeholder posted at turn start (previousRef). Best-effort: an egress failure
+                  // is logged, not fatal. A manual-pipe turn has no responseMessage, so it opts out.
+                  if (wireChannelEvent && channelConn?.send && turnCompleteEvent.responseMessage) {
+                    const pendingToolCalls = pendingToolCallsInMessage(
+                      turnCompleteEvent.responseMessage
+                    );
+                    const channelMessage =
+                      pendingToolCalls.length > 0 && channelConn.renderInteraction
+                        ? channelConn.renderInteraction(pendingToolCalls, {
+                            event: wireChannelEvent.event,
+                            deliveryId: wireChannelEvent.deliveryId,
+                          })
+                        : (channelConn.outbound ?? defaultChannelOutbound)({
+                            text: channelReplyText(turnCompleteEvent.responseMessage),
+                            message: turnCompleteEvent.responseMessage,
+                            final: true,
+                            stopped: turnCompleteEvent.stopped,
+                          });
+                    if (channelMessage) {
+                      try {
+                        await channelConn.send(channelMessage, {
+                          event: wireChannelEvent.event,
+                          deliveryId: wireChannelEvent.deliveryId,
+                          previousRef: channelAckRef,
+                          mode: channelConn.delivery,
+                          final: true,
+                        });
+                        channelFinalAnswerPosted = true;
+                      } catch (egressError) {
+                        logger.warn("chat.agent: channel egress send failed", {
+                          error: egressError,
+                        });
+                      }
+                    }
+                  }
+
+                  // Lifecycle reaction: turn done. Remove "working", mark "done".
+                  if (wireChannelEvent && channelConn?.react) {
+                    try {
+                      if (channelWorkingReaction) {
+                        await applyChannelReaction(channelConn, wireChannelEvent, {
+                          name: channelWorkingReaction,
+                          remove: true,
+                        });
+                      }
+                      const doneReaction = await resolveReactionChoice(
+                        channelConn.reactions?.done,
+                        wireChannelEvent.event
+                      );
+                      if (doneReaction) {
+                        await applyChannelReaction(channelConn, wireChannelEvent, {
+                          name: doneReaction,
+                        });
+                      }
+                    } catch (reactionError) {
+                      logger.warn("chat.agent: channel done reaction failed", {
+                        error: reactionError,
+                      });
+                    }
+                  }
+
                   // Fire onTurnComplete — stream is closed, use for persistence.
                   if (onTurnComplete) {
                     await tracer.startActiveSpan(
@@ -7905,6 +8697,75 @@ function chatAgent<
               throw turnError;
             }
 
+            if (channelWireEvent && channelConn?.react) {
+              try {
+                if (channelWorkingReaction) {
+                  await applyChannelReaction(channelConn, channelWireEvent, {
+                    name: channelWorkingReaction,
+                    remove: true,
+                  });
+                }
+                const errorReaction = await resolveReactionChoice(
+                  channelConn.reactions?.error,
+                  channelWireEvent.event
+                );
+                if (errorReaction) {
+                  await applyChannelReaction(channelConn, channelWireEvent, {
+                    name: errorReaction,
+                  });
+                }
+              } catch (reactionError) {
+                logger.warn("chat.agent: channel error reaction failed", { error: reactionError });
+              }
+            }
+
+            if (channelWireEvent && channelConn?.send) {
+              const sanitizeChannelError = resolveUIMessageStreamOptions().onError;
+              let channelErrorText: string;
+              try {
+                channelErrorText = sanitizeChannelError
+                  ? sanitizeChannelError(turnError)
+                  : turnError instanceof Error
+                    ? turnError.message
+                    : "An unexpected error occurred";
+              } catch {
+                channelErrorText = "An unexpected error occurred";
+              }
+              const errorPreviousRef = channelFinalAnswerPosted ? undefined : channelAckRef;
+              const channelErrorMessageId = errorPreviousRef ?? channelWireEvent.deliveryId;
+              let errorMessage: ChannelMessage | null = null;
+              try {
+                errorMessage = (channelConn.outbound ?? defaultChannelOutbound)({
+                  text: channelErrorText,
+                  message: {
+                    id: channelErrorMessageId,
+                    role: "assistant",
+                    parts: [{ type: "text", text: channelErrorText }],
+                  } as UIMessage,
+                  final: true,
+                  stopped: false,
+                  error: turnError,
+                });
+              } catch (outboundError) {
+                logger.warn("chat.agent: channel error outbound failed", { error: outboundError });
+              }
+              if (errorMessage) {
+                try {
+                  await channelConn.send(errorMessage, {
+                    event: channelWireEvent.event,
+                    deliveryId: channelWireEvent.deliveryId,
+                    previousRef: errorPreviousRef,
+                    mode: channelConn.delivery,
+                    final: true,
+                  });
+                } catch (egressError) {
+                  logger.warn("chat.agent: channel error egress send failed", {
+                    error: egressError,
+                  });
+                }
+              }
+            }
+
             let errorTurnCompleteResult:
               | Awaited<ReturnType<typeof writeTurnCompleteChunk>>
               | undefined;
@@ -8134,6 +8995,52 @@ function chatAgent<
     resourceCatalog.updateTaskMetadata(options.id, {
       schema: clientDataSchema as any,
     });
+  }
+
+  // Claim each listed chat.event descriptor: register an agent-scoped webhook endpoint that routes
+  // verified deliveries to THIS agent's session. The id is scoped by agent so the same descriptor on
+  // two agents yields two endpoints (no collision), each routing to its own agent.
+  if (events) {
+    for (const wh of events) {
+      resourceCatalog.markSessionWebhookClaimed(wh.id);
+      resourceCatalog.registerWebhookMetadata({
+        id: `${options.id}:${wh.id}`,
+        source: wh.source,
+        verifierArtifact: wh.verifierArtifact,
+        secretProvisioning: wh.secretProvisioning,
+        filter: wh.filter,
+        routingTarget: {
+          type: "session",
+          taskIdentifier: options.id,
+          keyTemplate: wh.key,
+          actionType: wh.type,
+          deliverAs: "action",
+        },
+      });
+    }
+  }
+
+  // Claim each listed channel connector: same agent-scoped endpoint, but deliverAs "message" so a
+  // verified event becomes a turn (the run maps it via the connector's inbound(), resolved by connectorId).
+  if (channels) {
+    for (const ch of channels) {
+      resourceCatalog.markSessionWebhookClaimed(ch.id);
+      resourceCatalog.registerWebhookMetadata({
+        id: `${options.id}:${ch.id}`,
+        source: ch.source,
+        verifierArtifact: ch.verifierArtifact,
+        secretProvisioning: ch.secretProvisioning,
+        filter: ch.filter,
+        routingTarget: {
+          type: "session",
+          taskIdentifier: options.id,
+          keyTemplate: ch.key,
+          connectorId: ch.id,
+          deliverAs: "message",
+          startOn: ch.startOn,
+        },
+      });
+    }
   }
 
   return task;
@@ -10658,6 +11565,10 @@ async function mintPublicTokenWithOverride(args: {
 export const chat = {
   /** Create a chat agent. See {@link chatAgent}. */
   agent: chatAgent,
+  /** Declare an inbound webhook event an agent claims via `chat.agent({ events })`. See {@link chatEvent}. */
+  event: chatEvent,
+  /** Chat frontend connectors (Slack, etc.) an agent claims via `chat.agent({ channels })`. */
+  channels: chatChannels,
   /** Create a custom agent with manual lifecycle control. See {@link chatCustomAgent}. */
   customAgent: chatCustomAgent,
   /** Create a chat task with a fixed {@link UIMessage} subtype and optional default stream options. See {@link withUIMessage}. */
@@ -10672,6 +11583,8 @@ export const chat = {
   local: chatLocal,
   /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
   createAccessToken: createChatAccessToken,
+  /** Mint a read-only token to WATCH a session by externalId (cross-surface). See {@link createChatWatchToken}. */
+  createWatchToken: createChatWatchToken,
   /** Override the turn timeout at runtime (duration string). See {@link setTurnTimeout}. */
   setTurnTimeout,
   /** Override the turn timeout at runtime (seconds). See {@link setTurnTimeoutInSeconds}. */

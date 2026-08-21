@@ -1,0 +1,135 @@
+---
+title: "Channels (chat frontends)"
+description: "Point Slack (or any chat surface) at an agent: messages become turns and replies post back."
+sidebarTitle: "Channels"
+---
+
+A [session route](/webhooks/session-routing) delivers a verified event to an agent as an [action](/ai-chat/actions): the agent reacts, and the response is a side effect. A **channel** is the other half: the webhook IS the chat surface. Inbound messages become **turns** (the normal `run()` loop), and the agent's reply is posted **back** to the surface. A Slack thread becomes a real conversation with the agent, exactly like the browser chat, just a different frontend.
+
+List channels on a [`chat.agent`](/ai-chat/overview) alongside (or instead of) `events`:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { slack } from "@trigger.dev/slack";
+import { streamText } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+export const supportAgent = chat.agent({
+  id: "support-agent",
+  channels: [slack({ id: "support-slack", token: process.env.SLACK_BOT_TOKEN! })],
+  run: async ({ messages }) => streamText({ model: anthropic("claude-sonnet-4-5"), messages }),
+});
+```
+
+The `run()` loop is unchanged: the agent does not know or care that it is talking to Slack. One verified Slack message in a thread is routed to a durable [session](/ai-chat/sessions) keyed to that thread, run as a turn, and the reply is posted into the thread.
+
+## Slack
+
+`slack()` (from `@trigger.dev/slack`) is a channel connector: it verifies inbound Slack events, maps a message to the turn, and posts the reply back with `chat.postMessage` / `chat.update`.
+
+<Steps>
+  <Step title="Create a Slack app">
+    Create an app at [api.slack.com/apps](https://api.slack.com/apps). Add the `chat:write` and `channels:history` bot scopes (`chat:write` posts replies; `channels:history` receives the `message.channels` events), then install it to your workspace to get a bot token (`xoxb-...`). If you add scopes after installing, reinstall the app to apply them.
+  </Step>
+  <Step title="Deploy the agent + connect the endpoint">
+    Deploying registers a hosted [endpoint](/webhooks/connect) for the channel. Set its signing secret to your Slack app's **Signing Secret**, and pass the bot token as `token`.
+  </Step>
+  <Step title="Subscribe to events">
+    In the app's **Event Subscriptions**, set the request URL to the endpoint's webhook URL. Slack sends a one-time `url_verification` handshake, which the endpoint answers automatically. Subscribe the bot to `message.channels`, then invite the bot to the channel (`/invite @yourapp`).
+  </Step>
+</Steps>
+
+By default `slack()` keys one session per thread, strips the leading bot mention from the message, posts an "on it..." placeholder while the agent works, and edits it to the answer. Override any of that:
+
+```ts
+slack({
+  id: "support-slack",
+  token: process.env.SLACK_BOT_TOKEN!,
+  // ignore anything but questions (composed with the built-in self-message guard)
+  filter: "event.event.text contains '?'",
+  inbound: (e) => e.event?.text ?? "",
+  outbound: (reply) => ({ text: reply.text }),
+  ack: (e) => ({ text: "thinking..." }), // pass `null` to post only the final answer
+});
+```
+
+<Note>
+  `slack()` always drops the bot's own messages (and their edits) before they reach the agent, so the
+  agent never replies to itself. A multi-workspace app can pass a `token` resolver keyed on the event's
+  team instead of a single string.
+</Note>
+
+### Summoning with a mention
+
+By default `slack()` starts (or resumes) a session for every non-bot message in a subscribed channel. To make the agent respond only when it is @mentioned, pass `startOn` with the `mentions` helper. The first mention in a thread starts the session, and the agent then follows the rest of the thread without needing to be mentioned again.
+
+```ts
+import { slack, mentions } from "@trigger.dev/slack";
+
+slack({
+  id: "support-slack",
+  token: process.env.SLACK_BOT_TOKEN!,
+  startOn: mentions("U012BOT"), // your bot's user id (pass several for multiple bots)
+});
+```
+
+### Reacting to messages
+
+`slack()` can add an emoji reaction to the triggering message to signal progress. Set `reactions` with any of `working`, `done`, and `error`: the connector adds `working` when the turn starts, swaps it to `done` when the turn finishes, and reacts with `error` if it fails. This needs the `reactions:write` scope.
+
+```ts
+slack({
+  id: "support-slack",
+  token: process.env.SLACK_BOT_TOKEN!,
+  reactions: { working: "eyes", done: "white_check_mark", error: "warning" },
+});
+```
+
+### Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Connector id, unique per agent. |
+| `token` | `string` or resolver | Bot token (`xoxb-...`), or a function of the event's team for multi-workspace apps. |
+| `key` | `string` | Session [key](/webhooks/session-routing) template. Defaults to one session per thread. |
+| `filter` | `string` | Extra [filter](/webhooks/filters), composed with the built-in self-message guard. |
+| `startOn` | `string` | Only start a session when the event matches (see `mentions`). Existing sessions always resume. |
+| `ack` | message, `null`, or function | Placeholder posted while the agent works. Pass `null` to post only the final answer. |
+| `reactions` | `{ working?, done?, error? }` | Lifecycle emoji reactions on the triggering message. |
+| `inbound` / `outbound` | functions | Map the Slack event to the turn, and the reply to a Slack message. |
+| `delivery` | `"final"` or `"stream"` | `"final"` (default) posts a placeholder and edits it to the answer. `"stream"` edits live as the reply streams. |
+| `apiBaseUrl` | `string` | Override the Slack Web API base, for testing against a mock. |
+
+## Approvals and interactive controls
+
+An agent on a channel can pause a turn to get a human decision, approving a refund or confirming a deletion, and resume once someone clicks a button in the thread. `slack()` renders Approve / Deny buttons for you and collapses them to the decision once clicked. See [human-in-the-loop](/webhooks/human-in-the-loop).
+
+## Any surface: `chat.channels.custom`
+
+For a surface without a preset, `chat.channels.custom` is the generic connector. You supply the [source](/webhooks/sources) to verify, the session `key`, the `inbound` map, and the egress `send`:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { webhooks } from "@trigger.dev/sdk";
+
+const mySurface = chat.channels.custom({
+  id: "my-surface",
+  source: webhooks.custom<MyEvent>({ /* verifier config */ }),
+  key: "{body.conversationId}",
+  inbound: (e) => e.text,
+  outbound: (reply) => (reply.text ? { text: reply.text } : null), // null posts nothing
+  send: async (message, ctx) => {
+    const ref = await postToMySurface(ctx.event, message.text, ctx.previousRef);
+    return { ref }; // an existing ref means edit-in-place on the next turn
+  },
+});
+```
+
+`send` is called to post the reply. `ctx.previousRef` is the ref you returned last time, so streaming or a follow-up edits the same message instead of posting a new one. Return `null` from `outbound` to stay silent (a tool-only turn, say).
+
+## Channels vs events
+
+Both are inbound surfaces on a `chat.agent`, and an agent can list both:
+
+- [`events`](/webhooks/session-routing) (`chat.event`): the webhook is a signal. Delivered to `onAction`; the agent acts, no reply is sent back.
+- `channels` (`slack`, `chat.channels.custom`): the webhook is a chat frontend. Delivered as a turn to `run()`; the reply is posted back.

@@ -1,0 +1,77 @@
+{
+  "name": "@trigger.dev/slack",
+  "version": "4.5.0-rc.7",
+  "description": "Slack chat frontend (channel) for trigger.dev agents",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/slack"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "tshy": {
+    "selfLink": false,
+    "main": true,
+    "module": true,
+    "project": "./tsconfig.src.json",
+    "exclude": [
+      "./src/**/*.test.ts"
+    ],
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts"
+    },
+    "sourceDialects": [
+      "@triggerdotdev/source"
+    ]
+  },
+  "scripts": {
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
+    "build": "tshy && pnpm run update-version",
+    "dev": "tshy --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "test": "vitest",
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack ."
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:4.5.0-rc.7"
+  },
+  "peerDependencies": {
+    "@trigger.dev/sdk": "workspace:^4.5.0-rc.7"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@trigger.dev/sdk": "workspace:4.5.0-rc.7",
+    "@types/node": "^24.13.3",
+    "rimraf": "6.0.1",
+    "tshy": "^3.0.2",
+    "tsx": "4.17.0"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    }
+  },
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
+}
