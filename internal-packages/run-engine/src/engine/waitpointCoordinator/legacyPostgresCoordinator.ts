@@ -190,13 +190,14 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     idempotencyKey,
     idempotencyKeyExpiresAt,
   }: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult> {
-    // Co-location invariant: a DATETIME wait waitpoint lives on the same run-ops DB as the run
-    // that blocks on it. The minted waitpoint id is always a cuid, so without `coLocateWithRunId`
-    // the upsert would always route to LEGACY and a run-ops run on NEW would hang. The
-    // (env,idempotencyKey) dedup is within the owning run/tree, so the dedup probe + rotation
-    // target the SAME store. With no run id the lookup falls back to a cross-DB NEW-then-LEGACY
-    // scan and the upsert routes by id-shape. Always routed through the run store (never a caller
-    // tx) so it can never bypass residency onto the wrong DB.
+    // Co-location invariant: a DATETIME wait waitpoint lives on the same run-ops DB as the run that
+    // blocks on it (so the block edge's local `Waitpoint` join resolves and completion/resume stay
+    // local). The minted waitpoint id is always a cuid, so without `coLocateWithRunId` the upsert
+    // would always route to LEGACY and a run-ops run on NEW would hang. The (env,idempotencyKey) dedup
+    // is within the owning run/tree (co-resident on one DB), so the dedup probe + rotation target the
+    // SAME store. With no run id (a standalone token has no owning run yet) the lookup falls back to
+    // a cross-DB NEW-then-LEGACY scan and the upsert routes by id-shape. Always routed through the
+    // run store (never a caller tx) so it can never bypass residency onto the wrong DB.
     const colocate = runId ? { coLocateWithRunId: runId } : undefined;
     const existingWaitpoint = idempotencyKey
       ? await this.runStore.findWaitpoint(
@@ -272,12 +273,12 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     tags,
     standaloneResidency,
   }: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
-    // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the
-    // waitpoint co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run. A
-    // standalone token passes no run id — it is created without an owner, blocked later by
-    // whichever run waits on it (possibly cross-DB, resolved by the run-co-resident block edge +
-    // completion fan-out). With no owner it reads the env mint kind via `standaloneResidency` so
-    // a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
+    // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the waitpoint
+    // co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run (co-resident). A
+    // standalone token (api.v1.waitpoints.tokens.ts) passes no run id — it is created without an
+    // owner, blocked later by whichever run waits on it (possibly cross-DB, resolved by the
+    // run-co-resident block edge + completion fan-out). With no owner it reads the env mint kind via
+    // `standaloneResidency` so a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
     const colocate = runId
       ? { coLocateWithRunId: runId }
       : standaloneResidency
