@@ -1547,9 +1547,37 @@ async function handleNativeBuildServerDeploy({
 
   const deployment = initializeDeploymentResult.data;
 
+  const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
+  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
+    options.env === "prod" ? "prod" : "stg"
+  }`;
+
+  if (deployment.outcome === "existing") {
+    $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
+
+    setDeploymentGithubActionsOutput({
+      version: deployment.version,
+      shortCode: deployment.shortCode,
+      rawDeploymentLink,
+      rawTestLink,
+      needsPromotion: !deployment.isPromoted,
+    });
+
+    warnAboutSkippedBuild(options.externalId, deployment.isPromoted);
+
+    outro(
+      `Version ${deployment.version} was already deployed for --external-id ${options.externalId} — nothing to build ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : rawDeploymentLink
+      }`
+    );
+
+    return;
+  }
+
   // Version-skew guard: an older server silently strips unknown fields, so if we sent
   // build env vars and the server didn't ack storing them, the remote build would run
-  // without them and fail in a confusing way. Fail fast instead.
+  // without them and fail in a confusing way. Fail fast instead. Deliberately after
+  // the outcome=existing return: a reused deployment builds nothing, so no ack is due.
   if (
     options.localBundle &&
     bundleBuildEnvVars &&
@@ -1577,33 +1605,6 @@ async function handleNativeBuildServerDeploy({
       )
     );
     throw new OutroCommandError(`Deployment failed`);
-  }
-
-  const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
-    options.env === "prod" ? "prod" : "stg"
-  }`;
-
-  if (deployment.outcome === "existing") {
-    $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
-
-    setDeploymentGithubActionsOutput({
-      version: deployment.version,
-      shortCode: deployment.shortCode,
-      rawDeploymentLink,
-      rawTestLink,
-      needsPromotion: !deployment.isPromoted,
-    });
-
-    warnAboutSkippedBuild(options.externalId, deployment.isPromoted);
-
-    outro(
-      `Version ${deployment.version} was already deployed for --external-id ${options.externalId} — nothing to build ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : rawDeploymentLink
-      }`
-    );
-
-    return;
   }
 
   const exposedDeploymentLink = isLinksSupported
