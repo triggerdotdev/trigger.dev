@@ -337,7 +337,17 @@ describe("cycle keys", () => {
   );
 
   redisTest("a carry-forward naming a missing cycle still appends", async ({ redisOptions }) => {
-    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    const calls: string[] = [];
+    const metrics = {
+      recordAppend: () => {},
+      recordEntryBytes: () => {},
+      recordCycleKeyBytes: () => {},
+      recordCycleCount: () => {},
+      recordSkippedNoKeyspace: () => {},
+      recordCycleMismatch: () => calls.push("mismatch"),
+      recordLatency: () => {},
+    };
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000, metrics });
     try {
       await store.append({ entry: entry({ id: "snap_1" }), kind: "birth", isTerminal: false });
       const r = await store.append({
@@ -347,6 +357,8 @@ describe("cycle keys", () => {
         cycle: { kind: "carryForward", cycleSeq: 99 },
       });
       expect(r).toMatchObject({ outcome: "written", cycleMismatch: true });
+      // recordCycleMismatch is required by the spec and was previously stubbed but never checked.
+      expect(calls).toEqual(["mismatch"]);
     } finally {
       await store.quit();
     }
@@ -769,6 +781,25 @@ describe("environment scoping", () => {
       await store.quit();
     }
   });
+
+  redisTest(
+    "getSince returns entries when scoped to a matching, non-empty environment",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+        await store.append({ entry: entry({ id: "s1" }), kind: "transition", isTerminal: false });
+        await store.append({ entry: entry({ id: "s2" }), kind: "transition", isTerminal: false });
+        // Every existing matching-env getSince test used an EMPTY window, so the per-row compare
+        // in #decode never ran in the passing direction. This is the first to exercise it with rows.
+        const r = await store.getSince("run_1", "s0", { environmentId: "env_1" });
+        if (r.kind !== "hit") throw new Error("expected a hit");
+        expect(r.entries.map((e) => e.id)).toEqual(["s1", "s2"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 });
 
 describe("expectedCur compare-and-set", () => {
@@ -819,8 +850,10 @@ describe("expectedCur compare-and-set", () => {
       });
       expect(r).toEqual({ outcome: "forked", actualCur: "s2" });
 
-      // Nothing was written: no entry, and the seq counter did not move.
+      // Nothing was written: no entry, cur is still s2 (not overwritten by s3, and not cleared),
+      // and the seq counter did not move.
       expect(await store.getById("run_1", "s3")).toBeNull();
+      expect((await store.getLatest("run_1"))?.id).toBe("s2");
       const next = await store.append({
         entry: entry({ id: "s4" }),
         kind: "transition",
@@ -848,6 +881,26 @@ describe("expectedCur compare-and-set", () => {
         });
         expect(r).toEqual({ outcome: "forked", actualCur: "s1" });
         expect(await store.getById("run_1", "s2")).toBeNull();
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "supplied as empty string against a genuinely unset cur: the append proceeds",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        // The load-bearing succeeding direction: expectedCur: "" asserts "cur is unset", and on a
+        // fresh keyspace that assertion is TRUE, so the append must proceed, not fork.
+        const r = await store.append({
+          entry: entry({ id: "s1" }),
+          kind: "birth",
+          isTerminal: false,
+          expectedCur: "",
+        });
+        expect(r).toMatchObject({ outcome: "written", seq: 1 });
       } finally {
         await store.quit();
       }
@@ -881,6 +934,13 @@ describe("hash tag and keyPrefix", () => {
   it("every key for one run lands in one cluster slot", () => {
     // Keys come from snapshotKeys() plus the wp:<n> suffix the Lua prelude derives the same way,
     // with a keyPrefix prepended by hand as ioredis would. A dropped hash tag would split the slots.
+    // Pin the helper itself before trusting it: the published XMODEM check value, and two known
+    // slots (one matching cluster-key-slot, one a different run's tag as a negative control --
+    // otherwise a constant-valued crc16 would satisfy slots.size === 1 for the wrong reason).
+    expect(crc16("123456789")).toBe(0x31c3);
+    expect(hashSlot("engine:snap:{run_1}:e")).toBe(8108);
+    expect(hashSlot("engine:snap:{run_2}:e")).toBe(12239);
+
     const k = snapshotKeys("run_1");
     const base = k.e.slice(0, -2);
     const keys = [k.e, k.idx, k.cur, k.seq, `${base}:wp:1`, `${base}:wp:2`].map(
@@ -913,7 +973,8 @@ describe("hash tag and keyPrefix", () => {
         isTerminal: true,
       });
       const ttl = await raw.pttl("engine:snap:{run_1}:wp:1");
-      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeGreaterThan(50_000);
+      expect(ttl).toBeLessThanOrEqual(60_000);
     } finally {
       raw.disconnect();
       await store.quit();
@@ -942,15 +1003,15 @@ describe("hash tag and keyPrefix", () => {
 
 describe("observability", () => {
   redisTest("records sizes and outcomes without ever rejecting", async ({ redisOptions }) => {
-    const calls: string[] = [];
+    const calls: unknown[][] = [];
     const metrics = {
-      recordAppend: (o: string, t: string) => calls.push(`append:${o}:${t}`),
-      recordEntryBytes: (b: number) => calls.push(`entryBytes:${b > 0}`),
-      recordCycleKeyBytes: (b: number) => calls.push(`cycleBytes:${b > 0}`),
-      recordCycleCount: (c: number) => calls.push(`cycleCount:${c}`),
-      recordSkippedNoKeyspace: () => calls.push("skipped"),
-      recordCycleMismatch: () => calls.push("mismatch"),
-      recordLatency: (op: string) => calls.push(`latency:${op}`),
+      recordAppend: (o: string, t: string) => calls.push(["append", o, t]),
+      recordEntryBytes: (b: number) => calls.push(["entryBytes", b]),
+      recordCycleKeyBytes: (b: number) => calls.push(["cycleBytes", b]),
+      recordCycleCount: (c: number) => calls.push(["cycleCount", c]),
+      recordSkippedNoKeyspace: () => calls.push(["skipped"]),
+      recordCycleMismatch: () => calls.push(["mismatch"]),
+      recordLatency: (op: string) => calls.push(["latency", op]),
     };
     const store = new RedisSnapshotStore({
       redisOptions,
@@ -961,8 +1022,12 @@ describe("observability", () => {
     try {
       // A huge inline value is observed, never rejected or truncated: Postgres had no cap either.
       const big = "x".repeat(20_000);
+      const bigEntry = entry({ id: "s1", description: big });
+      const rawBytes = Buffer.byteLength(JSON.stringify(bigEntry), "utf8");
+      const orderBytes = Buffer.byteLength(JSON.stringify(["w_a"]), "utf8");
+
       const r = await store.append({
-        entry: entry({ id: "s1", description: big }),
+        entry: bigEntry,
         kind: "birth",
         isTerminal: false,
         cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
@@ -970,24 +1035,36 @@ describe("observability", () => {
       expect(r).toMatchObject({ outcome: "written" });
       expect((await store.getById("run_1", "s1"))?.entry.description).toBe(big);
 
+      // Exact values, not just `b > 0`: a swapped recordEntryBytes/recordCycleKeyBytes wiring
+      // would still pass a `b > 0` check but fails this, since the two sizes are wildly different.
+      expect(calls).toEqual([
+        ["entryBytes", rawBytes],
+        ["cycleBytes", orderBytes],
+        ["cycleCount", 1],
+        ["append", "written", "none"],
+        ["latency", "append"],
+        ["latency", "getById"],
+      ]);
+      calls.length = 0;
+
       await store.append({
         entry: entry({ id: "s2", runId: "run_absent" }),
         kind: "transition",
         isTerminal: false,
       });
 
-      expect(calls).toContain("append:written:none");
-      expect(calls).toContain("entryBytes:true");
-      expect(calls).toContain("cycleBytes:true");
-      expect(calls).toContain("cycleCount:1");
-      expect(calls).toContain("skipped");
-      // recordLatency is wired through #timed for every public method, not just a no-op stub.
-      expect(calls).toContain("latency:append");
-      expect(calls).toContain("latency:getById");
+      // Partitioned from the first append's calls: proves recordSkippedNoKeyspace fires ONLY on
+      // this skip, not (also, harmlessly) on the earlier successful append.
+      expect(calls).toEqual([
+        ["skipped"],
+        ["append", "skippedNoKeyspace", "none"],
+        ["latency", "append"],
+      ]);
     } finally {
       await store.quit();
     }
   });
+
   redisTest(
     "names the run in a high-water warning, and stays silent under a high threshold",
     async ({ redisOptions }) => {
