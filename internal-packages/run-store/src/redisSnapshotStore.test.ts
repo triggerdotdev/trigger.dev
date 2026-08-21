@@ -888,6 +888,34 @@ describe("expectedCur compare-and-set", () => {
   );
 
   redisTest(
+    "a duplicate id wins over a stale CAS: retrying your own successful write is not a fork",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({ entry: entry({ id: "s1" }), kind: "birth", isTerminal: false });
+        await store.append({
+          entry: entry({ id: "s2" }),
+          kind: "transition",
+          isTerminal: false,
+          expectedCur: "s1",
+        });
+
+        // Retry of the same append: cur has since moved to s2, so a naive CAS-first check would
+        // see actual=s2 != expected=s1 and report a fork -- but s2 is THIS write, not a rival's.
+        const retry = await store.append({
+          entry: entry({ id: "s2" }),
+          kind: "transition",
+          isTerminal: false,
+          expectedCur: "s1",
+        });
+        expect(retry).toEqual({ outcome: "duplicate", seq: 2 });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
     "supplied as empty string against a genuinely unset cur: the append proceeds",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });

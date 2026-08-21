@@ -410,6 +410,13 @@ export class RedisSnapshotStore {
           return { '${SKIPPED}' }
         end
 
+        -- Append-only: a retried append must not overwrite an existing entry. Checked BEFORE the
+        -- CAS below -- a present id can only be this same retry, never a competitor's write.
+        local prior = redis.call('HGET', eKey, id .. '#s')
+        if prior then
+          return { '${DUPLICATE}', prior }
+        end
+
         -- Optional compare-and-set on cur, checked BEFORE any mutation. Gated on an explicit flag
         -- (not on expectedCur ~= ''), so a caller asserting cur is unset (expectedCur = '') still
         -- gets a real check instead of silently skipping it.
@@ -418,13 +425,6 @@ export class RedisSnapshotStore {
           if (actual or '') ~= expectedCur then
             return { '${FORKED}', actual or '' }
           end
-        end
-
-        -- Append-only: a retried append (eg. ioredis reconnect-and-retry on a READONLY/UNBLOCKED
-        -- reply error) must not overwrite an existing entry's bytes or rescore it in idx.
-        local prior = redis.call('HGET', eKey, id .. '#s')
-        if prior then
-          return { '${DUPLICATE}', prior }
         end
 
         local seq = redis.call('HINCRBY', seqKey, 'e', 1)
