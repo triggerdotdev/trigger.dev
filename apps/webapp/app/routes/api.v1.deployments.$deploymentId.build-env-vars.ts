@@ -12,11 +12,7 @@ const ParamsSchema = z.object({
   deploymentId: z.string(),
 });
 
-// Returns the decrypted build-time env vars stored on a fromBundle deployment.
-// Deliberately separate from the main GET deployment endpoint: this is secret
-// material, and a dedicated route keeps access explicit and auditable. The vars
-// are cleared when the deployment reaches a terminal status, so this only ever
-// serves the active build window.
+// Secret material, deliberately separate from the main GET deployment endpoint.
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
@@ -25,8 +21,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   try {
-    // Same auth as the sibling GET deployment route: env-key principals with
-    // read scope on deployments, no JWT.
     const authResult = await authenticateApiKeyWithScope(request, {
       action: "read",
       resource: { type: "deployments" },
@@ -65,8 +59,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       hasVars: deployment.buildEnvVars !== null,
     });
 
-    // Terminal deployments have their vars cleared; even if a clear is still in
-    // flight, never serve secrets for a build that is no longer active.
+    // Never serve secrets for a build that is no longer active, even if a clear is still in flight
     if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
       return json({ variables: {} } satisfies GetDeploymentBuildEnvVarsResponseBody, {
         status: 200,
@@ -79,10 +72,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       });
     }
 
-    // Vars exist but can't be read: fail LOUD. Returning an empty record here would
-    // be indistinguishable from "there were none" and let the build run without its
-    // build-time secrets (confusing failure at best, silently-wrong image at worst).
-    // Concrete trigger: ENCRYPTION_KEY rotation during the build window.
+    // Present-but-unreadable must fail loud: an empty record would let the build run without its secrets
     const envelope = EncryptedSecretValueSchema.safeParse(deployment.buildEnvVars);
 
     if (!envelope.success) {

@@ -2,19 +2,12 @@ import { glob } from "tinyglobby";
 import * as tar from "tar";
 import { logger } from "../utilities/logger.js";
 
-// The bundle dir is generated build output (bundled JS, synthesized package.json,
-// build.json, Containerfile, .trigger/skills). Unlike the source-context archiver,
-// it must NOT apply the usual build-output ignores (dist, build, .trigger) — those
-// would strip the bundle itself. node_modules must NOT be excluded either: the
-// bundler emits the controller entry points at paths mirroring the CLI's install
-// location, which contains a node_modules segment when the CLI runs via npx.
+// The bundle dir is generated build output, so the usual source ignores (dist,
+// node_modules, ...) would strip load-bearing files: under npx the controller
+// entry points live beneath a node_modules path segment.
 const BUNDLE_IGNORES = ["**/.DS_Store"];
 
-/**
- * Archives a pre-built bundle directory (the buildWorker destination) so its
- * contents land at the archive root — the build server extracts without
- * stripping path components.
- */
+// Bundle contents land at the archive root; the build server extracts without stripping
 export async function createBundleArchive(bundleDir: string, outputPath: string) {
   logger.debug("Creating bundle archive", { bundleDir, outputPath });
 

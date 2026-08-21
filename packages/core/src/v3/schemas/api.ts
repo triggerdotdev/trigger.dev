@@ -758,8 +758,7 @@ export const InitializeDeploymentResponseBody = z.object({
       }),
     })
     .optional(),
-  // Ack that the server accepted and stored buildEnvVars from the request. The CLI
-  // treats its absence (older server) as a hard error when it sent non-empty vars.
+  // Ack that buildEnvVars were stored; absence on an older server is a client-side hard error
   buildEnvVarsStored: z.boolean().optional(),
 });
 
@@ -808,11 +807,9 @@ const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.
   artifactKey: z.string().optional(),
   configFilePath: z.string().optional(),
   skipEnqueue: z.boolean().optional().default(false),
-  // The uploaded artifact is a pre-built bundle (local install + bundle already done);
-  // the build server should skip install/bundle and only run the container build.
+  // The artifact is a pre-built bundle; the build server only runs the container build
   fromBundle: z.boolean().optional(),
-  // Build-time env var values for fromBundle deploys. Stored encrypted on the
-  // deployment and cleared once the deployment reaches a terminal status.
+  // Build-time env var values for fromBundle deploys, stored encrypted on the deployment
   buildEnvVars: z.record(z.string()).optional(),
 }).superRefine((data, ctx) => {
   if (data.force && !data.externalId) {
@@ -943,8 +940,7 @@ export const GetDeploymentResponseBody = z.object({
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
 
-// Response of the dedicated build-env-vars endpoint (secret material — deliberately
-// kept off GetDeploymentResponseBody). Empty record when none were stored.
+// Secret material, deliberately kept off GetDeploymentResponseBody
 export const GetDeploymentBuildEnvVarsResponseBody = z.object({
   variables: z.record(z.string()),
 });

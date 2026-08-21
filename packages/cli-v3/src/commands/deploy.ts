@@ -105,10 +105,7 @@ type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 type Deployment = InitializeDeploymentResponseBody;
 
-// Limits for the build-arg VALUES sent with --local-bundle deploys (they only exist in
-// the in-memory build manifest — build.json is deliberately scrubbed because it gets
-// COPY'd into the image). The server enforces the same limits authoritatively; this
-// pre-check just fails fast with a friendly error before uploading anything.
+// Pre-checks of the server-enforced limits, to fail before uploading anything
 const BUILD_ENV_VARS_MAX_BYTES = 128 * 1024;
 const BUILD_ENV_VARS_MAX_KEYS = 200;
 
@@ -363,9 +360,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (options.fromBundle) {
-    // Builds the image from a pre-built bundle directory. The bundle carries no
-    // trigger.config.ts source, so this path skips config loading entirely and
-    // drives off the bundle's build.json + the deployment record.
     await handleFromBundleDeploy({
       bundleDir: options.fromBundle,
       options,
@@ -660,8 +654,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   });
 }
 
-// The shared "build the image and finalize the deployment" tail, used by the standard
-// deploy path (after bundling) and by --from-bundle (building from a pre-built bundle).
+// Shared tail of the standard deploy path (after bundling) and --from-bundle.
 async function buildAndFinalizeDeployment({
   apiClient,
   projectId,
@@ -1300,18 +1293,12 @@ async function handleNativeBuildServerDeploy({
 
   const archivePath = join(tmpDir, `deploy-${Date.now()}.tar.gz`);
 
-  // In --local-bundle mode, install + bundling happen locally (same as the classic
-  // non-native path) and only the resulting build context is uploaded; the build
-  // server then runs just the container build from it.
+  // --local-bundle: install + bundling happen locally; the server only runs the container build.
   let bundleManifest: BuildManifest | undefined;
   let bundleOutputPath: string | undefined;
-  // Build-arg values for --local-bundle, sent with the init request and stored
-  // encrypted on the deployment (they're scrubbed from build.json).
   let bundleBuildEnvVars: Record<string, string> | undefined;
 
   if (options.localBundle) {
-    // The container build runs on the build server with its own fixed settings —
-    // local build-tuning flags are not forwarded. Be honest about ignoring them.
     const ignoredBuildFlags = [
       options.compression !== "zstd" && "--compression",
       options.cacheCompression !== "zstd" && "--cache-compression",
@@ -1370,11 +1357,7 @@ async function handleNativeBuildServerDeploy({
     bundleManifest = buildManifest;
     bundleOutputPath = destination.path;
 
-    // The build-arg values (scrubbed from build.json) travel via the deployment
-    // record (sent with the init request, stored encrypted server-side) — never
-    // as a file in the bundle. Despite the manifest type, extensions can set
-    // undefined values at runtime (e.g. env?.MISSING_VAR) — drop those, they'd
-    // be stripped by JSON serialization anyway. Pre-check the server's limits.
+    // Extensions can set undefined values at runtime despite the manifest type
     bundleBuildEnvVars = Object.fromEntries(
       Object.entries(buildManifest.build.env ?? {}).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string"
@@ -1401,10 +1384,7 @@ async function handleNativeBuildServerDeploy({
       return;
     }
 
-    // Sync env vars BEFORE initializing the deployment: initialization enqueues the
-    // remote build synchronously, so syncing afterwards would race a fast build —
-    // a run triggered right after promotion could execute without the synced vars.
-    // Syncing is environment-scoped and needs no deployment, so pre-init is safe.
+    // Sync BEFORE init: init enqueues the build synchronously, so a post-init sync races a fast build
     if (!options.skipSyncEnvVars) {
       const childVars = buildManifest.deploy.sync?.env ?? {};
       const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
@@ -1467,11 +1447,8 @@ async function handleNativeBuildServerDeploy({
 
   logger.debug("Artifact created", { artifactKey });
 
-  // Version-skew guard: an older server that does not know the deployment_bundle
-  // artifact type silently stores the upload as a plain source context, and the
-  // remote build would then try to install and bundle an already-bundled directory.
-  // The bundle-specific key prefix doubles as the ack that the server understood
-  // the type, independent of whether any build env vars are sent later.
+  // The bundle key prefix is the ack that the server understood the deployment_bundle
+  // type; an older server silently stores the upload as a plain source context.
   if (options.localBundle && !artifactKey.startsWith("bundles/")) {
     $deploymentSpinner.stop("Failed creating deployment artifact");
     log.error(
@@ -1539,8 +1516,7 @@ async function handleNativeBuildServerDeploy({
     userId,
     gitMeta,
     type: config.features.run_engine_v2 ? "MANAGED" : "V1",
-    // Deliberately config.runtime (not the resolved manifest runtime) so the persisted
-    // value is identical to classic native deploys.
+    // config.runtime (not the manifest runtime) to match classic native deploys
     runtime: config.runtime,
     isNativeBuild: true,
     artifactKey,
@@ -1591,18 +1567,15 @@ async function handleNativeBuildServerDeploy({
     return;
   }
 
-  // Version-skew guard: an older server silently strips unknown fields, so if we sent
-  // build env vars and the server didn't ack storing them, the remote build would run
-  // without them and fail in a confusing way. Fail fast instead. Deliberately after
-  // the outcome=existing return: a reused deployment builds nothing, so no ack is due.
+  // No ack for sent build env vars means an older server stripped them; fail fast.
+  // After the outcome=existing return: a reused deployment builds nothing.
   if (
     options.localBundle &&
     bundleBuildEnvVars &&
     Object.keys(bundleBuildEnvVars).length > 0 &&
     !deployment.buildEnvVarsStored
   ) {
-    // Courtesy cancel so the deployment doesn't linger as PENDING until the
-    // queue timeout reaps it. Best-effort: the hard error below is what matters.
+    // Best-effort cancel so the deployment does not linger until the queue timeout
     const [cancelError] = await tryCatch(
       apiClient.cancelDeployment(deployment.id, "Build environment variables were not stored")
     );
@@ -1923,12 +1896,8 @@ export function verifyDirectory(dir: string, projectPath: string) {
   }
 }
 
-// Builds and finalizes a deployment from a pre-built bundle directory (the output of
-// the bundling step, as produced by --local-bundle / a dry-run build). Used primarily
-// by the build server to run ONLY the container build for pre-bundled artifacts, but
-// also works standalone for local testing. Skips config loading entirely — the bundle
-// has no trigger.config.ts source; everything needed comes from the bundle's build.json
-// and the deployment record (including the build-arg values, stored encrypted there).
+// Runs only the container build from a pre-built bundle dir, skipping config loading
+// entirely. Attach mode is the supported flow (build server); fresh-init is for testing.
 async function handleFromBundleDeploy({
   bundleDir,
   options,
@@ -1975,8 +1944,7 @@ async function handleFromBundleDeploy({
 
   const bundleManifest = manifestResult.data;
 
-  // Match the other deploy paths' promise: --dry-run never touches the server.
-  // Exit after the manifest is validated, before any branch/deployment calls.
+  // --dry-run must never touch the server
   if (options.dryRun) {
     logger.info(`Dry run complete. Validated bundle at ${bundlePath}`);
     return;
@@ -1992,8 +1960,7 @@ async function handleFromBundleDeploy({
     );
   }
 
-  // In attach mode the branch env already exists (it was created by whatever
-  // initialized the deployment); a fresh-init preview deploy needs the upsert.
+  // In attach mode the branch env already exists
   if (options.env === "preview" && branch && !existingDeploymentId) {
     await upsertBranch({
       accessToken: auth.accessToken,
@@ -2017,10 +1984,7 @@ async function handleFromBundleDeploy({
     throw new Error("Failed to get project client");
   }
 
-  // Recover the build-arg values scrubbed from build.json. In attach mode they were
-  // stored encrypted on the deployment by --local-bundle's init request; fetch them
-  // through the dedicated endpoint. An empty record is normal for builds that use no
-  // build-time env vars.
+  // In attach mode the build-arg values are stored encrypted on the deployment
   let buildEnvVars: Record<string, string> | undefined;
 
   if (existingDeploymentId) {
@@ -2035,16 +1999,10 @@ async function handleFromBundleDeploy({
 
     buildEnvVars = buildEnvVarsResult.data.variables;
   } else if (bundleManifest.build.env && Object.keys(bundleManifest.build.env).length > 0) {
-    // The scrubbed manifest can't carry values, but if a manifest somehow has them, use them.
     buildEnvVars = bundleManifest.build.env;
   }
 
   if (!existingDeploymentId) {
-    // The supported flow is attach mode (the build server sets
-    // TRIGGER_EXISTING_DEPLOYMENT_ID). Fresh-init from a bundle is equivalent to a
-    // plain local build and mainly useful for local testing — warn so nobody relies
-    // on it against cloud by accident. There are no stored build env vars on this
-    // path; the build proceeds without them.
     logger.warn(
       "No existing deployment to attach to — initializing a fresh local-build deployment from the bundle. This path is intended for testing."
     );

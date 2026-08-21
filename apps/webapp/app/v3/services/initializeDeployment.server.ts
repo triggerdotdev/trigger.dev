@@ -30,8 +30,7 @@ import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
-// Limits for fromBundle build env vars — they expand into --build-arg values, so
-// keep them well under exec argv limits while staying generous for env vars.
+// Build env vars expand into --build-arg values, so stay well under exec argv limits
 const BUILD_ENV_VARS_MAX_BYTES = 128 * 1024;
 const BUILD_ENV_VARS_MAX_KEYS = 200;
 
@@ -276,8 +275,6 @@ export class InitializeDeploymentService extends BaseService {
           }
         : undefined;
 
-      // Encrypt fromBundle build env vars for storage on the deployment row. Only
-      // meaningful for pre-bundled deploys; cleared on every terminal transition.
       let encryptedBuildEnvVars: Awaited<ReturnType<typeof encryptSecret>> | undefined;
 
       if (

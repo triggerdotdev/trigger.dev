@@ -314,7 +314,6 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           name: error.name,
           message: error.message,
         },
-        // Build env vars only live for the active build window
         buildEnvVars: Prisma.DbNull,
       },
     });

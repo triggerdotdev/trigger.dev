@@ -1236,11 +1236,8 @@ export function isCloud(): boolean {
     return true;
   }
 
-  // PR preview environments are cloud-style installs running against the
-  // cloud's staging services. Without this, anything gated on the billing
-  // client silently no-ops there (e.g. remote builds never get enqueued).
-  // Optional chaining: LOGIN_ORIGIN has a schema default, but test suites mock
-  // ~/env.server with partial objects and import this module transitively.
+  // Preview environments are cloud installs too; without this the billing client silently no-ops.
+  // Optional chaining because test suites mock the env module with partial objects.
   if (env.LOGIN_ORIGIN?.endsWith(".triggerlabs.dev")) {
     return true;
   }

@@ -2271,9 +2271,8 @@ model WorkerDeployment {
 
   externalBuildData   Json?
   buildServerMetadata Json?
-  /// Encrypted build-time env vars for pre-bundled (fromBundle) deploys — an
-  /// EncryptedSecretValue envelope of a JSON record. Cleared when the deployment
-  /// reaches a terminal status; only ever exists for the active build window.
+  /// Encrypted build-time env vars for pre-bundled (fromBundle) deploys, as an
+  /// EncryptedSecretValue envelope. Cleared when the deployment reaches a terminal status.
   buildEnvVars        Json?
 
   status WorkerDeploymentStatus @default(PENDING)

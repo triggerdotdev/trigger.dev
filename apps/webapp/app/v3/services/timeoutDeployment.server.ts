@@ -46,7 +46,6 @@ export class TimeoutDeploymentService extends BaseService {
         status: "TIMED_OUT",
         failedAt: new Date(),
         errorData: { message: errorMessage, name: "TimeoutError" },
-        // Build env vars only live for the active build window
         buildEnvVars: Prisma.DbNull,
       },
     });

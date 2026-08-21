@@ -227,7 +227,6 @@ export class DeploymentService extends BaseService {
             status: "CANCELED",
             canceledAt: new Date(),
             canceledReason: data?.canceledReason,
-            // Build env vars only live for the active build window
             buildEnvVars: Prisma.DbNull,
           },
         }),

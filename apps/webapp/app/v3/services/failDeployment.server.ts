@@ -49,7 +49,6 @@ export class FailDeploymentService extends BaseService {
         status: "FAILED",
         failedAt: new Date(),
         errorData: params.error,
-        // Build env vars only live for the active build window
         buildEnvVars: Prisma.DbNull,
       },
     });

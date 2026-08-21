@@ -77,7 +77,6 @@ export class FinalizeDeploymentService extends BaseService {
         deployedAt: new Date(),
         // Only add the digest, if any
         imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
-        // Build env vars only live for the active build window
         buildEnvVars: Prisma.DbNull,
       },
     });

@@ -690,7 +690,7 @@ export class CliApiClient {
     );
   }
 
-  // Best-effort cancel (204 on success, no body) — callers may ignore failures.
+  // 204 on success, no body
   async cancelDeployment(deploymentId: string, reason?: string) {
     if (!this.accessToken) {
       throw new Error("cancelDeployment: No access token");
