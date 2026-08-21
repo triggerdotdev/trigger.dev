@@ -270,7 +270,7 @@ export class RedisSnapshotStore {
     return this.#timed("getById", async () => {
       const k = snapshotKeys(runId);
       const reply = await this.redis.readSnapshotById(k.e, k.idx, k.cur, k.seq, snapshotId);
-      return this.#decode(reply, opts?.environmentId);
+      return this.#decode(reply, opts?.environmentId, runId, true);
     });
   }
 
@@ -278,7 +278,7 @@ export class RedisSnapshotStore {
     return this.#timed("getLatest", async () => {
       const k = snapshotKeys(runId);
       const reply = await this.redis.readLatestSnapshot(k.e, k.idx, k.cur, k.seq);
-      return this.#decode(reply, opts?.environmentId);
+      return this.#decode(reply, opts?.environmentId, runId, true);
     });
   }
 
@@ -329,9 +329,12 @@ export class RedisSnapshotStore {
       // env filter below -- headOrder must never be attributed to a different, surviving row.
       let headSurvived = false;
       for (let i = 2; i + 3 < reply.length; i += 4) {
+        // orderKnown is false here: headOrder covers only the head row, resolved separately below.
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
-          opts?.environmentId
+          opts?.environmentId,
+          runId,
+          false
         );
         if (decoded) {
           rows.push(decoded);
@@ -344,17 +347,35 @@ export class RedisSnapshotStore {
       const headWaitpointIds = decodeWaitpointIds(head !== undefined, head ? headOrder : "");
       if (head) {
         head.completedWaitpointIds = headWaitpointIds;
-      }
-      for (const row of rows.slice(0, -1)) {
-        delete row.completedWaitpointIds;
+        if (head.cycle) {
+          this.#checkCycleMismatch(runId, head.cycle.count, headWaitpointIds.order.length);
+        }
       }
       return { kind: "hit", entries: rows, headWaitpointIds };
     });
   }
 
+  #checkCycleMismatch(runId: string, count: number, orderLength: number): void {
+    if (orderLength === count) return;
+    this.metrics?.recordCycleMismatch();
+    this.logger.warn("RedisSnapshotStore cycle count disagrees with its order", {
+      runId,
+      count,
+      orderLength,
+    });
+  }
+
   // [id, raw, seq, pointer, order] -> SnapshotRead. The environment compare is app-side, per the
   // plan: the store returns null for a foreign environment and the 404 throw stays in the engine.
-  #decode(reply: string[] | null, environmentId?: string): SnapshotRead | null {
+  // orderKnown distinguishes "order field is genuinely empty" from "order was not read for this
+  // row" (getSince's tail rows use the same empty string for the latter) -- the mismatch check and
+  // completedWaitpointIds must both be skipped when the order was never read.
+  #decode(
+    reply: string[] | null,
+    environmentId: string | undefined,
+    runId: string,
+    orderKnown: boolean
+  ): SnapshotRead | null {
     if (!reply || reply.length === 0) return null;
     const [id, raw, seqStr, pointer, orderJson] = reply;
     const entry = JSON.parse(raw) as Record<string, unknown>;
@@ -369,7 +390,11 @@ export class RedisSnapshotStore {
     if (pointer) {
       const [cs, count] = pointer.split(":");
       read.cycle = { cycleSeq: Number(cs), count: Number(count) };
-      read.completedWaitpointIds = decodeWaitpointIds(true, orderJson);
+      if (orderKnown) {
+        const ids = decodeWaitpointIds(true, orderJson);
+        read.completedWaitpointIds = ids;
+        this.#checkCycleMismatch(runId, Number(count), ids.order.length);
+      }
     }
     return read;
   }

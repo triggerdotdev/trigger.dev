@@ -384,6 +384,58 @@ describe("cycle keys", () => {
   });
 });
 
+describe("read-side cycle mismatch", () => {
+  redisTest(
+    "warns and records a metric when a cycle's count disagrees with its order",
+    async ({ redisOptions }) => {
+      const calls: string[] = [];
+      const metrics = {
+        recordAppend: () => {},
+        recordEntryBytes: () => {},
+        recordCycleKeyBytes: () => {},
+        recordCycleCount: () => {},
+        recordSkippedNoKeyspace: () => {},
+        recordCycleMismatch: () => calls.push("mismatch"),
+        recordLatency: () => {},
+      };
+      const logger = new Logger("test", "debug");
+      const warnSpy = vi.spyOn(logger, "warn");
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000, metrics, logger });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({
+          entry: entry({ id: "s1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
+        });
+        await store.append({
+          entry: entry({ id: "s2" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "carryForward", cycleSeq: 1 },
+        });
+
+        // The pointer's count field (written at append time) survives; only the cycle key's order
+        // field is wiped, so a read must catch the disagreement instead of reporting count 1.
+        await raw.hdel("snap:{run_1}:wp:1", "order");
+
+        const read = await store.getById("run_1", "s2");
+        expect(read?.cycle).toEqual({ cycleSeq: 1, count: 1 });
+        expect(read?.completedWaitpointIds?.order).toEqual([]);
+        expect(calls).toEqual(["mismatch"]);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("cycle"),
+          expect.objectContaining({ runId: "run_1" })
+        );
+      } finally {
+        await raw.quit();
+        await store.quit();
+      }
+    }
+  );
+});
+
 describe("TTL rule", () => {
   redisTest("a non-terminal append leaves every key unexpiring", async ({ redisOptions }) => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
