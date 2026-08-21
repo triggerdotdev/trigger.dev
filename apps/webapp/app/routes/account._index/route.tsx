@@ -100,6 +100,8 @@ const MIN_CONTRAST = 0;
 
 const DEFAULT_CONTRAST_MARK = 0;
 
+const CONTRAST_SAVE_DEBOUNCE_MS = 400;
+
 function themeIcon(value: ThemePreference, appearance: ThemeAppearance) {
   const Icon = themeOptionIcon(THEME_OPTIONS_BY_VALUE[value], appearance);
   // shrink-0 stops a long label squashing the icon.
@@ -779,7 +781,7 @@ function CustomizeSidebarButton({
 export default function Page() {
   const user = useUser();
   const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
-  const themeFetcher = useFetcher();
+  const themeFetcher = useFetcher<ProfileUpdateResult>();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
   const pendingIconContrast = iconContrastFetcher.formData?.get("iconContrast");
@@ -807,8 +809,8 @@ export default function Page() {
   const appearance = useThemeAppearance(theme);
 
   // One fetcher per end, so picking both quickly can't cancel the first.
-  const systemLightFetcher = useFetcher();
-  const systemDarkFetcher = useFetcher();
+  const systemLightFetcher = useFetcher<ProfileUpdateResult>();
+  const systemDarkFetcher = useFetcher<ProfileUpdateResult>();
   const pendingSystemLight = systemLightFetcher.formData?.get("theme");
   const pendingSystemDark = systemDarkFetcher.formData?.get("theme");
   const systemLightTheme = normalizeSystemLightTheme(
@@ -833,25 +835,51 @@ export default function Page() {
     fetcher.submit({ action: "update-system-theme", end, theme: value }, { method: "post" });
   };
 
+  const storedTheme = normalizeThemePreference(user.dashboardPreferences.theme);
+  const storedSystemLight = normalizeSystemLightTheme(user.dashboardPreferences.systemLightTheme);
+  const storedSystemDark = normalizeSystemDarkTheme(user.dashboardPreferences.systemDarkTheme);
+  const themeWriteFailed = [themeFetcher, systemLightFetcher, systemDarkFetcher].some(
+    (fetcher) => fetcher.state === "idle" && fetcher.data && !fetcher.data.success
+  );
+  useEffect(() => {
+    if (themeWriteFailed) {
+      applyThemePreference(storedTheme, { light: storedSystemLight, dark: storedSystemDark });
+    }
+  }, [themeWriteFailed, storedTheme, storedSystemLight, storedSystemDark]);
+
   // Resnap to the stored value so a failed save leaves no phantom contrast.
   const [contrastPreview, setContrastPreview] = useState(contrast);
+  const [contrastToSave, setContrastToSave] = useState<number | undefined>(undefined);
   useEffect(() => {
-    if (contrastFetcher.state === "idle") {
+    if (contrastFetcher.state === "idle" && contrastToSave === undefined) {
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setContrastPreview(contrast);
       applyThemeContrast(contrast);
     }
-  }, [contrastFetcher.state, contrast]);
+  }, [contrastFetcher.state, contrast, contrastToSave]);
+
+  const contrastSubmitRef = useRef(contrastFetcher.submit);
+  useEffect(() => {
+    contrastSubmitRef.current = contrastFetcher.submit;
+  });
+  useEffect(() => {
+    if (contrastToSave === undefined) return;
+    const timer = setTimeout(() => {
+      contrastSubmitRef.current(
+        { action: "update-contrast", contrast: String(contrastToSave) },
+        { method: "post" }
+      );
+      // oxlint-disable-next-line react/set-state-in-effect -- Clears the debounce slot once the write is away.
+      setContrastToSave(undefined);
+    }, CONTRAST_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [contrastToSave]);
 
   const previewContrast = (value: number) => {
     setContrastPreview(value);
     applyThemeContrast(value);
   };
-  const saveContrast = (value: number) =>
-    contrastFetcher.submit(
-      { action: "update-contrast", contrast: String(value) },
-      { method: "post" }
-    );
+  const saveContrast = (value: number) => setContrastToSave(value);
 
   return (
     <PageContainer>
