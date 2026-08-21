@@ -230,7 +230,26 @@ describe("FairDequeuingStrategy", () => {
         envId: "env-3",
       });
 
-      const startDistribute1 = performance.now();
+      // Command counts rather than wall clock. What this test is really asserting is that
+      // the second call reuses the snapshot instead of rebuilding it, and the timing ratio
+      // it used to assert was a proxy for that: sub-millisecond durations compared as a
+      // ratio, which flakes the moment anything else is running on the box. Counting the
+      // commands the strategy issues measures the same thing and cannot be perturbed by
+      // load.
+      const counter = createRedisClient(redis);
+      const commandCount = async () => {
+        const info = await counter.info("commandstats");
+        let total = 0;
+        for (const line of info.split("\n")) {
+          const m = line.match(/^cmdstat_([a-z|]+):calls=(\d+)/);
+          if (!m || ["info", "config"].includes(m[1])) continue;
+          total += parseInt(m[2], 10);
+        }
+        return total;
+      };
+
+      await counter.config("RESETSTAT");
+      const before1 = await commandCount();
 
       const envResult = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
@@ -238,9 +257,7 @@ describe("FairDequeuingStrategy", () => {
       );
       const result = flattenResults(envResult);
 
-      const distribute1Duration = performance.now() - startDistribute1;
-
-      console.log("First distribution took", distribute1Duration, "ms");
+      const distribute1Commands = (await commandCount()) - before1;
 
       expect(result).toHaveLength(3);
       // Should only get the two oldest queues
@@ -249,33 +266,32 @@ describe("FairDequeuingStrategy", () => {
       const queue3 = keyProducer.queueKey("org-3", "proj-3", "env-3", "queue-3");
       expect(result).toEqual([queue2, queue1, queue3]);
 
-      const startDistribute2 = performance.now();
+      const before2 = await commandCount();
 
       const _result2 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
 
-      const distribute2Duration = performance.now() - startDistribute2;
+      const distribute2Commands = (await commandCount()) - before2;
 
-      console.log("Second distribution took", distribute2Duration, "ms");
+      // Reused snapshot: the second call does materially less Redis work than the first.
+      expect(distribute2Commands).toBeLessThan(distribute1Commands / 2);
 
-      // Make sure the second call is more than 2 times faster than the first
-      expect(distribute2Duration).toBeLessThan(distribute1Duration / 2);
-
-      const startDistribute3 = performance.now();
+      const before3 = await commandCount();
 
       const _result3 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
 
-      const distribute3Duration = performance.now() - startDistribute3;
+      const distribute3Commands = (await commandCount()) - before3;
 
-      console.log("Third distribution took", distribute3Duration, "ms");
+      // The snapshot has aged out by now, so the third call rebuilds it and pays the full
+      // cost again rather than the cached one.
+      expect(distribute3Commands).toBeGreaterThan(distribute2Commands * 2);
 
-      // Make sure the third call is more than 4 times the second
-      expect(distribute3Duration).toBeGreaterThan(distribute2Duration * 2);
+      await counter.quit();
     }
   );
 
