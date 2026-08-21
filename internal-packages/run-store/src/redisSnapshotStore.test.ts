@@ -689,6 +689,42 @@ describe("getSince", () => {
   );
 
   redisTest(
+    "does not donate the evicted head's waitpoints to the surviving head",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+        await store.append({
+          entry: entry({ id: "s1" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_old", index: 0 }] },
+        });
+        await store.append({
+          entry: entry({ id: "s2" }),
+          kind: "transition",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_new", index: 0 }] },
+        });
+
+        // s2 is the newest and its body is gone. s1 must come back with ITS OWN waitpoints,
+        // never s2's -- a dropped row must not donate its cycle data to the next one.
+        await raw.hdel("snap:{run_1}:e", "s2");
+
+        const r = await store.getSince("run_1", "s0");
+        expect(r.kind).toBe("hit");
+        if (r.kind !== "hit") throw new Error("unreachable");
+        expect(r.entries.map((e) => e.id)).toEqual(["s1"]);
+        expect(r.headWaitpointIds.order).toEqual(["w_old"]);
+      } finally {
+        await raw.quit();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
     "hits with zero entries when scoped to the since entry's own environment",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });

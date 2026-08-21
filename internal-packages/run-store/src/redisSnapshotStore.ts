@@ -542,20 +542,24 @@ export class RedisSnapshotStore {
         local ids = redis.call('ZREVRANGEBYSCORE', idxKey, '+inf', '(' .. score, 'LIMIT', 0, limit)
         if #ids == 0 then return { sinceRaw, '' } end
 
-        -- The head is the newest entry, and it is the ONLY one whose cycle key is read. That makes
-        -- head-only hydration structural: the tail's cycle keys are never touched.
-        local out = { sinceRaw, orderFor(redis.call('HGET', eKey, ids[1] .. '#c')) }
+        -- The head is the newest SURVIVING entry, and it is the only one whose cycle key is read.
+        -- Deriving the order after the loop keeps it paired with the row it is attached to: a row
+        -- dropped for a missing body must not donate its cycle data to the next one.
+        local out = { sinceRaw, '' }
+        local headId = nil
         for i = 1, #ids do
           local id = ids[i]
           local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
-          -- A nil body (e survived only partially, eg. idx outlived e) must drop the row, not emit
-          -- an unparseable '' that would throw out of JSON.parse in #decode.
           if vals[1] then
+            if not headId then headId = id end
             out[#out + 1] = id
             out[#out + 1] = vals[1]
             out[#out + 1] = vals[2] or ''
             out[#out + 1] = vals[3] or ''
           end
+        end
+        if headId then
+          out[2] = orderFor(redis.call('HGET', eKey, headId .. '#c'))
         end
         return out
       `,
