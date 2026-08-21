@@ -629,4 +629,56 @@ describe("getSince", () => {
       await store.quit();
     }
   });
+
+  redisTest("misses for a foreign environment even at the newest id", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+    try {
+      await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+      await store.append({ entry: entry({ id: "s1" }), kind: "transition", isTerminal: false });
+      // The window here is empty (s1 is the newest), so this is the case the old reply.length > 1
+      // guard could never catch: an empty window must not silently coerce a foreign miss into a hit.
+      expect(await store.getSince("run_1", "s1", { environmentId: "env_other" })).toEqual({
+        kind: "miss",
+      });
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "hits with zero entries when nothing follows the since id",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+        // Resolves, nothing after it: "nothing new", NOT "not found".
+        expect(await store.getSince("run_1", "s0")).toEqual({
+          kind: "hit",
+          entries: [],
+          headWaitpointIds: { present: false, distinctIds: [], order: [] },
+        });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "hits with zero entries when scoped to the since entry's own environment",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      try {
+        await store.append({ entry: entry({ id: "s0" }), kind: "birth", isTerminal: false });
+        // Matching environment, nothing after it: pins that an empty window resolves via sinceRaw,
+        // not by falling through to the "sinceRaw missing" miss path.
+        expect(await store.getSince("run_1", "s0", { environmentId: "env_1" })).toEqual({
+          kind: "hit",
+          entries: [],
+          headWaitpointIds: { present: false, distinctIds: [], order: [] },
+        });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 });

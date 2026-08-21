@@ -308,20 +308,23 @@ export class RedisSnapshotStore {
       );
       if (reply === null) return { kind: "miss" };
 
-      const headOrder = reply[0] ?? "";
+      const sinceRaw = reply[0] ?? "";
+      if (opts?.environmentId !== undefined) {
+        // Scoped by the since entry itself, same as Postgres's step-1 lookup: a foreign since id
+        // is NOT FOUND regardless of what follows it, never an empty "nothing new" hit.
+        if (sinceRaw === "") return { kind: "miss" };
+        const since = JSON.parse(sinceRaw) as { environmentId?: string };
+        if (since.environmentId !== opts.environmentId) return { kind: "miss" };
+      }
+
+      const headOrder = reply[1] ?? "";
       const rows: SnapshotRead[] = [];
-      for (let i = 1; i + 3 < reply.length + 1; i += 4) {
+      for (let i = 2; i + 3 < reply.length; i += 4) {
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
           opts?.environmentId
         );
         if (decoded) rows.push(decoded);
-      }
-
-      // The since id itself is env-scoped in the engine, so a foreign environment must miss rather
-      // than return an empty hit: an empty hit would read as "nothing new", not "not found".
-      if (opts?.environmentId !== undefined && rows.length === 0 && reply.length > 1) {
-        return { kind: "miss" };
       }
 
       rows.reverse();
@@ -531,21 +534,28 @@ export class RedisSnapshotStore {
           if not score then return nil end
         end
 
+        -- Env scoping is decided from the since entry itself, not from the window it produces.
+        local sinceRaw = redis.call('HGET', eKey, sinceId) or ''
+
         -- NEWEST-first with a limit, then reversed app-side. The engine reads createdAt desc /
         -- take N / reverse, so the oldest-first form would return the wrong window entirely.
         local ids = redis.call('ZREVRANGEBYSCORE', idxKey, '+inf', '(' .. score, 'LIMIT', 0, limit)
-        if #ids == 0 then return { '' } end
+        if #ids == 0 then return { sinceRaw, '' } end
 
         -- The head is the newest entry, and it is the ONLY one whose cycle key is read. That makes
         -- head-only hydration structural: the tail's cycle keys are never touched.
-        local out = { orderFor(redis.call('HGET', eKey, ids[1] .. '#c')) }
+        local out = { sinceRaw, orderFor(redis.call('HGET', eKey, ids[1] .. '#c')) }
         for i = 1, #ids do
           local id = ids[i]
           local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
-          out[#out + 1] = id
-          out[#out + 1] = vals[1] or ''
-          out[#out + 1] = vals[2] or ''
-          out[#out + 1] = vals[3] or ''
+          -- A nil body (e survived only partially, eg. idx outlived e) must drop the row, not emit
+          -- an unparseable '' that would throw out of JSON.parse in #decode.
+          if vals[1] then
+            out[#out + 1] = id
+            out[#out + 1] = vals[1]
+            out[#out + 1] = vals[2] or ''
+            out[#out + 1] = vals[3] or ''
+          end
         end
         return out
       `,
