@@ -188,7 +188,8 @@ export function AddSmartColumnDialog({
           </Paragraph>
 
           <div className="grid min-h-0 grid-cols-1 items-stretch gap-2.5 md:grid-cols-3">
-            <div className="flex flex-col gap-4 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+            {/* p-1/-m-1: overflow-y-auto clips at the content box, which cut the inputs' focus ring. */}
+            <div className="-m-1 flex flex-col gap-4 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
               <InputGroup fullWidth>
                 <div className={TITLE_ROW_CLASS}>
                   <Label>Source</Label>

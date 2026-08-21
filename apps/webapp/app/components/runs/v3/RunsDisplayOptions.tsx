@@ -287,6 +287,9 @@ export function RunsDisplayOptions({
   );
 }
 
+/** The label owns the focus ring (see ColumnRow), so the checkbox itself never rings. */
+const CHECKBOX_NO_RING = "focus:ring-0 group-focus:ring-0 focus-visible:ring-0";
+
 /**
  * The row's hover-revealed actions. Square, and hidden until the row is hovered or the
  * control itself takes keyboard focus (a checkbox click must not reveal them).
@@ -347,23 +350,28 @@ function ColumnRow({
     >
       {isOver && <div className="absolute inset-x-0 top-0 h-0.5 bg-indigo-500" />}
       {/* Native label so the whole name area toggles the column, matching CheckboxWithLabel. */}
+      {/* The label is the hit area, so it carries the focus ring rather than the checkbox
+          inside it, and only for keyboard focus -- a click must not ring anything. */}
       <label
         className={cn(
-          "flex h-full min-w-0 flex-1 items-center gap-x-2 pl-2",
+          "flex h-full min-w-0 flex-1 items-center gap-x-2 rounded-sm pl-2",
+          "has-[:focus-visible]:outline has-[:focus-visible]:outline-1 has-[:focus-visible]:-outline-offset-1 has-[:focus-visible]:outline-text-link",
           locked ? "cursor-default" : "cursor-pointer"
         )}
       >
         {locked ? (
-          <Checkbox checked disabled />
+          <Checkbox checked disabled className={CHECKBOX_NO_RING} />
         ) : (
-          <Checkbox checked={checked} onChange={onToggle} />
+          <Checkbox checked={checked} onChange={onToggle} className={CHECKBOX_NO_RING} />
         )}
-        <span
-          className={cn("truncate text-2sm", checked ? "text-text-bright" : "text-text-dimmed")}
-        >
-          {col.def.label}
+        <span className="flex min-w-0 items-center gap-x-1">
+          <span
+            className={cn("truncate text-2sm", checked ? "text-text-bright" : "text-text-dimmed")}
+          >
+            {col.def.label}
+          </span>
+          {isSmart && <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />}
         </span>
-        {isSmart && <SmartColumnIcon className="size-3.5 flex-none text-text-dimmed" />}
       </label>
       <div className="flex flex-none items-center gap-0.5 pr-1">
         {onRemove && (
@@ -402,7 +410,10 @@ function ColumnRow({
             variant="minimal/small"
             aria-label={`Reorder ${col.def.label} (use arrow up and down)`}
             LeadingIcon={<GripVerticalIcon className="size-4" />}
-            className={cn(ROW_ACTION_CLASS, "cursor-grab active:cursor-grabbing")}
+            className={cn(
+              ROW_ACTION_CLASS,
+              "cursor-grab group-hover/button:bg-transparent active:cursor-grabbing"
+            )}
           />
         </span>
       </div>
