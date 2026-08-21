@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.build.json",
+  "include": ["src/engine/systems/completedWaitpointFreeze.test.ts"],
+  "exclude": [],
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false
+  }
+}

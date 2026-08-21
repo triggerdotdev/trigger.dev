@@ -54,9 +54,12 @@ export type CompletedWaitpointsPointer = {
  * - `inline` holds the literal value, bounded by the pre-existing offload thresholds.
  * - `ref` holds an application/store reference that was already offloaded.
  * - `deriveFromRun` means the resolver reads TaskRun.output for completedByTaskRunId.
- *   Only a RUN record with outputIsError false uses it: TaskRun.output is a String
- *   column holding the same string verbatim, so the re-read is byte-identical. A RUN
- *   error cannot use it, because TaskRun.error is jsonb and never round-trips.
+ *   Only a RUN record with outputIsError false AND a non-null completedByTaskRunId uses
+ *   it: TaskRun.output is a String column holding the same string verbatim, so the
+ *   re-read is byte-identical. A RUN error cannot use it, because TaskRun.error is
+ *   jsonb and never round-trips. Waitpoint.completedByTaskRun is onDelete: SetNull, so
+ *   an orphaned RUN waitpoint (the completing run row was deleted) has no run left to
+ *   derive from -- its output carries inline instead.
  */
 export type CompletedWaitpointRecordOutput =
   | { inline: string }

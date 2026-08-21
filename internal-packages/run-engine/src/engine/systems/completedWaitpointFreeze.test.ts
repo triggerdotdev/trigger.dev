@@ -6,12 +6,11 @@
 import { describe, expect, it } from "vitest";
 import type { Waitpoint } from "@trigger.dev/database";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import type {
-  CompletedWaitpoint,
-} from "@trigger.dev/core/v3";
+import type { CompletedWaitpoint } from "@trigger.dev/core/v3";
 import type {
   CompletedWaitpointRecord,
   CompletedWaitpointResolver,
+  CompletedWaitpointsPointer,
   ResolveCompletedWaitpointsArgs,
 } from "@internal/run-store";
 import { enhanceExecutionSnapshotWithWaitpoints } from "./executionSnapshotSystem.js";
@@ -69,7 +68,8 @@ function recordOutputFor(w: Waitpoint): CompletedWaitpointRecord["output"] {
   // success is still deriveFromRun, and that is correct: completeAttemptSuccess receives
   // the same `output` and `outputType` the waitpoint got, so TaskRun.output holds the
   // same ref string. The re-read stays byte-identical either way.
-  if (w.type === "RUN" && !w.outputIsError) return { deriveFromRun: true };
+  if (w.type === "RUN" && !w.outputIsError && w.completedByTaskRunId)
+    return { deriveFromRun: true };
   if (w.outputType === "application/store") return { ref: w.output };
   return { inline: w.output };
 }
@@ -138,7 +138,9 @@ async function referenceResolver(
 // Proves the frozen hook signature is implementable exactly as declared. The reference
 // resolver takes its TaskRun lookup as a second parameter, so the production shape is
 // the curried form -- which is what the waitpoint lane will bind to a Prisma client.
-// If this assignment stops compiling, the frozen signature has drifted.
+// If this assignment stops compiling, the frozen signature has drifted. This file is
+// typechecked by tsconfig.freeze-test.json, wired into this package's `typecheck`
+// script, so that drift is caught -- vitest's esbuild transform alone would not catch it.
 const resolverUnderTest: CompletedWaitpointResolver = (args) =>
   referenceResolver(args, async () => undefined);
 
@@ -153,11 +155,7 @@ async function assertParity(
   batchId: string | null,
   runOutputs: Record<string, string> = {}
 ) {
-  const enhanced = enhanceExecutionSnapshotWithWaitpoints(
-    makeSnapshot(batchId),
-    waitpoints,
-    order
-  );
+  const enhanced = enhanceExecutionSnapshotWithWaitpoints(makeSnapshot(batchId), waitpoints, order);
   const resolved = await referenceResolver(
     {
       runId: "run_1",
@@ -309,6 +307,20 @@ describe("the frozen record shape", () => {
   });
 });
 
+describe("the frozen pointer shape", () => {
+  it("pins count to order.length, not the record count", () => {
+    const order = ["wp_a", "wp_b", "wp_a"];
+    const pointer: CompletedWaitpointsPointer = { cycleSeq: 7, count: order.length };
+    expect(pointer).toEqual({ cycleSeq: 7, count: 3 });
+  });
+
+  it("pins count at 0 when order is empty, even if records exist", () => {
+    const order: string[] = [];
+    const pointer: CompletedWaitpointsPointer = { cycleSeq: 7, count: order.length };
+    expect(pointer).toEqual({ cycleSeq: 7, count: 0 });
+  });
+});
+
 describe("the completed-waitpoints freeze", () => {
   it("expands a repeated id at each of its positions", async () => {
     const w = makeWaitpoint({ id: "wp_a", type: "RUN", completedByTaskRunId: "run_child" });
@@ -370,7 +382,8 @@ describe("the completed-waitpoints freeze", () => {
 
   it("resolves through the frozen hook signature", async () => {
     // Exercises resolverUnderTest, so the declared CompletedWaitpointResolver type is
-    // proved implementable at runtime and not only at compile time.
+    // proved implementable at runtime, on top of the compile-time proof at its
+    // declaration above (checked by tsconfig.freeze-test.json).
     const w = makeWaitpoint({ id: "wp_hook", type: "MANUAL" });
     const resolved = await resolverUnderTest({
       runId: "run_1",
@@ -430,6 +443,17 @@ describe("the completed-waitpoints freeze", () => {
     expect(resolved[0]!.completedAfter).toEqual(new Date("2026-03-03T00:00:00.000Z"));
   });
 
+  it("falls back off deriveFromRun when the completing run was deleted", async () => {
+    const w = makeWaitpoint({
+      id: "wp_orphan",
+      type: "RUN",
+      completedByTaskRunId: null,
+      output: '{"value":42}',
+    });
+    const { resolved } = await assertParity([w], ["wp_orphan"], null);
+    expect(resolved[0]!.output).toBe('{"value":42}');
+  });
+
   it("maps every output variant", async () => {
     const runSuccess = makeWaitpoint({
       id: "wp_run_ok",
@@ -469,13 +493,12 @@ describe("the completed-waitpoints freeze", () => {
 });
 
 describe("the freeze's two deliberate divergences", () => {
-  it("pins completedAt at write time, where the oracle samples the clock", async () => {
+  it("pins completedAt at write time, where the oracle samples the clock", () => {
     // The oracle applies `w.completedAt ?? new Date()`, so a null value changes on every
     // read. No deterministic record can match that. The record pins it once instead.
     const w = makeWaitpoint({ id: "wp_null_at", completedAt: null });
     const record = toRecord(w);
-    expect(record.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(new Date(record.completedAt).getTime()).not.toBeNaN();
+    expect(Math.abs(Date.now() - new Date(record.completedAt).getTime())).toBeLessThan(60_000);
   });
 
   it("takes batch{} from the reading entry, not the completing run's own batch", async () => {
