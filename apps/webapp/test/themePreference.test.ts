@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDashboardPreferences } from "~/utils/dashboardPreferences";
+import { parseDashboardPreferences, preserveUnknownKeys } from "~/utils/dashboardPreferences";
 import { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 
 const VALID_THEMES: ThemePreference[] = ["system", "dark", "light", "black", "white"];
@@ -58,15 +58,32 @@ describe("DashboardPreferences theme schema", () => {
     expect(result.currentProjectId).toBe("proj_123");
     expect(result.sideMenu?.isCollapsed).toBe(true);
   });
+});
 
-  it("keeps keys it does not know about, so a full-blob write cannot erase them", () => {
-    const result = parseDashboardPreferences({
+describe("preserveUnknownKeys", () => {
+  it("re-attaches a key the schema dropped, so a full-blob write can't erase it", () => {
+    const raw = {
       version: "1",
       projects: {},
       theme: "dark",
       somethingANewerDeployAdded: { nested: true },
-    });
-    expect(result.theme).toBe("dark");
+    };
+    const result = preserveUnknownKeys(raw, parseDashboardPreferences(raw));
     expect(result).toHaveProperty("somethingANewerDeployAdded", { nested: true });
+    expect(result.theme).toBe("dark");
+  });
+
+  it("lets the parsed value win for keys the schema does know", () => {
+    const raw = { version: "1", projects: {}, theme: "dark", contrast: 40 };
+    const result = preserveUnknownKeys(raw, { ...parseDashboardPreferences(raw), contrast: 10 });
+    expect(result.contrast).toBe(10);
+  });
+
+  it("passes the update straight through when there is nothing extra to keep", () => {
+    const raw = { version: "1", projects: {} };
+    const parsed = parseDashboardPreferences(raw);
+    expect(preserveUnknownKeys(raw, parsed)).toBe(parsed);
+    expect(preserveUnknownKeys(null, parsed)).toBe(parsed);
+    expect(preserveUnknownKeys("nonsense", parsed)).toBe(parsed);
   });
 });

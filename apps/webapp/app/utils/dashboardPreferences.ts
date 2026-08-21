@@ -67,7 +67,7 @@ const DashboardPreferences = z.object({
     })
   ),
   sideMenu: SideMenuPreferences.optional(),
-}).passthrough();
+});
 
 export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
 
@@ -96,6 +96,27 @@ export function parseDashboardPreferences(
   }
 
   return result.data;
+}
+
+/**
+ * Re-attach keys the schema dropped, so a full-blob write preserves fields this
+ * deploy was not compiled against. The parsed result wins for every key it
+ * carries, including ones it deliberately cleared to undefined.
+ */
+export function preserveUnknownKeys(
+  raw: unknown,
+  updated: DashboardPreferences
+): DashboardPreferences {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return updated;
+  }
+
+  const known = new Set(Object.keys(DashboardPreferences.shape));
+  const unknownKeys = Object.entries(raw as Record<string, unknown>).filter(
+    ([key]) => !known.has(key)
+  );
+
+  return unknownKeys.length > 0 ? { ...Object.fromEntries(unknownKeys), ...updated } : updated;
 }
 
 /**

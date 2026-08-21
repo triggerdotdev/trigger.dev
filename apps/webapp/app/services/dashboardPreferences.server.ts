@@ -5,6 +5,7 @@ import {
   type DashboardPreferences,
   type FavoritePage,
   mergeHiddenItems,
+  preserveUnknownKeys,
   parseDashboardPreferences,
   SideMenuPreferences,
 } from "~/utils/dashboardPreferences";
@@ -51,7 +52,8 @@ async function mutateDashboardPreferences(
         return undefined;
       }
 
-      const updated = mutate(getDashboardPreferences(rows[0].dashboardPreferences));
+      const raw = rows[0].dashboardPreferences;
+      const updated = mutate(getDashboardPreferences(raw));
       if (!updated) {
         return undefined;
       }
@@ -61,7 +63,7 @@ async function mutateDashboardPreferences(
           id: userId,
         },
         data: {
-          dashboardPreferences: updated,
+          dashboardPreferences: preserveUnknownKeys(raw, updated),
         },
       });
     },
@@ -469,6 +471,7 @@ export async function updateSideMenuCustomization({
   sectionItemOrder,
   favorites,
   removedFavoriteIds,
+  knownItemIds,
 }: {
   user: UserFromSession;
   /** undefined = leave unchanged, null = reset to default */
