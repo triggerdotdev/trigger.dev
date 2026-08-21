@@ -163,7 +163,7 @@ export class DequeueSystem {
             ? Math.max(0, Date.now() - message.message.eligibleAtMs)
             : undefined;
 
-        this.$.logger.info("DequeueSystem.dequeueFromWorkerQueue dequeued message", {
+        this.$.logger.debug("DequeueSystem.dequeueFromWorkerQueue dequeued message", {
           runId,
           orgId,
           environmentId: message.message.environmentId,

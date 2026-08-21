@@ -25,7 +25,8 @@
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",
     "test:perf": "vitest --config ./vitest.perf.config.ts --run",
-    "eval:dev": "evalite watch"
+    "eval:dev": "evalite watch",
+    "test:bench": "vitest --config ./vitest.bench.config.ts --run"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.0",
