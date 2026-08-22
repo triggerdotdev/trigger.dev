@@ -50,6 +50,16 @@ export interface SessionStreamManager {
     handler: (data: unknown) => void | boolean | Promise<void>
   ): { off: () => void };
 
+  /**
+   * Register a handler that receives the full record, including its sequence
+   * number. Same consume semantics as {@link on}.
+   */
+  onRecord?(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: (record: SessionStreamRecord) => void | boolean | Promise<void>
+  ): { off: () => void };
+
   /** Wait for the next record on the given channel (buffered or live). */
   once(
     sessionId: string,
@@ -81,26 +91,6 @@ export interface SessionStreamManager {
 
   /** Non-blocking peek at the head record, including its durable metadata. */
   peekRecord?(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined;
-
-  /**
-   * Narrow which buffered records hold the persisted cursor back. Absent means
-   * every record does.
-   */
-  /** The highest consumed sequence, unclamped. */
-  highestConsumedSeqNum?(sessionId: string, io: SessionChannelIO): number | undefined;
-
-  /** Mark records that must never be delivered again on this boot. */
-  setDropPredicate?(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void;
-
-  setCursorBarrier?(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void;
 
   /** Last S2 sequence number seen on the given channel. */
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
@@ -146,6 +136,9 @@ export interface SessionStreamManager {
 
   /** Abort the SSE tail while preserving buffered records. Called before `.wait` suspends. */
   disconnectStream(sessionId: string, io: SessionChannelIO): void;
+
+  /** Re-open a channel closed by {@link disconnectStream}, registering nothing. */
+  reconnectStream?(sessionId: string, io: SessionChannelIO): void;
 
   /** Clear all `.on` handlers; abort tails without pending once-waiters. */
   clearHandlers(): void;

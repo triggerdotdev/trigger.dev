@@ -7,7 +7,7 @@ import type { SessionStreamRecord } from "./types.js";
  * - `at-arrival`: it goes to a live handler or nowhere. A record that only
  *   means something to the turn that is live when it lands (a stop) is this.
  */
-type RouteDelivery = "queue" | "at-arrival";
+export type RouteDelivery = "queue" | "at-arrival";
 
 /**
  * One route: which kinds it owns, whether it waits for a consumer, and whether
@@ -25,7 +25,7 @@ type RouteDelivery = "queue" | "at-arrival";
  * The fourth is a contradiction (discard it when nobody is listening, yet
  * recover it later) and the table rejects it.
  */
-type SessionRoute = {
+export type SessionRoute = {
   /** Unique within a table. */
   name: string;
   delivery: RouteDelivery;

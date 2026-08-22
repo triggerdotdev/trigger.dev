@@ -5,7 +5,12 @@ import "../src/v3/test/index.js";
 import { resourceCatalog, sessionStreams } from "@trigger.dev/core/v3";
 import { runInMockTaskContext } from "@trigger.dev/core/v3/test";
 import { describe, expect, it } from "vitest";
-import { chat, type ChatMessageRecord, type ChatTaskWirePayload } from "../src/v3/ai.js";
+import {
+  __chatInputCheckpointForTests as chatInputCheckpoint,
+  chat,
+  type ChatMessageRecord,
+  type ChatTaskWirePayload,
+} from "../src/v3/ai.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -52,10 +57,10 @@ describe("chat.messages mailbox", () => {
 
         observations.before = await chat.messages.hasPending();
         observations.first = await chat.messages.next();
-        observations.cursorAfterFirst = sessionStreams.lastDispatchedSeqNum(chatId, "in");
+        observations.cursorAfterFirst = chatInputCheckpoint().resumeFrom;
         observations.afterFirst = await chat.messages.hasPending();
         observations.second = await chat.messages.next();
-        observations.cursorAfterSecond = sessionStreams.lastDispatchedSeqNum(chatId, "in");
+        observations.cursorAfterSecond = chatInputCheckpoint().resumeFrom;
         observations.afterSecond = await chat.messages.hasPending();
       },
     });
@@ -118,19 +123,15 @@ describe("chat.messages mailbox", () => {
     expect(result).toBeUndefined();
   });
 
-  it("leaves earlier non-message records for their own consumer", async () => {
+  it("delivers a message that arrived behind another kind, without losing that kind", async () => {
     const chatId = "mailbox-mixed-kinds";
     const ready = deferred();
     const inspect = deferred();
     const observations: {
       pending?: boolean;
-      blocked?: ChatMessageRecord;
-      cursorAfterBlocked?: number;
-      headAfterBlocked?: unknown;
-      control?: unknown;
-      pendingAfterControl?: boolean;
       message?: ChatMessageRecord;
-      cursorAfterMessage?: number;
+      handover?: unknown;
+      cursorAfter?: number;
     } = {};
 
     const agent = chat.customAgent({
@@ -140,15 +141,12 @@ describe("chat.messages mailbox", () => {
         await inspect.promise;
 
         observations.pending = await chat.messages.hasPending();
-        observations.blocked = await chat.messages.next({ timeoutInSeconds: 0 });
-        observations.cursorAfterBlocked = sessionStreams.lastDispatchedSeqNum(chatId, "in");
-        observations.headAfterBlocked = sessionStreams.peekRecord(chatId, "in");
-
-        const control = await sessionStreams.onceRecord(chatId, "in");
-        observations.control = control.ok ? control.output : undefined;
-        observations.pendingAfterControl = await chat.messages.hasPending();
         observations.message = await chat.messages.next({ timeoutInSeconds: 0 });
-        observations.cursorAfterMessage = sessionStreams.lastDispatchedSeqNum(chatId, "in");
+        observations.handover = await chat.waitForHandover({
+          payload: { trigger: "handover-prepare" },
+          idleTimeoutInSeconds: 0,
+        });
+        observations.cursorAfter = chatInputCheckpoint().resumeFrom;
       },
     });
     const run = resourceCatalog.getTask(agent.id)?.fns.run;
@@ -177,38 +175,30 @@ describe("chat.messages mailbox", () => {
       await runPromise;
     });
 
+    // The handover has its own route, so it neither blocks the message behind
+    // it nor gets destroyed by the consumer that took that message.
     expect(observations).toEqual({
-      pending: false,
-      blocked: undefined,
-      cursorAfterBlocked: undefined,
-      headAfterBlocked: {
-        id: "handover-1",
-        seqNum: 30,
-        data: { kind: "handover", partialAssistantMessage: [], isFinal: false },
-      },
-      control: {
-        id: "handover-1",
-        seqNum: 30,
-        data: { kind: "handover", partialAssistantMessage: [], isFinal: false },
-      },
-      pendingAfterControl: true,
+      pending: true,
       message: {
         id: "message-1",
         seqNum: 31,
         payload: userPayload(chatId, "u-after-handover"),
       },
-      cursorAfterMessage: 31,
+      handover: { kind: "handover", partialAssistantMessage: [], isFinal: false },
+      cursorAfter: 31,
     });
   });
 
-  it("keeps the cursor behind a buffered message when a later stop is consumed", async () => {
+  it("holds the resume cursor behind a queued message while a later stop advances the replay window", async () => {
     const chatId = "mailbox-cursor-gap";
     const ready = deferred();
     const inspect = deferred();
     const observations: {
       cursorBefore?: number;
+      appliedBefore?: number;
       message?: ChatMessageRecord;
       cursorAfter?: number;
+      appliedAfter?: number;
     } = {};
 
     const agent = chat.customAgent({
@@ -218,9 +208,11 @@ describe("chat.messages mailbox", () => {
         ready.resolve();
         await inspect.promise;
 
-        observations.cursorBefore = sessionStreams.lastDispatchedSeqNum(chatId, "in");
+        observations.cursorBefore = chatInputCheckpoint().resumeFrom;
+        observations.appliedBefore = chatInputCheckpoint().appliedThrough;
         observations.message = await chat.messages.next({ timeoutInSeconds: 0 });
-        observations.cursorAfter = sessionStreams.lastDispatchedSeqNum(chatId, "in");
+        observations.cursorAfter = chatInputCheckpoint().resumeFrom;
+        observations.appliedAfter = chatInputCheckpoint().appliedThrough;
         stop.cleanup();
       },
     });
@@ -249,13 +241,16 @@ describe("chat.messages mailbox", () => {
     });
 
     expect(observations).toEqual({
+      // Held below the queued message even though the stop after it was applied.
       cursorBefore: 49,
+      appliedBefore: 51,
       message: {
         id: "message-1",
         seqNum: 50,
         payload: userPayload(chatId, "u1"),
       },
       cursorAfter: 51,
+      appliedAfter: 51,
     });
   });
 

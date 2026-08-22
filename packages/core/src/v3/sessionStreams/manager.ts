@@ -17,6 +17,17 @@ import { controlSubtype } from "./wireProtocol.js";
 // available to other consumers. See `SessionStreamManager.on` in types.ts.
 type SessionStreamHandler = (data: unknown) => void | boolean | Promise<void>;
 
+/**
+ * A handler that sees the whole record rather than just its payload. Consumers
+ * that route by sequence number need the metadata, the same reason
+ * `onceRecord` exists alongside `once`.
+ */
+type SessionStreamRecordHandler = (record: SessionStreamRecord) => void | boolean | Promise<void>;
+
+type RegisteredHandler =
+  | { kind: "data"; fn: SessionStreamHandler }
+  | { kind: "record"; fn: SessionStreamRecordHandler };
+
 type OnceWaiter = {
   resolve: (result: InputStreamOnceResult<SessionStreamRecord>) => void;
   reject: (error: Error) => void;
@@ -48,7 +59,7 @@ function keyFor(sessionId: string, io: SessionChannelIO): string {
  * stream SSE.
  */
 export class StandardSessionStreamManager implements SessionStreamManager {
-  private handlers = new Map<string, Set<SessionStreamHandler>>();
+  private handlers = new Map<string, Set<RegisteredHandler>>();
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, SessionStreamRecord[]>();
   private tails = new Map<string, TailState>();
@@ -71,23 +82,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   // without depending on buffer traversal.
   private unconsumedSeqNums = new Map<string, Set<number>>();
 
-  /**
-   * Per-channel predicate deciding which buffered records hold the persisted
-   * cursor back. Absent means every record does, which is the conservative
-   * default. Consumers that know their record kinds narrow it so the cursor is
-   * only held behind records whose loss would matter.
-   */
-  private cursorBarriers = new Map<string, SessionStreamRecordPredicate>();
-
-  /**
-   * Per-channel predicate marking records that must not be delivered again.
-   * A resume cursor held back behind an unhandled record necessarily replays
-   * everything after it, including records that WERE handled before the
-   * previous run ended. Re-delivering those is not harmless: a control record
-   * applies a second time to whatever turn happens to be live. This lets the
-   * consumer name the ones to drop.
-   */
-  private dropPredicates = new Map<string, SessionStreamRecordPredicate>();
   // High-water mark of seq_nums that have been *consumed* (delivered to a
   // once() waiter or shifted off the buffer into a once() caller) on a channel.
   // Distinct from `seqNums`, which advances whenever any record is
@@ -110,6 +104,26 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   ) {}
 
   on(sessionId: string, io: SessionChannelIO, handler: SessionStreamHandler): { off: () => void } {
+    return this.#register(sessionId, io, { kind: "data", fn: handler });
+  }
+
+  /**
+   * Register a handler that receives the full record, including its sequence
+   * number. Same consume semantics as {@link on}: returning `true` consumes.
+   */
+  onRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: SessionStreamRecordHandler
+  ): { off: () => void } {
+    return this.#register(sessionId, io, { kind: "record", fn: handler });
+  }
+
+  #register(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: RegisteredHandler
+  ): { off: () => void } {
     const key = keyFor(sessionId, io);
 
     let handlerSet = this.handlers.get(key);
@@ -139,7 +153,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     if (buffered && buffered.length > 0) {
       const keptRecords: SessionStreamRecord[] = [];
       for (const record of buffered) {
-        const consumed = this.#invokeHandler(handler, record.data);
+        const consumed = this.#invokeHandler(handler, record);
         if (consumed) {
           this.#advanceLastDispatched(key, record.seqNum);
         } else {
@@ -347,55 +361,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
-  /** The highest consumed sequence, unclamped. @see lastDispatchedSeqNum */
-  highestConsumedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.lastDispatchedSeqNums.get(keyFor(sessionId, io));
-  }
-
-  setDropPredicate(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void {
-    const key = keyFor(sessionId, io);
-    if (predicate) {
-      this.dropPredicates.set(key, predicate);
-    } else {
-      this.dropPredicates.delete(key);
-    }
-  }
-
-  setCursorBarrier(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void {
-    const key = keyFor(sessionId, io);
-    if (predicate) {
-      this.cursorBarriers.set(key, predicate);
-    } else {
-      this.cursorBarriers.delete(key);
-    }
-  }
-
-  /**
-   * Fails safe: an absent or throwing predicate treats the record as a barrier,
-   * so a mistake here can only make the cursor more conservative, never skip a
-   * record.
-   */
-  #isCursorBarrier(key: string, record: SessionStreamRecord): boolean {
-    const predicate = this.cursorBarriers.get(key);
-    if (!predicate) return true;
-    try {
-      return predicate(record);
-    } catch (error) {
-      if (this.debug) {
-        console.error("[SessionStreamManager] Cursor barrier predicate error:", error);
-      }
-      return true;
-    }
-  }
-
   #markUnconsumedRecord(key: string, seqNum: number): void {
     if (!Number.isFinite(seqNum)) return;
 
@@ -457,6 +422,19 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.reconnectAttempts.delete(key);
   }
 
+  /**
+   * Re-open a channel that `disconnectStream` closed, without registering a
+   * new consumer. A single long-lived reader (the session channel router) has
+   * to be able to bring its own tail back after a suspend, and re-attaching
+   * its handler just to clear the suppression flag would replay the buffer at
+   * it.
+   */
+  reconnectStream(sessionId: string, io: SessionChannelIO): void {
+    const key = keyFor(sessionId, io);
+    this.explicitlyDisconnected.delete(key);
+    this.#ensureTailConnected(sessionId, io);
+  }
+
   clearHandlers(): void {
     this.handlers.clear();
 
@@ -490,8 +468,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.seqNums.clear();
     this.lastDispatchedSeqNums.clear();
     this.unconsumedSeqNums.clear();
-    this.cursorBarriers.clear();
-    this.dropPredicates.clear();
     this.minTimestamps.clear();
     this.handlers.clear();
     this.reconnectAttempts.clear();
@@ -634,24 +610,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   }
 
   #dispatch(key: string, record: SessionStreamRecord): void {
-    const drop = this.dropPredicates.get(key);
-    if (drop) {
-      let shouldDrop = false;
-      try {
-        shouldDrop = drop(record);
-      } catch (error) {
-        if (this.debug) {
-          console.error("[SessionStreamManager] Drop predicate error:", error);
-        }
-      }
-      if (shouldDrop) {
-        // Acknowledge it so the tail does not fetch it again, but never hand
-        // it to a waiter or a handler.
-        this.#advanceLastDispatched(key, record.seqNum);
-        return;
-      }
-    }
-
     // Any record flowing through = healthy connection; reset the backoff
     // counter so the next disconnect starts fresh.
     this.reconnectAttempts.delete(key);
@@ -665,7 +623,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       // records advance the cursor in `once()` / `shiftBuffer()`.
       this.#advanceLastDispatched(key, record.seqNum);
       waiter.resolve({ ok: true, output: record });
-      this.#invokeHandlers(key, record.data);
+      this.#invokeHandlers(key, record);
       return;
     }
 
@@ -677,7 +635,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     // second turn. Records no handler consumed (e.g. a message arriving
     // while only the stop facade is attached during preload) are buffered
     // so a subsequent `once()` can still pick them up.
-    const consumed = this.#invokeHandlers(key, record.data);
+    const consumed = this.#invokeHandlers(key, record);
     if (consumed) {
       this.#advanceLastDispatched(key, record.seqNum);
       return;
@@ -689,9 +647,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(record);
-    if (this.#isCursorBarrier(key, record)) {
-      this.#markUnconsumedRecord(key, record.seqNum);
-    }
+    this.#markUnconsumedRecord(key, record.seqNum);
     this.#drainOnceWaitersFromBuffer(key);
   }
 
@@ -736,12 +692,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   }
 
   /** Returns true when any handler consumed the record. All handlers are invoked regardless. */
-  #invokeHandlers(key: string, data: unknown): boolean {
+  #invokeHandlers(key: string, record: SessionStreamRecord): boolean {
     const handlers = this.handlers.get(key);
     if (!handlers) return false;
     let consumed = false;
     for (const handler of handlers) {
-      if (this.#invokeHandler(handler, data)) {
+      if (this.#invokeHandler(handler, record)) {
         consumed = true;
       }
     }
@@ -749,9 +705,9 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   }
 
   /** Returns true when the handler synchronously consumed the record (returned `true`). */
-  #invokeHandler(handler: SessionStreamHandler, data: unknown): boolean {
+  #invokeHandler(handler: RegisteredHandler, record: SessionStreamRecord): boolean {
     try {
-      const result = handler(data);
+      const result = handler.kind === "record" ? handler.fn(record) : handler.fn(record.data);
       if (result === true) return true;
       if (result && typeof result === "object" && "catch" in result) {
         (result as Promise<void>).catch((error) => {

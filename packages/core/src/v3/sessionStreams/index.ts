@@ -41,6 +41,18 @@ export class SessionStreamsAPI implements SessionStreamManager {
     return this.#getManager().on(sessionId, io, handler);
   }
 
+  public onRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: (record: SessionStreamRecord) => void | boolean | Promise<void>
+  ): { off: () => void } {
+    const manager = this.#getManager();
+    if (!manager.onRecord) {
+      throw new Error("The configured Session stream manager does not support record handlers");
+    }
+    return manager.onRecord(sessionId, io, handler);
+  }
+
   public once(
     sessionId: string,
     io: SessionChannelIO,
@@ -86,26 +98,6 @@ export class SessionStreamsAPI implements SessionStreamManager {
     return manager.peekRecord(sessionId, io);
   }
 
-  public highestConsumedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.#getManager().highestConsumedSeqNum?.(sessionId, io);
-  }
-
-  public setDropPredicate(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void {
-    this.#getManager().setDropPredicate?.(sessionId, io, predicate);
-  }
-
-  public setCursorBarrier(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void {
-    this.#getManager().setCursorBarrier?.(sessionId, io, predicate);
-  }
-
   public lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
     return this.#getManager().lastSeqNum(sessionId, io);
   }
@@ -140,6 +132,10 @@ export class SessionStreamsAPI implements SessionStreamManager {
 
   public shiftBuffer(sessionId: string, io: SessionChannelIO): boolean {
     return this.#getManager().shiftBuffer(sessionId, io);
+  }
+
+  public reconnectStream(sessionId: string, io: SessionChannelIO): void {
+    this.#getManager().reconnectStream?.(sessionId, io);
   }
 
   public disconnectStream(sessionId: string, io: SessionChannelIO): void {

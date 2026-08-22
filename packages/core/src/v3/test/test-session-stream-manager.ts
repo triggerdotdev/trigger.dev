@@ -20,6 +20,9 @@ type OnceWaiter = {
 // returns `true` CONSUMES the record (not buffered, not re-delivered on a
 // future `on()` attach). See `SessionStreamManager.on` in types.ts.
 type Handler = (data: unknown) => void | boolean | Promise<void>;
+type RecordHandler = (record: SessionStreamRecord) => void | boolean | Promise<void>;
+
+type RegisteredHandler = { kind: "data"; fn: Handler } | { kind: "record"; fn: RecordHandler };
 
 function keyFor(sessionId: string, io: SessionChannelIO): string {
   return `${sessionId}:${io}`;
@@ -35,16 +38,25 @@ function keyFor(sessionId: string, io: SessionChannelIO): string {
  * registered are buffered so the first `once()` picks them up.
  */
 export class TestSessionStreamManager implements SessionStreamManager {
-  private handlers = new Map<string, Set<Handler>>();
+  private handlers = new Map<string, Set<RegisteredHandler>>();
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, SessionStreamRecord[]>();
   private seqNums = new Map<string, number>();
   private dispatchedSeqNums = new Map<string, number>();
-  private unconsumedSeqNums = new Map<string, Set<number>>();
-  private cursorBarriers = new Map<string, SessionStreamRecordPredicate>();
-  private dropPredicates = new Map<string, SessionStreamRecordPredicate>();
 
   on(sessionId: string, io: SessionChannelIO, handler: Handler): { off: () => void } {
+    return this.#register(sessionId, io, { kind: "data", fn: handler });
+  }
+
+  onRecord(sessionId: string, io: SessionChannelIO, handler: RecordHandler): { off: () => void } {
+    return this.#register(sessionId, io, { kind: "record", fn: handler });
+  }
+
+  #register(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: RegisteredHandler
+  ): { off: () => void } {
     const key = keyFor(sessionId, io);
 
     let set = this.handlers.get(key);
@@ -68,7 +80,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
       for (const record of buffered) {
         let consumed = false;
         try {
-          consumed = handler(record.data) === true;
+          consumed = this.#callHandler(handler, record) === true;
         } catch {
           // Never let a handler error break test state
         }
@@ -199,30 +211,6 @@ export class TestSessionStreamManager implements SessionStreamManager {
     return this.peekRecord(sessionId, io)?.data;
   }
 
-  highestConsumedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.dispatchedSeqNums.get(keyFor(sessionId, io));
-  }
-
-  setDropPredicate(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void {
-    const key = keyFor(sessionId, io);
-    if (predicate) this.dropPredicates.set(key, predicate);
-    else this.dropPredicates.delete(key);
-  }
-
-  setCursorBarrier(
-    sessionId: string,
-    io: SessionChannelIO,
-    predicate: SessionStreamRecordPredicate | undefined
-  ): void {
-    const key = keyFor(sessionId, io);
-    if (predicate) this.cursorBarriers.set(key, predicate);
-    else this.cursorBarriers.delete(key);
-  }
-
   peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
     return this.buffer.get(keyFor(sessionId, io))?.[0];
   }
@@ -252,20 +240,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
   }
 
   lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    const key = keyFor(sessionId, io);
-    const highWatermark = this.dispatchedSeqNums.get(key);
-    if (highWatermark === undefined) return undefined;
-
-    const unconsumedSeqNums = this.unconsumedSeqNums.get(key);
-    if (!unconsumedSeqNums || unconsumedSeqNums.size === 0) return highWatermark;
-
-    let earliestUnconsumedSeqNum = Infinity;
-    for (const seqNum of unconsumedSeqNums) {
-      earliestUnconsumedSeqNum = Math.min(earliestUnconsumedSeqNum, seqNum);
-    }
-
-    const safeCursor = Math.min(highWatermark, earliestUnconsumedSeqNum - 1);
-    return safeCursor >= 0 ? safeCursor : undefined;
+    return this.dispatchedSeqNums.get(keyFor(sessionId, io));
   }
 
   setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
@@ -275,40 +250,10 @@ export class TestSessionStreamManager implements SessionStreamManager {
   }
 
   #advanceLastDispatched(key: string, seqNum: number): void {
-    this.#removeUnconsumedRecord(key, seqNum);
     if (!Number.isFinite(seqNum)) return;
     const current = this.dispatchedSeqNums.get(key);
     if (current === undefined || seqNum > current) {
       this.dispatchedSeqNums.set(key, seqNum);
-    }
-  }
-
-  #isCursorBarrier(key: string, record: SessionStreamRecord): boolean {
-    const predicate = this.cursorBarriers.get(key);
-    if (!predicate) return true;
-    try {
-      return predicate(record);
-    } catch {
-      return true;
-    }
-  }
-
-  #markUnconsumedRecord(key: string, seqNum: number): void {
-    if (!Number.isFinite(seqNum)) return;
-
-    let unconsumedSeqNums = this.unconsumedSeqNums.get(key);
-    if (!unconsumedSeqNums) {
-      unconsumedSeqNums = new Set();
-      this.unconsumedSeqNums.set(key, unconsumedSeqNums);
-    }
-    unconsumedSeqNums.add(seqNum);
-  }
-
-  #removeUnconsumedRecord(key: string, seqNum: number): void {
-    const unconsumedSeqNums = this.unconsumedSeqNums.get(key);
-    unconsumedSeqNums?.delete(seqNum);
-    if (unconsumedSeqNums?.size === 0) {
-      this.unconsumedSeqNums.delete(key);
     }
   }
 
@@ -357,7 +302,6 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.buffer.clear();
     this.seqNums.clear();
     this.dispatchedSeqNums.clear();
-    this.unconsumedSeqNums.clear();
   }
 
   disconnect(): void {
@@ -411,42 +355,24 @@ export class TestSessionStreamManager implements SessionStreamManager {
     if (waiter) {
       this.#advanceLastDispatched(key, record.seqNum);
       waiter.resolve({ ok: true, output: record });
-      await this.#invokeHandlers(key, record.data);
+      await this.#invokeHandlers(key, record);
       return;
     }
 
-    const consumed = await this.#invokeHandlers(key, record.data);
-    if (consumed) {
+    const { consumed, settled } = this.#invokeHandlersSync(key, record);
+    if (!consumed) {
+      let buffered = this.buffer.get(key);
+      if (!buffered) {
+        buffered = [];
+        this.buffer.set(key, buffered);
+      }
+      buffered.push(record);
+      this.#drainOnceWaitersFromBuffer(key);
+    } else {
       this.#advanceLastDispatched(key, record.seqNum);
-      return;
     }
 
-    // Re-check waiters: handler invocation above is awaited (unlike the
-    // synchronous production dispatch), and the runtime commonly registers
-    // its next `once()` during that window — e.g. the turn loop reaching
-    // `waitWithIdleTimeout` while a handler settles. Without this second
-    // look the record would be buffered while the fresh waiter hangs.
-    const bufferedAfterHandlers = this.buffer.get(key);
-    const lateWaiter =
-      bufferedAfterHandlers && bufferedAfterHandlers.length > 0
-        ? undefined
-        : this.#takeOnceWaiter(key, record);
-    if (lateWaiter) {
-      this.#advanceLastDispatched(key, record.seqNum);
-      lateWaiter.resolve({ ok: true, output: record });
-      return;
-    }
-
-    let buffered = this.buffer.get(key);
-    if (!buffered) {
-      buffered = [];
-      this.buffer.set(key, buffered);
-    }
-    buffered.push(record);
-    if (this.#isCursorBarrier(key, record)) {
-      this.#markUnconsumedRecord(key, record.seqNum);
-    }
-    this.#drainOnceWaitersFromBuffer(key);
+    await settled;
   }
 
   #takeOnceWaiter(key: string, record: SessionStreamRecord): OnceWaiter | undefined {
@@ -492,26 +418,49 @@ export class TestSessionStreamManager implements SessionStreamManager {
    * Wrapped per-handler so a throwing/rejecting handler doesn't poison
    * Promise.all and break unrelated test state.
    */
-  async #invokeHandlers(key: string, data: unknown): Promise<boolean> {
+  async #invokeHandlers(key: string, record: SessionStreamRecord): Promise<boolean> {
+    const { consumed, settled } = this.#invokeHandlersSync(key, record);
+    await settled;
+    return consumed;
+  }
+
+  /**
+   * Decide consumption synchronously, exactly like the production dispatch,
+   * and hand back a promise for any async handler work so callers can still
+   * await it. Splitting the decision from the awaiting is what keeps a handler
+   * registered mid-dispatch from seeing an inconsistent buffer.
+   */
+  #invokeHandlersSync(
+    key: string,
+    record: SessionStreamRecord
+  ): { consumed: boolean; settled: Promise<unknown> } {
     const handlers = this.handlers.get(key);
-    if (!handlers || handlers.size === 0) return false;
+    if (!handlers || handlers.size === 0) {
+      return { consumed: false, settled: Promise.resolve() };
+    }
 
     let consumed = false;
-    await Promise.all(
-      Array.from(handlers).map(async (h) => {
-        try {
-          const result = h(data);
-          if (result === true) {
-            consumed = true;
-            return;
-          }
-          await result;
-        } catch {
-          // Never let a handler error break test state
+    const pending: Array<Promise<unknown>> = [];
+    for (const handler of Array.from(handlers)) {
+      try {
+        const result = this.#callHandler(handler, record);
+        if (result === true) {
+          consumed = true;
+          continue;
         }
-      })
-    );
-    return consumed;
+        if (result) pending.push(Promise.resolve(result).catch(() => {}));
+      } catch {
+        continue;
+      }
+    }
+    return { consumed, settled: Promise.all(pending) };
+  }
+
+  #callHandler(
+    handler: RegisteredHandler,
+    record: SessionStreamRecord
+  ): void | boolean | Promise<void> {
+    return handler.kind === "record" ? handler.fn(record) : handler.fn(record.data);
   }
 
   /**

@@ -16,6 +16,14 @@ export class NoopSessionStreamManager implements SessionStreamManager {
     return { off: () => {} };
   }
 
+  onRecord(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _handler: (record: SessionStreamRecord) => void | boolean | Promise<void>
+  ): { off: () => void } {
+    return { off: () => {} };
+  }
+
   once(
     _sessionId: string,
     _io: SessionChannelIO,
@@ -55,22 +63,6 @@ export class NoopSessionStreamManager implements SessionStreamManager {
     return undefined;
   }
 
-  highestConsumedSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
-    return undefined;
-  }
-
-  setDropPredicate(
-    _sessionId: string,
-    _io: SessionChannelIO,
-    _predicate: SessionStreamRecordPredicate | undefined
-  ): void {}
-
-  setCursorBarrier(
-    _sessionId: string,
-    _io: SessionChannelIO,
-    _predicate: SessionStreamRecordPredicate | undefined
-  ): void {}
-
   lastSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
     return undefined;
   }
@@ -96,6 +88,8 @@ export class NoopSessionStreamManager implements SessionStreamManager {
   }
 
   disconnectStream(_sessionId: string, _io: SessionChannelIO): void {}
+
+  reconnectStream(_sessionId: string, _io: SessionChannelIO): void {}
 
   clearHandlers(): void {}
 

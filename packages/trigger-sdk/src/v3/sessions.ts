@@ -702,71 +702,93 @@ export class SessionInputChannel {
    * run-engine waitpoint holds the run until the session append handler
    * fires it. Only callable from inside `task.run()`.
    */
+  /**
+   * Suspend until the channel wakes this run, and read nothing.
+   *
+   * The waitpoint is only a wake signal: the append route commits the record to
+   * the channel before it drains any waitpoint, so once this resolves the
+   * record is durably readable from the channel itself, carrying its real
+   * sequence. Separating the wake from the read is what lets a consumer that
+   * owns its own delivery (the chat input router) reuse this without the
+   * channel also taking a record out from under it.
+   *
+   * @internal
+   */
+  async awaitWake(
+    options?: InputStreamWaitOptions & { lastSeqNum?: number }
+  ): Promise<{ ok: true; waitpointId: string } | { ok: false; error: Error }> {
+    const ctx = taskContext.ctx;
+
+    if (!ctx) {
+      throw new Error("session.in.wait() can only be used from inside a task.run()");
+    }
+
+    const apiClient = apiClientManager.clientOrThrow();
+
+    const lastConsumedSeqNum =
+      options?.lastSeqNum ?? sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
+    const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
+      session: this.sessionId,
+      io: "in",
+      timeout: options?.timeout,
+      idempotencyKey: options?.idempotencyKey,
+      idempotencyKeyTTL: options?.idempotencyKeyTTL,
+      tags: options?.tags,
+      lastSeqNum: lastConsumedSeqNum,
+    });
+
+    const waitResponse = await apiClient.waitForWaitpointToken({
+      runFriendlyId: ctx.run.id,
+      waitpointFriendlyId: response.waitpointId,
+    });
+
+    if (!waitResponse.success) {
+      throw new Error("Failed to block on session stream waitpoint");
+    }
+
+    sessionStreams.disconnectStream(this.sessionId, "in");
+
+    const waitResult = await runtime.waitUntil(response.waitpointId);
+
+    if (!waitResult.ok) {
+      const parsed =
+        waitResult.output !== undefined
+          ? await conditionallyImportAndParsePacket(
+              {
+                data: waitResult.output,
+                dataType: waitResult.outputType ?? "application/json",
+              },
+              apiClient
+            )
+          : undefined;
+      return {
+        ok: false as const,
+        error: new WaitpointTimeoutError(parsed?.message ?? "Timed out"),
+      };
+    }
+
+    sessionStreams.reconnectStream(this.sessionId, "in");
+    return { ok: true as const, waitpointId: response.waitpointId };
+  }
+
   wait<T = unknown>(options?: InputStreamWaitOptions): ManualWaitpointPromise<T> {
     return new ManualWaitpointPromise<T>(async (resolve, reject) => {
       try {
-        const ctx = taskContext.ctx;
-
-        if (!ctx) {
-          throw new Error("session.in.wait() can only be used from inside a task.run()");
-        }
-
         const apiClient = apiClientManager.clientOrThrow();
-
-        const lastConsumedSeqNum = sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
-        const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
-          session: this.sessionId,
-          io: "in",
-          timeout: options?.timeout,
-          idempotencyKey: options?.idempotencyKey,
-          idempotencyKeyTTL: options?.idempotencyKeyTTL,
-          tags: options?.tags,
-          lastSeqNum: lastConsumedSeqNum,
-        });
 
         const result = await tracer.startActiveSpan(
           options?.spanName ?? `sessions.open(${this.sessionId}).in.wait()`,
           async (span) => {
-            const waitResponse = await apiClient.waitForWaitpointToken({
-              runFriendlyId: ctx.run.id,
-              waitpointFriendlyId: response.waitpointId,
-            });
+            const wake = await this.awaitWake(options);
 
-            if (!waitResponse.success) {
-              throw new Error("Failed to block on session stream waitpoint");
-            }
-
-            // Stop the SSE tail before suspending. Buffered records stay in
-            // place so nothing is lost across the suspend.
-            sessionStreams.disconnectStream(this.sessionId, "in");
-
-            const waitResult = await runtime.waitUntil(response.waitpointId);
-
-            if (!waitResult.ok) {
-              const parsed =
-                waitResult.output !== undefined
-                  ? await conditionallyImportAndParsePacket(
-                      {
-                        data: waitResult.output,
-                        dataType: waitResult.outputType ?? "application/json",
-                      },
-                      apiClient
-                    )
-                  : undefined;
-              const error = new WaitpointTimeoutError(parsed?.message ?? "Timed out");
-              span.recordException(error);
+            if (!wake.ok) {
+              span.recordException(wake.error);
               span.setStatus({ code: SpanStatusCode.ERROR });
-              return { ok: false as const, error };
+              return { ok: false as const, error: wake.error };
             }
 
-            // The waitpoint is only a wake signal. The append route commits the
-            // record to the channel before it drains any waitpoint, so by the
-            // time we are here the record is durably readable from the channel
-            // itself, carrying its real sequence. Reading it back that way is
-            // what keeps the cursor exact: the waitpoint payload cannot
-            // identify which record it corresponds to, and guessing or matching
-            // on payload equality both produce a cursor that strands or
-            // redelivers records.
+            span.setAttribute(SemanticInternalAttributes.ENTITY_ID, wake.waitpointId);
+
             const record = await sessionStreams.onceRecord(this.sessionId, "in");
 
             if (!record.ok) {
@@ -795,7 +817,6 @@ export class SessionInputChannel {
             attributes: {
               [SemanticInternalAttributes.STYLE_ICON]: "wait",
               [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
-              [SemanticInternalAttributes.ENTITY_ID]: response.waitpointId,
               session: this.sessionId,
               io: "in",
               ...accessoryAttributes({
