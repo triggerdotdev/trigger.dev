@@ -13,7 +13,6 @@ import {
   type inferSchemaIn,
   type inferSchemaOut,
   InputStreamOncePromise,
-  type InputStreamOnceResult,
   isAdditionalApiKey,
   isSchemaZodEsque,
   logger,
@@ -26,8 +25,11 @@ import {
   resourceCatalog,
   type SessionTriggerConfig,
   SemanticInternalAttributes,
+  SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
   sessionStreams,
+  SessionChannelRouter,
+  InputStreamTimeoutError,
   taskContext,
   type TaskIdentifier,
   type TaskOptions,
@@ -36,6 +38,8 @@ import {
   type TaskWithSchema,
   TRIGGER_CONTROL_SUBTYPE,
   type StreamWriteResult,
+  type RouterCheckpoint,
+  type SessionRouteTable,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -220,53 +224,6 @@ async function findLatestSessionInCursor(chatId: string): Promise<number | undef
     if (Number.isFinite(parsed)) latestCursor = parsed;
   }
   return latestCursor;
-}
-
-/** Test-only entry point for the records-based cursor scan. @internal */
-export async function __findLatestSessionInCursorForTests(
-  chatId: string
-): Promise<number | undefined> {
-  return findLatestSessionInCursor(chatId);
-}
-
-/**
- * Seed the `.in` resume cursor for custom-agent loops (`chat.customAgent`
- * raw loops and `chat.createSession`) the way `chat.agent`'s boot does.
- *
- * MUST run before anything attaches a `.in` listener (`createStopSignal`,
- * `chat.messages.on`, the first wait): attaching opens the SSE tail with
- * `Last-Event-ID` from the seeded cursor, so attach-then-seed replays
- * every record from seq 0 — already-answered user messages get delivered
- * into the new run's first wait and the loop re-answers them.
- *
- * Seeds both cursors: `setLastSeqNum` controls the SSE `Last-Event-ID`,
- * `setLastDispatchedSeqNum` gates waiter dispatch — seeding only the
- * former still re-delivers records the manager buffered before the seed.
- *
- * No-ops on fresh boots and when a cursor is already seeded (e.g. the
- * `chatCustomAgent` wrapper ran before a nested `createChatSession`).
- * @internal
- */
-async function seedSessionInResumeCursorForCustomLoop(
-  payload: Pick<ChatTaskWirePayload, "chatId" | "continuation">
-): Promise<void> {
-  if (sessionStreams.lastSeqNum(payload.chatId, "in") !== undefined) return;
-  // No continuation/attempt gate: the wire may omit `continuation` on a
-  // run that still has prior turns (chat.agent covers that case via its
-  // snapshot). The scan doubles as the prior-state probe — a fresh
-  // session has no turn-complete on `.out`, returns no cursor, and
-  // seeds nothing. Cost on fresh boots is one non-blocking records read.
-  try {
-    const cursor = await findLatestSessionInCursor(payload.chatId);
-    if (cursor !== undefined) {
-      sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
-      sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
-    }
-  } catch (error) {
-    logger.warn("chat session: session.in resume cursor lookup failed; old messages may replay", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
 
 /**
@@ -1543,107 +1500,189 @@ export type ChatTaskRunPayload<
 // keep their original shape. Each accessor resolves the session handle
 // lazily via `getChatSession()` so the module-level references stay
 // compatible with the pre-migration wiring.
-const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
+/**
+ * One message record delivered through {@link chat.messages}.
+ *
+ * `id` is the append's stable idempotency key and `seqNum` is its monotonic
+ * sequence on the Session `.in` channel. Both remain stable if the record is
+ * delivered again after a reconnect.
+ */
+export type ChatMessageRecord = Readonly<{
+  id: string;
+  seqNum: number;
+  payload: ChatTaskWirePayload;
+}>;
+
+export type ChatMessages = RealtimeDefinedInputStream<ChatTaskWirePayload> & {
+  /** Whether the local buffer head is a message that can be consumed immediately. */
+  hasPending(): Promise<boolean>;
+  /** Consume one message record, or return `undefined` when the optional timeout elapses. */
+  next(options?: { timeoutInSeconds?: number }): Promise<ChatMessageRecord | undefined>;
+};
+
+/**
+ * Read one record from a route, suspending the run if nothing is there yet.
+ *
+ * The wake and the read are separate steps: the channel wakes the run, then the
+ * router hands over whatever it routed. Nothing else can take the record in
+ * between, which is what keeps the published cursors and the delivered record
+ * in agreement.
+ * @internal
+ */
+async function waitOnChatRoute<T>(
+  route: string,
+  options: {
+    idleTimeoutInSeconds?: number;
+    timeout?: string;
+    spanName?: string;
+    skipSuspend?: boolean;
+    onSuspend?: () => Promise<void> | void;
+    onResume?: () => Promise<void> | void;
+  }
+): Promise<{ ok: true; output: T } | { ok: false; error?: Error }> {
+  const router = chatInputRouter();
+  const session = getChatSession();
+
+  return tracer.startActiveSpan(
+    options.spanName ?? `chat.${route}.wait()`,
+    async (span) => {
+      const idleMs = (options.idleTimeoutInSeconds ?? 0) * 1000;
+      if (idleMs > 0) {
+        const warm = await router.next(route, { timeoutMs: idleMs });
+        if (warm) {
+          span.setAttribute("wait.resolved", "idle");
+          return { ok: true as const, output: warm.data as T };
+        }
+      } else {
+        const buffered = await router.next(route, { timeoutMs: 0 });
+        if (buffered) {
+          span.setAttribute("wait.resolved", "buffered");
+          return { ok: true as const, output: buffered.data as T };
+        }
+      }
+
+      if (options.skipSuspend) {
+        span.setAttribute("wait.resolved", "skipped");
+        return {
+          ok: false as const,
+          error: new Error("Idle timeout elapsed and skipSuspend is set"),
+        };
+      }
+
+      if (options.onSuspend) await options.onSuspend();
+
+      span.setAttribute("wait.resolved", "suspended");
+      while (true) {
+        const wake = await session.in.awaitWake({
+          timeout: options.timeout,
+          lastSeqNum: router.resumeFloor(),
+        });
+        if (!wake.ok) {
+          span.recordException(wake.error);
+          return { ok: false as const, error: wake.error };
+        }
+
+        const record = await router.next(route);
+        if (!record) continue;
+
+        if (options.onResume) await options.onResume();
+        return { ok: true as const, output: record.data as T };
+      }
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "sessions",
+        session: session.id,
+        io: "in",
+        route,
+        ...accessoryAttributes({
+          items: [{ text: `${session.id}.in:${route}`, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+}
+
+const messagesInput: ChatMessages = {
   id: "chat-messages",
   on(handler) {
-    return getChatSession().in.on<ChatInputChunk>((chunk) => {
-      if (chunk.kind === "message") {
-        // Returning `true` marks the record CONSUMED at the manager level:
-        // it is neither buffered for a later `once()` nor re-delivered by
-        // the buffer drain when the next turn re-attaches its handler.
-        // Without this, a message arriving mid-stream was delivered twice
-        // and ran a duplicate turn.
-        void Promise.resolve(handler(chunk.payload)).catch(() => {});
-        return true;
-      }
-      return undefined;
+    return chatInputRouter().on(CHAT_ROUTE_MESSAGES, (record) => {
+      const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+      void Promise.resolve(handler(chunk.payload)).catch(() => {});
     });
   },
   once(options) {
-    const ctx = taskContext.ctx;
-    const runId = ctx?.run.id;
-
     return new InputStreamOncePromise<ChatTaskWirePayload>((resolve, reject) => {
-      tracer
-        .startActiveSpan(
-          options?.spanName ?? `chat.messages.once()`,
-          async () => {
-            while (true) {
-              const result = await getChatSession().in.once<ChatInputChunk>(options);
-              if (!result.ok) {
-                resolve(result as InputStreamOnceResult<ChatTaskWirePayload>);
-                return;
-              }
-              if (result.output.kind === "message") {
-                resolve({ ok: true, output: result.output.payload });
-                return;
-              }
-              // Non-message chunks (stops) are handled by the stopInput
-              // facade's persistent listener; loop and wait for the next.
-            }
-          },
-          {
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "streams",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-              ...(runId
-                ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-messages`,
-                  }
-                : {}),
-              streamId: "chat-messages",
-              ...accessoryAttributes({
-                items: [{ text: "chat-messages", variant: "normal" }],
-                style: "codepath",
-              }),
-            },
+      chatInputRouter()
+        .next(CHAT_ROUTE_MESSAGES, { timeoutMs: options?.timeoutMs })
+        .then((record) => {
+          if (!record) {
+            resolve({
+              ok: false,
+              error: new InputStreamTimeoutError("chat-messages", options?.timeoutMs ?? 0),
+            });
+            return;
           }
-        )
-        .catch(reject);
+          const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+          resolve({ ok: true, output: chunk.payload });
+        }, reject);
     });
   },
   peek() {
-    const chunk = getChatSession().in.peek<ChatInputChunk>();
-    if (chunk && chunk.kind === "message") return chunk.payload;
-    return undefined;
+    const record = chatInputRouter().peek(CHAT_ROUTE_MESSAGES);
+    if (!record) return undefined;
+    return (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+  },
+  async hasPending() {
+    return chatInputRouter().hasPending(CHAT_ROUTE_MESSAGES);
+  },
+  async next(options) {
+    const timeoutInSeconds = options?.timeoutInSeconds;
+    if (
+      timeoutInSeconds !== undefined &&
+      (!Number.isFinite(timeoutInSeconds) || timeoutInSeconds < 0)
+    ) {
+      throw new TypeError(
+        "chat.messages.next() timeoutInSeconds must be a finite non-negative number"
+      );
+    }
+
+    const record = await chatInputRouter().next(CHAT_ROUTE_MESSAGES, {
+      timeoutMs: timeoutInSeconds === undefined ? undefined : timeoutInSeconds * 1000,
+    });
+    if (!record) return undefined;
+
+    const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+    return { id: record.id, seqNum: record.seqNum, payload: chunk.payload };
   },
   wait(options) {
     return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {
       try {
-        while (true) {
-          const result = await getChatSession().in.wait<ChatInputChunk>(options);
-          if (!result.ok) {
-            resolve(result);
-            return;
-          }
-          if (result.output.kind === "message") {
-            resolve({ ok: true, output: result.output.payload });
-            return;
-          }
-          // Stop chunks are handled by the stopInput facade's persistent
-          // listener; loop back into the suspending wait.
-        }
+        const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "message" }>>(
+          CHAT_ROUTE_MESSAGES,
+          { timeout: options?.timeout, spanName: options?.spanName }
+        );
+        resolve(
+          result.ok
+            ? { ok: true, output: result.output.payload }
+            : { ok: false, error: result.error ?? new Error("Timed out") }
+        );
       } catch (error) {
         reject(error);
       }
     });
   },
   async waitWithIdleTimeout(options) {
-    while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "message") {
-        return { ok: true, output: result.output.payload };
-      }
-      // Swallow stop-kind chunks — persistent stop listener already handled
-      // the abort; we just loop for the next message.
-    }
+    const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "message" }>>(
+      CHAT_ROUTE_MESSAGES,
+      options
+    );
+    return result.ok
+      ? { ok: true, output: result.output.payload }
+      : { ok: false, error: result.error };
   },
   async send(_runId, data, options) {
-    // The `runId` argument is kept for signature parity with
-    // `RealtimeDefinedInputStream` but ignored — sessions are addressed
-    // by sessionId, not runId. Callers producing messages from outside
-    // the run should prefer the transport's `session.in.send(...)` path.
     await getChatSession().in.send(
       { kind: "message", payload: data } satisfies ChatInputChunk,
       options?.requestOptions
@@ -1654,98 +1693,59 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
 const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = {
   id: "chat-stop",
   on(handler) {
-    return getChatSession().in.on<ChatInputChunk>((chunk) => {
-      if (chunk.kind === "stop") {
-        // Consume stop records (see the messages facade above). A stop is
-        // only meaningful to the turn it interrupts — buffering it would
-        // let a stale stop abort a future turn.
-        void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
-        return true;
-      }
-      return undefined;
+    return chatInputRouter().on(CHAT_ROUTE_STOP, (record) => {
+      const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+      void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
     });
   },
   once(options) {
-    const ctx = taskContext.ctx;
-    const runId = ctx?.run.id;
-
     return new InputStreamOncePromise<{ stop: true; message?: string }>((resolve, reject) => {
-      tracer
-        .startActiveSpan(
-          options?.spanName ?? `chat.stop.once()`,
-          async () => {
-            while (true) {
-              const result = await getChatSession().in.once<ChatInputChunk>(options);
-              if (!result.ok) {
-                resolve(result as InputStreamOnceResult<{ stop: true; message?: string }>);
-                return;
-              }
-              if (result.output.kind === "stop") {
-                resolve({
-                  ok: true,
-                  output: { stop: true, message: result.output.message },
-                });
-                return;
-              }
-            }
-          },
-          {
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "streams",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-              ...(runId
-                ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-stop`,
-                  }
-                : {}),
-              streamId: "chat-stop",
-              ...accessoryAttributes({
-                items: [{ text: "chat-stop", variant: "normal" }],
-                style: "codepath",
-              }),
-            },
+      chatInputRouter()
+        .next(CHAT_ROUTE_STOP, { timeoutMs: options?.timeoutMs })
+        .then((record) => {
+          if (!record) {
+            resolve({
+              ok: false,
+              error: new InputStreamTimeoutError("chat-stop", options?.timeoutMs ?? 0),
+            });
+            return;
           }
-        )
-        .catch(reject);
+          const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+          resolve({ ok: true, output: { stop: true, message: chunk.message } });
+        }, reject);
     });
   },
   peek() {
-    const chunk = getChatSession().in.peek<ChatInputChunk>();
-    if (chunk && chunk.kind === "stop") {
-      return { stop: true, message: chunk.message };
-    }
-    return undefined;
+    const record = chatInputRouter().peek(CHAT_ROUTE_STOP);
+    if (!record) return undefined;
+    const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+    return { stop: true, message: chunk.message };
   },
   wait(options) {
     return new ManualWaitpointPromise<{ stop: true; message?: string }>(async (resolve, reject) => {
       try {
-        while (true) {
-          const result = await getChatSession().in.wait<ChatInputChunk>(options);
-          if (!result.ok) {
-            resolve(result);
-            return;
-          }
-          if (result.output.kind === "stop") {
-            resolve({
-              ok: true,
-              output: { stop: true, message: result.output.message },
-            });
-            return;
-          }
-        }
+        const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "stop" }>>(
+          CHAT_ROUTE_STOP,
+          { timeout: options?.timeout, spanName: options?.spanName }
+        );
+        resolve(
+          result.ok
+            ? { ok: true, output: { stop: true, message: result.output.message } }
+            : { ok: false, error: result.error ?? new Error("Timed out") }
+        );
       } catch (error) {
         reject(error);
       }
     });
   },
   async waitWithIdleTimeout(options) {
-    while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "stop") {
-        return { ok: true, output: { stop: true, message: result.output.message } };
-      }
-    }
+    const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "stop" }>>(
+      CHAT_ROUTE_STOP,
+      options
+    );
+    return result.ok
+      ? { ok: true as const, output: { stop: true, message: result.output.message } }
+      : { ok: false as const, error: result.error };
   },
   async send(_runId, data, options) {
     await getChatSession().in.send(
@@ -1793,16 +1793,8 @@ const handoverInput = {
     spanName?: string;
     skipSuspend?: boolean;
   }) {
-    while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "handover" || result.output.kind === "handover-skip") {
-        return { ok: true as const, output: result.output as HandoverSignal };
-      }
-      // Other kinds (message, stop) are not expected during handover-prepare.
-      // Loop back; the message and stop facades have their own listeners
-      // running so signals on those kinds aren't lost.
-    }
+    const result = await waitOnChatRoute<HandoverSignal>(CHAT_ROUTE_HANDOVER, options);
+    return result.ok ? { ok: true as const, output: result.output } : result;
   },
 };
 
@@ -1819,9 +1811,8 @@ const handoverInput = {
  * For the common case prefer `accumulator.consumeHandover()`, which also seeds
  * `payload.headStartMessages` and applies the partial for you.
  *
- * Must be called at turn 0 before any `chat.messages.waitWithIdleTimeout` —
- * that facade consumes and discards non-message chunks, which would swallow the
- * handover signal.
+ * Safe to call at any point in turn 0: the handover signal has its own route,
+ * so a message facade waiting at the same time cannot take it.
  */
 async function waitForHandover(options: {
   /** The run's wire payload (only `trigger` / `idleTimeoutInSeconds` are read). */
@@ -1831,15 +1822,232 @@ async function waitForHandover(options: {
   spanName?: string;
 }): Promise<HandoverSignal | null> {
   if (options.payload.trigger !== "handover-prepare") return null;
-  const result = await handoverInput.waitWithIdleTimeout({
-    idleTimeoutInSeconds:
-      options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
-    timeout: options.timeout,
-    spanName: options.spanName ?? "waiting for handover signal",
+  try {
+    const result = await handoverInput.waitWithIdleTimeout({
+      idleTimeoutInSeconds:
+        options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
+      timeout: options.timeout,
+      spanName: options.spanName ?? "waiting for handover signal",
+    });
+    // Non-ok = idle timeout or the warm handler crashed without signaling.
+    if (!result.ok) return null;
+    return result.output;
+  } finally {
+    chatInputRouter().clearRoute(CHAT_ROUTE_HANDOVER);
+  }
+}
+
+/**
+ * Everything `session.in` carries, and what happens to each kind.
+ *
+ * A route's two properties are what make the resume protocol derivable rather
+ * than hand-maintained. `messages` is replayable because losing a user message
+ * is data loss. `stop` is neither queued nor replayable: it only means anything
+ * to the turn that is live when it lands, and a replayed one would abort
+ * whichever turn happened to be running. `handover` is queued but not
+ * replayable, because it can arrive before its consumer is ready yet is
+ * meaningless to any later boot.
+ *
+ * A kind absent from this table has no consumer, so the router discards it
+ * instead of letting it park at the head of a queue.
+ * @internal
+ */
+const CHAT_INPUT_ROUTES: SessionRouteTable = {
+  kindOf: (data) => (data as ChatInputChunk | undefined)?.kind,
+  routes: [
+    { name: "messages", delivery: "queue", replayable: true, kinds: ["message"] },
+    { name: "stop", delivery: "at-arrival", replayable: false, kinds: ["stop"] },
+    {
+      name: "handover",
+      delivery: "queue",
+      replayable: false,
+      kinds: ["handover", "handover-skip"],
+    },
+  ],
+};
+
+const CHAT_ROUTE_MESSAGES = "messages";
+const CHAT_ROUTE_STOP = "stop";
+const CHAT_ROUTE_HANDOVER = "handover";
+
+/**
+ * The `.in` router for the chat this worker is serving.
+ *
+ * One slot rather than a map: a worker process serves one chat, and the facades
+ * have to reach the same router the boot attached without depending on a locals
+ * scope being active. Tagged with its chat so a nested `chat.createSession` for
+ * the same chat reuses the attached router while a different chat gets a fresh
+ * one.
+ * @internal
+ */
+let currentChatInputRouter:
+  | { chatId: string; router: SessionChannelRouter; attached: boolean }
+  | undefined;
+
+/**
+ * Both cursors from the latest `turn-complete` on `.out`, in one scan.
+ *
+ * Absent for a chat whose turns predate the headers, in which case the router
+ * starts from the beginning of the channel and nothing is treated as replayed.
+ * @internal
+ */
+async function findLatestSessionInCheckpoint(chatId: string): Promise<RouterCheckpoint> {
+  const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(chatId, "out");
+  const checkpoint: RouterCheckpoint = {};
+  for (const record of response.records) {
+    if (controlSubtype(record.headers) !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
+    const resumeFrom = Number.parseInt(
+      headerValue(record.headers, SESSION_IN_EVENT_ID_HEADER) ?? "",
+      10
+    );
+    if (Number.isFinite(resumeFrom)) checkpoint.resumeFrom = resumeFrom;
+    const appliedThrough = Number.parseInt(
+      headerValue(record.headers, SESSION_IN_CONSUMED_ID_HEADER) ?? "",
+      10
+    );
+    if (Number.isFinite(appliedThrough)) checkpoint.appliedThrough = appliedThrough;
+  }
+  return checkpoint;
+}
+
+/**
+ * The highest `.in` sequence already on the channel at boot, above the floor.
+ *
+ * Only needed for a turn boundary written before the replay window was
+ * published. Everything already on the channel when a run boots is by
+ * definition not arriving live on this run, so this is the end of that run's
+ * replay window. Bounded by `afterEventId`, so it reads the replay window
+ * rather than the whole conversation.
+ *
+ * Returns `undefined` if the read fails; the caller then falls back to the
+ * floor, which is the previous release's behaviour.
+ * @internal
+ */
+async function findSessionInReplayWindowEnd(
+  chatId: string,
+  afterSeqNum: number
+): Promise<number | undefined> {
+  try {
+    const apiClient = apiClientManager.clientOrThrow();
+    const response = await apiClient.readSessionStreamRecords(chatId, "in", {
+      afterEventId: String(afterSeqNum),
+    });
+    let highest: number | undefined;
+    for (const record of response.records) {
+      const seqNum = typeof record.seqNum === "number" ? record.seqNum : Number.NaN;
+      if (Number.isFinite(seqNum) && (highest === undefined || seqNum > highest)) {
+        highest = seqNum;
+      }
+    }
+    return highest;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Attach the `.in` router for this run.
+ *
+ * Reads the checkpoint and subscribes in one call, so there is no window in
+ * which a listener is attached before the resume cursor is seeded. Attaching
+ * first would open the tail at sequence 0 and replay every record the previous
+ * run already answered, which is a mistake the previous shape of this code made
+ * possible and this shape does not.
+ *
+ * The router consumes every record at dispatch, so the channel's own buffer
+ * stays empty for chat and its cursor bookkeeping never engages. Delivery,
+ * ordering and the published cursors are the router's, entirely.
+ * @internal
+ */
+async function installChatInputRouter(
+  chatId: string,
+  options?: { fallbackResumeFrom?: number }
+): Promise<SessionChannelRouter> {
+  const entry = chatInputRouterEntry(chatId);
+  if (entry.attached) return entry.router;
+
+  let checkpoint: RouterCheckpoint = {};
+  try {
+    checkpoint = await findLatestSessionInCheckpoint(chatId);
+  } catch (error) {
+    logger.warn("chat session: session.in resume cursor lookup failed; old messages may replay", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (checkpoint.resumeFrom === undefined && options?.fallbackResumeFrom !== undefined) {
+    checkpoint.resumeFrom = options.fallbackResumeFrom;
+  }
+  if (checkpoint.resumeFrom !== undefined && checkpoint.appliedThrough === undefined) {
+    checkpoint.appliedThrough = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
+  }
+
+  const router = entry.router;
+  router.restore(checkpoint);
+
+  const floor = router.resumeFrom();
+  if (floor !== undefined) {
+    sessionStreams.setLastSeqNum(chatId, "in", floor);
+    sessionStreams.setLastDispatchedSeqNum(chatId, "in", floor);
+  }
+
+  sessionStreams.onRecord(chatId, "in", (record) => {
+    router.ingest(record);
+    return true;
   });
-  // Non-ok = idle timeout or the warm handler crashed without signaling.
-  if (!result.ok) return null;
-  return result.output;
+
+  entry.attached = true;
+  return router;
+}
+
+function chatInputRouterEntry(chatId: string): {
+  chatId: string;
+  router: SessionChannelRouter;
+  attached: boolean;
+} {
+  if (currentChatInputRouter?.chatId === chatId) return currentChatInputRouter;
+
+  currentChatInputRouter = {
+    chatId,
+    router: new SessionChannelRouter(CHAT_INPUT_ROUTES, {
+      onDrop: (record, reason) => {
+        if (reason === "unroutable" || reason === "malformed") {
+          logger.warn("chat: discarded a session.in record nothing on this worker can consume", {
+            reason,
+            seqNum: record.seqNum,
+          });
+        }
+      },
+    }),
+    attached: false,
+  };
+  return currentChatInputRouter;
+}
+
+/** Drop the router so the next boot attaches a fresh one. @internal */
+export function __resetChatInputRouterForTests(): void {
+  currentChatInputRouter = undefined;
+}
+
+/** The cursors this run would publish on its next turn boundary. @internal */
+export function __chatInputCheckpointForTests(): RouterCheckpoint {
+  return currentChatInputRouter?.router.checkpoint() ?? {};
+}
+
+/** Test-only entry point for the turn-boundary cursor scan. @internal */
+export async function __findLatestSessionInCheckpointForTests(
+  chatId: string
+): Promise<RouterCheckpoint> {
+  return findLatestSessionInCheckpoint(chatId);
+}
+
+/**
+ * This chat's router. Created on first use so a facade reached before the
+ * install still shares the one the install will attach.
+ * @internal
+ */
+function chatInputRouter(): SessionChannelRouter {
+  return chatInputRouterEntry(getChatSession().id).router;
 }
 
 /**
@@ -5370,10 +5578,7 @@ function chatCustomAgent<
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
-      // Seed the `.in` resume cursor before user code attaches any `.in`
-      // listener — otherwise a continuation boot replays already-answered
-      // messages into the loop's first wait.
-      await seedSessionInResumeCursorForCustomLoop(payload);
+      await installChatInputRouter(payload.chatId);
       return userRun(payload, runOptions);
     },
   });
@@ -5718,53 +5923,15 @@ function chatAgent<
         );
       }
 
-      // ── session.in resume cursor ───────────────────────────────────
+      // ── session.in router ──────────────────────────────────────────
       //
-      // A fresh worker subscribes to `session.in` from seq 0 and would
-      // re-deliver every record ever appended — including user messages
-      // from turns already completed on a prior run. Without a cursor,
-      // the loop would re-process them as fresh turns and the slim-wire
-      // merge would replace-by-id against snapshot-restored copies,
-      // yielding no-op replaces while the customer's actual new message
-      // waits in the queue.
-      //
-      // The cursor is the seq_num of the last `.in` record the prior
-      // worker committed to processing, persisted on each `turn-complete`
-      // control record as a `session-in-event-id` sibling header. The
-      // boot scan reads the header off `.out`'s latest turn-complete and
-      // seeds the manager so the upcoming `.in` SSE subscribe opens with
-      // `Last-Event-ID: <cursor>` — S2 starts after that seq and old
-      // messages never reach this worker.
-      //
-      // Applies in three cases (any of which means `.in` has records
-      // belonging to completed turns the new run should skip):
-      //  - OOM retry (`ctx.attempt.number > 1`)
-      //  - Continuation run (`payload.continuation === true`) — prior run
-      //    crashed / was canceled / requested upgrade
-      //  - Snapshot exists at all (catches edge cases where the wire
-      //    didn't set `continuation` but a snapshot indicates prior turns)
-      const needsResumeCursor =
-        ctx.attempt.number > 1 || payload.continuation === true || bootSnapshot !== undefined;
-
-      if (needsResumeCursor) {
-        try {
-          // Reuse the cursor the boot block already resolved (snapshot
-          // field or records scan) — only scan here when the boot block
-          // was skipped (hydrateMessages, or snapshot-only signals).
-          const cursor = bootInCursorResolved
-            ? bootInCursor
-            : await findLatestSessionInCursor(payload.chatId);
-          if (cursor !== undefined) {
-            sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
-            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
-          }
-        } catch (error) {
-          logger.warn(
-            "chat.agent: session.in resume cursor lookup failed; old messages may replay",
-            { error: error instanceof Error ? error.message : String(error) }
-          );
-        }
-      }
+      // Reads the turn boundary and subscribes in one call. `bootInCursor` is
+      // only a fallback: the boot block above may already have resolved a
+      // cursor from the snapshot, which is used when the boundary itself
+      // carries none.
+      await installChatInputRouter(payload.chatId, {
+        fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
+      });
 
       // ── Recovery boot + chain reconstruction ────────────────────────
       if (!hydrateMessages) {
@@ -7724,7 +7891,7 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
-                          const snapshotInCursor = getChatSession().in.lastDispatchedSeqNum();
+                          const snapshotInCursor = chatInputRouter().resumeFloor();
                           await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                             version: 1,
                             savedAt: Date.now(),
@@ -8057,7 +8224,7 @@ function chatAgent<
             // neither the snapshot nor the replayable `.in` tail.
             if (!hydrateMessages) {
               try {
-                const errorSnapshotInCursor = getChatSession().in.lastDispatchedSeqNum();
+                const errorSnapshotInCursor = chatInputRouter().resumeFloor();
                 await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                   version: 1,
                   savedAt: Date.now(),
@@ -8926,10 +9093,14 @@ function createStopSignal(): {
  * task instead of round-tripping them back from the client:
  * - `lastEventId` — the turn-complete control record's seq_num on
  *   `session.out`; where the next turn's output stream resumes.
- * - `sessionInEventId` — the committed-consume cursor on `session.in` as of
- *   this turn-complete, letting a raw loop correlate the boundary with the
- *   exact input record it acknowledged. Trigger owns input-cursor recovery,
- *   so this is for correlation / out-of-sync detection, not required.
+ * - `sessionInEventId` — the safe-to-resume-from cursor on `session.in` as of
+ *   this turn-complete. It is the highest sequence that can be resumed past
+ *   without skipping an unhandled message, so it is held back behind any
+ *   message still buffered unconsumed and is NOT necessarily the sequence of
+ *   the record this turn answered. Trigger owns input-cursor recovery, so this
+ *   is for correlation / out-of-sync detection, not required. Treat it as a
+ *   lower bound: a value below the record you just handled is expected, not a
+ *   sign of a lost turn.
  *
  * Either is `undefined` when the corresponding cursor isn't available.
  *
@@ -8946,7 +9117,7 @@ async function chatWriteTurnComplete(options?: {
   const result = await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
   // Same cursor written to the `session-in-event-id` header inside
   // `writeTurnCompleteChunk`; surfaced here so the caller can persist it.
-  const inCursor = getChatSession().in.lastDispatchedSeqNum();
+  const inCursor = chatInputRouter().resumeFloor();
   return {
     lastEventId: result?.lastEventId,
     ...(inCursor !== undefined ? { sessionInEventId: String(inCursor) } : {}),
@@ -9590,7 +9761,7 @@ function createChatSession(
           activeMsgSub = undefined;
           if (!booted) {
             booted = true;
-            await seedSessionInResumeCursorForCustomLoop(currentPayload);
+            await installChatInputRouter(currentPayload.chatId);
             stop = createStopSignal();
           }
           turn++;
@@ -10796,6 +10967,17 @@ async function writeTurnCompleteChunk(
 ): Promise<StreamWriteResult> {
   const session = getChatSession();
 
+  // A handover-prepare boot claims the handover kinds so a signal arriving
+  // before `waitForHandover` attaches is not drained. Released here rather than
+  // only in `waitForHandover`, because a loop that never calls it would
+  // otherwise hold the claim for the life of the run and leave a handover
+  // record parked at the head of the channel, where it wedges
+  // `chat.messages.next()`. Every surface reaches a turn boundary through this
+  // function, including the managed agent, which does not call the public
+  // `chat.writeTurnComplete`. By the time a turn completes the handover window
+  // is over either way.
+  chatInputRouter().clearRoute(CHAT_ROUTE_HANDOVER);
+
   // 1. Write the turn-complete control record. The ack's `lastEventId` is
   //    this record's seq_num — that's the trim target for the NEXT turn.
   //
@@ -10810,9 +10992,14 @@ async function writeTurnCompleteChunk(
   if (publicAccessToken) {
     extraHeaders.push(["public-access-token", publicAccessToken]);
   }
-  const inCursor = session.in.lastDispatchedSeqNum();
+  const routerCheckpoint = chatInputRouter().checkpoint();
+  const inCursor = routerCheckpoint.resumeFrom;
   if (inCursor !== undefined) {
     extraHeaders.push([SESSION_IN_EVENT_ID_HEADER, String(inCursor)]);
+  }
+  const consumedCursor = routerCheckpoint.appliedThrough;
+  if (consumedCursor !== undefined) {
+    extraHeaders.push([SESSION_IN_CONSUMED_ID_HEADER, String(consumedCursor)]);
   }
   const result = await session.out.writeControl(
     TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,

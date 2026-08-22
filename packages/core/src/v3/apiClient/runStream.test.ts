@@ -492,6 +492,7 @@ describe("SSEStreamSubscription v2 batch parsing — record kinds", () => {
   });
 
   type ParsedPart = {
+    recordId?: string;
     id: string;
     chunk: unknown;
     headers?: ReadonlyArray<readonly [string, string]>;
@@ -548,6 +549,7 @@ describe("SSEStreamSubscription v2 batch parsing — record kinds", () => {
     const parts = await sub.subscribe().then(drain);
 
     expect(parts).toHaveLength(1);
+    expect(parts[0]!.recordId).toBe("p1");
     expect(parts[0]!.id).toBe("5");
     expect(parts[0]!.chunk).toEqual({ type: "text-delta", delta: "hi" });
     expect(parts[0]!.headers).toEqual([]);

@@ -506,7 +506,7 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response; returns `{ message, status, error }`                                                         |
 | `chat.writeTurnComplete(options?)`          | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors                                            |
 | `chat.createStopSignal()`                   | Create a managed stop signal wired to the stop input stream                                                                  |
-| `chat.messages`                             | Input stream for incoming messages — use `.waitWithIdleTimeout()`                                                            |
+| `chat.messages`                             | Incoming message mailbox; supports non-consuming `.peek()` / `.hasPending()`, single-record `.next()`, `.on()`, and suspend-aware `.waitWithIdleTimeout()` |
 | `chat.local<T>({ id })`                     | Create a per-run typed local (see [`chat.local`](/ai-chat/chat-local))                             |
 | `chat.createStartSessionAction(taskId, options?)` | Returns a server action that creates a chat Session + triggers the first run + returns a session-scoped PAT. Idempotent on `(env, externalId)`.   |
 | `chat.waitForHandover(options)`             | Wait for a [`chat.headStart`](/ai-chat/fast-starts#handover-with-custom-agents) handover signal in a custom loop. Returns the signal or `null`. `chat.MessageAccumulator` wraps this as `consumeHandover()` / `applyHandover()` |
