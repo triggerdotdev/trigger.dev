@@ -1912,6 +1912,41 @@ async function findLatestSessionInCheckpoint(chatId: string): Promise<RouterChec
 }
 
 /**
+ * The highest `.in` sequence already on the channel at boot, above the floor.
+ *
+ * Only needed for a turn boundary written before the replay window was
+ * published. Everything already on the channel when a run boots is by
+ * definition not arriving live on this run, so this is the end of that run's
+ * replay window. Bounded by `afterEventId`, so it reads the replay window
+ * rather than the whole conversation.
+ *
+ * Returns `undefined` if the read fails; the caller then falls back to the
+ * floor, which is the previous release's behaviour.
+ * @internal
+ */
+async function findSessionInReplayWindowEnd(
+  chatId: string,
+  afterSeqNum: number
+): Promise<number | undefined> {
+  try {
+    const apiClient = apiClientManager.clientOrThrow();
+    const response = await apiClient.readSessionStreamRecords(chatId, "in", {
+      afterEventId: String(afterSeqNum),
+    });
+    let highest: number | undefined;
+    for (const record of response.records) {
+      const seqNum = typeof record.seqNum === "number" ? record.seqNum : Number.NaN;
+      if (Number.isFinite(seqNum) && (highest === undefined || seqNum > highest)) {
+        highest = seqNum;
+      }
+    }
+    return highest;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Attach the `.in` router for this run.
  *
  * Reads the checkpoint and subscribes in one call, so there is no window in
@@ -1942,6 +1977,9 @@ async function installChatInputRouter(
   }
   if (checkpoint.resumeFrom === undefined && options?.fallbackResumeFrom !== undefined) {
     checkpoint.resumeFrom = options.fallbackResumeFrom;
+  }
+  if (checkpoint.resumeFrom !== undefined && checkpoint.appliedThrough === undefined) {
+    checkpoint.appliedThrough = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
   }
 
   const router = entry.router;

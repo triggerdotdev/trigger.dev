@@ -257,13 +257,31 @@ describe("SessionChannelRouter: resuming", () => {
     expect(stops).toEqual([3]);
   });
 
-  it("treats an absent replay-window end as the floor", () => {
+  it("falls back to the floor when no replay-window end is supplied", () => {
     const r = router();
     r.restore({ resumeFrom: 4 });
     r.on("stop", () => {});
 
     expect(r.ingest(rec(4, "stop")).action).toBe("drop");
     expect(r.ingest(rec(5, "stop"))).toEqual({ action: "deliver", route: "stop" });
+  });
+
+  it("declines a control record inside a window resolved from the channel", () => {
+    const r = router();
+    // What the chat layer supplies when the boundary predates the published
+    // window: everything already on the channel at boot counts as replayed.
+    r.restore({ resumeFrom: 4, appliedThrough: 6 });
+    const stops: number[] = [];
+    r.on("stop", (record) => stops.push(record.seqNum));
+
+    expect(r.ingest(rec(5, "message", "M5"))).toEqual({ action: "queue", route: "messages" });
+    expect(r.ingest(rec(6, "stop"))).toEqual({
+      action: "drop",
+      route: "stop",
+      reason: "replayed",
+    });
+    expect(r.ingest(rec(7, "stop"))).toEqual({ action: "deliver", route: "stop" });
+    expect(stops).toEqual([7]);
   });
 
   it("applies everything on a fresh session with no checkpoint", () => {

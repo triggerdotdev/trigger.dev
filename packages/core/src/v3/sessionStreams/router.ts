@@ -177,12 +177,11 @@ export class SessionChannelRouter {
   /**
    * Seed the router from a previous run's turn boundary.
    *
-   * An absent `appliedThrough` is treated as equal to the floor rather than as
-   * "nothing was applied". A boundary written before that value existed still
-   * tells us everything at or below the floor was terminal, and for anything
-   * above it the conservative choice for an `at-arrival` record is to not apply
-   * it: a missed stop is recoverable, while a stop applied to the wrong turn
-   * kills a live answer.
+   * An absent `appliedThrough` falls back to the floor, which leaves anything
+   * above the floor treated as live. A caller resuming a boundary that predates
+   * the published replay window should resolve the window from the channel
+   * instead, so it covers everything already there at boot: a missed stop is
+   * recoverable, while a stop applied to the wrong turn kills a live answer.
    */
   restore(checkpoint: RouterCheckpoint): void {
     this.#resumeFrom = checkpoint.resumeFrom;
