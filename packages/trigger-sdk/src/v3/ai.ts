@@ -1970,7 +1970,7 @@ async function findSessionInReplayWindowEnd(
  */
 async function installChatInputRouter(
   chatId: string,
-  options?: { fallbackResumeFrom?: number }
+  options?: { fallbackResumeFrom?: number; resuming?: boolean }
 ): Promise<SessionChannelRouter> {
   const entry = chatInputRouterEntry(chatId);
   if (entry.attached) return entry.router;
@@ -1986,12 +1986,19 @@ async function installChatInputRouter(
   if (checkpoint.resumeFrom === undefined && options?.fallbackResumeFrom !== undefined) {
     checkpoint.resumeFrom = options.fallbackResumeFrom;
   }
-  const replayWindowEnd = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
-  if (replayWindowEnd !== undefined) {
-    checkpoint.appliedThrough = Math.max(
-      checkpoint.appliedThrough ?? replayWindowEnd,
-      replayWindowEnd
-    );
+  // Only a resuming run has a replay window. On a first boot nothing has been
+  // applied by anyone, so treating what is already on the channel as replayed
+  // would discard a signal that arrived before the agent got here, which is
+  // exactly how a head-start handover reaches a cold run.
+  const resuming = checkpoint.resumeFrom !== undefined || options?.resuming === true;
+  if (resuming) {
+    const replayWindowEnd = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
+    if (replayWindowEnd !== undefined) {
+      checkpoint.appliedThrough = Math.max(
+        checkpoint.appliedThrough ?? replayWindowEnd,
+        replayWindowEnd
+      );
+    }
   }
 
   const router = entry.router;
@@ -5590,7 +5597,9 @@ function chatCustomAgent<
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
-      await installChatInputRouter(payload.chatId);
+      await installChatInputRouter(payload.chatId, {
+        resuming: Boolean(payload.continuation),
+      });
       return userRun(payload, runOptions);
     },
   });
@@ -5943,6 +5952,7 @@ function chatAgent<
       // carries none.
       await installChatInputRouter(payload.chatId, {
         fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
+        resuming: Boolean(payload.continuation) || ctx.attempt.number > 1,
       });
 
       // ── Recovery boot + chain reconstruction ────────────────────────
@@ -9773,7 +9783,9 @@ function createChatSession(
           activeMsgSub = undefined;
           if (!booted) {
             booted = true;
-            await installChatInputRouter(currentPayload.chatId);
+            await installChatInputRouter(currentPayload.chatId, {
+              resuming: Boolean(currentPayload.continuation),
+            });
             stop = createStopSignal();
           }
           turn++;
