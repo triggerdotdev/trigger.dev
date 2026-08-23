@@ -179,6 +179,12 @@ for await (const turn of session) {
 
 The frontend stops a turn with [`transport.stopGeneration(chatId)`](/ai-chat/frontend#stop-generation), which writes a stop signal to the session's input stream. It aborts the current turn's generation but keeps the run alive, so the next message continues on the same session.
 
+A stop only applies to the turn that was live when it arrived. If the run crashes
+and a later run recovers a message that had not been answered yet, a stop that
+was already applied before the crash is not applied again, so the turn answering
+the recovered message runs to completion. A stop sent after the recovery is live
+and aborts that turn as normal.
+
 `turn.signal` is a combined stop-and-cancel `AbortSignal`, fresh each turn. Pass it to `streamText` so the stop reaches the model, then let `turn.complete()` finish the turn:
 
 ```ts trigger/my-chat.ts
@@ -227,16 +233,16 @@ For full control, skip `createSession` and compose the primitives directly:
 
 | Method | Behavior |
 | --- | --- |
-| `peek()` | Return the buffer head when it is a message, without consuming it; otherwise return `undefined` |
-| `hasPending()` | Resolve `true` when the buffer head is a message; does not consume it |
+| `peek()` | Return the next queued message without consuming it, or `undefined` when none is queued |
+| `hasPending()` | Resolve `true` when a message is queued; does not consume it |
 | `next({ timeoutInSeconds? })` | Consume exactly one message record in channel order, or resolve `undefined` when the optional timeout elapses |
 | `on(handler)` | Consume messages as they arrive and invoke the handler |
 | `waitWithIdleTimeout(options)` | Wait warm, then suspend the run until the next message arrives |
 
-`hasPending()` checks whether the local, already-delivered buffer head is a
-message that `next()` can consume immediately. It does not query the remote
-Session channel or start a subscription. Use `waitWithIdleTimeout()` when the
-loop needs to idle until future input arrives.
+`hasPending()` checks whether a message has already been delivered locally and is
+waiting for `next()` to take it. It does not query the remote Session channel or
+start a subscription. Use `waitWithIdleTimeout()` when the loop needs to idle
+until future input arrives.
 
 `next({ timeoutInSeconds: 0 })` is also a local, non-blocking read. Call
 `next()` without a timeout, or with a positive timeout, to subscribe for future
@@ -262,18 +268,15 @@ owns its own turn sequencing never advances past input it has not taken. By
 contrast, `on()` commits a record as soon as it dispatches the handler; avoid
 mixing `on()` and `next()` when a single loop owns mailbox consumption.
 
-The Session `.in` channel also carries control records such as handovers. If one
-comes before a message, `hasPending()` stays `false` and `next()` leaves the
-control record for its own consumer. After that record is handled, the message
-becomes pending.
+The Session `.in` channel also carries control records such as stops and
+handovers. Those are routed to their own consumers and never block messages: a
+message that arrived behind one is still reported by `hasPending()` and still
+returned by `next()`, in channel order. The same holds for a record kind this
+version of the SDK does not recognise, which is discarded rather than left where
+it would make every message behind it undeliverable.
 
-A control record that nothing on the run consumes is discarded rather than left
-at the head of the channel. `hasPending()` and `next()` only look at the head, so
-a record parked there would make every message behind it undeliverable.
-
-`next()` still returns `undefined` whenever no message became consumable before
-the timeout, including while a control record that does have its own consumer
-sits at the head.
+`next()` returns `undefined` when no message became consumable before the
+timeout.
 
 A complete loop:
 
