@@ -1871,17 +1871,18 @@ const CHAT_ROUTE_STOP = "stop";
 const CHAT_ROUTE_HANDOVER = "handover";
 
 /**
- * The `.in` router for the chat this worker is serving.
+ * The `.in` router for the run this worker is currently serving.
  *
- * One slot rather than a map: a worker process serves one chat, and the facades
- * have to reach the same router the boot attached without depending on a locals
- * scope being active. Tagged with its chat so a nested `chat.createSession` for
- * the same chat reuses the attached router while a different chat gets a fresh
- * one.
+ * One slot rather than a map, because the facades have to reach the same router
+ * the boot attached without depending on a locals scope being active. Tagged
+ * with the run as well as the chat: a warm process is reused across runs and the
+ * executor tears the channel subscription down at the end of each one, so
+ * reusing a router across runs would leave the new run with no input at all. A
+ * nested `chat.createSession` within the same run still shares it.
  * @internal
  */
 let currentChatInputRouter:
-  | { chatId: string; router: SessionChannelRouter; attached: boolean }
+  | { chatId: string; runId: string | undefined; router: SessionChannelRouter; attached: boolean }
   | undefined;
 
 /**
@@ -2021,13 +2022,18 @@ async function installChatInputRouter(
 
 function chatInputRouterEntry(chatId: string): {
   chatId: string;
+  runId: string | undefined;
   router: SessionChannelRouter;
   attached: boolean;
 } {
-  if (currentChatInputRouter?.chatId === chatId) return currentChatInputRouter;
+  const runId = taskContext.ctx?.run.id;
+  if (currentChatInputRouter?.chatId === chatId && currentChatInputRouter.runId === runId) {
+    return currentChatInputRouter;
+  }
 
   currentChatInputRouter = {
     chatId,
+    runId,
     router: new SessionChannelRouter(CHAT_INPUT_ROUTES, {
       onDrop: (record, reason) => {
         if (reason === "unroutable" || reason === "malformed") {
