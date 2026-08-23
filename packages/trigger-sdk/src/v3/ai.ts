@@ -1914,11 +1914,19 @@ async function findLatestSessionInCheckpoint(chatId: string): Promise<RouterChec
 /**
  * The highest `.in` sequence already on the channel at boot, above the floor.
  *
- * Only needed for a turn boundary written before the replay window was
- * published. Everything already on the channel when a run boots is by
- * definition not arriving live on this run, so this is the end of that run's
- * replay window. Bounded by `afterEventId`, so it reads the replay window
- * rather than the whole conversation.
+ * Everything already on the channel when a run boots is, by definition, not
+ * arriving live on this run, so the channel's own tail is the end of this run's
+ * replay window.
+ *
+ * The turn boundary's value is not enough on its own. A boundary is written when
+ * a turn ends, so a control record that arrived after the last boundary is not
+ * covered by it, and a boundary written by an older SDK does not carry one at
+ * all. Both cases leave an already-applied record looking live.
+ *
+ * Bounded by `afterEventId` when a floor is known, which is the common case, so
+ * the read covers the replay window rather than the conversation. An absent
+ * floor means no boundary has committed a cursor yet, and the channel is still
+ * short.
  *
  * Returns `undefined` if the read fails; the caller then falls back to the
  * floor, which is the previous release's behaviour.
@@ -1926,12 +1934,12 @@ async function findLatestSessionInCheckpoint(chatId: string): Promise<RouterChec
  */
 async function findSessionInReplayWindowEnd(
   chatId: string,
-  afterSeqNum: number
+  afterSeqNum: number | undefined
 ): Promise<number | undefined> {
   try {
     const apiClient = apiClientManager.clientOrThrow();
     const response = await apiClient.readSessionStreamRecords(chatId, "in", {
-      afterEventId: String(afterSeqNum),
+      ...(afterSeqNum === undefined ? {} : { afterEventId: String(afterSeqNum) }),
     });
     let highest: number | undefined;
     for (const record of response.records) {
@@ -1978,8 +1986,12 @@ async function installChatInputRouter(
   if (checkpoint.resumeFrom === undefined && options?.fallbackResumeFrom !== undefined) {
     checkpoint.resumeFrom = options.fallbackResumeFrom;
   }
-  if (checkpoint.resumeFrom !== undefined && checkpoint.appliedThrough === undefined) {
-    checkpoint.appliedThrough = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
+  const replayWindowEnd = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
+  if (replayWindowEnd !== undefined) {
+    checkpoint.appliedThrough = Math.max(
+      checkpoint.appliedThrough ?? replayWindowEnd,
+      replayWindowEnd
+    );
   }
 
   const router = entry.router;
