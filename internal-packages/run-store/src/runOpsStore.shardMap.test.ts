@@ -21,6 +21,8 @@ type FakeConfig = {
   edges?: Array<Record<string, unknown>>;
   // Waitpoint rows this store returns from findWaitpoint, regardless of filter.
   waitpoint?: Record<string, unknown> | null;
+  // Rows this store returns from findRunsByIdempotencyKeys, regardless of filter.
+  idempotencyMatches?: Array<Record<string, unknown>>;
 };
 
 type FakeStore = RunStore & {
@@ -88,6 +90,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       record("updateManyWaitpoints");
       return Promise.resolve({ count: 1 } as never);
     }) as FakeStore["updateManyWaitpoints"],
+
+    findRunsByIdempotencyKeys: ((_args: unknown, _client?: ReadClient) => {
+      record("findRunsByIdempotencyKeys");
+      return Promise.resolve((config.idempotencyMatches ?? []) as never);
+    }) as FakeStore["findRunsByIdempotencyKeys"],
   };
 
   return store as unknown as FakeStore;
@@ -413,5 +420,49 @@ describe("RoutingRunStore merge precedence and duplicate alarm", () => {
       select: { taskRunId: true },
     })) as Array<{ taskRunId: string }>;
     expect(edges).toHaveLength(2);
+  });
+});
+
+describe("RoutingRunStore findRunsByIdempotencyKeys tiebreak", () => {
+  const older = new Date("2026-01-01T00:00:00Z");
+  const newer = new Date("2026-01-02T00:00:00Z");
+  const match = (id: string, createdAt: Date) => ({
+    id,
+    createdAt,
+    friendlyId: `run_${id}`,
+    idempotencyKey: "k",
+    idempotencyKeyExpiresAt: null,
+  });
+
+  it("keeps NEW-wins across the gen-1 pair even when legacy is older", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { idempotencyMatches: [match("n1", newer)] }),
+      legacy: fakeStore("legacy", log, { idempotencyMatches: [match("l1", older)] }),
+    });
+    const rows = await router.findRunsByIdempotencyKeys({
+      runtimeEnvironmentId: "env",
+      taskIdentifier: "t",
+      idempotencyKeys: ["k"],
+    });
+    expect(rows.map((r) => r.id)).toEqual(["n1"]);
+  });
+
+  it("takes the earliest createdAt once a gen-2 shard is involved", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { idempotencyMatches: [match("n1", newer)] }),
+      legacy: fakeStore("legacy", log),
+      shards: [
+        { key: "a", store: fakeStore("a", log, { idempotencyMatches: [match("a1", older)] }) },
+      ],
+      resolveShard: (id: string) => id.split(":")[0]!,
+    });
+    const rows = await router.findRunsByIdempotencyKeys({
+      runtimeEnvironmentId: "env",
+      taskIdentifier: "t",
+      idempotencyKeys: ["k"],
+    });
+    expect(rows.map((r) => r.id)).toEqual(["a1"]);
   });
 });

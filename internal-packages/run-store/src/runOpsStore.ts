@@ -674,14 +674,39 @@ export class RoutingRunStore implements RunStore {
     if (args.idempotencyKeys.length === 0) {
       return [];
     }
-    const legs = await this.#fanOut(this.#precedence, (store) =>
-      store.findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(store, client))
+    const legs = await this.#fanOut(this.#precedence, (store, key) =>
+      store
+        .findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(store, client))
+        .then((rows) => ({ key, rows }))
     );
-    const byKey = new Map<string, IdempotencyKeyRunMatch>();
-    for (const row of legs.flat()) {
-      if (row.idempotencyKey != null) byKey.set(row.idempotencyKey, row);
+    // Dedupe by KEY, not id: two runs on two shards can legitimately share a global key. Across the
+    // gen-1 pair the winner stays today's precedence result (NEW wins), which the duplicate-guard
+    // contract depends on. Once a gen-2 shard supplies a candidate, order by creation instead, so
+    // the winner does not depend on configured shard order.
+    const byKey = new Map<string, Array<{ key: ShardKey; row: IdempotencyKeyRunMatch }>>();
+    for (const { key, rows } of legs) {
+      for (const row of rows) {
+        if (row.idempotencyKey == null) continue;
+        const bucket = byKey.get(row.idempotencyKey);
+        if (bucket) bucket.push({ key, row });
+        else byKey.set(row.idempotencyKey, [{ key, row }]);
+      }
     }
-    return [...byKey.values()];
+    const out: IdempotencyKeyRunMatch[] = [];
+    for (const candidates of byKey.values()) {
+      const gen1Only = candidates.every(({ key }) => key === NEW_SHARD || key === LEGACY_SHARD);
+      if (gen1Only) {
+        out.push(candidates[candidates.length - 1]!.row);
+        continue;
+      }
+      out.push(
+        [...candidates].sort((a, b) => {
+          const byCreated = a.row.createdAt.getTime() - b.row.createdAt.getTime();
+          return byCreated !== 0 ? byCreated : a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0;
+        })[0]!.row
+      );
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------------------

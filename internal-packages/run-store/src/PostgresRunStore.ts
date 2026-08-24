@@ -1826,7 +1826,7 @@ export class PostgresRunStore implements RunStore {
     const branches = args.idempotencyKeys.map((key) => {
       const base = params.length;
       params.push(args.runtimeEnvironmentId, args.taskIdentifier, key);
-      return `SELECT "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = $${base + 1} AND "taskIdentifier" = $${base + 2} AND "idempotencyKey" = $${base + 3}`;
+      return `SELECT "id", "createdAt", "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = $${base + 1} AND "taskIdentifier" = $${base + 2} AND "idempotencyKey" = $${base + 3}`;
     });
     return prisma.$queryRawUnsafe<IdempotencyKeyRunMatch[]>(
       branches.join(" UNION ALL "),
