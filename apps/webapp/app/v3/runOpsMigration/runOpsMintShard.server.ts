@@ -84,6 +84,8 @@ export async function resolveMintShard(environment: {
     ttlMs: env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS,
     graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
     orgFeatureFlags: environment.orgFeatureFlags,
+    // Bound the active list to the shards this deployment can actually route.
+    routableKeys: env.RUN_OPS_SHARDS.map((shard) => shard.key),
     onPinRejected: reportPinRejected,
     onOverrideRejected: reportOverrideRejected,
     onReadFailed: (error) =>

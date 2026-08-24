@@ -473,3 +473,37 @@ describe("computeMintShard — the global override wins the complete cutover", (
     );
   });
 });
+
+describe("routableKeys bound (the shard descriptor keys this deployment can route)", () => {
+  it("drops an active key that is not routable, so the hash never returns it", () => {
+    // "z" is in the active list but not configured as a descriptor -> only "a" is selectable.
+    const ids = envIds(200);
+    for (const id of ids) {
+      const shard = computeMintShard({ id }, deps({ set: ["a", "z"] }, { routableKeys: ["a"] }));
+      expect(shard).toBe("a");
+    }
+  });
+
+  it("returns new when the active list holds only non-routable keys (fail-safe to gen-1)", () => {
+    expect(
+      computeMintShard({ id: "env_1" }, deps({ set: ["z"] }, { routableKeys: ["a"] }))
+    ).toBe("new");
+  });
+
+  it("rejects a per-org pin to a non-routable key and falls through to the hash", () => {
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps({ set: ["a", "z"] }, { ...orgFlags({ runOpsMintShard: "z" }), routableKeys: ["a"] })
+    );
+    expect(shard).toBe("a");
+  });
+
+  it("with no routableKeys given, behaviour is unchanged", () => {
+    const ids = envIds(200);
+    for (const id of ids) {
+      const withBound = computeMintShard({ id }, deps({ set: ["a", "b"] }, { routableKeys: ["a", "b"] }));
+      const without = computeMintShard({ id }, deps({ set: ["a", "b"] }));
+      expect(withBound).toBe(without);
+    }
+  });
+});
