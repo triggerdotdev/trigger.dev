@@ -14,7 +14,7 @@
 import { Logger } from "@trigger.dev/core/logger";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { DelegatingRunStore } from "./delegatingRunStore.js";
-import type { RedisSnapshotStore, SnapshotEntryInput } from "./redisSnapshotStore.js";
+import type { RedisSnapshotStore, SnapshotEntryInput, SnapshotRead } from "./redisSnapshotStore.js";
 import {
   entryFromCompletion,
   entryFromCreateExecutionSnapshot,
@@ -26,6 +26,7 @@ import {
 } from "./snapshotEntry.js";
 import { isInjectedFault, type SnapshotFaultInjector } from "./snapshotFaultInjection.js";
 import type {
+  ReadClient,
   CompletionSnapshotInput,
   CreateCancelledRunInput,
   CreateExecutionSnapshotInput,
@@ -36,6 +37,10 @@ import type {
   RunStore,
   TaskRunWithWaitpoint,
 } from "./types.js";
+import {
+  matchSinceCursorLookup,
+  matchSinceWindow,
+} from "./snapshotReadShapes.js";
 import type { Prisma, PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 
 /** One initial attempt plus three retries, per the write protocol. */
@@ -513,6 +518,241 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         actualCur: result.actualCur,
       });
     }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Reads.
+  //
+  // Only three production call sites exist, all in the engine's executionSnapshotSystem, all with
+  // fixed argument shapes. The two generic Prisma-args methods therefore recognise exactly the
+  // shapes the engine sends and delegate everything else: an unrecognised shape must go to Postgres,
+  // never get an approximate answer from Redis.
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Whether this run's reads come from Redis. Hashed on the run id so a run does not change store
+   * between two reads of the same poll, which would let a caller see the log go backwards.
+   */
+  protected readsFromRedis(runId: string): boolean {
+    if (this.mode !== "redis-read" && this.mode !== "redis-only") return false;
+    if (this.readPercent >= 100) return true;
+    if (this.readPercent <= 0) return false;
+
+    let hash = 0;
+    for (let i = 0; i < runId.length; i++) {
+      hash = (hash * 31 + runId.charCodeAt(i)) >>> 0;
+    }
+    return hash % 100 < this.readPercent;
+  }
+
+  override async findLatestExecutionSnapshot(
+    runId: string,
+    client?: ReadClient,
+    environmentId?: string
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
+    include: { completedWaitpoints: true; checkpoint: true };
+  }> | null> {
+    if (!this.readsFromRedis(runId)) {
+      return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
+    }
+
+    const read = await this.redis.getLatest(runId, { ...(environmentId && { environmentId }) });
+    if (!read) {
+      // A miss is the coexistence path: a pre-cutover run, or expired history. It is not an error.
+      this.metrics?.recordRead("findLatestExecutionSnapshot", "postgres");
+      return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
+    }
+
+    this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
+    return this.#hydrate(read, runId, client);
+  }
+
+  override async findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null> {
+    const shape = matchSinceCursorLookup(args);
+    if (!shape || !this.readsFromRedis(shape.runId)) {
+      return this.delegate.findExecutionSnapshot(args, client);
+    }
+
+    const found = await this.redis.getById(shape.runId, shape.id, {
+      ...(shape.environmentId && { environmentId: shape.environmentId }),
+    });
+
+    if (!found) {
+      this.metrics?.recordRead("findExecutionSnapshot", "postgres");
+      return this.delegate.findExecutionSnapshot(args, client);
+    }
+
+    this.metrics?.recordRead("findExecutionSnapshot", "redis");
+    // The engine selects createdAt only, so the answer is the cursor and nothing else.
+    return {
+      createdAt: new Date(found.entry.createdAt as string),
+    } as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>;
+  }
+
+  override async findManyExecutionSnapshots<
+    T extends Prisma.TaskRunExecutionSnapshotFindManyArgs,
+  >(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
+    const shape = matchSinceWindow(args);
+    if (!shape || !this.readsFromRedis(shape.runId)) {
+      return this.delegate.findManyExecutionSnapshots(args, client);
+    }
+
+    const result = await this.redis.getSinceCreatedAt(shape.runId, shape.createdAt, {
+      limit: shape.take,
+      ...(shape.environmentId && { environmentId: shape.environmentId }),
+    });
+
+    if (result.kind === "miss") {
+      this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
+      return this.delegate.findManyExecutionSnapshots(args, client);
+    }
+
+    this.metrics?.recordRead("findManyExecutionSnapshots", "redis");
+
+    // The engine asks for createdAt DESC and reverses app-side; the store returns ascending.
+    const descending = [...result.entries].reverse();
+    const hydrated = await Promise.all(
+      descending.map((entry) => this.#hydrate(entry, shape.runId, client, { waitpoints: false }))
+    );
+    return hydrated as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
+  }
+
+  override async findSnapshotCompletedWaitpointIds(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<string[]> {
+    // Without a run id there is no keyspace to look in, so the router's fan-out is the only answer.
+    if (!runId || !this.readsFromRedis(runId)) {
+      return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
+    }
+
+    const ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
+    if (!ids.present) {
+      this.metrics?.recordRead("findSnapshotCompletedWaitpointIds", "postgres");
+      return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
+    }
+
+    this.metrics?.recordRead("findSnapshotCompletedWaitpointIds", "redis");
+    return ids.distinctIds;
+  }
+
+  override async findSnapshotCompletedWaitpointIdsWithPresence(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<{ present: boolean; ids: string[] }> {
+    if (!runId || !this.readsFromRedis(runId)) {
+      return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
+    }
+
+    const ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
+    if (!ids.present) {
+      // present=false means this reader cannot see the snapshot, so its empty list is not
+      // authoritative and the engine's read-repair needs the Postgres answer.
+      this.metrics?.recordRead("findSnapshotCompletedWaitpointIdsWithPresence", "postgres");
+      return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
+    }
+
+    this.metrics?.recordRead("findSnapshotCompletedWaitpointIdsWithPresence", "redis");
+    return { present: true, ids: ids.distinctIds };
+  }
+
+  /**
+   * Turns a store entry into the Prisma payload the interface promises.
+   *
+   * The entry supplies every scalar column. `checkpoint` and the full waitpoint rows still live in
+   * Postgres, so they are read back through the delegate — but only when the entry says they exist,
+   * which keeps the common read (a running run with neither) free of any Postgres call at all.
+   */
+  async #hydrate(
+    read: SnapshotRead,
+    runId: string,
+    client?: ReadClient,
+    opts?: { waitpoints?: boolean }
+  ): Promise<
+    Prisma.TaskRunExecutionSnapshotGetPayload<{
+      include: { completedWaitpoints: true; checkpoint: true };
+    }>
+  > {
+    const entry = read.entry as Record<string, unknown>;
+
+    const checkpoint = entry.checkpointId
+      ? await this.#hydrateCheckpoint(runId, read.id, client)
+      : null;
+
+    let completedWaitpoints: unknown[] = [];
+    let completedWaitpointOrder: string[] = [];
+
+    if (opts?.waitpoints !== false) {
+      const ids =
+        read.completedWaitpointIds ?? (await this.redis.getSnapshotWaitpointIds(runId, read.id));
+      completedWaitpointOrder = ids.order;
+
+      if (ids.distinctIds.length > 0) {
+        completedWaitpoints = await this.delegate.findManyWaitpoints(
+          { where: { id: { in: ids.distinctIds } } },
+          client,
+          runId
+        );
+      }
+    }
+
+    return {
+      id: read.id,
+      engine: entry.engine ?? "V2",
+      executionStatus: entry.executionStatus,
+      description: entry.description,
+      previousSnapshotId: entry.previousSnapshotId ?? null,
+      runId: entry.runId,
+      runStatus: entry.runStatus,
+      attemptNumber: entry.attemptNumber ?? null,
+      batchId: entry.batchId ?? null,
+      environmentId: entry.environmentId,
+      environmentType: entry.environmentType,
+      projectId: entry.projectId,
+      organizationId: entry.organizationId,
+      checkpointId: entry.checkpointId ?? null,
+      workerId: entry.workerId ?? null,
+      runnerId: entry.runnerId ?? null,
+      metadata: entry.metadata ?? null,
+      completedWaitpointOrder,
+      isValid: read.isValid,
+      error: entry.error ?? null,
+      createdAt: new Date(entry.createdAt as string),
+      updatedAt: new Date(entry.createdAt as string),
+      checkpoint,
+      completedWaitpoints,
+    } as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<{
+      include: { completedWaitpoints: true; checkpoint: true };
+    }>;
+  }
+
+  /**
+   * Reads the checkpoint row through the snapshot the delegate still holds, so the read stays
+   * residency-aware: the run id in the where is what routes it to the owning database, and the
+   * decorator sits above the router and has no client of its own.
+   *
+   * At `redis-only` the Postgres snapshot row is gone, so this returns null. The checkpoint row
+   * itself stays in Postgres, but the interface has no residency-aware way to read one directly.
+   * Closing that needs a narrow lookup on the interface, which the plan freezes for this ticket.
+   */
+  async #hydrateCheckpoint(
+    runId: string,
+    snapshotId: string,
+    client?: ReadClient
+  ): Promise<unknown> {
+    const row = await this.delegate.findExecutionSnapshot(
+      { where: { id: snapshotId, runId }, include: { checkpoint: true } },
+      client
+    );
+    return (row as { checkpoint?: unknown } | null)?.checkpoint ?? null;
   }
 
   async #enqueueRepair(entry: SnapshotEntryInput): Promise<void> {
