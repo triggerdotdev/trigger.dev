@@ -1,7 +1,8 @@
-// The two global write routes used to carry their own copy of "which keys are graced" and "which
-// keys are derived". A new graced group would then need an edit in three places, and missing one
-// means an unstamped flip or a stamp written straight from a request body. Both routes now derive
-// both answers from the group table, and these tests pin that. Pure, no containers.
+// Both global write routes used to carry their own copy of "which keys are graced" and "which
+// keys are derived", so a new group needed an edit in three places and missing one meant an
+// unstamped flip or a stamp taken from a request body. These tests cover the two helpers the
+// routes now call. They do NOT reach a route: both actions sit behind admin auth, so that the
+// routes call these helpers rather than their own copies is held by review, not by a test.
 import { describe, expect, it } from "vitest";
 import { FEATURE_FLAG, lockedFlagsInPayload } from "~/v3/featureFlags";
 import { touchesGracedGroup, withoutDerivedKeys } from "~/v3/featureFlags.server";
@@ -27,9 +28,7 @@ describe("touchesGracedGroup — decides whether a save needs the stamped path",
     expect(touchesGracedGroup({ [FEATURE_FLAG.runOpsMintShardSetPrev]: "a" })).toBe(false);
   });
 
-  it("covers every graced primary, so a new group needs no route edit", () => {
-    // The routes no longer name these keys. If a group is added and this list is not, the next
-    // assertion fails rather than the group silently skipping the stamp.
+  it("recognises every graced primary the group table declares", () => {
     const gracedPrimaries = [FEATURE_FLAG.runOpsMintKind, FEATURE_FLAG.runOpsMintShardSet];
     for (const key of gracedPrimaries) {
       expect(touchesGracedGroup({ [key]: "x" })).toBe(true);

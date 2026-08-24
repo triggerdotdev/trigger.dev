@@ -1,6 +1,5 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { $transaction, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
@@ -9,7 +8,7 @@ import {
 } from "~/v3/featureFlags";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { stampMintShardSetFlip } from "~/v3/runOpsMigration/mintShardGrace";
-import { boundedIn } from "~/db.server";
+import { $transaction, boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 
 export type FlagsOptions<T extends FeatureFlagKey> = {
   key: T;
@@ -234,10 +233,11 @@ export function withoutDerivedKeys(
 // The rows may not exist yet, so a row FOR UPDATE cannot lock them; an advisory xact lock
 // serializes concurrent global flips instead, so one cannot clobber another's stamp.
 //
-// Two lock ids are taken, in a fixed order. The second is this release's name; the first is the
-// name an older release still takes. A deploy rolls for hours, so both versions write at once,
-// and dropping the old id would leave those writers serializing against nothing. Remove the
-// legacy id one release after this one ships.
+// Two lock ids are taken, in a fixed order. The FIRST is the operative one: an older release
+// takes only that id, and a deploy rolls for hours, so it is the id that serializes across both
+// versions. The second is this release's name and adds nothing until every writer takes it.
+// Renaming without keeping the old id is what would leave the two versions unserialized. Remove
+// the legacy id one release after this one ships, when nothing takes it alone.
 async function lockGracedGroups(tx: PrismaClientOrTransaction): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('runops-global-mint-kind-flip'))`;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('runops-global-graced-flag-flip'))`;

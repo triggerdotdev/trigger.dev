@@ -30,20 +30,16 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    // Derived grace-stamp fields are computed server-side; never trust them from the body.
-    const {
-      runOpsMintKindPrev: _ignoredPrev,
-      runOpsMintKindFlippedAt: _ignoredFlippedAt,
-      runOpsMintShardSetPrev: _ignoredSetPrev,
-      runOpsMintShardSetFlippedAt: _ignoredSetFlippedAt,
-      ...requestedFlags
-    } = validationResult.data;
+    // Both the strip and the branch derive from the graced-group table, so adding a group needs
+    // no edit here. Naming the keys inline is how a new group ends up writing its stamp straight
+    // from the request body, with no lock.
+    const requestedFlags = withoutDerivedKeys(validationResult.data) as Partial<
+      typeof validationResult.data
+    >;
 
-    // A change to a graced group stamps its window under a lock; any other save writes directly.
-    const updatedFlags =
-      requestedFlags.runOpsMintKind !== undefined || requestedFlags.runOpsMintShardSet !== undefined
-        ? await applyGlobalGracedFlips(prisma, requestedFlags, env.RUN_OPS_MINT_FLIP_GRACE_MS)
-        : await makeSetMultipleFlags(prisma)(requestedFlags);
+    const updatedFlags = touchesGracedGroup(requestedFlags)
+      ? await applyGlobalGracedFlips(prisma, requestedFlags, env.RUN_OPS_MINT_FLIP_GRACE_MS)
+      : await makeSetMultipleFlags(prisma)(requestedFlags);
 
     return json({
       success: true,

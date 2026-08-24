@@ -105,7 +105,7 @@ describe("applyGlobalGracedFlips — the shard-set list is stamped, not bare-wri
     expect(typeof m[FEATURE_FLAG.runOpsMintShardSetFlippedAt]).toBe("string");
   });
 
-  postgresTest("concurrent list changes serialize on the lock", async ({ prisma }) => {
+  postgresTest("concurrent list changes do not interleave", async ({ prisma }) => {
     await makeSetMultipleFlags(prisma)({ [FEATURE_FLAG.runOpsMintShardSet]: "a" });
 
     await Promise.all([
@@ -114,8 +114,16 @@ describe("applyGlobalGracedFlips — the shard-set list is stamped, not bare-wri
     ]);
 
     const m = await readFlags(prisma, SET_KEYS);
-    // Whichever won, the stamp must describe a real predecessor, never be absent.
-    expect(["a", "a,b", "a,c"]).toContain(m[FEATURE_FLAG.runOpsMintShardSetPrev]);
+    const set = m[FEATURE_FLAG.runOpsMintShardSet];
+    const prev = m[FEATURE_FLAG.runOpsMintShardSetPrev];
+
+    // The pair must be a consistent history, not a mix of the two writers. The winner's set is
+    // one of the two, and prev is what the OTHER writer left behind: either the original "a", or
+    // the loser's set when the loser committed first. "a,b" beside prev "a,b" would mean one
+    // writer read its own uncommitted state, and prev naming the winner's own set is incoherent.
+    expect(["a,b", "a,c"]).toContain(set);
+    expect(["a", "a,b", "a,c"]).toContain(prev);
+    expect(prev).not.toBe(set);
     expect(typeof m[FEATURE_FLAG.runOpsMintShardSetFlippedAt]).toBe("string");
   });
 });
