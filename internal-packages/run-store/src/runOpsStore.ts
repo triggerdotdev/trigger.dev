@@ -235,6 +235,15 @@ export class RoutingRunStore implements RunStore {
     return this.#shardKeyOfSafe(id) === LEGACY_SHARD;
   }
 
+  // The gen-1 pair members other than `key`. A cuid waitpoint can only ever be drain-relocated
+  // BETWEEN the two gen-1 stores, so its "where does it really live" probe stays confined here and
+  // never touches a gen-2 shard.
+  #gen1PairExcept(key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
+    return [NEW_SHARD, LEGACY_SHARD]
+      .filter((k) => k !== key)
+      .map((k) => ({ key: k, store: this.#shardStore(k) }));
+  }
+
   // The shard that owns an existing id. Throws only when an injected resolver throws.
   #shardKeyOf(id: string): ShardKey {
     return this.#resolveShardKey(id);
@@ -440,21 +449,27 @@ export class RoutingRunStore implements RunStore {
     if (typeof id !== "string") {
       return home;
     }
+    // A gen-2 waitpoint carries its shard in its id and its row lives there. No probe.
+    if (homeKey !== NEW_SHARD && homeKey !== LEGACY_SHARD) {
+      return home;
+    }
     if (
       await home.findWaitpoint({ where: { id } }, onPrimary ? home.primaryReadClient : undefined)
     ) {
       return home;
     }
-    const [other] = this.#shardsExcept(homeKey);
-    if (other === undefined) {
-      return home;
+    for (const { key, store } of this.#gen1PairExcept(homeKey)) {
+      if (
+        await store.findWaitpoint(
+          { where: { id } },
+          onPrimary ? store.primaryReadClient : undefined
+        )
+      ) {
+        this.#metrics.recordWaitpointProbeFallback(homeKey, key);
+        return store;
+      }
     }
-    return (await other.store.findWaitpoint(
-      { where: { id } },
-      onPrimary ? other.store.primaryReadClient : undefined
-    ))
-      ? other.store
-      : home;
+    return home;
   }
 
   static #waitpointId(clause: unknown): string | undefined {
@@ -1761,27 +1776,36 @@ export class RoutingRunStore implements RunStore {
     waitpointId: string,
     context: ForWaitpointCompletionContext
   ): Promise<RunStore> {
-    // Preferred store: explicit legacy-authority pins first, else the waitpoint's id-shape.
+    // A gen-2 waitpoint's row lives on the shard its id names. The three legacy pins encode "the one
+    // non-NEW store", a gen-1 idea, so a gen-2 id OVERRIDES them: honouring the pin would send the
+    // completion write to legacy, match zero rows, and strand the blocked run. A gen-2 id is also
+    // directly routable, so it takes no probe.
+    const idKey = this.#shardKeyOfSafe(waitpointId);
+    const isGen2 = idKey !== NEW_SHARD && idKey !== LEGACY_SHARD;
+    if (isGen2) {
+      return this.#shardStore(idKey);
+    }
     const preferredKey =
       context.treeOwnerResidency === "LEGACY" ||
       context.isCrossTreeIdempotency === true ||
       context.hasLegacyParent === true
         ? LEGACY_SHARD
-        : this.#shardKeyOfSafe(waitpointId);
+        : idKey;
     const preferred = this.#shardStore(preferredKey);
-    // Resolve to where the waitpoint ACTUALLY lives: a migrated run's waitpoint can be on NEW
-    // with a LEGACY-classified id (or vice versa), so verify and fall back rather than route
-    // by id-shape alone and miss it (which leaves the blocked run stuck forever). This guard
-    // selects the store a WRITE (updateManyWaitpoints) then lands on, so it must probe each
-    // store's PRIMARY (mirroring #resolveWaitpointStore's onPrimary): a just-created waitpoint the
-    // replica hasn't caught up on would otherwise mis-resolve the owner and strand the run.
+    // Resolve to where a CUID waitpoint ACTUALLY lives: a migrated run's waitpoint can be on NEW
+    // with a LEGACY-classified id (or vice versa), so verify and fall back across the gen-1 pair
+    // rather than route by id-shape alone and miss it (which leaves the blocked run stuck forever).
+    // This guard selects the store a WRITE (updateManyWaitpoints) then lands on, so it must probe
+    // each store's PRIMARY: a just-created waitpoint the replica has not caught up on would
+    // otherwise mis-resolve the owner and strand the run.
     if (
       await preferred.findWaitpoint({ where: { id: waitpointId } }, preferred.primaryReadClient)
     ) {
       return preferred;
     }
-    for (const { store } of this.#shardsExcept(preferredKey)) {
+    for (const { key, store } of this.#gen1PairExcept(preferredKey)) {
       if (await store.findWaitpoint({ where: { id: waitpointId } }, store.primaryReadClient)) {
+        this.#metrics.recordWaitpointProbeFallback(preferredKey, key);
         return store;
       }
     }

@@ -550,3 +550,62 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
     expect(count).toBe(3); // b:w1 + cuid_w1 (mirror, once) + cuid_w2; b:w9 absent
   });
 });
+
+describe("RoutingRunStore waitpoint probes at N", () => {
+  it("routes a gen-2 waitpoint directly, with no probe", async () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    await router.updateWaitpoint({ where: { id: "b:w1" }, data: {} } as never);
+    expect(trace(log)).toEqual(["b:updateWaitpoint"]);
+  });
+
+  it("keeps a cuid waitpoint on the gen-1 pair and never probes a gen-2 shard", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { waitpoint: { id: "cuid_w1" } }),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+      resolveShard: (id: string) => (id.includes(":") ? id.split(":")[0]! : "legacy"),
+    });
+    await router.updateWaitpoint({ where: { id: "cuid_w1" }, data: {} } as never);
+    expect(log.map((c) => c.slot)).not.toContain("a");
+  });
+
+  it("records a probe fallback when the waitpoint is not on the store its id names", async () => {
+    const falls: Array<[string, string]> = [];
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { waitpoint: { id: "cuid_w1" } }),
+      legacy: fakeStore("legacy", log, { waitpoint: null }),
+      metrics: {
+        recordDuplicateId() {},
+        recordWaitpointProbeFallback: (from, to) => falls.push([from, to]),
+      },
+    });
+    await router.updateWaitpoint({ where: { id: "cuid_w1" }, data: {} } as never);
+    expect(falls).toEqual([["legacy", "new"]]);
+  });
+
+  it("lets a gen-2 waitpoint id beat the cross-tree legacy pin", async () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    const store = await router.forWaitpointCompletion("b:w1", {
+      isCrossTreeIdempotency: true,
+    } as never);
+    expect((store as FakeStore).slot).toBe("b");
+    expect(log.map((c) => c.slot)).not.toContain("legacy");
+  });
+
+  it("keeps the legacy pin for a cuid waitpoint in a cross-tree completion", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log, { waitpoint: { id: "cuid_w1" } }),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+      resolveShard: (id: string) => (id.includes(":") ? id.split(":")[0]! : "legacy"),
+    });
+    const store = await router.forWaitpointCompletion("cuid_w1", {
+      isCrossTreeIdempotency: true,
+    } as never);
+    expect((store as FakeStore).slot).toBe("legacy");
+    expect(log.map((c) => c.slot)).not.toContain("a");
+  });
+});
