@@ -3,6 +3,7 @@ import { safeParseTriggerUri } from "@internal/dashboard-agent-contracts";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
+import { ComponentNames } from "../storybook/StoryKit";
 import {
   GALLERY_PAGES,
   groupsOnPage,
@@ -54,24 +55,6 @@ function Section({
   );
 }
 
-function ThemeToggle() {
-  return (
-    <div className="flex items-center gap-1.5">
-      {/* classic is still the default theme for most users, so it's in the pack */}
-      {(["classic", "dark", "light"] as const).map((theme) => (
-        <button
-          key={theme}
-          type="button"
-          onClick={() => document.documentElement.setAttribute("data-theme", theme)}
-          className="rounded border border-border-bright bg-background-bright px-2 py-1 text-xs text-text-dimmed transition hover:text-text-bright"
-        >
-          {theme}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function PageLinks({ page }: { page: GalleryPageId }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -120,9 +103,12 @@ function Nav({ page }: { page: GalleryPageId }) {
 export function GalleryPage({
   page,
   states,
+  componentNames,
 }: {
   page: GalleryPageId;
   states: Record<string, React.ReactNode>;
+  /** Component files this page covers, shown copyable under the title. */
+  componentNames?: string[];
 }) {
   const meta = GALLERY_PAGES.find((entry) => entry.id === page)!;
   const sections = sectionsOnPage(page);
@@ -134,8 +120,8 @@ export function GalleryPage({
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-4">
             <Header1>Trigger Agent — {meta.title}</Header1>
-            <ThemeToggle />
           </div>
+          {componentNames && componentNames.length > 0 && <ComponentNames names={componentNames} />}
           <PageLinks page={page} />
           <Paragraph variant="small">
             {meta.blurb} {sections.length} states, rendered in isolation at panel width (380px) from
@@ -145,8 +131,8 @@ export function GalleryPage({
           </Paragraph>
           <Paragraph variant="extra-small">
             Run ids, queues, errors and reports are fabricated. Deep links resolve inside a project,
-            so here they render as plain text or navigate nowhere. The theme buttons flip{" "}
-            <code className="font-mono text-xs">data-theme</code> on the root element.
+            so here they render as plain text or navigate nowhere. Use the theme control in the
+            storybook header to switch themes.
           </Paragraph>
         </div>
 

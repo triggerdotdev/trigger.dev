@@ -245,7 +245,7 @@ export function PurchaseSchedulesModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                    <span className="tabular-nums">{`Send request for ${formatNumber(
                       amountValue
                     )}`}</span>
                   </Button>
@@ -259,7 +259,7 @@ export function PurchaseSchedulesModal({
                     disabled={isLoading || state === "need_to_delete"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                    <span className="tabular-nums">{`Remove ${formatNumber(
                       extraSchedules - amountValue
                     )} ${extraSchedules - amountValue === 1 ? "schedule" : "schedules"}`}</span>
                   </Button>
@@ -273,7 +273,7 @@ export function PurchaseSchedulesModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                    <span className="tabular-nums">{`Purchase ${formatNumber(
                       amountValue - extraSchedules
                     )} ${amountValue - extraSchedules === 1 ? "schedule" : "schedules"}`}</span>
                   </Button>

@@ -9,6 +9,7 @@ import {
   ClickHouseEnvironmentMetricsRepository,
   type CurrentRunningStats,
 } from "~/services/environmentMetricsRepository.server";
+import { backstopPromise } from "~/utils/backstopPromise";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
@@ -84,16 +85,17 @@ class TaskListPresenter {
     });
 
     // IMPORTANT: Don't await this, we want to return the promise
-    // so we can defer the loading of the data. The caller is responsible for
-    // consuming it — an unconsumed promise here would become an unhandled
-    // rejection if the underlying query fails.
-    const runningStats = environmentMetricsRepository.getCurrentRunningStats({
-      organizationId,
-      projectId,
-      environmentId,
-      days: 6,
-      tasks: slugs,
-    });
+    // so we can defer the loading of the data. Backstopped: the caller
+    // subscribes only after further awaits.
+    const runningStats = backstopPromise(
+      environmentMetricsRepository.getCurrentRunningStats({
+        organizationId,
+        projectId,
+        environmentId,
+        days: 6,
+        tasks: slugs,
+      })
+    );
 
     return { tasks, runningStats };
   }

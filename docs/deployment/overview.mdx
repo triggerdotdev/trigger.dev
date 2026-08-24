@@ -122,6 +122,12 @@ If you want to set a global version to run all tasks against, you can use the `T
 TRIGGER_VERSION=20250228.1
 ```
 
+<Tip>
+  If what you actually want is for each release of your app to run against the tasks built from the
+  same commit, you don't need to plumb version numbers around by hand. See [version skew
+  protection](/deployment/version-skew-protection).
+</Tip>
+
 ### Child tasks and auto-version locking
 
 Trigger and wait functions version lock child task runs to the parent task run version. This ensures the results from child runs match what the parent task is expecting. If you don't wait then version locking doesn't apply.
@@ -155,7 +161,7 @@ Or from the dashboard:
 
 ![Trigger.dev dashboard showing the promote button](/deployment/promote-button.png)
 
-To learn more about skipping promotion and how this enables atomic deployments, see our [Atomic deployment](/deployment/atomic-deployment) guide.
+To learn more about skipping promotion and how this enables atomic deployments, see our [Atomic deployment](/deployment/atomic-deployment) guide. To keep your app and tasks in sync without coordinating promotion at all, see [version skew protection](/deployment/version-skew-protection).
 
 ## Staging deploys
 

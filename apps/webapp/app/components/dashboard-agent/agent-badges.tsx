@@ -15,13 +15,12 @@ export type AgentTone = "neutral" | "success" | "warning" | "error";
 // The `system:` overrides stop the Badge `small` variant tinting every chip blue.
 const TONE_BADGE: Record<AgentTone, string> = {
   neutral:
-    "border-border-bright text-text-dimmed system:border-transparent system:bg-charcoal-500/10 system:text-text-dimmed",
+    "border-border-bright text-text-dimmed system:border-transparent system:bg-charcoal-500 system:text-white",
   success:
-    "border-success/40 text-success system:border-transparent system:bg-success/10 system:text-success",
+    "border-success/40 text-success system:border-transparent system:bg-success system:text-white",
   warning:
-    "border-warning/40 text-warning system:border-transparent system:bg-warning/10 system:text-warning",
-  error:
-    "border-error/40 text-error system:border-transparent system:bg-error/10 system:text-error",
+    "border-warning/40 text-warning system:border-transparent system:bg-warning system:text-white",
+  error: "border-error/40 text-error system:border-transparent system:bg-error system:text-white",
 };
 
 export const TONE_ICON_COLOR: Record<AgentTone, string> = {
@@ -48,8 +47,9 @@ export function AgentBadge({
     <Badge
       variant="small"
       className={cn(
-        // `contrast-chip`: the tinted chip gains a ring as interface contrast rises.
-        "contrast-chip px-1.5 [&>span]:flex [&>span]:items-center [&>span]:gap-1",
+        // No `contrast-chip`: these fill solid, so its currentcolor ring would
+        // land as a white line inset into the fill.
+        "px-1.5 [&>span]:flex [&>span]:items-center [&>span]:gap-1",
         TONE_BADGE[tone],
         className
       )}

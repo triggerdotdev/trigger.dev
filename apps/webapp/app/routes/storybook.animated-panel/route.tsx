@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { Button } from "~/components/primitives/Buttons";
@@ -166,6 +167,9 @@ export default function Story() {
 
   return (
     <div className="h-full">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Resizable.tsx", "PropertyTable.tsx"]} />
+      </div>
       <ResizablePanelGroup orientation="horizontal" className="max-h-full">
         <ResizablePanel id="animated-panel-main" min="200px">
           <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">

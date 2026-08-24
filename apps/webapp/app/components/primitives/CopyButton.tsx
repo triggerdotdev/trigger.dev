@@ -104,6 +104,9 @@ export function CopyButton({
   return (
     <span className={className}>
       <SimpleTooltip
+        // The icon button is a real <button>; without asChild the tooltip
+        // trigger wraps it in its own, and the browser parser splits the nested
+        // buttons apart, which React then fails to hydrate.
         asChild
         tabbable
         button={iconButton}

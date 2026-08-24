@@ -11,11 +11,11 @@ The instructions below are specific to GitHub Actions, but the same concepts can
 
 ## GitHub Actions example
 
-This simple GitHub action workflow will deploy your Trigger.dev tasks when new code is pushed to the `main` branch and the `trigger` directory has changes in it.
+This simple GitHub action workflow will deploy your Trigger.dev tasks when new code is pushed to the `main` branch.
 
 <Warning>
   The deploy step will fail if any version mismatches are detected. Please see the [version
-  pinning](/github-actions#version-pinning) section for more details.
+  pinning](/github-actions#cli-version-pinning) section for more details.
 </Warning>
 
 <CodeGroup>
@@ -47,7 +47,7 @@ jobs:
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
         run: |
-          npx trigger.dev@latest deploy
+          npx trigger.dev@latest deploy --external-id ${{ github.sha }}
 ```
 
 ```yaml .github/workflows/release-trigger-staging.yml
@@ -76,12 +76,36 @@ jobs:
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
         run: |
-          npx trigger.dev@latest deploy --env staging
+          npx trigger.dev@latest deploy --env staging --external-id ${{ github.sha }}
 ```
 
 </CodeGroup>
 
 If you already have a GitHub action file, you can just add the final step "🚀 Deploy Trigger.dev" to your existing file.
+
+### Pinning runs to the deployment you just built
+
+The `--external-id ${{ github.sha }}` above tags the deployment with the commit it was built from. That is the first half of [version skew protection](/deployment/version-skew-protection): to complete it, give your running application the **same value** so it sends that id when it triggers.
+
+```bash
+# In your application's runtime environment, for the release built from this commit
+TRIGGER_EXTERNAL_DEPLOYMENT_ID=<the-same-commit-sha>
+```
+
+Every task triggered by that release is then pinned to the deployment built from the same commit — and runs triggered before the task build finishes wait for it rather than executing on the previous version.
+
+<Note>
+  Tagging the deployment is harmless on its own: if nothing sends a matching id, runs behave exactly
+  as they do today. `--external-id` also makes repeat deploys idempotent — re-running the workflow
+  for a commit that is already deployed reports the existing version instead of building again.
+
+  Two things follow from that. Because no build runs, a re-run after changing a synced environment
+  variable won't pick the new value up — make an empty commit, or pass `--force`. And if you add a
+  `paths:` filter to this workflow, `${{ github.sha }}` stops being a safe id: commits that don't
+  touch your tasks never produce a deployment carrying that SHA, so every run from those releases
+  expires. See [when nothing ever
+  lands](/deployment/version-skew-protection#when-nothing-ever-lands).
+</Note>
 
 ## Preview branches
 
@@ -109,10 +133,14 @@ jobs:
         run: npm install
 
       - name: Deploy preview branch
-        run: npx trigger.dev@latest deploy --env preview
+        run: npx trigger.dev@latest deploy --env preview --external-id ${{ github.event.pull_request.head.sha }}
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
 ```
+
+On `pull_request`, `github.sha` is the merge commit GitHub creates for the PR, not the commit your
+app was built from. Use `github.event.pull_request.head.sha` so the id matches the one your preview
+deployment sends.
 
 <Note>
   **Include `closed`** in the `pull_request.types` list. Without it, preview branches won't be archived when PRs are merged or closed, and you may hit the limit on active preview branches. See [Preview branches](/deployment/preview-branches#preview-branches-with-github-actions-recommended) for more details.

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph, type ParagraphVariant } from "~/components/primitives/Paragraph";
 import { UnorderedList } from "~/components/primitives/UnorderedList";
@@ -45,6 +46,9 @@ const variantGroups: { label: string; variants: ParagraphVariant[] }[] = [
 export default function Story() {
   return (
     <div className="flex flex-col gap-12 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["UnorderedList.tsx"]} />
+      </div>
       {variantGroups.map((group) => (
         <div key={group.label} className="flex flex-col gap-6">
           <Header2>{group.label}</Header2>

@@ -10,7 +10,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { TabButton } from "~/components/primitives/Tabs";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
@@ -46,6 +46,8 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -163,6 +165,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       cursor,
       direction,
       includeHasAnyRuns: true,
+      columns: getRunColumnsForSelect(request),
     })
     .catch(() => null);
 
@@ -266,6 +269,7 @@ export default function Page() {
                           onClick={() => showNewRunsRef.current()}
                         />
                       ) : null}
+                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
                       <Suspense fallback={null}>
                         <TypedAwait resolve={runList} errorElement={null}>
                           {(list) => (list ? <ListPagination list={list} /> : null)}
@@ -487,11 +491,14 @@ function TaskActivityCard({
   const [view, setView] = useState<"runs" | "queue">("runs");
   return (
     <ChartCard
+      headerVariant="tabs"
       title={
-        <TabContainer>
+        <>
           <TabButton
             isActive={view === "runs"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("runs")}
           >
             Runs by status
@@ -499,11 +506,13 @@ function TaskActivityCard({
           <TabButton
             isActive={view === "queue"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("queue")}
           >
             Queue backlog
           </TabButton>
-        </TabContainer>
+        </>
       }
     >
       {view === "queue" ? (

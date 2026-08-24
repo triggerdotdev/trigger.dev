@@ -29,7 +29,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextArea } from "~/components/primitives/TextArea";
-import { TextLink } from "~/components/primitives/TextLink";
+import { TextLink, textLinkClassName } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
@@ -45,6 +45,11 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 
 function WhiteSpinnerIcon() {
   return <Spinner color="white" />;
+}
+
+/** A white spinner would vanish on the secondary button's light surface. */
+function InheritSpinnerIcon() {
+  return <Spinner color="inherit" />;
 }
 
 const Params = z.object({
@@ -533,7 +538,7 @@ export function TierHobby({
                 <Button
                   variant="secondary/medium"
                   disabled={isLoading}
-                  LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
+                  LeadingIcon={isLoading ? InheritSpinnerIcon : undefined}
                   form="subscribe-hobby"
                 >
                   {`Downgrade to ${plan.title}`}
@@ -608,9 +613,7 @@ export function TierHobby({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
-                Request a BAA
-              </span>
+              <span className={cn(textLinkClassName(), "cursor-pointer")}>Request a BAA</span>
             }
           />
         </HIPAAAddOn>
@@ -763,9 +766,7 @@ export function TierPro({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
-                Request a BAA
-              </span>
+              <span className={cn(textLinkClassName(), "cursor-pointer")}>Request a BAA</span>
             }
           />
         </HIPAAAddOn>
@@ -823,9 +824,7 @@ export function TierEnterprise() {
             <Feedback
               defaultValue="hipaa"
               button={
-                <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
-                  Request a BAA
-                </span>
+                <span className={cn(textLinkClassName(), "cursor-pointer")}>Request a BAA</span>
               }
             />
           </HIPAAAddOn>

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { CpuChipIcon } from "@heroicons/react/20/solid";
 import { CircleStackIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
@@ -25,6 +26,9 @@ import type { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 export default function Story() {
   return (
     <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 px-8 py-16">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Select.tsx"]} />
+      </div>
       <Form className="space-y-4">
         <div className="flex gap-16">
           <Filter />

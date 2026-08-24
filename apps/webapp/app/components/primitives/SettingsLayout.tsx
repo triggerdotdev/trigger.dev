@@ -40,6 +40,13 @@ export function SettingsContainer({
   );
 }
 
+/**
+ * For pages that hand-roll their sections. Must stay in step with the `mt-13` in
+ * `SettingsSection`: Tailwind only generates classes written as full literals,
+ * so the two can't be composed.
+ */
+export const SETTINGS_SECTION_GAP = "mt-13";
+
 /** A group of related rows. Adds vertical spacing between sibling sections. */
 export function SettingsSection({
   children,
@@ -49,7 +56,7 @@ export function SettingsSection({
   className?: string;
 }) {
   return (
-    <section className={cn("w-full [&:not(:first-child)]:mt-12", className)}>{children}</section>
+    <section className={cn("w-full [&:not(:first-child)]:mt-13", className)}>{children}</section>
   );
 }
 
@@ -112,7 +119,6 @@ export function SettingsRowTitle({
   );
 }
 
-/** Description/subtitle typography for a row. */
 export function SettingsRowDescription({
   children,
   className,
@@ -126,6 +132,9 @@ export function SettingsRowDescription({
     </Paragraph>
   );
 }
+
+/** Title-to-description spacing, shared with anything hand-rolling the pair. */
+export const SETTINGS_ROW_TITLE_GAP = "space-y-0.5";
 
 /**
  * A single settings row: title + description on the left, action on the right.
@@ -168,7 +177,7 @@ export function SettingsRow({
       )}
     >
       {children ?? (
-        <div className="flex-1 space-y-0.5">
+        <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
           {title ? (
             <SettingsRowTitle htmlFor={htmlFor} className={titleClassName}>
               {title}
@@ -227,7 +236,7 @@ export function SettingsAlertRow({
 
   return (
     <SettingsRow action={action}>
-      <div className="flex-1 space-y-0.5">
+      <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
         <div className="flex items-center gap-1.5">
           <Icon className={cn("size-4 shrink-0", color)} />
           <SettingsRowTitle className={color}>{title}</SettingsRowTitle>
