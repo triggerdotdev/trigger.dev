@@ -1,5 +1,12 @@
-import { PostgresRunStore, RoutingRunStore, type RunStore } from "@internal/run-store";
+import {
+  PostgresRunStore,
+  RoutingRunStore,
+  type RoutingStoreMetrics,
+  type RunStore,
+} from "@internal/run-store";
 import { resolveShard, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import { Counter } from "prom-client";
+import { metricsRegister } from "~/metrics.server";
 import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
@@ -83,8 +90,29 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     new: newStore,
     legacy: legacyStore,
     resolveShard: deps.resolveShard ?? resolveShard,
+    metrics: routingStoreMetrics,
   });
 }
+
+// singleton: module-scope Counter registration double-registers under dev HMR.
+const routingStoreMetrics: RoutingStoreMetrics = singleton("routingStoreMetrics", () => {
+  const duplicateId = new Counter({
+    name: "runops_shard_duplicate_id_total",
+    help: "One id was returned by two run-ops shards that must be disjoint (a routing-invariant violation).",
+    labelNames: ["shard_keys"],
+    registers: [metricsRegister],
+  });
+  const probeFallback = new Counter({
+    name: "runops_waitpoint_probe_fallback_total",
+    help: "A waitpoint was not on the run-ops store its id named and was found by a fallback probe.",
+    labelNames: ["from", "to"],
+    registers: [metricsRegister],
+  });
+  return {
+    recordDuplicateId: (shardKeys) => duplicateId.inc({ shard_keys: shardKeys.join(",") }),
+    recordWaitpointProbeFallback: (from, to) => probeFallback.inc({ from, to }),
+  };
+});
 
 // Build the routing store whenever BOTH run-ops DBs are configured, independent of
 // RUN_OPS_SPLIT_ENABLED. Reads must fan out across both DBs so a run that lives on the new
