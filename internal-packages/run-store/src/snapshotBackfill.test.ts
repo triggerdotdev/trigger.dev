@@ -1,8 +1,93 @@
 import { expect, it, describe } from "vitest";
 import { containerTest } from "@internal/testcontainers";
+import type { PrismaClient } from "@trigger.dev/database";
 import { createRedisClient } from "@internal/redis";
-import { snapshotRowsFromRedis, readRunSnapshotsForBackfill, type RunBackfillData } from "./snapshotBackfill.js";
+import {
+  snapshotRowsFromRedis,
+  readRunSnapshotsForBackfill,
+  applyBackfill,
+  type BackfillRow,
+  type RunBackfillData,
+} from "./snapshotBackfill.js";
 import { RedisSnapshotStore } from "./redisSnapshotStore.js";
+import { PostgresRunStore } from "./PostgresRunStore.js";
+
+// Minimal legacy seed: the owning rows the kept FKs require, plus a TaskRun (via the store's own
+// createRun) so a reconstructed snapshot's runId FK resolves, plus a completed-target waitpoint.
+async function seedRunAndWaitpoint(prisma: PrismaClient, suffix: string) {
+  const organization = await prisma.organization.create({
+    data: { title: `Org ${suffix}`, slug: `org-${suffix}` },
+  });
+  const project = await prisma.project.create({
+    data: {
+      name: `Project ${suffix}`,
+      slug: `project-${suffix}`,
+      externalRef: `proj_${suffix}`,
+      organizationId: organization.id,
+    },
+  });
+  const environment = await prisma.runtimeEnvironment.create({
+    data: {
+      type: "DEVELOPMENT",
+      slug: "dev",
+      projectId: project.id,
+      organizationId: organization.id,
+      apiKey: `tr_dev_${suffix}`,
+      pkApiKey: `pk_dev_${suffix}`,
+      shortcode: `short_${suffix}`,
+    },
+  });
+  const store = new PostgresRunStore({
+    prisma: prisma as never,
+    readOnlyPrisma: prisma as never,
+    schemaVariant: "legacy",
+  });
+  await store.createRun({
+    data: {
+      id: `run_${suffix}`,
+      engine: "V2",
+      status: "PENDING",
+      friendlyId: `run_friendly_${suffix}`,
+      runtimeEnvironmentId: environment.id,
+      environmentType: "DEVELOPMENT",
+      organizationId: organization.id,
+      projectId: project.id,
+      taskIdentifier: "my-task",
+      payload: "{}",
+      payloadType: "application/json",
+      traceId: `trace_${suffix}`,
+      spanId: `span_${suffix}`,
+      queue: "task/my-task",
+      isTest: false,
+      taskEventStore: "taskEvent",
+      depth: 0,
+      createdAt: new Date("2024-01-01T00:00:00.000Z"),
+    },
+    snapshot: {
+      engine: "V2",
+      executionStatus: "RUN_CREATED",
+      description: "Run was created",
+      runStatus: "PENDING",
+      environmentId: environment.id,
+      environmentType: "DEVELOPMENT",
+      projectId: project.id,
+      organizationId: organization.id,
+    },
+  });
+  const waitpoint = await prisma.waitpoint.create({
+    data: {
+      id: `wp_${suffix}`,
+      friendlyId: `wp_friendly_${suffix}`,
+      type: "MANUAL",
+      status: "PENDING",
+      idempotencyKey: `idem_${suffix}`,
+      userProvidedIdempotencyKey: false,
+      projectId: project.id,
+      environmentId: environment.id,
+    },
+  });
+  return { organization, project, environment, runId: `run_${suffix}`, waitpointId: waitpoint.id };
+}
 
 function entry(over: Record<string, unknown> = {}) {
   return {
@@ -99,3 +184,71 @@ containerTest(
     }
   }
 );
+
+containerTest(
+  "applied rows are stored correctly, join links inserted FK-free (legacy)",
+  async ({ prisma }) => {
+    const seed = await seedRunAndWaitpoint(prisma, "apply");
+    const row: BackfillRow = {
+      waitpointIds: [seed.waitpointId],
+      row: {
+        id: "s_recon",
+        engine: "V2",
+        executionStatus: "EXECUTING",
+        description: "reconstructed",
+        isValid: true,
+        error: null,
+        runId: seed.runId,
+        runStatus: "EXECUTING",
+        environmentId: seed.environment.id,
+        environmentType: "DEVELOPMENT",
+        projectId: seed.project.id,
+        organizationId: seed.organization.id,
+        createdAt: new Date("2026-08-24T00:00:00.000Z"),
+        completedWaitpointOrder: [seed.waitpointId],
+      },
+    };
+
+    const result = await applyBackfill(prisma, [row], { dryRun: false, schemaVariant: "legacy" });
+    expect(result).toEqual({ written: 1, linked: 1 });
+
+    const written = await prisma.taskRunExecutionSnapshot.findUniqueOrThrow({
+      where: { id: "s_recon" },
+      include: { completedWaitpoints: true },
+    });
+    expect(written.isValid).toBe(true);
+    expect(written.completedWaitpointOrder).toEqual([seed.waitpointId]);
+    expect(written.completedWaitpoints.map((w) => w.id)).toEqual([seed.waitpointId]);
+  }
+);
+
+containerTest("dryRun writes nothing", async ({ prisma }) => {
+  const before = await prisma.taskRunExecutionSnapshot.count();
+  const result = await applyBackfill(
+    prisma,
+    [
+      {
+        waitpointIds: [],
+        row: {
+          id: "s_dry",
+          engine: "V2",
+          executionStatus: "EXECUTING",
+          description: "d",
+          isValid: true,
+          error: null,
+          runId: "run_dry",
+          runStatus: "EXECUTING",
+          environmentId: "env",
+          environmentType: "DEVELOPMENT",
+          projectId: "p",
+          organizationId: "o",
+          createdAt: new Date(),
+          completedWaitpointOrder: [],
+        },
+      },
+    ],
+    { dryRun: true, schemaVariant: "legacy" }
+  );
+  expect(result).toEqual({ written: 0, linked: 0 });
+  expect(await prisma.taskRunExecutionSnapshot.count()).toBe(before);
+});
