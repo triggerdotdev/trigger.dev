@@ -982,3 +982,4 @@ export const postgresAndMinioTest = withWarmup(
 );
 
 export { slotOf, expectOneSlot } from "./clusterSlot";
+export { createFaultInjector, type FaultInjector } from "./faultInjection";
