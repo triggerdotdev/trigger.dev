@@ -173,6 +173,34 @@ export class RoutingRunStore implements RunStore {
     this.#logger.error("RoutingRunStore: one id returned by two shards", { id, shardKeys });
   }
 
+  // Merge key-tagged legs, keeping one row per id. Legs MUST arrive in #precedence order, so the
+  // highest-authority copy is written last and wins. A winner keeps the POSITION of its first
+  // sighting: callers observe row order whenever `orderBy` is absent. Rows whose projection omits
+  // `id` cannot be deduped and pass through unchanged. A duplicate whose reporting keys leave the
+  // gen-1 pair alarms via #reportDuplicateId.
+  #mergeById<R extends Record<string, unknown>>(legs: Array<{ key: ShardKey; rows: R[] }>): R[] {
+    const byId = new Map<string, R>();
+    const keysById = new Map<string, ShardKey[]>();
+    const passthrough: R[] = [];
+    for (const { key, rows } of legs) {
+      for (const row of rows) {
+        const id = row.id;
+        if (typeof id !== "string") {
+          passthrough.push(row);
+          continue;
+        }
+        byId.set(id, row);
+        const keys = keysById.get(id);
+        if (keys) keys.push(key);
+        else keysById.set(id, [key]);
+      }
+    }
+    for (const [id, keys] of keysById) {
+      if (keys.length > 1) this.#reportDuplicateId(id, keys);
+    }
+    return [...byId.values(), ...passthrough];
+  }
+
   // The shard that owns an existing id. Throws only when an injected resolver throws.
   #shardKeyOf(id: string): ShardKey {
     return this.#resolveShardKey(id);
@@ -576,12 +604,11 @@ export class RoutingRunStore implements RunStore {
   async #findRunsOpen(args: FindRunsArgs, client?: ReadClient): Promise<unknown[]> {
     const { args: selArgs, addedFields } = ensureProjected(args);
     const fan = widenForMerge(selArgs);
-    const legs = await this.#fanOut(this.#precedence, (store) =>
-      this.#findManyOn(store, client)(fan)
-    );
-    const byId = new Map<string, Record<string, unknown>>();
-    for (const r of legs.flat()) byId.set(r.id as string, r);
-    return finalizeRows([...byId.values()], args, addedFields);
+    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+      key,
+      rows: (await this.#findManyOn(store, client)(fan)) as Record<string, unknown>[],
+    }));
+    return finalizeRows(this.#mergeById(legs), args, addedFields);
   }
 
   // Canonical grouped replacement for `Promise.all(ids.map(id => readThroughRun(id)))`: reuses
@@ -1496,25 +1523,17 @@ export class RoutingRunStore implements RunStore {
       // No bounded id set to partition on → fall through to the fan-out path.
     }
 
-    const legs = await this.#fanOut(
-      this.#precedence,
-      (store) =>
-        store.findManyWaitpoints(
-          scalarArgs as Prisma.WaitpointFindManyArgs,
-          RoutingRunStore.#ownPrimary(store, client)
-        ) as Promise<Record<string, unknown>[]>
-    );
-    // A token mirrored onto both DBs during drain appears in BOTH legs; dedup by id in #precedence
-    // order, so the highest-authority copy wins. Without this, edge-waitpoint hydration could read a
-    // stale LEGACY status and strand the run. Rows whose projection omits `id` pass through.
-    const byId = new Map<string, Record<string, unknown>>();
-    const passthrough: Record<string, unknown>[] = [];
-    for (const w of legs.flat()) {
-      const id = w.id;
-      if (typeof id === "string") byId.set(id, w);
-      else passthrough.push(w);
-    }
-    return [...byId.values(), ...passthrough];
+    // A token mirrored onto both DBs during drain appears in BOTH legs; #mergeById dedups by id in
+    // #precedence order, so the highest-authority copy wins. Without this, edge-waitpoint hydration
+    // could read a stale LEGACY status and strand the run.
+    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+      key,
+      rows: (await store.findManyWaitpoints(
+        scalarArgs as Prisma.WaitpointFindManyArgs,
+        RoutingRunStore.#ownPrimary(store, client)
+      )) as Record<string, unknown>[],
+    }));
+    return this.#mergeById(legs);
   }
 
   // Re-resolve a waitpoint's group-A relations across BOTH DBs and attach them to `row`. Each target
@@ -1704,13 +1723,14 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       )) as Record<string, unknown>[];
     } else {
-      const legs = await this.#fanOut(this.#precedence, (store) =>
-        store.findManyTaskRunWaitpoints(
+      const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+        key,
+        rows: (await store.findManyTaskRunWaitpoints(
           scalarArgs as typeof args,
           RoutingRunStore.#ownPrimary(store, client)
-        )
-      );
-      edges = dedupeEdgesById(legs.flat()) as Record<string, unknown>[];
+        )) as Record<string, unknown>[],
+      }));
+      edges = this.#mergeById(legs);
     }
 
     if (waitpoint) {
@@ -2029,17 +2049,20 @@ export class RoutingRunStore implements RunStore {
       skip: 0,
       ...(args.take != null ? { take: skip + args.take } : {}),
     };
-    const legs = await this.#fanOut(this.#precedence, (store) =>
-      store.findManyWaitpointTags(perLeg, RoutingRunStore.#ownPrimary(store, client))
-    );
-    const byId = new Map<string, WaitpointTag>();
-    for (const tag of legs.flat()) byId.set(tag.id, tag);
+    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+      key,
+      rows: (await store.findManyWaitpointTags(
+        perLeg,
+        RoutingRunStore.#ownPrimary(store, client)
+      )) as unknown as Array<Record<string, unknown>>,
+    }));
+    const deduped = this.#mergeById(legs) as unknown as WaitpointTag[];
     const merged = args.orderBy
       ? (sortByOrderBy(
-          [...byId.values()] as unknown as Array<Record<string, unknown>>,
+          deduped as unknown as Array<Record<string, unknown>>,
           args.orderBy as unknown as NonNullable<FindRunsArgs["orderBy"]>
         ) as unknown as WaitpointTag[])
-      : [...byId.values()];
+      : deduped;
     return merged.slice(skip, args.take != null ? skip + args.take : undefined);
   }
 
@@ -2161,20 +2184,6 @@ function narrowArgsToIds(args: Record<string, unknown>, ids: string[]): Record<s
     ...args,
     where: { ...((args.where as Record<string, unknown>) ?? {}), id: { in: boundedIn(ids) } },
   };
-}
-
-// Merge edge rows from every store, keeping one per edge `id`. The caller MUST supply the rows in
-// #precedence order, so the highest-authority shard is seen last and wins. Rows whose projection
-// omits `id` can't be deduped, so they pass through unchanged.
-function dedupeEdgesById<R>(rows: R[]): R[] {
-  const byId = new Map<string, R>();
-  const passthrough: R[] = [];
-  for (const row of rows) {
-    const id = (row as { id?: unknown }).id;
-    if (typeof id === "string") byId.set(id, row);
-    else passthrough.push(row);
-  }
-  return [...byId.values(), ...passthrough];
 }
 
 // A caller sub-select for an edge relation: `{ select?, include? }`, `true` for a bare `key: true`,

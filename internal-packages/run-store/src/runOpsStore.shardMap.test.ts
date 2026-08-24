@@ -353,3 +353,65 @@ describe("RoutingRunStore probe at N", () => {
     await expect(router.findRun({ spanId: "span_x" })).rejects.toThrow("shard a is down");
   });
 });
+
+describe("RoutingRunStore merge precedence and duplicate alarm", () => {
+  const spy = () => {
+    const seen: string[][] = [];
+    return {
+      metrics: { recordDuplicateId: (k: string[]) => seen.push(k), recordWaitpointProbeFallback() {} },
+      seen,
+    };
+  };
+
+  it("stays silent for a duplicate run id across the gen-1 pair", async () => {
+    const { metrics, seen } = spy();
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { runs: [{ id: "dup", from: "new" }] }),
+      legacy: fakeStore("legacy", log, { runs: [{ id: "dup", from: "legacy" }] }),
+      metrics,
+    });
+    const rows = (await router.findRuns({
+      where: { runtimeEnvironmentId: "env_1" },
+      select: { id: true, from: true },
+    })) as Array<{ from: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.from).toBe("new"); // NEW wins the precedence merge
+    expect(seen).toEqual([]);
+  });
+
+  it("alarms for a duplicate involving a gen-2 shard and still picks deterministically", async () => {
+    const { metrics, seen } = spy();
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [
+        { key: "a", store: fakeStore("a", log, { runs: [{ id: "dup", from: "a" }] }) },
+        { key: "b", store: fakeStore("b", log, { runs: [{ id: "dup", from: "b" }] }) },
+      ],
+      resolveShard: (id: string) => id.split(":")[0]!,
+      metrics,
+    });
+    const rows = (await router.findRuns({
+      where: { runtimeEnvironmentId: "env_1" },
+      select: { id: true, from: true },
+    })) as Array<{ from: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.from).toBe("b"); // last in #precedence [legacy, new, a, b] wins
+    expect(seen).toEqual([["a", "b"]]);
+  });
+
+  it("passes through an edge row whose projection omits id", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { edges: [{ taskRunId: "r1" }] }),
+      legacy: fakeStore("legacy", log, { edges: [{ taskRunId: "r2" }] }),
+    });
+    const edges = (await router.findManyTaskRunWaitpoints({
+      where: { waitpointId: "w" },
+      select: { taskRunId: true },
+    })) as Array<{ taskRunId: string }>;
+    expect(edges).toHaveLength(2);
+  });
+});
