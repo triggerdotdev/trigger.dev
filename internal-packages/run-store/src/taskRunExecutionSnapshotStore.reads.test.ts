@@ -1,7 +1,7 @@
 // Reads served from Redis must be indistinguishable from the Postgres reads they replace: the same
 // payload shape, the same tenant boundary, the same fallback when Redis does not hold the answer.
 import { describe, expect } from "vitest";
-import { postgresAndRedisTest } from "@internal/testcontainers";
+import { containerTest } from "@internal/testcontainers";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore } from "./redisSnapshotStore.js";
@@ -77,7 +77,7 @@ function snapshotInput(runId: string, env: SnapshotFixtureEnv, description: stri
 }
 
 describe("snapshot reads", () => {
-  postgresAndRedisTest("serves the latest snapshot from Redis", async ({ prisma, redisOptions }) => {
+  containerTest("serves the latest snapshot from Redis", async ({ prisma, redisOptions }) => {
     const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -101,7 +101,7 @@ describe("snapshot reads", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "returns the same payload Postgres would",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
@@ -128,7 +128,7 @@ describe("snapshot reads", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "reads a foreign environment as not found, so the caller's 404 still fires",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
@@ -146,7 +146,7 @@ describe("snapshot reads", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "falls back to Postgres for a run with no keyspace",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
@@ -181,7 +181,7 @@ describe("snapshot reads", () => {
     }
   );
 
-  postgresAndRedisTest("reads from Postgres at readPercent 0", async ({ prisma, redisOptions }) => {
+  containerTest("reads from Postgres at readPercent 0", async ({ prisma, redisOptions }) => {
     const { decorated, redis, reads } = build(prisma as never, redisOptions as never, {
       readPercent: 0,
     });
@@ -198,7 +198,7 @@ describe("snapshot reads", () => {
     }
   });
 
-  postgresAndRedisTest("reads from Postgres at mode dual-write", async ({ prisma, redisOptions }) => {
+  containerTest("reads from Postgres at mode dual-write", async ({ prisma, redisOptions }) => {
     const { decorated, redis, reads } = build(prisma as never, redisOptions as never, {
       mode: "dual-write",
     });
@@ -215,7 +215,7 @@ describe("snapshot reads", () => {
     }
   });
 
-  postgresAndRedisTest("serves the since-cursor lookup from Redis", async ({ prisma, redisOptions }) => {
+  containerTest("serves the since-cursor lookup from Redis", async ({ prisma, redisOptions }) => {
     const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -239,7 +239,7 @@ describe("snapshot reads", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "delegates a snapshot lookup it does not recognise",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
@@ -264,7 +264,7 @@ describe("snapshot reads", () => {
     }
   );
 
-  postgresAndRedisTest("serves the since window from Redis", async ({ prisma, redisOptions }) => {
+  containerTest("serves the since window from Redis", async ({ prisma, redisOptions }) => {
     const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -290,7 +290,7 @@ describe("snapshot reads", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "delegates a window query it does not recognise",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
@@ -312,7 +312,7 @@ describe("snapshot reads", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "serves the waitpoint id projections from Redis",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
@@ -344,7 +344,7 @@ describe("snapshot reads", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "delegates a waitpoint id projection with no run id",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, reads } = build(prisma as never, redisOptions as never);
@@ -366,7 +366,7 @@ describe("snapshot reads", () => {
     }
   );
 
-  postgresAndRedisTest("never touches Redis for reads at mode off", async ({ prisma, redisOptions }) => {
+  containerTest("never touches Redis for reads at mode off", async ({ prisma, redisOptions }) => {
     const { decorated, redis, reads } = build(prisma as never, redisOptions as never, {
       mode: "off",
     });

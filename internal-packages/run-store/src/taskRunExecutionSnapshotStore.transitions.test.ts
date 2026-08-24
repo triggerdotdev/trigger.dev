@@ -2,7 +2,7 @@
 // reading the code: with the Redis half made to fail, the Postgres row is still there and the caller
 // sees no error, which is only possible if Postgres went first.
 import { describe, expect } from "vitest";
-import { postgresAndRedisTest } from "@internal/testcontainers";
+import { containerTest } from "@internal/testcontainers";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore } from "./redisSnapshotStore.js";
@@ -134,7 +134,7 @@ function expireInput(env: SnapshotFixtureEnv) {
 }
 
 describe("transition write ordering", () => {
-  postgresAndRedisTest("writes Postgres then Redis", async ({ prisma, redisOptions }) => {
+  containerTest("writes Postgres then Redis", async ({ prisma, redisOptions }) => {
     const { decorated, redis, writes } = harness(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -157,7 +157,7 @@ describe("transition write ordering", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "keeps the Postgres write and enqueues one repair when the append fails",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, repairs } = harness(prisma as never, redisOptions as never, {
@@ -190,7 +190,7 @@ describe("transition write ordering", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "treats a transition on a run with no keyspace as skipped, not failed",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, repairs, writes } = harness(prisma as never, redisOptions as never);
@@ -210,7 +210,7 @@ describe("transition write ordering", () => {
     }
   );
 
-  postgresAndRedisTest("appends for expireRun", async ({ prisma, redisOptions }) => {
+  containerTest("appends for expireRun", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = harness(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -229,7 +229,7 @@ describe("transition write ordering", () => {
     }
   });
 
-  postgresAndRedisTest("appends for expireParkedRun", async ({ prisma, redisOptions }) => {
+  containerTest("appends for expireParkedRun", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = harness(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -253,7 +253,7 @@ describe("transition write ordering", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "appends nothing when expireParkedRun matches no run",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, writes } = harness(prisma as never, redisOptions as never);
@@ -278,7 +278,7 @@ describe("transition write ordering", () => {
     }
   );
 
-  postgresAndRedisTest("appends for rescheduleRun", async ({ prisma, redisOptions }) => {
+  containerTest("appends for rescheduleRun", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = harness(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -306,7 +306,7 @@ describe("transition write ordering", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "appends nothing when rescheduleRun carries no snapshot",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, writes } = harness(prisma as never, redisOptions as never);
@@ -325,7 +325,7 @@ describe("transition write ordering", () => {
     }
   );
 
-  postgresAndRedisTest("appends for lockRunToWorker under a CAS", async ({ prisma, redisOptions }) => {
+  containerTest("appends for lockRunToWorker under a CAS", async ({ prisma, redisOptions }) => {
     const { decorated, redis, writes } = harness(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -367,7 +367,7 @@ describe("transition write ordering", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "reports a forked append without enqueuing a repair",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis, repairs, writes } = harness(prisma as never, redisOptions as never);
@@ -409,7 +409,7 @@ describe("transition write ordering", () => {
     }
   );
 
-  postgresAndRedisTest("appends for the standalone createExecutionSnapshot", async ({ prisma, redisOptions }) => {
+  containerTest("appends for the standalone createExecutionSnapshot", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = harness(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -435,7 +435,7 @@ describe("transition write ordering", () => {
     }
   });
 
-  postgresAndRedisTest("writes nothing to Redis at mode off", async ({ prisma, redisOptions }) => {
+  containerTest("writes nothing to Redis at mode off", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = harness(prisma as never, redisOptions as never, { mode: "off" });
     try {
       const { run, env } = await setupSnapshotIdFixture(prisma);

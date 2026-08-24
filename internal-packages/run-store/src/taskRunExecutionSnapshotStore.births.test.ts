@@ -2,7 +2,7 @@
 // which side survived: an orphaned key with no run row is the harmless state, and a run with no
 // snapshot at all is the one the order exists to prevent.
 import { describe, expect } from "vitest";
-import { postgresAndRedisTest } from "@internal/testcontainers";
+import { containerTest } from "@internal/testcontainers";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore } from "./redisSnapshotStore.js";
@@ -77,7 +77,7 @@ function cancelledData(runId: string, env: SnapshotFixtureEnv) {
 }
 
 describe("birth write ordering", () => {
-  postgresAndRedisTest("writes Redis then Postgres", async ({ prisma, redisOptions }) => {
+  containerTest("writes Redis then Postgres", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -99,7 +99,7 @@ describe("birth write ordering", () => {
     }
   });
 
-  postgresAndRedisTest("mints an id when the caller supplies none", async ({ prisma, redisOptions }) => {
+  containerTest("mints an id when the caller supplies none", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -119,7 +119,7 @@ describe("birth write ordering", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "a crash after the Redis append leaves an orphan key and no run",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never, {
@@ -147,7 +147,7 @@ describe("birth write ordering", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "creates the run anyway when the birth append fails before redis-only",
     { timeout: 60_000 },
     async ({ prisma, redisOptions }) => {
@@ -175,7 +175,7 @@ describe("birth write ordering", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "refuses to create the run when the birth append fails at redis-only",
     { timeout: 60_000 },
     async ({ prisma, redisOptions }) => {
@@ -203,7 +203,7 @@ describe("birth write ordering", () => {
     }
   );
 
-  postgresAndRedisTest("createCancelledRun writes Redis first", async ({ prisma, redisOptions }) => {
+  containerTest("createCancelledRun writes Redis first", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -229,7 +229,7 @@ describe("birth write ordering", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "a born-terminal run gets the completion expiry immediately",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
@@ -265,7 +265,7 @@ describe("birth write ordering", () => {
     }
   );
 
-  postgresAndRedisTest("writes nothing to Redis at mode off", async ({ prisma, redisOptions }) => {
+  containerTest("writes nothing to Redis at mode off", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = build(prisma as never, redisOptions as never, { mode: "off" });
     try {
       const env = await seedSnapshotEnvironment(prisma);

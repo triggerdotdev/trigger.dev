@@ -2,7 +2,7 @@
 // leaves Redis holding a transition that never happened. These tests observe the buffer from inside
 // the callback, so the deferral is proved rather than assumed.
 import { describe, expect } from "vitest";
-import { postgresAndRedisTest } from "@internal/testcontainers";
+import { containerTest } from "@internal/testcontainers";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore } from "./redisSnapshotStore.js";
@@ -65,7 +65,7 @@ function snapshotInput(runId: string, env: SnapshotFixtureEnv, id: string, descr
 }
 
 describe("the staging facade", () => {
-  postgresAndRedisTest("flushes the append after the commit", async ({ prisma, redisOptions }) => {
+  containerTest("flushes the append after the commit", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -87,7 +87,7 @@ describe("the staging facade", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "writes nothing to Redis when the transaction rolls back",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
@@ -113,7 +113,7 @@ describe("the staging facade", () => {
     }
   );
 
-  postgresAndRedisTest("flushes several staged appends in order", async ({ prisma, redisOptions }) => {
+  containerTest("flushes several staged appends in order", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = build(prisma as never, redisOptions as never);
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -138,7 +138,7 @@ describe("the staging facade", () => {
     }
   });
 
-  postgresAndRedisTest(
+  containerTest(
     "hands the transaction callback a decorated store",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
@@ -160,7 +160,7 @@ describe("the staging facade", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "hands the transaction callback the plain delegate at mode off",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never, "off");
@@ -195,7 +195,7 @@ describe("the staging facade", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "wraps the store handle from forWaitpointCompletion",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
@@ -213,7 +213,7 @@ describe("the staging facade", () => {
     }
   );
 
-  postgresAndRedisTest(
+  containerTest(
     "returns the plain handle from forWaitpointCompletion at mode off",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never, "off");
