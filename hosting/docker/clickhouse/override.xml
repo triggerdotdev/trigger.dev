@@ -13,7 +13,6 @@
     <!-- ClickHouse's own telemetry, too heavy for the recommended machine size -->
     <metric_log remove="1"/>
     <asynchronous_metric_log remove="1"/>
-    <part_log remove="1"/>
     <trace_log remove="1"/>
     <query_thread_log remove="1"/>
     <session_log remove="1"/>
@@ -28,6 +27,9 @@
     <query_views_log remove="1"/>
 
     <!-- A config-level ttl survives log-table recreation, unlike ALTER ... MODIFY TTL -->
+    <part_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </part_log>
     <query_log>
         <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
     </query_log>
