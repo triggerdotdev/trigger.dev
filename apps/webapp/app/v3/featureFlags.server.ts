@@ -1,14 +1,6 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import cuid from "cuid";
-import {
-  boundedIn,
-  Prisma,
-  prisma,
-  sqlDatabaseSchema,
-  type PrismaClientOrTransaction,
-} from "~/db.server";
-import { startActiveSpan } from "~/v3/tracer.server";
+import { boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
@@ -250,53 +242,30 @@ export async function replaceGlobalFeatureFlags(
   }
 ): Promise<void> {
   const canDeleteLocked = params.unlockLockedFlags && !params.isManagedCloud;
-  const toUpsert: { key: FeatureFlagKey; value: unknown }[] = [];
+  const upsertOps: ReturnType<typeof client.featureFlag.upsert>[] = [];
   const keysToDelete: string[] = [];
 
   for (const key of params.catalogKeys) {
     if (key in params.requestedFlags) {
-      toUpsert.push({ key, value: params.requestedFlags[key] });
+      const value = params.requestedFlags[key];
+      upsertOps.push(
+        client.featureFlag.upsert({
+          where: { key },
+          create: { key, value: value as any },
+          update: { value: value as any },
+        })
+      );
     } else if (canDeleteLocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
       keysToDelete.push(key);
     }
   }
 
-  // The upsert and the sweep touch disjoint keys, because the loop above sends each catalog key
-  // to exactly one of the two lists. That lets them combine into a single data-modifying
-  // statement, which is atomic on its own and costs one round trip whatever the catalog size.
-  const upsertSql =
-    toUpsert.length > 0
-      ? Prisma.sql`
-          INSERT INTO ${sqlDatabaseSchema}."FeatureFlag" (id, key, value, "createdAt", "updatedAt")
-          VALUES ${Prisma.join(
-            toUpsert.map(
-              ({ key, value }) =>
-                Prisma.sql`(${cuid()}, ${key}, ${JSON.stringify(
-                  value ?? null
-                )}::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-            )
-          )}
-          ON CONFLICT (key) DO UPDATE
-            SET value = EXCLUDED.value, "updatedAt" = CURRENT_TIMESTAMP`
-      : undefined;
-
-  const deleteSql =
-    keysToDelete.length > 0
-      ? Prisma.sql`
-          DELETE FROM ${sqlDatabaseSchema}."FeatureFlag"
-          WHERE key IN (${Prisma.join(boundedIn(keysToDelete))})`
-      : undefined;
-
-  const statement =
-    upsertSql && deleteSql
-      ? Prisma.sql`WITH upserted AS (${upsertSql} RETURNING 1) ${deleteSql}`
-      : (upsertSql ?? deleteSql);
-
-  if (!statement) {
-    return;
-  }
-
-  await startActiveSpan("replaceGlobalFeatureFlags", () => client.$executeRaw(statement));
+  await client.$transaction([
+    ...upsertOps,
+    ...(keysToDelete.length > 0
+      ? [client.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
+      : []),
+  ]);
 }
 
 /** The global flag set, with the env-var defaults this app applies. */
