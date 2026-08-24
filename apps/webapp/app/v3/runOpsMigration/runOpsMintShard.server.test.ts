@@ -15,12 +15,15 @@ function envIds(count: number): string[] {
   return ids;
 }
 
+const ALL_KEYS = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
+
 function deps(
   resolution: MintShardSetResolution,
   overrides: Partial<MintShardDeps> = {}
 ): MintShardDeps {
   return {
     resolution,
+    ceiling: ALL_KEYS,
     nowMs: T + GRACE_MS + 1,
     graceMs: GRACE_MS,
     orgFeatureFlags: undefined,
@@ -41,14 +44,27 @@ function place(ids: string[], resolution: MintShardSetResolution): Map<string, s
 }
 
 describe("computeMintShard — the no-shards answer", () => {
-  it("returns new when the active set is unset", () => {
+  it("returns new when the live list is empty", () => {
     expect(computeMintShard({ id: "env_1" }, deps({ set: [] }))).toBe("new");
   });
 
-  it("returns new when the active set is empty even with a stale stamp present", () => {
+  it("returns new when the deployment configures no ceiling", () => {
+    // An unconfigured deployment is an unconditional kill switch, whatever the stored list says.
+    const resolution: MintShardSetResolution = { set: ["a", "b"] };
+    expect(computeMintShard({ id: "env_1" }, deps(resolution, { ceiling: [] }))).toBe("new");
+  });
+
+  it("returns new when the stored list names nothing this deployment can route", () => {
+    const resolution: MintShardSetResolution = { set: ["z"] };
+    expect(computeMintShard({ id: "env_1" }, deps(resolution, { ceiling: ["a"] }))).toBe("new");
+  });
+
+  it("returns new when the ceiling is empty even with a stale stamp present", () => {
     const resolution: MintShardSetResolution = { set: [], prevSet: ["a"], flippedAtMs: T };
-    // The empty check MUST run before the grace, so an unset set is an unconditional kill switch.
-    expect(computeMintShard({ id: "env_1" }, deps(resolution, { nowMs: T + 1 }))).toBe("new");
+    // The ceiling gate MUST run before the grace, so no stored value can reopen a closed switch.
+    expect(computeMintShard({ id: "env_1" }, deps(resolution, { nowMs: T + 1, ceiling: [] }))).toBe(
+      "new"
+    );
   });
 
   it("returns new when the grace serves an empty prevSet", () => {
@@ -244,5 +260,40 @@ describe("computeMintShard — rendezvous properties", () => {
     const pinnedToC = orgFlags({ runOpsMintShard: "c" });
     expect(computeMintShard({ id: "env_1" }, deps({ set: ["a", "b", "c"] }, pinnedToC))).toBe("c");
     expect(computeMintShard({ id: "env_1" }, deps({ set: ["a", "b"] }, pinnedToC))).not.toBe("c");
+  });
+});
+
+describe("computeMintShard — the ceiling bounds the stored list", () => {
+  it("mints only into keys the deployment can route", () => {
+    const resolution: MintShardSetResolution = { set: ["a", "b", "c"] };
+    const ids = envIds(300);
+    for (const id of ids) {
+      const shard = computeMintShard({ id }, deps(resolution, { ceiling: ["a", "b"] }));
+      expect(["a", "b"]).toContain(shard);
+    }
+  });
+
+  it("ignores a pin to a key outside the ceiling", () => {
+    const resolution: MintShardSetResolution = { set: ["a", "c"] };
+    const rejected: string[] = [];
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps(resolution, {
+        ceiling: ["a"],
+        orgFeatureFlags: { runOpsMintShard: "c" },
+        onPinRejected: (info) => rejected.push(info.pin),
+      })
+    );
+    expect(shard).toBe("a");
+    expect(rejected).toEqual(["c"]);
+  });
+
+  it("still honours a gen-1 pin when the ceiling is narrower than the stored list", () => {
+    const resolution: MintShardSetResolution = { set: ["a", "b"] };
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps(resolution, { ceiling: ["a"], orgFeatureFlags: { runOpsMintShard: "new" } })
+    );
+    expect(shard).toBe("new");
   });
 });

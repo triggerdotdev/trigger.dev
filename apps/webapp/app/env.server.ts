@@ -2016,14 +2016,12 @@ const EnvironmentSchema = z
     // (stale or fresh) resolves to the same kind for the whole window. See mintFlipGrace.ts.
     RUN_OPS_MINT_FLIP_GRACE_MS: z.coerce.number().int().default(90_000),
 
-    // Gen-2 mint shards — CSV of single-char [a-z0-9] keys eligible for ROOT minting. Unset or
-    // empty means no gen-2 minting, which is today's behaviour. Validated at boot: an invalid
-    // key would mint an id that cannot be routed. _PREV + _FLIPPED_AT stamp a set change so
-    // every process crosses the cutover together; set both, or the grace never applies.
-    // Removing a key stops new roots on it and never stops routing it. See mintShardGrace.ts.
+    // Gen-2 mint shards — CSV of single-char [a-z0-9] keys this deployment can mint roots into.
+    // Unset or empty means no gen-2 minting, which is today's behaviour. Validated at boot: an
+    // invalid key would mint an id that cannot be routed. This is a CEILING, not the live list:
+    // it changes only by deploy, and the runOpsMintShardSet flag selects from it at runtime.
+    // A rolling deploy runs two values of this var at once, so it must never be the ramp lever.
     RUN_OPS_MINT_SHARDS: shardCsvString(),
-    RUN_OPS_MINT_SHARDS_PREV: shardCsvString(),
-    RUN_OPS_MINT_SHARDS_FLIPPED_AT: z.string().datetime().optional(),
 
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
     // with the runs replicator for leader locking but has its own slot and

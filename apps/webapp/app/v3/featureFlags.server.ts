@@ -8,6 +8,8 @@ import {
   FeatureFlagCatalog,
 } from "~/v3/featureFlags";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
+import { stampMintShardSetFlip } from "~/v3/runOpsMigration/mintShardGrace";
+import { boundedIn } from "~/db.server";
 
 export type FlagsOptions<T extends FeatureFlagKey> = {
   key: T;
@@ -182,24 +184,41 @@ export function makeSetMultipleFlags(_prisma: PrismaClientOrTransaction = prisma
 // Read -> stamp -> write the global mint-kind grace metadata in one transaction. The three
 // FeatureFlag rows may not exist yet, so a row FOR UPDATE can't lock them; an advisory xact lock
 // serializes concurrent global flips so one can't clobber another's grace stamp (mirrors per-org).
-export async function applyGlobalMintKindFlip(
+// Every group of global flags whose value carries its own grace stamp. One transaction and one
+// lock cover all of them, so a save that flips two groups can never stamp one and lose the other.
+const GRACED_GLOBAL_GROUPS = [
+  {
+    keys: [
+      FEATURE_FLAG.runOpsMintKind,
+      FEATURE_FLAG.runOpsMintKindPrev,
+      FEATURE_FLAG.runOpsMintKindFlippedAt,
+    ] as FeatureFlagKey[],
+    stamp: stampMintKindFlip,
+  },
+  {
+    keys: [
+      FEATURE_FLAG.runOpsMintShardSet,
+      FEATURE_FLAG.runOpsMintShardSetPrev,
+      FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+    ] as FeatureFlagKey[],
+    stamp: stampMintShardSetFlip,
+  },
+] as const;
+
+// Keys the graced path owns. They never take a bare upsert and never enter the replace sweep,
+// because a server-computed stamp must not be written from a request body nor swept away.
+const GRACED_GLOBAL_KEYS: FeatureFlagKey[] = GRACED_GLOBAL_GROUPS.flatMap((g) => g.keys);
+
+export async function applyGlobalGracedFlips(
   client: PrismaClient,
   requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>,
   graceMs: number
 ): Promise<{ key: string; value: any }[]> {
   return client.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('runops-global-mint-kind-flip'))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('runops-global-graced-flag-flip'))`;
 
     const existingRows = await tx.featureFlag.findMany({
-      where: {
-        key: {
-          in: [
-            FEATURE_FLAG.runOpsMintKind,
-            FEATURE_FLAG.runOpsMintKindPrev,
-            FEATURE_FLAG.runOpsMintKindFlippedAt,
-          ],
-        },
-      },
+      where: { key: { in: GRACED_GLOBAL_KEYS } },
       select: { key: true, value: true },
     });
     const existingGlobal: Record<string, unknown> = {};
@@ -207,16 +226,83 @@ export async function applyGlobalMintKindFlip(
       existingGlobal[row.key] = row.value;
     }
 
-    // Anchor the cutover to the control-plane DB clock, not this process's wall clock.
+    // Anchor the cutover to the control-plane DB clock, not this process's wall clock. A rolling
+    // deploy spans hours, so every pod must date the window against one shared clock.
     const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
 
-    const stamped = stampMintKindFlip(
-      existingGlobal,
-      { ...requestedFlags },
-      now.getTime(),
-      graceMs
-    ) as Partial<z.infer<typeof FeatureFlagCatalogSchema>>;
+    let stamped: Record<string, unknown> = { ...requestedFlags };
+    for (const group of GRACED_GLOBAL_GROUPS) {
+      stamped = group.stamp(existingGlobal, stamped, now.getTime(), graceMs);
+    }
 
-    return makeSetMultipleFlags(tx)(stamped);
+    return makeSetMultipleFlags(tx)(stamped as Partial<z.infer<typeof FeatureFlagCatalogSchema>>);
   });
+}
+
+/** @deprecated Prefer applyGlobalGracedFlips, which stamps every graced group in one lock. */
+export async function applyGlobalMintKindFlip(
+  client: PrismaClient,
+  requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>,
+  graceMs: number
+): Promise<{ key: string; value: any }[]> {
+  return applyGlobalGracedFlips(client, requestedFlags, graceMs);
+}
+
+// Replace-semantics write for the global admin flags page: upsert submitted catalog flags, delete
+// omitted ones unless protected, and route any graced group through the stamped path.
+export async function replaceGlobalFeatureFlags(
+  client: PrismaClient,
+  params: {
+    requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>;
+    catalogKeys: FeatureFlagKey[];
+    isProtected: (key: FeatureFlagKey) => boolean;
+    graceMs: number;
+  }
+): Promise<void> {
+  // Derived stamp fields are computed server-side; never trust them from the body.
+  const requestedFlags: Record<string, unknown> = { ...params.requestedFlags };
+  for (const group of GRACED_GLOBAL_GROUPS) {
+    for (const derived of group.keys.slice(1)) {
+      delete requestedFlags[derived];
+    }
+  }
+
+  const touchesGracedGroup = GRACED_GLOBAL_GROUPS.some(
+    (group) => requestedFlags[group.keys[0]] !== undefined
+  );
+  if (touchesGracedGroup) {
+    await applyGlobalGracedFlips(
+      client,
+      requestedFlags as Partial<z.infer<typeof FeatureFlagCatalogSchema>>,
+      params.graceMs
+    );
+  }
+
+  const upsertOps: ReturnType<typeof client.featureFlag.upsert>[] = [];
+  const keysToDelete: string[] = [];
+
+  for (const key of params.catalogKeys) {
+    if (GRACED_GLOBAL_KEYS.includes(key)) {
+      continue;
+    }
+    if (key in requestedFlags) {
+      const value = requestedFlags[key];
+      upsertOps.push(
+        client.featureFlag.upsert({
+          where: { key },
+          create: { key, value: value as any },
+          update: { value: value as any },
+        })
+      );
+    } else if (!params.isProtected(key)) {
+      keysToDelete.push(key);
+    }
+  }
+
+  await client.$transaction([
+    ...upsertOps,
+    ...(keysToDelete.length > 0
+      ? [client.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
+      : []),
+  ]);
 }

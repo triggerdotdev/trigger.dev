@@ -1,19 +1,23 @@
 import { createHash } from "node:crypto";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
-  buildMintShardResolution,
   effectiveMintShardSet,
   GEN_1_PIN_VALUE,
   isValidPinValue,
-  mintShardStampWarning,
+  parseShardCsv,
+  readMintShardSetResolution,
   type MintShardSetResolution,
 } from "./mintShardGrace";
 
 export type MintShardDeps = {
+  // The live list, from the control-plane database.
   resolution: MintShardSetResolution;
+  // The keys this deployment can route, from the environment. Bounds the live list.
+  ceiling: string[];
   nowMs: number;
   graceMs: number;
   orgFeatureFlags: unknown;
@@ -83,16 +87,20 @@ function hrwSelect(environmentId: string, activeSet: string[]): string {
 // PURE CORE — no env, no clock, no I/O; tests drive this directly. Deterministic for fixed
 // deps, which is what lets run minting and token minting agree on one answer.
 //
-// The empty-set check runs BEFORE the grace, so an unset active list is an unconditional kill
-// switch that a stale stamp cannot reopen. A pin outside the active set falls through to the
-// hash rather than throwing: honouring it would leak the drain the active list performs, and
-// throwing would fail customer triggers whenever a pinned shard drains.
+// The ceiling gate runs BEFORE the grace, so an unconfigured deployment is an unconditional
+// kill switch that no stored value can reopen. The live list is then intersected with the
+// ceiling, so a stored key this deployment cannot route is never minted into.
+//
+// A pin outside the active set falls through to the hash rather than throwing: honouring it
+// would leak the drain the active list performs, and throwing would fail customer triggers
+// whenever a pinned shard drains.
 export function computeMintShard(environment: { id: string }, deps: MintShardDeps): ShardKey {
-  if (deps.resolution.set.length === 0) {
+  if (deps.ceiling.length === 0) {
     return "new";
   }
 
-  const activeSet = effectiveMintShardSet(deps.resolution, deps.nowMs, deps.graceMs);
+  const live = effectiveMintShardSet(deps.resolution, deps.nowMs, deps.graceMs);
+  const activeSet = live.filter((key) => deps.ceiling.includes(key));
   if (activeSet.length === 0) {
     return "new";
   }
@@ -111,24 +119,38 @@ export function computeMintShard(environment: { id: string }, deps: MintShardDep
   return hrwSelect(environment.id, activeSet);
 }
 
-// ENV-BOUND wrapper — the only place env is read. The resolution is built once: these are
-// deploy-time values, so re-parsing per mint would burn CPU on the hottest path in the system.
-const shardResolution: MintShardSetResolution = buildMintShardResolution({
-  shards: env.RUN_OPS_MINT_SHARDS,
-  prev: env.RUN_OPS_MINT_SHARDS_PREV,
-  flippedAt: env.RUN_OPS_MINT_SHARDS_FLIPPED_AT,
-});
+// ENV-BOUND wrapper — the only place env is read. The ceiling is parsed once at boot; it is a
+// deploy-time value, so re-parsing per mint would burn CPU on the hottest path in the system.
+const ceiling: string[] = parseShardCsv(env.RUN_OPS_MINT_SHARDS);
 
-const stampWarning = mintShardStampWarning({
-  shards: env.RUN_OPS_MINT_SHARDS,
-  prev: env.RUN_OPS_MINT_SHARDS_PREV,
-  flippedAt: env.RUN_OPS_MINT_SHARDS_FLIPPED_AT,
-});
-if (stampWarning) {
-  logger.warn(`[runOpsMintShard] ${stampWarning}`, {
-    RUN_OPS_MINT_SHARDS: env.RUN_OPS_MINT_SHARDS,
-    RUN_OPS_MINT_SHARDS_PREV: env.RUN_OPS_MINT_SHARDS_PREV,
+// The live list is org-independent, so one process-wide entry serves every mint. One query per
+// process per TTL, folded into a single round-trip over the three keys. The TTL bounds how long
+// two processes can disagree, which is what the grace window is sized against.
+const SET_KEYS = [
+  FEATURE_FLAG.runOpsMintShardSet,
+  FEATURE_FLAG.runOpsMintShardSetPrev,
+  FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+];
+
+let cachedResolution: { value: MintShardSetResolution; expiresAt: number } | undefined;
+
+async function readLiveResolution(): Promise<MintShardSetResolution> {
+  if (cachedResolution && cachedResolution.expiresAt > Date.now()) {
+    return cachedResolution.value;
+  }
+
+  const rows = await $replica.featureFlag.findMany({
+    where: { key: { in: SET_KEYS } },
+    select: { key: true, value: true },
   });
+  const flags: Record<string, unknown> = {};
+  for (const row of rows) {
+    flags[row.key] = row.value;
+  }
+
+  const value = readMintShardSetResolution(flags);
+  cachedResolution = { value, expiresAt: Date.now() + env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS };
+  return value;
 }
 
 // Once per environment per process: a stale pin sits on the root-trigger path and would
@@ -149,9 +171,6 @@ function reportPinRejected(info: {
  * Which shard an environment mints new roots into. Call only after resolveRunIdMintKind has
  * returned "runOpsId". Returns "new" to mean a gen-1 run-ops id, which is today's behaviour.
  *
- * Async despite doing no I/O, so the deploy-free active-set layer can add a read later without
- * changing every call site.
- *
  * @knipignore the gen-2 write-path change is the first production caller; drop this tag there.
  */
 export async function resolveMintShard(environment: {
@@ -159,8 +178,23 @@ export async function resolveMintShard(environment: {
   // Pass environment.organization.featureFlags from the trigger call site.
   orgFeatureFlags?: unknown;
 }): Promise<ShardKey> {
+  // No ceiling means no gen-2 minting, so skip the read entirely.
+  if (ceiling.length === 0) {
+    return "new";
+  }
+
+  let resolution: MintShardSetResolution;
+  try {
+    resolution = await readLiveResolution();
+  } catch (error) {
+    // Fail safe to gen-1, mirroring the mint-kind gate's fail-safe to cuid.
+    logger.error("[runOpsMintShard] shard-set read failed; minting gen-1 (fail-safe)", { error });
+    return "new";
+  }
+
   return computeMintShard(environment, {
-    resolution: shardResolution,
+    resolution,
+    ceiling,
     nowMs: Date.now(),
     graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
     orgFeatureFlags: environment.orgFeatureFlags,

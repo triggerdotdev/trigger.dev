@@ -29,6 +29,11 @@ export const FEATURE_FLAG = {
   // Gen-2 mint shard pins, read from the org override blob only. See runOpsMintShard.server.ts.
   runOpsMintShard: "runOpsMintShard",
   runOpsMintShardEnvPins: "runOpsMintShardEnvPins",
+  // The active mint-shard list, global only. Lives here rather than in the environment because a
+  // rolling deploy runs two environment values at once for hours. See mintShardGrace.ts.
+  runOpsMintShardSet: "runOpsMintShardSet",
+  runOpsMintShardSetPrev: "runOpsMintShardSetPrev",
+  runOpsMintShardSetFlippedAt: "runOpsMintShardSetFlippedAt",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Per-organization rollout for creating additional environment API keys.
   additionalApiKeysEnabled: "additionalApiKeysEnabled",
@@ -118,6 +123,21 @@ export const FeatureFlagCatalog = {
       }
     }
   }),
+  // CSV of the shard keys eligible for root minting right now, bounded by RUN_OPS_MINT_SHARDS.
+  // Empty means no gen-2 minting. Reserved keys are rejected: "new" already means gen-1.
+  [FEATURE_FLAG.runOpsMintShardSet]: z.string().refine(
+    (v) =>
+      v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .every((k) => /^[a-z0-9]$/.test(k)),
+    "must be a CSV of single [a-z0-9] chars"
+  ),
+  // Grace stamp: the previously-effective list and the flip time, written by
+  // stampMintShardSetFlip on a genuine change. Display-only (see ORG_LOCKED_FLAGS).
+  [FEATURE_FLAG.runOpsMintShardSetPrev]: z.string(),
+  [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: z.string().datetime(),
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
@@ -151,6 +171,10 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   // System-wide only — orgs must not be able to override these kill switches.
   FEATURE_FLAG.additionalApiKeyIssuanceEnabled,
   FEATURE_FLAG.additionalApiKeyLookupEnabled,
+  // The active mint-shard list is deployment-wide; only the pins are per-org.
+  FEATURE_FLAG.runOpsMintShardSet,
+  FEATURE_FLAG.runOpsMintShardSetPrev,
+  FEATURE_FLAG.runOpsMintShardSetFlippedAt,
 ];
 
 // Create a Zod schema from the existing catalog

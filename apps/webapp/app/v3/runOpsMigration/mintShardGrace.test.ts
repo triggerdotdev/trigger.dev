@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
 import {
-  buildMintShardResolution,
   effectiveMintShardSet,
   isValidPinValue,
   parseShardCsv,
+  readMintShardSetResolution,
   SHARD_KEY_PATTERN,
+  stampMintShardSetFlip,
   type MintShardSetResolution,
 } from "./mintShardGrace";
 
@@ -116,33 +117,118 @@ describe("effectiveMintShardSet", () => {
   });
 });
 
-describe("buildMintShardResolution", () => {
-  it("omits prevSet entirely when no flip timestamp is configured", () => {
-    // A prevSet with no timestamp can never apply, so it MUST NOT linger.
-    const r = buildMintShardResolution({ shards: "a,b", prev: "a", flippedAt: undefined });
-    expect(r).toEqual({ set: ["a", "b"], prevSet: undefined, flippedAtMs: undefined });
+describe("readMintShardSetResolution", () => {
+  it("returns an empty set for an absent record", () => {
+    expect(readMintShardSetResolution(undefined)).toEqual({ set: [] });
+    expect(readMintShardSetResolution({})).toEqual({ set: [] });
   });
 
-  it("keeps an empty prevSet when a flip timestamp IS configured", () => {
-    const r = buildMintShardResolution({
-      shards: "a",
-      prev: "",
-      flippedAt: new Date(T).toISOString(),
-    });
-    expect(r).toEqual({ set: ["a"], prevSet: [], flippedAtMs: T });
-  });
-
-  it("parses the flip timestamp and sorts both lists", () => {
-    const r = buildMintShardResolution({
-      shards: "b,a",
-      prev: "c,a",
-      flippedAt: new Date(T).toISOString(),
+  it("reads and sorts the trio", () => {
+    const r = readMintShardSetResolution({
+      runOpsMintShardSet: "b,a",
+      runOpsMintShardSetPrev: "c,a",
+      runOpsMintShardSetFlippedAt: new Date(T).toISOString(),
     });
     expect(r).toEqual({ set: ["a", "b"], prevSet: ["a", "c"], flippedAtMs: T });
   });
 
-  it("treats an unparseable timestamp as no stamp at all", () => {
-    const r = buildMintShardResolution({ shards: "a", prev: "b", flippedAt: "not-a-date" });
-    expect(r).toEqual({ set: ["a"], prevSet: undefined, flippedAtMs: undefined });
+  it("omits prevSet when no flip timestamp is stored", () => {
+    // A prevSet with no timestamp can never apply, so it MUST NOT linger.
+    const r = readMintShardSetResolution({
+      runOpsMintShardSet: "a,b",
+      runOpsMintShardSetPrev: "a",
+    });
+    expect(r).toEqual({ set: ["a", "b"], prevSet: undefined, flippedAtMs: undefined });
+  });
+
+  it("keeps an empty prevSet when a timestamp IS stored, which graces a first activation", () => {
+    const r = readMintShardSetResolution({
+      runOpsMintShardSet: "a",
+      runOpsMintShardSetPrev: "",
+      runOpsMintShardSetFlippedAt: new Date(T).toISOString(),
+    });
+    expect(r).toEqual({ set: ["a"], prevSet: [], flippedAtMs: T });
+  });
+
+  it("degrades a stored value it cannot parse to an empty list instead of throwing", () => {
+    // Boot may throw on a bad env var. The mint path must never throw on a bad stored value.
+    expect(() => readMintShardSetResolution({ runOpsMintShardSet: "NOPE" })).not.toThrow();
+    expect(readMintShardSetResolution({ runOpsMintShardSet: "NOPE" }).set).toEqual([]);
+    expect(readMintShardSetResolution({ runOpsMintShardSet: 42 }).set).toEqual([]);
+    expect(
+      readMintShardSetResolution({
+        runOpsMintShardSet: "a",
+        runOpsMintShardSetFlippedAt: "not-a-date",
+      })
+    ).toEqual({ set: ["a"], prevSet: undefined, flippedAtMs: undefined });
+  });
+});
+
+describe("stampMintShardSetFlip", () => {
+  it("does nothing when the save omits the set", () => {
+    // Omitting the set is an unrelated flag change; it must not inject a default or reset the clock.
+    const outgoing = { someOtherFlag: true } as Record<string, unknown>;
+    expect(stampMintShardSetFlip({ runOpsMintShardSet: "a" }, outgoing, T, GRACE_MS)).toEqual({
+      someOtherFlag: true,
+    });
+  });
+
+  it("stamps prev and flippedAt on a genuine change", () => {
+    const stamped = stampMintShardSetFlip(
+      { runOpsMintShardSet: "a" },
+      { runOpsMintShardSet: "a,b" },
+      T,
+      GRACE_MS
+    );
+    expect(stamped.runOpsMintShardSetPrev).toBe("a");
+    expect(stamped.runOpsMintShardSetFlippedAt).toBe(new Date(T).toISOString());
+  });
+
+  it("stamps an empty prev on a first activation", () => {
+    const stamped = stampMintShardSetFlip({}, { runOpsMintShardSet: "a" }, T, GRACE_MS);
+    expect(stamped.runOpsMintShardSetPrev).toBe("");
+    expect(stamped.runOpsMintShardSetFlippedAt).toBe(new Date(T).toISOString());
+  });
+
+  it("treats a reordered list as no change", () => {
+    const stamped = stampMintShardSetFlip(
+      { runOpsMintShardSet: "a,b" },
+      { runOpsMintShardSet: "b,a" },
+      T,
+      GRACE_MS
+    );
+    expect(stamped.runOpsMintShardSetFlippedAt).toBeUndefined();
+  });
+
+  it("carries an in-flight stamp forward rather than resetting the cutover clock", () => {
+    const existing = {
+      runOpsMintShardSet: "a,b",
+      runOpsMintShardSetPrev: "a",
+      runOpsMintShardSetFlippedAt: new Date(T).toISOString(),
+    };
+    const stamped = stampMintShardSetFlip(
+      existing,
+      { runOpsMintShardSet: "a,b" },
+      T + 1000,
+      GRACE_MS
+    );
+    expect(stamped.runOpsMintShardSetPrev).toBe("a");
+    expect(stamped.runOpsMintShardSetFlippedAt).toBe(new Date(T).toISOString());
+  });
+
+  it("stamps prev as the CURRENTLY-EFFECTIVE set when a second flip lands mid-window", () => {
+    // Two flips inside one window must not strand the original prev; prev is what readers serve now.
+    const existing = {
+      runOpsMintShardSet: "a,b",
+      runOpsMintShardSetPrev: "a",
+      runOpsMintShardSetFlippedAt: new Date(T).toISOString(),
+    };
+    const stamped = stampMintShardSetFlip(
+      existing,
+      { runOpsMintShardSet: "a,b,c" },
+      T + 1000,
+      GRACE_MS
+    );
+    expect(stamped.runOpsMintShardSetPrev).toBe("a");
   });
 });
