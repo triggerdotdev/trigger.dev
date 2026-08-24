@@ -193,6 +193,24 @@ describe("selectRunOpsTopology (pure)", () => {
     expect(buildShardWriter).not.toHaveBeenCalled();
     expect(buildShardReplica).not.toHaveBeenCalled();
   });
+
+  it("throws when a non-aliased shard has no url (guards the shard.url non-null assertion)", () => {
+    expect(() =>
+      selectRunOpsTopology(
+        { ...baseSplit, shards: [{ key: "a" }] },
+        { ...baseBuilders(), buildShardWriter: vi.fn(), buildShardReplica: vi.fn() }
+      )
+    ).toThrow(/shard "a" needs a url/);
+  });
+
+  it("throws when a non-aliased shard is configured but the shard builders are absent", () => {
+    expect(() =>
+      selectRunOpsTopology(
+        { ...baseSplit, shards: [{ key: "a", url: "postgres://a" }] },
+        baseBuilders()
+      )
+    ).toThrow(/shard "a" needs a url and shard builders/);
+  });
 });
 
 describe("sameDatabaseTarget", () => {
