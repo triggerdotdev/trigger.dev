@@ -133,6 +133,55 @@ describe("chat.agent pending wire buffer", () => {
   });
 });
 
+describe("chat.agent steering config", () => {
+  /**
+   * `pendingMessages.onReceived` is the first thing a steering integration sees.
+   * A message that lands mid-turn is delivered to the per-turn handler rather
+   * than queued, so if that delivery breaks the symptom is a steer that appends
+   * with a 2xx and is never seen by the agent, with nothing raised anywhere.
+   *
+   * Deliberately covers delivery only, NOT injection. Injection needs a
+   * `prepareStep`, which arrives via `chat.toStreamTextOptions()`, and this run
+   * body does not spread it; the mock model also answers in one step, so there
+   * is no boundary to inject at. `onReceived` fires either way, so passing here
+   * says nothing about whether a steer reaches the model. Do not read this as
+   * "steering is covered".
+   */
+  it("fires onReceived for a message that lands mid-turn", async () => {
+    const received: string[] = [];
+    const injectDecisions: number[] = [];
+
+    const agent = chat.agent({
+      id: "pending-drain.steering",
+      pendingMessages: {
+        onReceived: ({ message }) => {
+          received.push(message.id);
+        },
+        shouldInject: ({ steps }) => {
+          injectDecisions.push(steps.length);
+          return true;
+        },
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model: echoModel(), messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "pending-drain-steer" });
+    try {
+      const first = harness.sendMessage(userMessage("m1", "u-1"));
+      await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      void harness.sendMessage(userMessage("steer me", "u-steer"));
+      await first;
+
+      await waitFor(() => received.length >= 1);
+      expect(received).toContain("u-steer");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
 describe("chat.agent errored turn", () => {
   it(
     "does not duplicate messages buffered after a turn that threw",
