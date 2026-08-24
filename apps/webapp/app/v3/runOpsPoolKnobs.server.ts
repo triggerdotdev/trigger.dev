@@ -1,9 +1,9 @@
 import { env } from "~/env.server";
 import type { RunOpsShardKnobs } from "~/v3/runOpsShards.server";
 
-// Pool configuration for one run-ops client, resolved at the app boundary (IoC). Every value is a
-// number/boolean/string the generic buildWriterClient/buildReplicaClient consumes directly. Kept
-// separate from db.server (which ~156 tests mock wholesale) so a new export breaks no mock.
+// Pool configuration for one run-ops store (writer + replica), resolved at the app boundary (IoC).
+// Every value reproduces today's run-ops builder expressions. Kept separate from db.server (which
+// ~156 tests mock wholesale) so a new export breaks no mock.
 export type ResolvedPoolKnobs = {
   writerPoolTimeout: number;
   writerConnectionTimeout: number;
@@ -13,16 +13,12 @@ export type ResolvedPoolKnobs = {
   replicaPoolTimeout: number;
   replicaConnectionTimeout: number;
   replicaDriverAdapter: boolean;
-  // stdoutLogs and label are role constants, never overridable by a descriptor. The run-ops
-  // builders had no stdout arms and their own log labels; carrying these keeps the merge inert.
-  stdoutLogs: boolean;
-  label: string;
 };
 
 type Role = "new" | "legacy";
 
 // Resolve the pool knobs for a run-ops role, reproducing today's builder expressions exactly.
-// descriptorKnobs (gen-2 shards only) override the pool fields; stdoutLogs and label stay fixed.
+// descriptorKnobs (gen-2 shards only) override the pool fields.
 // Transaction resilience is a SEPARATE mechanism (resolveTransactionResilience) and is not here.
 export function resolveRunOpsPoolKnobs(
   role: Role,
@@ -54,8 +50,6 @@ export function resolveRunOpsPoolKnobs(
         env.DATABASE_CONNECTION_TIMEOUT,
       replicaDriverAdapter:
         k?.replicaDriverAdapter ?? env.RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
-      stdoutLogs: true,
-      label: "legacy run-ops",
     };
   }
 
@@ -85,7 +79,5 @@ export function resolveRunOpsPoolKnobs(
       env.DATABASE_CONNECTION_TIMEOUT,
     replicaDriverAdapter:
       k?.replicaDriverAdapter ?? env.RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
-    stdoutLogs: false,
-    label: "run-ops",
   };
 }

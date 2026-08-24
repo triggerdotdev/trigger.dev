@@ -31,6 +31,7 @@ import {
   assertSplitRealtimeInterlock,
 } from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
+import { resolveRunOpsPoolKnobs } from "./v3/runOpsPoolKnobs.server";
 import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import {
@@ -376,6 +377,8 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
     );
   }
 
+  const newPoolKnobs = resolveRunOpsPoolKnobs("new");
+
   return selectRunOpsTopology(
     {
       splitEnabled,
@@ -392,10 +395,14 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-writer",
-              buildRunOpsWriterClient({
+              buildRunOpsClient({
                 url,
                 clientType,
-                useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+                role: "writer",
+                connectionLimit: newPoolKnobs.connectionLimit,
+                poolTimeout: newPoolKnobs.writerPoolTimeout,
+                connectTimeout: newPoolKnobs.writerConnectionTimeout,
+                useDriverAdapter: newPoolKnobs.writerDriverAdapter,
               })
             )
           ),
@@ -409,10 +416,14 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-replica",
-              buildRunOpsReplicaClient({
+              buildRunOpsClient({
                 url,
                 clientType,
-                useDriverAdapter: env.RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
+                role: "replica",
+                connectionLimit: newPoolKnobs.replicaConnectionLimit,
+                poolTimeout: newPoolKnobs.replicaPoolTimeout,
+                connectTimeout: newPoolKnobs.replicaConnectionTimeout,
+                useDriverAdapter: newPoolKnobs.replicaDriverAdapter,
               })
             )
           )
@@ -924,64 +935,62 @@ export function buildReplicaClient({
   return replicaClient;
 }
 
-function buildRunOpsWriterClient({
+// One factory for the run-ops writer and replica clients, backed by the dedicated RunOpsPrismaClient
+// (a separately generated Prisma package). Parameterized by role and the resolved pool knobs, so a
+// gen-1 new store and every gen-2 shard share this single builder. The control-plane builders
+// (buildWriterClient/buildReplicaClient) are a DIFFERENT path and are untouched — this reuses only
+// the shared low-level helpers (buildPrismaConnectionUrl, buildDriverAdapterPool).
+function buildRunOpsClient({
   url,
   clientType,
+  role,
+  connectionLimit,
+  poolTimeout,
+  connectTimeout,
   useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  role: "writer" | "replica";
+  connectionLimit: number;
+  poolTimeout: number;
+  connectTimeout: number;
   useDriverAdapter?: boolean;
 }): RunOpsPrismaClient {
-  const databaseUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    poolTimeout: (env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT).toString(),
-    connectTimeout: (
-      env.RUN_OPS_DATABASE_WRITER_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
-    ).toString(),
+  const isWriter = role === "writer";
+  const setupLabel = isWriter ? "run-ops prisma client" : "run-ops read replica connection";
+  const connectedLabel = isWriter ? "run-ops prisma client connected" : "run-ops read replica connected";
+
+  const connectionUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: connectionLimit.toString(),
+    poolTimeout: poolTimeout.toString(),
+    connectTimeout: connectTimeout.toString(),
     applicationName: env.SERVICE_NAME,
   });
 
   console.log(
-    `🔌 setting up run-ops prisma client to ${redactUrlSecrets(databaseUrl)}${
+    `🔌 setting up ${setupLabel} to ${redactUrlSecrets(connectionUrl)}${
       useDriverAdapter ? " (pg driver adapter)" : ""
     }`
   );
 
+  const log = [
+    { emit: "event", level: "error" },
+    { emit: "event", level: "info" },
+    { emit: "event", level: "warn" },
+    ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+    process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+      ? [{ emit: "event", level: "query" }]
+      : []) as { emit: "event"; level: "query" }[]),
+  ] as const;
+
   const driverPool = useDriverAdapter
-    ? buildDriverAdapterPool(
-        url,
-        clientType,
-        env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
-        env.DATABASE_CONNECTION_LIMIT
-      )
+    ? buildDriverAdapterPool(url, clientType, poolTimeout, connectionLimit)
     : undefined;
 
   const client = driverPool
-    ? new RunOpsPrismaClient({
-        adapter: driverPool.adapter,
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      })
-    : new RunOpsPrismaClient({
-        datasources: { db: { url: databaseUrl.href } },
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      });
+    ? new RunOpsPrismaClient({ adapter: driverPool.adapter, log: [...log] })
+    : new RunOpsPrismaClient({ datasources: { db: { url: connectionUrl.href } }, log: [...log] });
 
   registerDatabaseMetricsSource(
     driverPool
@@ -999,117 +1008,22 @@ function buildRunOpsWriterClient({
     client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
     client.$on("warn", (log) => logger.warn("RunOpsPrismaClient warn", { clientType, event: log }));
     client.$on("error", (log) =>
-      logger.error("RunOpsPrismaClient error", { clientType, event: log, ignoreError: true })
+      // The writer bridges P2002 -> 422 at the store boundary, so its infra errors are logged once
+      // there (ignoreError). Replica errors are not on that write path, so they log normally.
+      logger.error("RunOpsPrismaClient error", { clientType, event: log, ...(isWriter ? { ignoreError: true } : {}) })
     );
   }
 
-  client.$on("query", (log) => queryPerformanceMonitor.onQuery("writer", log));
+  client.$on("query", (log) => queryPerformanceMonitor.onQuery(role, log));
 
   const connectPromise = client.$connect();
   if (env.NODE_ENV === "test") {
     connectPromise.catch((error) => {
-      logger.warn("Failed to eagerly connect run-ops prisma client (writer)", { error });
+      logger.warn(`Failed to eagerly connect run-ops prisma client (${role})`, { error });
     });
   }
 
-  console.log(`🔌 run-ops prisma client connected`);
-
-  return client;
-}
-
-function buildRunOpsReplicaClient({
-  url,
-  clientType,
-  useDriverAdapter = false,
-}: {
-  url: string;
-  clientType: string;
-  useDriverAdapter?: boolean;
-}): RunOpsPrismaClient {
-  const replicaUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: (
-      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
-    ).toString(),
-    poolTimeout: (
-      env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
-    ).toString(),
-    connectTimeout: (
-      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
-    ).toString(),
-    applicationName: env.SERVICE_NAME,
-  });
-
-  console.log(
-    `🔌 setting up run-ops read replica connection to ${redactUrlSecrets(replicaUrl)}${
-      useDriverAdapter ? " (pg driver adapter)" : ""
-    }`
-  );
-
-  const driverPool = useDriverAdapter
-    ? buildDriverAdapterPool(
-        url,
-        clientType,
-        env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
-        env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
-      )
-    : undefined;
-
-  const client = driverPool
-    ? new RunOpsPrismaClient({
-        adapter: driverPool.adapter,
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      })
-    : new RunOpsPrismaClient({
-        datasources: { db: { url: replicaUrl.href } },
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      });
-
-  registerDatabaseMetricsSource(
-    driverPool
-      ? {
-          clientType,
-          usesDriverAdapter: true,
-          client,
-          pool: driverPool.pool,
-          poolCounters: driverPool.poolCounters,
-        }
-      : { clientType, usesDriverAdapter: false, client }
-  );
-
-  if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
-    client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
-    client.$on("warn", (log) => logger.warn("RunOpsPrismaClient warn", { clientType, event: log }));
-    client.$on("error", (log) =>
-      logger.error("RunOpsPrismaClient error", { clientType, event: log })
-    );
-  }
-
-  client.$on("query", (log) => queryPerformanceMonitor.onQuery("replica", log));
-
-  const connectPromise = client.$connect();
-  if (env.NODE_ENV === "test") {
-    connectPromise.catch((error) => {
-      logger.warn("Failed to eagerly connect run-ops prisma client (replica)", { error });
-    });
-  }
-
-  console.log(`🔌 run-ops read replica connected`);
+  console.log(`🔌 ${connectedLabel}`);
 
   return client;
 }
