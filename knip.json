@@ -44,9 +44,6 @@
     "internal-packages/run-ops-database": {
       "ignoreDependencies": ["@prisma/client", "prisma"]
     },
-    "internal-packages/run-store": {
-      "entry": ["scripts/**/*.{js,mjs,cjs,ts,mts,cts}"]
-    },
     "internal-packages/sdk-compat-tests": {
       "entry": ["src/fixtures/**/*.{js,mjs,cjs,ts,mts,cts,tsx}"]
     },
