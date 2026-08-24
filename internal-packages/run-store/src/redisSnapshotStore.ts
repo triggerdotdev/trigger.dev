@@ -571,6 +571,11 @@ export class RedisSnapshotStore {
           redis.call('HSET', wpKey(cycleSeq), 'order', orderJson, 'count', orderCount)
           if records ~= '' then
             redis.call('HSET', wpKey(cycleSeq), 'records', records)
+          else
+            -- A new cycle owns the whole key: a lost seq counter can re-mint a cycleSeq whose key
+            -- still holds another cycle's records, and order/count stay mutually consistent so the
+            -- mismatch check cannot see it. No-op on a fresh key.
+            redis.call('HDEL', wpKey(cycleSeq), 'records')
           end
         elseif cycleMode == 'carry' then
           cycleSeq = cycleSeqIn

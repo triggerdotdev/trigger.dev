@@ -279,6 +279,54 @@ describe("append", () => {
   );
 
   redisTest(
+    "a recordless new cycle clears another cycle's records off a reused key",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [{ id: "w_a", index: 0 }],
+            records: [
+              {
+                id: "w_a",
+                friendlyId: "waitpoint_a",
+                type: "MANUAL",
+                completedAt: "2026-01-01T00:00:00.000Z",
+                outputType: "application/json",
+                outputIsError: false,
+                output: { inline: "stale" },
+              },
+            ],
+          },
+        });
+        expect(await raw.hget("snap:{run_1}:wp:1", "records")).not.toBeNull();
+
+        // Only the counter is lost, as under maxmemory eviction. A birth does not check seq, so
+        // the next new cycle re-mints cycleSeq 1 onto the surviving key.
+        await raw.del("snap:{run_1}:seq");
+
+        await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_b", index: 0 }] },
+        });
+
+        expect(await raw.hget("snap:{run_1}:wp:1", "order")).toBe(JSON.stringify(["w_b"]));
+        expect(await raw.hget("snap:{run_1}:wp:1", "records")).toBeNull();
+      } finally {
+        raw.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
     "reports a duplicate id without overwriting the original entry",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
