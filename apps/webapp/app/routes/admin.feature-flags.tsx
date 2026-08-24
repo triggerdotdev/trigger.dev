@@ -39,6 +39,12 @@ import {
   type WorkerGroup,
 } from "~/components/admin/FlagControls";
 
+/** What the page posts to the action. See the note on payloadSchema. */
+type SaveFlagsBody = {
+  flags: Record<string, unknown>;
+  unlockLockedFlags: boolean;
+};
+
 export const loader = dashboardLoader(
   { authorization: { requireSuper: true } },
   async ({ request }) => {
@@ -88,6 +94,9 @@ export const action = dashboardAction(
       return json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
+    // The zod schema leaves unlockLockedFlags optional so a tab opened before this shipped still
+    // saves, defaulting to the safe answer. SaveFlagsBody keeps it required for our own client, so
+    // dropping it from the page is a compile error rather than a silently disabled unlock.
     const payloadSchema = z.object({
       flags: z.record(z.unknown()),
       // The page only submits the flags it is managing, so an omitted key is ambiguous for the
@@ -193,7 +202,8 @@ export default function AdminFeatureFlagsRoute() {
   };
 
   const handleSave = () => {
-    saveFetcher.submit(JSON.stringify({ flags: values, unlockLockedFlags: unlocked }), {
+    const body: SaveFlagsBody = { flags: values, unlockLockedFlags: unlocked };
+    saveFetcher.submit(JSON.stringify(body), {
       method: "POST",
       encType: "application/json",
     });
