@@ -51,15 +51,14 @@ const LEGACY_SHARD: ShardKey = "legacy";
  * dedicated run-ops DB, where new runs are born) and a LEGACY store (the control-plane DB).
  * Inert until the injecting seam wires it in under `isSplitEnabled()`; reads no flag here.
  *
- * Every shard MUST be a distinct database. Single-DB does not construct this class at all — the
- * injecting seam returns a bare PostgresRunStore — and split mode requires two configured run-ops
- * URLs whose distinctness the boot sentinel enforces fail-closed. Two shard keys that resolve to
- * ONE store would make the sum sites (#sumCounts, the counting fan-outs) count that store twice.
+ * Two shard keys MAY resolve to one store only through a declared `aliasOf`. #distinctStores then
+ * holds one entry per database, so a sum never counts a database twice. An undeclared duplicate
+ * store is still a configuration error.
  *
- * Three policies are held as data rather than implied by statement order: {@link #probeOrder} for a
- * lookup with no routable id, {@link #precedence} for a merge, and the two id-less fallbacks. A
- * merge MUST iterate #precedence and a probe MUST iterate #probeOrder — the two are the reverse of
- * each other, so swapping them changes behaviour.
+ * #probeOrder and #precedence each list one key per distinct store. At two shards they are exact
+ * reverses. At N they are not: both put gen-2 shards last, so a probe finds the gen-1 pair first
+ * and a merge lets a gen-2 shard win. A probe MUST iterate #probeOrder and a merge MUST iterate
+ * #precedence.
  */
 export class RoutingRunStore implements RunStore {
   readonly #shards: ReadonlyMap<ShardKey, RunStore>;
@@ -69,6 +68,8 @@ export class RoutingRunStore implements RunStore {
   // Ascending authority for a merge. The last write wins, so the highest-authority shard wins a
   // duplicate id. Every merge in this class MUST use this order.
   readonly #precedence: readonly ShardKey[];
+  // One entry per distinct database, in precedence order. A fan-out sum iterates this, never #shards.
+  readonly #distinctStores: ReadonlyArray<{ key: ShardKey; store: RunStore }>;
   // The two id-less defaults. They differ by role on purpose: a route with no id lands on the
   // steady-state home, a waitpoint read with no id lands on the legacy store.
   readonly #idlessRouteShard: ShardKey;
@@ -86,13 +87,27 @@ export class RoutingRunStore implements RunStore {
     legacy: RunStore;
     classify?: (id: string) => Residency;
     resolveShard?: (id: string) => ShardKey;
+    shards?: ReadonlyArray<{ key: ShardKey; store: RunStore; aliasOf?: ShardKey }>;
   }) {
+    const shards = options.shards ?? [];
+    const configured = new Set<ShardKey>([NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)]);
+    for (const shard of shards) {
+      if (shard.aliasOf !== undefined && !configured.has(shard.aliasOf)) {
+        throw new Error(
+          `RoutingRunStore: shard "${shard.key}" declares aliasOf "${shard.aliasOf}", which is not configured`
+        );
+      }
+    }
+
     this.#shards = new Map<ShardKey, RunStore>([
       [NEW_SHARD, options.new],
       [LEGACY_SHARD, options.legacy],
+      ...shards.map((s) => [s.key, s.store] as const),
     ]);
-    this.#probeOrder = [NEW_SHARD, LEGACY_SHARD];
-    this.#precedence = [LEGACY_SHARD, NEW_SHARD];
+
+    const gen2Keys = shards.map((s) => s.key);
+    this.#probeOrder = [NEW_SHARD, LEGACY_SHARD, ...gen2Keys];
+    this.#precedence = [LEGACY_SHARD, NEW_SHARD, ...gen2Keys];
     this.#idlessRouteShard = NEW_SHARD;
     this.#idlessWaitpointShard = LEGACY_SHARD;
     const classify = options.classify;
@@ -101,6 +116,15 @@ export class RoutingRunStore implements RunStore {
       (classify !== undefined
         ? (id: string) => (classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD)
         : coreResolveShard);
+
+    // One entry per physical database, in precedence order. A declared alias contributes none:
+    // it shares its target's database, and a second leg over one database double-counts a sum.
+    // The discriminator is the DECLARATION, not object identity — the wiring layer may build a
+    // second store object over a shared client.
+    const aliased = new Set(shards.filter((s) => s.aliasOf !== undefined).map((s) => s.key));
+    this.#distinctStores = this.#precedence
+      .filter((key) => !aliased.has(key))
+      .map((key) => ({ key, store: this.#shardStore(key) }));
   }
 
   // A routing store spans two databases and has no single primary — routed reads resolve the
@@ -150,27 +174,33 @@ export class RoutingRunStore implements RunStore {
   async #probeFirst<R>(
     fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>
   ): Promise<R> {
-    const last = this.#probeOrder.length - 1;
+    const rank = new Map(this.#probeOrder.map((key, i) => [key, i]));
+    const legs = [...this.#distinctStores].sort(
+      (a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0)
+    );
+    const last = legs.length - 1;
     for (let i = 0; i < last; i++) {
-      const key = this.#probeOrder[i]!;
-      const found = await fn(this.#shardStore(key), key, false);
+      const { key, store } = legs[i]!;
+      const found = await fn(store, key, false);
       if (found != null) {
         return found;
       }
     }
-    const key = this.#probeOrder[last]!;
-    return fn(this.#shardStore(key), key, true);
+    const { key, store } = legs[last]!;
+    return fn(store, key, true);
   }
 
-  // Run `fn` on every shard in parallel, returning the results in `order`. Pass #probeOrder where
-  // the result-array order is observable; pass #precedence where a duplicate id's winner decides
-  // the value. The two orders are the reverse of each other, so passing the wrong one is a
-  // behaviour change.
+  // Run `fn` on every DISTINCT store in parallel. `order` selects the ordering; membership is
+  // always one entry per database, so an aliased key never contributes a second leg.
   #fanOut<R>(
     order: readonly ShardKey[],
     fn: (store: RunStore, key: ShardKey) => Promise<R>
   ): Promise<R[]> {
-    return Promise.all(order.map((key) => fn(this.#shardStore(key), key)));
+    const rank = new Map(order.map((key, i) => [key, i]));
+    const legs = [...this.#distinctStores].sort(
+      (a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0)
+    );
+    return Promise.all(legs.map(({ store, key }) => fn(store, key)));
   }
 
   // Apply `fn` to every shard and sum the counts. A sum is order-independent, so this takes no order.
@@ -205,13 +235,11 @@ export class RoutingRunStore implements RunStore {
     return Promise.all(legs);
   }
 
-  // Every shard other than `key`, in probe order. With the compat constructor this yields exactly
-  // one entry, which is why each caller may take the first. At more than two shards a caller MUST
-  // fan out over all of them instead.
+  // Every distinct store other than `key`'s, in precedence order. With the compat constructor this
+  // yields exactly one entry, which is why each caller may take the first. At more than two shards
+  // a caller MUST fan out over all of them instead.
   #shardsExcept(key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
-    return this.#probeOrder
-      .filter((k) => k !== key)
-      .map((k) => ({ key: k, store: this.#shardStore(k) }));
+    return this.#distinctStores.filter((s) => s.key !== key);
   }
 
   // A `findRuns` caller bound to the given store (preserves `this`; the overload set isn't

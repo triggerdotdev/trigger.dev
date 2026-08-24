@@ -10,7 +10,7 @@ import type { ReadClient, RunStore } from "./types.js";
 // MUST NOT assert invocation order for a PARALLEL fan-out: both legs are issued before either
 // resolves, so the order they are created in is not a behaviour.
 
-type Slot = "new" | "legacy";
+type Slot = string;
 
 type Call = { slot: Slot; method: string };
 
@@ -83,6 +83,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       record("findManyTaskRunWaitpoints");
       return Promise.resolve((config.edges ?? []) as never);
     }) as FakeStore["findManyTaskRunWaitpoints"],
+
+    updateManyWaitpoints: ((_args: unknown) => {
+      record("updateManyWaitpoints");
+      return Promise.resolve({ count: 1 } as never);
+    }) as FakeStore["updateManyWaitpoints"],
   };
 
   return store as unknown as FakeStore;
@@ -224,5 +229,67 @@ describe("RoutingRunStore id-to-shard-key seam", () => {
       'no store is configured for shard key "a"'
     );
     expect(trace(log)).toEqual([]);
+  });
+});
+
+function buildNShardRouter(shardKeys: string[], opts: { aliasOf?: Record<string, string> } = {}) {
+  const log: Call[] = [];
+  const newStore = fakeStore("new", log);
+  const legacyStore = fakeStore("legacy", log);
+  const byKey: Record<string, FakeStore> = { new: newStore, legacy: legacyStore };
+  const shards = shardKeys.map((key) => {
+    const aliasOf = opts.aliasOf?.[key];
+    const store = aliasOf ? byKey[aliasOf]! : fakeStore(key as Slot, log);
+    byKey[key] = store;
+    return aliasOf ? { key, store, aliasOf } : { key, store };
+  });
+  const router = new RoutingRunStore({
+    new: newStore,
+    legacy: legacyStore,
+    shards,
+    resolveShard: (id: string) => id.split(":")[0]!,
+  });
+  return { router, log, byKey };
+}
+
+describe("RoutingRunStore #distinctStores — one entry per database", () => {
+  it("routes an id to its gen-2 shard", async () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    await router.findRun({ id: "a:run_1" });
+    expect(trace(log)).toEqual(["a:findRun"]);
+  });
+
+  it("counts an aliased shard's database ONCE in a sum", async () => {
+    // "a" aliases "new": two keys, one database.
+    const { router, log } = buildNShardRouter(["a"], { aliasOf: { a: "new" } });
+    const result = await router.updateManyWaitpoints({ where: { status: "PENDING" }, data: {} } as never);
+    expect(trace(log)).toEqual(["new:updateManyWaitpoints", "legacy:updateManyWaitpoints"]);
+    expect(result.count).toBe(2);
+  });
+
+  it("still routes an id whose key is an alias", async () => {
+    const { router, log, byKey } = buildNShardRouter(["a"], { aliasOf: { a: "new" } });
+    expect(byKey.a).toBe(byKey.new);
+    await router.findRun({ id: "a:run_1" });
+    expect(trace(log)).toEqual(["new:findRun"]);
+  });
+
+  it("keeps #fanOutPartitioned key-driven so an aliased bucket is not dropped", async () => {
+    const { router, log } = buildNShardRouter(["a"], { aliasOf: { a: "new" } });
+    await router.findRunsByIds(["a:r1", "legacy:r2"]);
+    // Both buckets get a leg. The aliased bucket routes onto the shared store.
+    expect(log.filter((c) => c.method === "findRuns")).toHaveLength(2);
+  });
+
+  it("rejects an aliasOf naming an unconfigured key", () => {
+    const log: Call[] = [];
+    expect(
+      () =>
+        new RoutingRunStore({
+          new: fakeStore("new", log),
+          legacy: fakeStore("legacy", log),
+          shards: [{ key: "a", store: fakeStore("a" as Slot, log), aliasOf: "nope" }],
+        })
+    ).toThrow('aliasOf "nope"');
   });
 });
