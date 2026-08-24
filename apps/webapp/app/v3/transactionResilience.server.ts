@@ -17,8 +17,11 @@ export type TransactionResilienceConfig = {
   startRetry: TransactionStartRetryConfig;
 };
 
-function resolveTransactionResilience(
-  pool: "control-plane" | "run-ops" | "run-ops-legacy",
+// Exported so the topology singleton can build a per-shard config (each call creates its OWN
+// TokenBucketRetryBudget, so one shard's retry storm cannot drain another's). `pool` is a free
+// string — it only labels a log line, never keys any behaviour.
+export function resolveTransactionResilience(
+  pool: string,
   overrides: {
     maxWaitMs?: number;
     enabled?: boolean;
