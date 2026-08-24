@@ -34,8 +34,10 @@ import type {
   TaskRunWithWaitpoint,
   WaitpointColocationOptions,
 } from "./types.js";
+import { Logger } from "@trigger.dev/core/logger";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
+import { noopRoutingStoreMetrics, type RoutingStoreMetrics } from "./routingStoreMetrics.js";
 
 import { boundedIn } from "@trigger.dev/database";
 
@@ -78,6 +80,8 @@ export class RoutingRunStore implements RunStore {
   // five sites inject it and three of those are the regression corpus. A gen-1 classifier can
   // only ever name the two reserved keys, so it can never reach a gen-2 shard.
   readonly #resolveShardKey: (id: string) => ShardKey;
+  readonly #metrics: RoutingStoreMetrics;
+  readonly #logger: Logger;
 
   // Compat constructor: the two gen-1 stores, keyed by their reserved shard keys. The options type
   // MUST stay closed — a union arm loosens the excess-property check and retires the
@@ -88,6 +92,8 @@ export class RoutingRunStore implements RunStore {
     classify?: (id: string) => Residency;
     resolveShard?: (id: string) => ShardKey;
     shards?: ReadonlyArray<{ key: ShardKey; store: RunStore; aliasOf?: ShardKey }>;
+    metrics?: RoutingStoreMetrics;
+    logger?: Logger;
   }) {
     const shards = options.shards ?? [];
     const configured = new Set<ShardKey>([NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)]);
@@ -125,6 +131,9 @@ export class RoutingRunStore implements RunStore {
     this.#distinctStores = this.#precedence
       .filter((key) => !aliased.has(key))
       .map((key) => ({ key, store: this.#shardStore(key) }));
+
+    this.#metrics = options.metrics ?? noopRoutingStoreMetrics;
+    this.#logger = options.logger ?? new Logger("RoutingRunStore", "warn");
   }
 
   // A routing store spans two databases and has no single primary — routed reads resolve the
@@ -152,6 +161,16 @@ export class RoutingRunStore implements RunStore {
       throw new Error(`RoutingRunStore: no store is configured for shard key "${key}"`);
     }
     return store;
+  }
+
+  // A duplicate id is EXPECTED across the gen-1 pair (drain mirrors a token onto both). Any other
+  // combination breaks id-determinism: alarm, but keep the deterministic pick.
+  #reportDuplicateId(id: string, shardKeys: ShardKey[]): void {
+    if (shardKeys.every((key) => key === NEW_SHARD || key === LEGACY_SHARD)) {
+      return;
+    }
+    this.#metrics.recordDuplicateId(shardKeys);
+    this.#logger.error("RoutingRunStore: one id returned by two shards", { id, shardKeys });
   }
 
   // The shard that owns an existing id. Throws only when an injected resolver throws.
