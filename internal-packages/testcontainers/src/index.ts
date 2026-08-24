@@ -554,6 +554,94 @@ export const threeDbRunOpsPostgresTest = test.extend<ThreeDbRunOpsPostgresTestCo
   },
 });
 
+type NShardRunOpsTestContext = {
+  // Legacy (PG14, full control-plane schema) — the gen-1 cuid store.
+  legacyPrisma: PrismaClient;
+  legacyUri: string;
+  // The gen-1 "new" dedicated-subset store (PG17).
+  newPrisma: RunOpsPrismaClient;
+  newUri: string;
+  // The gen-2 shards, each a dedicated-subset PG17 clone on its OWN database.
+  shardPrismas: RunOpsPrismaClient[];
+  shardUris: string[];
+};
+
+// Legacy (PG14 full schema) + `new` + `gen2ShardCount` gen-2 shards, each a dedicated-subset PG17
+// clone and each its OWN database. Every store MUST be a distinct database, or the router's sum
+// sites count one twice. Vitest test.extend keys are static, so the gen-2 clones arrive as arrays.
+// threeDbRunOpsPostgresTest is control-plane/legacy/new — NOT run shards — so it cannot be reused.
+export const makeNShardRunOpsPostgresTest = (gen2ShardCount: number) =>
+  test.extend<NShardRunOpsTestContext>({
+    legacyUri: async ({}, use) => {
+      const container = await getWorkerPostgresContainer();
+      const baseUri = container.getConnectionUri();
+      const cloneDb = `nShardLegacy_${pgCloneCounter++}`;
+      await createDatabaseFromTemplate(baseUri, cloneDb);
+      try {
+        await use(postgresUriWithDatabase(baseUri, cloneDb));
+      } finally {
+        await dropCloneDatabase(baseUri, cloneDb);
+      }
+    },
+    newUri: async ({}, use) => {
+      const container = await getRunOpsWorkerPostgresContainer17();
+      const baseUri = container.getConnectionUri();
+      const cloneDb = `nShardNew_${pgCloneCounter++}`;
+      await createDatabaseFromTemplate(baseUri, cloneDb);
+      try {
+        await use(postgresUriWithDatabase(baseUri, cloneDb));
+      } finally {
+        await dropCloneDatabase(baseUri, cloneDb);
+      }
+    },
+    shardUris: async ({}, use) => {
+      const container = await getRunOpsWorkerPostgresContainer17();
+      const baseUri = container.getConnectionUri();
+      const clones: string[] = [];
+      try {
+        for (let i = 0; i < gen2ShardCount; i++) {
+          const cloneDb = `nShardGen2_${pgCloneCounter++}`;
+          await createDatabaseFromTemplate(baseUri, cloneDb);
+          clones.push(cloneDb);
+        }
+        await use(clones.map((db) => postgresUriWithDatabase(baseUri, db)));
+      } finally {
+        for (const db of clones) {
+          await dropCloneDatabase(baseUri, db);
+        }
+      }
+    },
+    legacyPrisma: async ({ legacyUri }, use) => {
+      const prisma = new PrismaClient({ datasources: { db: { url: legacyUri } } });
+      try {
+        await use(prisma);
+      } finally {
+        await prisma.$disconnect();
+      }
+    },
+    newPrisma: async ({ newUri }, use) => {
+      const prisma = new RunOpsPrismaClient({ datasources: { db: { url: newUri } } });
+      try {
+        await use(prisma);
+      } finally {
+        await prisma.$disconnect();
+      }
+    },
+    shardPrismas: async ({ shardUris }, use) => {
+      const clients = shardUris.map(
+        (url) => new RunOpsPrismaClient({ datasources: { db: { url } } })
+      );
+      try {
+        await use(clients);
+      } finally {
+        for (const c of clients) {
+          await c.$disconnect();
+        }
+      }
+    },
+  });
+
+
 export const redisContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedRedisContainer>
