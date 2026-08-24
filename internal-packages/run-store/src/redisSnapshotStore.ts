@@ -472,6 +472,64 @@ export class RedisSnapshotStore {
     });
   }
 
+  /**
+   * The same window as {@link getSince}, addressed by a createdAt cursor instead of a snapshot id.
+   *
+   * `getExecutionSnapshotsSince` resolves its cursor to a createdAt before it asks for the window,
+   * so the snapshot id is gone by the time this call is made and `getSince` cannot serve it. The
+   * cursor is exclusive and keeps Postgres's same-millisecond blind spot, so the two reads agree.
+   */
+  async getSinceCreatedAt(
+    runId: string,
+    createdAt: Date | string,
+    opts?: { environmentId?: string; limit?: number }
+  ): Promise<GetSinceResult> {
+    return this.#timed("getSinceCreatedAt", async () => {
+      const k = snapshotKeys(runId);
+      const limit = opts?.limit ?? this.sinceLimit;
+      const cursor = typeof createdAt === "string" ? createdAt : createdAt.toISOString();
+
+      const reply = await this.redis.readSnapshotsSinceCreatedAt(
+        k.e,
+        k.idx,
+        k.cur,
+        k.seq,
+        cursor,
+        String(limit)
+      );
+      if (reply === null) return { kind: "miss" };
+
+      const headOrder = reply[1] ?? "";
+      const rows: SnapshotRead[] = [];
+      // Tracks whether the Lua-chosen head row (always the first, i === 2) survives the env filter,
+      // so headOrder is never attributed to a different, surviving row.
+      let headSurvived = false;
+      for (let i = 2; i + 3 < reply.length; i += 4) {
+        const decoded = this.#decode(
+          [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
+          opts?.environmentId,
+          runId,
+          false
+        );
+        if (decoded) {
+          rows.push(decoded);
+          if (i === 2) headSurvived = true;
+        }
+      }
+
+      rows.reverse();
+      const head = headSurvived ? rows[rows.length - 1] : undefined;
+      const headWaitpointIds = decodeWaitpointIds(head !== undefined, head ? headOrder : "");
+      if (head) {
+        head.completedWaitpointIds = headWaitpointIds;
+        if (head.cycle) {
+          this.#checkCycleMismatch(runId, head.cycle.count, headWaitpointIds.order.length);
+        }
+      }
+      return { kind: "hit", entries: rows, headWaitpointIds };
+    });
+  }
+
   #checkCycleMismatch(runId: string, count: number, orderLength: number): void {
     if (orderLength === count) return;
     this.metrics?.recordCycleMismatch();
@@ -682,6 +740,66 @@ export class RedisSnapshotStore {
       `,
     });
 
+    this.redis.defineCommand("readSnapshotsSinceCreatedAt", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        local cursor = ARGV[1]
+        local limit = tonumber(ARGV[2])
+
+        -- A run with no keyspace is a MISS, so the caller falls back to Postgres. A run that has one
+        -- and nothing newer is an empty HIT, so it does not fall back for a window it owns.
+        if redis.call('EXISTS', eKey) == 0 then return nil end
+
+        -- STRICTLY greater than the cursor, and same-millisecond entries are dropped. Postgres
+        -- serves this window with createdAt > cursor and drops them too; a Redis read that is more
+        -- correct than the Postgres read shows up as divergence in compare mode.
+        --
+        -- createdAt is always toISOString() output, one fixed-width UTC format, so a lexicographic
+        -- compare is a chronological compare. Walking newest-first lets the scan stop at the first
+        -- entry at or before the cursor, which makes its length the length of the ANSWER rather
+        -- than the length of the run's history.
+        local out = { '', '' }
+        local headId = nil
+        local offset = 0
+        local page = limit
+        local done = false
+
+        while not done do
+          local ids = redis.call('ZREVRANGE', idxKey, offset, offset + page - 1)
+          if #ids == 0 then break end
+
+          for i = 1, #ids do
+            local id = ids[i]
+            local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
+            if vals[1] then
+              local createdAt = cjson.decode(vals[1])['createdAt']
+              if not createdAt or createdAt <= cursor then
+                done = true
+                break
+              end
+              if not headId then headId = id end
+              out[#out + 1] = id
+              out[#out + 1] = vals[1]
+              out[#out + 1] = vals[2] or ''
+              out[#out + 1] = vals[3] or ''
+              if (#out - 2) / 4 >= limit then
+                done = true
+                break
+              end
+            end
+          end
+
+          offset = offset + page
+        end
+
+        if headId then
+          out[2] = orderFor(redis.call('HGET', eKey, headId .. '#c'))
+        end
+        return out
+      `,
+    });
+
     this.redis.defineCommand("readSnapshotsSince", {
       numberOfKeys: 4,
       lua: `
@@ -780,6 +898,15 @@ declare module "@internal/redis" {
       id: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+    readSnapshotsSinceCreatedAt(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      createdAtCursor: string,
+      limit: string,
+      callback?: Callback<string[] | null>
+    ): Result<string[] | null, Context>;
     readSnapshotsSince(
       eKey: string,
       idxKey: string,
