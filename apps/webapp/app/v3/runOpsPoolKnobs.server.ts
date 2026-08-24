@@ -55,9 +55,7 @@ export function resolveRunOpsPoolKnobs(
 
   return {
     writerPoolTimeout:
-      k?.writerPoolTimeout ??
-      env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ??
-      env.DATABASE_POOL_TIMEOUT,
+      k?.writerPoolTimeout ?? env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
     writerConnectionTimeout:
       k?.writerConnectionTimeout ??
       env.RUN_OPS_DATABASE_WRITER_CONNECTION_TIMEOUT ??

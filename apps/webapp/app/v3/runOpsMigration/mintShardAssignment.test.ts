@@ -485,9 +485,9 @@ describe("routableKeys bound (the shard descriptor keys this deployment can rout
   });
 
   it("returns new when the active list holds only non-routable keys (fail-safe to gen-1)", () => {
-    expect(
-      computeMintShard({ id: "env_1" }, deps({ set: ["z"] }, { routableKeys: ["a"] }))
-    ).toBe("new");
+    expect(computeMintShard({ id: "env_1" }, deps({ set: ["z"] }, { routableKeys: ["a"] }))).toBe(
+      "new"
+    );
   });
 
   it("rejects a per-org pin to a non-routable key and falls through to the hash", () => {
@@ -501,7 +501,10 @@ describe("routableKeys bound (the shard descriptor keys this deployment can rout
   it("with no routableKeys given, behaviour is unchanged", () => {
     const ids = envIds(200);
     for (const id of ids) {
-      const withBound = computeMintShard({ id }, deps({ set: ["a", "b"] }, { routableKeys: ["a", "b"] }));
+      const withBound = computeMintShard(
+        { id },
+        deps({ set: ["a", "b"] }, { routableKeys: ["a", "b"] })
+      );
       const without = computeMintShard({ id }, deps({ set: ["a", "b"] }));
       expect(withBound).toBe(without);
     }

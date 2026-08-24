@@ -32,16 +32,16 @@ import {
 } from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { resolveRunOpsPoolKnobs } from "./v3/runOpsPoolKnobs.server";
-import { resolveShardResilience } from "./v3/transactionResilience.server";
-import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
-import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import {
+  resolveShardResilience,
   controlPlaneTransactionResilience,
   registerTransactionResilience,
   resilienceForClient,
   runOpsLegacyTransactionResilience,
   runOpsTransactionResilience,
 } from "./v3/transactionResilience.server";
+import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
+import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
@@ -277,7 +277,7 @@ export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica"
 
 type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
 type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
-export type ShardTopologyDescriptor = {
+type ShardTopologyDescriptor = {
   key: string;
   url?: string;
   replicaUrl?: string;
@@ -1060,7 +1060,9 @@ function buildRunOpsClient({
 }): RunOpsPrismaClient {
   const isWriter = role === "writer";
   const setupLabel = isWriter ? "run-ops prisma client" : "run-ops read replica connection";
-  const connectedLabel = isWriter ? "run-ops prisma client connected" : "run-ops read replica connected";
+  const connectedLabel = isWriter
+    ? "run-ops prisma client connected"
+    : "run-ops read replica connected";
 
   const connectionUrl = buildPrismaConnectionUrl(url, {
     connectionLimit: connectionLimit.toString(),
@@ -1111,7 +1113,11 @@ function buildRunOpsClient({
     client.$on("error", (log) =>
       // The writer bridges P2002 -> 422 at the store boundary, so its infra errors are logged once
       // there (ignoreError). Replica errors are not on that write path, so they log normally.
-      logger.error("RunOpsPrismaClient error", { clientType, event: log, ...(isWriter ? { ignoreError: true } : {}) })
+      logger.error("RunOpsPrismaClient error", {
+        clientType,
+        event: log,
+        ...(isWriter ? { ignoreError: true } : {}),
+      })
     );
   }
 

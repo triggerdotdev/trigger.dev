@@ -9,7 +9,9 @@ describe("resolveTransactionResilience per-shard", () => {
   });
 
   it("accepts an arbitrary pool label and honours a maxWait override", () => {
-    expect(() => resolveTransactionResilience("run-ops-shard-z", { maxWaitMs: 1234 })).not.toThrow();
+    expect(() =>
+      resolveTransactionResilience("run-ops-shard-z", { maxWaitMs: 1234 })
+    ).not.toThrow();
     expect(resolveTransactionResilience("run-ops-shard-z", { maxWaitMs: 1234 }).maxWait).toBe(1234);
   });
 });
