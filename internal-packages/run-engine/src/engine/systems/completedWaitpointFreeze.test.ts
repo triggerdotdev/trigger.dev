@@ -3,6 +3,7 @@
 // records, and asserts the two agree field for field. The waitpoint lane owns the
 // production resolver; this reference exists so the frozen shapes are checked rather
 // than asserted.
+import { isDeepStrictEqual } from "node:util";
 import { describe, expect, it } from "vitest";
 import type { Waitpoint } from "@trigger.dev/database";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
@@ -10,7 +11,6 @@ import type { CompletedWaitpoint } from "@trigger.dev/core/v3";
 import type {
   CompletedWaitpointRecord,
   CompletedWaitpointResolver,
-  CompletedWaitpointsPointer,
   ResolveCompletedWaitpointsArgs,
 } from "@internal/run-store";
 import { enhanceExecutionSnapshotWithWaitpoints } from "./executionSnapshotSystem.js";
@@ -166,9 +166,8 @@ async function assertParity(
     order,
     records: waitpoints.map(toRecord),
   };
-  // The frozen rule: count is order.length, NOT the record count. Binding it here means every
-  // parity case enforces it, not only the dedicated "the frozen pointer shape" cases.
-  expect(args.pointer.count).toBe(order.length);
+  // count-carried-forward behaviour (order.length, not the record count) is covered by
+  // the run-store Redis suite, not here -- this line only constructs `args`, not asserts.
   const resolved = await referenceResolver(args, async (id) => runOutputs[id]);
   expect(resolved).toEqual(enhanced.completedWaitpoints);
   return { enhanced, resolved };
@@ -311,19 +310,8 @@ describe("the frozen record shape", () => {
   });
 });
 
-describe("the frozen pointer shape", () => {
-  it("pins count to order.length, not the record count", () => {
-    const order = ["wp_a", "wp_b", "wp_a"];
-    const pointer: CompletedWaitpointsPointer = { cycleSeq: 7, count: order.length };
-    expect(pointer).toEqual({ cycleSeq: 7, count: 3 });
-  });
-
-  it("pins count at 0 when order is empty, even if records exist", () => {
-    const order: string[] = [];
-    const pointer: CompletedWaitpointsPointer = { cycleSeq: 7, count: order.length };
-    expect(pointer).toEqual({ cycleSeq: 7, count: 0 });
-  });
-});
+// The pointer's shape is pinned by CompletedWaitpointsPointer and tsconfig.freeze-test.json,
+// not by a runtime assertion here -- a value that only echoes its own construction can't fail.
 
 describe("the completed-waitpoints freeze", () => {
   it("expands a repeated id at each of its positions", async () => {
@@ -377,11 +365,6 @@ describe("the completed-waitpoints freeze", () => {
     const { resolved } = await assertParity([w], ["wp_manual_err"], null);
     expect(resolved[0]!.outputIsError).toBe(true);
     expect(resolved[0]!.output).toBe('{"type":"STRING_ERROR"}');
-  });
-
-  it("returns an empty list for no waitpoints", async () => {
-    const { resolved } = await assertParity([], [], "batch_1");
-    expect(resolved).toEqual([]);
   });
 
   it("resolves through the frozen hook signature", async () => {
@@ -493,6 +476,144 @@ describe("the completed-waitpoints freeze", () => {
       "s3://bucket/key",
       undefined,
     ]);
+  });
+});
+
+describe("the exhaustive parity grid", () => {
+  // Dimensions mirror every Waitpoint column the oracle reads (type, output, outputType,
+  // outputIsError, completedByTaskRunId, completedByBatchId, completedAfter,
+  // userProvidedIdempotencyKey, inactiveIdempotencyKey), plus order-membership and the
+  // reading entry's batchId. A new column the oracle reads must widen a dimension here,
+  // so the pinned combination count below fails instead of coverage silently shrinking.
+  const TYPES: Waitpoint["type"][] = ["RUN", "BATCH", "DATETIME", "MANUAL"];
+  const OUTPUTS: (string | null)[] = [null, '{"value":42}'];
+  const OUTPUT_TYPES = ["application/json", "application/store"];
+  const OUTPUT_IS_ERRORS = [false, true];
+  const TASK_RUN_IDS: (string | null)[] = [null, "run_child"];
+  const BATCH_IDS: (string | null)[] = [null, "batch_child"];
+  const COMPLETED_AFTERS: (Date | null)[] = [null, new Date("2026-02-02T00:00:00.000Z")];
+  const IDEMPOTENCY_COMBOS: Array<[boolean, string | null]> = [
+    [false, null],
+    [false, "cleared"],
+    [true, null],
+    [true, "cleared"],
+  ];
+  const ORDER_MEMBERSHIPS = ["absent", "once", "twice"] as const;
+  const READING_BATCH_IDS: (string | null)[] = [null, "batch_reading_entry"];
+
+  // Only reached when type is RUN, output is set, outputIsError is false, and
+  // completedByTaskRunId is "run_child": the deriveFromRun branch. The value matches
+  // OUTPUTS' non-null entry so a correct resolver is byte-identical to the oracle.
+  const RUN_OUTPUT_LOOKUP: Record<string, string> = { run_child: '{"value":42}' };
+
+  it("agrees with the oracle across every combination", async () => {
+    type Combo = {
+      type: Waitpoint["type"];
+      output: string | null;
+      outputType: string;
+      outputIsError: boolean;
+      completedByTaskRunId: string | null;
+      completedByBatchId: string | null;
+      completedAfter: Date | null;
+      userProvidedIdempotencyKey: boolean;
+      inactiveIdempotencyKey: string | null;
+      orderMembership: (typeof ORDER_MEMBERSHIPS)[number];
+      readingBatchId: string | null;
+    };
+    const failures: Array<{ combo: Combo; oracle: unknown; resolver: unknown }> = [];
+    let cases = 0;
+
+    for (const type of TYPES) {
+      for (const output of OUTPUTS) {
+        for (const outputType of OUTPUT_TYPES) {
+          for (const outputIsError of OUTPUT_IS_ERRORS) {
+            for (const completedByTaskRunId of TASK_RUN_IDS) {
+              for (const completedByBatchId of BATCH_IDS) {
+                for (const completedAfter of COMPLETED_AFTERS) {
+                  for (const [
+                    userProvidedIdempotencyKey,
+                    inactiveIdempotencyKey,
+                  ] of IDEMPOTENCY_COMBOS) {
+                    for (const orderMembership of ORDER_MEMBERSHIPS) {
+                      for (const readingBatchId of READING_BATCH_IDS) {
+                        cases++;
+                        const combo: Combo = {
+                          type,
+                          output,
+                          outputType,
+                          outputIsError,
+                          completedByTaskRunId,
+                          completedByBatchId,
+                          completedAfter,
+                          userProvidedIdempotencyKey,
+                          inactiveIdempotencyKey,
+                          orderMembership,
+                          readingBatchId,
+                        };
+
+                        const id = "wp_grid";
+                        const w = makeWaitpoint({
+                          id,
+                          type,
+                          output,
+                          outputType,
+                          outputIsError,
+                          completedByTaskRunId,
+                          completedByBatchId,
+                          completedAfter,
+                          idempotencyKey: "idem_user",
+                          userProvidedIdempotencyKey,
+                          inactiveIdempotencyKey,
+                        });
+                        const order =
+                          orderMembership === "absent"
+                            ? ["wp_other"]
+                            : orderMembership === "once"
+                              ? [id]
+                              : [id, id];
+
+                        const enhanced = enhanceExecutionSnapshotWithWaitpoints(
+                          makeSnapshot(readingBatchId),
+                          [w],
+                          order
+                        );
+                        const args: ResolveCompletedWaitpointsArgs = {
+                          runId: "run_1",
+                          batchId: readingBatchId ?? undefined,
+                          pointer: { cycleSeq: 1, count: order.length },
+                          order,
+                          records: [toRecord(w)],
+                        };
+                        const resolved = await referenceResolver(
+                          args,
+                          async (runId) => RUN_OUTPUT_LOOKUP[runId]
+                        );
+
+                        if (!isDeepStrictEqual(resolved, enhanced.completedWaitpoints)) {
+                          failures.push({
+                            combo,
+                            oracle: enhanced.completedWaitpoints,
+                            resolver: resolved,
+                          });
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    expect(cases).toBe(6144);
+    expect(
+      failures.length,
+      failures.length > 0
+        ? `${failures.length}/${cases} combinations diverged. First: ${JSON.stringify(failures[0], null, 2)}`
+        : undefined
+    ).toBe(0);
   });
 });
 

@@ -578,11 +578,15 @@ export class RedisSnapshotStore {
             redis.call('HDEL', wpKey(cycleSeq), 'records')
           end
         elseif cycleMode == 'carry' then
-          cycleSeq = cycleSeqIn
-          local c = redis.call('HGET', wpKey(cycleSeq), 'count')
-          if not c then
+          -- Attach a pointer only if this incarnation actually minted the cycle. seq can be
+          -- evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
+          -- incarnation's order and records under a consistent count, invisibly.
+          local minted = tonumber(redis.call('HGET', seqKey, 'c') or '0')
+          local c = redis.call('HGET', wpKey(cycleSeqIn), 'count')
+          if not c or minted < cycleSeqIn then
             mismatch = 1
           else
+            cycleSeq = cycleSeqIn
             orderCount = c
           end
         end

@@ -327,6 +327,57 @@ describe("append", () => {
   );
 
   redisTest(
+    "a carry-forward refuses a cycle this incarnation never minted",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [{ id: "w_old", index: 0 }],
+            records: [
+              {
+                id: "w_old",
+                friendlyId: "waitpoint_old",
+                type: "MANUAL",
+                completedAt: "2026-01-01T00:00:00.000Z",
+                outputType: "application/json",
+                outputIsError: false,
+                output: { inline: "stale" },
+              },
+            ],
+          },
+        });
+
+        // Lose the whole keyspace except the cycle key, as under maxmemory eviction.
+        await raw.del("snap:{run_1}:e", "snap:{run_1}:idx", "snap:{run_1}:cur", "snap:{run_1}:seq");
+
+        const carried = await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "carryForward", cycleSeq: 1 },
+        });
+
+        // Written, flagged, and carrying NO pointer: the dead incarnation's waitpoints must not
+        // be served to a fresh run under a count that agrees with them.
+        expect(carried).toMatchObject({ outcome: "written", cycleMismatch: true });
+        expect(carried).not.toHaveProperty("cycleSeq");
+        const read = await store.getLatest("run_1");
+        expect(read?.cycle).toBeUndefined();
+        expect(read?.completedWaitpointIds).toBeUndefined();
+      } finally {
+        raw.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
     "reports a duplicate id without overwriting the original entry",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
