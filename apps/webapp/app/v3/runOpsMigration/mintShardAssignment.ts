@@ -133,11 +133,17 @@ type GlobalShardConfig = { resolution: MintShardSetResolution; override: unknown
 
 export type MintShardCache = { value: GlobalShardConfig; expiresAt: number } | undefined;
 
+type MintShardCacheHandle = {
+  current: MintShardCache;
+  // The refresh currently in flight, if any. Concurrent misses share it.
+  inFlight?: Promise<GlobalShardConfig>;
+};
+
 export type ResolveMintShardDeps = {
   // Reads the list rows. Injected so the cache and the fail-safe are testable without a
   // database, the same way computeRunIdMintKind takes its flag reader.
   readFlags: () => Promise<Record<string, unknown>>;
-  cache: { current: MintShardCache };
+  cache: MintShardCacheHandle;
   nowMs: number;
   ttlMs: number;
   graceMs: number;
@@ -155,6 +161,20 @@ export type ResolveMintShardDeps = {
 //
 // A failed read falls back to gen-1 rather than guessing a list. Guessing would move every
 // environment's placement for the length of one blip.
+async function refreshConfig(deps: ResolveMintShardDeps): Promise<GlobalShardConfig> {
+  try {
+    const flags = await deps.readFlags();
+    const config: GlobalShardConfig = {
+      resolution: readMintShardSetResolution(flags),
+      override: flags[FEATURE_FLAG.runOpsMintShardOverride],
+    };
+    deps.cache.current = { value: config, expiresAt: deps.nowMs + deps.ttlMs };
+    return config;
+  } finally {
+    deps.cache.inFlight = undefined;
+  }
+}
+
 export async function resolveMintShardWith(
   environment: { id: string; orgFeatureFlags?: unknown },
   deps: ResolveMintShardDeps
@@ -165,16 +185,13 @@ export async function resolveMintShardWith(
     config = cached.value;
   } else {
     try {
-      const flags = await deps.readFlags();
-      config = {
-        resolution: readMintShardSetResolution(flags),
-        override: flags[FEATURE_FLAG.runOpsMintShardOverride],
-      };
+      // Single-flight. Without it, two misses both read, and a slower read landing after a
+      // faster one puts its older snapshot back into the cache for a whole TTL.
+      config = await (deps.cache.inFlight ??= refreshConfig(deps));
     } catch (error) {
       deps.onReadFailed?.(error);
       return "new";
     }
-    deps.cache.current = { value: config, expiresAt: deps.nowMs + deps.ttlMs };
   }
 
   return computeMintShard(environment, {

@@ -2,7 +2,7 @@
 // bug surface. These drive the real exported action against a real Postgres and assert on the rows
 // it leaves behind. The only module substituted is the auth wrapper, so the handler can be called
 // without a super-admin session; the database is the genuine article, injected into db.server.
-import { boundedIn } from "@trigger.dev/database";
+import { boundedIn, $transaction as realTransaction } from "@trigger.dev/database";
 import type { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
@@ -22,18 +22,23 @@ vi.mock("~/db.server", () => ({
     return db.client;
   },
   boundedIn,
-  // The real helper adds tracing around prisma.$transaction and resolves undefined when it
-  // swallows an infrastructure error. Neither is under test here, but the transactional
-  // semantics are, so this stands in with the same shape and a real interactive transaction.
-  $transaction: async (
+  // Delegates to the SAME shared implementation the production helper wraps, so the
+  // transactional semantics, the nesting case and the retry behaviour are the real ones rather
+  // than a reimplementation. Only the webapp wrapper's tracing span and its infrastructure-error
+  // logging are absent, and neither is asserted here.
+  $transaction: (
     client: PrismaClient,
     nameOrFn: unknown,
-    fnOrOptions?: unknown
-  ): Promise<unknown> => {
-    const fn = (typeof nameOrFn === "function" ? nameOrFn : fnOrOptions) as (
-      tx: PrismaClient
-    ) => Promise<unknown>;
-    return client.$transaction((tx) => fn(tx as unknown as PrismaClient));
+    fnOrOptions?: unknown,
+    options?: unknown
+  ) => {
+    const fn = (typeof nameOrFn === "function" ? nameOrFn : fnOrOptions) as Parameters<
+      typeof realTransaction
+    >[1];
+    const opts = (typeof nameOrFn === "function" ? fnOrOptions : options) as Parameters<
+      typeof realTransaction
+    >[3];
+    return realTransaction(client, fn, () => {}, opts);
   },
 }));
 

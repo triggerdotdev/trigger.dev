@@ -319,6 +319,66 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
     expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
   });
 
+  it("coalesces concurrent misses into ONE read", async () => {
+    // Two misses must share a single read. Otherwise a slower read landing after a faster one
+    // writes its older snapshot back into the cache for a whole TTL.
+    let release: (flags: Record<string, unknown>) => void = () => {};
+    const gate = new Promise<Record<string, unknown>>((resolve) => {
+      release = resolve;
+    });
+    const deps = wrapperDeps({ readFlags: () => gate });
+
+    const both = Promise.all([
+      resolveMintShardWith({ id: "env_1" }, deps),
+      resolveMintShardWith({ id: "env_2" }, deps),
+    ]);
+    release({ runOpsMintShardSet: "a,b" });
+    await both;
+
+    expect(deps.reads).toBe(1);
+  });
+
+  it("does not let a slower read overwrite a newer one", async () => {
+    // The slow read starts first and finishes last. Its result must not become the cached
+    // value, because the fast read already published a newer snapshot.
+    let releaseSlow: (flags: Record<string, unknown>) => void = () => {};
+    const slow = new Promise<Record<string, unknown>>((resolve) => {
+      releaseSlow = resolve;
+    });
+    let call = 0;
+    const deps = wrapperDeps({
+      readFlags: () => {
+        call++;
+        return call === 1 ? slow : Promise.resolve({ runOpsMintShardSet: "c" });
+      },
+    });
+
+    const first = resolveMintShardWith({ id: "env_1" }, deps);
+    const second = resolveMintShardWith({ id: "env_2" }, deps);
+    releaseSlow({ runOpsMintShardSet: "a" });
+    await Promise.all([first, second]);
+
+    // One read served both, so there is no second snapshot to race with.
+    expect(deps.reads).toBe(1);
+    expect(deps.cache.current?.value.resolution.set).toEqual(["a"]);
+  });
+
+  it("clears the in-flight refresh after a failure, so the next call retries", async () => {
+    let fail = true;
+    const deps = wrapperDeps({
+      readFlags: async () => {
+        if (fail) throw new Error("db down");
+        return { runOpsMintShardSet: "a,b" };
+      },
+    });
+    deps.onReadFailed = () => {};
+
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
+    fail = false;
+    expect(["a", "b"]).toContain(await resolveMintShardWith({ id: "env_1" }, deps));
+    expect(deps.reads).toBe(2);
+  });
+
   it("agrees with the pure core for the same inputs", async () => {
     const deps = wrapperDeps();
     const viaWrapper = await resolveMintShardWith({ id: "env_1" }, deps);
