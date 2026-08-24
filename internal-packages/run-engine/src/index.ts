@@ -38,3 +38,26 @@ export type {
   ProcessBatchItemCallback,
   BatchCompletionCallback,
 } from "./batch-queue/types.js";
+
+// Waitpoint store coordinator. Exported but not yet wired: a later ticket routes
+// WaitpointSystem onto it behind a per-organisation flag.
+export {
+  WaitpointStoreCoordinator,
+  WaitpointNotFoundError,
+} from "./engine/waitpointCoordinator/storeCoordinator.js";
+export type {
+  AbsorbResult,
+  BlockEdge,
+  BlockState,
+  BlockStateEdge,
+  CompleteResult,
+  CreateIfAbsentResult,
+  RegisterOrReportResult,
+  WaitpointCompletion,
+  WaitpointCompletionOutput,
+  WaitpointRecordInput,
+  WaitpointStatus,
+  WaitpointStoreCoordinatorOptions,
+  WatcherEntry,
+} from "./engine/waitpointCoordinator/storeCoordinator.js";
+export { WaitpointKeyTagError } from "./engine/waitpointCoordinator/keys.js";
