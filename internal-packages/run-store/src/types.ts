@@ -43,6 +43,9 @@ export type CreateRunSnapshotInput = {
 };
 
 export type CompletionSnapshotInput = {
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   executionStatus: "FINISHED";
   description: string;
   runStatus: TaskRunStatus;
@@ -64,6 +67,9 @@ export type PromotePendingVersionArgs = {
 };
 
 export type ExpireSnapshotInput = {
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   engine: "V2";
   executionStatus: "FINISHED";
   description: string;
@@ -75,6 +81,9 @@ export type ExpireSnapshotInput = {
 };
 
 export type RescheduleSnapshotInput = {
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   environmentId: string;
   environmentType: RuntimeEnvironmentType;
   projectId: string;
@@ -292,6 +301,9 @@ export type TaskRunWithWaitpoint = TaskRun & { associatedWaitpoint: Waitpoint | 
  * input — callers pass the high-level shape, not a raw Prisma `data`/`include`.
  */
 export type CreateExecutionSnapshotInput = {
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
   snapshot: {
     executionStatus: TaskRunExecutionStatus;

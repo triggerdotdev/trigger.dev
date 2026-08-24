@@ -818,6 +818,7 @@ export class PostgresRunStore implements RunStore {
         ...params.data,
         executionSnapshots: {
           create: {
+            id: params.snapshot.id,
             engine: params.snapshot.engine,
             executionStatus: params.snapshot.executionStatus,
             description: params.snapshot.description,
@@ -925,6 +926,7 @@ export class PostgresRunStore implements RunStore {
         costInCents: data.costInCents,
         executionSnapshots: {
           create: {
+            id: data.snapshot.id,
             executionStatus: data.snapshot.executionStatus,
             description: data.snapshot.description,
             runStatus: data.snapshot.runStatus,
@@ -1131,6 +1133,7 @@ export class PostgresRunStore implements RunStore {
         error: data.error as Prisma.InputJsonValue,
         executionSnapshots: {
           create: {
+            id: data.snapshot.id,
             engine: data.snapshot.engine,
             executionStatus: data.snapshot.executionStatus,
             description: data.snapshot.description,
@@ -1365,6 +1368,7 @@ export class PostgresRunStore implements RunStore {
           error: data.error as Prisma.InputJsonValue,
           executionSnapshots: {
             create: {
+              id: data.snapshot.id,
               engine: data.snapshot.engine,
               executionStatus: data.snapshot.executionStatus,
               description: data.snapshot.description,
@@ -1438,6 +1442,7 @@ export class PostgresRunStore implements RunStore {
         ...(data.snapshot && {
           executionSnapshots: {
             create: {
+              id: data.snapshot.id,
               engine: "V2",
               executionStatus: data.snapshot.executionStatus ?? "DELAYED",
               description:
@@ -1969,6 +1974,7 @@ export class PostgresRunStore implements RunStore {
     prisma: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
     const {
+      id,
       run,
       snapshot,
       previousSnapshotId,
@@ -1988,6 +1994,7 @@ export class PostgresRunStore implements RunStore {
 
     const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
       data: {
+        id,
         engine: "V2",
         executionStatus: snapshot.executionStatus,
         description: snapshot.description,
