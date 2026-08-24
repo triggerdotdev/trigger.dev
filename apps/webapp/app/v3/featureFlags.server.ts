@@ -252,7 +252,7 @@ async function stampGracedGroups(
   graceMs: number
 ): Promise<Record<string, unknown>> {
   const existingRows = await tx.featureFlag.findMany({
-    where: { key: { in: GRACED_GLOBAL_KEYS } },
+    where: { key: { in: boundedIn(GRACED_GLOBAL_KEYS) } },
     select: { key: true, value: true },
   });
   const existingGlobal: Record<string, unknown> = {};

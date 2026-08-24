@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
-import { $replica } from "~/db.server";
+import { $replica, boundedIn } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
@@ -208,7 +208,7 @@ const liveCache = singleton("runOpsMintShardCache", (): { current: MintShardCach
 
 async function readSetFlags(): Promise<Record<string, unknown>> {
   const rows = await $replica.featureFlag.findMany({
-    where: { key: { in: GLOBAL_SHARD_KEYS } },
+    where: { key: { in: boundedIn(GLOBAL_SHARD_KEYS) } },
     select: { key: true, value: true },
   });
   const flags: Record<string, unknown> = {};
