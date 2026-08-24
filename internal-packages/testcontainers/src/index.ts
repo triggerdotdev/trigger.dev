@@ -980,3 +980,5 @@ export const postgresAndMinioTest = withWarmup(
     await getWorkerPostgresContainer();
   }
 );
+
+export { slotOf, expectOneSlot } from "./clusterSlot";
