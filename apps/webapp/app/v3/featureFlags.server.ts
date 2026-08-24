@@ -1,6 +1,6 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
@@ -271,11 +271,18 @@ export async function applyGlobalGracedFlips(
   requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>,
   graceMs: number
 ): Promise<{ key: string; value: any }[]> {
-  return client.$transaction(async (tx) => {
+  const applied = await $transaction(client, "applyGlobalGracedFlips", async (tx) => {
     await lockGracedGroups(tx);
     const stamped = await stampGracedGroups(tx, withoutDerivedKeys(requestedFlags), graceMs);
     return makeSetMultipleFlags(tx)(stamped as Partial<z.infer<typeof FeatureFlagCatalogSchema>>);
   });
+
+  // The helper resolves undefined rather than throwing when Prisma swallows an infrastructure
+  // error. This write stamps a cutover window, so a transaction that did not run must be loud.
+  if (!applied) {
+    throw new Error("applyGlobalGracedFlips: transaction did not complete");
+  }
+  return applied;
 }
 
 // Replace-semantics write for the global admin flags page: submitted flags upsert, omitted ones
@@ -298,7 +305,7 @@ export async function replaceGlobalFeatureFlags(
 ): Promise<void> {
   const requestedFlags = withoutDerivedKeys(params.requestedFlags);
 
-  await client.$transaction(async (tx) => {
+  const applied = await $transaction(client, "replaceGlobalFeatureFlags", async (tx) => {
     await lockGracedGroups(tx);
     const stamped = await stampGracedGroups(tx, requestedFlags, params.graceMs);
 
@@ -331,5 +338,12 @@ export async function replaceGlobalFeatureFlags(
     if (keysToDelete.length > 0) {
       await tx.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } });
     }
+
+    return true;
   });
+
+  // This write deletes flags, so a transaction that did not run must reach the caller.
+  if (!applied) {
+    throw new Error("replaceGlobalFeatureFlags: transaction did not complete");
+  }
 }
