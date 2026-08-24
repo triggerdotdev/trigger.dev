@@ -142,6 +142,57 @@ describe("selectRunOpsTopology (pure)", () => {
     expect(topo.legacyRunOps.replica).toBe(legacyWriter);
     expect(buildLegacyReplica).not.toHaveBeenCalled();
   });
+
+  const baseSplit = {
+    splitEnabled: true,
+    legacyUrl: "postgres://legacy",
+    newUrl: "postgres://new",
+  };
+  const baseBuilders = () => ({
+    controlPlane: cp,
+    buildNewWriter: vi.fn().mockReturnValue({ tag: "nw" } as any),
+    buildNewReplica: vi.fn().mockReturnValue({ tag: "nr" } as any),
+    buildLegacyWriter: vi.fn().mockReturnValue({ tag: "lw" } as any),
+    buildLegacyReplica: vi.fn().mockReturnValue({ tag: "lr" } as any),
+  });
+
+  it("no descriptors: the shards map is empty", () => {
+    const topo = selectRunOpsTopology(baseSplit, baseBuilders());
+    expect(topo.shards.size).toBe(0);
+  });
+
+  it("two descriptors: two shard client pairs, each built once", () => {
+    const buildShardWriter = vi.fn((s: any) => ({ tag: `w:${s.key}` }) as any);
+    const buildShardReplica = vi.fn((s: any) => ({ tag: `r:${s.key}` }) as any);
+    const topo = selectRunOpsTopology(
+      {
+        ...baseSplit,
+        shards: [
+          { key: "a", url: "postgres://a", replicaUrl: "postgres://a-r" },
+          { key: "b", url: "postgres://b" },
+        ],
+      },
+      { ...baseBuilders(), buildShardWriter, buildShardReplica }
+    );
+    expect(topo.shards.size).toBe(2);
+    expect(topo.shards.get("a")!.writer).toEqual({ tag: "w:a" });
+    // b has no replicaUrl, so its replica falls back to its writer (buildShardReplica not called for b).
+    expect(topo.shards.get("b")!.replica).toEqual({ tag: "w:b" });
+    expect(buildShardWriter).toHaveBeenCalledTimes(2);
+    expect(buildShardReplica).toHaveBeenCalledTimes(1);
+  });
+
+  it("an alias descriptor reuses newRunOps by reference and calls no shard builder", () => {
+    const buildShardWriter = vi.fn();
+    const buildShardReplica = vi.fn();
+    const topo = selectRunOpsTopology(
+      { ...baseSplit, shards: [{ key: "a", aliasOf: "new" }] },
+      { ...baseBuilders(), buildShardWriter, buildShardReplica }
+    );
+    expect(topo.shards.get("a")).toBe(topo.newRunOps);
+    expect(buildShardWriter).not.toHaveBeenCalled();
+    expect(buildShardReplica).not.toHaveBeenCalled();
+  });
 });
 
 describe("sameDatabaseTarget", () => {

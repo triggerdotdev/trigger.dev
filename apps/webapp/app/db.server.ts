@@ -32,6 +32,7 @@ import {
 } from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { resolveRunOpsPoolKnobs } from "./v3/runOpsPoolKnobs.server";
+import { resolveShardResilience } from "./v3/transactionResilience.server";
 import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import {
@@ -276,10 +277,19 @@ export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica"
 
 type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
 type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
+export type ShardTopologyDescriptor = {
+  key: string;
+  url?: string;
+  replicaUrl?: string;
+  aliasOf?: "new";
+};
 export type RunOpsTopology = {
   newRunOps: NewRunOpsClients;
   legacyRunOps: RunOpsClients;
   controlPlane: RunOpsClients;
+  // One client pair per gen-2 shard descriptor. Empty unless RUN_OPS_SHARDS is configured. An
+  // aliasOf:"new" descriptor maps to the newRunOps pair BY REFERENCE (no new pool).
+  shards: Map<string, NewRunOpsClients>;
 };
 export type SelectRunOpsTopologyConfig = {
   splitEnabled: boolean;
@@ -289,6 +299,7 @@ export type SelectRunOpsTopologyConfig = {
   newReplicaUrl?: string;
   // When true, legacy reuses the control-plane client instead of opening its own pool. Defaults to false.
   legacySharesControlPlane?: boolean;
+  shards?: ShardTopologyDescriptor[];
 };
 export type RunOpsClientBuilders = {
   controlPlane: RunOpsClients;
@@ -298,6 +309,10 @@ export type RunOpsClientBuilders = {
   // RunOpsPrismaClient double-cast needed): the legacy DB carries the full control-plane schema.
   buildLegacyWriter: (url: string, clientType: string) => PrismaClient;
   buildLegacyReplica: (url: string, clientType: string) => PrismaReplicaClient;
+  // Receive the whole descriptor so the singleton can resolve per-shard knobs and resilience by key.
+  // Optional so the existing test literals (which build no shards) need no change.
+  buildShardWriter?: (shard: ShardTopologyDescriptor) => RunOpsPrismaClient;
+  buildShardReplica?: (shard: ShardTopologyDescriptor) => RunOpsPrismaClient;
 };
 
 // Pure run-ops client selector. No env, no isSplitEnabled() — those
@@ -316,11 +331,11 @@ export function selectRunOpsTopology(
   };
 
   if (!config.splitEnabled) {
-    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
+    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane, shards: new Map() };
   }
 
   if (!config.legacyUrl || !config.newUrl) {
-    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
+    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane, shards: new Map() };
   }
 
   // Same-DB legacy reuses the control-plane pool; only build a separate pool once the DSNs diverge.
@@ -339,12 +354,28 @@ export function selectRunOpsTopology(
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
     ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-replica")
     : newWriter;
+  const newRunOps: NewRunOpsClients = { writer: newWriter, replica: newReplica };
 
-  return {
-    newRunOps: { writer: newWriter, replica: newReplica },
-    legacyRunOps,
-    controlPlane,
-  };
+  const shards = new Map<string, NewRunOpsClients>();
+  for (const shard of config.shards ?? []) {
+    if (shard.aliasOf === "new") {
+      // Aliased: share the new store's clients by reference. No builder, no new pool — the soak path.
+      shards.set(shard.key, newRunOps);
+      continue;
+    }
+    if (!shard.url || !builders.buildShardWriter || !builders.buildShardReplica) {
+      throw new Error(
+        `selectRunOpsTopology: shard "${shard.key}" needs a url and shard builders when not aliased`
+      );
+    }
+    const shardWriter = builders.buildShardWriter(shard);
+    const shardReplica: RunOpsPrismaClient = shard.replicaUrl
+      ? builders.buildShardReplica(shard)
+      : shardWriter;
+    shards.set(shard.key, { writer: shardWriter, replica: shardReplica });
+  }
+
+  return { newRunOps, legacyRunOps, controlPlane, shards };
 }
 
 // The env-bound run-ops topology singleton. The split decision uses
@@ -378,6 +409,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   }
 
   const newPoolKnobs = resolveRunOpsPoolKnobs("new");
+  const shardDescriptorsByKey = new Map(env.RUN_OPS_SHARDS.map((d) => [d.key, d]));
 
   return selectRunOpsTopology(
     {
@@ -387,6 +419,12 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       newUrl,
       newReplicaUrl: env.RUN_OPS_DATABASE_READ_REPLICA_URL,
       legacySharesControlPlane,
+      shards: env.RUN_OPS_SHARDS.map((d) => ({
+        key: d.key,
+        url: d.url,
+        replicaUrl: d.replicaUrl,
+        aliasOf: d.aliasOf,
+      })),
     },
     {
       controlPlane: { writer: prisma, replica: $replica },
@@ -461,6 +499,50 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
             )
           )
         ),
+      // A gen-2 shard is a dedicated run-ops DB, so it mirrors buildNewWriter/buildNewReplica: same
+      // client class, same wrapper stack, its OWN resilience budget, and the "new"-role pool knobs
+      // merged with the descriptor's per-shard overrides. Shards share the run-ops datasource tag.
+      buildShardWriter: (shard) => {
+        const descriptor = shardDescriptorsByKey.get(shard.key);
+        const knobs = resolveRunOpsPoolKnobs("new", descriptor?.knobs);
+        return registerTransactionResilience(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-writer",
+              buildRunOpsClient({
+                url: shard.url!,
+                clientType: `run-ops-shard-${shard.key}-writer`,
+                role: "writer",
+                connectionLimit: knobs.connectionLimit,
+                poolTimeout: knobs.writerPoolTimeout,
+                connectTimeout: knobs.writerConnectionTimeout,
+                useDriverAdapter: knobs.writerDriverAdapter,
+              })
+            )
+          ),
+          resolveShardResilience(shard.key, descriptor?.knobs)
+        );
+      },
+      buildShardReplica: (shard) => {
+        const descriptor = shardDescriptorsByKey.get(shard.key);
+        const knobs = resolveRunOpsPoolKnobs("new", descriptor?.knobs);
+        return markReadReplicaClient(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-replica",
+              buildRunOpsClient({
+                url: shard.replicaUrl!,
+                clientType: `run-ops-shard-${shard.key}-replica`,
+                role: "replica",
+                connectionLimit: knobs.replicaConnectionLimit,
+                poolTimeout: knobs.replicaPoolTimeout,
+                connectTimeout: knobs.replicaConnectionTimeout,
+                useDriverAdapter: knobs.replicaDriverAdapter,
+              })
+            )
+          )
+        );
+      },
     }
   );
 });
