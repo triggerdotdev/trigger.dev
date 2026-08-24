@@ -254,7 +254,11 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     });
 
     const m = await readFlags(prisma, SET_KEYS);
+    // Kept WHOLE. Protection is keyed off the primary, so the stamps must survive with it;
+    // asserting only the primary leaves the group-level property unpinned.
     expect(m[FEATURE_FLAG.runOpsMintShardSet]).toBe("a");
+    expect(m[FEATURE_FLAG.runOpsMintShardSetPrev]).toBeDefined();
+    expect(m[FEATURE_FLAG.runOpsMintShardSetFlippedAt]).toBeDefined();
   });
 
   postgresTest("an ordinary flag keeps replace semantics", async ({ prisma }) => {
