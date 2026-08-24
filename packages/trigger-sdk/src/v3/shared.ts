@@ -17,18 +17,15 @@ import {
   createErrorTaskError,
   defaultRetryOptions,
   flattenIdempotencyKey,
-  getEnvVar,
   getIdempotencyKeyOptions,
   getSchemaParseFn,
   lifecycleHooks,
   makeIdempotencyKey,
   packetRequiresOffloading,
-  resolveExternalDeploymentId,
   parsePacket,
   RateLimitError,
   resourceCatalog,
   runtime,
-  sdkScope,
   SemanticInternalAttributes,
   stringifyIO,
   SubtaskUnwrapError,
@@ -91,6 +88,7 @@ import {
   type TriggerApiRequestOptions,
   type TriggerOptions,
 } from "@trigger.dev/core/v3";
+import { resolveTriggerExternalDeploymentId, scopedEnvVar } from "./externalDeploymentId.js";
 import { tracer } from "./tracer.js";
 
 export type {
@@ -119,20 +117,6 @@ export type {
 export { SubtaskUnwrapError, TaskRunPromise };
 
 export type Context = TaskRunContext;
-
-function scopedEnvVar(name: string): string | undefined {
-  const scope = sdkScope.getStore();
-  if (scope && !scope.inheritContext) return undefined;
-  return getEnvVar(name);
-}
-
-function resolveTriggerExternalDeploymentId(explicit?: string): string | undefined {
-  return resolveExternalDeploymentId({
-    explicit,
-    clientConfig: apiClientManager.externalDeploymentId,
-    read: scopedEnvVar,
-  });
-}
 
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);

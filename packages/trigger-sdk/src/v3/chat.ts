@@ -229,6 +229,18 @@ export type ChatTransportSendSource =
  */
 export type ChatTransportEvent =
   | {
+      /**
+       * The chat's run is parked waiting for its deployment (version skew protection). Messages
+       * sent meanwhile are durable and drain when it lands, but nothing answers until then.
+       * Re-emitted on every send while parked; clear the notice on `first-chunk`.
+       */
+      type: "run-pending-version";
+      chatId: string;
+      timestamp: number;
+      /** Whether we learned this from starting the session or from sending a message. */
+      source: "start" | "send";
+    }
+  | {
       type: "message-sent";
       chatId: string;
       timestamp: number;
@@ -419,6 +431,11 @@ export type StartSessionParams<TClientData = unknown> = {
 export type StartSessionResult = {
   /** Session-scoped PAT — `read:sessions:{chatId} + write:sessions:{chatId}`. */
   publicAccessToken: string;
+  /**
+   * Pass through `pendingVersion` from `chat.createStartSessionAction` (or `POST
+   * /api/v1/sessions`) and the transport emits `run-pending-version`.
+   */
+  pendingVersion?: boolean;
 };
 
 /**
@@ -1512,11 +1529,20 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       );
     }
 
-    const { publicAccessToken } = await this.resolveStartSession({
+    const { publicAccessToken, pendingVersion } = await this.resolveStartSession({
       taskId: this.taskId,
       chatId,
       clientData: (this.defaultMetadata ?? {}) as Record<string, unknown>,
     });
+
+    if (pendingVersion) {
+      this.emitEvent({
+        type: "run-pending-version",
+        chatId,
+        timestamp: Date.now(),
+        source: "start",
+      });
+    }
 
     const state: ChatSessionState = {
       publicAccessToken,
@@ -1574,7 +1600,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     }
     // The appended record's `.in` seq, for correlating the response stream to
     // this send. Omitted by older webapps / a lost idempotency claim.
-    const data = (await response.json().catch(() => undefined)) as { seq?: unknown } | undefined;
+    const data = (await response.json().catch(() => undefined)) as
+      | { seq?: unknown; pendingVersion?: unknown }
+      | undefined;
+
+    if (data?.pendingVersion === true) {
+      this.emitEvent({
+        type: "run-pending-version",
+        chatId,
+        timestamp: Date.now(),
+        source: "send",
+      });
+    }
+
     return typeof data?.seq === "number" ? data.seq : undefined;
   }
 
@@ -1630,11 +1668,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         "TriggerChatTransport: session not found and no `startSession` configured to recreate it. The stored session state for this chat may be stale (e.g. created in a different environment) — provide `startSession` or clear the stored session so a fresh one can be created."
       );
     }
-    const { publicAccessToken } = await this.resolveStartSession({
+    const { publicAccessToken, pendingVersion } = await this.resolveStartSession({
       taskId: this.taskId,
       chatId,
       clientData: (this.defaultMetadata ?? {}) as Record<string, unknown>,
     });
+    if (pendingVersion) {
+      this.emitEvent({
+        type: "run-pending-version",
+        chatId,
+        timestamp: Date.now(),
+        source: "start",
+      });
+    }
     state.publicAccessToken = publicAccessToken;
     state.lastEventId = undefined;
     state.isStreaming = false;

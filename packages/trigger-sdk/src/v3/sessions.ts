@@ -17,6 +17,7 @@ import type {
   PipeStreamOptions,
   PipeStreamResult,
   RetrieveSessionResponseBody,
+  SessionTriggerConfig,
   StreamWriteResult,
   UpdateSessionRequestBody,
   WriterStreamOptions,
@@ -45,6 +46,7 @@ import {
   writeSessionControlRecord,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
 import { tracer } from "./tracer.js";
 
 export type {
@@ -55,6 +57,19 @@ export type {
   ListedSessionItem,
   RetrieveSessionResponseBody,
   UpdateSessionRequestBody,
+};
+
+/**
+ * `SessionTriggerConfig` as callers supply it. `externalDeploymentId` is normally discovered from
+ * the environment, so passing it is optional; pass `null` to opt this chat out of version pinning.
+ */
+export type SessionTriggerConfigInput = Omit<SessionTriggerConfig, "externalDeploymentId"> & {
+  externalDeploymentId?: string | null;
+};
+
+/** {@link CreateSessionRequestBody} with the caller-facing trigger config. */
+export type CreateSessionInput = Omit<CreateSessionRequestBody, "triggerConfig"> & {
+  triggerConfig: SessionTriggerConfigInput;
 };
 
 export const sessions = {
@@ -104,9 +119,12 @@ export function __setSessionStartImplForTests(impl: SessionStartImpl | undefined
  * Two browser tabs of the same chat converge to one session.
  */
 function startSession(
-  body: CreateSessionRequestBody,
+  input: CreateSessionInput,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<CreatedSessionResponseBody> {
+  // Resolved before the test hook so fixtures observe the body that would go on the wire.
+  const body = withResolvedExternalDeploymentId(input);
+
   if (sessionStartImpl) {
     const result = sessionStartImpl(body);
     return Promise.resolve(result) as ApiPromise<CreatedSessionResponseBody>;

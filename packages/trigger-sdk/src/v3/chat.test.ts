@@ -516,6 +516,111 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("run-pending-version", () => {
+    it("emits on send when the append response says the run is parked", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: 1, pendingVersion: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onEvent: (e) => events.push(e),
+        sessions: { "chat-parked": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-parked",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "run-pending-version",
+            chatId: "chat-parked",
+            source: "send",
+          }),
+        ])
+      );
+    });
+
+    it("stays quiet on an ordinary append response", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onEvent: (e) => events.push(e),
+        sessions: { "chat-normal": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-normal",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(events.some((e) => e.type === "run-pending-version")).toBe(false);
+    });
+
+    it("emits on start when startSession reports a parked run", async () => {
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "should-not-be-called",
+        onEvent: (e) => events.push(e),
+        startSession: vi.fn().mockResolvedValue({ publicAccessToken: "pat", pendingVersion: true }),
+      });
+
+      await transport.start("chat-start-parked");
+
+      expect(events).toEqual([
+        expect.objectContaining({
+          type: "run-pending-version",
+          chatId: "chat-start-parked",
+          source: "start",
+        }),
+      ]);
+    });
+
+    it("stays quiet when startSession reports nothing", async () => {
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "should-not-be-called",
+        onEvent: (e) => events.push(e),
+        startSession: vi.fn().mockResolvedValue({ publicAccessToken: "pat" }),
+      });
+
+      await transport.start("chat-start-normal");
+
+      expect(events.some((e) => e.type === "run-pending-version")).toBe(false);
+    });
+  });
+
   describe("sendMessages", () => {
     it("posts the user message to .in/append and streams chunks from .out", async () => {
       const requests: Array<{ url: string; init?: RequestInit }> = [];

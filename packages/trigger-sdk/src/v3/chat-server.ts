@@ -60,7 +60,6 @@ import {
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
   type ApiClientConfiguration,
-  type SessionTriggerConfig,
 } from "@trigger.dev/core/v3";
 // Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
 // `ai@7` (see ../imports/ai-runtime.ts).
@@ -72,6 +71,8 @@ import {
 import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { chatRunTags } from "./ai-shared.js";
+import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
+import type { SessionTriggerConfigInput } from "./sessions.js";
 
 // `StreamTextResult` is defined locally rather than imported from `ai`: its
 // generic arity diverged (v6 `StreamTextResult<TOOLS, OUTPUT>`, v7
@@ -202,7 +203,7 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    * The `chat:{chatId}` tag is prepended automatically when it fits within
    * the tag length limit (see `chatRunTags`).
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * API client config (base URL + access token) for creating the session
    * and triggering the agent run. When set, the handler runs under this
@@ -226,7 +227,7 @@ export type StartHeadStartOptions<TTools extends Record<string, Tool>> = {
   /** Seconds the agent run waits for the handover signal before exiting. Default 60. */
   idleTimeoutInSeconds?: number;
   /** Run options for the auto-triggered `handover-prepare` run (tags, queue, machine, …). */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /** API client config for session creation + trigger when the agent lives in another project/env. */
   apiClient?: ApiClientConfiguration;
   /** Metadata merged into the run's wire payload (auth tokens, context, …). Never sent to the browser. */
@@ -403,7 +404,7 @@ export const chat = {
     req: Request;
     agentId: string;
     idleTimeoutInSeconds?: number;
-    triggerConfig?: Partial<SessionTriggerConfig>;
+    triggerConfig?: Partial<SessionTriggerConfigInput>;
   }): Promise<HeadStartSession> {
     return (async () => {
       const session = await openHandoverSession({
@@ -507,7 +508,7 @@ async function openHandoverSession(opts: {
   wirePayload: ChatTaskWirePayload;
   agentId: string;
   idleTimeoutInSeconds?: number;
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /** Request-lifecycle signal on the HTTP path; omitted on the detached path. */
   requestSignal?: AbortSignal;
 }): Promise<InternalSession> {
@@ -533,7 +534,7 @@ async function openHandoverSession(opts: {
   // prepended when it fits within the tag length limit (see `chatRunTags`).
   const tags = chatRunTags(chatId, opts.triggerConfig?.tags);
 
-  const triggerConfig: SessionTriggerConfig = {
+  const triggerConfig: SessionTriggerConfigInput = {
     basePayload: {
       ...(opts.triggerConfig?.basePayload ?? {}),
       ...wirePayload,
@@ -554,6 +555,10 @@ async function openHandoverSession(opts: {
     ...(opts.triggerConfig?.lockToVersion
       ? { lockToVersion: opts.triggerConfig.lockToVersion }
       : {}),
+    // Not truthiness: `null` opts this chat out of pinning and must reach the resolver.
+    ...(opts.triggerConfig?.externalDeploymentId !== undefined
+      ? { externalDeploymentId: opts.triggerConfig.externalDeploymentId }
+      : {}),
     idleTimeoutInSeconds,
   };
 
@@ -570,12 +575,15 @@ async function openHandoverSession(opts: {
   // run to be there to consume it. The added latency (~one round trip
   // to the control plane) is bounded; the agent's compute boot still
   // overlaps with LLM TTFB.
-  const created = await apiClient.createSession({
-    type: "chat.agent",
-    externalId: chatId,
-    taskIdentifier: opts.agentId,
-    triggerConfig,
-  });
+  // Bypasses `sessions.start`, so it resolves the pin itself.
+  const created = await apiClient.createSession(
+    withResolvedExternalDeploymentId({
+      type: "chat.agent",
+      externalId: chatId,
+      taskIdentifier: opts.agentId,
+      triggerConfig,
+    })
+  );
   const sessionPublicAccessToken = created.publicAccessToken;
 
   // Combined abort signal: request lifecycle OR an internal timeout

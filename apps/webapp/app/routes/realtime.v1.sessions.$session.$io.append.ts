@@ -121,7 +121,7 @@ const { action, loader } = createActionApiRoute(
     // durable and the next append will retry the ensure step. Don't
     // surface the error to the caller; the SSE tail just won't deliver
     // it until a run boots.
-    const [ensureError] = await tryCatch(
+    const [ensureError, ensureResult] = await tryCatch(
       ensureRunForSession({
         session,
         environment: authentication.environment,
@@ -236,7 +236,14 @@ const { action, loader } = createActionApiRoute(
     }
 
     // `seq` lets the client correlate this send to the turn that consumes it.
-    return json({ ok: true, seq: appendSeq }, { status: 200 });
+    return json(
+      {
+        ok: true,
+        seq: appendSeq,
+        ...(ensureResult?.pendingVersion ? { pendingVersion: true } : {}),
+      },
+      { status: 200 }
+    );
   }
 );
 

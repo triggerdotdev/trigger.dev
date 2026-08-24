@@ -117,6 +117,7 @@ const { action, loader } = createActionApiRoute(
         callingRunId: callingRun.id,
         environment: authentication.environment,
         reason,
+        externalDeploymentId: body.externalDeploymentId,
       });
 
       // Read-after-write: the swap just triggered (or claimed) the

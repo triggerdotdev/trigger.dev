@@ -1,4 +1,4 @@
-import type { Session, TaskRunStatus } from "@trigger.dev/database";
+import type { Prisma, Session, TaskRunStatus } from "@trigger.dev/database";
 import { SessionTriggerConfig as SessionTriggerConfigZod } from "@trigger.dev/core/v3";
 import type { z } from "zod";
 import { prisma, $replica } from "~/db.server";
@@ -76,6 +76,8 @@ export type EnsureRunResult = {
   runId: string;
   /** True if this call triggered a fresh run; false if it reused an alive existing one. */
   triggered: boolean;
+  /** The run is parked waiting for a deployment carrying the session's external deployment id. */
+  pendingVersion: boolean;
 };
 
 /**
@@ -123,7 +125,11 @@ export async function ensureRunForSession(
       );
     }
     if (probe && !isFinalRunStatus(probe.status)) {
-      return { runId: session.currentRunId, triggered: false };
+      return {
+        runId: session.currentRunId,
+        triggered: false,
+        pendingVersion: isPendingVersionStatus(probe.status),
+      };
     }
     // Either the row vanished on the writer too (probe null) or its status
     // is final. Either way the prior run isn't going to consume new
@@ -210,7 +216,11 @@ export async function ensureRunForSession(
         });
       });
 
-    return { runId: triggered.id, triggered: true };
+    return {
+      runId: triggered.id,
+      triggered: true,
+      pendingVersion: isPendingVersionStatus(triggered.status),
+    };
   }
 
   // 4. Lost the race. Cancel our triggered run; reuse the winner's.
@@ -255,7 +265,11 @@ export async function ensureRunForSession(
       prisma
     );
     if (probe && !isFinalRunStatus(probe.status)) {
-      return { runId: fresh.currentRunId, triggered: false };
+      return {
+        runId: fresh.currentRunId,
+        triggered: false,
+        pendingVersion: isPendingVersionStatus(probe.status),
+      };
     }
   }
 
@@ -270,6 +284,24 @@ export async function ensureRunForSession(
     payloadOverrides,
     _attempt: _attempt + 1,
   });
+}
+
+/** Both version pins are forwarded; `TriggerTaskService` decides which governs. */
+export function buildSessionRunOptions(config: SessionTriggerConfig) {
+  return {
+    ...(config.machine ? { machine: config.machine as never } : {}),
+    ...(config.queue ? { queue: { name: config.queue } } : {}),
+    ...(config.tags ? { tags: config.tags } : {}),
+    ...(config.maxAttempts !== undefined ? { maxAttempts: config.maxAttempts } : {}),
+    ...(config.maxDuration !== undefined ? { maxDuration: config.maxDuration } : {}),
+    ...(config.lockToVersion ? { lockToVersion: config.lockToVersion } : {}),
+    ...(config.externalDeploymentId ? { externalDeploymentId: config.externalDeploymentId } : {}),
+    ...(config.region ? { region: config.region } : {}),
+  };
+}
+
+function isPendingVersionStatus(status: TaskRunStatus): boolean {
+  return status === "PENDING_VERSION";
 }
 
 /**
@@ -288,7 +320,7 @@ async function triggerSessionRun(params: {
   config: SessionTriggerConfig;
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
-}): Promise<{ id: string; friendlyId: string }> {
+}): Promise<{ id: string; friendlyId: string; status: TaskRunStatus }> {
   const { session, config, environment, payloadOverrides } = params;
 
   const payload = {
@@ -302,15 +334,7 @@ async function triggerSessionRun(params: {
   const body = {
     payload,
     context: {},
-    options: {
-      ...(config.machine ? { machine: config.machine as never } : {}),
-      ...(config.queue ? { queue: { name: config.queue } } : {}),
-      ...(config.tags ? { tags: config.tags } : {}),
-      ...(config.maxAttempts !== undefined ? { maxAttempts: config.maxAttempts } : {}),
-      ...(config.maxDuration !== undefined ? { maxDuration: config.maxDuration } : {}),
-      ...(config.lockToVersion ? { lockToVersion: config.lockToVersion } : {}),
-      ...(config.region ? { region: config.region } : {}),
-    },
+    options: buildSessionRunOptions(config),
   };
 
   const service = new TriggerTaskService();
@@ -329,7 +353,11 @@ async function triggerSessionRun(params: {
     );
   }
 
-  return { id: result.run.id, friendlyId: result.run.friendlyId };
+  return {
+    id: result.run.id,
+    friendlyId: result.run.friendlyId,
+    status: result.run.status,
+  };
 }
 
 type SwapSessionRunParams = {
@@ -359,6 +387,8 @@ type SwapSessionRunParams = {
   environment: AuthenticatedEnvironment;
   reason: EnsureRunReason;
   payloadOverrides?: Record<string, unknown>;
+  /** Only read when `reason` is `"upgrade"`: a string re-pins the session, absent clears the pin. */
+  externalDeploymentId?: string | null;
 };
 
 export type SwapSessionRunResult = {
@@ -371,6 +401,8 @@ export type SwapSessionRunResult = {
    * next run.
    */
   swapped: boolean;
+  /** See {@link EnsureRunResult.pendingVersion}. */
+  pendingVersion: boolean;
 };
 
 /**
@@ -413,7 +445,15 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
     trigger: undefined,
   };
 
-  const config = SessionTriggerConfigSchema.parse(session.triggerConfig);
+  const storedConfig = SessionTriggerConfigSchema.parse(session.triggerConfig);
+
+  // The upgrade's pin is persisted in the claim below, not applied to this run alone: the next
+  // continuation re-reads the stored config. `lockToVersion` is deliberately untouched.
+  const config =
+    reason === "upgrade"
+      ? { ...storedConfig, externalDeploymentId: params.externalDeploymentId ?? undefined }
+      : storedConfig;
+
   const triggered = await triggerSessionRun({
     session,
     config,
@@ -430,6 +470,7 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
     data: {
       currentRunId: triggered.id,
       currentRunVersion: { increment: 1 },
+      ...(reason === "upgrade" ? { triggerConfig: config as Prisma.InputJsonValue } : {}),
     },
   });
 
@@ -446,7 +487,11 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
           error,
         });
       });
-    return { runId: triggered.id, swapped: true };
+    return {
+      runId: triggered.id,
+      swapped: true,
+      pendingVersion: isPendingVersionStatus(triggered.status),
+    };
   }
 
   // Lost the race — someone else already swapped to a new run. Cancel
@@ -480,9 +525,16 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
     );
   }
 
+  const winner = await runStore.findRun(
+    { id: fresh.currentRunId },
+    { select: { status: true } },
+    prisma
+  );
+
   return {
     runId: fresh.currentRunId,
     swapped: false,
+    pendingVersion: winner ? isPendingVersionStatus(winner.status) : false,
   };
 }
 

@@ -276,6 +276,66 @@ An empty or whitespace-only value counts as "not supplied" rather than an error,
 
 Batch triggers carry the id too. `batchTrigger` resolves it per item exactly as `trigger` does, and it survives the asynchronous materialisation of batch items — so a large batch triggered during a deploy waits and releases item by item, each pinned to the deployment its calling code came from.
 
+## Chat sessions
+
+[Chat agents](/ai-chat/overview) are covered by the same mechanism, with one difference: the id belongs to the **session**, not to a single trigger. It is resolved wherever you start the session — your server action, your route handler, `sessions.start()` — using the same order of precedence as a task trigger, and stored on the session. Every run that session goes on to schedule carries it: the first run, each continuation after an idle suspend, and each recovery after a crash.
+
+That is what you want for a conversation. A chat started by one release of your app keeps talking to the agent build that release shipped with, however many turns and however many runs that takes.
+
+Chats need the same two halves as tasks, and no more: a deployment carrying an id, and an app that sends the same one (explicitly, through `TRIGGER_EXTERNAL_DEPLOYMENT_ID`, or through [automatic discovery](#automatic-discovery)). There is nothing chat-specific to switch on, so an app already pinning its task runs gets pinned chats with no code change.
+
+```ts
+// app/actions.ts
+"use server";
+import { chat } from "@trigger.dev/sdk/ai";
+import type { myChat } from "@/trigger/chat";
+
+// No chat-specific setup: the id is discovered per call, exactly as it is for `trigger()`.
+export const startChatSession = chat.createStartSessionAction<typeof myChat>("my-chat");
+```
+
+Three things follow from the pin living on the session:
+
+- **Starting the session again refreshes it.** `sessions.start()` is idempotent on `chatId` and rewrites the stored config, so when your transport calls `startSession` after a redeploy, the *next* run picks up the new id. The turn already in flight finishes on the code it started on.
+- **There is one pin per `chatId`.** If the same conversation is open in two tabs on two different releases of your app, whichever called `startSession` most recently sets the pin for both.
+- **A parked chat is waiting, not broken.** A run pinned to a deployment that hasn't landed parks, and every message sent meanwhile is stored durably and delivered once the deployment arrives. Nothing is lost — but nothing answers either, so tell the user. Pass `pendingVersion` through your `startSession` callback and the transport emits a `run-pending-version` event:
+
+```tsx
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+  onEvent: (event) => {
+    if (event.type === "run-pending-version") setDeploying(true);
+    if (event.type === "first-chunk") setDeploying(false);
+  },
+});
+```
+
+The event repeats on every message sent while the chat is parked, so a notice driven off it stays accurate.
+
+### Opting a chat out
+
+Pass `null` and that chat is never pinned, whatever the environment says:
+
+```ts
+export const startChatSession = chat.createStartSessionAction<typeof myChat>("my-chat", {
+  triggerConfig: { externalDeploymentId: null },
+});
+```
+
+Use this for a conversation that should always run on the current version — a long-lived support thread, say — while the rest of your chats stay pinned. To turn pinning off everywhere instead, set `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION` to `0` and don't set `TRIGGER_EXTERNAL_DEPLOYMENT_ID`.
+
+### Escaping the pin from inside the agent
+
+[`chat.requestUpgrade()`](/ai-chat/patterns/version-upgrades) clears the session's external deployment id as part of the handoff, so the new run is free to land on the current version. Pass a target to move to a specific deployment instead:
+
+```ts
+chat.requestUpgrade({ externalDeploymentId: clientData.commitSha });
+```
+
+Either way the change is persisted on the session, so the next continuation doesn't fall back to the id the agent just rejected. `lockToVersion` is a separate, explicit pin and is never cleared — `requestUpgrade()` cannot escape it.
+
 ## Waiting and expiry
 
 When a run arrives with an id that isn't deployed yet, it doesn't fail — it **waits**. This is the ordinary case, not an edge case: your app frequently goes live a few seconds before your task build finishes.
