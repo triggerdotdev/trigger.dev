@@ -2,6 +2,11 @@
 // is needed. redisTest FLUSHALLs before every test, so ids may be reused across describes.
 import { createRedisClient, type RedisOptions } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
+import {
+  deriveWaitpointIdFromAnchor,
+  generateRunOpsId,
+  generateWaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
 import {
   edgeField,
@@ -696,16 +701,20 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
 });
 
 describe("createWithIdempotencyKey", () => {
+  // Real minted ids. The method rejects anything but a standalone DATETIME/MANUAL id, because
+  // its loser-discard is only safe for an id that was never handed out.
+  const idA = generateWaitpointId("MANUAL");
+  const idB = generateWaitpointId("MANUAL");
   redisTest("creates the waitpoint and wins the reservation", async ({ redisOptions }) => {
     const store = coordinator(redisOptions);
     try {
       const result = await store.createWithIdempotencyKey({
-        record: record("w_a", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        record: record(idA, { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
         environmentId: ENV_ID,
         idempotencyKey: "key-1",
       });
 
-      expect(result).toEqual({ waitpointId: "w_a", created: true });
+      expect(result).toEqual({ waitpointId: idA, created: true });
     } finally {
       await store.quit();
     }
@@ -716,21 +725,21 @@ describe("createWithIdempotencyKey", () => {
     const probe = createRedisClient(redisOptions);
     try {
       await store.createWithIdempotencyKey({
-        record: record("w_first", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        record: record(idA, { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
         environmentId: ENV_ID,
         idempotencyKey: "key-1",
       });
 
       const second = await store.createWithIdempotencyKey({
-        record: record("w_second", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        record: record(idB, { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
         environmentId: ENV_ID,
         idempotencyKey: "key-1",
       });
 
-      expect(second).toEqual({ waitpointId: "w_first", created: false });
+      expect(second).toEqual({ waitpointId: idA, created: false });
       // The loser cleans up after itself: nothing ever referenced its id.
-      expect(await probe.exists("wp:{w_second}")).toBe(0);
-      expect(await probe.exists("wp:{w_first}")).toBe(1);
+      expect(await probe.exists(`wp:{${idB}}`)).toBe(0);
+      expect(await probe.exists(`wp:{${idA}}`)).toBe(1);
     } finally {
       probe.disconnect();
       await store.quit();
@@ -742,7 +751,7 @@ describe("createWithIdempotencyKey", () => {
     const probe = createRedisClient(redisOptions);
     try {
       await store.createWithIdempotencyKey({
-        record: record("w_a", { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+        record: record(idA, { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
         environmentId: ENV_ID,
         idempotencyKey: "key-1",
       });
@@ -760,7 +769,7 @@ describe("createWithIdempotencyKey", () => {
     const probe = createRedisClient(redisOptions);
     try {
       await store.createWithIdempotencyKey({
-        record: record("w_a", {
+        record: record(idA, {
           idempotencyKey: "key-1",
           userProvidedIdempotencyKey: true,
           idempotencyKeyExpiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -789,23 +798,44 @@ describe("createWithIdempotencyKey", () => {
     const store = coordinator(redisOptions);
     try {
       await store.createWithIdempotencyKey({
-        record: record("w_a", { idempotencyKey: "key-1" }),
+        record: record(idA, { idempotencyKey: "key-1" }),
         environmentId: "env_1",
         idempotencyKey: "key-1",
       });
 
       const other = await store.createWithIdempotencyKey({
-        record: record("w_b", { idempotencyKey: "key-1", environmentId: "env_2" }),
+        record: record(idB, { idempotencyKey: "key-1", environmentId: "env_2" }),
         environmentId: "env_2",
         idempotencyKey: "key-1",
       });
 
-      expect(other).toEqual({ waitpointId: "w_b", created: true });
+      expect(other).toEqual({ waitpointId: idB, created: true });
     } finally {
       await store.quit();
     }
   });
 });
+
+redisTest(
+  "rejects a derived RUN id, whose loser-discard would be unsafe",
+  async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      // A derived id is recomputable from its anchor, so another caller can register a
+      // watcher on it. Discarding one could delete a record already in use.
+      const derived = deriveWaitpointIdFromAnchor(`run_${generateRunOpsId()}`, "RUN")!;
+      await expect(
+        store.createWithIdempotencyKey({
+          record: record(derived, { type: "RUN", idempotencyKey: "key-1" }),
+          environmentId: ENV_ID,
+          idempotencyKey: "key-1",
+        })
+      ).rejects.toThrow(/freshly minted DATETIME or MANUAL/);
+    } finally {
+      await store.quit();
+    }
+  }
+);
 
 describe("the single-slot guard", () => {
   redisTest("rejects an invocation whose keys span two tags", async ({ redisOptions }) => {

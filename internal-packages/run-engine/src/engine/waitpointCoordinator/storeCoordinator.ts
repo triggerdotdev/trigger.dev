@@ -1,5 +1,6 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   assertSingleSlot,
   edgeField,
@@ -332,7 +333,21 @@ export class WaitpointStoreCoordinator {
     record: WaitpointRecordInput;
     environmentId: string;
     idempotencyKey: string;
+    // `created` means THIS CALL won the reservation, not that the id is new. A retry by the
+    // original creator reports false, because the reservation it is losing to is its own. A
+    // caller must not gate one-time side effects on it without handling that.
   }): Promise<{ waitpointId: string; created: boolean }> {
+    // Standalone ids only. The discard below deletes this call's own record, and that is
+    // only safe because a freshly minted id was never handed out, so nothing can reference
+    // it. A RUN or BATCH id is DERIVED from its anchor, so any caller can recompute it and
+    // register a watcher on it — discarding one could delete a record already in use.
+    const parsed = parseWaitpointId(args.record.id);
+    if (parsed.format !== "b32hexW" || (parsed.type !== "DATETIME" && parsed.type !== "MANUAL")) {
+      throw new Error(
+        `createWithIdempotencyKey requires a freshly minted DATETIME or MANUAL id, got ${args.record.id}`
+      );
+    }
+
     await this.createIfAbsent({ record: args.record, status: "PENDING" });
 
     const expiresAtMs = args.record.idempotencyKeyExpiresAt
