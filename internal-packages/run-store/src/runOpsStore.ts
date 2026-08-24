@@ -41,6 +41,33 @@ const NEW_SHARD: ShardKey = "new";
 const LEGACY_SHARD: ShardKey = "legacy";
 
 /**
+ * Raised when an id resolves to a shard key that is not configured. NEVER falls back to another
+ * store — a misconfiguration must fail loud, not misroute silently. Alarmed by ops.
+ */
+export class UnknownShardKey extends Error {
+  readonly key: string;
+  readonly configuredKeys: readonly string[];
+  constructor(key: string, configuredKeys: readonly string[]) {
+    super(
+      `Unknown run-ops shard key ${JSON.stringify(key)}; configured: [${configuredKeys.join(", ")}]`
+    );
+    this.name = "UnknownShardKey";
+    this.key = key;
+    this.configuredKeys = configuredKeys;
+  }
+}
+
+type ShardTopology = {
+  shards: ReadonlyMap<ShardKey, RunStore>;
+  probeOrder: readonly ShardKey[];
+  precedence: readonly ShardKey[];
+  idlessRouteShard: ShardKey;
+  idlessWaitpointShard: ShardKey;
+  resolveShardKey: (id: string) => ShardKey;
+  classify?: (id: string) => Residency;
+};
+
+/**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore} over a
  * map from shard key to store, selecting one by the residency classifier (`ownerEngine`: run-ops
  * id→NEW, cuid→LEGACY). The compat constructor holds the two gen-1 shards — a NEW store (the
@@ -58,18 +85,24 @@ const LEGACY_SHARD: ShardKey = "legacy";
  * each other, so swapping them changes behaviour.
  */
 export class RoutingRunStore implements RunStore {
-  readonly #shards: ReadonlyMap<ShardKey, RunStore>;
+  // Not readonly: the compat constructor sets gen-1 defaults, and fromShards() overwrites these
+  // once (before the instance escapes) via #applyShardTopology.
+  #shards: ReadonlyMap<ShardKey, RunStore>;
   // Sequential probe for a lookup with no routable id. The first non-null result wins, and the LAST
   // entry owns the canonical not-found throw.
-  readonly #probeOrder: readonly ShardKey[];
+  #probeOrder: readonly ShardKey[];
   // Ascending authority for a merge. The last write wins, so the highest-authority shard wins a
   // duplicate id. Every merge in this class MUST use this order.
-  readonly #precedence: readonly ShardKey[];
+  #precedence: readonly ShardKey[];
   // The two id-less defaults. They differ by role on purpose: a route with no id lands on the
   // steady-state home, a waitpoint read with no id lands on the legacy store.
-  readonly #idlessRouteShard: ShardKey;
-  readonly #idlessWaitpointShard: ShardKey;
+  #idlessRouteShard: ShardKey;
+  #idlessWaitpointShard: ShardKey;
   readonly #classify: (id: string) => Residency;
+  // The shard that owns an id. Compat: binary over #classify. fromShards: resolveShard, which names
+  // a gen-2 id's own shard. NEVER throws (resolveShard is total) — an unconfigured key is caught at
+  // #shardStore, so #routeKeyOrDefault's catch cannot swallow it into a silent legacy read.
+  #resolveShardKey: (id: string) => ShardKey;
 
   // Compat constructor: the two gen-1 stores, keyed by their reserved shard keys. The options type
   // MUST stay closed — a union arm loosens the excess-property check and retires the
@@ -84,6 +117,28 @@ export class RoutingRunStore implements RunStore {
     this.#idlessRouteShard = NEW_SHARD;
     this.#idlessWaitpointShard = LEGACY_SHARD;
     this.#classify = options.classify ?? ownerEngine;
+    this.#resolveShardKey = (id) => (this.#classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD);
+  }
+
+  // The N-way factory. Builds via the compat constructor (so the closed options type and its
+  // test-corpus lock are untouched), then installs the shard topology over the gen-1 defaults.
+  static fromShards(topology: ShardTopology): RoutingRunStore {
+    const store = new RoutingRunStore({
+      new: topology.shards.get(NEW_SHARD)!,
+      legacy: topology.shards.get(LEGACY_SHARD)!,
+      classify: topology.classify,
+    });
+    store.#applyShardTopology(topology);
+    return store;
+  }
+
+  #applyShardTopology(topology: ShardTopology): void {
+    this.#shards = topology.shards;
+    this.#probeOrder = topology.probeOrder;
+    this.#precedence = topology.precedence;
+    this.#idlessRouteShard = topology.idlessRouteShard;
+    this.#idlessWaitpointShard = topology.idlessWaitpointShard;
+    this.#resolveShardKey = topology.resolveShardKey;
   }
 
   // A routing store spans two databases and has no single primary — routed reads resolve the
@@ -108,14 +163,17 @@ export class RoutingRunStore implements RunStore {
   #shardStore(key: ShardKey): RunStore {
     const store = this.#shards.get(key);
     if (store === undefined) {
-      throw new Error(`RoutingRunStore: no store is configured for shard key "${key}"`);
+      // The ONLY place an unconfigured key fails. Keep it here, never in #resolveShardKey:
+      // #routeKeyOrDefault catches resolver throws and downgrades to legacy, which would turn a
+      // misconfiguration into a silent legacy read. This throw is outside that catch.
+      throw new UnknownShardKey(key, [...this.#shards.keys()]);
     }
     return store;
   }
 
-  // The shard that owns an existing id. Throws only when an injected classifier throws.
+  // The shard that owns an existing id. Delegates to the installed resolver (see #resolveShardKey).
   #shardKeyOf(id: string): ShardKey {
-    return this.#classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD;
+    return this.#resolveShardKey(id);
   }
 
   // An unclassifiable id is treated as LEGACY (probe the control-plane DB rather than drop a
