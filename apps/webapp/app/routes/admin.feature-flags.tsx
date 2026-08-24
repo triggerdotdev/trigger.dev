@@ -399,6 +399,7 @@ export default function AdminFeatureFlagsRoute() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         initialValues={initialValues}
+        storedValues={allFlags}
         newValues={values}
         controlTypes={typedControlTypes}
         lockedKeys={unlocked ? [] : GLOBAL_LOCKED_FLAGS}
@@ -465,6 +466,7 @@ function ConfirmDialog({
   open,
   onOpenChange,
   initialValues,
+  storedValues,
   newValues,
   controlTypes,
   lockedKeys,
@@ -475,6 +477,7 @@ function ConfirmDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialValues: Record<string, unknown>;
+  storedValues: Record<string, unknown>;
   newValues: Record<string, unknown>;
   controlTypes: Record<string, FlagControlType>;
   lockedKeys: readonly string[];
@@ -486,7 +489,13 @@ function ConfirmDialog({
     .filter((key) => !lockedKeys.includes(key))
     .sort();
 
-  const changes = buildFlagChangeList({ editableKeys, lockedKeys, initialValues, newValues });
+  const changes = buildFlagChangeList({
+    editableKeys,
+    lockedKeys,
+    initialValues,
+    storedValues,
+    newValues,
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

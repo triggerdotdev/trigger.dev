@@ -48,6 +48,7 @@ describe("buildFlagChangeList — what the confirm dialog must show", () => {
       editableKeys: EDITABLE,
       lockedKeys: LOCKED,
       initialValues: { mollifierEnabled: true, runOpsMintShardSet: "a" },
+      storedValues: { mollifierEnabled: true, runOpsMintShardSet: "a" },
       newValues: { runOpsMintShardSet: "a,b", runOpsMintKind: "runOpsId" },
     });
 
@@ -59,11 +60,13 @@ describe("buildFlagChangeList — what the confirm dialog must show", () => {
   });
 
   it("discloses the stamps cleared alongside an unset graced primary", () => {
-    // Three rows are deleted, so three removals must be shown, not one.
+    // Three rows are deleted, so three removals must be shown, not one. The caller filters
+    // locked keys OUT of initialValues, so the stamps are only visible in storedValues.
     const changes = buildFlagChangeList({
       editableKeys: EDITABLE,
       lockedKeys: LOCKED,
-      initialValues: {
+      initialValues: { runOpsMintShardSet: "a,b" },
+      storedValues: {
         runOpsMintShardSet: "a,b",
         runOpsMintShardSetPrev: "a",
         runOpsMintShardSetFlippedAt: "2026-08-24T00:00:00.000Z",
@@ -84,6 +87,7 @@ describe("buildFlagChangeList — what the confirm dialog must show", () => {
       editableKeys: EDITABLE,
       lockedKeys: LOCKED,
       initialValues: { runOpsMintShardSet: "a,b" },
+      storedValues: { runOpsMintShardSet: "a,b" },
       newValues: {},
     });
     expect(changes.map((c) => c.key)).toEqual([FEATURE_FLAG.runOpsMintShardSet]);
@@ -94,7 +98,8 @@ describe("buildFlagChangeList — what the confirm dialog must show", () => {
     const changes = buildFlagChangeList({
       editableKeys: EDITABLE,
       lockedKeys: LOCKED,
-      initialValues: { runOpsMintShardSet: "a", runOpsMintShardSetPrev: "" },
+      initialValues: { runOpsMintShardSet: "a" },
+      storedValues: { runOpsMintShardSet: "a", runOpsMintShardSetPrev: "" },
       newValues: { runOpsMintShardSet: "a,b" },
     });
     expect(changes.map((c) => c.key)).toEqual([FEATURE_FLAG.runOpsMintShardSet]);
@@ -104,7 +109,8 @@ describe("buildFlagChangeList — what the confirm dialog must show", () => {
     const changes = buildFlagChangeList({
       editableKeys: EDITABLE,
       lockedKeys: LOCKED,
-      initialValues: { runOpsMintShardSetPrev: "a" },
+      initialValues: {},
+      storedValues: { runOpsMintShardSetPrev: "a" },
       newValues: {},
     });
     expect(changes).toEqual([]);

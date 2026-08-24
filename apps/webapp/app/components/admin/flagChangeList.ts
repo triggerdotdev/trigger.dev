@@ -8,16 +8,19 @@ export type FlagChange =
 /**
  * What a global flag save will do, for the confirm dialog.
  *
- * A graced primary that is unset also clears its stamps. Those keys are locked, so they never
- * appear in `editableKeys`, and listing only the editable keys understated the deletion.
+ * A graced primary that is unset also clears its stamps. Those keys are locked, so the caller
+ * filters them out of `initialValues` — the cascade therefore reads `storedValues`, which is the
+ * unfiltered set the loader returned. Reading `initialValues` finds nothing and understates the
+ * deletion, which is the defect this parameter exists to prevent.
  */
 export function buildFlagChangeList(params: {
   editableKeys: readonly string[];
   lockedKeys: readonly string[];
   initialValues: Record<string, unknown>;
+  storedValues: Record<string, unknown>;
   newValues: Record<string, unknown>;
 }): FlagChange[] {
-  const { editableKeys, initialValues, newValues } = params;
+  const { editableKeys, initialValues, storedValues, newValues } = params;
 
   return editableKeys.flatMap<FlagChange>((key) => {
     const wasSet = key in initialValues;
@@ -35,11 +38,11 @@ export function buildFlagChangeList(params: {
     if (wasSet && !isSet) {
       // Only an unset clears the stamps. A change re-stamps instead.
       const cascaded = derivedFlagsClearedWith(key)
-        .filter((derived) => derived in initialValues)
+        .filter((derived) => derived in storedValues)
         .map<FlagChange>((derived) => ({
           key: derived,
           type: "removed",
-          oldVal: String(initialValues[derived]),
+          oldVal: String(storedValues[derived]),
         }));
       return [{ key, type: "removed", oldVal: String(oldVal) }, ...cascaded];
     }
