@@ -123,22 +123,70 @@ export function computeMintShard(environment: { id: string }, deps: MintShardDep
 // deploy-time value, so re-parsing per mint would burn CPU on the hottest path in the system.
 const ceiling: string[] = parseShardCsv(env.RUN_OPS_MINT_SHARDS);
 
-// The live list is org-independent, so one process-wide entry serves every mint. One query per
-// process per TTL, folded into a single round-trip over the three keys. The TTL bounds how long
-// two processes can disagree, which is what the grace window is sized against.
 const SET_KEYS = [
   FEATURE_FLAG.runOpsMintShardSet,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
 ];
 
-let cachedResolution: { value: MintShardSetResolution; expiresAt: number } | undefined;
+export type MintShardCache = { value: MintShardSetResolution; expiresAt: number } | undefined;
 
-async function readLiveResolution(): Promise<MintShardSetResolution> {
-  if (cachedResolution && cachedResolution.expiresAt > Date.now()) {
-    return cachedResolution.value;
+export type ResolveMintShardDeps = {
+  ceiling: string[];
+  // Reads the three list rows. Injected so the cache and the fail-safe are testable without a
+  // database, the same way computeRunIdMintKind takes its flag reader.
+  readFlags: () => Promise<Record<string, unknown>>;
+  cache: { current: MintShardCache };
+  nowMs: number;
+  ttlMs: number;
+  graceMs: number;
+  orgFeatureFlags: unknown;
+  onPinRejected?: (info: { environmentId: string; pin: string; activeSet: string[] }) => void;
+  onReadFailed?: (error: unknown) => void;
+};
+
+// The live list is org-independent, so one process-wide entry serves every mint. One query per
+// process per TTL, over one round-trip. The TTL bounds how long two processes can disagree,
+// which is what the grace window is sized against.
+//
+// A failed read falls back to gen-1 rather than guessing a list. Guessing would move every
+// environment's placement for the length of one blip.
+export async function resolveMintShardWith(
+  environment: { id: string; orgFeatureFlags?: unknown },
+  deps: ResolveMintShardDeps
+): Promise<ShardKey> {
+  // No ceiling means no gen-2 minting, so skip the read entirely.
+  if (deps.ceiling.length === 0) {
+    return "new";
   }
 
+  let resolution: MintShardSetResolution;
+  const cached = deps.cache.current;
+  if (cached && cached.expiresAt > deps.nowMs) {
+    resolution = cached.value;
+  } else {
+    try {
+      resolution = readMintShardSetResolution(await deps.readFlags());
+    } catch (error) {
+      deps.onReadFailed?.(error);
+      return "new";
+    }
+    deps.cache.current = { value: resolution, expiresAt: deps.nowMs + deps.ttlMs };
+  }
+
+  return computeMintShard(environment, {
+    resolution,
+    ceiling: deps.ceiling,
+    nowMs: deps.nowMs,
+    graceMs: deps.graceMs,
+    orgFeatureFlags: deps.orgFeatureFlags,
+    onPinRejected: deps.onPinRejected,
+  });
+}
+
+const liveCache: { current: MintShardCache } = { current: undefined };
+
+async function readSetFlags(): Promise<Record<string, unknown>> {
   const rows = await $replica.featureFlag.findMany({
     where: { key: { in: SET_KEYS } },
     select: { key: true, value: true },
@@ -147,10 +195,7 @@ async function readLiveResolution(): Promise<MintShardSetResolution> {
   for (const row of rows) {
     flags[row.key] = row.value;
   }
-
-  const value = readMintShardSetResolution(flags);
-  cachedResolution = { value, expiresAt: Date.now() + env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS };
-  return value;
+  return flags;
 }
 
 // Once per environment per process: a stale pin sits on the root-trigger path and would
@@ -178,26 +223,16 @@ export async function resolveMintShard(environment: {
   // Pass environment.organization.featureFlags from the trigger call site.
   orgFeatureFlags?: unknown;
 }): Promise<ShardKey> {
-  // No ceiling means no gen-2 minting, so skip the read entirely.
-  if (ceiling.length === 0) {
-    return "new";
-  }
-
-  let resolution: MintShardSetResolution;
-  try {
-    resolution = await readLiveResolution();
-  } catch (error) {
-    // Fail safe to gen-1, mirroring the mint-kind gate's fail-safe to cuid.
-    logger.error("[runOpsMintShard] shard-set read failed; minting gen-1 (fail-safe)", { error });
-    return "new";
-  }
-
-  return computeMintShard(environment, {
-    resolution,
+  return resolveMintShardWith(environment, {
     ceiling,
+    readFlags: readSetFlags,
+    cache: liveCache,
     nowMs: Date.now(),
+    ttlMs: env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS,
     graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
     orgFeatureFlags: environment.orgFeatureFlags,
     onPinRejected: reportPinRejected,
+    onReadFailed: (error) =>
+      logger.error("[runOpsMintShard] shard-set read failed; minting gen-1 (fail-safe)", { error }),
   });
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeMintShard, type MintShardDeps } from "./runOpsMintShard.server";
+import {
+  computeMintShard,
+  resolveMintShardWith,
+  type MintShardCache,
+  type MintShardDeps,
+  type ResolveMintShardDeps,
+} from "./runOpsMintShard.server";
 import { type MintShardSetResolution } from "./mintShardGrace";
 
 const GRACE_MS = 90_000;
@@ -295,5 +301,94 @@ describe("computeMintShard — the ceiling bounds the stored list", () => {
       deps(resolution, { ceiling: ["a"], orgFeatureFlags: { runOpsMintShard: "new" } })
     );
     expect(shard).toBe("new");
+  });
+});
+
+describe("resolveMintShardWith — cache, ceiling short-circuit and fail-safe", () => {
+  function wrapperDeps(
+    overrides: Partial<ResolveMintShardDeps> = {}
+  ): ResolveMintShardDeps & { reads: number } {
+    const state = {
+      ceiling: ["a", "b"],
+      readFlags: async () => ({ runOpsMintShardSet: "a,b" }),
+      cache: { current: undefined as MintShardCache },
+      nowMs: T,
+      ttlMs: 30_000,
+      graceMs: GRACE_MS,
+      orgFeatureFlags: undefined as unknown,
+      reads: 0,
+      ...overrides,
+    };
+    const wrapped = state.readFlags;
+    state.readFlags = async () => {
+      state.reads++;
+      return wrapped();
+    };
+    return state;
+  }
+
+  it("never reads the list when the deployment configures no ceiling", async () => {
+    const deps = wrapperDeps({ ceiling: [] });
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
+    expect(deps.reads).toBe(0);
+  });
+
+  it("reads once, then serves the cache until the TTL expires", async () => {
+    const deps = wrapperDeps();
+    await resolveMintShardWith({ id: "env_1" }, deps);
+    await resolveMintShardWith({ id: "env_2" }, deps);
+    await resolveMintShardWith({ id: "env_3" }, deps);
+    expect(deps.reads).toBe(1);
+  });
+
+  it("reads again once the TTL expires", async () => {
+    const deps = wrapperDeps();
+    await resolveMintShardWith({ id: "env_1" }, deps);
+    deps.nowMs = T + 30_000;
+    await resolveMintShardWith({ id: "env_1" }, deps);
+    expect(deps.reads).toBe(2);
+  });
+
+  it("falls back to gen-1 when the read throws, and does not poison the cache", async () => {
+    // A blip must not move every environment's placement, so it returns gen-1 rather than guess.
+    let fail = true;
+    const deps = wrapperDeps({
+      readFlags: async () => {
+        if (fail) throw new Error("db down");
+        return { runOpsMintShardSet: "a,b" };
+      },
+    });
+    const failures: unknown[] = [];
+    deps.onReadFailed = (error) => failures.push(error);
+
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
+    expect(failures).toHaveLength(1);
+
+    fail = false;
+    expect(["a", "b"]).toContain(await resolveMintShardWith({ id: "env_1" }, deps));
+  });
+
+  it("returns gen-1 when the stored list names nothing inside the ceiling", async () => {
+    const deps = wrapperDeps({
+      ceiling: ["a"],
+      readFlags: async () => ({ runOpsMintShardSet: "z" }),
+    });
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
+  });
+
+  it("agrees with the pure core for the same inputs", async () => {
+    const deps = wrapperDeps();
+    const viaWrapper = await resolveMintShardWith({ id: "env_1" }, deps);
+    const viaCore = computeMintShard(
+      { id: "env_1" },
+      {
+        resolution: { set: ["a", "b"] },
+        ceiling: ["a", "b"],
+        nowMs: T,
+        graceMs: GRACE_MS,
+        orgFeatureFlags: undefined,
+      }
+    );
+    expect(viaWrapper).toBe(viaCore);
   });
 });
