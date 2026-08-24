@@ -51,6 +51,11 @@ describe("computeMintShard — the no-shards answer", () => {
     expect(computeMintShard({ id: "env_1" }, deps({ set: [] }))).toBe("new");
   });
 
+  it("returns new when a stale stamp is present but both lists are empty", () => {
+    const resolution: MintShardSetResolution = { set: [], prevSet: [], flippedAtMs: T };
+    expect(computeMintShard({ id: "env_1" }, deps(resolution, { nowMs: T + 1 }))).toBe("new");
+  });
+
   it("returns new when the grace serves an empty list", () => {
     const resolution: MintShardSetResolution = { set: ["a"], prevSet: [], flippedAtMs: T };
     expect(computeMintShard({ id: "env_1" }, deps(resolution, { nowMs: T + 1 }))).toBe("new");
@@ -252,7 +257,7 @@ describe("computeMintShard — rendezvous properties", () => {
   });
 });
 
-describe("resolveMintShardWith — cache, ceiling short-circuit and fail-safe", () => {
+describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
   function wrapperDeps(
     overrides: Partial<ResolveMintShardDeps> = {}
   ): ResolveMintShardDeps & { reads: number } {
@@ -374,11 +379,25 @@ describe("computeMintShard — the global override wins the complete cutover", (
       deps(resolution, {
         globalOverride: "z",
         orgFeatureFlags: { runOpsMintShard: "a" },
-        onPinRejected: (info) => rejected.push(info.pin),
+        onOverrideRejected: (info) => rejected.push(info.override),
       })
     );
     expect(shard).toBe("a");
     expect(rejected).toEqual(["z"]);
+  });
+
+  it("reports a bad override WITHOUT the environment id, so one line covers the fleet", () => {
+    // Keying the report by environment would log once per environment for a fleet-wide setting.
+    const seen: Array<{ override: string }> = [];
+    for (const id of envIds(50)) {
+      computeMintShard(
+        { id },
+        deps(resolution, { globalOverride: "z", onOverrideRejected: (i) => seen.push(i) })
+      );
+    }
+    expect(seen).toHaveLength(50);
+    expect(new Set(seen.map((i) => i.override))).toEqual(new Set(["z"]));
+    expect(seen.every((i) => !("environmentId" in i))).toBe(true);
   });
 
   it("is ignored when it is not a legal value", () => {

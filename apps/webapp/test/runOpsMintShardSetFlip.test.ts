@@ -174,6 +174,73 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     expect(m[FEATURE_FLAG.runOpsMintShardSet]).toBe("a,b");
   });
 
+  postgresTest(
+    "omitting the list DELETES it, so unset still turns minting off",
+    async ({ prisma }) => {
+      // The admin page's unset button omits the key. If the save skipped it, unset would be a
+      // silent no-op and gen-2 minting would stay armed.
+      await replaceGlobalFeatureFlags(prisma, {
+        requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a,b" },
+        catalogKeys: CATALOG_KEYS,
+        isProtected: NEVER_PROTECTED,
+        graceMs: 60_000,
+      });
+
+      await replaceGlobalFeatureFlags(prisma, {
+        requestedFlags: {},
+        catalogKeys: CATALOG_KEYS,
+        isProtected: NEVER_PROTECTED,
+        graceMs: 60_000,
+      });
+
+      const m = await readFlags(prisma, SET_KEYS);
+      // The stamp goes with it: a stamp without its list keeps being served for the whole window.
+      expect(m[FEATURE_FLAG.runOpsMintShardSet]).toBeUndefined();
+      expect(m[FEATURE_FLAG.runOpsMintShardSetPrev]).toBeUndefined();
+      expect(m[FEATURE_FLAG.runOpsMintShardSetFlippedAt]).toBeUndefined();
+    }
+  );
+
+  postgresTest("omitting the mint kind still deletes its trio", async ({ prisma }) => {
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" },
+      catalogKeys: CATALOG_KEYS,
+      isProtected: NEVER_PROTECTED,
+      graceMs: 60_000,
+    });
+
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: {},
+      catalogKeys: CATALOG_KEYS,
+      isProtected: NEVER_PROTECTED,
+      graceMs: 60_000,
+    });
+
+    const m = await readFlags(prisma, MINT_KIND_KEYS);
+    expect(m[FEATURE_FLAG.runOpsMintKind]).toBeUndefined();
+    expect(m[FEATURE_FLAG.runOpsMintKindPrev]).toBeUndefined();
+    expect(m[FEATURE_FLAG.runOpsMintKindFlippedAt]).toBeUndefined();
+  });
+
+  postgresTest("a protected list is not deleted when omitted", async ({ prisma }) => {
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a" },
+      catalogKeys: CATALOG_KEYS,
+      isProtected: NEVER_PROTECTED,
+      graceMs: 60_000,
+    });
+
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: {},
+      catalogKeys: CATALOG_KEYS,
+      isProtected: (key) => key === FEATURE_FLAG.runOpsMintShardSet,
+      graceMs: 60_000,
+    });
+
+    const m = await readFlags(prisma, SET_KEYS);
+    expect(m[FEATURE_FLAG.runOpsMintShardSet]).toBe("a");
+  });
+
   postgresTest("an ordinary flag keeps replace semantics", async ({ prisma }) => {
     await makeSetMultipleFlags(prisma)({ [FEATURE_FLAG.mollifierEnabled]: true });
 

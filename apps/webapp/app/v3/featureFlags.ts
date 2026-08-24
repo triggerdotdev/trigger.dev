@@ -101,7 +101,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
   // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is how
   // a canary keeps the fleet's default while one org moves. Only honored while the key is in
-  // the active set (RUN_OPS_MINT_SHARDS); a drained key falls through to the hash.
+  // the active list; a drained key falls through to the hash.
   [FEATURE_FLAG.runOpsMintShard]: z
     .string()
     .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
@@ -125,8 +125,8 @@ export const FeatureFlagCatalog = {
       }
     }
   }),
-  // CSV of the shard keys eligible for root minting right now, bounded by RUN_OPS_MINT_SHARDS.
-  // Empty means no gen-2 minting. Reserved keys are rejected: "new" already means gen-1.
+  // CSV of the shard keys eligible for root minting right now. Empty means no gen-2 minting.
+  // Reserved keys are rejected, because "new" already means gen-1.
   [FEATURE_FLAG.runOpsMintShardSet]: z.string().refine(
     (v) =>
       v
@@ -166,6 +166,11 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.taskEventRepository,
   FEATURE_FLAG.runOpsMintShard,
   FEATURE_FLAG.runOpsMintShardEnvPins,
+  // Grace stamps are computed server-side. An editable control here would discard what it saves.
+  FEATURE_FLAG.runOpsMintKindPrev,
+  FEATURE_FLAG.runOpsMintKindFlippedAt,
+  FEATURE_FLAG.runOpsMintShardSetPrev,
+  FEATURE_FLAG.runOpsMintShardSetFlippedAt,
 ];
 
 // Flags that are read-only on the org-level dialog.

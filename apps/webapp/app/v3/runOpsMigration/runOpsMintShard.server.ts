@@ -3,6 +3,8 @@ import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
+import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   effectiveMintShardSet,
@@ -21,6 +23,7 @@ export type MintShardDeps = {
   graceMs: number;
   orgFeatureFlags: unknown;
   onPinRejected?: (info: { environmentId: string; pin: string; activeSet: string[] }) => void;
+  onOverrideRejected?: (info: { override: string; activeSet: string[] }) => void;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -109,7 +112,8 @@ export function computeMintShard(environment: { id: string }, deps: MintShardDep
     if (activeSet.includes(override)) {
       return override;
     }
-    deps.onPinRejected?.({ environmentId: environment.id, pin: override, activeSet });
+    // Fleet-wide, so it is reported once for the value, not once per environment.
+    deps.onOverrideRejected?.({ override, activeSet });
   }
 
   const pin = readPin(deps.orgFeatureFlags, environment.id);
@@ -138,6 +142,11 @@ type GlobalShardConfig = { resolution: MintShardSetResolution; override: unknown
 
 export type MintShardCache = { value: GlobalShardConfig; expiresAt: number } | undefined;
 
+// A misconfiguration is reported again after this long, so a still-broken pin stays visible
+// without logging on every trigger.
+const REPORT_TTL_MS = 3_600_000;
+const REPORT_MAX_ENTRIES = 10_000;
+
 export type ResolveMintShardDeps = {
   // Reads the list rows. Injected so the cache and the fail-safe are testable without a
   // database, the same way computeRunIdMintKind takes its flag reader.
@@ -148,12 +157,15 @@ export type ResolveMintShardDeps = {
   graceMs: number;
   orgFeatureFlags: unknown;
   onPinRejected?: (info: { environmentId: string; pin: string; activeSet: string[] }) => void;
+  onOverrideRejected?: (info: { override: string; activeSet: string[] }) => void;
   onReadFailed?: (error: unknown) => void;
 };
 
-// The live list is org-independent, so one process-wide entry serves every mint. One query per
-// process per TTL, over one round-trip. The TTL bounds how long two processes can disagree,
-// which is what the grace window is sized against.
+// The live list is org-independent, so one process-wide entry serves every mint: one query per
+// process per TTL, over one round-trip. Two processes can therefore disagree for the TTL PLUS the
+// replica lag behind the read, which can exceed graceMs. That is tolerable here and only here,
+// because a gen-2 id carries its own shard key, so disagreement cannot misroute an existing run;
+// it only decides where the next root lands, and every failure direction is toward gen-1.
 //
 // A failed read falls back to gen-1 rather than guessing a list. Guessing would move every
 // environment's placement for the length of one blip.
@@ -186,10 +198,13 @@ export async function resolveMintShardWith(
     graceMs: deps.graceMs,
     orgFeatureFlags: deps.orgFeatureFlags,
     onPinRejected: deps.onPinRejected,
+    onOverrideRejected: deps.onOverrideRejected,
   });
 }
 
-const liveCache: { current: MintShardCache } = { current: undefined };
+const liveCache = singleton("runOpsMintShardCache", (): { current: MintShardCache } => ({
+  current: undefined,
+}));
 
 async function readSetFlags(): Promise<Record<string, unknown>> {
   const rows = await $replica.featureFlag.findMany({
@@ -203,18 +218,35 @@ async function readSetFlags(): Promise<Record<string, unknown>> {
   return flags;
 }
 
-// Once per environment per process: a stale pin sits on the root-trigger path and would
-// otherwise log on every trigger for that environment, indefinitely.
-const reportedPins = new Set<string>();
+// A stale pin sits on the root-trigger path, so it would otherwise log on every trigger for that
+// environment forever. Bounded, because the set of pinned environments is operator-controlled but
+// not operator-bounded, and an unbounded Set on this path is a leak.
+const reportedPins = singleton(
+  "runOpsMintShardReportedPins",
+  () => new BoundedTtlCache<true>(REPORT_TTL_MS, REPORT_MAX_ENTRIES)
+);
 
 function reportPinRejected(info: {
   environmentId: string;
   pin: string;
   activeSet: string[];
 }): void {
-  if (reportedPins.has(info.environmentId)) return;
-  reportedPins.add(info.environmentId);
+  if (reportedPins.get(info.environmentId) !== undefined) return;
+  reportedPins.set(info.environmentId, true);
   logger.error("[runOpsMintShard] pinned shard is not in the active set; using the hash", info);
+}
+
+// Keyed by the override value, not by environment: one bad override applies to the whole fleet,
+// so one line is the correct volume. Keying by environment would log once per environment.
+const reportedOverrides = singleton(
+  "runOpsMintShardReportedOverrides",
+  () => new BoundedTtlCache<true>(REPORT_TTL_MS, REPORT_MAX_ENTRIES)
+);
+
+function reportOverrideRejected(info: { override: string; activeSet: string[] }): void {
+  if (reportedOverrides.get(info.override) !== undefined) return;
+  reportedOverrides.set(info.override, true);
+  logger.error("[runOpsMintShard] override shard is not in the active set; ignoring it", info);
 }
 
 /**
@@ -236,6 +268,7 @@ export async function resolveMintShard(environment: {
     graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
     orgFeatureFlags: environment.orgFeatureFlags,
     onPinRejected: reportPinRejected,
+    onOverrideRejected: reportOverrideRejected,
     onReadFailed: (error) =>
       logger.error("[runOpsMintShard] shard-set read failed; minting gen-1 (fail-safe)", { error }),
   });
