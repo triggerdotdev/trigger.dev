@@ -51,7 +51,9 @@ export type CompletedWaitpointsPointer = {
 
 /**
  * A record's output.
- * - `inline` holds the literal value, bounded by the pre-existing offload thresholds.
+ * - `inline` holds the literal value. MANUAL and DATETIME are bounded by the offload
+ *   thresholds; error outputs are not (only BUILT_IN_ERROR truncates), so the bound is
+ *   the completion body limit. Postgres holds the same strings, so this is a copy.
  * - `ref` holds an application/store reference that was already offloaded.
  * - `deriveFromRun` means the resolver reads TaskRun.output for completedByTaskRunId.
  *   Only a RUN record with outputIsError false AND a non-null completedByTaskRunId uses
