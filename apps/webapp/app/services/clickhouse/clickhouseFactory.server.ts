@@ -303,6 +303,19 @@ function initializeRealtimeClickhouseClient(): ClickHouse {
  * client-level `max_execution_time` would also kill slow inserts. `readonly=2` enforces read-only
  * while still allowing these settings to apply (`readonly=1` rejects them).
  */
+/**
+ * Client request timeout for the runs-list pool, forced above the server-side `max_execution_time`
+ * so the server cap is what stops a slow query and the client stays connected to receive that
+ * error. If the client timed out first, it would abort while ClickHouse kept executing, which is
+ * the abandoned-query behaviour this pool is trying to prevent.
+ */
+function getRunsListRequestTimeoutMs() {
+  return Math.max(
+    env.RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS,
+    (env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME + 5) * 1000
+  );
+}
+
 function getRunsListClickhouseSettings(): ClickHouseSettings {
   const settings: ClickHouseSettings = {
     max_execution_time: env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME,
@@ -345,7 +358,7 @@ function initializeRunsListClickhouseClient(): ClickHouse {
       request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
     },
     maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
-    requestTimeoutMs: env.RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS,
+    requestTimeoutMs: getRunsListRequestTimeoutMs(),
     clickhouseSettings: getRunsListClickhouseSettings(),
   });
 }
@@ -591,7 +604,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
           request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
         },
         maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
-        requestTimeoutMs: env.RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS,
+        requestTimeoutMs: getRunsListRequestTimeoutMs(),
         clickhouseSettings: getRunsListClickhouseSettings(),
       });
     case "standard":
