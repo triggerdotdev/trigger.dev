@@ -2237,8 +2237,6 @@ const EnvironmentSchema = z
     RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(35),
     RUNS_LIST_CLICKHOUSE_MAX_THREADS: z.coerce.number().int().optional(),
     RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().optional(),
-    RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE_FOR_USER: z.coerce.number().int().optional(),
-    RUNS_LIST_CLICKHOUSE_MAX_CONCURRENT_QUERIES_FOR_USER: z.coerce.number().int().optional(),
     RUNS_LIST_CLICKHOUSE_READONLY: z.enum(["0", "1", "2"]).default("2"),
     /**
      * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every

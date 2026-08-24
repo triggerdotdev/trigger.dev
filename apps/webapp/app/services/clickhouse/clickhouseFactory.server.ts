@@ -293,11 +293,15 @@ function initializeRealtimeClickhouseClient(): ClickHouse {
 }
 
 /**
- * Server-side query protection for the runs-list read pool. Safe as client-level settings ONLY
- * because this pool is read-only (no inserts); a client-level `max_execution_time` on a mixed
- * read+write pool would also kill slow inserts. `readonly=2` enforces read-only while still
- * allowing these settings to apply (`readonly=1` rejects them). `max_concurrent_queries_for_user`
- * is a per-ClickHouse-user (`default`) fail-fast circuit breaker, not per-tenant isolation.
+ * Server-side query protection for the runs-list read pool. Every setting here is PER-QUERY, so a
+ * pathological query only ever kills itself: a slow one hits `max_execution_time`, a memory-hungry
+ * one hits `max_memory_usage`, a thread-hungry one hits `max_threads`. Per-USER limits
+ * (`max_*_for_user`) are deliberately NOT used: everything connects as `default`, so a per-user cap
+ * would reject whichever query arrives once the shared budget is hit, punishing innocent tenants
+ * for a noisy one. The node itself is protected by the server-level `max_server_memory_usage`.
+ * Safe as client-level settings ONLY because this pool is read-only; on a mixed read+write pool a
+ * client-level `max_execution_time` would also kill slow inserts. `readonly=2` enforces read-only
+ * while still allowing these settings to apply (`readonly=1` rejects them).
  */
 function getRunsListClickhouseSettings(): ClickHouseSettings {
   const settings: ClickHouseSettings = {
@@ -313,14 +317,6 @@ function getRunsListClickhouseSettings(): ClickHouseSettings {
   }
   if (env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE !== undefined) {
     settings.max_memory_usage = env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE.toString();
-  }
-  if (env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE_FOR_USER !== undefined) {
-    settings.max_memory_usage_for_user =
-      env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE_FOR_USER.toString();
-  }
-  if (env.RUNS_LIST_CLICKHOUSE_MAX_CONCURRENT_QUERIES_FOR_USER !== undefined) {
-    settings.max_concurrent_queries_for_user =
-      env.RUNS_LIST_CLICKHOUSE_MAX_CONCURRENT_QUERIES_FOR_USER;
   }
 
   return settings;
