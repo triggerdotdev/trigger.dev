@@ -24,11 +24,14 @@ import {
 
 /**
  * NOTE ON createdAt. An earlier version of this suite built the expected entry with
- * `createdAt: row.createdAt` and then asserted the two matched, which is tautological and hid a
- * real divergence: seven of the eight write sites stamped the entry from the app clock while
- * Postgres stamped its own column default, so the stores held different instants. The builders are
- * now given an INDEPENDENT instant, and the row must carry that same value because the decorator
- * passes it through to Postgres.
+ * `createdAt: row.createdAt`, reading the value off the row it was checking and then asserting the
+ * two matched. That can never fail, and it hid a real divergence: seven of the eight write sites
+ * stamped the entry from the app clock while Postgres stamped its own column default, so the two
+ * stores held different instants for one snapshot.
+ *
+ * Every case now mints ONE instant, passes it to the store call, and gives the builder the same
+ * value. The row must carry it because the write site forwards it. A write site that stops
+ * forwarding the caller's instant fails here.
  *
  * Compares only what the entry claims. The Redis model carries no `updatedAt` and no join rows, and
  * it holds `createdAt` as an ISO string, so those are checked separately or not at all.
@@ -56,9 +59,13 @@ function assertParity(entry: SnapshotEntryInput, row: Record<string, unknown>) {
   expect((row.updatedAt as Date).toISOString()).toBe(entry.createdAt);
 }
 
+/** Five minutes in the past, so a database default could never coincide with it. */
+const independentStamp = new Date(Date.now() - 5 * 60 * 1000);
+
 function birthSnapshot(id: string, env: SnapshotFixtureEnv) {
   return {
     id,
+    createdAt: independentStamp,
     engine: "V2" as const,
     executionStatus: "RUN_CREATED" as const,
     description: "Run was created",
@@ -81,7 +88,7 @@ describe("entry to Postgres row parity", () => {
     await store.createRun({ data: buildCreateRunData(runId, env), snapshot });
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromCreateRun({ id, runId, createdAt: row.createdAt }, snapshot), row);
+    assertParity(entryFromCreateRun({ id, runId, createdAt: independentStamp }, snapshot), row);
   });
 
   postgresTest("createRun with an associated waitpoint, legacy schema", async ({ prisma }) => {
@@ -107,7 +114,7 @@ describe("entry to Postgres row parity", () => {
     });
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromCreateRun({ id, runId, createdAt: row.createdAt }, snapshot), row);
+    assertParity(entryFromCreateRun({ id, runId, createdAt: independentStamp }, snapshot), row);
   });
 
   postgresTest("createRun carries the worker and runner ids", async ({ prisma }) => {
@@ -121,7 +128,7 @@ describe("entry to Postgres row parity", () => {
     await store.createRun({ data: buildCreateRunData(runId, env), snapshot });
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromCreateRun({ id, runId, createdAt: row.createdAt }, snapshot), row);
+    assertParity(entryFromCreateRun({ id, runId, createdAt: independentStamp }, snapshot), row);
   });
 
   postgresTest("createCancelledRun", async ({ prisma }) => {
@@ -149,7 +156,7 @@ describe("entry to Postgres row parity", () => {
     });
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromCreateRun({ id, runId, createdAt: row.createdAt }, snapshot), row);
+    assertParity(entryFromCreateRun({ id, runId, createdAt: independentStamp }, snapshot), row);
   });
 
   postgresTest("completeAttemptSuccess", async ({ prisma }) => {
@@ -158,6 +165,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const snapshot = {
       id,
+      createdAt: independentStamp,
       executionStatus: "FINISHED" as const,
       description: "Run completed",
       runStatus: "COMPLETED_SUCCESSFULLY" as const,
@@ -182,7 +190,7 @@ describe("entry to Postgres row parity", () => {
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
     assertParity(
-      entryFromCompletion({ id, runId: run.id, createdAt: row.createdAt }, snapshot),
+      entryFromCompletion({ id, runId: run.id, createdAt: independentStamp }, snapshot),
       row
     );
   });
@@ -193,6 +201,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const snapshot = {
       id,
+      createdAt: independentStamp,
       engine: "V2" as const,
       executionStatus: "FINISHED" as const,
       description: "Run expired",
@@ -215,7 +224,10 @@ describe("entry to Postgres row parity", () => {
     );
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromExpire({ id, runId: run.id, createdAt: row.createdAt }, snapshot), row);
+    assertParity(
+      entryFromExpire({ id, runId: run.id, createdAt: independentStamp }, snapshot),
+      row
+    );
   });
 
   postgresTest("expireParkedRun", async ({ prisma }) => {
@@ -224,6 +236,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const snapshot = {
       id,
+      createdAt: independentStamp,
       engine: "V2" as const,
       executionStatus: "FINISHED" as const,
       description: "Parked run expired",
@@ -244,7 +257,10 @@ describe("entry to Postgres row parity", () => {
 
     expect(result.count).toBe(1);
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromExpire({ id, runId: run.id, createdAt: row.createdAt }, snapshot), row);
+    assertParity(
+      entryFromExpire({ id, runId: run.id, createdAt: independentStamp }, snapshot),
+      row
+    );
   });
 
   postgresTest("rescheduleRun with every default applied", async ({ prisma }) => {
@@ -253,6 +269,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const snapshot = {
       id,
+      createdAt: independentStamp,
       environmentId: env.id,
       environmentType: env.type,
       projectId: env.projectId,
@@ -266,7 +283,7 @@ describe("entry to Postgres row parity", () => {
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
     assertParity(
-      entryFromReschedule({ id, runId: run.id, createdAt: row.createdAt }, snapshot),
+      entryFromReschedule({ id, runId: run.id, createdAt: independentStamp }, snapshot),
       row
     );
   });
@@ -277,6 +294,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const snapshot = {
       id,
+      createdAt: independentStamp,
       environmentId: env.id,
       environmentType: env.type,
       projectId: env.projectId,
@@ -293,7 +311,7 @@ describe("entry to Postgres row parity", () => {
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
     assertParity(
-      entryFromReschedule({ id, runId: run.id, createdAt: row.createdAt }, snapshot),
+      entryFromReschedule({ id, runId: run.id, createdAt: independentStamp }, snapshot),
       row
     );
   });
@@ -314,6 +332,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const snapshot = {
       id,
+      createdAt: independentStamp,
       previousSnapshotId: previous.id,
       attemptNumber: 1,
       environmentId: env.id,
@@ -337,7 +356,7 @@ describe("entry to Postgres row parity", () => {
     });
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromLock({ id, runId: run.id, createdAt: row.createdAt }, snapshot), row);
+    assertParity(entryFromLock({ id, runId: run.id, createdAt: independentStamp }, snapshot), row);
   });
 
   postgresTest("createExecutionSnapshot, the standalone site", async ({ prisma }) => {
@@ -346,6 +365,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const input = {
       id,
+      createdAt: independentStamp,
       run: { id: run.id, status: "EXECUTING" as const, attemptNumber: 2 },
       snapshot: { executionStatus: "EXECUTING" as const, description: "Run started" },
       environmentId: env.id,
@@ -359,7 +379,7 @@ describe("entry to Postgres row parity", () => {
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
     expect(created.id).toBe(id);
     assertParity(
-      entryFromCreateExecutionSnapshot({ id, runId: run.id, createdAt: row.createdAt }, input),
+      entryFromCreateExecutionSnapshot({ id, runId: run.id, createdAt: independentStamp }, input),
       row
     );
   });
@@ -370,6 +390,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const input = {
       id,
+      createdAt: independentStamp,
       run: { id: run.id, status: "DEQUEUED" as const, attemptNumber: 1 },
       snapshot: { executionStatus: "PENDING_EXECUTING" as const, description: "Run was dequeued" },
       environmentId: env.id,
@@ -383,7 +404,7 @@ describe("entry to Postgres row parity", () => {
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
     expect(row.runStatus).toBe("PENDING");
     assertParity(
-      entryFromCreateExecutionSnapshot({ id, runId: run.id, createdAt: row.createdAt }, input),
+      entryFromCreateExecutionSnapshot({ id, runId: run.id, createdAt: independentStamp }, input),
       row
     );
   });
@@ -394,6 +415,7 @@ describe("entry to Postgres row parity", () => {
     const id = generateInternalId();
     const input = {
       id,
+      createdAt: independentStamp,
       run: { id: run.id, status: "EXECUTING" as const, attemptNumber: 1 },
       snapshot: { executionStatus: "EXECUTING" as const, description: "Stale write" },
       error: "snapshot is not the latest",
@@ -408,7 +430,7 @@ describe("entry to Postgres row parity", () => {
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
     expect(row.isValid).toBe(false);
     assertParity(
-      entryFromCreateExecutionSnapshot({ id, runId: run.id, createdAt: row.createdAt }, input),
+      entryFromCreateExecutionSnapshot({ id, runId: run.id, createdAt: independentStamp }, input),
       row
     );
   });

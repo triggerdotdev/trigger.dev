@@ -108,10 +108,14 @@ export class SnapshotOrphanSweeper {
 
     let cursor = "0";
     do {
+      // Match on the entry hash, not on `cur`. The append script writes `cur` only when the entry
+      // is valid, so a keyspace whose entries are all invalid would never be discovered and would
+      // leak with no expiry, which is the same unbounded leak rule 2 exists to close. `e` is
+      // written by every append.
       const [next, keys] = await this.#redis.scan(
         cursor,
         "MATCH",
-        `${this.#prefix}{*}:cur`,
+        `${this.#prefix}{*}:e`,
         "COUNT",
         batchSize
       );
@@ -212,15 +216,41 @@ export class SnapshotOrphanSweeper {
     result.deleted += 1;
   }
 
-  /** Every key for one run: the four core keys plus each wait-cycle key. */
+  /**
+   * Every key for one run: the four core keys plus each wait-cycle key.
+   *
+   * The cycle keys are enumerated from the `c` high-water field on the seq hash, which the append
+   * script mints densely with HINCRBY, so 1..high covers every wp key that was ever written. This
+   * is the same source the store's own terminal-expiry loop uses.
+   *
+   * It deliberately does NOT use `KEYS`. That command iterates the whole database and blocks while
+   * it does, and a hash tag routes a key without scoping the scan, so one sweep pass over a batch
+   * would issue a full keyspace scan per run.
+   *
+   * The trade-off: if the seq hash is evicted while a wp key survives, `high` reads 0 and that
+   * orphaned cycle key is left behind. That is the right way to be wrong here. Leaving one small
+   * key costs bytes, where scanning the keyspace to find it costs every hot-path client latency on
+   * every pass.
+   */
   async #allKeys(runId: string): Promise<string[]> {
     const core = snapshotKeys(runId);
-    // Scoped to one hash tag, so this is a lookup inside a single slot rather than a keyspace scan.
-    const cycles = await this.#redis.keys(`${this.#prefix}{${runId}}:wp:*`);
+
+    const high = Number((await this.#redis.hget(core.seq, "c")) ?? "0");
+    const cycles: string[] = [];
+    for (let n = 1; n <= high; n++) {
+      cycles.push(`${this.#prefix}{${runId}}:wp:${n}`);
+    }
+
     const candidates = [core.e, core.idx, core.cur, core.seq, ...cycles];
 
-    const exists = await Promise.all(candidates.map((key) => this.#redis.exists(key)));
-    return candidates.filter((_key, index) => exists[index] === 1);
+    // One round trip for the whole set, rather than one per candidate.
+    const pipeline = this.#redis.pipeline();
+    for (const key of candidates) {
+      pipeline.exists(key);
+    }
+    const replies = await pipeline.exec();
+
+    return candidates.filter((_key, index) => replies?.[index]?.[1] === 1);
   }
 
   /**
@@ -229,11 +259,17 @@ export class SnapshotOrphanSweeper {
    */
   async #newestEntryAgeMs(runId: string): Promise<number | undefined> {
     const core = snapshotKeys(runId);
+
     const newest = await this.#redis.zrevrange(core.idx, 0, 0);
     const id = newest[0];
-    if (!id) return undefined;
 
-    const raw = await this.#redis.hget(core.e, id);
+    const raw = id
+      ? await this.#redis.hget(core.e, id)
+      : // The index holds valid entries only, so an all-invalid keyspace has an empty index. Fall
+        // back to the newest instant in the entry hash, or that keyspace is never old enough to
+        // reap and the leak survives the scan fix above.
+        await this.#newestRawFromEntries(core.e);
+
     if (!raw) return undefined;
 
     try {
@@ -244,6 +280,33 @@ export class SnapshotOrphanSweeper {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * The newest entry document in the hash, by its own createdAt. Only reached for a keyspace with
+   * no index, which is rare, so the whole-hash read is acceptable where it would not be on the
+   * indexed path.
+   */
+  async #newestRawFromEntries(eKey: string): Promise<string | undefined> {
+    const all = await this.#redis.hgetall(eKey);
+    let newestRaw: string | undefined;
+    let newestAt = -Infinity;
+
+    for (const [field, raw] of Object.entries(all)) {
+      // Sidecar fields hang off the entry ids as `<id>#s` and `<id>#c`; skip them.
+      if (field.includes("#")) continue;
+      try {
+        const at = Date.parse((JSON.parse(raw) as { createdAt?: string }).createdAt ?? "");
+        if (!Number.isNaN(at) && at > newestAt) {
+          newestAt = at;
+          newestRaw = raw;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return newestRaw;
   }
 
   #runIdFrom(key: string): string | undefined {

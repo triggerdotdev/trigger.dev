@@ -186,7 +186,9 @@ describe("snapshot store crash boundaries", () => {
         expect(faults.fired("afterRedisBirthBeforePg")).toBe(1);
 
         // The harmless state: no run row, so nothing can ever read a run that has no snapshot.
-        const runsAfterCrash = await prisma.taskRun.count();
+        const runsAfterCrash = await prisma.taskRun.count({
+          where: { runtimeEnvironmentId: environment.id },
+        });
         expect(runsAfterCrash).toBe(0);
 
         // A crashed birth must not poison the path: the next trigger runs to completion.

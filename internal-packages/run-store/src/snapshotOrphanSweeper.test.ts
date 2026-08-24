@@ -310,6 +310,47 @@ describe("SnapshotOrphanSweeper", () => {
     }
   );
 
+  containerTest(
+    "discovers and reaps a keyspace whose entries are all invalid",
+    async ({ prisma, redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const sweeper = new SnapshotOrphanSweeper({
+        redisOptions,
+        runStore: runStore as unknown as RunStore,
+        completedTtlMs: COMPLETED_TTL_MS,
+        orphanAgeMs: ORPHAN_AGE_MS,
+      });
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        const old = new Date(Date.now() - 2 * ORPHAN_AGE_MS);
+
+        // The append script writes `cur` and indexes the entry only when it is valid, so a keyspace
+        // whose entries all carry an error has neither. A sweep that discovers keyspaces by their
+        // `cur` key would never see this one, and neither rule would ever apply to it.
+        await store.append({
+          entry: { ...birthEntry(runId, env, old), error: "stale write" },
+          kind: "birth",
+          isTerminal: false,
+        });
+
+        const keys = snapshotKeys(runId);
+        expect(await probe.exists(keys.e)).toBe(1);
+        expect(await probe.exists(keys.cur)).toBe(0);
+
+        const result = await sweeper.sweep();
+
+        expect(result.deleted).toBe(1);
+        expect(await probe.exists(keys.e)).toBe(0);
+        expect(await probe.exists(keys.seq)).toBe(0);
+      } finally {
+        await Promise.all([store.quit(), sweeper.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
   containerTest("processes every keyspace across batches", async ({ prisma, redisOptions }) => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
     const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
