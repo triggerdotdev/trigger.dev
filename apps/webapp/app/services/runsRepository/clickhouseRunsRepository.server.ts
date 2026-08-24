@@ -416,10 +416,13 @@ export class ClickHouseRunsRepository implements IRunsRepository {
  *
  * Immutable / additive-only columns go in PREWHERE so ClickHouse filters (and, for `tags`, uses
  * the skip index) before FINAL reconciles versions and before materialising the wide columns,
- * which is what bounds memory on these scans. `status` is the one lifecycle-mutable filter, so it
- * stays in WHERE (post-FINAL): PREWHERE-ing it would keep a stale version and drop the winner. The
- * `(organization_id, project_id, environment_id)` primary-key prefix and the `created_at` range
- * stay in WHERE so they keep driving primary-key and partition pruning.
+ * which is what bounds memory on these scans. A filter stays in WHERE (post-FINAL) when its truth
+ * value can flip across a run's versions, since PREWHERE could then keep a stale version and drop
+ * the winner: `status` (lifecycle-mutable), and `regions` (its `if(region != '', region,
+ * worker_queue)` expression yields the worker_queue before dequeue and the region after, two
+ * different non-empty values). The `(organization_id, project_id, environment_id)` primary-key
+ * prefix and the `created_at` range stay in WHERE so they keep driving primary-key and partition
+ * pruning.
  */
 function applyRunFiltersToQueryBuilder<T>(
   queryBuilder: ClickhouseQueryBuilder<T>,
@@ -438,6 +441,12 @@ function applyRunFiltersToQueryBuilder<T>(
 
   if (options.statuses && options.statuses.length > 0) {
     queryBuilder.where("status IN {statuses: Array(String)}", { statuses: options.statuses });
+  }
+
+  if (options.regions && options.regions.length > 0) {
+    queryBuilder.where("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
+      regions: options.regions,
+    });
   }
 
   // Period is a number of milliseconds duration
@@ -506,12 +515,6 @@ function applyRunFiltersToQueryBuilder<T>(
 
   if (options.queues && options.queues.length > 0) {
     queryBuilder.prewhere("queue IN {queues: Array(String)}", { queues: options.queues });
-  }
-
-  if (options.regions && options.regions.length > 0) {
-    queryBuilder.prewhere("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
-      regions: options.regions,
-    });
   }
 
   if (options.machines && options.machines.length > 0) {

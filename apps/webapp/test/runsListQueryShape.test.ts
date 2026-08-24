@@ -74,4 +74,43 @@ describe("runs list query shape (PREWHERE routing under FINAL)", () => {
       expect(runIds.sort()).toEqual([pendingOld.id, pendingRecent.id].sort());
     }
   );
+
+  containerTest(
+    "region filter uses the post-FINAL effective region, not a pre-dequeue worker_queue version",
+    async ({ clickhouseContainer, prisma }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "query-shape-region-test",
+      });
+
+      const ctx = await seedParents(prisma, "region");
+      const run = await createRun(prisma, ctx, { friendlyId: "run_region" });
+
+      const shared = {
+        taskIdentifier: "webhook.deliver",
+        workerQueue: "wq-legacy",
+        createdAt: new Date(Date.now() - 1 * DAY_MS),
+      };
+
+      await insertTaskRunV2Rows(clickhouse, [
+        { ...run, ...shared, region: "", updatedAt: new Date(Date.now() - 2 * DAY_MS) },
+        { ...run, ...shared, region: "us-east-1", updatedAt: new Date(Date.now() - 1 * DAY_MS) },
+      ]);
+
+      const repository = new RunsRepository({ prisma, clickhouse });
+      const listArgs = {
+        page: { size: 10 } as const,
+        period: "365d",
+        organizationId: ctx.organizationId,
+        projectId: ctx.projectId,
+        environmentId: ctx.environmentId,
+      };
+
+      const byRegion = await repository.listRunIds({ ...listArgs, regions: ["us-east-1"] });
+      expect(byRegion.runIds).toEqual([run.id]);
+
+      const byWorkerQueue = await repository.listRunIds({ ...listArgs, regions: ["wq-legacy"] });
+      expect(byWorkerQueue.runIds).toEqual([]);
+    }
+  );
 });
