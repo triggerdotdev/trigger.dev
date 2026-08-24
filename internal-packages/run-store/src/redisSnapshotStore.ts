@@ -301,11 +301,17 @@ export class RedisSnapshotStore {
         args.expectedCur !== undefined ? "1" : "0"
       )) as string[];
 
-      return this.#interpretAppend(reply, raw, orderJson, args.entry.runId);
+      return this.#interpretAppend(reply, raw, orderJson, records, args.entry.runId);
     });
   }
 
-  #interpretAppend(reply: string[], raw: string, orderJson: string, runId: string): AppendResult {
+  #interpretAppend(
+    reply: string[],
+    raw: string,
+    orderJson: string,
+    records: string,
+    runId: string
+  ): AppendResult {
     if (reply[0] === SKIPPED) {
       this.metrics?.recordSkippedNoKeyspace();
       this.metrics?.recordAppend("skippedNoKeyspace", "none");
@@ -326,7 +332,7 @@ export class RedisSnapshotStore {
     if (cycleMismatch) {
       this.metrics?.recordCycleMismatch();
     }
-    this.#observeSizes(raw, orderJson, cycleSeq, runId);
+    this.#observeSizes(raw, orderJson, records, cycleSeq, runId);
     this.metrics?.recordAppend("written", ttl);
     return {
       outcome: "written",
@@ -337,14 +343,21 @@ export class RedisSnapshotStore {
     };
   }
 
-  #observeSizes(raw: string, orderJson: string, cycleSeq: number, runId: string): void {
+  #observeSizes(
+    raw: string,
+    orderJson: string,
+    records: string,
+    cycleSeq: number,
+    runId: string
+  ): void {
     const entryBytes = Buffer.byteLength(raw, "utf8");
     this.metrics?.recordEntryBytes(entryBytes);
     if (this.highWater.entryBytes !== undefined && entryBytes > this.highWater.entryBytes) {
       this.logger.warn("RedisSnapshotStore entry above high-water mark", { runId, entryBytes });
     }
     if (orderJson !== "") {
-      const cycleBytes = Buffer.byteLength(orderJson, "utf8");
+      // The whole wp:<cycleSeq> key, not just its order field: records dominates it once populated.
+      const cycleBytes = Buffer.byteLength(orderJson, "utf8") + Buffer.byteLength(records, "utf8");
       this.metrics?.recordCycleKeyBytes(cycleBytes);
       if (this.highWater.cycleKeyBytes !== undefined && cycleBytes > this.highWater.cycleKeyBytes) {
         this.logger.warn("RedisSnapshotStore cycle key above high-water mark", {

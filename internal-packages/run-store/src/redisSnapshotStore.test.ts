@@ -1254,6 +1254,53 @@ describe("hash tag and keyPrefix", () => {
 });
 
 describe("observability", () => {
+  redisTest("cycle-key bytes cover records, not just order", async ({ redisOptions }) => {
+    // The plan puts a metric on the wp:<cycleSeq> KEY size. records dominates that key once
+    // populated, so measuring order alone understates it by orders of magnitude.
+    const calls: Array<[string, number]> = [];
+    const metrics = {
+      recordAppend: () => {},
+      recordEntryBytes: () => {},
+      recordCycleKeyBytes: (b: number) => calls.push(["cycleBytes", b]),
+      recordCycleCount: () => {},
+      recordSkippedNoKeyspace: () => {},
+      recordCycleMismatch: () => {},
+      recordLatency: () => {},
+    };
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000, metrics });
+    try {
+      const records: CompletedWaitpointRecord[] = [
+        {
+          id: "w_a",
+          friendlyId: "waitpoint_a",
+          type: "MANUAL",
+          completedAt: "2026-01-01T00:00:00.000Z",
+          outputType: "application/json",
+          outputIsError: false,
+          output: { inline: "y".repeat(20_000) },
+        },
+      ];
+      const orderJson = JSON.stringify(["w_a"]);
+      const recordsJson = JSON.stringify(records);
+
+      await store.append({
+        entry: entry({ id: "snap_1" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }], records },
+      });
+
+      expect(calls).toEqual([
+        [
+          "cycleBytes",
+          Buffer.byteLength(orderJson, "utf8") + Buffer.byteLength(recordsJson, "utf8"),
+        ],
+      ]);
+    } finally {
+      await store.quit();
+    }
+  });
+
   redisTest("records sizes and outcomes without ever rejecting", async ({ redisOptions }) => {
     const calls: unknown[][] = [];
     const metrics = {
