@@ -179,6 +179,38 @@ export function diffLatest(
   return fieldDivergences(pg, redis);
 }
 
+export type SnapshotComparatorMetrics = {
+  recordDivergence(op: string, cls: DivergenceClass): void;
+  recordSample(op: string): void;
+};
+
+// Samples reads and records divergence metrics. Holds no store and returns nothing from record(), so
+// it structurally cannot serve a read. samplePercent is injected, never read from env.server.
+export class SnapshotComparator {
+  readonly #samplePercent: number;
+  readonly #metrics?: SnapshotComparatorMetrics;
+  readonly #rng: () => number;
+
+  constructor(opts: {
+    samplePercent: number;
+    metrics?: SnapshotComparatorMetrics;
+    rng?: () => number;
+  }) {
+    this.#samplePercent = opts.samplePercent;
+    this.#metrics = opts.metrics;
+    this.#rng = opts.rng ?? Math.random;
+  }
+
+  shouldSample(): boolean {
+    return this.#rng() * 100 < this.#samplePercent;
+  }
+
+  record(op: string, divergences: SnapshotDivergence[]): void {
+    this.#metrics?.recordSample(op);
+    for (const d of divergences) this.#metrics?.recordDivergence(op, d.class);
+  }
+}
+
 export function diffSince(args: {
   pg: NormalizedSnapshot[];
   redis: NormalizedSnapshot[];

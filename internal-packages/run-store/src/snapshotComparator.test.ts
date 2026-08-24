@@ -1,5 +1,11 @@
 import { expect, it, describe } from "vitest";
-import { diffLatest, diffSince, type NormalizedSnapshot } from "./snapshotComparator.js";
+import {
+  diffLatest,
+  diffSince,
+  SnapshotComparator,
+  type DivergenceClass,
+  type NormalizedSnapshot,
+} from "./snapshotComparator.js";
 
 function norm(over: Partial<NormalizedSnapshot> = {}): NormalizedSnapshot {
   const base: NormalizedSnapshot = {
@@ -100,6 +106,33 @@ describe("diffSince", () => {
     const redis = [norm({ id: "s2", createdAt: 1500, previousSnapshotId: "s1" })];
     expect(diffSince({ pg: [], redis, cursor })).toEqual([
       expect.objectContaining({ field: "s2", class: "missingInPg" }),
+    ]);
+  });
+});
+
+describe("SnapshotComparator", () => {
+  it("shouldSample honours the injected rng and percent", () => {
+    expect(new SnapshotComparator({ samplePercent: 10, rng: () => 0.05 }).shouldSample()).toBe(true);
+    expect(new SnapshotComparator({ samplePercent: 10, rng: () => 0.5 }).shouldSample()).toBe(false);
+  });
+
+  it("record emits one metric per divergence, tagged by class and op, and returns void", () => {
+    const seen: Array<{ op: string; cls: DivergenceClass }> = [];
+    const cmp = new SnapshotComparator({
+      samplePercent: 100,
+      metrics: {
+        recordDivergence: (op, cls) => seen.push({ op, cls }),
+        recordSample: () => {},
+      },
+    });
+    const ret = cmp.record("getLatest", [
+      { field: "executionStatus", class: "scalar" },
+      { field: "idempotencyKey", class: "expected:rotatedIdempotencyKey" },
+    ]);
+    expect(ret).toBeUndefined();
+    expect(seen).toEqual([
+      { op: "getLatest", cls: "scalar" },
+      { op: "getLatest", cls: "expected:rotatedIdempotencyKey" },
     ]);
   });
 });
