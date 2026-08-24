@@ -1,24 +1,32 @@
-// The page posts only the flags its UI manages, so the action's reading of an absent key is the
-// whole bug surface. These drive the real exported action with the auth wrapper unwrapped, and
-// assert on what it hands the writer.
-import { describe, expect, it, vi } from "vitest";
+// The page posts only the flags its UI manages, so how the action reads an absent key is the whole
+// bug surface. These drive the real exported action against a real Postgres and assert on the rows
+// it leaves behind. The only module substituted is the auth wrapper, so the handler can be called
+// without a super-admin session; the database is the genuine article, injected into db.server.
+import { boundedIn } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
+import { postgresTest } from "@internal/testcontainers";
+import { describe, expect, vi } from "vitest";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 
-const { replaceGlobalFeatureFlags } = vi.hoisted(() => ({
-  replaceGlobalFeatureFlags: vi.fn().mockResolvedValue(undefined),
-}));
+vi.setConfig({ testTimeout: 60_000 });
+
+const db = vi.hoisted(() => ({ client: null as unknown as PrismaClient }));
 
 vi.mock("~/services/routeBuilders/dashboardBuilder", () => ({
   dashboardAction: (_options: unknown, handler: unknown) => handler,
   dashboardLoader: (_options: unknown, handler: unknown) => handler,
 }));
-vi.mock("~/v3/featureFlags.server", () => ({
-  replaceGlobalFeatureFlags,
-  flags: vi.fn().mockResolvedValue({}),
-}));
-vi.mock("~/db.server", () => ({ prisma: {}, boundedIn: (v: unknown) => v }));
 
-const { action } = await import("~/routes/admin.feature-flags");
+vi.mock("~/db.server", () => ({
+  get prisma() {
+    return db.client;
+  },
+  boundedIn,
+}));
+
+import { action } from "~/routes/admin.feature-flags";
+
+const WORKER_GROUP_ID = "clwg000000000000000000000";
 
 async function post(host: string, body: unknown) {
   const request = new Request(`https://${host}/admin/feature-flags`, {
@@ -29,59 +37,101 @@ async function post(host: string, body: unknown) {
   return (await (action as any)({ request, params: {}, context: {} })) as Response;
 }
 
+async function readFlag(prisma: PrismaClient, key: string) {
+  const row = await prisma.featureFlag.findFirst({ where: { key }, select: { value: true } });
+  return row?.value;
+}
+
+async function seed(prisma: PrismaClient) {
+  db.client = prisma;
+  await prisma.featureFlag.createMany({
+    data: [
+      { id: "ff_locked", key: FEATURE_FLAG.defaultWorkerInstanceGroupId, value: WORKER_GROUP_ID },
+      { id: "ff_plain", key: FEATURE_FLAG.mollifierEnabled, value: true },
+    ],
+  });
+}
+
 describe("admin feature flags action", () => {
-  it("defaults unlockLockedFlags to false when the field is absent", async () => {
-    replaceGlobalFeatureFlags.mockClear();
+  postgresTest("keeps the locked flag when the page did not unlock it", async ({ prisma }) => {
+    await seed(prisma);
+
     const response = await post("localhost:3030", { flags: {} });
 
     expect(response.status).toBe(200);
-    expect(replaceGlobalFeatureFlags).toHaveBeenCalledTimes(1);
-    expect(replaceGlobalFeatureFlags.mock.calls[0][1]).toMatchObject({
-      unlockLockedFlags: false,
-      isManagedCloud: false,
-    });
+    expect(await readFlag(prisma, FEATURE_FLAG.defaultWorkerInstanceGroupId)).toBe(WORKER_GROUP_ID);
+    expect(await readFlag(prisma, FEATURE_FLAG.mollifierEnabled)).toBeUndefined();
   });
 
-  it("passes unlockLockedFlags through when the page says it unlocked them", async () => {
-    replaceGlobalFeatureFlags.mockClear();
+  postgresTest("keeps the locked flag when the body omits the unlock field", async ({ prisma }) => {
+    await seed(prisma);
+
+    // A tab opened before the field existed posts the old shape.
+    const response = await post("localhost:3030", { flags: {}, unlockLockedFlags: undefined });
+
+    expect(response.status).toBe(200);
+    expect(await readFlag(prisma, FEATURE_FLAG.defaultWorkerInstanceGroupId)).toBe(WORKER_GROUP_ID);
+  });
+
+  postgresTest("deletes the locked flag when the page unlocked it", async ({ prisma }) => {
+    await seed(prisma);
+
     await post("localhost:3030", { flags: {}, unlockLockedFlags: true });
 
-    expect(replaceGlobalFeatureFlags.mock.calls[0][1]).toMatchObject({ unlockLockedFlags: true });
+    expect(await readFlag(prisma, FEATURE_FLAG.defaultWorkerInstanceGroupId)).toBeUndefined();
   });
 
-  it("marks a managed cloud host as such", async () => {
-    replaceGlobalFeatureFlags.mockClear();
-    await post("cloud.trigger.dev", { flags: {}, unlockLockedFlags: true });
+  postgresTest(
+    "keeps the locked flag on managed cloud despite the unlock claim",
+    async ({ prisma }) => {
+      await seed(prisma);
 
-    expect(replaceGlobalFeatureFlags.mock.calls[0][1]).toMatchObject({ isManagedCloud: true });
-  });
+      await post("cloud.trigger.dev", { flags: {}, unlockLockedFlags: true });
 
-  it("rejects a locked flag submitted to managed cloud without writing", async () => {
-    replaceGlobalFeatureFlags.mockClear();
-    const response = await post("cloud.trigger.dev", {
-      flags: { [FEATURE_FLAG.defaultWorkerInstanceGroupId]: "clwg0001" },
-    });
+      expect(await readFlag(prisma, FEATURE_FLAG.defaultWorkerInstanceGroupId)).toBe(
+        WORKER_GROUP_ID
+      );
+    }
+  );
 
-    expect(response.status).toBe(400);
-    expect(replaceGlobalFeatureFlags).not.toHaveBeenCalled();
-  });
+  postgresTest(
+    "rejects a locked flag submitted to managed cloud, writing nothing",
+    async ({ prisma }) => {
+      await seed(prisma);
 
-  it("rejects a value that fails the catalog schema without writing", async () => {
-    replaceGlobalFeatureFlags.mockClear();
+      const response = await post("cloud.trigger.dev", {
+        flags: { [FEATURE_FLAG.defaultWorkerInstanceGroupId]: "clwg999" },
+      });
+
+      expect(response.status).toBe(400);
+      expect(await readFlag(prisma, FEATURE_FLAG.defaultWorkerInstanceGroupId)).toBe(
+        WORKER_GROUP_ID
+      );
+      expect(await readFlag(prisma, FEATURE_FLAG.mollifierEnabled)).toBe(true);
+    }
+  );
+
+  postgresTest("rejects a value the catalog refuses, writing nothing", async ({ prisma }) => {
+    await seed(prisma);
+
     const response = await post("localhost:3030", {
       flags: { [FEATURE_FLAG.realtimeBackend]: "not-a-backend" },
     });
 
     expect(response.status).toBe(400);
-    expect(replaceGlobalFeatureFlags).not.toHaveBeenCalled();
+    expect(await readFlag(prisma, FEATURE_FLAG.mollifierEnabled)).toBe(true);
   });
 
-  it("submits every catalog key so omitted flags are swept", async () => {
-    replaceGlobalFeatureFlags.mockClear();
-    await post("localhost:3030", { flags: { [FEATURE_FLAG.mollifierEnabled]: true } });
+  postgresTest("upserts what was submitted and sweeps what was not", async ({ prisma }) => {
+    await seed(prisma);
 
-    const { catalogKeys, requestedFlags } = replaceGlobalFeatureFlags.mock.calls[0][1];
-    expect(catalogKeys).toContain(FEATURE_FLAG.defaultWorkerInstanceGroupId);
-    expect(requestedFlags).toEqual({ [FEATURE_FLAG.mollifierEnabled]: true });
+    await post("localhost:3030", {
+      flags: { [FEATURE_FLAG.hasAiAccess]: true },
+      unlockLockedFlags: false,
+    });
+
+    expect(await readFlag(prisma, FEATURE_FLAG.hasAiAccess)).toBe(true);
+    expect(await readFlag(prisma, FEATURE_FLAG.mollifierEnabled)).toBeUndefined();
+    expect(await readFlag(prisma, FEATURE_FLAG.defaultWorkerInstanceGroupId)).toBe(WORKER_GROUP_ID);
   });
 });
