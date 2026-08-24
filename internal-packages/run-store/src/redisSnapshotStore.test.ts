@@ -6,6 +6,7 @@ import { createRedisClient } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   snapshotKeys,
+  cycleKey,
   deriveOrder,
   isValidFor,
   RedisSnapshotStore,
@@ -1301,6 +1302,13 @@ describe("hash tag and keyPrefix", () => {
     );
     const slots = new Set(keys.map(slotOf));
     expect(slots.size).toBe(1);
+  });
+
+  it("cycleKey shares the run's hash tag and matches the Lua-derived key shape", () => {
+    const k = snapshotKeys("run_1");
+    const base = k.e.slice(0, -2); // "snap:{run_1}"
+    expect(cycleKey("run_1", 3)).toBe(`${base}:wp:3`);
+    expect(slotOf(`engine:${cycleKey("run_1", 3)}`)).toBe(slotOf(`engine:${k.e}`));
   });
 
   redisTest("the terminal append expires the PREFIXED cycle keys", async ({ redisOptions }) => {

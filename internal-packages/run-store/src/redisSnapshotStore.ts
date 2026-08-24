@@ -17,6 +17,12 @@ export function snapshotKeys(runId: string): SnapshotKeys {
   return { e: `${base}:e`, idx: `${base}:idx`, cur: `${base}:cur`, seq: `${base}:seq` };
 }
 
+// The per-wait-cycle key. Derived only inside Lua today (wpKey). Exported so the break-glass backfill
+// can name a cycle key without duplicating the frozen keyspace contract. Nothing in the store calls it.
+export function cycleKey(runId: string, cycleSeq: number): string {
+  return `snap:{${runId}}:wp:${cycleSeq}`;
+}
+
 export type CompletedWaitpointRef = { id: string; index?: number };
 
 // Reproduces PostgresRunStore.#createExecutionSnapshot's completedWaitpointOrder derivation exactly:
