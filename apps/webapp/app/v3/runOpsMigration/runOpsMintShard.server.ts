@@ -18,6 +18,8 @@ export type MintShardDeps = {
   resolution: MintShardSetResolution;
   // The keys this deployment can route, from the environment. Bounds the live list.
   ceiling: string[];
+  // Fleet-wide pin that beats every per-org and per-env pin. The complete-cutover lever.
+  globalOverride?: unknown;
   nowMs: number;
   graceMs: number;
   orgFeatureFlags: unknown;
@@ -105,6 +107,19 @@ export function computeMintShard(environment: { id: string }, deps: MintShardDep
     return "new";
   }
 
+  // The global override outranks every pin, so one flag completes a cutover without visiting
+  // each org. An override outside the active set is ignored, so explicit pins still apply.
+  if (isValidPinValue(deps.globalOverride)) {
+    const override = deps.globalOverride;
+    if (override === GEN_1_PIN_VALUE) {
+      return "new";
+    }
+    if (activeSet.includes(override)) {
+      return override;
+    }
+    deps.onPinRejected?.({ environmentId: environment.id, pin: override, activeSet });
+  }
+
   const pin = readPin(deps.orgFeatureFlags, environment.id);
   if (pin !== undefined) {
     if (pin === GEN_1_PIN_VALUE) {
@@ -121,15 +136,22 @@ export function computeMintShard(environment: { id: string }, deps: MintShardDep
 
 // ENV-BOUND wrapper — the only place env is read. The ceiling is parsed once at boot; it is a
 // deploy-time value, so re-parsing per mint would burn CPU on the hottest path in the system.
+//
+// SEAM: this is the one place the ceiling is sourced. Once shard descriptors are configured, the
+// ceiling becomes their keys and RUN_OPS_MINT_SHARDS is deleted. Two hand-kept lists would drift.
 const ceiling: string[] = parseShardCsv(env.RUN_OPS_MINT_SHARDS);
 
-const SET_KEYS = [
+// Read together so the override costs no extra query beyond the list it is bounded by.
+const GLOBAL_SHARD_KEYS = [
   FEATURE_FLAG.runOpsMintShardSet,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  FEATURE_FLAG.runOpsMintShardOverride,
 ];
 
-export type MintShardCache = { value: MintShardSetResolution; expiresAt: number } | undefined;
+type GlobalShardConfig = { resolution: MintShardSetResolution; override: unknown };
+
+export type MintShardCache = { value: GlobalShardConfig; expiresAt: number } | undefined;
 
 export type ResolveMintShardDeps = {
   ceiling: string[];
@@ -160,23 +182,28 @@ export async function resolveMintShardWith(
     return "new";
   }
 
-  let resolution: MintShardSetResolution;
+  let config: GlobalShardConfig;
   const cached = deps.cache.current;
   if (cached && cached.expiresAt > deps.nowMs) {
-    resolution = cached.value;
+    config = cached.value;
   } else {
     try {
-      resolution = readMintShardSetResolution(await deps.readFlags());
+      const flags = await deps.readFlags();
+      config = {
+        resolution: readMintShardSetResolution(flags),
+        override: flags[FEATURE_FLAG.runOpsMintShardOverride],
+      };
     } catch (error) {
       deps.onReadFailed?.(error);
       return "new";
     }
-    deps.cache.current = { value: resolution, expiresAt: deps.nowMs + deps.ttlMs };
+    deps.cache.current = { value: config, expiresAt: deps.nowMs + deps.ttlMs };
   }
 
   return computeMintShard(environment, {
-    resolution,
+    resolution: config.resolution,
     ceiling: deps.ceiling,
+    globalOverride: config.override,
     nowMs: deps.nowMs,
     graceMs: deps.graceMs,
     orgFeatureFlags: deps.orgFeatureFlags,
@@ -188,7 +215,7 @@ const liveCache: { current: MintShardCache } = { current: undefined };
 
 async function readSetFlags(): Promise<Record<string, unknown>> {
   const rows = await $replica.featureFlag.findMany({
-    where: { key: { in: SET_KEYS } },
+    where: { key: { in: GLOBAL_SHARD_KEYS } },
     select: { key: true, value: true },
   });
   const flags: Record<string, unknown> = {};

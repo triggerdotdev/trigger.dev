@@ -69,16 +69,33 @@ describe("runOpsMintShardSet — the active list", () => {
   });
 });
 
+describe("runOpsMintShardOverride — the complete-cutover lever", () => {
+  const key = FEATURE_FLAG.runOpsMintShardOverride;
+
+  it("accepts a shard key and accepts new", () => {
+    expect(validateFeatureFlagValue(key, "a").success).toBe(true);
+    expect(validateFeatureFlagValue(key, "new").success).toBe(true);
+  });
+
+  it("rejects anything that is not a single legal key", () => {
+    for (const bad of ["A", "ab", "", "legacy", "a,b"]) {
+      expect(validateFeatureFlagValue(key, bad).success).toBe(false);
+    }
+  });
+});
+
 describe("scope locks match what each resolver actually reads", () => {
   it("locks the pins globally, because the resolver reads them from the org blob only", () => {
     expect(GLOBAL_LOCKED_FLAGS).toContain(FEATURE_FLAG.runOpsMintShard);
     expect(GLOBAL_LOCKED_FLAGS).toContain(FEATURE_FLAG.runOpsMintShardEnvPins);
   });
 
-  it("locks the list per-org, because it is deployment-wide", () => {
+  it("locks the list and the override per-org, because both are deployment-wide", () => {
     expect(ORG_LOCKED_FLAGS).toContain(FEATURE_FLAG.runOpsMintShardSet);
     expect(ORG_LOCKED_FLAGS).toContain(FEATURE_FLAG.runOpsMintShardSetPrev);
     expect(ORG_LOCKED_FLAGS).toContain(FEATURE_FLAG.runOpsMintShardSetFlippedAt);
+    // An org that could override the cutover lever would defeat its purpose.
+    expect(ORG_LOCKED_FLAGS).toContain(FEATURE_FLAG.runOpsMintShardOverride);
   });
 
   it("keeps the pins settable per-org, which is the canary lever", () => {
@@ -93,6 +110,7 @@ describe("scope locks match what each resolver actually reads", () => {
       FEATURE_FLAG.runOpsMintShardSet,
       FEATURE_FLAG.runOpsMintShardSetPrev,
       FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+      FEATURE_FLAG.runOpsMintShardOverride,
     ]) {
       expect(FeatureFlagCatalog).toHaveProperty(key);
     }

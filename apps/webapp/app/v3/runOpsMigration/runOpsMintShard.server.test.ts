@@ -392,3 +392,68 @@ describe("resolveMintShardWith — cache, ceiling short-circuit and fail-safe", 
     expect(viaWrapper).toBe(viaCore);
   });
 });
+
+describe("computeMintShard — the global override wins the complete cutover", () => {
+  const resolution: MintShardSetResolution = { set: ["a", "b"] };
+
+  it("beats the hash for every environment", () => {
+    for (const id of envIds(200)) {
+      expect(computeMintShard({ id }, deps(resolution, { globalOverride: "b" }))).toBe("b");
+    }
+  });
+
+  it("beats a per-org pin", () => {
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps(resolution, { globalOverride: "b", orgFeatureFlags: { runOpsMintShard: "a" } })
+    );
+    expect(shard).toBe("b");
+  });
+
+  it("beats a per-env pin, which is the whole point of a cutover", () => {
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps(resolution, {
+        globalOverride: "b",
+        orgFeatureFlags: { runOpsMintShardEnvPins: JSON.stringify({ env_1: "a" }) },
+      })
+    );
+    expect(shard).toBe("b");
+  });
+
+  it("holds the whole fleet on gen-1 when set to new, whatever any org pinned", () => {
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps(resolution, { globalOverride: "new", orgFeatureFlags: { runOpsMintShard: "a" } })
+    );
+    expect(shard).toBe("new");
+  });
+
+  it("is ignored, and reported, when it names a key outside the active set", () => {
+    // Honouring it would mint into a drained or unroutable shard. Explicit pins still apply.
+    const rejected: string[] = [];
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps(resolution, {
+        globalOverride: "z",
+        orgFeatureFlags: { runOpsMintShard: "a" },
+        onPinRejected: (info) => rejected.push(info.pin),
+      })
+    );
+    expect(shard).toBe("a");
+    expect(rejected).toEqual(["z"]);
+  });
+
+  it("is ignored when it is not a legal value", () => {
+    for (const bad of ["legacy", "AB", "", "a,b"]) {
+      const shard = computeMintShard({ id: "env_1" }, deps(resolution, { globalOverride: bad }));
+      expect(shard).toBe(computeMintShard({ id: "env_1" }, deps(resolution)));
+    }
+  });
+
+  it("cannot resurrect minting when the ceiling is empty", () => {
+    expect(
+      computeMintShard({ id: "env_1" }, deps(resolution, { globalOverride: "b", ceiling: [] }))
+    ).toBe("new");
+  });
+});

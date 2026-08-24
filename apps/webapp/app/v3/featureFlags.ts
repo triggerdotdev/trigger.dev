@@ -34,6 +34,8 @@ export const FEATURE_FLAG = {
   runOpsMintShardSet: "runOpsMintShardSet",
   runOpsMintShardSetPrev: "runOpsMintShardSetPrev",
   runOpsMintShardSetFlippedAt: "runOpsMintShardSetFlippedAt",
+  // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
+  runOpsMintShardOverride: "runOpsMintShardOverride",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Per-organization rollout for creating additional environment API keys.
   additionalApiKeysEnabled: "additionalApiKeysEnabled",
@@ -138,6 +140,11 @@ export const FeatureFlagCatalog = {
   // stampMintShardSetFlip on a genuine change. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintShardSetPrev]: z.string(),
   [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: z.string().datetime(),
+  // Sends every environment to one shard, outranking every pin, so a cutover needs no per-org
+  // visit. "new" holds the whole fleet on gen-1. Only honored while the key is in the active set.
+  [FEATURE_FLAG.runOpsMintShardOverride]: z
+    .string()
+    .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
@@ -175,6 +182,7 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSet,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  FEATURE_FLAG.runOpsMintShardOverride,
 ];
 
 // Create a Zod schema from the existing catalog
