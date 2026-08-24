@@ -64,7 +64,18 @@ export class WaitpointKeyTagError extends Error {
   }
 }
 
-const HASH_TAG = /\{([^}]+)\}/;
+// Redis's own keyHashSlot rule: the FIRST `{`, then the FIRST `}` after it. A missing brace
+// or an empty pair means no tag, and Redis hashes the whole key. A regex would instead find
+// the first NON-empty pair, disagreeing with Redis on `wp:{}{a}`.
+function hashTag(key: string): string | undefined {
+  const open = key.indexOf("{");
+  if (open === -1) return undefined;
+
+  const close = key.indexOf("}", open + 1);
+  if (close === -1 || close === open + 1) return undefined;
+
+  return key.slice(open + 1, close);
+}
 
 /**
  * Throw unless every key carries the same non-empty hash tag. Called on every script
@@ -74,8 +85,7 @@ export function assertSingleSlot(operation: string, keys: string[]): void {
   let tag: string | undefined;
 
   for (const key of keys) {
-    const match = HASH_TAG.exec(key);
-    const found = match?.[1];
+    const found = hashTag(key);
     if (!found) {
       throw new WaitpointKeyTagError(operation, keys, key);
     }

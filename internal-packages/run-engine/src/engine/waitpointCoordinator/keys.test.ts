@@ -100,6 +100,27 @@ describe("assertSingleSlot", () => {
     expect(() => assertSingleSlot("bad", ["wp:{}"])).toThrow(WaitpointKeyTagError);
   });
 
+  it("rejects an empty first pair, matching Redis rather than skipping to a later one", () => {
+    // Redis stops at the first `{`/`}` pair. An empty one means no tag at all, so it hashes
+    // the whole key. A regex would have found `a` here and wrongly claimed a shared slot.
+    expect(() => assertSingleSlot("bad", ["wp:{}{a}", "wp:{}{a}"])).toThrow(
+      WaitpointKeyTagError
+    );
+  });
+
+  it("takes the first pair when several are present", () => {
+    expect(() => assertSingleSlot("ok", ["wp:{a}{b}", "wp:{a}:w"])).not.toThrow();
+    expect(() => assertSingleSlot("bad", ["wp:{a}{b}", "wp:{b}:w"])).toThrow(
+      WaitpointKeyTagError
+    );
+  });
+
+  it("does not degrade on a key made of many opening braces", () => {
+    const started = performance.now();
+    expect(() => assertSingleSlot("bad", ["{".repeat(50_000)])).toThrow(WaitpointKeyTagError);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it("names the operation and the offending key in the error", () => {
     const wp = waitpointKeys("w_a");
     const run = runBlockKeys("run_abc");
