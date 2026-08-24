@@ -7,7 +7,11 @@ import type {
   TaskRunStatus,
   WaitpointTag,
 } from "@trigger.dev/database";
-import { ownerEngine, type Residency, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import {
+  resolveShard as coreResolveShard,
+  type Residency,
+  type ShardKey,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type {
   ClearIdempotencyKeyInput,
@@ -42,8 +46,8 @@ const LEGACY_SHARD: ShardKey = "legacy";
 
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore} over a
- * map from shard key to store, selecting one by the residency classifier (`ownerEngine`: run-ops
- * id→NEW, cuid→LEGACY). The compat constructor holds the two gen-1 shards — a NEW store (the
+ * map from shard key to store, selecting one by `resolveShard` (gen-2 id→its shard char, gen-1
+ * run-ops id→NEW, cuid→LEGACY). The compat constructor holds the two gen-1 shards — a NEW store (the
  * dedicated run-ops DB, where new runs are born) and a LEGACY store (the control-plane DB).
  * Inert until the injecting seam wires it in under `isSplitEnabled()`; reads no flag here.
  *
@@ -69,12 +73,20 @@ export class RoutingRunStore implements RunStore {
   // steady-state home, a waitpoint read with no id lands on the legacy store.
   readonly #idlessRouteShard: ShardKey;
   readonly #idlessWaitpointShard: ShardKey;
-  readonly #classify: (id: string) => Residency;
+  // Id to shard key. `resolveShard` is the gen-2 seam. `classify` is the gen-1 seam, kept because
+  // five sites inject it and three of those are the regression corpus. A gen-1 classifier can
+  // only ever name the two reserved keys, so it can never reach a gen-2 shard.
+  readonly #resolveShardKey: (id: string) => ShardKey;
 
   // Compat constructor: the two gen-1 stores, keyed by their reserved shard keys. The options type
   // MUST stay closed — a union arm loosens the excess-property check and retires the
   // `@ts-expect-error onLegacyRead` lock in the test corpus.
-  constructor(options: { new: RunStore; legacy: RunStore; classify?: (id: string) => Residency }) {
+  constructor(options: {
+    new: RunStore;
+    legacy: RunStore;
+    classify?: (id: string) => Residency;
+    resolveShard?: (id: string) => ShardKey;
+  }) {
     this.#shards = new Map<ShardKey, RunStore>([
       [NEW_SHARD, options.new],
       [LEGACY_SHARD, options.legacy],
@@ -83,7 +95,12 @@ export class RoutingRunStore implements RunStore {
     this.#precedence = [LEGACY_SHARD, NEW_SHARD];
     this.#idlessRouteShard = NEW_SHARD;
     this.#idlessWaitpointShard = LEGACY_SHARD;
-    this.#classify = options.classify ?? ownerEngine;
+    const classify = options.classify;
+    this.#resolveShardKey =
+      options.resolveShard ??
+      (classify !== undefined
+        ? (id: string) => (classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD)
+        : coreResolveShard);
   }
 
   // A routing store spans two databases and has no single primary — routed reads resolve the
@@ -113,9 +130,9 @@ export class RoutingRunStore implements RunStore {
     return store;
   }
 
-  // The shard that owns an existing id. Throws only when an injected classifier throws.
+  // The shard that owns an existing id. Throws only when an injected resolver throws.
   #shardKeyOf(id: string): ShardKey {
-    return this.#classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD;
+    return this.#resolveShardKey(id);
   }
 
   // An unclassifiable id is treated as LEGACY (probe the control-plane DB rather than drop a

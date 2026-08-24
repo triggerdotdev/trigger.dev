@@ -178,3 +178,51 @@ describe("RoutingRunStore id-less fallbacks — the two defaults differ by role"
     expect(trace(log)).toEqual(["legacy:updateWaitpoint"]);
   });
 });
+
+describe("RoutingRunStore id-to-shard-key seam", () => {
+  it("defaults to the core resolveShard when neither seam is injected", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+    });
+    // A gen-1 v1 body (version "1" at index 25) routes to new.
+    await router.findRun({ id: "a".repeat(24) + "01" });
+    expect(trace(log)).toEqual(["new:findRun"]);
+  });
+
+  it("keeps the legacy classify seam working, so the corpus stays green", async () => {
+    const { router, log } = buildRouter();
+    await router.findRun({ id: "new_run_1" });
+    expect(trace(log)).toEqual(["new:findRun"]);
+  });
+
+  it("prefers an injected resolveShard over classify", async () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      classify: () => "NEW",
+      resolveShard: () => "legacy",
+    });
+    await router.findRun({ id: "anything" });
+    expect(trace(log)).toEqual(["legacy:findRun"]);
+  });
+
+  // An id naming a shard nobody configured must fail loud rather than fall back to a default
+  // store, which would be a silent read against the wrong database. The throw is SYNCHRONOUS:
+  // routing happens before any query is issued, and `await store.findRun(...)` propagates it
+  // identically. Only a `.catch()`-style caller would see the difference.
+  it("throws for an id resolving to an unconfigured shard key", () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      resolveShard: () => "a",
+    });
+    expect(() => router.findRun({ id: "anything" })).toThrow(
+      'no store is configured for shard key "a"'
+    );
+    expect(trace(log)).toEqual([]);
+  });
+});
