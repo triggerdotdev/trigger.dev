@@ -1,5 +1,5 @@
 import { PostgresRunStore, RoutingRunStore, type RunStore } from "@internal/run-store";
-import { ownerEngine, type Residency } from "@trigger.dev/core/v3/isomorphic";
+import { ownerEngine, resolveShard, type Residency, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
@@ -9,6 +9,7 @@ import {
   runOpsLegacyReplica,
   runOpsNewPrismaClient,
   runOpsNewReplicaClient,
+  runOpsShardHandles,
 } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -31,6 +32,16 @@ type BuildRunStoreDeps = {
   singleReplica: PrismaReplicaClient;
   /** Residency classifier; defaults to ownerEngine inside RoutingRunStore. */
   classify?: (id: string) => Residency;
+  /** Gen-2 shard handles. When non-empty, buildRunStore produces N dedicated stores + the keyed
+   * router (fromShards). Empty/absent keeps today's two-store compat router. */
+  shards?: Array<{
+    key: ShardKey;
+    writer: RunOpsPrismaClient;
+    replica: RunOpsPrismaClient;
+    resilience?: TransactionResilienceConfig;
+  }>;
+  /** Shard-key resolver for the fromShards path; defaults to resolveShard. */
+  resolveShardKey?: (id: string) => ShardKey;
   /** Per-pool transaction-resilience configs threaded into the store(s) this builds (IoC). */
   singleResilience?: TransactionResilienceConfig;
   newResilience?: TransactionResilienceConfig;
@@ -79,10 +90,45 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     transactionStartRetry: deps.legacyResilience?.startRetry,
   });
 
-  return new RoutingRunStore({
-    new: newStore,
-    legacy: legacyStore,
-    classify: deps.classify ?? ownerEngine,
+  // No gen-2 shards: today's two-store compat router, byte-identical.
+  if (!deps.shards || deps.shards.length === 0) {
+    return new RoutingRunStore({
+      new: newStore,
+      legacy: legacyStore,
+      classify: deps.classify ?? ownerEngine,
+    });
+  }
+
+  // Gen-2 shards: one dedicated store per descriptor, then the keyed N-way router. Every shard is a
+  // schemaVariant:"dedicated" instance, exactly like the gen-1 new store.
+  const shardStores = deps.shards.map((shard) => ({
+    key: shard.key,
+    store: new PostgresRunStore({
+      prisma: shard.writer,
+      readOnlyPrisma: shard.replica,
+      schemaVariant: "dedicated",
+      maxWait: shard.resilience?.maxWait,
+      transactionStartRetry: shard.resilience?.startRetry,
+    }),
+  }));
+
+  const shardKeys = shardStores.map((s) => s.key);
+  const shardMap = new Map<ShardKey, RunStore>([
+    ["legacy", legacyStore],
+    ["new", newStore],
+    ...shardStores.map(({ key, store }) => [key, store] as const),
+  ]);
+
+  return RoutingRunStore.fromShards({
+    shards: shardMap,
+    // Ascending authority for a merge: legacy -> new -> shards in configured order.
+    precedence: ["legacy", "new", ...shardKeys],
+    // Probe order for an id-less lookup: the reverse of precedence.
+    probeOrder: ["new", ...shardKeys, "legacy"],
+    idlessRouteShard: "new",
+    idlessWaitpointShard: "legacy",
+    resolveShardKey: deps.resolveShardKey ?? resolveShard,
+    classify: deps.classify,
   });
 }
 
@@ -110,6 +156,8 @@ function tryResolveRunOpsHandles() {
       newReplica: runOpsNewReplicaClient,
       legacyWriter: runOpsLegacyPrisma,
       legacyReplica: runOpsLegacyReplica,
+      // Absent under a minimal db.server mock; default to no shards so the compat router is built.
+      shardHandles: runOpsShardHandles ?? [],
     };
   } catch {
     return null;
@@ -127,9 +175,16 @@ export const runStore: RunStore = singleton("RunStore", () => {
       singleResilience: resilienceForClient(prisma),
     });
   }
+  const { shardHandles, ...storeHandles } = handles;
   return buildRunStore({
     splitEnabled: true,
-    ...handles,
+    ...storeHandles,
+    shards: shardHandles.map((shard) => ({
+      key: shard.key,
+      writer: shard.writer,
+      replica: shard.replica,
+      resilience: resilienceForClient(shard.writer),
+    })),
     singleWriter: prisma,
     singleReplica: $replica,
     singleResilience: resilienceForClient(prisma),

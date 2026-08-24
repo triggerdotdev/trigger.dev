@@ -411,6 +411,14 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   const newPoolKnobs = resolveRunOpsPoolKnobs("new");
   const shardDescriptorsByKey = new Map(env.RUN_OPS_SHARDS.map((d) => [d.key, d]));
 
+  // Boot table: emit ONLY when shards are configured, so the inert (RUN_OPS_SHARDS unset) merge adds
+  // no new log output. The fingerprint is an address, not an identity claim (see runOpsAddressFingerprint).
+  if (env.RUN_OPS_SHARDS.length > 0) {
+    logger.info("run-ops shard topology (fingerprint is an address, NOT an identity claim)", {
+      shards: buildRunOpsShardTable(env.RUN_OPS_SHARDS),
+    });
+  }
+
   return selectRunOpsTopology(
     {
       splitEnabled,
@@ -567,6 +575,17 @@ export const runOpsLegacyPrismaClient: RunOpsPrismaClient = runOpsTopology.legac
   .writer as unknown as RunOpsPrismaClient;
 export const runOpsLegacyReplicaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
   .replica as unknown as RunOpsPrismaClient;
+
+// Gen-2 shard handles for the run-store boundary. Empty unless RUN_OPS_SHARDS is configured.
+export const runOpsShardHandles: Array<{
+  key: string;
+  writer: RunOpsPrismaClient;
+  replica: RunOpsPrismaClient;
+}> = [...runOpsTopology.shards.entries()].map(([key, clients]) => ({
+  key,
+  writer: clients.writer,
+  replica: clients.replica,
+}));
 
 export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   newReplica: runOpsNewReplicaClient,
@@ -1133,6 +1152,32 @@ function redactUrlSecrets(hrefOrUrl: string | URL) {
   const url = new URL(hrefOrUrl);
   url.password = "";
   return url.href;
+}
+
+// A host:port/db address, with NO username and NO query params — never a secret, and deliberately
+// NOT an identity claim (two DSNs can share an address yet be different databases; that proof is the
+// distinctness sentinel's, not this line's). Same tuple sameDatabaseTarget compares, kept in step.
+export function runOpsAddressFingerprint(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.hostname}:${u.port || "5432"}${u.pathname}`;
+  } catch {
+    return "unparseable";
+  }
+}
+
+export type RunOpsShardTableRow = { key: string; fingerprint: string; role: string };
+
+// The resolved shard table for the boot log: one row per descriptor. An alias reports its role and
+// carries no address (it shares the new store's pool).
+export function buildRunOpsShardTable(
+  descriptors: Array<{ key: string; url?: string; aliasOf?: "new" }>
+): RunOpsShardTableRow[] {
+  return descriptors.map((d) =>
+    d.aliasOf
+      ? { key: d.key, fingerprint: "alias(new)", role: "alias(new)" }
+      : { key: d.key, fingerprint: runOpsAddressFingerprint(d.url ?? ""), role: "shard" }
+  );
 }
 
 export type { PrismaClient } from "@trigger.dev/database";
