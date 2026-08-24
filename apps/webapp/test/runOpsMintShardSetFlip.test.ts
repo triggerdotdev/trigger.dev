@@ -155,16 +155,20 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     expect(m[FEATURE_FLAG.runOpsMintShardSetFlippedAt]).not.toBe("1999-01-01T00:00:00.000Z");
   });
 
-  postgresTest("the set trio survives a save that omits the set keys", async ({ prisma }) => {
+  postgresTest("a co-submitted flag does not disturb a resubmitted list", async ({ prisma }) => {
     await replaceGlobalFeatureFlags(prisma, {
       requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a,b" },
       catalogKeys: CATALOG_KEYS,
       isProtected: NEVER_PROTECTED,
       graceMs: 60_000,
     });
+    const first = await readFlags(prisma, SET_KEYS);
 
     await replaceGlobalFeatureFlags(prisma, {
-      requestedFlags: { [FEATURE_FLAG.mollifierEnabled]: true },
+      requestedFlags: {
+        [FEATURE_FLAG.runOpsMintShardSet]: "a,b",
+        [FEATURE_FLAG.mollifierEnabled]: true,
+      },
       catalogKeys: CATALOG_KEYS,
       isProtected: NEVER_PROTECTED,
       graceMs: 60_000,
@@ -172,6 +176,10 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
 
     const m = await readFlags(prisma, SET_KEYS);
     expect(m[FEATURE_FLAG.runOpsMintShardSet]).toBe("a,b");
+    // Resubmitting the same list is not a flip, so the cutover clock is not reset.
+    expect(m[FEATURE_FLAG.runOpsMintShardSetFlippedAt]).toBe(
+      first[FEATURE_FLAG.runOpsMintShardSetFlippedAt]
+    );
   });
 
   postgresTest(
