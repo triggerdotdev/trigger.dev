@@ -205,12 +205,21 @@ export class RoutingRunStore implements RunStore {
   // one shard, so it goes there and nowhere else — that is what keeps the legs disjoint and the sum
   // sound. A cuid names no shard: drain can mirror it onto NEW while it keeps its id, and a gen-2
   // run can block on a pre-gen-2 cuid token, so there is no single gen-1 partner. Both gen-1 stores
-  // are probed and the results are de-duped by id. A target equal to `runKey`, or an unconfigured
-  // key, is skipped: the id reached this function because the run's own store did not return it.
+  // are probed and the results are de-duped by id. A target equal to `runKey` is skipped (already
+  // probed); an id resolving to an unconfigured shard fails loud rather than being dropped.
   #partitionAbsentIds(runKey: ShardKey, ids: string[]): Array<{ key: ShardKey; ids: string[] }> {
     const byKey = new Map<ShardKey, string[]>();
     const push = (key: ShardKey, id: string) => {
-      if (key === runKey || !this.#shards.has(key)) return;
+      // The run's own shard was already probed, so skip it. But an id resolving to a shard nobody
+      // configured is UnknownShardKey: silently dropping it here would UNDER-count a pending
+      // waitpoint and prematurely unblock the run — the exact failure this method guards against.
+      // Fail loud instead (§7 append-only rule).
+      if (key === runKey) return;
+      if (!this.#shards.has(key)) {
+        throw new Error(
+          `RoutingRunStore: waitpoint "${id}" resolves to unconfigured shard key "${key}"`
+        );
+      }
       const bucket = byKey.get(key);
       if (bucket) bucket.push(id);
       else byKey.set(key, [id]);
@@ -355,6 +364,11 @@ export class RoutingRunStore implements RunStore {
     const byShard = new Map<ShardKey, string[]>();
     for (const id of ids) {
       const key = this.#shardKeyOfSafe(id);
+      // An id resolving to a shard nobody configured is UnknownShardKey. Dropping it would silently
+      // omit a row from the hydrated set, so fail loud (§7 append-only rule).
+      if (!this.#shards.has(key)) {
+        throw new Error(`RoutingRunStore: id "${id}" resolves to unconfigured shard key "${key}"`);
+      }
       const bucket = byShard.get(key);
       if (bucket) bucket.push(id);
       else byShard.set(key, [id]);

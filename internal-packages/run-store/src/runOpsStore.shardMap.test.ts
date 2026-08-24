@@ -564,6 +564,15 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
     expect(seen).toEqual([]); // the gen-1 mirror is expected, never alarmed
   });
 
+  it("fails loud when an absent id resolves to an unconfigured shard key", async () => {
+    // "c:w1" resolves to shard "c", which is not configured. Silently dropping it would under-count
+    // a pending waitpoint and prematurely unblock the run — so it must throw, not skip.
+    const { router } = partitionRouter({});
+    await expect(router.countPendingWaitpoints(["c:w1"], undefined, "a:run")).rejects.toThrow(
+      'unconfigured shard key "c"'
+    );
+  });
+
   it("returns zero for an id absent everywhere", async () => {
     const { router } = partitionRouter({});
     expect(await router.countPendingWaitpoints(["b:w9"], undefined, "a:run")).toBe(0);
