@@ -22,6 +22,19 @@ vi.mock("~/db.server", () => ({
     return db.client;
   },
   boundedIn,
+  // The real helper adds tracing around prisma.$transaction and resolves undefined when it
+  // swallows an infrastructure error. Neither is under test here, but the transactional
+  // semantics are, so this stands in with the same shape and a real interactive transaction.
+  $transaction: async (
+    client: PrismaClient,
+    nameOrFn: unknown,
+    fnOrOptions?: unknown
+  ): Promise<unknown> => {
+    const fn = (typeof nameOrFn === "function" ? nameOrFn : fnOrOptions) as (
+      tx: PrismaClient
+    ) => Promise<unknown>;
+    return client.$transaction((tx) => fn(tx as unknown as PrismaClient));
+  },
 }));
 
 import { action } from "~/routes/admin.feature-flags";
