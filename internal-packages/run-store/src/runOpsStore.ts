@@ -751,7 +751,13 @@ export class RoutingRunStore implements RunStore {
       out.push(
         [...candidates].sort((a, b) => {
           const byCreated = a.row.createdAt.getTime() - b.row.createdAt.getTime();
-          return byCreated !== 0 ? byCreated : a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0;
+          return byCreated !== 0
+            ? byCreated
+            : a.row.id < b.row.id
+              ? -1
+              : a.row.id > b.row.id
+                ? 1
+                : 0;
         })[0]!.row
       );
     }

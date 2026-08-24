@@ -280,7 +280,10 @@ describe("RoutingRunStore four-store matrix — pagination merge", () => {
       // One run per store, distinct createdAt so the global sort order is unambiguous.
       const rows = [
         { id: cuid("pgleg"), at: new Date("2024-01-01T00:00:00Z") },
-        { id: ("pgnew".replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01", at: new Date("2024-01-02T00:00:00Z") },
+        {
+          id: ("pgnew".replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01",
+          at: new Date("2024-01-02T00:00:00Z"),
+        },
         { id: gen2("a", "pga"), at: new Date("2024-01-03T00:00:00Z") },
         { id: gen2("b", "pgb"), at: new Date("2024-01-04T00:00:00Z") },
       ];

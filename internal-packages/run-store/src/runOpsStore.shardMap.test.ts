@@ -399,7 +399,10 @@ describe("RoutingRunStore merge precedence and duplicate alarm", () => {
   const spy = () => {
     const seen: string[][] = [];
     return {
-      metrics: { recordDuplicateId: (k: string[]) => seen.push(k), recordWaitpointProbeFallback() {} },
+      metrics: {
+        recordDuplicateId: (k: string[]) => seen.push(k),
+        recordWaitpointProbeFallback() {},
+      },
       seen,
     };
   };
@@ -554,7 +557,9 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
 
   it("counts a drain-mirrored cuid ONCE and stays silent", async () => {
     const seen: string[][] = [];
-    const { router } = partitionRouter({ new: ["cuid_w1"], legacy: ["cuid_w1"] }, (k) => seen.push(k));
+    const { router } = partitionRouter({ new: ["cuid_w1"], legacy: ["cuid_w1"] }, (k) =>
+      seen.push(k)
+    );
     expect(await router.countPendingWaitpoints(["cuid_w1"], undefined, "a:run")).toBe(1);
     expect(seen).toEqual([]); // the gen-1 mirror is expected, never alarmed
   });
@@ -565,7 +570,11 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
   });
 
   it("returns the true total for a mixed gen-2 and cuid set with no double count", async () => {
-    const { router } = partitionRouter({ b: ["b:w1"], legacy: ["cuid_w1"], new: ["cuid_w1", "cuid_w2"] });
+    const { router } = partitionRouter({
+      b: ["b:w1"],
+      legacy: ["cuid_w1"],
+      new: ["cuid_w1", "cuid_w2"],
+    });
     const count = await router.countPendingWaitpoints(
       ["b:w1", "cuid_w1", "cuid_w2", "b:w9"],
       undefined,
