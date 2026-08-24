@@ -134,6 +134,12 @@ function buildRouter(newConfig: FakeConfig = {}, legacyConfig: FakeConfig = {}) 
 
 const trace = (log: Call[]) => log.map((c) => `${c.slot}:${c.method}`);
 
+// A parallel fan-out issues every leg before any resolves, so the ORDER legs appear in the log is
+// NOT a behaviour and MUST NOT be asserted. Compare the multiset of slots instead. Order assertions
+// via `trace` are valid only for the sequential (two-or-fewer-store) probe.
+const slots = (log: Call[], method?: string) =>
+  (method ? log.filter((c) => c.method === method) : log).map((c) => c.slot).sort();
+
 describe("RoutingRunStore #probeOrder — new then legacy, sequential", () => {
   it("probes new BEFORE legacy for an unrouted findRun", async () => {
     const { router, log } = buildRouter();
@@ -354,7 +360,7 @@ describe("RoutingRunStore probe at N", () => {
       resolveShard: (id: string) => id.split(":")[0]!,
     });
     await router.findRun({ spanId: "span_x" });
-    expect(log.map((c) => c.slot).sort()).toEqual(["a", "b", "legacy", "new"]);
+    expect(slots(log)).toEqual(["a", "b", "legacy", "new"]);
   });
 
   it("gives the legacy leg the canonical throw when every leg misses", async () => {
@@ -512,8 +518,7 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
     });
     return { router, log };
   }
-  const countCalls = (log: Call[]) =>
-    log.filter((c) => c.method === "countPendingWaitpointsWithPresence").map((c) => c.slot).sort();
+  const countCalls = (log: Call[]) => slots(log, "countPendingWaitpointsWithPresence");
 
   it("sends a gen-2 absent id to its own shard only", async () => {
     const { router, log } = partitionRouter({ b: ["b:w1"] });
