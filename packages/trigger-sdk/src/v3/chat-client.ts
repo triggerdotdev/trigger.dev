@@ -16,7 +16,7 @@
  * ```
  */
 
-import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
+import type { Task } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
 // `readUIMessageStream` is a runtime value — via the ESM/CJS shim so the CJS
 // build can `require` ESM-only `ai@7` (see ../imports/ai-runtime.ts).
@@ -29,7 +29,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { slimSubmitMessageForWire } from "./ai-shared.js";
-import { sessions } from "./sessions.js";
+import { sessions, type SessionTriggerConfigInput } from "./sessions.js";
 
 // ─── Type inference ────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ export type AgentChatOptions<TAgent = unknown> = {
    * Default trigger config used when starting a new session for this
    * chat. Folded into `sessions.start({...triggerConfig})` body.
    */
-  triggerConfig?: SessionTriggerConfig;
+  triggerConfig?: SessionTriggerConfigInput;
   /**
    * Override the Trigger.dev API base URL for the chat's `.in/append` and
    * `.out` SSE endpoints. String form applies to both; pass a function to
@@ -306,7 +306,7 @@ export class AgentChat<TAgent = unknown> {
   private readonly chatId: string;
   private readonly streamTimeoutSeconds: number;
   private readonly clientData: Record<string, unknown> | undefined;
-  private readonly triggerConfigDefault: SessionTriggerConfig | undefined;
+  private readonly triggerConfigDefault: SessionTriggerConfigInput | undefined;
   private readonly onTriggered: AgentChatOptions["onTriggered"];
   private readonly onTurnComplete: AgentChatOptions["onTurnComplete"];
   private readonly baseURLResolver: AgentChatBaseURLResolver;
@@ -656,7 +656,7 @@ export class AgentChat<TAgent = unknown> {
     const idleTimeoutInSeconds =
       options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds;
 
-    const triggerConfig: SessionTriggerConfig = {
+    const triggerConfig: SessionTriggerConfigInput = {
       basePayload: {
         // `trigger: "preload"` mirrors the browser-mediated
         // `chat.createStartSessionAction` shape so the agent runtime fires
@@ -674,6 +674,11 @@ export class AgentChat<TAgent = unknown> {
       ...(this.triggerConfigDefault?.tags ? { tags: this.triggerConfigDefault.tags } : {}),
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
+        : {}),
+      // Not truthiness: `null` opts this chat out of pinning and must reach the resolver in
+      // `sessions.start`, which otherwise discovers an id from the environment.
+      ...(this.triggerConfigDefault?.externalDeploymentId !== undefined
+        ? { externalDeploymentId: this.triggerConfigDefault.externalDeploymentId }
         : {}),
       ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };

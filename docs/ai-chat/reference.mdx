@@ -490,7 +490,7 @@ Options for [`chat.headStart()`](/ai-chat/fast-starts#head-start), the warm-serv
 | `agentId`              | `string`                                                | required    | The `chat.agent` / `chat.customAgent` id to hand off to                                              |
 | `run`                  | `(args: HeadStartRunArgs) => Promise<StreamTextResult>` | required    | First-turn callback. Call `streamText` and spread `chat.toStreamTextOptions({ tools })`              |
 | `idleTimeoutInSeconds` | `number`                                                | `60`        | How long the agent waits for the handover signal                                                     |
-| `triggerConfig`        | `Partial<SessionTriggerConfig>`                         | `undefined` | Run options (tags, queue, machine, maxAttempts, maxDuration, region, lockToVersion) for the auto-triggered handover-prepare run. The `chat:{chatId}` tag is prepended automatically |
+| `triggerConfig`        | `Partial<SessionTriggerConfig>`                         | `undefined` | Run options (tags, queue, machine, maxAttempts, maxDuration, region, lockToVersion, externalDeploymentId) for the auto-triggered handover-prepare run. The `chat:{chatId}` tag is prepended automatically |
 
 `chat.headStart(options)` returns the handler `(req: Request) => Promise<Response>`. The `run` callback receives `HeadStartRunArgs`: `{ messages: UIMessage[], signal: AbortSignal, chat: HeadStartChatHelper }`, where the helper exposes `chat.toStreamTextOptions({ tools })` and a `chat.session` escape hatch. See [Head Start](/ai-chat/fast-starts#head-start) for the full guide.
 

@@ -246,6 +246,7 @@ const { action } = createActionApiRoute(
         runId: run.friendlyId,
         publicAccessToken,
         isCached,
+        pendingVersion: ensureResult.pendingVersion,
       };
 
       return json<CreatedSessionResponseBody>(responseBody, {

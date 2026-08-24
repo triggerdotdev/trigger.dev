@@ -23,7 +23,6 @@ import {
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
   resourceCatalog,
-  type SessionTriggerConfig,
   SemanticInternalAttributes,
   SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
@@ -106,11 +105,13 @@ type ToolCallOptions = {
 // pulled in transitively here never reach a client chunk.
 import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
+import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
 import {
   type SessionHandle,
   type SessionPipeStreamOptions,
   sessions,
   type SessionSubscribeOptions,
+  type SessionTriggerConfigInput,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
@@ -2806,6 +2807,10 @@ const chatResolvedToolsKey = locals.create<ToolSet>("chat.resolvedTools");
 
 /** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
 const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
+/** @internal Target for the upgrade handoff, set by `chat.requestUpgrade({ externalDeploymentId })`. */
+const chatUpgradeExternalDeploymentIdKey = locals.create<string>(
+  "chat.upgradeExternalDeploymentId"
+);
 
 /**
  * @internal Flag set by `chat.endRun()` to exit the loop after the current
@@ -8960,8 +8965,12 @@ function isStopped(): boolean {
  * });
  * ```
  */
-function requestUpgrade(): void {
+function requestUpgrade(options?: { externalDeploymentId?: string }): void {
   locals.set(chatUpgradeRequestedKey, true);
+
+  // Without a target the handoff clears the session's pin; with one it re-pins to that deployment.
+  const target = options?.externalDeploymentId?.trim();
+  if (target) locals.set(chatUpgradeExternalDeploymentIdKey, target);
 }
 
 /**
@@ -9010,7 +9019,9 @@ async function endAndContinue(): Promise<void> {
 }
 
 /** @internal Shared server handoff used by managed and custom agent loops. */
-async function performEndAndContinue(): Promise<void> {
+async function performEndAndContinue(options?: {
+  externalDeploymentId?: string;
+}): Promise<void> {
   const chatId = locals.get(chatExternalIdKey);
   const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
@@ -9018,10 +9029,12 @@ async function performEndAndContinue(): Promise<void> {
     throw new Error("Cannot end and continue without an active chat agent run");
   }
 
+  const externalDeploymentId = options?.externalDeploymentId;
   const apiClient = apiClientManager.clientOrThrow();
   await apiClient.endAndContinueSession(chatId, {
     callingRunId,
     reason: "upgrade",
+    ...(externalDeploymentId ? { externalDeploymentId } : {}),
   });
 }
 
@@ -10720,7 +10733,7 @@ export type CreateChatStartSessionActionOptions = {
    * Default trigger config used when starting a new session for a chat.
    * Per-call `params.triggerConfig` shallow-merges on top.
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Override the Trigger.dev API base URL. String applies to both
    * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
@@ -10764,7 +10777,7 @@ export type ChatStartSessionParams<TChat extends AnyTask = AnyTask> = {
    * `chat.agent`: anything beyond `chatId`/`messages`/`trigger`/`metadata`,
    * which the runtime injects automatically).
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Opaque session-level metadata stored on the Session row. Separate from
    * the per-turn `clientData` above. Use this when you want to attach
@@ -10787,6 +10800,11 @@ export type ChatStartSessionResult = {
   runId: string;
   /** Session friendlyId — informational. */
   sessionId: string;
+  /**
+   * The session's run is parked waiting for its deployment. Messages sent meanwhile are durable
+   * and delivered once it lands; surface this so the wait reads as a deploy in progress.
+   */
+  pendingVersion?: boolean;
 };
 
 /**
@@ -10866,7 +10884,14 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const idleTimeoutInSeconds =
       params.triggerConfig?.idleTimeoutInSeconds ?? options?.triggerConfig?.idleTimeoutInSeconds;
 
-    const triggerConfig: SessionTriggerConfig = {
+    // Only `undefined` means "not supplied": a per-call `null` (opt out) has to beat a pinning
+    // action default, which neither truthiness nor `??` would allow.
+    const externalDeploymentId =
+      params.triggerConfig?.externalDeploymentId !== undefined
+        ? params.triggerConfig.externalDeploymentId
+        : options?.triggerConfig?.externalDeploymentId;
+
+    const triggerConfig: SessionTriggerConfigInput = {
       basePayload: {
         messages: [],
         trigger: "preload",
@@ -10893,6 +10918,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
               params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
         : {}),
+      ...(externalDeploymentId !== undefined ? { externalDeploymentId } : {}),
       ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
@@ -10908,7 +10934,12 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const fetchOverride = options?.fetch;
     const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
 
-    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+    const created: {
+      id: string;
+      runId: string;
+      publicAccessToken: string;
+      pendingVersion?: boolean;
+    } = hasOverride
       ? await callSessionsCreateWithOverride({
           chatId: params.chatId,
           body: startBody,
@@ -10943,6 +10974,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       publicAccessToken,
       runId: created.runId,
       sessionId: created.id,
+      ...(created.pendingVersion ? { pendingVersion: true } : {}),
     };
   };
 }
@@ -10979,12 +11011,17 @@ async function callSessionsCreateWithOverride(args: {
     type: "chat.agent";
     externalId: string;
     taskIdentifier: string;
-    triggerConfig: SessionTriggerConfig;
+    triggerConfig: SessionTriggerConfigInput;
     metadata?: Record<string, unknown>;
   };
   baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
   fetchOverride: ChatStartSessionFetchOverride | undefined;
-}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+}): Promise<{
+  id: string;
+  runId: string;
+  publicAccessToken: string;
+  pendingVersion?: boolean;
+}> {
   const accessToken = apiClientManager.accessToken;
   if (!accessToken) {
     throw new Error(
@@ -10996,7 +11033,8 @@ async function callSessionsCreateWithOverride(args: {
   const init: RequestInit = {
     method: "POST",
     headers: overrideRequestHeaders(accessToken),
-    body: JSON.stringify(args.body),
+    // This path bypasses `sessions.start`, so it resolves the pin itself.
+    body: JSON.stringify(withResolvedExternalDeploymentId(args.body)),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)
@@ -11005,7 +11043,12 @@ async function callSessionsCreateWithOverride(args: {
     const text = await response.text().catch(() => "");
     throw new Error(`sessions.start failed: ${response.status} ${text}`);
   }
-  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  const json = (await response.json()) as {
+    id: string;
+    runId: string;
+    publicAccessToken: string;
+    pendingVersion?: boolean;
+  };
   return json;
 }
 
@@ -11318,7 +11361,9 @@ async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
 
   if (chatId && callingRunId) {
     try {
-      await performEndAndContinue();
+      await performEndAndContinue({
+        externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
+      });
     } catch (error) {
       // Non-fatal: the next `.in/append` re-triggers via the probe.
       // Swallow rather than throw so we still emit the chunk + exit.

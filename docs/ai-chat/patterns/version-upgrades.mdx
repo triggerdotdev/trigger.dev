@@ -8,6 +8,14 @@ Chat agent runs are pinned to the worker version they started on. When you deplo
 
 `chat.requestUpgrade()` is the managed upgrade signal for `chat.agent()` and the `chat.createSession()` iterator. Fully hand-rolled custom agents use `chat.endAndContinue()` between turns to immediately hand the Session to a new run.
 
+<Note>
+  If you use [version skew protection](/deployment/version-skew-protection#chat-sessions), most of
+  this page is done for you: sessions pin to the deployment matching the app build that started
+  them, so the agent and the frontend move together without a hand-maintained version. Read this
+  page for the cases skew protection doesn't cover — an agent that wants to leave its pin
+  mid-conversation, or a session that was never pinned.
+</Note>
+
 ## How it works
 
 When `chat.requestUpgrade()` is called in `onTurnStart` or `onValidateMessages`:
@@ -18,6 +26,25 @@ When `chat.requestUpgrade()` is called in `onTurnStart` or `onValidateMessages`:
 4. The transport's existing SSE subscription to `session.out` keeps receiving chunks across the swap — no client-side reconnect
 
 The new run lives on the **same Session** as the old one. `chatId` is the durable identity; only the underlying `currentRunId` rotates. The audit log records the new run with `reason: "upgrade"`.
+
+### What "the latest deployment" means
+
+The handoff clears the session's [external deployment id](/deployment/version-skew-protection#chat-sessions) so the new run can land on the current version — re-applying the pin the agent just rejected would make the upgrade impossible. The cleared pin is persisted on the session, so the next continuation doesn't fall back to it either.
+
+To move to a specific deployment rather than to whatever is current, name it:
+
+```ts
+chat.requestUpgrade({ externalDeploymentId: clientData.commitSha });
+```
+
+That is usually what you want when the client told you which build it is on: it upgrades to the version the client expects instead of merely to the newest one.
+
+<Warning>
+  `lockToVersion` is a different thing and is **never** cleared. A session started with an explicit
+  `lockToVersion` re-applies it on every run including upgrade handoffs, so `chat.requestUpgrade()`
+  cannot escape it — the new run lands on the same version the old one did. Use the external
+  deployment id if you want a pin an agent can opt out of.
+</Warning>
 
 When called from inside `run()` or `chat.defer()`, the current turn completes normally first and the run exits afterward. The next message triggers the continuation on the same session.
 
@@ -151,6 +178,12 @@ export const myChat = chat
 
 This upgrades on **every** deploy, not just breaking changes. Good for fast-moving projects where you always want the latest code.
 
+<Tip>
+  With [version skew protection](/deployment/version-skew-protection#chat-sessions) on, you don't
+  need this recipe: the session is already pinned to the deployment that matches the app build that
+  started it, and a client on a new build re-pins the session when it starts.
+</Tip>
+
 ## Custom agents
 
 Use `chat.requestUpgrade()` with `chat.agent()`. With `chat.createSession()`, call `chat.requestUpgrade()`, then advance the iterator once more so it can exit normally. For an immediate handoff, close the iterator before calling `chat.endAndContinue()`. In a fully hand-rolled `chat.customAgent()` task, detach input listeners, persist the completed turn, write its boundary, then call `chat.endAndContinue()` and return immediately:
@@ -182,6 +215,7 @@ Both are graceful exits. [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot) doe
 
 ## See also
 
+- [Version skew protection](/deployment/version-skew-protection#chat-sessions) — pin a session to the deployment matching the app build that started it
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks) — where `onTurnStart` and `onChatResume` fit in the turn cycle
 - [Recovery boot](/ai-chat/patterns/recovery-boot) — the sibling hook for mid-stream interruptions (does NOT fire on `requestUpgrade`)
 - [Database persistence](/ai-chat/patterns/database-persistence) — how continuations interact with session state

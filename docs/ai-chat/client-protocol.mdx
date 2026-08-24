@@ -210,6 +210,7 @@ Pick `"preload"` when the UI has rendered but the user hasn't typed (warms the a
 | `triggerConfig.maxAttempts` | `number` | Per-run retry cap (1–10). |
 | `triggerConfig.maxDuration` | `number` | Per-run wall-clock cap, seconds. |
 | `triggerConfig.lockToVersion` | `string` | Pin every run to a specific worker version. |
+| `triggerConfig.externalDeploymentId` | `string \| null` | Pin every run to the deployment carrying this [external deployment id](/deployment/version-skew-protection#chat-sessions). Discovered from the environment when omitted; `null` opts the chat out. |
 | `triggerConfig.region` | `string` | Region preference. |
 | `triggerConfig.idleTimeoutInSeconds` | `number` | Surfaced to the agent through the wire payload (1–3600). |
 
