@@ -24,8 +24,7 @@ function entry(runId: string, id: string, createdAt: string): SnapshotEntryInput
   };
 }
 
-const at = (seconds: number) =>
-  new Date(Date.UTC(2026, 0, 1, 0, 0, seconds)).toISOString();
+const at = (seconds: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, seconds)).toISOString();
 
 async function seed(
   store: RedisSnapshotStore,
@@ -42,26 +41,29 @@ async function seed(
 }
 
 describe("getSinceCreatedAt", () => {
-  redisTest("returns only entries newer than the cursor, oldest first", async ({ redisOptions }) => {
-    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
-    try {
-      const runId = "run_window";
-      await seed(
-        store,
-        runId,
-        [0, 1, 2, 3, 4].map((n) => ({ id: `snap_${n}`, createdAt: at(n) }))
-      );
+  redisTest(
+    "returns only entries newer than the cursor, oldest first",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      try {
+        const runId = "run_window";
+        await seed(
+          store,
+          runId,
+          [0, 1, 2, 3, 4].map((n) => ({ id: `snap_${n}`, createdAt: at(n) }))
+        );
 
-      const result = await store.getSinceCreatedAt(runId, at(1));
+        const result = await store.getSinceCreatedAt(runId, at(1));
 
-      expect(result.kind).toBe("hit");
-      if (result.kind !== "hit") return;
-      // Ascending, matching what the engine hands its caller after its own reverse().
-      expect(result.entries.map((e) => e.id)).toEqual(["snap_2", "snap_3", "snap_4"]);
-    } finally {
-      await store.quit();
+        expect(result.kind).toBe("hit");
+        if (result.kind !== "hit") return;
+        // Ascending, matching what the engine hands its caller after its own reverse().
+        expect(result.entries.map((e) => e.id)).toEqual(["snap_2", "snap_3", "snap_4"]);
+      } finally {
+        await store.quit();
+      }
     }
-  });
+  );
 
   redisTest("misses when the run has no keyspace", async ({ redisOptions }) => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });

@@ -181,9 +181,7 @@ describe("transition write ordering", () => {
         });
 
         expect(await redis.getById(runId, row.id)).toBeNull();
-        expect(repairs).toEqual([
-          { runId, snapshotId: row.id, executionStatus: "FINISHED" },
-        ]);
+        expect(repairs).toEqual([{ runId, snapshotId: row.id, executionStatus: "FINISHED" }]);
       } finally {
         await redis.quit();
       }
@@ -409,31 +407,34 @@ describe("transition write ordering", () => {
     }
   );
 
-  containerTest("appends for the standalone createExecutionSnapshot", async ({ prisma, redisOptions }) => {
-    const { decorated, redis } = harness(prisma as never, redisOptions as never);
-    try {
-      const env = await seedSnapshotEnvironment(prisma);
-      const runId = generateInternalId();
-      await seedBirth(decorated, redis, runId, env);
+  containerTest(
+    "appends for the standalone createExecutionSnapshot",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = harness(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        await seedBirth(decorated, redis, runId, env);
 
-      const created = await decorated.createExecutionSnapshot({
-        run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
-        snapshot: { executionStatus: "EXECUTING", description: "Run started" },
-        environmentId: env.id,
-        environmentType: env.type,
-        projectId: env.projectId,
-        organizationId: env.organizationId,
-      });
+        const created = await decorated.createExecutionSnapshot({
+          run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
+          snapshot: { executionStatus: "EXECUTING", description: "Run started" },
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+        });
 
-      const read = await redis.getById(runId, created.id);
-      expect(read).not.toBeNull();
-      expect(read!.entry.executionStatus).toBe("EXECUTING");
-      // The standalone path is the one whose delegate returns the row, so both stores agree exactly.
-      expect(read!.entry.createdAt).toBe(created.createdAt.toISOString());
-    } finally {
-      await redis.quit();
+        const read = await redis.getById(runId, created.id);
+        expect(read).not.toBeNull();
+        expect(read!.entry.executionStatus).toBe("EXECUTING");
+        // The standalone path is the one whose delegate returns the row, so both stores agree exactly.
+        expect(read!.entry.createdAt).toBe(created.createdAt.toISOString());
+      } finally {
+        await redis.quit();
+      }
     }
-  });
+  );
 
   containerTest("writes nothing to Redis at mode off", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = harness(prisma as never, redisOptions as never, { mode: "off" });

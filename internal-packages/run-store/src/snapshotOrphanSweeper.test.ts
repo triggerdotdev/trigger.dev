@@ -50,7 +50,11 @@ describe("SnapshotOrphanSweeper", () => {
         const env = await seedSnapshotEnvironment(prisma);
         const runId = generateInternalId();
         // Non-terminal append, so no expiry is ever set — the lost-TTL-set case.
-        await store.append({ entry: birthEntry(runId, env, new Date()), kind: "birth", isTerminal: false });
+        await store.append({
+          entry: birthEntry(runId, env, new Date()),
+          kind: "birth",
+          isTerminal: false,
+        });
         await prisma.taskRun.create({
           data: { ...buildCreateRunData(runId, env), status: "COMPLETED_SUCCESSFULLY" },
         });
@@ -130,7 +134,11 @@ describe("SnapshotOrphanSweeper", () => {
         const old = new Date(Date.now() - 2 * ORPHAN_AGE_MS);
 
         // The crashed birth: an entry, no Postgres run, non-terminal so no expiry.
-        await store.append({ entry: birthEntry(runId, env, old), kind: "birth", isTerminal: false });
+        await store.append({
+          entry: birthEntry(runId, env, old),
+          kind: "birth",
+          isTerminal: false,
+        });
         await store.append({
           entry: birthEntry(runId, env, old),
           kind: "transition",
@@ -169,7 +177,11 @@ describe("SnapshotOrphanSweeper", () => {
       const env = await seedSnapshotEnvironment(prisma);
       const runId = generateInternalId();
       // Written just now: the Postgres insert of a healthy birth may still be in flight.
-      await store.append({ entry: birthEntry(runId, env, new Date()), kind: "birth", isTerminal: false });
+      await store.append({
+        entry: birthEntry(runId, env, new Date()),
+        kind: "birth",
+        isTerminal: false,
+      });
 
       const result = await sweeper.sweep();
 
@@ -279,7 +291,11 @@ describe("SnapshotOrphanSweeper", () => {
         const env = await seedSnapshotEnvironment(prisma);
         const runId = generateInternalId();
         const old = new Date(Date.now() - 2 * ORPHAN_AGE_MS);
-        await store.append({ entry: birthEntry(runId, env, old), kind: "birth", isTerminal: false });
+        await store.append({
+          entry: birthEntry(runId, env, old),
+          kind: "birth",
+          isTerminal: false,
+        });
 
         // A failed lookup says nothing about whether the run exists, and rule 2 deletes a whole
         // keyspace. The sweep must resolve rather than throw, and must reap nothing.
@@ -309,7 +325,11 @@ describe("SnapshotOrphanSweeper", () => {
       const old = new Date(Date.now() - 2 * ORPHAN_AGE_MS);
       const orphans = Array.from({ length: 5 }, () => generateInternalId());
       for (const runId of orphans) {
-        await store.append({ entry: birthEntry(runId, env, old), kind: "birth", isTerminal: false });
+        await store.append({
+          entry: birthEntry(runId, env, old),
+          kind: "birth",
+          isTerminal: false,
+        });
       }
 
       const result = await sweeper.sweep({ batchSize: 2 });

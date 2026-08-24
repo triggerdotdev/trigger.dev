@@ -744,6 +744,8 @@ export class PostgresRunStore implements RunStore {
 
     const snapshotCreate = {
       id: params.snapshot.id,
+      createdAt: params.snapshot.createdAt,
+      updatedAt: params.snapshot.createdAt,
       engine: params.snapshot.engine,
       executionStatus: params.snapshot.executionStatus,
       description: params.snapshot.description,
@@ -831,6 +833,8 @@ export class PostgresRunStore implements RunStore {
 
     const snapshotCreate = {
       id: params.snapshot.id,
+      createdAt: params.snapshot.createdAt,
+      updatedAt: params.snapshot.createdAt,
       engine: params.snapshot.engine,
       executionStatus: params.snapshot.executionStatus,
       description: params.snapshot.description,
@@ -942,6 +946,8 @@ export class PostgresRunStore implements RunStore {
         costInCents: data.costInCents,
         ...this.#nestedSnapshot({
           id: data.snapshot.id,
+          createdAt: data.snapshot.createdAt,
+          updatedAt: data.snapshot.createdAt,
           executionStatus: data.snapshot.executionStatus,
           description: data.snapshot.description,
           runStatus: data.snapshot.runStatus,
@@ -1147,6 +1153,8 @@ export class PostgresRunStore implements RunStore {
         error: data.error as Prisma.InputJsonValue,
         ...this.#nestedSnapshot({
           id: data.snapshot.id,
+          createdAt: data.snapshot.createdAt,
+          updatedAt: data.snapshot.createdAt,
           engine: data.snapshot.engine,
           executionStatus: data.snapshot.executionStatus,
           description: data.snapshot.description,
@@ -1277,6 +1285,8 @@ export class PostgresRunStore implements RunStore {
         maxAttempts: data.maxAttempts ?? undefined,
         ...this.#nestedSnapshot({
           id: data.snapshot.id,
+          createdAt: data.snapshot.createdAt,
+          updatedAt: data.snapshot.createdAt,
           engine: "V2",
           executionStatus: "PENDING_EXECUTING",
           description: "Run was dequeued for execution",
@@ -1382,6 +1392,8 @@ export class PostgresRunStore implements RunStore {
           error: data.error as Prisma.InputJsonValue,
           ...this.#nestedSnapshot({
             id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
             engine: data.snapshot.engine,
             executionStatus: data.snapshot.executionStatus,
             description: data.snapshot.description,
@@ -1454,6 +1466,8 @@ export class PostgresRunStore implements RunStore {
         ...(data.snapshot &&
           this.#nestedSnapshot({
             id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
             engine: "V2",
             executionStatus: data.snapshot.executionStatus ?? "DELAYED",
             description:
@@ -1984,6 +1998,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
     const {
       id,
+      createdAt,
       run,
       snapshot,
       previousSnapshotId,
@@ -2014,7 +2029,7 @@ export class PostgresRunStore implements RunStore {
         );
       }
 
-      const now = new Date();
+      const now = createdAt ?? new Date();
       return {
         id,
         engine: "V2",
@@ -2049,6 +2064,8 @@ export class PostgresRunStore implements RunStore {
     const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
       data: {
         id,
+        createdAt,
+        updatedAt: createdAt,
         engine: "V2",
         executionStatus: snapshot.executionStatus,
         description: snapshot.description,

@@ -78,6 +78,4 @@ export const RUN_STORE_METHOD_NAMES = [
 ] as const;
 
 // Data properties the base exposes as getters over the delegate, not as forwarders.
-export const RUN_STORE_PROPERTY_NAMES = [
-  "primaryReadClient",
-] as const;
+export const RUN_STORE_PROPERTY_NAMES = ["primaryReadClient"] as const;

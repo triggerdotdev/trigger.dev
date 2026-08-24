@@ -14,7 +14,13 @@
 import { Logger } from "@trigger.dev/core/logger";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { DelegatingRunStore } from "./delegatingRunStore.js";
-import type { RedisSnapshotStore, SnapshotEntryInput, SnapshotRead } from "./redisSnapshotStore.js";
+import type {
+  CompletedWaitpointRef,
+  RedisSnapshotStore,
+  SnapshotEntryInput,
+  SnapshotRead,
+} from "./redisSnapshotStore.js";
+import { deriveOrder } from "./redisSnapshotStore.js";
 import {
   entryFromCompletion,
   entryFromCreateExecutionSnapshot,
@@ -37,14 +43,18 @@ import type {
   RunStore,
   TaskRunWithWaitpoint,
 } from "./types.js";
-import {
-  matchSinceCursorLookup,
-  matchSinceWindow,
-} from "./snapshotReadShapes.js";
+import { matchSinceCursorLookup, matchSinceWindow } from "./snapshotReadShapes.js";
+import { boundedIn } from "@trigger.dev/database";
 import type { Prisma, PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 
 /** One initial attempt plus three retries, per the write protocol. */
 const APPEND_ATTEMPTS = 4;
+
+/**
+ * Matches the engine's own chunked waitpoint fetch. A batch can complete a thousand waitpoints at
+ * once, and an unbounded `in:` makes each distinct list length its own prepared statement.
+ */
+const WAITPOINT_CHUNK_SIZE = 100;
 
 /**
  * The rollout dial. Postgres stays fully written and authoritative in every position before
@@ -88,7 +98,13 @@ export type TaskRunExecutionSnapshotStoreOptions = {
    * an intercepted write does its Postgres half and pushes its entry here instead of appending, and
    * the outer instance flushes the buffer after the transaction commits.
    */
-  staging?: SnapshotEntryInput[];
+  staging?: StagedAppend[];
+};
+
+/** One deferred append: the entry, plus the wait cycle it carries, if any. */
+export type StagedAppend = {
+  entry: SnapshotEntryInput;
+  completedWaitpoints?: CompletedWaitpointRef[];
 };
 
 export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
@@ -99,7 +115,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   protected readonly faults?: SnapshotFaultInjector;
   protected readonly metrics?: DecoratorMetrics;
   protected readonly logger: Logger;
-  protected readonly staging?: SnapshotEntryInput[];
+  protected readonly staging?: StagedAppend[];
 
   constructor(delegate: RunStore, options: TaskRunExecutionSnapshotStoreOptions) {
     super(delegate);
@@ -140,15 +156,20 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.runInTransaction(runId, fn);
     }
 
-    const staged: SnapshotEntryInput[] = [];
+    const staged: StagedAppend[] = [];
 
     const result = await this.delegate.runInTransaction(runId, (store, tx) =>
       fn(this.#wrap(store, staged), tx)
     );
 
     // The transaction committed. Only now can a snapshot claim its partner is durable.
-    for (const entry of staged) {
-      await this.#appendTransition("runInTransaction", entry);
+    for (const item of staged) {
+      await this.#appendTransition(
+        "runInTransaction",
+        item.entry,
+        undefined,
+        item.completedWaitpoints
+      );
     }
 
     return result;
@@ -177,7 +198,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * the write-ordering logic in exactly one place. Passing no buffer gives a plain decorator that
    * appends immediately; passing one makes it stage instead.
    */
-  #wrap(store: RunStore, staging?: SnapshotEntryInput[]): TaskRunExecutionSnapshotStore {
+  #wrap(store: RunStore, staging?: StagedAppend[]): TaskRunExecutionSnapshotStore {
     return new TaskRunExecutionSnapshotStore(store, {
       store: this.redis,
       mode: this.mode,
@@ -203,7 +224,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const ctx = this.#context(params.data.id, params.snapshot.id);
-    const snapshot = { ...params.snapshot, id: ctx.id };
+    const snapshot = { ...params.snapshot, id: ctx.id, createdAt: ctx.createdAt };
 
     await this.#appendBirth("createRun", entryFromCreateRun(ctx, snapshot));
 
@@ -219,7 +240,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const ctx = this.#context(params.data.id, params.snapshot.id);
-    const snapshot = { ...params.snapshot, id: ctx.id };
+    const snapshot = { ...params.snapshot, id: ctx.id, createdAt: ctx.createdAt };
 
     await this.#appendBirth("createCancelledRun", entryFromCreateRun(ctx, snapshot));
 
@@ -248,7 +269,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const ctx = this.#context(runId, data.snapshot.id);
-    const withId = { ...data, snapshot: { ...data.snapshot, id: ctx.id } };
+    const withId = {
+      ...data,
+      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+    };
 
     const result = await this.delegate.completeAttemptSuccess(runId, withId, args, tx);
 
@@ -270,7 +294,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const ctx = this.#context(runId, data.snapshot.id);
-    const withId = { ...data, snapshot: { ...data.snapshot, id: ctx.id } };
+    const withId = {
+      ...data,
+      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+    };
 
     const result = await this.delegate.expireRun(runId, withId as never, args, tx);
 
@@ -294,7 +321,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const ctx = this.#context(runId, data.snapshot.id);
-    const withId = { ...data, snapshot: { ...data.snapshot, id: ctx.id } };
+    const withId = {
+      ...data,
+      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+    };
 
     const result = await this.delegate.expireParkedRun(runId, withId as never, tx);
 
@@ -317,7 +347,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const ctx = this.#context(runId, data.snapshot.id);
-    const withId = { ...data, snapshot: { ...data.snapshot, id: ctx.id } };
+    const withId = {
+      ...data,
+      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+    };
 
     const result = await this.delegate.rescheduleRun(runId, withId, tx);
 
@@ -337,13 +370,17 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     // This is the one transition whose input already carries both an id and the previous snapshot
     // id, so it is also the one that can append under a compare-and-set on the current head.
     const ctx = { id: data.snapshot.id, runId, createdAt: new Date() };
+    const withStamp = { ...data, snapshot: { ...data.snapshot, createdAt: ctx.createdAt } };
 
-    const result = await this.delegate.lockRunToWorker(runId, data, tx);
+    const result = await this.delegate.lockRunToWorker(runId, withStamp, tx);
 
     await this.#appendTransition(
       "lockRunToWorker",
-      entryFromLock(ctx, data.snapshot),
-      data.snapshot.previousSnapshotId
+      entryFromLock(ctx, withStamp.snapshot),
+      withStamp.snapshot.previousSnapshotId,
+      // The lock site already carries the resolved order, so the refs are rebuilt from it rather
+      // than re-derived: its index IS the position in that list.
+      withStamp.snapshot.completedWaitpointOrder.map((id, index) => ({ id, index }))
     );
     return result;
   }
@@ -357,14 +394,18 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const ctx = this.#context(input.run.id, input.id);
-    const created = await this.delegate.createExecutionSnapshot({ ...input, id: ctx.id }, tx);
+    const created = await this.delegate.createExecutionSnapshot(
+      { ...input, id: ctx.id, createdAt: ctx.createdAt },
+      tx
+    );
 
     // The standalone path is the only one whose delegate returns the row, so its entry can take the
     // exact createdAt Postgres recorded rather than the decorator's own clock.
     await this.#appendTransition(
       "createExecutionSnapshot",
-      entryFromCreateExecutionSnapshot({ ...ctx, createdAt: created.createdAt }, input),
-      input.previousSnapshotId
+      entryFromCreateExecutionSnapshot(ctx, input),
+      input.previousSnapshotId,
+      input.completedWaitpoints
     );
     return created;
   }
@@ -446,12 +487,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   async #appendTransition(
     site: string,
     entry: SnapshotEntryInput,
-    expectedCur?: string
+    expectedCur?: string,
+    completedWaitpoints?: CompletedWaitpointRef[]
   ): Promise<void> {
     if (this.staging) {
       // Inside a transaction the append cannot run until the Postgres side commits, or a rollback
       // leaves Redis holding a transition that never happened.
-      this.staging.push(entry);
+      this.staging.push({ entry, ...(completedWaitpoints && { completedWaitpoints }) });
       return;
     }
 
@@ -462,11 +504,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
           snapshotId: entry.id,
         });
 
+        const cycle = await this.#resolveCycle(entry.runId, completedWaitpoints);
+
         const result = await this.redis.append({
           entry,
           kind: "transition",
           isTerminal: isTerminalEntry(entry),
           ...(expectedCur !== undefined && { expectedCur }),
+          ...(cycle && { cycle }),
         });
 
         this.#recordOutcome(site, entry, result);
@@ -494,6 +539,52 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt));
       }
     }
+  }
+
+  /**
+   * Decides whether this append mints a new wait cycle or points at the one already there.
+   *
+   * A resume append carries a newly-differing id set, so it mints a cycle and the record set is
+   * written once. Every copy-forward append that follows re-passes the SAME list, and re-minting on
+   * each would rewrite the record set once per entry in the resume chain — the write amplification
+   * the pointer model exists to remove. So an unchanged id set carries the previous cycleSeq
+   * forward and writes no key.
+   *
+   * The extra read only happens for an append that actually carries waitpoints, which is the resume
+   * path rather than the hot path.
+   *
+   * `records` is deliberately left unset. The record envelope belongs to the waitpoint lane and
+   * ships empty in this build, so dual-write never re-versions the entry when it arrives.
+   */
+  async #resolveCycle(
+    runId: string,
+    completedWaitpoints?: CompletedWaitpointRef[]
+  ): Promise<
+    | { kind: "new"; completedWaitpoints: CompletedWaitpointRef[] }
+    | { kind: "carryForward"; cycleSeq: number }
+    | undefined
+  > {
+    if (!completedWaitpoints || completedWaitpoints.length === 0) {
+      return undefined;
+    }
+
+    const order = deriveOrder(completedWaitpoints);
+
+    try {
+      const head = await this.redis.getLatest(runId);
+      const previous = head?.completedWaitpointIds?.order;
+
+      if (head?.cycle && previous && sameOrder(previous, order)) {
+        return { kind: "carryForward", cycleSeq: head.cycle.cycleSeq };
+      }
+    } catch (error) {
+      // A failed probe must not lose the waitpoints. Minting a fresh cycle is the safe direction:
+      // it costs one duplicated record set, where a wrong carryForward would point at another
+      // cycle's ids.
+      this.logger.warn("snapshot cycle probe failed, minting a new cycle", { runId, error });
+    }
+
+    return { kind: "new", completedWaitpoints };
   }
 
   /**
@@ -564,7 +655,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
-    return this.#hydrate(read, runId, client);
+    return this.#hydrate(read, runId, client, { hydrateWaitpointRows: true });
   }
 
   override async findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
@@ -592,9 +683,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     } as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>;
   }
 
-  override async findManyExecutionSnapshots<
-    T extends Prisma.TaskRunExecutionSnapshotFindManyArgs,
-  >(
+  override async findManyExecutionSnapshots<T extends Prisma.TaskRunExecutionSnapshotFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
     client?: ReadClient
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
@@ -617,8 +706,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
 
     // The engine asks for createdAt DESC and reverses app-side; the store returns ascending.
     const descending = [...result.entries].reverse();
+    // Rows are hydrated for no entry here: the engine fetches the head's waitpoints itself, from
+    // the ids this call's head row reports. Each row still carries its own order.
     const hydrated = await Promise.all(
-      descending.map((entry) => this.#hydrate(entry, shape.runId, client, { waitpoints: false }))
+      descending.map((entry) => this.#hydrate(entry, shape.runId, client))
     );
     return hydrated as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
   }
@@ -675,7 +766,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     read: SnapshotRead,
     runId: string,
     client?: ReadClient,
-    opts?: { waitpoints?: boolean }
+    opts?: { hydrateWaitpointRows?: boolean }
   ): Promise<
     Prisma.TaskRunExecutionSnapshotGetPayload<{
       include: { completedWaitpoints: true; checkpoint: true };
@@ -687,22 +778,18 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       ? await this.#hydrateCheckpoint(runId, read.id, client)
       : null;
 
-    let completedWaitpoints: unknown[] = [];
-    let completedWaitpointOrder: string[] = [];
+    // `completedWaitpointOrder` is a scalar column, NOT the join. The engine reads it off the head
+    // row as the index oracle that gives each completed waitpoint its position in a batch, so it
+    // must be populated even when the waitpoint ROWS are not fetched. Returning an empty order here
+    // resumes every batched triggerAndWait with `index: undefined`.
+    const ids =
+      read.completedWaitpointIds ?? (await this.redis.getSnapshotWaitpointIds(runId, read.id));
+    const completedWaitpointOrder = ids.order;
 
-    if (opts?.waitpoints !== false) {
-      const ids =
-        read.completedWaitpointIds ?? (await this.redis.getSnapshotWaitpointIds(runId, read.id));
-      completedWaitpointOrder = ids.order;
-
-      if (ids.distinctIds.length > 0) {
-        completedWaitpoints = await this.delegate.findManyWaitpoints(
-          { where: { id: { in: ids.distinctIds } } },
-          client,
-          runId
-        );
-      }
-    }
+    // The rows themselves are head-only, mirroring the engine's own N x M avoidance.
+    const completedWaitpoints = opts?.hydrateWaitpointRows
+      ? await this.#fetchWaitpointsInChunks(ids.distinctIds, runId, client)
+      : [];
 
     return {
       id: read.id,
@@ -726,12 +813,37 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       isValid: read.isValid,
       error: entry.error ?? null,
       createdAt: new Date(entry.createdAt as string),
+      // A snapshot row is write-once, so both columns hold the one instant the decorator minted.
       updatedAt: new Date(entry.createdAt as string),
       checkpoint,
       completedWaitpoints,
     } as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<{
       include: { completedWaitpoints: true; checkpoint: true };
     }>;
+  }
+
+  /**
+   * Chunked, and bounded within each chunk, mirroring the engine's own waitpoint fetch. The run id
+   * routes each chunk to the owning store rather than fanning every one across both databases.
+   */
+  async #fetchWaitpointsInChunks(
+    waitpointIds: string[],
+    runId: string,
+    client?: ReadClient
+  ): Promise<unknown[]> {
+    if (waitpointIds.length === 0) return [];
+
+    const all: unknown[] = [];
+    for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
+      const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
+      const rows = await this.delegate.findManyWaitpoints(
+        { where: { id: { in: boundedIn(chunk) } } },
+        client,
+        runId
+      );
+      all.push(...rows);
+    }
+    return all;
   }
 
   /**
@@ -771,4 +883,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.logger.error("snapshot repair enqueue failed", { runId: entry.runId, error });
     }
   }
+}
+
+/** Position-sensitive: the same ids in a different order are a different wait cycle. */
+function sameOrder(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
 }

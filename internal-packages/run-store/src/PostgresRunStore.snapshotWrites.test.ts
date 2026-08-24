@@ -150,7 +150,9 @@ describe("PostgresRunStore snapshotWrites flag", () => {
       { select: { id: true } }
     );
 
-    expect((await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).status).toBe("EXPIRED");
+    expect((await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).status).toBe(
+      "EXPIRED"
+    );
     expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
   });
 
@@ -226,7 +228,9 @@ describe("PostgresRunStore snapshotWrites flag", () => {
       },
     });
 
-    expect((await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).status).toBe("DEQUEUED");
+    expect((await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).status).toBe(
+      "DEQUEUED"
+    );
     expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
   });
 

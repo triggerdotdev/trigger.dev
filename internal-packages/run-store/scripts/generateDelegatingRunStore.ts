@@ -176,10 +176,14 @@ export class DelegatingRunStore implements RunStore {
 ${readonlyProperties
   // Indexed access rather than the written type, so the getter needs no import of its own and
   // follows the interface if that type is ever changed.
-  .map((p) => `  get ${p.name}(): RunStore["${p.name}"] {\n    return this.delegate.${p.name};\n  }`)
+  .map(
+    (p) => `  get ${p.name}(): RunStore["${p.name}"] {\n    return this.delegate.${p.name};\n  }`
+  )
   .join("\n\n")}${readonlyProperties.length > 0 ? "\n\n" : ""}${unique
-  .map((n) => `  ${n}(...args: any[]): any {\n    return (this.delegate as any).${n}(...args);\n  }`)
-  .join("\n\n")}
+    .map(
+      (n) => `  ${n}(...args: any[]): any {\n    return (this.delegate as any).${n}(...args);\n  }`
+    )
+    .join("\n\n")}
 }
 `
 );

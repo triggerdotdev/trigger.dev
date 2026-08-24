@@ -23,6 +23,13 @@ import {
 } from "./testFixtures/snapshotIdFixture.js";
 
 /**
+ * NOTE ON createdAt. An earlier version of this suite built the expected entry with
+ * `createdAt: row.createdAt` and then asserted the two matched, which is tautological and hid a
+ * real divergence: seven of the eight write sites stamped the entry from the app clock while
+ * Postgres stamped its own column default, so the stores held different instants. The builders are
+ * now given an INDEPENDENT instant, and the row must carry that same value because the decorator
+ * passes it through to Postgres.
+ *
  * Compares only what the entry claims. The Redis model carries no `updatedAt` and no join rows, and
  * it holds `createdAt` as an ISO string, so those are checked separately or not at all.
  */
@@ -45,6 +52,8 @@ function assertParity(entry: SnapshotEntryInput, row: Record<string, unknown>) {
   expect(row.runnerId ?? undefined).toBe(entry.runnerId ?? undefined);
   expect(row.isValid).toBe(entry.error === undefined);
   expect((row.createdAt as Date).toISOString()).toBe(entry.createdAt);
+  // Write-once rows: both columns hold the one instant, so a Prisma-stamped updatedAt would drift.
+  expect((row.updatedAt as Date).toISOString()).toBe(entry.createdAt);
 }
 
 function birthSnapshot(id: string, env: SnapshotFixtureEnv) {
@@ -172,7 +181,10 @@ describe("entry to Postgres row parity", () => {
     );
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromCompletion({ id, runId: run.id, createdAt: row.createdAt }, snapshot), row);
+    assertParity(
+      entryFromCompletion({ id, runId: run.id, createdAt: row.createdAt }, snapshot),
+      row
+    );
   });
 
   postgresTest("expireRun", async ({ prisma }) => {
@@ -253,7 +265,10 @@ describe("entry to Postgres row parity", () => {
     });
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromReschedule({ id, runId: run.id, createdAt: row.createdAt }, snapshot), row);
+    assertParity(
+      entryFromReschedule({ id, runId: run.id, createdAt: row.createdAt }, snapshot),
+      row
+    );
   });
 
   postgresTest("rescheduleRun with every value supplied", async ({ prisma }) => {
@@ -277,7 +292,10 @@ describe("entry to Postgres row parity", () => {
     });
 
     const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
-    assertParity(entryFromReschedule({ id, runId: run.id, createdAt: row.createdAt }, snapshot), row);
+    assertParity(
+      entryFromReschedule({ id, runId: run.id, createdAt: row.createdAt }, snapshot),
+      row
+    );
   });
 
   postgresTest("lockRunToWorker", async ({ prisma }) => {
@@ -393,5 +411,90 @@ describe("entry to Postgres row parity", () => {
       entryFromCreateExecutionSnapshot({ id, runId: run.id, createdAt: row.createdAt }, input),
       row
     );
+  });
+});
+
+// The clock-provenance guard. Independent of the builders above: it asserts that what Postgres
+// stores is the instant the CALLER supplied, not one the database chose. Without this, a snapshot
+// has two different creation times depending on which store answers, the compared field can never
+// reach zero divergence, and the since-window cursor resolved from one store misfilters the window
+// walked in the other.
+describe("createdAt provenance", () => {
+  postgresTest("Postgres stores the caller's instant, not its own", async ({ prisma }) => {
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const { run, env } = await setupSnapshotIdFixture(prisma);
+    const id = generateInternalId();
+    // Far enough from now that a database default could never coincide with it.
+    const stamp = new Date(Date.now() - 5 * 60 * 1000);
+
+    await store.createExecutionSnapshot({
+      id,
+      createdAt: stamp,
+      run: { id: run.id, status: "EXECUTING", attemptNumber: 1 },
+      snapshot: { executionStatus: "EXECUTING", description: "Run started" },
+      environmentId: env.id,
+      environmentType: env.type,
+      projectId: env.projectId,
+      organizationId: env.organizationId,
+    });
+
+    const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
+    expect(row.createdAt.toISOString()).toBe(stamp.toISOString());
+    expect(row.updatedAt.toISOString()).toBe(stamp.toISOString());
+  });
+
+  postgresTest("an absent instant still takes the database default", async ({ prisma }) => {
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const { run, env } = await setupSnapshotIdFixture(prisma);
+    const id = generateInternalId();
+    const before = new Date(Date.now() - 1000);
+
+    // Mode off supplies nothing, so Postgres must behave exactly as it always has. This is what
+    // keeps the merge test true.
+    await store.createExecutionSnapshot({
+      id,
+      run: { id: run.id, status: "EXECUTING", attemptNumber: 1 },
+      snapshot: { executionStatus: "EXECUTING", description: "Run started" },
+      environmentId: env.id,
+      environmentType: env.type,
+      projectId: env.projectId,
+      organizationId: env.organizationId,
+    });
+
+    const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
+    expect(row.createdAt.getTime()).toBeGreaterThan(before.getTime());
+  });
+
+  postgresTest("a nested write site stores the caller's instant too", async ({ prisma }) => {
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const { run, env } = await setupSnapshotIdFixture(prisma);
+    const id = generateInternalId();
+    const stamp = new Date(Date.now() - 5 * 60 * 1000);
+
+    await store.expireRun(
+      run.id,
+      {
+        error: { type: "STRING_ERROR", raw: "expired" },
+        completedAt: new Date(),
+        expiredAt: new Date(),
+        snapshot: {
+          id,
+          createdAt: stamp,
+          engine: "V2",
+          executionStatus: "FINISHED",
+          description: "Run expired",
+          runStatus: "EXPIRED",
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+        },
+      },
+      { select: { id: true } }
+    );
+
+    const row = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({ where: { id } });
+    expect(row.createdAt.toISOString()).toBe(stamp.toISOString());
+    expect(row.updatedAt.toISOString()).toBe(stamp.toISOString());
   });
 });

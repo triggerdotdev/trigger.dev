@@ -101,32 +101,29 @@ describe("snapshot reads", () => {
     }
   });
 
-  containerTest(
-    "returns the same payload Postgres would",
-    async ({ prisma, redisOptions }) => {
-      const { decorated, redis } = build(prisma as never, redisOptions as never);
-      const postgresOnly = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const runId = await seedRun(decorated, env);
-        await decorated.createExecutionSnapshot(snapshotInput(runId, env, "Run started"));
+  containerTest("returns the same payload Postgres would", async ({ prisma, redisOptions }) => {
+    const { decorated, redis } = build(prisma as never, redisOptions as never);
+    const postgresOnly = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = await seedRun(decorated, env);
+      await decorated.createExecutionSnapshot(snapshotInput(runId, env, "Run started"));
 
-        const fromRedis = await decorated.findLatestExecutionSnapshot(runId);
-        const fromPostgres = await postgresOnly.findLatestExecutionSnapshot(runId);
+      const fromRedis = await decorated.findLatestExecutionSnapshot(runId);
+      const fromPostgres = await postgresOnly.findLatestExecutionSnapshot(runId);
 
-        expect(fromRedis!.id).toBe(fromPostgres!.id);
-        expect(fromRedis!.executionStatus).toBe(fromPostgres!.executionStatus);
-        expect(fromRedis!.description).toBe(fromPostgres!.description);
-        expect(fromRedis!.runStatus).toBe(fromPostgres!.runStatus);
-        expect(fromRedis!.attemptNumber).toBe(fromPostgres!.attemptNumber);
-        expect(fromRedis!.isValid).toBe(fromPostgres!.isValid);
-        expect(fromRedis!.environmentId).toBe(fromPostgres!.environmentId);
-        expect(fromRedis!.createdAt.toISOString()).toBe(fromPostgres!.createdAt.toISOString());
-      } finally {
-        await redis.quit();
-      }
+      expect(fromRedis!.id).toBe(fromPostgres!.id);
+      expect(fromRedis!.executionStatus).toBe(fromPostgres!.executionStatus);
+      expect(fromRedis!.description).toBe(fromPostgres!.description);
+      expect(fromRedis!.runStatus).toBe(fromPostgres!.runStatus);
+      expect(fromRedis!.attemptNumber).toBe(fromPostgres!.attemptNumber);
+      expect(fromRedis!.isValid).toBe(fromPostgres!.isValid);
+      expect(fromRedis!.environmentId).toBe(fromPostgres!.environmentId);
+      expect(fromRedis!.createdAt.toISOString()).toBe(fromPostgres!.createdAt.toISOString());
+    } finally {
+      await redis.quit();
     }
-  );
+  });
 
   containerTest(
     "reads a foreign environment as not found, so the caller's 404 still fires",

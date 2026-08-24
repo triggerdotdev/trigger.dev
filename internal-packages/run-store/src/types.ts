@@ -29,6 +29,11 @@ export type IdempotencyKeyRunMatch = {
 };
 
 export type CreateRunSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   id?: string;
   engine: "V2";
   executionStatus: TaskRunExecutionStatus;
@@ -43,6 +48,11 @@ export type CreateRunSnapshotInput = {
 };
 
 export type CompletionSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
    *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
   id?: string;
@@ -67,6 +77,11 @@ export type PromotePendingVersionArgs = {
 };
 
 export type ExpireSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
    *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
   id?: string;
@@ -81,6 +96,11 @@ export type ExpireSnapshotInput = {
 };
 
 export type RescheduleSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
    *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
   id?: string;
@@ -94,6 +114,11 @@ export type RescheduleSnapshotInput = {
 };
 
 export type LockSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   id: string;
   previousSnapshotId: string;
   attemptNumber?: number;
@@ -301,6 +326,11 @@ export type TaskRunWithWaitpoint = TaskRun & { associatedWaitpoint: Waitpoint | 
  * input — callers pass the high-level shape, not a raw Prisma `data`/`include`.
  */
 export type CreateExecutionSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
    *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
   id?: string;

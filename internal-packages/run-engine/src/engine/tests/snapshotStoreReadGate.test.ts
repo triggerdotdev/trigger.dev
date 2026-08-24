@@ -87,7 +87,12 @@ describe("snapshot store read gate", () => {
         await engine.completeRunAttempt({
           runId: run.id,
           snapshotId: attempt.snapshot.id,
-          completion: { ok: true, id: run.id, output: `{"done":true}`, outputType: "application/json" },
+          completion: {
+            ok: true,
+            id: run.id,
+            output: `{"done":true}`,
+            outputType: "application/json",
+          },
         });
 
         const finished = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
@@ -186,9 +191,7 @@ describe("snapshot store read gate", () => {
           .catch((error: unknown) => ({ threw: (error as Error).constructor.name }));
 
         const postgresOnly = buildDecoratedStore({ prisma, redisOptions, mode: "off" });
-        const engineOff = new RunEngine(
-          engineOptions(prisma, redisOptions, postgresOnly) as never
-        );
+        const engineOff = new RunEngine(engineOptions(prisma, redisOptions, postgresOnly) as never);
         let viaPostgres: unknown;
         try {
           viaPostgres = await engineOff
@@ -260,39 +263,42 @@ describe("snapshot store read gate", () => {
     }
   );
 
-  containerTest("falls back to Postgres for a pre-cutover run", async ({ prisma, redisOptions }) => {
-    // A run created while the dial was off has no keyspace. Turning reads on must not lose it.
-    const off = buildDecoratedStore({ prisma, redisOptions, mode: "off" });
-    const engineOff = new RunEngine(engineOptions(prisma, redisOptions, off) as never);
+  containerTest(
+    "falls back to Postgres for a pre-cutover run",
+    async ({ prisma, redisOptions }) => {
+      // A run created while the dial was off has no keyspace. Turning reads on must not lose it.
+      const off = buildDecoratedStore({ prisma, redisOptions, mode: "off" });
+      const engineOff = new RunEngine(engineOptions(prisma, redisOptions, off) as never);
 
-    let runId: string;
-    let environment: any;
-    try {
-      environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      await setupBackgroundWorker(engineOff, environment, "gate-task");
-      const run = await engineOff.trigger(triggerArgs("gate-task", environment, 5), prisma);
-      runId = run.id;
-      await setTimeout(500);
-    } finally {
-      await engineOff.quit();
-      await off.quit();
-    }
+      let runId: string;
+      let environment: any;
+      try {
+        environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        await setupBackgroundWorker(engineOff, environment, "gate-task");
+        const run = await engineOff.trigger(triggerArgs("gate-task", environment, 5), prisma);
+        runId = run.id;
+        await setTimeout(500);
+      } finally {
+        await engineOff.quit();
+        await off.quit();
+      }
 
-    const on = buildDecoratedStore({
-      prisma,
-      redisOptions,
-      mode: "redis-read",
-      readPercent: 100,
-    });
-    const engineOn = new RunEngine(engineOptions(prisma, redisOptions, on) as never);
-    try {
-      const data = await engineOn.getRunExecutionData({ runId });
-      assertNonNullable(data);
-      expect(data.snapshot.executionStatus).toBe("QUEUED");
-      expect(on.reads.some((r) => r.source === "postgres")).toBe(true);
-    } finally {
-      await engineOn.quit();
-      await on.quit();
+      const on = buildDecoratedStore({
+        prisma,
+        redisOptions,
+        mode: "redis-read",
+        readPercent: 100,
+      });
+      const engineOn = new RunEngine(engineOptions(prisma, redisOptions, on) as never);
+      try {
+        const data = await engineOn.getRunExecutionData({ runId });
+        assertNonNullable(data);
+        expect(data.snapshot.executionStatus).toBe("QUEUED");
+        expect(on.reads.some((r) => r.source === "postgres")).toBe(true);
+      } finally {
+        await engineOn.quit();
+        await on.quit();
+      }
     }
-  });
+  );
 });

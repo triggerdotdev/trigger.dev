@@ -117,6 +117,38 @@ export async function seedSnapshotWorker(
 }
 
 /**
+ * Seeds real Waitpoint rows and returns their ids. The legacy completed-waitpoint join carries a
+ * real foreign key, so an invented id fails the constraint rather than the assertion — the test
+ * then reports a fixture fault as if it were a defect in the code under test.
+ */
+export async function seedSnapshotWaitpoints(
+  prisma: PrismaClient,
+  env: SnapshotFixtureEnv,
+  count: number
+): Promise<string[]> {
+  const ids: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const suffix = generateInternalId().slice(-12);
+    const waitpoint = await prisma.waitpoint.create({
+      data: {
+        friendlyId: `waitpoint_${suffix}`,
+        type: "MANUAL",
+        status: "COMPLETED",
+        completedAt: new Date(),
+        idempotencyKey: `idem_${suffix}`,
+        userProvidedIdempotencyKey: false,
+        projectId: env.projectId,
+        environmentId: env.id,
+      },
+    });
+    ids.push(waitpoint.id);
+  }
+
+  return ids;
+}
+
+/**
  * Seeds an environment plus one run in `status`, with no execution snapshot. The suites that use it
  * assert on the snapshot rows a store method writes, so the run must start with none.
  */

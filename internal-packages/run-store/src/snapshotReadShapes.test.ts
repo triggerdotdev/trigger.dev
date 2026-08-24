@@ -67,7 +67,9 @@ describe("matchSinceCursorLookup", () => {
   });
 
   it("refuses an unknown top-level key", () => {
-    expect(matchSinceCursorLookup({ ...cursorArgs, orderBy: { createdAt: "desc" } })).toBeUndefined();
+    expect(
+      matchSinceCursorLookup({ ...cursorArgs, orderBy: { createdAt: "desc" } })
+    ).toBeUndefined();
   });
 
   it("refuses anything that is not an argument object", () => {
@@ -108,9 +110,7 @@ describe("matchSinceWindow", () => {
   });
 
   it("refuses ascending order", () => {
-    expect(
-      matchSinceWindow({ ...windowArgs, orderBy: { createdAt: "asc" } })
-    ).toBeUndefined();
+    expect(matchSinceWindow({ ...windowArgs, orderBy: { createdAt: "asc" } })).toBeUndefined();
   });
 
   it("refuses a window that does not filter to valid entries", () => {
