@@ -7,7 +7,9 @@ import {
   type FeatureFlagKey,
   FeatureFlagCatalog,
   GLOBAL_LOCKED_FLAGS,
+  validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
+import { env } from "~/env.server";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 
 export type FlagsOptions<T extends FeatureFlagKey> = {
@@ -272,4 +274,35 @@ export async function replaceGlobalFeatureFlags(
   if (!applied) {
     throw new Error("replaceGlobalFeatureFlags: transaction did not complete");
   }
+}
+
+/** The global flag set, with the env-var defaults this app applies. */
+export async function globalFeatureFlags() {
+  return flags({
+    defaultValues: {
+      hasAiAccess: env.AI_FEATURES_ENABLED === "1",
+      hasDashboardAgentAccess: env.DASHBOARD_AGENT_ENABLED === "1",
+      hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+    },
+  });
+}
+
+/** The global set with one org's overrides on top. */
+export function mergeOrgFeatureFlags(
+  globalFlags: Partial<FeatureFlagCatalog>,
+  orgFeatureFlags: unknown
+) {
+  const parsed = orgFeatureFlags
+    ? validatePartialFeatureFlags(orgFeatureFlags as Record<string, unknown>)
+    : ({ success: false } as const);
+  return { ...globalFlags, ...(parsed.success ? parsed.data : {}) };
+}
+
+/**
+ * The flags that apply to one organization. Server-side callers that need the
+ * same set the side menu sees should use this rather than assembling their own,
+ * so a partial set can't silently disagree with it.
+ */
+export async function resolveOrganizationFeatureFlags(orgFeatureFlags: unknown) {
+  return mergeOrgFeatureFlags(await globalFeatureFlags(), orgFeatureFlags);
 }

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { type ComponentType, type ReactNode } from "react";
 import { AbacusIcon } from "~/assets/icons/AbacusIcon";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
@@ -39,6 +40,7 @@ import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import { AWS, DigitalOcean } from "~/assets/icons/CloudProviderIcon";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
+import { ColumnsIcon } from "~/assets/icons/ColumnsIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import {
   CheckingConnectionIcon,
@@ -104,6 +106,7 @@ import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { FlagEurope, FlagUSA } from "~/assets/icons/RegionIcons";
+import { ResetIcon } from "~/assets/icons/ResetIcon";
 import { RightSideMenuIcon } from "~/assets/icons/RightSideMenuIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
@@ -117,6 +120,7 @@ import { SideMenuRightClosedIcon } from "~/assets/icons/SideMenuRightClosed";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { SlackMonoIcon } from "~/assets/icons/SlackMonoIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
+import { SmartColumnIcon } from "~/assets/icons/SmartColumnIcon";
 import { SnakedArrowIcon } from "~/assets/icons/SnakedArrowIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
@@ -181,6 +185,7 @@ const icons: IconEntry[] = [
   { name: "ClockIcon", render: simple(ClockIcon) },
   { name: "ClockRotateLeftIcon", render: simple(ClockRotateLeftIcon) },
   { name: "CodeSquareIcon", render: simple(CodeSquareIcon) },
+  { name: "ColumnsIcon", render: simple(ColumnsIcon) },
   { name: "ConcurrencyIcon", render: simple(ConcurrencyIcon) },
   { name: "ConnectedIcon", render: simple(ConnectedIcon) },
   { name: "CubeSparkleIcon", render: simple(CubeSparkleIcon) },
@@ -248,6 +253,7 @@ const icons: IconEntry[] = [
   { name: "QuestionMarkIcon", render: simple(QuestionMarkIcon) },
   { name: "QueuesIcon", render: simple(QueuesIcon) },
   { name: "RadarPulseIcon", render: simple(RadarPulseIcon) },
+  { name: "ResetIcon", render: simple(ResetIcon) },
   { name: "RightSideMenuIcon", render: simple(RightSideMenuIcon) },
   { name: "RolesIcon", render: simple(RolesIcon) },
   { name: "RunFunctionIcon", render: simple(RunFunctionIcon) },
@@ -264,6 +270,7 @@ const icons: IconEntry[] = [
   { name: "SlackIcon", render: simple(SlackIcon) },
   { name: "SlackMonoIcon", render: simple(SlackMonoIcon) },
   { name: "SlidersIcon", render: simple(SlidersIcon) },
+  { name: "SmartColumnIcon", render: simple(SmartColumnIcon) },
   { name: "SnakedArrowIcon", render: simple(SnakedArrowIcon) },
   { name: "SparkleListIcon", render: simple(SparkleListIcon) },
   { name: "StarIcon", render: simple(StarIcon) },
@@ -298,6 +305,9 @@ const sortedIcons = [...icons].sort((a, b) => a.name.localeCompare(b.name));
 export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Icon.tsx"]} />
+      </div>
       <div className="text-sm text-text-dimmed">
         {sortedIcons.length} custom icons, rendered at 24px.
       </div>

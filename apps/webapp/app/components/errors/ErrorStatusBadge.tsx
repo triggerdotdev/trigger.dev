@@ -34,7 +34,9 @@ export function ErrorStatusBadge({
   return (
     <span
       className={cn(
-        "contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
+        // The contrast ring is for tints; `bright` fills solid.
+        prominence !== "bright" && "contrast-chip",
         (prominence === "bright" ? brightStyles : subtleStyles)[status],
         className
       )}

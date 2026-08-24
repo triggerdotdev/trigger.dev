@@ -12,6 +12,12 @@ import {
   type NextRunList,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { sortVersionsDescending } from "~/utils/semver";
+import type { RunColumnId, SmartColumnSource } from "~/components/runs/v3/runColumns";
+
+type RunColumnsSelect = {
+  visibleStandardIds: RunColumnId[];
+  smartSources: SmartColumnSource[];
+};
 
 const errorGroupGranularity = new TimeGranularity([
   { max: "1h", granularity: "1m" },
@@ -33,6 +39,7 @@ export type ErrorGroupOptions = {
   to?: number;
   cursor?: string;
   direction?: Direction;
+  columns?: RunColumnsSelect;
 };
 
 const DEFAULT_RUNS_PAGE_SIZE = 25;
@@ -99,6 +106,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       to,
       cursor,
       direction,
+      columns,
     }: ErrorGroupOptions
   ) {
     const displayableEnvironment = await findDisplayableEnvironment(environmentId, userId);
@@ -128,6 +136,7 @@ export class ErrorGroupPresenter extends BasePresenter {
         to: time.to.getTime(),
         cursor,
         direction,
+        columns,
       }),
       this.getState(environmentId, summary?.taskIdentifier, fingerprint),
     ]);
@@ -397,6 +406,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       to?: number;
       cursor?: string;
       direction?: Direction;
+      columns?: RunColumnsSelect;
     }
   ): Promise<NextRunList | undefined> {
     const runListPresenter = new NextRunListPresenter(this.replica, this.clickhouse);
@@ -412,6 +422,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       to: options.to,
       cursor: options.cursor,
       direction: options.direction,
+      columns: options.columns,
     });
 
     if (result.runs.length === 0) {

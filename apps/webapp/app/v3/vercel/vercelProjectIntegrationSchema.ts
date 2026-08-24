@@ -6,6 +6,8 @@ export type EnvSlug = z.infer<typeof EnvSlugSchema>;
 
 export const ALL_ENV_SLUGS: EnvSlug[] = ["dev", "stg", "prod", "preview"];
 
+export const SKEW_PROTECTION_ENV_VAR_KEY = "TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION";
+
 const safeJsonParse = Result.fromThrowable(
   (val: string) => JSON.parse(val) as unknown,
   () => null
@@ -87,7 +89,7 @@ export function createDefaultVercelIntegrationData(
 ): VercelProjectIntegrationData {
   return {
     config: {
-      atomicBuilds: ["prod"],
+      atomicBuilds: [],
       pullEnvVarsBeforeBuild: ["prod", "preview"],
       discoverEnvVars: ["prod", "preview"],
       vercelStagingEnvironment: null,
@@ -99,6 +101,14 @@ export function createDefaultVercelIntegrationData(
     vercelTeamId,
     vercelTeamSlug,
   };
+}
+
+const VERCEL_STANDARD_TARGETS = ["production", "preview", "development"] as const;
+
+export type VercelStandardTarget = (typeof VERCEL_STANDARD_TARGETS)[number];
+
+export function isVercelStandardTarget(target: string): target is VercelStandardTarget {
+  return (VERCEL_STANDARD_TARGETS as readonly string[]).includes(target);
 }
 
 /**

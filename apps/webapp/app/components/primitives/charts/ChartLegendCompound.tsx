@@ -312,7 +312,10 @@ function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
           <div className="w-1 shrink-0 self-stretch rounded-[2px] border border-border-bright" />
           <span className="text-text-dimmed tabular-nums">{remainingCount} more…</span>
         </div>
-        <span className="self-start text-indigo-500">View all</span>
+        {/* The row is the button, so this only takes the link color - it gets its
+            hover from the parent, and it isn't body text the underline
+            preference should reach. */}
+        <span className="self-start text-text-link">View all</span>
       </div>
     </button>
   );

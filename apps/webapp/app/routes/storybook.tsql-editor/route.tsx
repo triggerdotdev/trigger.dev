@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { column, type TableSchema } from "@internal/tsql";
@@ -150,6 +151,9 @@ export default function Story() {
 
   return (
     <div className="flex flex-col gap-y-8 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["TSQLEditor.tsx"]} />
+      </div>
       <div>
         <h1 className="mb-2 text-2xl font-bold text-text-bright">TSQL Editor</h1>
         <p className="text-text-dimmed">

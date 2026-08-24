@@ -19,6 +19,7 @@ export default defineConfig({
       "app/runEngine/services/**/*.test.ts",
       "app/utils/**/*.test.ts",
       "app/components/code/**/*.test.ts",
+      "app/components/runs/**/*.test.ts",
       "app/components/dashboard-agent/**/*.test.ts",
       "app/components/queues/**/*.test.ts",
       "app/routes/storybook.agent-ui/*.test.ts",

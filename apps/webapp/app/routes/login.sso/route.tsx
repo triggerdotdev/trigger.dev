@@ -154,7 +154,7 @@ export default function LoginSsoPage() {
               data-action="continue with sso"
             >
               {isLoading && <Spinner className="mr-2 size-5" color="white" />}
-              <span className="text-text-bright">
+              <span>
                 {isLoading
                   ? "Redirecting…"
                   : reason === "expired"

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import {
   DocumentIcon,
   FolderIcon,
@@ -110,6 +111,9 @@ export default function Story() {
 
   return (
     <div className="flex gap-12">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["TreeView.tsx"]} />
+      </div>
       <div className="flex flex-col items-start justify-start gap-4">
         <div className="flex items-center gap-2 p-2">
           <Input

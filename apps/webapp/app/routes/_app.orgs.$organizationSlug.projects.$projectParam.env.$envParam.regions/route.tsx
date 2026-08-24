@@ -45,7 +45,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextLink } from "~/components/primitives/TextLink";
+import { TextLink, textLinkClassName } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -358,7 +359,7 @@ export default function Page() {
                     <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
                     <Feedback
                       button={
-                        <span className="cursor-pointer text-xs text-indigo-500 transition hover:text-indigo-400">
+                        <span className={cn(textLinkClassName(), "cursor-pointer text-xs")}>
                           get in touch
                         </span>
                       }

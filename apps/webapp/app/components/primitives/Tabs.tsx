@@ -15,7 +15,7 @@ export const TITLE_BAR_CHROME = "flex h-10 shrink-0 gap-x-6 border-b border-grid
 const titleTabLabel = cn(headerVariants.header2.text, "transition duration-200");
 const titleTabIndicator = "h-0.5 w-full bg-indigo-500";
 const titleTabIndicatorIdle =
-  "h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100";
+  "h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover/tab:opacity-100";
 
 export type TabsProps = {
   tabs: {
@@ -98,7 +98,7 @@ function TabLink({
     return (
       <NavLink
         to={to}
-        className="group relative flex h-full grow items-center justify-center focus-custom"
+        className="group/tab relative flex h-full grow items-center justify-center focus-custom"
         end={end}
       >
         {({ isActive, isPending }) => {
@@ -111,7 +111,7 @@ function TabLink({
                     "text-sm transition duration-200",
                     active
                       ? "text-text-bright"
-                      : "text-text-dimmed transition group-hover:text-text-bright"
+                      : "text-text-dimmed transition group-hover/tab:text-text-bright"
                   )}
                 >
                   {children}
@@ -133,7 +133,7 @@ function TabLink({
 
   if (variant === "title") {
     return (
-      <NavLink to={to} className="group flex h-full flex-col focus-custom" end={end}>
+      <NavLink to={to} className="group/tab flex h-full flex-col focus-custom" end={end}>
         {({ isActive, isPending }) => {
           const active = isActive || isPending;
           return (
@@ -142,7 +142,9 @@ function TabLink({
                 <span
                   className={cn(
                     titleTabLabel,
-                    active ? "text-text-bright" : "text-text-dimmed group-hover:text-text-bright"
+                    active
+                      ? "text-text-bright"
+                      : "text-text-dimmed group-hover/tab:text-text-bright"
                   )}
                 >
                   {children}
@@ -190,7 +192,7 @@ function TabLink({
 
   // underline variant (default)
   return (
-    <NavLink to={to} className="group flex flex-col items-center pt-1 focus-custom" end={end}>
+    <NavLink to={to} className="group/tab flex flex-col items-center pt-1 focus-custom" end={end}>
       {({ isActive, isPending }) => {
         return (
           <>
@@ -211,7 +213,7 @@ function TabLink({
                 className="mt-1 h-0.5 w-full bg-indigo-500"
               />
             ) : (
-              <div className="mt-1 h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100" />
+              <div className="mt-1 h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover/tab:opacity-100" />
             )}
           </>
         );
@@ -225,12 +227,15 @@ export function TabButton({
   layoutId,
   shortcut,
   variant = "underline",
+  size = "base",
   ...props
 }: {
   isActive: boolean;
   shortcut?: ShortcutDefinition;
   layoutId: string;
   variant?: Variants;
+  /** `"small"` drops the title variant's label to body size. Layout is unchanged. */
+  size?: "base" | "small";
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const ref = useRef<HTMLButtonElement>(null);
 
@@ -249,7 +254,7 @@ export function TabButton({
   return (
     <button
       className={cn(
-        "group flex flex-col items-center focus-custom",
+        "group/tab flex flex-col items-center focus-custom",
         title ? "h-full" : "pt-1",
         props.className,
         props.disabled && "pointer-events-none opacity-50"
@@ -264,8 +269,12 @@ export function TabButton({
             "transition duration-200",
             title
               ? cn(
-                  headerVariants.header2.text,
-                  isActive ? "text-text-bright" : "text-text-dimmed group-hover:text-text-bright"
+                  size === "small"
+                    ? "font-sans text-sm font-normal leading-5"
+                    : headerVariants.header2.text,
+                  isActive
+                    ? "text-text-bright"
+                    : "text-text-dimmed group-hover/tab:text-text-bright"
                 )
               : "text-sm text-text-bright"
           )}
@@ -283,7 +292,7 @@ export function TabButton({
       ) : (
         <div
           className={cn(
-            "h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100",
+            "h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover/tab:opacity-100",
             !title && "mt-1"
           )}
         />

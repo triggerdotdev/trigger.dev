@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -7,6 +8,9 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 export default function Story() {
   return (
     <div className="flex gap-x-8 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["ClipboardField.tsx"]} />
+      </div>
       <div className="flex flex-col items-start whitespace-nowrap">
         <Header2 className="mb-[2.2rem]">Variants</Header2>
         <div className="mb-10 space-y-[2.33rem]">
