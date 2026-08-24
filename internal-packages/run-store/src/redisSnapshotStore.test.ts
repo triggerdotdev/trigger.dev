@@ -10,6 +10,8 @@ import {
   isValidFor,
   RedisSnapshotStore,
   type SnapshotEntryInput,
+  type CompletedWaitpointsPointer,
+  type CompletedWaitpointRecord,
 } from "./redisSnapshotStore.js";
 
 describe("snapshotKeys", () => {
@@ -237,6 +239,145 @@ describe("append", () => {
   );
 
   redisTest(
+    "round-trips a typed records array through the cycle hash's records field",
+    async ({ redisOptions }) => {
+      // The only place CompletedWaitpointRecord[] physically enters Redis. If the writer ever
+      // serializes a different envelope, this is where that would show up as a broken round trip.
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      const raw = createRedisClient(redisOptions);
+      const records: CompletedWaitpointRecord[] = [
+        {
+          id: "w_a",
+          friendlyId: "waitpoint_a",
+          type: "RUN",
+          completedAt: "2026-01-01T00:00:00.000Z",
+          outputType: "application/json",
+          outputIsError: false,
+          output: { deriveFromRun: true },
+          completedByTaskRunId: "run_child",
+        },
+      ];
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [{ id: "w_a", index: 0 }],
+            records,
+          },
+        });
+
+        const storedRaw = await raw.hget("snap:{run_1}:wp:1", "records");
+        expect(JSON.parse(storedRaw!)).toEqual(records);
+      } finally {
+        raw.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a recordless new cycle clears another cycle's records off a reused key",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [{ id: "w_a", index: 0 }],
+            records: [
+              {
+                id: "w_a",
+                friendlyId: "waitpoint_a",
+                type: "MANUAL",
+                completedAt: "2026-01-01T00:00:00.000Z",
+                outputType: "application/json",
+                outputIsError: false,
+                output: { inline: "stale" },
+              },
+            ],
+          },
+        });
+        expect(await raw.hget("snap:{run_1}:wp:1", "records")).not.toBeNull();
+
+        // Only the counter is lost, as under maxmemory eviction. A birth does not check seq, so
+        // the next new cycle re-mints cycleSeq 1 onto the surviving key.
+        await raw.del("snap:{run_1}:seq");
+
+        await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_b", index: 0 }] },
+        });
+
+        expect(await raw.hget("snap:{run_1}:wp:1", "order")).toBe(JSON.stringify(["w_b"]));
+        expect(await raw.hget("snap:{run_1}:wp:1", "records")).toBeNull();
+      } finally {
+        raw.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a carry-forward refuses a cycle this incarnation never minted",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions);
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [{ id: "w_old", index: 0 }],
+            records: [
+              {
+                id: "w_old",
+                friendlyId: "waitpoint_old",
+                type: "MANUAL",
+                completedAt: "2026-01-01T00:00:00.000Z",
+                outputType: "application/json",
+                outputIsError: false,
+                output: { inline: "stale" },
+              },
+            ],
+          },
+        });
+
+        // Lose the whole keyspace except the cycle key, as under maxmemory eviction.
+        await raw.del("snap:{run_1}:e", "snap:{run_1}:idx", "snap:{run_1}:cur", "snap:{run_1}:seq");
+
+        const carried = await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "carryForward", cycleSeq: 1 },
+        });
+
+        // Written, flagged, and carrying NO pointer: the dead incarnation's waitpoints must not
+        // be served to a fresh run under a count that agrees with them.
+        expect(carried).toMatchObject({ outcome: "written", cycleMismatch: true });
+        expect(carried).not.toHaveProperty("cycleSeq");
+        const read = await store.getLatest("run_1");
+        expect(read?.cycle).toBeUndefined();
+        expect(read?.completedWaitpointIds).toBeUndefined();
+      } finally {
+        raw.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
     "reports a duplicate id without overwriting the original entry",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000 });
@@ -382,6 +523,129 @@ describe("cycle keys", () => {
       await store.quit();
     }
   });
+});
+
+describe("cycle key deletion sweep", () => {
+  const KEY_SUFFIXES = ["e", "idx", "cur", "seq", "wp:1", "wp:2"] as const;
+  const INJECTION_POINTS = ["beforeCarryForward", "beforeSecondNewCycle"] as const;
+
+  function powerset<T>(items: readonly T[]): T[][] {
+    let out: T[][] = [[]];
+    for (const item of items) {
+      out = out.concat(out.map((s) => [...s, item]));
+    }
+    return out;
+  }
+
+  // Mechanized replacement for the two hand-picked eviction regressions above: replays the same
+  // birth/carryForward/new-cycle/terminal shape once per element of the powerset of key deletions,
+  // at two points in the sequence, and checks that a cycle key's records never leak into a pointer
+  // naming a different cycle than the one the key's own order field currently describes.
+  redisTest(
+    "records read back for a pointer never mention an id outside that pointer's own order",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions);
+      type Violation = {
+        subset: string[];
+        injectionPoint: string;
+        runId: string;
+        pointer: CompletedWaitpointsPointer;
+        recordsFound: unknown;
+      };
+      const violations: Violation[] = [];
+      let replays = 0;
+
+      try {
+        for (const injectionPoint of INJECTION_POINTS) {
+          for (const subset of powerset(KEY_SUFFIXES)) {
+            replays++;
+            const runId = `run_sweep_${injectionPoint}_${replays}`;
+            const base = `snap:{${runId}}`;
+            const damage = async () => {
+              if (subset.length > 0) {
+                await raw.del(...subset.map((s) => `${base}:${s}`));
+              }
+            };
+
+            await store.append({
+              entry: entry({ id: "snap_1", runId }),
+              kind: "birth",
+              isTerminal: false,
+              cycle: {
+                kind: "new",
+                completedWaitpoints: [{ id: "w_c1", index: 0 }],
+                records: [
+                  {
+                    id: "w_c1",
+                    friendlyId: "waitpoint_c1",
+                    type: "MANUAL",
+                    completedAt: "2026-01-01T00:00:00.000Z",
+                    outputType: "application/json",
+                    outputIsError: false,
+                    output: { inline: "payload_c1" },
+                  },
+                ],
+              },
+            });
+
+            if (injectionPoint === "beforeCarryForward") await damage();
+            await store.append({
+              entry: entry({ id: "snap_2", runId }),
+              kind: "transition",
+              isTerminal: false,
+              cycle: { kind: "carryForward", cycleSeq: 1 },
+            });
+
+            if (injectionPoint === "beforeSecondNewCycle") await damage();
+            // birth, not transition: both eviction regressions above only reproduce past a birth's
+            // liveness bypass -- a transition here would just report skippedNoKeyspace once e or seq
+            // is gone, exempting the replay before the cycle-mint branch ever ran.
+            await store.append({
+              entry: entry({ id: "snap_3", runId }),
+              kind: "birth",
+              isTerminal: false,
+              cycle: { kind: "new", completedWaitpoints: [{ id: "w_c2", index: 0 }] },
+            });
+
+            await store.append({
+              entry: entry({ id: "snap_4", runId, executionStatus: "FINISHED" }),
+              kind: "transition",
+              isTerminal: true,
+            });
+
+            for (const id of ["snap_1", "snap_2", "snap_3", "snap_4"]) {
+              const read = await store.getById(runId, id);
+              if (!read?.cycle) continue;
+              const orderIds = new Set(read.completedWaitpointIds?.order ?? []);
+              const recordsRaw = await raw.hget(`${base}:wp:${read.cycle.cycleSeq}`, "records");
+              if (recordsRaw === null) continue;
+              const recordIds = (JSON.parse(recordsRaw) as { id: string }[]).map((r) => r.id);
+              if (recordIds.some((rid) => !orderIds.has(rid))) {
+                violations.push({
+                  subset,
+                  injectionPoint,
+                  runId,
+                  pointer: read.cycle,
+                  recordsFound: recordIds,
+                });
+              }
+            }
+          }
+        }
+      } finally {
+        raw.disconnect();
+        await store.quit();
+      }
+
+      if (violations.length > 0) {
+        throw new Error(
+          `${violations.length} violation(s) across ${replays} replays. First: ` +
+            JSON.stringify(violations[0])
+        );
+      }
+    }
+  );
 });
 
 describe("read-side cycle mismatch", () => {
@@ -1113,6 +1377,53 @@ describe("hash tag and keyPrefix", () => {
 });
 
 describe("observability", () => {
+  redisTest("cycle-key bytes cover records, not just order", async ({ redisOptions }) => {
+    // The plan puts a metric on the wp:<cycleSeq> KEY size. records dominates that key once
+    // populated, so measuring order alone understates it by orders of magnitude.
+    const calls: Array<[string, number]> = [];
+    const metrics = {
+      recordAppend: () => {},
+      recordEntryBytes: () => {},
+      recordCycleKeyBytes: (b: number) => calls.push(["cycleBytes", b]),
+      recordCycleCount: () => {},
+      recordSkippedNoKeyspace: () => {},
+      recordCycleMismatch: () => {},
+      recordLatency: () => {},
+    };
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000, metrics });
+    try {
+      const records: CompletedWaitpointRecord[] = [
+        {
+          id: "w_a",
+          friendlyId: "waitpoint_a",
+          type: "MANUAL",
+          completedAt: "2026-01-01T00:00:00.000Z",
+          outputType: "application/json",
+          outputIsError: false,
+          output: { inline: "y".repeat(20_000) },
+        },
+      ];
+      const orderJson = JSON.stringify(["w_a"]);
+      const recordsJson = JSON.stringify(records);
+
+      await store.append({
+        entry: entry({ id: "snap_1" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }], records },
+      });
+
+      expect(calls).toEqual([
+        [
+          "cycleBytes",
+          Buffer.byteLength(orderJson, "utf8") + Buffer.byteLength(recordsJson, "utf8"),
+        ],
+      ]);
+    } finally {
+      await store.quit();
+    }
+  });
+
   redisTest("records sizes and outcomes without ever rejecting", async ({ redisOptions }) => {
     const calls: unknown[][] = [];
     const metrics = {
@@ -1223,4 +1534,41 @@ describe("observability", () => {
       }
     }
   );
+});
+
+describe("the reserved completedWaitpoints field", () => {
+  redisTest("append rejects an entry that sets it", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    try {
+      const runId = "run_reserved_throw";
+      const pointer: CompletedWaitpointsPointer = { cycleSeq: 1, count: 0 };
+      await expect(
+        store.append({
+          entry: { ...entry({ id: "snap_1", runId }), completedWaitpoints: pointer },
+          kind: "birth",
+          isTerminal: false,
+        })
+      ).rejects.toThrow(/reserved/i);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("a stored entry never holds the key", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    try {
+      const runId = "run_reserved_absent";
+      await store.append({
+        entry: entry({ id: "snap_1", runId }),
+        kind: "birth",
+        isTerminal: false,
+      });
+      const read = await store.getLatest(runId);
+      expect(read).not.toBeNull();
+      expect(read!.raw).not.toContain("completedWaitpoints");
+      expect(read!.entry).not.toHaveProperty("completedWaitpoints");
+    } finally {
+      await store.quit();
+    }
+  });
 });
