@@ -307,16 +307,12 @@ function getRunsListClickhouseSettings(): ClickHouseSettings {
   const settings: ClickHouseSettings = {
     max_execution_time: env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME,
     timeout_before_checking_execution_speed: 0,
+    max_threads: env.RUNS_LIST_CLICKHOUSE_MAX_THREADS,
+    max_memory_usage: env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE.toString(),
   };
 
   if (env.RUNS_LIST_CLICKHOUSE_READONLY !== "0") {
     settings.readonly = env.RUNS_LIST_CLICKHOUSE_READONLY;
-  }
-  if (env.RUNS_LIST_CLICKHOUSE_MAX_THREADS !== undefined) {
-    settings.max_threads = env.RUNS_LIST_CLICKHOUSE_MAX_THREADS;
-  }
-  if (env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE !== undefined) {
-    settings.max_memory_usage = env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE.toString();
   }
 
   return settings;
