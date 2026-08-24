@@ -675,8 +675,14 @@ export class AgentChat<TAgent = unknown> {
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
         : {}),
-      // Not truthiness: `null` opts this chat out of pinning and must reach the resolver in
-      // `sessions.start`, which otherwise discovers an id from the environment.
+      ...(this.triggerConfigDefault?.maxDuration !== undefined
+        ? { maxDuration: this.triggerConfigDefault.maxDuration }
+        : {}),
+      ...(this.triggerConfigDefault?.region ? { region: this.triggerConfigDefault.region } : {}),
+      ...(this.triggerConfigDefault?.lockToVersion
+        ? { lockToVersion: this.triggerConfigDefault.lockToVersion }
+        : {}),
+      // Not truthiness: `null` opts out and must reach the resolver in `sessions.start`.
       ...(this.triggerConfigDefault?.externalDeploymentId !== undefined
         ? { externalDeploymentId: this.triggerConfigDefault.externalDeploymentId }
         : {}),
