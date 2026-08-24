@@ -93,6 +93,44 @@ describe("replaceGlobalFeatureFlags — locked flags the UI never submitted", ()
     expect(await readFlag(prisma, FEATURE_FLAG.mollifierEnabled)).toBe(true);
   });
 
+  // The upsert and the sweep share one statement, which is only safe while no key is in both.
+  postgresTest("a submitted key is never also swept", async ({ prisma }) => {
+    await makeSetMultipleFlags(prisma)({
+      [FEATURE_FLAG.mollifierEnabled]: true,
+      [FEATURE_FLAG.hasAiAccess]: true,
+      [FEATURE_FLAG.defaultWorkerInstanceGroupId]: WORKER_GROUP_ID,
+    });
+
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: {
+        [FEATURE_FLAG.mollifierEnabled]: false,
+        [FEATURE_FLAG.hasAiAccess]: true,
+      },
+      catalogKeys: CATALOG_KEYS,
+      isManagedCloud: false,
+      unlockLockedFlags: true,
+    });
+
+    // Both submitted keys survive with their new values rather than being swept by the same
+    // statement that wrote them.
+    expect(await readFlag(prisma, FEATURE_FLAG.mollifierEnabled)).toBe(false);
+    expect(await readFlag(prisma, FEATURE_FLAG.hasAiAccess)).toBe(true);
+    expect(await readFlag(prisma, FEATURE_FLAG.defaultWorkerInstanceGroupId)).toBeUndefined();
+  });
+
+  postgresTest("writes nothing when there is nothing to write", async ({ prisma }) => {
+    await makeSetMultipleFlags(prisma)({ [FEATURE_FLAG.mollifierEnabled]: true });
+
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: {},
+      catalogKeys: [],
+      isManagedCloud: false,
+      unlockLockedFlags: false,
+    });
+
+    expect(await readFlag(prisma, FEATURE_FLAG.mollifierEnabled)).toBe(true);
+  });
+
   postgresTest("submitted flags are upserted and omitted ones swept", async ({ prisma }) => {
     await makeSetMultipleFlags(prisma)({
       [FEATURE_FLAG.mollifierEnabled]: true,
