@@ -262,7 +262,10 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
   it("counts an aliased shard's database ONCE in a sum", async () => {
     // "a" aliases "new": two keys, one database.
     const { router, log } = buildNShardRouter(["a"], { aliasOf: { a: "new" } });
-    const result = await router.updateManyWaitpoints({ where: { status: "PENDING" }, data: {} } as never);
+    const result = await router.updateManyWaitpoints({
+      where: { status: "PENDING" },
+      data: {},
+    } as never);
     expect(trace(log)).toEqual(["new:updateManyWaitpoints", "legacy:updateManyWaitpoints"]);
     expect(result.count).toBe(2);
   });
@@ -291,5 +294,62 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
           shards: [{ key: "a", store: fakeStore("a" as Slot, log), aliasOf: "nope" }],
         })
     ).toThrow('aliasOf "nope"');
+  });
+});
+
+describe("RoutingRunStore probe at N", () => {
+  it("keeps the sequential short circuit at two distinct stores", async () => {
+    const { router, log } = buildRouter({ runs: [{ id: "r1" }] });
+    await router.findRun({ spanId: "span_x" });
+    expect(trace(log)).toEqual(["new:findRun"]);
+  });
+
+  it("issues every leg in parallel above two distinct stores", async () => {
+    // "b" carries the only hit. A sequential probe would stop the moment it found a result; a
+    // true parallel fan-out queries every OTHER leg too, since all legs are issued before any
+    // resolves. Miss-path (every leg misses) throw semantics are covered separately below.
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [
+        { key: "a", store: fakeStore("a", log) },
+        { key: "b", store: fakeStore("b", log, { runs: [{ id: "r1" }] }) },
+      ],
+      resolveShard: (id: string) => id.split(":")[0]!,
+    });
+    await router.findRun({ spanId: "span_x" });
+    expect(log.map((c) => c.slot).sort()).toEqual(["a", "b", "legacy", "new"]);
+  });
+
+  it("gives the legacy leg the canonical throw when every leg misses", async () => {
+    const { router } = buildNShardRouter(["a"]);
+    await expect(router.findRunOrThrow({ spanId: "span_x" })).rejects.toThrow("no run on legacy");
+  });
+
+  it("tolerates a failing leg when another leg wins", async () => {
+    const log: Call[] = [];
+    const broken = fakeStore("a", log);
+    (broken as { findRun: unknown }).findRun = () => Promise.reject(new Error("shard a is down"));
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log, { runs: [{ id: "r1" }] }),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: broken }],
+      resolveShard: (id: string) => id.split(":")[0]!,
+    });
+    await expect(router.findRun({ spanId: "span_x" })).resolves.toMatchObject({ id: "r1" });
+  });
+
+  it("surfaces a leg failure when no leg wins", async () => {
+    const log: Call[] = [];
+    const broken = fakeStore("a", log);
+    (broken as { findRun: unknown }).findRun = () => Promise.reject(new Error("shard a is down"));
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: broken }],
+      resolveShard: (id: string) => id.split(":")[0]!,
+    });
+    await expect(router.findRun({ spanId: "span_x" })).rejects.toThrow("shard a is down");
   });
 });

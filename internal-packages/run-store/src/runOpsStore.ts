@@ -188,25 +188,72 @@ export class RoutingRunStore implements RunStore {
     }
   }
 
-  // Sequential probe over #probeOrder, returning the first non-null result. `isLast` marks the leg
-  // that owns the canonical not-found throw, so a caller can swap in its throwing variant there.
+  // #distinctStores sorted by `order`. Shared by #probeFirst and #fanOut so every ordered walk
+  // over the distinct-store set goes through one sort.
+  #orderedLegs(order: readonly ShardKey[]): ReadonlyArray<{ key: ShardKey; store: RunStore }> {
+    const rank = new Map(order.map((key, i) => [key, i]));
+    return [...this.#distinctStores].sort(
+      (a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0)
+    );
+  }
+
+  // A lookup with no routable id. At two distinct stores this is the sequential short circuit,
+  // byte-identical to before: the second leg is never queried when the first answers. Above two,
+  // a sequential walk would cost N round trips, so every leg is issued in parallel and the winner
+  // comes from #precedence. `isLast` marks the leg that owns the canonical not-found throw.
   async #probeFirst<R>(
     fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>
   ): Promise<R> {
-    const rank = new Map(this.#probeOrder.map((key, i) => [key, i]));
-    const legs = [...this.#distinctStores].sort(
-      (a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0)
-    );
-    const last = legs.length - 1;
-    for (let i = 0; i < last; i++) {
-      const { key, store } = legs[i]!;
-      const found = await fn(store, key, false);
-      if (found != null) {
-        return found;
+    const legs = this.#orderedLegs(this.#probeOrder);
+    const lastIndex = legs.length - 1;
+
+    if (legs.length <= 2) {
+      for (let i = 0; i < lastIndex; i++) {
+        const { store, key } = legs[i]!;
+        const found = await fn(store, key, false);
+        if (found != null) {
+          return found;
+        }
       }
+      const { store, key } = legs[lastIndex]!;
+      return fn(store, key, true);
     }
-    const { key, store } = legs[last]!;
-    return fn(store, key, true);
+
+    // Parallel. Every leg takes the NON-throwing arm, so one leg cannot reject a lookup another
+    // leg answers. A rejection is held and only surfaces when nothing was found.
+    const settled = await Promise.allSettled(legs.map(({ store, key }) => fn(store, key, false)));
+
+    const hits: Array<{ key: ShardKey; value: Awaited<R> }> = [];
+    let firstRejection: unknown;
+    settled.forEach((outcome, i) => {
+      if (outcome.status === "rejected") {
+        firstRejection ??= outcome.reason;
+        return;
+      }
+      if (outcome.value != null) {
+        hits.push({ key: legs[i]!.key, value: outcome.value });
+      }
+    });
+
+    if (hits.length > 1) {
+      this.#reportDuplicateId(
+        String((hits[0]!.value as { id?: unknown })?.id ?? "unknown"),
+        hits.map((h) => h.key)
+      );
+    }
+    if (hits.length > 0) {
+      // Highest authority wins: #precedence ascends, so take the last hit in that order.
+      const rank = new Map(this.#precedence.map((key, i) => [key, i]));
+      hits.sort((a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0));
+      return hits[hits.length - 1]!.value;
+    }
+    if (firstRejection !== undefined) {
+      throw firstRejection;
+    }
+    // Nothing found anywhere. The LEGACY leg owns the canonical not-found throw, so give it the
+    // throwing arm. One extra query, on the miss path only.
+    const legacy = this.#shardStore(LEGACY_SHARD);
+    return fn(legacy, LEGACY_SHARD, true);
   }
 
   // Run `fn` on every DISTINCT store in parallel. `order` selects the ordering; membership is
@@ -215,10 +262,7 @@ export class RoutingRunStore implements RunStore {
     order: readonly ShardKey[],
     fn: (store: RunStore, key: ShardKey) => Promise<R>
   ): Promise<R[]> {
-    const rank = new Map(order.map((key, i) => [key, i]));
-    const legs = [...this.#distinctStores].sort(
-      (a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0)
-    );
+    const legs = this.#orderedLegs(order);
     return Promise.all(legs.map(({ store, key }) => fn(store, key)));
   }
 
