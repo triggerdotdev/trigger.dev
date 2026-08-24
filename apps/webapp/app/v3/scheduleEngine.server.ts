@@ -12,8 +12,6 @@ import { ServiceValidationError } from "./services/common.server";
 
 export const scheduleEngine = singleton("ScheduleEngine", createScheduleEngine);
 
-export type { ScheduleEngine };
-
 async function isDevEnvironmentConnectedHandler(environmentId: string) {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
@@ -72,6 +70,8 @@ function createScheduleEngine() {
     distributionWindow: {
       seconds: env.SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS,
     },
+    schedulePhaseSecret: env.ENCRYPTION_KEY,
+    cronSpreadFraction: env.SCHEDULE_WORKER_CRON_SPREAD_FRACTION,
     tracer,
     meter,
     onTriggerScheduledTask: async ({
@@ -81,6 +81,7 @@ function createScheduleEngine() {
       scheduleInstanceId,
       scheduleId,
       exactScheduleTime,
+      effectiveScheduleTime,
     }) => {
       try {
         // v3 (engine V1) is retired: skip firing V1 schedules instead of triggering into a guaranteed rejection every tick.
@@ -104,6 +105,7 @@ function createScheduleEngine() {
           scheduleInstanceId,
           scheduleId,
           exactScheduleTime,
+          effectiveScheduleTime,
         });
 
         const result = await triggerService.call(
@@ -114,7 +116,7 @@ function createScheduleEngine() {
             customIcon: "scheduled",
             scheduleId,
             scheduleInstanceId,
-            queueTimestamp: exactScheduleTime,
+            queueTimestamp: effectiveScheduleTime,
             overrideCreatedAt: exactScheduleTime,
             triggerSource: "schedule",
             triggerAction: "trigger",

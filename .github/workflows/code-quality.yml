@@ -36,3 +36,6 @@ jobs:
 
       - name: 🔎 Lint
         run: pnpm exec oxlint .
+
+      - name: ✂️ Check unused code and dependencies
+        run: pnpm run knip

@@ -170,7 +170,7 @@ export const boundedTask = task({
 
 ## Use waitpoints instead of polling
 
-Waits longer than 5 seconds automatically checkpoint your task, meaning you don't pay for compute while waiting. Use `wait.for()`, `wait.until()`, or `triggerAndWait()` instead of polling loops.
+You don't pay for compute during any wait longer than 5 seconds. Use `wait.for()`, `wait.until()`, or `triggerAndWait()` instead of polling loops.
 
 ```ts
 import { task, wait } from "@trigger.dev/sdk";
@@ -178,17 +178,17 @@ import { task, wait } from "@trigger.dev/sdk";
 export const waitpointTask = task({
   id: "waitpoint-task",
   run: async (payload) => {
-    // This wait is free - your task is checkpointed
+    // You aren't charged for compute during this wait
     await wait.for({ minutes: 5 });
 
-    // Parent is also checkpointed while waiting for child tasks
+    // The parent isn't charged either while it waits for a child task
     const result = await childTask.triggerAndWait({ data: payload });
     return result;
   },
 });
 ```
 
-[Read more about waitpoints](/wait-for).
+Waiting saves you compute, but it doesn't always free up concurrency — see [Wait](/wait).
 
 ## Use debounce to consolidate multiple triggers
 

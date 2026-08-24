@@ -52,7 +52,7 @@ vi.mock("~/services/logger.server", () => ({
   },
 }));
 
-import { routeOperationsToRun } from "~/routes/api.v1.runs.$runId.metadata";
+import { routeOperationsToRun } from "~/v3/mollifier/routeOperationsToRun.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 const env = {

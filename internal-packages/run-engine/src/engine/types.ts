@@ -16,6 +16,7 @@ import {
 } from "@trigger.dev/redis-worker";
 import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
+import type { RunQueueMetricsEmitter } from "../run-queue/index.js";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import type { LockRetryConfig } from "./locking.js";
 import type { workerCatalog } from "./workerCatalog.js";
@@ -29,7 +30,7 @@ import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.
  * Re-declared here because @internal/run-engine must not depend on the webapp.
  * Keep field names identical so the injected value is assignable.
  */
-export type CrossSeamGuardDecision = {
+type CrossSeamGuardDecision = {
   store: "new" | "legacy";
   residency: "NEW" | "LEGACY";
   routeKind: string;
@@ -90,6 +91,8 @@ export type RunEngineOptions = {
     defaultEnvConcurrency?: number;
     defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;
+    /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
+    queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<
       FairQueueSelectionStrategyOptions,
       "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
@@ -165,7 +168,16 @@ export type RunEngineOptions = {
   };
   debounce?: {
     redis?: RedisOptions;
-    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour */
+    /**
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the run's
+     * `createdAt`. A trigger's own `debounce.maxDelay` overrides this. Once a trigger would push
+     * `delayUntil` past the ceiling, the existing run is released to execute and the trigger
+     * starts a new one.
+     *
+     * Unset by default, which means a continuously triggered key is pushed back for as long as
+     * the triggers keep coming. Set it to bound that; note that any `delay` at or above the
+     * ceiling stops the run from ever being pushed, so every trigger creates its own run.
+     */
     maxDebounceDurationMs?: number;
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
@@ -237,6 +249,7 @@ export type RunEngineOptions = {
    * to disable lag-aware retries entirely.
    */
   pendingVersionLagMaxRetries?: number;
+  externalDeploymentParkDeadlineMs?: number;
   /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
    *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
   defaultMaxTtl?: string;
@@ -360,7 +373,9 @@ export type TriggerParams = {
     triggerAction: string;
     rootTriggerSource: string;
     rootScheduleId?: string;
+    externalDeploymentId?: string;
   };
+  parkedOnExternalDeploymentId?: string;
   /**
    * Called when a run is debounced (existing delayed run found with triggerAndWait).
    * Return spanIdToComplete to enable span closing when the run completes.

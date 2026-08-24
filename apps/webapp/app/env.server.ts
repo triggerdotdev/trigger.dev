@@ -85,6 +85,67 @@ const S2EnvSchema = z.preprocess(
   ])
 );
 
+// Previously published secret values must never be accepted, including when
+// an existing deployment or external secret manager still supplies one.
+const INSECURE_SECRET_VALUES = [
+  "managed-secret",
+  "2818143646516f6fffd707b36f334bbb",
+  "44da78b7bbb0dfe709cf38931d25dcdd",
+  "f686147ab967943ebbe9ed3b496e465a",
+  "447c29678f9eaf289e9c4b70d3dd8a7f",
+];
+
+// Escape hatch for deployments that can't rotate a published default yet (e.g.
+// ENCRYPTION_KEY protects existing data). Read raw: a refine can't see the
+// sibling parsed flag.
+const allowInsecureDefaultSecrets = ["true", "1"].includes(
+  (process.env.ALLOW_INSECURE_DEFAULT_SECRETS ?? "").toLowerCase().trim()
+);
+
+const isNotInsecureSecret = (value: string) =>
+  allowInsecureDefaultSecrets || !INSECURE_SECRET_VALUES.includes(value);
+
+const INSECURE_SECRET_MESSAGE =
+  "must not be a known-insecure published default; set a strong, unique value. If you cannot rotate it yet (e.g. it protects existing encrypted data or active sessions), set ALLOW_INSECURE_DEFAULT_SECRETS=1 to boot while you migrate.";
+
+/** Optional int env var; blank/whitespace normalises to undefined (z.coerce turns "" into 0). */
+const OptionalIntEnv = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.coerce.number().int().optional()
+);
+
+/** Optional boolean env var; blank/whitespace/unset normalises to undefined (so it falls back). */
+const OptionalBoolEnv = z.preprocess((v) => {
+  if (typeof v !== "string" || v.trim() === "") return undefined;
+  return ["true", "1"].includes(v.toLowerCase().trim());
+}, z.boolean().optional());
+
+/** Boolean env var with a default where blank/whitespace falls back to the default instead of parsing as false. */
+const BoolEnvWithDefault = (defaultValue: boolean) =>
+  z.preprocess((v) => {
+    if (typeof v !== "string" || v.trim() === "") return undefined;
+    return ["true", "1"].includes(v.toLowerCase().trim());
+  }, z.boolean().default(defaultValue));
+
+/** Int env var with a default where a blank/whitespace value falls back to the default instead of coercing to 0. */
+const IntEnvWithDefault = (defaultValue: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().default(defaultValue)
+  );
+
+/**
+ * Optional int env var for a limit that can be switched off. Blank, whitespace and `0` all mean
+ * "no limit" and normalise to undefined; anything else that is set must be greater than zero.
+ */
+const OptionalLimitEnv = z.preprocess((v) => {
+  if (typeof v === "string" && (v.trim() === "" || Number(v.trim()) === 0)) {
+    return undefined;
+  }
+
+  return v === 0 ? undefined : v;
+}, z.coerce.number().int().positive().optional());
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -97,6 +158,31 @@ const EnvironmentSchema = z
     DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
     DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
     DATABASE_CONNECTION_TIMEOUT: z.coerce.number().int().default(20),
+    DATABASE_WRITER_POOL_TIMEOUT: OptionalIntEnv,
+    DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
+    DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
+    DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
+    DATABASE_TRANSACTION_MAX_WAIT_MS: IntEnvWithDefault(10000),
+    DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnvWithDefault(true),
+    DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(3),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: IntEnvWithDefault(250),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: IntEnvWithDefault(100),
+    RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: OptionalIntEnv,
     // Dashboard-agent conversation store. Cloud points this at a dedicated
     // database; when unset it falls back to DATABASE_URL (OSS), where
     // the tables live in the isolated `trigger_dashboard_agent` schema.
@@ -106,6 +192,7 @@ const EnvironmentSchema = z
     // standard chat.agent SDK flow. When unset, the live agent is disabled — the
     // conversation store / History still work, no chat can start.
     DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
+    DASHBOARD_AGENT_BASE_URL: z.string().optional(),
     // Pins agent sessions to a specific deployed version (paired with
     // --skip-promotion deploys); unset => the project env's current version.
     DASHBOARD_AGENT_VERSION: z.string().optional(),
@@ -123,6 +210,28 @@ const EnvironmentSchema = z
     // uses its own key on the Trigger side. When unset, Head Start is disabled
     // and the first turn falls back to the normal cold-start path.
     ANTHROPIC_API_KEY: z.string().optional(),
+    // Selects the dashboard agent's LLM provider (default anthropic). The internal
+    // seam reads process.env directly; this entry validates the value webapp-side.
+    DASHBOARD_AGENT_MODEL_PROVIDER: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.enum(["anthropic", "bedrock"]).default("anthropic")
+    ),
+    // AWS credentials for the dashboard agent's Bedrock provider (only used when
+    // DASHBOARD_AGENT_MODEL_PROVIDER=bedrock; default path stays Anthropic). The
+    // provider resolves credentials itself, so only the region is read here.
+    AWS_REGION: z.string().optional(),
+    AWS_DEFAULT_REGION: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_SESSION_TOKEN: z.string().optional(),
+    AWS_BEARER_TOKEN_BEDROCK: z.string().optional(),
+    // Dedicated, non-global credentials for the dashboard agent's Bedrock calls (a
+    // Bedrock-invoke-only IAM user). Kept separate from AWS_ACCESS_KEY_ID/etc so
+    // injecting them can't hijack the default credential chain the ECR/STS deploy
+    // clients rely on.
+    DASHBOARD_AGENT_AWS_ACCESS_KEY_ID: z.string().optional(),
+    DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    DASHBOARD_AGENT_AWS_REGION: z.string().optional(),
     DIRECT_URL: z
       .string()
       .refine(
@@ -134,6 +243,7 @@ const EnvironmentSchema = z
     // Explicit positive opt-in. Split behavior is unreachable unless this is true
     // AND the distinct-DB sentinel confirms the two URLs are physically distinct DBs.
     RUN_OPS_SPLIT_ENABLED: BoolEnv.default(false),
+    RUN_OPS_WORKER_VERSION_FRESH_READ_ENABLED: BoolEnv.default(true),
     // Canonical connection URL for the dedicated NEW run-ops DB — drives the runtime pool, the split
     // decision, replication, and migrations. Optional so single-DB installs never set it.
     RUN_OPS_DATABASE_URL: z
@@ -162,7 +272,15 @@ const EnvironmentSchema = z
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
     // Optional cap for the unpooled new run-ops read replica. Unset falls back to DATABASE_CONNECTION_LIMIT.
-    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: z.coerce.number().int().optional(),
+    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: OptionalIntEnv,
+    RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
     // Direct DSN for applying the full @trigger.dev/database migrations to the LEGACY run-ops DB, keeping
     // its schema current after the control plane moves off it. Direct, not pooled — migrations never run
     // over a pooler. Optional; unset -> the entrypoint's legacy migrate step is skipped.
@@ -185,17 +303,30 @@ const EnvironmentSchema = z
       )
       .optional(),
     CONTROL_PLANE_DATABASE_READ_REPLICA_URL: z.string().optional(),
+    CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA: z.string().default("0"),
+    RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
+    RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
-    SESSION_SECRET: z.string(),
-    MAGIC_LINK_SECRET: z.string(),
+    // Webhook feature data-plane DB (WebhookEndpoint + WebhookDelivery). Unset -> the webhook
+    // clients reuse the main prisma / $replica, so this is connection-neutral until you split.
+    WEBHOOK_DATABASE_URL: z.string().optional(),
+    WEBHOOK_DATABASE_READ_REPLICA_URL: z.string().optional(),
+    WEBHOOK_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().optional(),
+    SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    MAGIC_LINK_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEY: z
       .string()
       .refine(
         (val) => Buffer.from(val, "utf8").length === 32,
         "ENCRYPTION_KEY must be exactly 32 bytes"
-      ),
+      )
+      .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     WHITELISTED_EMAILS: z
       .string()
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
@@ -208,7 +339,15 @@ const EnvironmentSchema = z
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
+    // Extra exact origins (comma separated) added to the document `img-src` CSP,
+    // e.g. an SSO host serving profile images. Wildcards are refused.
+    CSP_IMG_SRC_ALLOWLIST: z.string().optional(),
     API_ORIGIN: z.string().optional(),
+    // Alternative API origin for deployed runs whose org has the
+    // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
+    INTERNAL_API_ORIGIN: z.string().optional(),
+    // Global default for internalApiOriginEnabled when an org hasn't set it.
+    INTERNAL_API_ORIGIN_ENABLED: z.string().default("0"),
     STREAM_ORIGIN: z.string().optional(),
     ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
     // A comma separated list of electric origins to shard into different electric instances by environmentId
@@ -350,6 +489,31 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     TASK_META_CACHE_CURRENT_ENV_TTL_SECONDS: z.coerce.number().default(86400),
 
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    EXTERNAL_DEPLOYMENT_CACHE_TTL_SECONDS: z.coerce.number().default(2592000),
+    EXTERNAL_DEPLOYMENT_CACHE_MISSING_TTL_SECONDS: z.coerce.number().default(20),
+    EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS: z.coerce.number().default(3600000),
+
     // Runs-list empty-state check: how far back the ClickHouse "does this env have any run"
     // probe looks. Bounds the prove-absence partition scan. 0 = unbounded ("any run ever").
     RUN_LIST_HAS_RUNS_LOOKBACK_DAYS: z.coerce.number().default(30),
@@ -438,6 +602,7 @@ const EnvironmentSchema = z
     // TTL/size of the per-org realtimeBackend flag cache used to pick the serving backend.
     REALTIME_BACKEND_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
+    REALTIME_BACKEND_NATIVE_RUN_READS_FROM_PRIMARY: z.string().default("0"),
     // "1" enables the read-your-writes gate: wake hydrates wait out the measured replica lag
     // (anchored to the change record's updatedAtMs) and stale reads are retried.
     REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED: z.string().default("1"),
@@ -546,6 +711,30 @@ const EnvironmentSchema = z
 
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
+
+    // Separate budget for deploy-flow endpoints, see deploymentRateLimit.server.ts
+    DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
+    DEPLOYMENT_RATE_LIMIT_MAX: z.coerce.number().int().default(1500),
+    DEPLOYMENT_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(500),
+    DEPLOYMENT_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+    DEPLOYMENT_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+    DEPLOYMENT_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
+
+    // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
+    // (/otel/*). Bounds unauthenticated request rates. Opt-in
+    // (disabled by default): because it keys on the source IP, it is only
+    // safe to enable when each client presents a distinct IP through a proxy
+    // that appends the real client IP to X-Forwarded-For. Enabling it where
+    // many clients share one egress IP (e.g. behind NAT or a shared proxy)
+    // would collapse that traffic into a single bucket and could throttle
+    // legitimate telemetry. Set OTLP_RATE_LIMIT_ENABLED=1 to enable, then tune
+    // OTLP_RATE_LIMIT_MAX / OTLP_RATE_LIMIT_WINDOW for expected volume.
+    OTLP_RATE_LIMIT_ENABLED: z.string().default("0"),
+    OTLP_RATE_LIMIT_WINDOW: z
+      .string()
+      .regex(/^\d+ ?(?:ms|s|m|h|d)$/)
+      .default("1m"),
+    OTLP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3000),
 
     DEPOT_TOKEN: z.string().optional(),
     DEPOT_ORG_ID: z.string().optional(),
@@ -668,7 +857,18 @@ const EnvironmentSchema = z
     EVENTS_LOAD_SHEDDING_THRESHOLD: z.coerce.number().int().default(100000),
     EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
 
-    MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
+    MANAGED_WORKER_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+
+    // Allow booting with a known-insecure published default secret. Temporary
+    // bridge for deployments that can't rotate yet; rotate as soon as possible.
+    ALLOW_INSECURE_DEFAULT_SECRETS: BoolEnv.default(false),
+
+    // Tenant scoping on worker actions is header-driven (folded into the engine snapshot read) and
+    // needs no flag. This is only the no-header fallback: when "1", a worker action on a run created
+    // after WORKLOAD_TOKEN_CUTOFF without a verified env header is rejected; runs on or before the
+    // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
+    WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
+    WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
@@ -795,7 +995,8 @@ const EnvironmentSchema = z
 
     CENTS_PER_RUN: z.coerce.number().default(0),
 
-    EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+    EVENT_LOOP_MONITOR_ENABLED: z.string().default("0"),
+    EVENT_LOOP_UTILIZATION_MONITOR_ENABLED: z.string().default("1"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
@@ -827,6 +1028,20 @@ const EnvironmentSchema = z
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
     BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(5),
+    /**
+     * How long a created batch may remain unsealed before the seal-timeout reaper
+     * aborts it and resumes any blocked parent with an error. Must exceed the SDK's
+     * worst-case stream-retry budget (maxAttempts x server request timeout).
+     * Doubles as the TTL of the phase 2 streaming grant, so the grant and the reaper
+     * always agree on how long a batch is allowed to be sealing.
+     */
+    BATCH_SEAL_TIMEOUT_MS: z.coerce.number().int().positive().default(1_800_000),
+    /**
+     * Number of phase 2 (`POST /api/v3/batches/:id/items`) requests a created batch is
+     * granted, exempt from the general API rate limit. Sized above the SDK's stream
+     * maxAttempts so a batch admitted by the batch limiter can always finish streaming.
+     */
+    BATCH_STREAM_GRANT_ATTEMPTS: z.coerce.number().int().positive().default(10),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -860,6 +1075,37 @@ const EnvironmentSchema = z
     RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
     RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
     RUN_ENGINE_RUN_QUEUE_SHARD_COUNT: z.coerce.number().int().default(4),
+    // Queue metrics ingestion (Redis Stream -> ClickHouse). The runtime on/off is the
+    // `queue_metrics:enabled` Redis key; these gate emitter construction + consumer boot.
+    QUEUE_METRICS_EMIT_ENABLED: z.string().default("0"),
+    QUEUE_METRICS_CONSUMER_ENABLED: z.string().default("0"),
+    QUEUE_METRICS_STREAM_SHARD_COUNT: z.coerce.number().int().default(4),
+    QUEUE_METRICS_CONSUMER_BATCH_SIZE: z.coerce.number().int().default(1000),
+    // Counter stream (exact counts, loss-intolerant). Unset host => the run-queue Redis;
+    // set it to a dedicated instance so counter backlog never competes with the run queue.
+    QUEUE_METRICS_REDIS_HOST: z.string().optional(),
+    QUEUE_METRICS_REDIS_PORT: z.coerce.number().optional(),
+    QUEUE_METRICS_REDIS_USERNAME: z.string().optional(),
+    QUEUE_METRICS_REDIS_PASSWORD: z.string().optional(),
+    QUEUE_METRICS_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    // Default depends on where the stream lives: see metricsDefinition() in
+    // queueMetrics.server.ts (2M on the shared run-queue Redis, 8M on a dedicated one).
+    QUEUE_METRICS_COUNTER_STREAM_MAXLEN: z.coerce.number().int().optional(),
+    // TTL (seconds) on the per-(queue,op) cumulative odometer key, refreshed on every write.
+    // Idle-past-TTL queues purge and self-heal (restart from 1) on return; default 7 days.
+    QUEUE_METRICS_COUNTER_ODOMETER_TTL_SECONDS: z.coerce.number().int().default(604_800),
+    // Per-env distinct queue_name cap (0 = unlimited); overflow maps to "__overflow__".
+    QUEUE_METRICS_MAX_QUEUE_NAMES_PER_ENV: z.coerce.number().int().default(1000),
+    QUEUE_METRICS_MAX_CONCURRENCY_KEYS_PER_QUEUE: z.coerce.number().int().default(10_000),
+    // Fraction (0..1) of ops that emit a gauge; counters are never sampled. Dial below 1
+    // only if EngineCPU is too high in slow-path-heavy regions (hurts low-traffic queues).
+    QUEUE_METRICS_GAUGE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
+    /**
+     * Lists the queue-metrics tables in the Query page, its schema docs, the schema API and the
+     * AI query context. Off by default so the tables are not advertised before ingestion is
+     * enabled. Listing only: a query naming one of these tables still runs either way.
+     */
+    QUEUE_METRICS_QUERY_TABLES_VISIBLE: z.string().default("0"),
     RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
     RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
     RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
@@ -914,11 +1160,16 @@ const EnvironmentSchema = z
       .default(60_000),
     RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR: z.coerce.number().default(2),
 
-    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour (3,600,000ms) */
-    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: z.coerce
-      .number()
-      .int()
-      .default(60_000 * 60), // 1 hour
+    /**
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the first
+     * trigger. Unset by default: a continuously triggered debounce key is pushed back for as
+     * long as the triggers keep coming, and `debounce.maxDelay` on the trigger is the only
+     * bound. Setting this applies a ceiling to every debounced run that does not carry its own
+     * `maxDelay`, and any `delay` at or above it is rejected at trigger time. It is a default
+     * rather than an enforced limit: a trigger that sets `maxDelay` uses that value even when it
+     * is longer than this. `0` and blank both mean no ceiling.
+     */
+    RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS: OptionalLimitEnv,
 
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
@@ -1311,6 +1562,9 @@ const EnvironmentSchema = z
     // claim TTL), how long a waiter blocks before timing out, and the
     // waiter poll interval.
     TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+    // Pipeline floor: the claim never shrinks below this even for a short customer key TTL, so it
+    // can't expire mid-pipeline and let a loser re-claim (cross-DB duplicate under the split).
+    TRIGGER_MOLLIFIER_CLAIM_MIN_TTL_SECONDS: z.coerce.number().int().positive().default(5),
     TRIGGER_MOLLIFIER_CLAIM_WAIT_MS: z.coerce.number().int().positive().default(5_000),
     TRIGGER_MOLLIFIER_CLAIM_POLL_MS: z.coerce.number().int().positive().default(25),
 
@@ -1526,6 +1780,11 @@ const EnvironmentSchema = z
     SCHEDULE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
     SCHEDULE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().default(30),
+    SCHEDULE_WORKER_CRON_SPREAD_FRACTION: z.coerce
+      .number()
+      .catch(0)
+      .default(0)
+      .transform((value) => (Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0)),
 
     SCHEDULE_WORKER_REDIS_HOST: z
       .string()
@@ -1561,6 +1820,65 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     SCHEDULE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    WEBHOOK_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+    WEBHOOK_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    WEBHOOK_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+    WEBHOOK_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+    WEBHOOK_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    WEBHOOK_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+    WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_ENABLED: z.string().default("0"),
+
+    WEBHOOK_WORKER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    WEBHOOK_WORKER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    WEBHOOK_WORKER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    WEBHOOK_WORKER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    WEBHOOK_WORKER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+    WEBHOOK_PARTITION_ENSURE_SCHEDULE: z.string().optional(),
+    WEBHOOK_PARTITION_ENSURE_JITTER_MS: z.coerce.number().int().optional(),
+    WEBHOOK_PARTITION_LOOKAHEAD_DAYS: z.coerce.number().int().default(10),
+    WEBHOOK_PARTITION_RETENTION_DAYS: z.coerce.number().int().default(60),
+
+    // Ingest hot-path cache for the endpoint + resolved signing secret (keyed by opaqueId). 0 disables.
+    WEBHOOK_ENDPOINT_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_ENDPOINT_CACHE_MAX_SIZE: z.coerce.number().int().default(10_000),
+
+    WEBHOOK_INGRESS_ENABLED: z.string().default("1"),
+
+    // Public origin for the webhook ingress URL shown to users / returned by the API. Defaults to the
+    // API origin; set to a dedicated host (e.g. https://webhook.trigger.dev) when one is fronted.
+    WEBHOOK_INGRESS_ORIGIN: z.string().optional(),
+    WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
+    WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
+    WEBHOOK_INGRESS_IP_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    WEBHOOK_INGRESS_IP_RATE_LIMIT_TOKENS: z.coerce.number().int().default(300),
+    WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .default(6 * 60 * 60),
+    WEBHOOK_FRONT_GATE_MAX_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .default(6 * 60 * 60),
+
     TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
@@ -1571,7 +1889,8 @@ const EnvironmentSchema = z
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
 
-    // kapa.ai
+    // kapa.ai — read by the root loader; unset turns Ask AI off, and ⌘I then opens the agent
+    // for users who have agent access, or does nothing for everyone else.
     KAPA_AI_WEBSITE_ID: z.string().optional(),
 
     // BetterStack
@@ -1618,6 +1937,7 @@ const EnvironmentSchema = z
     RUN_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(2),
     RUN_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    RUN_REPLICATION_MAX_POISON_STRIPS_PER_BATCH: z.coerce.number().int().default(1),
     RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
     RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
@@ -1716,6 +2036,47 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
+    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v1).
+    // Shares Redis with the runs replicator for leader locking but has its own
+    // slot and publication so the two consume independently. The source table is
+    // a partitioned parent, so the publication is created with
+    // publish_via_partition_root.
+    WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+    WEBHOOK_DELIVERIES_REPLICATION_ENABLED: z.string().default("0"),
+    WEBHOOK_DELIVERIES_REPLICATION_SLOT_NAME: z
+      .string()
+      .default("webhook_deliveries_to_clickhouse_v1"),
+    WEBHOOK_DELIVERIES_REPLICATION_PUBLICATION_NAME: z
+      .string()
+      .default("webhook_deliveries_to_clickhouse_v1_publication"),
+    WEBHOOK_DELIVERIES_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
+    WEBHOOK_DELIVERIES_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    WEBHOOK_DELIVERIES_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(10_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce
+      .number()
+      .int()
+      .default(10_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(500),
+    WEBHOOK_DELIVERIES_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+    WEBHOOK_DELIVERIES_REPLICATION_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    WEBHOOK_DELIVERIES_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_STRATEGY: z
+      .enum(["insert", "insert_async"])
+      .default("insert"),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
+
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
     // Optional read replica endpoint. Read-only clients (logs, query, admin, runsList,
@@ -1760,20 +2121,28 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Logs list pagination tuning (page sizing + recent-first probe windows).
+    // Scheduled logs-search projection. Disabled by default. LOGS_CLICKHOUSE_URL, or the
+    // CLICKHOUSE_URL fallback, must reach both source and destination tables and allow writes.
+    LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
+    LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(120),
+    LOGS_SEARCH_PROJECTOR_MAX_ROWS_TO_READ: z.coerce.number().int().positive().default(10_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_500_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
+
+    // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
     LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),
-    // Days back from the page ceiling to probe before widening to the full requested window,
-    // comma-separated. Empty disables narrowing (a single full-window query).
-    LOGS_LIST_RECENT_FIRST_PROBE_DAYS: z
-      .string()
-      .default("1,7")
-      .transform((s) =>
-        s
-          .split(",")
-          .map((v) => Number(v.trim()))
-          .filter((n) => Number.isFinite(n) && n > 0)
-      ),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
@@ -1782,10 +2151,7 @@ const EnvironmentSchema = z
     AI_FEATURES_ENABLED: z.string().default("0"),
 
     // Logs page ClickHouse URL (for logs queries)
-    LOGS_CLICKHOUSE_URL: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
+    LOGS_CLICKHOUSE_URL: z.string().optional(),
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z
@@ -1867,6 +2233,22 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    /**
+     * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every
+     * queue-metrics read (dashboards, queue pages, run inspector, health report) go through it, so
+     * metrics traffic never competes with runs-list or trace reads. Unset keeps the previous
+     * wiring: inserts on CLICKHOUSE_URL, reads on the query pool.
+     */
+    QUEUE_METRICS_CLICKHOUSE_URL: z.string().optional(),
+    /** Reader split so the consumer's inserts can never land on a read endpoint. Defaults to QUEUE_METRICS_CLICKHOUSE_URL. */
+    QUEUE_METRICS_CLICKHOUSE_READER_URL: z.string().optional(),
+    QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    QUEUE_METRICS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    QUEUE_METRICS_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    QUEUE_METRICS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
@@ -2000,6 +2382,8 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
     REALTIME_STREAMS_S2_ENDPOINT: z.string().optional(),
+    REALTIME_STREAMS_S2_ACCOUNT_URL: z.string().default("https://a.s2.dev/v1"),
+    REALTIME_STREAMS_S2_BASIN_URL: z.string().default("https://{basin}.b.s2.dev/v1"),
     REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: z.enum(["true", "false"]).default("false"),
     REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
       .number()
@@ -2087,3 +2471,24 @@ const EnvironmentSchema = z
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);
+
+if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
+  const insecure = (
+    [
+      ["SESSION_SECRET", env.SESSION_SECRET],
+      ["MAGIC_LINK_SECRET", env.MAGIC_LINK_SECRET],
+      ["ENCRYPTION_KEY", env.ENCRYPTION_KEY],
+      ["MANAGED_WORKER_SECRET", env.MANAGED_WORKER_SECRET],
+    ] as const
+  )
+    .filter(([, value]) => INSECURE_SECRET_VALUES.includes(value))
+    .map(([name]) => name);
+
+  if (insecure.length > 0) {
+    console.warn(
+      `⚠️  ALLOW_INSECURE_DEFAULT_SECRETS is enabled and these secrets still use a known-insecure published default: ${insecure.join(
+        ", "
+      )}. This is insecure - rotate them as soon as you can.`
+    );
+  }
+}

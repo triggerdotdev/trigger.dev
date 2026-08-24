@@ -1,7 +1,12 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
-import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
+import {
+  json,
+  redirectDocument,
+  type ActionFunction,
+  type LoaderFunctionArgs,
+} from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import type { Prisma } from "@trigger.dev/database";
 import React, { useEffect, useState } from "react";
@@ -36,6 +41,9 @@ import {
   v3ProjectPath,
 } from "~/utils/pathBuilder";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New project");
 
 const WORKING_ON_OTHER = "Other/not sure yet";
 const GOALS_OTHER = "Other/not sure yet";
@@ -68,6 +76,17 @@ function shuffleArray<T>(arr: T[]): T[] {
   return shuffled;
 }
 
+function renderMultiSelectValue(value: string[]) {
+  if (value.length === 0) return;
+
+  return (
+    <span className="flex min-w-0 items-center text-text-bright">
+      <span className="truncate">{value.slice(0, 2).join(", ")}</span>
+      {value.length > 2 && <span className="ml-1 flex-none">+{value.length - 2} more</span>}
+    </span>
+  );
+}
+
 function MultiSelectField({
   value,
   setValue,
@@ -89,14 +108,7 @@ function MultiSelectField({
       icon={icon}
       items={items}
       className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
-      text={(v) =>
-        v.length === 0 ? undefined : (
-          <span className="flex min-w-0 items-center text-text-bright">
-            <span className="truncate">{v.slice(0, 2).join(", ")}</span>
-            {v.length > 2 && <span className="ml-1 flex-none">+{v.length - 2} more</span>}
-          </span>
-        )
-      }
+      text={renderMultiSelectValue}
     >
       {(items) =>
         items.map((item) => (
@@ -282,14 +294,17 @@ export const action: ActionFunction = async ({ request, params }) => {
       if (next) {
         params.set("next", next);
       }
-      return redirect(`/vercel/connect?${params.toString()}`);
+      return redirectDocument(`/vercel/connect?${params.toString()}`);
     }
 
-    return redirectWithSuccessMessage(
-      v3ProjectPath(project.organization, project),
+    const destination = v3ProjectPath(project.organization, project);
+    const response = await redirectWithSuccessMessage(
+      destination,
       request,
       `${submission.value.projectName} created`
     );
+
+    return redirectDocument(destination, { headers: response.headers });
   } catch (error) {
     if (error instanceof ExceededProjectLimitError) {
       return redirectWithErrorMessage(
@@ -345,6 +360,7 @@ export default function Page() {
 
   useEffect(() => {
     const nonOther = workingOnOptions.filter((o) => o !== WORKING_ON_OTHER);
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setShuffledWorkingOn([...shuffleArray(nonOther), WORKING_ON_OTHER]);
 
     const nonOtherGoals = goalOptions.filter((o) => o !== GOALS_OTHER);
@@ -498,7 +514,7 @@ export default function Page() {
               </Fieldset>
             </Form>
           </div>
-          <Feedback button={<></>} />
+          <Feedback />
         </MainCenteredContainer>
       </BackgroundWrapper>
     </AppContainer>

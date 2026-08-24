@@ -48,11 +48,21 @@ function isNewRunsCheckTick(tick: number) {
 
 function appendNewRunsSearchParams(
   searchParams: URLSearchParams,
-  { locationSearch, since }: { locationSearch: string; since: number }
+  { locationSearch, since, taskSlug }: { locationSearch: string; since: number; taskSlug?: string }
 ) {
   const filterParams = filterParamsWithoutPagination(locationSearch);
   for (const [key, value] of filterParams) {
     searchParams.append(key, value);
+  }
+  // On the task landing pages the task lives in the route path, not the query
+  // string, so scope the new-runs count to this task explicitly. The task pages
+  // list every run of the task (their loaders apply no rootOnly filter), so
+  // force rootOnly off for the count too: a rootOnly preference persisted from
+  // the main Runs page would otherwise make the count skip child runs the list
+  // is showing, so the "N new runs" button could under-count or never appear.
+  if (taskSlug) {
+    searchParams.append("tasks", taskSlug);
+    searchParams.set("rootOnly", "false");
   }
   searchParams.set("includeNewRuns", "true");
   searchParams.set("since", String(since));
@@ -77,6 +87,12 @@ function patchVisibleRunsWithLiveUpdates(currentRuns: ListedRun[], liveRuns: Liv
       usageDurationMs: update.usageDurationMs,
       costInCents: update.costInCents,
       baseCostInCents: update.baseCostInCents,
+      metadata: update.metadata !== undefined ? update.metadata : run.metadata,
+      metadataType: update.metadataType !== undefined ? update.metadataType : run.metadataType,
+      payload: update.payload !== undefined ? update.payload : run.payload,
+      payloadType: update.payloadType !== undefined ? update.payloadType : run.payloadType,
+      output: update.output !== undefined ? update.output : run.output,
+      outputType: update.outputType !== undefined ? update.outputType : run.outputType,
     };
   });
 }
@@ -138,6 +154,7 @@ export function useRunsLiveReload({
   organizationSlug,
   projectSlug,
   environmentSlug,
+  taskSlug,
 }: {
   runs: ListedRun[];
   hasAnyRuns: boolean;
@@ -145,10 +162,16 @@ export function useRunsLiveReload({
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
+  /**
+   * When set, scopes new-run detection to this task. Used by the task landing
+   * pages, where the task is a route path param rather than a `tasks` filter.
+   */
+  taskSlug?: string;
 }) {
   const location = useLocation();
   const runsPollFetcher = useTypedFetcher<typeof liveRunsLoader>();
   const runsPollFetcherStateRef = useRef(runsPollFetcher.state);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   runsPollFetcherStateRef.current = runsPollFetcher.state;
 
   const [visibleRuns, setVisibleRuns] = useState(runs);
@@ -176,6 +199,7 @@ export function useRunsLiveReload({
   // Single reset path: new loader data or changed filters re-baseline both the
   // visible rows and new-run tracking.
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setVisibleRuns(runs);
     resetNewRunsTracking();
   }, [runs, searchKeyWithoutPagination, resetNewRunsTracking]);
@@ -186,6 +210,7 @@ export function useRunsLiveReload({
     const data = runsPollFetcher.data;
     if (!data?.runs.length) return;
 
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setVisibleRuns((currentRuns) => patchVisibleRunsWithLiveUpdates(currentRuns, data.runs));
   }, [runsPollFetcher.data]);
 
@@ -226,10 +251,18 @@ export function useRunsLiveReload({
         searchParams.set("runIds", activeRunIdsParam);
       }
 
+      const locationParams = new URLSearchParams(location.search);
+      const colsValue = locationParams.get("cols");
+      if (colsValue) searchParams.set("cols", colsValue);
+      const hideValue = locationParams.get("hide");
+      if (hideValue) searchParams.set("hide", hideValue);
+      for (const smart of locationParams.getAll("sc")) searchParams.append("sc", smart);
+
       if (checkForNewRuns) {
         appendNewRunsSearchParams(searchParams, {
           locationSearch: location.search,
           since: knownNewestRunMs,
+          taskSlug,
         });
       }
 
@@ -242,6 +275,7 @@ export function useRunsLiveReload({
       knownNewestRunMs,
       runsPollFetcher,
       runsResourcesBasePath,
+      taskSlug,
     ]
   );
 

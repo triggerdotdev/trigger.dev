@@ -170,7 +170,9 @@ export class RunAttemptSystem {
   }
 
   public async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
-    const run = await this.$.runStore.findRun(
+    // read-your-writes: a just-created/locked run may not be on a replica yet; read the owning primary
+    // so a live run's execution context resolves instead of throwing a spurious 404.
+    const run = await this.$.runStore.findRunOnPrimary(
       {
         id: runId,
       },
@@ -298,6 +300,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     isWarmStart,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -305,6 +308,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     isWarmStart?: boolean;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
@@ -314,7 +318,12 @@ export class RunAttemptSystem {
       "startRunAttempt",
       async (span) => {
         return this.$.runLock.lock("startRunAttempt", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+          const latestSnapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            environmentId
+          );
 
           if (latestSnapshot.id !== snapshotId) {
             //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
@@ -641,12 +650,14 @@ export class RunAttemptSystem {
     completion,
     workerId,
     runnerId,
+    environmentId,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
     await this.#notifyMetadataUpdated(runId, completion);
 
@@ -659,6 +670,7 @@ export class RunAttemptSystem {
           tx: this.$.prisma,
           workerId,
           runnerId,
+          environmentId,
         });
       }
       case false: {
@@ -669,6 +681,7 @@ export class RunAttemptSystem {
           tx: this.$.prisma,
           workerId,
           runnerId,
+          environmentId,
         });
       }
     }
@@ -681,6 +694,7 @@ export class RunAttemptSystem {
     tx,
     workerId,
     runnerId,
+    environmentId,
   }: {
     runId: string;
     snapshotId: string;
@@ -688,6 +702,7 @@ export class RunAttemptSystem {
     tx: PrismaClientOrTransaction;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -696,7 +711,12 @@ export class RunAttemptSystem {
       "#completeRunAttemptSuccess",
       async (span) => {
         return this.$.runLock.lock("attemptSucceeded", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+          const latestSnapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            environmentId
+          );
 
           if (latestSnapshot.id !== snapshotId) {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -711,8 +731,8 @@ export class RunAttemptSystem {
 
           const completedAt = new Date();
 
-          // Read current usage values to calculate new totals (safe under runLock)
-          const currentRun = await this.$.runStore.findRun(
+          // Read current usage totals on the owning primary (read-your-writes; a replica lags)
+          const currentRun = await this.$.runStore.findRunOnPrimary(
             { id: runId },
             {
               select: {
@@ -866,6 +886,7 @@ export class RunAttemptSystem {
     runnerId,
     completion,
     forceRequeue,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -874,6 +895,7 @@ export class RunAttemptSystem {
     runnerId?: string;
     completion: TaskRunFailedExecutionResult;
     forceRequeue?: boolean;
+    environmentId?: string;
     tx: PrismaClientOrTransaction;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
@@ -883,7 +905,12 @@ export class RunAttemptSystem {
       "completeRunAttemptFailure",
       async (span) => {
         return this.$.runLock.lock("attemptFailed", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+          const latestSnapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            environmentId
+          );
 
           if (latestSnapshot.id !== snapshotId) {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -904,7 +931,8 @@ export class RunAttemptSystem {
           const failedAt = new Date();
 
           const retryResult = await retryOutcomeFromCompletion(
-            this.$.readOnlyPrisma,
+            // read-your-writes: lock-time maxAttempts/lockedRetryConfig may not be on a replica yet
+            this.$.prisma,
             this.$.runStore,
             {
               runId,
@@ -917,7 +945,9 @@ export class RunAttemptSystem {
 
           // Force requeue means it was crashed so the attempt span needs to be closed
           if (forceRequeue) {
-            const minimalRun = await this.$.runStore.findRun(
+            // read-your-writes: the run was just written in this flow; read the owning primary so the
+            // requeue event re-read cannot false-miss on a lagging replica (mirrors the :906 read).
+            const minimalRun = await this.$.runStore.findRunOnPrimary(
               {
                 id: runId,
               },
@@ -1375,7 +1405,7 @@ export class RunAttemptSystem {
         // Calculate updated usage if we have attempt duration data
         let usageUpdate: { usageDurationMs: number; costInCents: number } | undefined;
         if (attemptDurationMs !== undefined) {
-          const currentRun = await this.$.runStore.findRun(
+          const currentRun = await this.$.runStore.findRunOnPrimary(
             { id: runId },
             {
               select: {
@@ -1589,8 +1619,8 @@ export class RunAttemptSystem {
 
       const truncatedError = this.#truncateTaskRunError(error);
 
-      // Read current usage values to calculate new totals
-      const currentRun = await this.$.runStore.findRun(
+      // Read current usage totals on the owning primary (read-your-writes; a replica lags)
+      const currentRun = await this.$.runStore.findRunOnPrimary(
         { id: runId },
         {
           select: {
@@ -2096,7 +2126,7 @@ export class RunAttemptSystem {
   }
 }
 
-export function safeParseGitMeta(git: unknown): GitMeta | undefined {
+function safeParseGitMeta(git: unknown): GitMeta | undefined {
   const parsed = GitMeta.safeParse(git);
   if (parsed.success) {
     return parsed.data;

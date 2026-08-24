@@ -1,5 +1,4 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -27,14 +26,9 @@ import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Roles | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Roles");
 
 const Params = z.object({
   organizationSlug: z.string(),

@@ -24,6 +24,12 @@ import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
+import { runTriggeredAt } from "~/v3/runTimestamps";
+import {
+  deriveRunSelect,
+  type RunColumnId,
+  type SmartColumnSource,
+} from "~/components/runs/v3/runColumns";
 
 // Positive-only cache: only envs known to have runs are stored (empty envs are re-checked),
 // so "has runs" is monotonic and the TTL can be very long. Tiered memory + Redis.
@@ -80,6 +86,15 @@ export type RunListOptions = {
   pageSize?: number;
   // Run the empty-state "has any run ever" probe. Only the runs list consumes it.
   includeHasAnyRuns?: boolean;
+  /**
+   * Visible-column set used to derive the Postgres select. Omitted => the
+   * default select (all fields, no payload/output). Provided by the list route
+   * so payload/output are only hydrated when a smart column references them.
+   */
+  columns?: {
+    visibleStandardIds: RunColumnId[];
+    smartSources: SmartColumnSource[];
+  };
 };
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -158,6 +173,7 @@ export class NextRunListPresenter {
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
       includeHasAnyRuns = false,
+      columns,
     }: RunListOptions
   ) {
     //get the time values from the raw values (including a default period)
@@ -254,7 +270,12 @@ export class NextRunListPresenter {
       return date > now ? now : date;
     }
 
+    const runSelect = columns
+      ? deriveRunSelect(columns.visibleStandardIds, columns.smartSources)
+      : undefined;
+
     const { runs, pagination } = await runsRepository.listRuns({
+      runSelect,
       organizationId,
       environmentId,
       projectId,
@@ -299,12 +320,14 @@ export class NextRunListPresenter {
         const hasFinished = isFinalRunStatus(run.status);
 
         const startedAt = run.startedAt ?? run.lockedAt;
+        const triggeredAt = runTriggeredAt(run);
 
         return {
           id: run.id,
           number: 1,
           friendlyId: run.friendlyId,
           createdAt: run.createdAt.toISOString(),
+          triggeredAt: triggeredAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
           startedAt: startedAt ? startedAt.toISOString() : undefined,
           delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
@@ -332,6 +355,10 @@ export class NextRunListPresenter {
           rootTaskRunId: run.rootTaskRunId,
           metadata: run.metadata,
           metadataType: run.metadataType,
+          payload: run.payload,
+          payloadType: run.payloadType,
+          output: run.output,
+          outputType: run.outputType,
           machinePreset: run.machinePreset ? machinePresetFromRun(run)?.name : undefined,
           queue: {
             name: run.queue.replace("task/", ""),

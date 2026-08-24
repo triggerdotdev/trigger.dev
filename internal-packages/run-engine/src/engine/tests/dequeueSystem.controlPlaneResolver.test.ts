@@ -487,6 +487,102 @@ describe("DequeueSystem controlPlaneResolver (latest-v2 fallback + workerId bran
   );
 });
 
+describe("DequeueSystem controlPlaneResolver (worker-task read shape)", () => {
+  /**
+   * The resolver must ship only the columns the dequeue path reads: for each task id/slug +
+   * machineConfig/retryConfig/maxDurationInSeconds; for the deployment id/friendlyId/
+   * imageReference/imagePlatform; for each queue id/name. The heavy JSON columns it never reads
+   * (task payloadSchema/config/queueConfig/description, deployment externalBuildData/
+   * buildServerMetadata/errorData/git, queue rateLimit) must NOT come back, so the hot
+   * control-plane read stops shipping the large per-query payload.
+   */
+  containerTest(
+    "resolveWorkerVersion returns only the dequeue-read columns and drops the heavy JSON columns",
+    async ({ prisma }) => {
+      const taskSlug = "test-task";
+      const cp = await seedControlPlane(prisma as unknown as PrismaClient, "slim", taskSlug);
+
+      await prisma.backgroundWorkerTask.update({
+        where: { id: cp.task.id },
+        data: {
+          machineConfig: { preset: "small-2x" },
+          retryConfig: { maxAttempts: 5, factor: 2, minTimeoutInMs: 100, maxTimeoutInMs: 1000 },
+          maxDurationInSeconds: 120,
+          payloadSchema: { type: "object", properties: { message: { type: "string" } } },
+          config: { type: "ai-sdk-chat" },
+          queueConfig: { concurrencyLimit: 7 },
+          description: "must not be shipped on the dequeue read",
+        },
+      });
+
+      await prisma.workerDeployment.update({
+        where: { id: cp.deployment.id },
+        data: {
+          externalBuildData: { imageTag: "must-not-ship", buildId: "b1" },
+          buildServerMetadata: { logs: "must-not-ship" },
+          errorData: { message: "must-not-ship" },
+          git: { commitSha: "deadbeef", must: "not-ship" },
+        },
+      });
+
+      await prisma.taskQueue.update({
+        where: { id: cp.queue.id },
+        data: { rateLimit: { limit: 10, must: "not-ship" } },
+      });
+
+      const resolver = new PassthroughControlPlaneResolver({
+        prisma: prisma as unknown as PrismaClient,
+      });
+
+      const version = await resolver.resolveWorkerVersion({
+        environmentId: cp.environment.id,
+        type: "PRODUCTION",
+      });
+
+      assertNonNullable(version);
+      const task = version.tasks.find((t) => t.slug === taskSlug);
+      assertNonNullable(task);
+
+      expect(task.id).toBe(cp.task.id);
+      expect(task.slug).toBe(taskSlug);
+      expect(task.machineConfig).toEqual({ preset: "small-2x" });
+      expect(task.retryConfig).toMatchObject({ maxAttempts: 5 });
+      expect(task.maxDurationInSeconds).toBe(120);
+
+      expect("payloadSchema" in task).toBe(false);
+      expect("config" in task).toBe(false);
+      expect("queueConfig" in task).toBe(false);
+      expect("description" in task).toBe(false);
+      expect(Object.keys(task).sort()).toEqual([
+        "id",
+        "machineConfig",
+        "maxDurationInSeconds",
+        "retryConfig",
+        "slug",
+      ]);
+
+      assertNonNullable(version.deployment);
+      expect(version.deployment.id).toBe(cp.deployment.id);
+      expect("externalBuildData" in version.deployment).toBe(false);
+      expect("buildServerMetadata" in version.deployment).toBe(false);
+      expect("errorData" in version.deployment).toBe(false);
+      expect("git" in version.deployment).toBe(false);
+      expect(Object.keys(version.deployment).sort()).toEqual([
+        "friendlyId",
+        "id",
+        "imagePlatform",
+        "imageReference",
+      ]);
+
+      const queue = version.queues.find((q) => q.id === cp.queue.id);
+      assertNonNullable(queue);
+      expect(queue.name).toBe(cp.queueName);
+      expect("rateLimit" in queue).toBe(false);
+      expect(Object.keys(queue).sort()).toEqual(["id", "name"]);
+    }
+  );
+});
+
 describe("DequeueSystem controlPlaneResolver (single-DB passthrough)", () => {
   containerTest(
     "default passthrough dequeue is byte-identical (resolves env + worker version end-to-end)",
@@ -538,3 +634,142 @@ describe("DequeueSystem controlPlaneResolver (single-DB passthrough)", () => {
     }
   );
 });
+
+heteroPostgresTest(
+  "resolveWorkerVersion (DEVELOPMENT) resolves the newest worker by createdAt, not by id",
+  async ({ prisma14 }) => {
+    const cp = await seedControlPlane(
+      prisma14 as unknown as PrismaClient,
+      "cpord",
+      "ordering-task"
+    );
+
+    await prisma14.backgroundWorker.update({
+      where: { id: cp.worker.id },
+      data: { createdAt: new Date("2026-07-01T12:00:00.000Z") },
+    });
+
+    const newest = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_newest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260731.1",
+        metadata: {},
+        engine: "V2",
+        createdAt: new Date("2026-07-31T12:00:00.000Z"),
+      },
+    });
+    const oldest = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_oldest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260730.1",
+        metadata: {},
+        engine: "V2",
+        createdAt: new Date("2026-07-30T12:00:00.000Z"),
+      },
+    });
+
+    expect(oldest.id > newest.id).toBe(true);
+    expect(oldest.createdAt < newest.createdAt).toBe(true);
+
+    const resolver = new PassthroughControlPlaneResolver({
+      prisma: prisma14 as unknown as PrismaClient,
+    });
+
+    const resolved = await resolver.resolveWorkerVersion({
+      environmentId: cp.environment.id,
+      type: "DEVELOPMENT",
+    });
+
+    assertNonNullable(resolved);
+    expect(resolved.worker.id).toBe(newest.id);
+  }
+);
+
+heteroPostgresTest(
+  "resolveWorkerVersion latest-MANAGED fallback resolves by createdAt, not by id",
+  async ({ prisma14 }) => {
+    const cp = await seedControlPlane(
+      prisma14 as unknown as PrismaClient,
+      "cpfall",
+      "fallback-task"
+    );
+
+    await prisma14.workerDeployment.update({
+      where: { id: cp.deployment.id },
+      data: { type: "V1" },
+    });
+
+    const newestWorker = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_newest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260731.1",
+        metadata: {},
+        engine: "V2",
+      },
+    });
+    const oldestWorker = await prisma14.backgroundWorker.create({
+      data: {
+        friendlyId: generateFriendlyId("worker"),
+        contentHash: "hash_oldest",
+        projectId: cp.project.id,
+        runtimeEnvironmentId: cp.environment.id,
+        version: "20260730.1",
+        metadata: {},
+        engine: "V2",
+      },
+    });
+
+    const newestDeployment = await prisma14.workerDeployment.create({
+      data: {
+        friendlyId: generateFriendlyId("deployment"),
+        contentHash: "hash_newest",
+        version: "20260731.1",
+        shortCode: "short_code_newest",
+        status: "DEPLOYED",
+        projectId: cp.project.id,
+        environmentId: cp.environment.id,
+        workerId: newestWorker.id,
+        type: "MANAGED",
+        createdAt: new Date("2026-07-31T12:00:00.000Z"),
+      },
+    });
+    const oldestDeployment = await prisma14.workerDeployment.create({
+      data: {
+        friendlyId: generateFriendlyId("deployment"),
+        contentHash: "hash_oldest",
+        version: "20260730.1",
+        shortCode: "short_code_oldest",
+        status: "DEPLOYED",
+        projectId: cp.project.id,
+        environmentId: cp.environment.id,
+        workerId: oldestWorker.id,
+        type: "MANAGED",
+        createdAt: new Date("2026-07-30T12:00:00.000Z"),
+      },
+    });
+
+    expect(oldestDeployment.id > newestDeployment.id).toBe(true);
+    expect(oldestDeployment.createdAt < newestDeployment.createdAt).toBe(true);
+
+    const resolver = new PassthroughControlPlaneResolver({
+      prisma: prisma14 as unknown as PrismaClient,
+    });
+
+    const resolved = await resolver.resolveWorkerVersion({
+      environmentId: cp.environment.id,
+      type: "PRODUCTION",
+    });
+
+    assertNonNullable(resolved);
+    expect(resolved.deployment?.id).toBe(newestDeployment.id);
+  }
+);

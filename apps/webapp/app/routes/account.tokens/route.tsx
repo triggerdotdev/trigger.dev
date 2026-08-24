@@ -3,7 +3,7 @@ import { parseWithZod } from "@conform-to/zod";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, type MetaFunction, useActionData, useFetcher } from "@remix-run/react";
+import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -48,13 +48,10 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Personal Access Tokens | Trigger.dev`,
-    },
-  ];
-};
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Personal Access Tokens");
 
 // Shared between the create-token panel hint and the listing column
 // header tooltip so the cap is explained identically in both places.
@@ -251,13 +248,15 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Personal Access Tokens" />
         <PageAccessories>
-          <LinkButton
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("management/overview#personal-access-token-pat")}
-            variant="docs/small"
-          >
-            Personal Access Token docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("management/overview#personal-access-token-pat")}
+              variant="docs/small"
+            >
+              Personal Access Token docs
+            </LinkButton>
+          </WhenAgentUnavailable>
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="primary/small">Create new token…</Button>
@@ -372,6 +371,9 @@ function CreatePersonalAccessToken({
           </Callout>
           <ClipboardField
             secure
+            // 7-char "tr_pat_" prefix + 4 token chars, matching the tokens list display
+            secureRevealStart={11}
+            secureRevealEnd={4}
             value={token.token}
             variant={"secondary/medium"}
             icon={<ShieldExclamationIcon className="size-5 text-success" />}

@@ -38,7 +38,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           use_sticky_comment: true
-          allowed_bots: "devin-ai-integration[bot]"
+          allowed_bots: "devin-ai-integration[bot],claude[bot]"
 
           claude_args: |
             --max-turns 30

@@ -19,18 +19,24 @@ type UnitLabel = { singular: string; plural: string };
 export type UsageSparklineProps = {
   /** Equal-width time buckets, oldest first. */
   data?: number[];
-  /** Epoch ms of the first bucket's start. When omitted, the last bucket is anchored to now. */
-  bucketStartMs?: number;
+  /** Epoch ms of the first bucket's start. */
+  bucketStartMs: number;
   /** Width of each bucket in ms. Defaults to one hour. */
   bucketIntervalMs?: number;
   /** Bar colour. Defaults to blue. */
   color?: string;
   /** Unit shown in the tooltip (e.g. calls, tokens). */
   unitLabel?: UnitLabel;
+  /** Trailing scalar shown after the chart. Defaults to the sum of buckets (override for gauges, e.g. peak). */
+  total?: number;
   /** Format the trailing total. Defaults to `toLocaleString`. */
   formatTotal?: (total: number) => string;
   /** Class for the trailing total label. */
   totalClassName?: string;
+  /** Size of the bar chart. Defaults to the list-cell size (`h-6 w-28`). */
+  chartClassName?: string;
+  /** Hide the trailing total (e.g. when the caller shows its own headline). */
+  hideTotal?: boolean;
 };
 
 /**
@@ -44,21 +50,23 @@ export function UsageSparkline({
   bucketIntervalMs,
   color = "var(--color-pending)",
   unitLabel = { singular: "call", plural: "calls" },
+  total: totalOverride,
   formatTotal,
   totalClassName = "text-blue-400",
+  chartClassName = "h-6 w-28",
+  hideTotal = false,
 }: UsageSparklineProps) {
-  if (!data || data.every((v) => v === 0)) {
+  const hasTotalOverride = totalOverride !== undefined;
+  if (!data || data.length === 0 || (data.every((v) => v === 0) && !hasTotalOverride)) {
     return <span className="text-text-dimmed">–</span>;
   }
 
-  const total = data.reduce((a, b) => a + b, 0);
+  const total = totalOverride ?? data.reduce((a, b) => a + b, 0);
   const max = Math.max(...data);
 
-  // Map each bucket to a dated point so the tooltip can show the window it
-  // represents. Buckets are `intervalMs` wide; if the caller didn't pass the
-  // first bucket's start, anchor the last bucket to now (hourly default).
+  // Map each bucket to a dated point so the tooltip can show the window it represents.
   const intervalMs = bucketIntervalMs ?? 3600_000;
-  const startMs = bucketStartMs ?? Date.now() - (data.length - 1) * intervalMs;
+  const startMs = bucketStartMs;
   const chartData: UsageDatum[] = data.map((count, i) => ({
     date: new Date(startMs + i * intervalMs),
     count,
@@ -66,7 +74,7 @@ export function UsageSparkline({
 
   return (
     <div className="flex items-start gap-2">
-      <div className="h-6 w-28 rounded-sm">
+      <div className={cn("rounded-sm", chartClassName)}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, max || 1]} hide />
@@ -96,9 +104,13 @@ export function UsageSparkline({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <span className={cn("-mt-1 text-xs tabular-nums", totalClassName)}>
-        {formatTotal ? formatTotal(total) : total.toLocaleString()}
-      </span>
+      {/* No system-mono-label on the total: its color is often the only signal
+          (threshold breaches), there is no icon to carry it */}
+      {hideTotal ? null : (
+        <span className={cn("-mt-1 text-xs tabular-nums", totalClassName)}>
+          {formatTotal ? formatTotal(total) : total.toLocaleString()}
+        </span>
+      )}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { Prisma, prisma } from "~/db.server";
+import type { MembershipSource } from "~/models/member.server";
 import { logger } from "~/services/logger.server";
+import { enqueueMemberDevelopmentEnvironments } from "~/services/memberDevEnvironments.server";
 import { rbac } from "~/services/rbac.server";
 import {
   getValidPersonalAccessTokens,
@@ -13,10 +15,15 @@ export type EnsureOrgMemberParams = {
   // value is an RBAC role id; when an RBAC plugin is installed it gets
   // attached after the OrgMember row is created.
   roleId: string | null;
-  source: "sso_jit" | "invite" | "manual" | "directory_sync";
+  source: MembershipSource;
 };
 
-export type EnsureOrgMemberResult = { created: boolean; orgMemberId: string };
+export type EnsureOrgMemberResult = {
+  created: boolean;
+  orgMemberId: string;
+  /** False when provisioning could not be queued; the membership is still valid. */
+  devEnvironmentsQueued: boolean;
+};
 
 // Completes a JIT role assignment for an ALREADY-existing membership whose
 // RBAC role never got applied. This is a no-op when a role is already
@@ -82,7 +89,12 @@ export async function ensureOrgMember(
     if (roleId !== null) {
       await healMissingRoleAssignment({ userId, organizationId, roleId, source });
     }
-    return { created: false, orgMemberId: existing.id };
+    const { enqueued } = await enqueueMemberDevelopmentEnvironments({
+      userId,
+      organizationId,
+      source,
+    });
+    return { created: false, orgMemberId: existing.id, devEnvironmentsQueued: enqueued };
   }
 
   // Two concurrent JIT/invite flows can both miss the findFirst above and
@@ -106,7 +118,16 @@ export async function ensureOrgMember(
         select: { id: true },
       });
       if (existingAfterConflict) {
-        return { created: false, orgMemberId: existingAfterConflict.id };
+        const { enqueued } = await enqueueMemberDevelopmentEnvironments({
+          userId,
+          organizationId,
+          source,
+        });
+        return {
+          created: false,
+          orgMemberId: existingAfterConflict.id,
+          devEnvironmentsQueued: enqueued,
+        };
       }
     }
     throw error;
@@ -134,7 +155,13 @@ export async function ensureOrgMember(
     }
   }
 
-  return { created: true, orgMemberId: member.id };
+  const { enqueued } = await enqueueMemberDevelopmentEnvironments({
+    userId,
+    organizationId,
+    source,
+  });
+
+  return { created: true, orgMemberId: member.id, devEnvironmentsQueued: enqueued };
 }
 
 // Find-or-create a User for a directory-provisioned member. Directory Sync

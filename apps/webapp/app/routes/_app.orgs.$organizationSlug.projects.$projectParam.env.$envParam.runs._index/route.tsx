@@ -1,5 +1,7 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useLocation, useNavigation, useRevalidator } from "@remix-run/react";
+import { runFiltersSchema } from "@internal/dashboard-agent-contracts";
+import { useLocation, useNavigation, useRevalidator } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useState } from "react";
 import {
@@ -11,6 +13,7 @@ import {
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
 import { InlineCode } from "~/components/code/InlineCode";
 import { StepContentContainer } from "~/components/StepContentContainer";
@@ -36,6 +39,7 @@ import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { $replica } from "~/db.server";
@@ -49,6 +53,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   setRootOnlyFilterPreference,
@@ -58,6 +63,7 @@ import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
+import type { Handle } from "~/utils/handle";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -75,16 +81,23 @@ import {
   shouldRevalidateRunsList,
 } from "./shouldRevalidateRunsList";
 import { useRunsLiveReload } from "./useRunsLiveReload";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { pageMeta } from "~/utils/pageTitle";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Runs metrics | Trigger.dev`,
-    },
-  ];
+// Filters are read off the route match, not the typedjson deserializer, which mutates match data.
+export const handle: Handle = {
+  agentPageContext: (data) => {
+    const filters = runFiltersSchema.safeParse((data as { filters?: unknown } | null)?.filters);
+    return {
+      page: { kind: "runs", filters: filters.success ? filters.data : undefined },
+      signals: [],
+    };
+  },
 };
+
+export const meta = pageMeta("Runs");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -112,6 +125,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
     ...filters,
     includeHasAnyRuns: true,
+    columns: getRunColumnsForSelect(request),
   });
 
   // Only persist rootOnly when no tasks are filtered. While a task filter is active,
@@ -155,24 +169,24 @@ export default function Page() {
   const { data, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
     useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
-  const project = useProject();
   const environment = useEnvironment();
 
   return (
     <>
       <NavBar>
         <PageTitle title="Runs" accessory={<RunsHelpTooltip />} />
-        {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-          <DevDisconnectedBanner isConnected={isConnected} />
-        )}
+        {environment.type === "DEVELOPMENT" && <DevDisconnectedBanner isConnected={isConnected} />}
         <PageAccessories>
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/runs-and-attempts")}
-          >
-            Runs docs
-          </LinkButton>
+          <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/runs-and-attempts")}
+            >
+              Runs docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -313,103 +327,102 @@ function RunsList({
             selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
           )}
         >
-          <>
-            {list.runs.length === 0 && !list.hasAnyRuns ? (
-              list.possibleTasks.length === 0 ? (
-                <CreateFirstTaskInstructions />
-              ) : (
-                <RunTaskInstructions
-                  task={
-                    list.filters.tasks.length === 1
-                      ? list.possibleTasks.find((t) => t.slug === list.filters.tasks[0])
-                      : undefined
-                  }
-                />
-              )
+          {list.runs.length === 0 && !list.hasAnyRuns ? (
+            list.possibleTasks.length === 0 ? (
+              <CreateFirstTaskInstructions />
             ) : (
-              <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
-                <div className="flex items-start justify-between gap-x-2 p-2">
-                  <RunsFilters
-                    possibleTasks={list.possibleTasks}
-                    bulkActions={list.bulkActions}
-                    hasFilters={list.hasFilters}
-                    rootOnlyDefault={rootOnlyDefault}
-                  />
-                  <div className="flex items-center justify-end gap-x-2">
-                    {showNewRunsBanner && (
-                      <span className="flex duration-150 animate-in fade-in-0">
-                        <Button
-                          variant="secondary/small"
-                          className="text-text-bright"
-                          onClick={onClickShowNewRuns}
-                          LeadingIcon={<PulsingDot className="h-2 w-2" />}
-                          tooltip="Refresh to see new runs"
-                          aria-label="New runs created. Refresh to see new runs."
-                        >
-                          {newRunsCount >= 100
-                            ? "99+ new runs"
-                            : `${newRunsCount} new ${newRunsCount === 1 ? "run" : "runs"}`}
-                        </Button>
-                      </span>
-                    )}
-                    {/* Stay mounted while the inspector is open to avoid toolbar layout shift. */}
-                    <Button
-                      variant="secondary/small"
-                      disabled={isShowingBulkActionInspector || (!canCancelRuns && !canReplayRuns)}
-                      onClick={() =>
-                        replace({
-                          bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
-                          mode: selectedItems.size > 0 ? "selected" : undefined,
-                        })
-                      }
-                      LeadingIcon={ListCheckedIcon}
-                      className={cn(
-                        selectedItems.size > 0 ? "pr-1" : undefined,
-                        isShowingBulkActionInspector && "pointer-events-none invisible"
-                      )}
-                      tooltip={
-                        !canCancelRuns && !canReplayRuns ? (
-                          "You don't have permission to cancel or replay runs"
-                        ) : (
-                          <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
-                            <div className="flex items-center gap-0.5">
-                              <span>Replay</span>
-                              <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
-                            </div>
-                            <div className="flex items-center gap-0.5">
-                              <span>Cancel</span>
-                              <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
-                            </div>
-                          </div>
-                        )
-                      }
-                    >
-                      <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
-                        <span>Bulk action</span>
-                        {selectedItems.size > 0 && (
-                          <Badge variant="rounded">{selectedItems.size}</Badge>
-                        )}
-                      </span>
-                    </Button>
-                    <ListPagination list={list} />
-                  </div>
-                </div>
-
-                <TaskRunsTable
-                  total={visibleRuns.length}
+              <RunTaskInstructions
+                task={
+                  list.filters.tasks.length === 1
+                    ? list.possibleTasks.find((t) => t.slug === list.filters.tasks[0])
+                    : undefined
+                }
+              />
+            )
+          ) : (
+            <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
+              <div className="flex items-start justify-between gap-x-2 p-2">
+                <RunsFilters
+                  possibleTasks={list.possibleTasks}
+                  bulkActions={list.bulkActions}
                   hasFilters={list.hasFilters}
-                  filters={list.filters}
-                  runs={visibleRuns}
-                  childrenStatusesBasePath={childrenStatusesBasePath}
-                  isLoading={isLoading}
-                  allowSelection
                   rootOnlyDefault={rootOnlyDefault}
-                  canCancelRuns={canCancelRuns}
-                  canReplayRuns={canReplayRuns}
                 />
+                <div className="flex items-center justify-end gap-x-1.5">
+                  {showNewRunsBanner && (
+                    <span className="flex duration-150 animate-in fade-in-0">
+                      <Button
+                        variant="secondary/small"
+                        className="text-text-bright"
+                        onClick={onClickShowNewRuns}
+                        LeadingIcon={<PulsingDot className="h-2 w-2" />}
+                        tooltip="Refresh to see new runs"
+                        aria-label="New runs created. Refresh to see new runs."
+                      >
+                        {newRunsCount >= 100
+                          ? "99+ new runs"
+                          : `${newRunsCount} new ${newRunsCount === 1 ? "run" : "runs"}`}
+                      </Button>
+                    </span>
+                  )}
+                  {/* Stay mounted while the inspector is open to avoid toolbar layout shift. */}
+                  <Button
+                    variant="secondary/small"
+                    disabled={isShowingBulkActionInspector || (!canCancelRuns && !canReplayRuns)}
+                    onClick={() =>
+                      replace({
+                        bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
+                        mode: selectedItems.size > 0 ? "selected" : undefined,
+                      })
+                    }
+                    LeadingIcon={ListCheckedIcon}
+                    className={cn(
+                      selectedItems.size > 0 ? "pr-1" : undefined,
+                      isShowingBulkActionInspector && "pointer-events-none invisible"
+                    )}
+                    tooltip={
+                      !canCancelRuns && !canReplayRuns ? (
+                        "You don't have permission to cancel or replay runs"
+                      ) : (
+                        <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
+                          <div className="flex items-center gap-0.5">
+                            <span>Replay</span>
+                            <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            <span>Cancel</span>
+                            <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
+                          </div>
+                        </div>
+                      )
+                    }
+                  >
+                    <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
+                      <span>Bulk action</span>
+                      {selectedItems.size > 0 && (
+                        <Badge variant="rounded">{selectedItems.size}</Badge>
+                      )}
+                    </span>
+                  </Button>
+                  <RunsDisplayOptions />
+                  <ListPagination list={list} />
+                </div>
               </div>
-            )}
-          </>
+
+              <TaskRunsTable
+                total={visibleRuns.length}
+                hasFilters={list.hasFilters}
+                filters={list.filters}
+                runs={visibleRuns}
+                childrenStatusesBasePath={childrenStatusesBasePath}
+                isLoading={isLoading}
+                allowSelection
+                rootOnlyDefault={rootOnlyDefault}
+                canCancelRuns={canCancelRuns}
+                canReplayRuns={canReplayRuns}
+              />
+            </div>
+          )}
         </div>
       </ResizablePanel>
       <ResizableHandle

@@ -503,8 +503,8 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.agent(options)`                       | Create a chat agent                                                                                                          |
 | `chat.createSession(payload, options)`      | Create an async iterator for chat turns                                                                                      |
 | `chat.pipe(source, options?)`               | Pipe a stream to the frontend (from anywhere inside a task)                                                                  |
-| `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response `UIMessage`                                                                                    |
-| `chat.writeTurnComplete(options?)`          | Signal the frontend that the current turn is complete                                                                        |
+| `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response; returns `{ message, status, error }`                                                         |
+| `chat.writeTurnComplete(options?)`          | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors                                            |
 | `chat.createStopSignal()`                   | Create a managed stop signal wired to the stop input stream                                                                  |
 | `chat.messages`                             | Input stream for incoming messages — use `.waitWithIdleTimeout()`                                                            |
 | `chat.local<T>({ id })`                     | Create a per-run typed local (see [`chat.local`](/ai-chat/chat-local))                             |

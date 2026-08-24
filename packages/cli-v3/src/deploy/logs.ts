@@ -17,7 +17,7 @@ export type WarningsCheckReturn =
       warnings: string[];
     };
 
-export type LogParserOptions = Array<{
+type LogParserOptions = Array<{
   regex: RegExp;
   message: string;
   shouldFail?: boolean;

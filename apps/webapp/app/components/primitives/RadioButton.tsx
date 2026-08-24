@@ -22,7 +22,7 @@ const variants = {
   },
   "button/small": {
     button:
-      "flex items-center w-fit h-8 pl-2 pr-3 rounded-md border hover:data-[state=checked]:border-border-bright border-border-bright hover:border-border-bright transition data-disabled:opacity-70 data-disabled:hover:bg-transparent hover:data-[state=checked]:bg-white/4 data-[state=checked]:bg-white/4",
+      "flex items-center w-fit h-8 pl-2 pr-3 rounded-md border border-border-bright/50 shadow-xs bg-background-bright transition hover:bg-surface-hover-subtle data-disabled:opacity-70 data-disabled:hover:bg-background-bright hover:data-[state=checked]:bg-surface-selected-hover data-[state=checked]:border-border-selected data-[state=checked]:bg-surface-selected",
     label: "text-sm text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-0",
@@ -30,7 +30,7 @@ const variants = {
   },
   button: {
     button:
-      "w-fit py-2 pl-3 pr-4 rounded border border-border-bright hover:bg-background-dimmed hover:border-border-brightest transition data-[state=checked]:bg-background-dimmed data-disabled:opacity-70",
+      "w-fit py-2 pl-3 pr-4 rounded border border-border-bright/50 shadow-xs bg-background-bright hover:bg-surface-hover-subtle transition hover:data-[state=checked]:bg-surface-selected-hover data-[state=checked]:border-border-selected data-[state=checked]:bg-surface-selected data-disabled:opacity-70",
     label: "text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
@@ -38,7 +38,7 @@ const variants = {
   },
   description: {
     button:
-      "w-full p-2.5 hover:data-[state=checked]:bg-white/4 data-[state=checked]:bg-white/4 transition data-disabled:opacity-70 hover:border-border-bright border-border-bright hover:data-[state=checked]:border-border-bright border rounded-md",
+      "w-full p-2.5 rounded-md border border-border-bright/50 shadow-xs bg-background-bright transition hover:bg-surface-hover-subtle data-disabled:opacity-70 hover:data-[state=checked]:bg-surface-selected-hover data-[state=checked]:border-border-selected data-[state=checked]:bg-surface-selected",
     label: "text-text-bright font-semibold -mt-0.5 text-left text-sm",
     description: "text-text-dimmed mt-0 text-left",
     inputPosition: "mt-0",
@@ -46,7 +46,7 @@ const variants = {
   },
   icon: {
     button:
-      "w-full p-2.5 pb-4 hover:bg-background-dimmed transition data-disabled:opacity-70 data-[state=checked]:bg-background-dimmed border-border-bright border rounded-sm",
+      "w-full p-2.5 pb-4 rounded-sm border border-border-bright/50 shadow-xs bg-background-bright hover:bg-surface-hover-subtle transition data-disabled:opacity-70 hover:data-[state=checked]:bg-surface-selected-hover data-[state=checked]:border-border-selected data-[state=checked]:bg-surface-selected",
     label: "text-text-bright font-semibold -mt-1 text-left",
     description: "text-text-dimmed mt-0 text-left",
     inputPosition: "mt-0",
@@ -82,7 +82,10 @@ export function RadioButtonCircle({
           )}
         >
           <Circle
-            className={cn("size-2 fill-text-bright text-text-bright", innerCircleClassName)}
+            className={cn(
+              "size-2 fill-white text-white dark:fill-text-bright dark:text-text-bright",
+              innerCircleClassName
+            )}
           />
         </div>
       )}
@@ -136,7 +139,7 @@ export const RadioGroupItem = React.forwardRef<
           )}
         >
           <RadioGroupPrimitive.Indicator className="flex h-full w-full items-center justify-center rounded-full bg-indigo-600">
-            <Circle className="size-2 fill-text-bright text-text-bright" />
+            <Circle className="size-2 fill-white text-white dark:fill-text-bright dark:text-text-bright" />
           </RadioGroupPrimitive.Indicator>
         </div>
         <div className={cn(icon ? "flex h-full flex-col justify-end" : "")}>

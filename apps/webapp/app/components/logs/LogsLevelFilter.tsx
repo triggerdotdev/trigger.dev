@@ -12,37 +12,20 @@ import {
 } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { appliedSummary } from "~/components/runs/v3/SharedFilters";
-import type { LogLevel } from "~/presenters/v3/LogsListPresenter.server";
-import { cn } from "~/utils/cn";
+import { LogLevel } from "~/components/logs/LogLevel";
+import type { LogLevel as LogLevelValue } from "~/presenters/v3/LogsListPresenter.server";
 
-const allLogLevels: { level: LogLevel; label: string; color: string }[] = [
-  { level: "TRACE", label: "Trace", color: "text-purple-400" },
-  { level: "INFO", label: "Info", color: "text-blue-400" },
-  { level: "WARN", label: "Warning", color: "text-warning" },
-  { level: "ERROR", label: "Error", color: "text-error" },
-  { level: "DEBUG", label: "Debug", color: "text-text-dimmed" },
+const allLogLevels: { level: LogLevelValue; label: string }[] = [
+  { level: "TRACE", label: "Trace" },
+  { level: "INFO", label: "Info" },
+  { level: "WARN", label: "Warning" },
+  { level: "ERROR", label: "Error" },
+  { level: "DEBUG", label: "Debug" },
 ];
 
 // In the future we might add other levels or change which are available
 function getAvailableLevels(): typeof allLogLevels {
   return allLogLevels;
-}
-
-function getLevelBadgeColor(level: LogLevel): string {
-  switch (level) {
-    case "ERROR":
-      return "text-error bg-error/10 border-error/20";
-    case "WARN":
-      return "text-warning bg-warning/10 border-warning/20";
-    case "TRACE":
-      return "text-purple-400 bg-purple-500/10 border-purple-500/20";
-    case "DEBUG":
-      return "text-text-dimmed bg-background-raised border-border-bright";
-    case "INFO":
-      return "text-blue-400 bg-blue-500/10 border-blue-500/20";
-    default:
-      return "text-text-dimmed bg-background-hover border-grid-bright";
-  }
 }
 
 const shortcut = { key: "l" };
@@ -93,14 +76,9 @@ function LevelDropdown({ trigger }: { trigger: ReactNode }) {
               value={item.level}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
             >
-              <span
-                className={cn(
-                  "inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium uppercase",
-                  getLevelBadgeColor(item.level)
-                )}
-              >
-                {item.level}
-              </span>
+              {/* The same chip the rows use, so the dropdown can't drift from the list */}
+              <LogLevel level={item.level} />
+              <span className="sr-only">{item.label}</span>
             </SelectItem>
           ))}
         </SelectList>

@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { VERSION } from "../../version.js";
+import { isAdditionalApiKey } from "../apiKeys.js";
 import type { ApiClientConfiguration } from "../apiClientManager-api.js";
 import { generateJWT } from "../jwt.js";
 import {
@@ -68,6 +69,9 @@ import {
   QueueItem,
   ReadSessionStreamRecordsResponseBody,
   ReplayRunResponse,
+  type ReportFormat,
+  type ReportViewModel,
+  ReportViewModelSchema,
   ResetIdempotencyKeyResponse,
   ResolvePromptResponseBody,
   RetrieveBatchV2Response,
@@ -201,6 +205,15 @@ export type {
 
 export * from "./getBranch.js";
 
+export type CreatePublicTokenRequestBody = {
+  scopes: string[];
+  expirationTime?: string | number;
+  oneTimeUse?: boolean;
+  realtime?: { skipColumns?: string[] };
+};
+
+const CreatePublicTokenResponseBody = z.object({ token: z.string() });
+
 /**
  * Trigger.dev v3 API client
  */
@@ -228,6 +241,21 @@ export class ApiClient {
     this.additionalHeaders = additionalHeaders;
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, restRequestOptions);
     this.futureFlags = futureFlags;
+  }
+
+  /**
+   * Key for signing a public access token locally. Only root keys can do this —
+   * an additional key isn't the environment's signing material, so a token
+   * signed with one would never verify. Throw rather than return a dead token.
+   */
+  get #selfSigningKey(): string {
+    if (isAdditionalApiKey(this.accessToken)) {
+      throw new Error(
+        "This additional API key cannot self-sign public tokens, and the server did not return one. Upgrade the server or use the root API key."
+      );
+    }
+
+    return this.accessToken;
   }
 
   get fetchClient(): typeof fetch {
@@ -325,7 +353,7 @@ export class ApiClient {
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
         const jwt = await generateJWT({
-          secretKey: this.accessToken,
+          secretKey: this.#selfSigningKey,
           payload: {
             ...claims,
             scopes: [`read:runs:${data.id}`],
@@ -359,11 +387,20 @@ export class ApiClient {
     )
       .withResponse()
       .then(async ({ data, response }) => {
+        const jwtHeader = response.headers.get("x-trigger-jwt");
+
+        if (typeof jwtHeader === "string") {
+          return {
+            ...data,
+            publicAccessToken: jwtHeader,
+          };
+        }
+
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
         const jwt = await generateJWT({
-          secretKey: this.accessToken,
+          secretKey: this.#selfSigningKey,
           payload: {
             ...claims,
             scopes: [`read:batch:${data.id}`],
@@ -407,11 +444,20 @@ export class ApiClient {
     )
       .withResponse()
       .then(async ({ data, response }) => {
+        const jwtHeader = response.headers.get("x-trigger-jwt");
+
+        if (typeof jwtHeader === "string") {
+          return {
+            ...data,
+            publicAccessToken: jwtHeader,
+          };
+        }
+
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
         const jwt = await generateJWT({
-          secretKey: this.accessToken,
+          secretKey: this.#selfSigningKey,
           payload: {
             ...claims,
             scopes: [`read:batch:${data.id}`],
@@ -1107,7 +1153,7 @@ export class ApiClient {
           const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
           const jwt = await generateJWT({
-            secretKey: this.accessToken,
+            secretKey: this.#selfSigningKey,
             payload: {
               ...claims,
               scopes: [`write:waitpoints:${data.id}`],
@@ -1870,6 +1916,22 @@ export class ApiClient {
     );
   }
 
+  async createPublicToken(
+    body: CreatePublicTokenRequestBody,
+    requestOptions?: ZodFetchOptions
+  ): Promise<{ token: string }> {
+    return zodfetch(
+      CreatePublicTokenResponseBody,
+      `${this.baseUrl}/api/v1/auth/public-tokens`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   retrieveBatch(batchId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       RetrieveBatchV2Response,
@@ -1936,6 +1998,51 @@ export class ApiClient {
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
+  }
+
+  /**
+   * `format: "json"` returns a `ReportViewModel`; "markdown" (default) and "ansi" return a rendered
+   * string. `period` is a shorthand like "1h" or "7d", capped at 90d. Seconds are not accepted.
+   */
+  async getReport(
+    key: string,
+    options: { period?: string; format: "json" }
+  ): Promise<ReportViewModel>;
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: "markdown" | "ansi" }
+  ): Promise<string>;
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: ReportFormat }
+  ): Promise<string | ReportViewModel> {
+    const searchParams = new URLSearchParams({ format: options?.format ?? "markdown" });
+    if (options?.period) {
+      searchParams.set("period", options.period);
+    }
+
+    const response = await fetch(
+      `${this.baseUrl}/api/v1/reports/${encodeURIComponent(key)}?${searchParams.toString()}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      }
+    );
+
+    if (!response.ok) {
+      const bodySnippet = await readBodySnippet(response);
+      throw new Error(
+        `Failed to fetch report "${key}": ${response.status} ${response.statusText}${
+          bodySnippet ? ` — ${bodySnippet}` : ""
+        }`
+      );
+    }
+
+    if (options?.format === "json") {
+      return ReportViewModelSchema.parse(await response.json());
+    }
+
+    return response.text();
   }
 
   #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
@@ -2413,6 +2520,22 @@ function shouldRetryStreamBatchItems(
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Best-effort read of a (likely error) response body for inclusion in a thrown Error.
+ * Never throws, and truncates so we don't dump a huge HTML page into an error message.
+ */
+async function readBodySnippet(response: Response, maxLength = 500): Promise<string> {
+  try {
+    const text = (await response.text()).trim();
+    if (!text) {
+      return "";
+    }
+    return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+  } catch {
+    return "";
+  }
 }
 
 /**

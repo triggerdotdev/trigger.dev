@@ -8,7 +8,7 @@ import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { AIQueryService } from "~/v3/services/aiQueryService.server";
-import { querySchemas } from "~/v3/querySchemas";
+import { listableQuerySchemas } from "~/v3/querySchemas";
 
 const RequestSchema = z.object({
   prompt: z.string().min(1, "Prompt is required"),
@@ -85,7 +85,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { prompt, mode, currentQuery } = submission.data;
 
   const service = new AIQueryService(
-    querySchemas,
+    listableQuerySchemas({
+      includeQueueMetrics: env.QUEUE_METRICS_QUERY_TABLES_VISIBLE === "1",
+    }),
     openai(env.AI_RUN_FILTER_MODEL ?? "gpt-4o-mini")
   );
 

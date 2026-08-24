@@ -1,7 +1,9 @@
 import { tryCatch } from "@trigger.dev/core/utils";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import type {
   BuildManifest,
   CreateBackgroundWorkerRequestBody,
+  DequeuedMessage,
   DevConfigResponseBody,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
@@ -224,6 +226,7 @@ class DevSupervisor implements WorkerRuntime {
 
     this.activeRunsPath = join(triggerDir, `active-runs${suffix}.json`);
     this.watchdogPidPath = join(triggerDir, `watchdog${suffix}.pid`);
+    const lockFilePath = join(triggerDir, safeBranch ? `dev.${safeBranch}.lock` : "dev.lock");
 
     // Write empty active-runs file
     this.#updateActiveRunsFile();
@@ -249,6 +252,7 @@ class DevSupervisor implements WorkerRuntime {
           WATCHDOG_ACTIVE_RUNS: this.activeRunsPath,
           WATCHDOG_PID_FILE: this.watchdogPidPath,
           WATCHDOG_TMP_DIR: getTmpRoot(this.options.config.workingDir, this.options.branch),
+          WATCHDOG_LOCK_FILE: lockFilePath,
         },
       });
 
@@ -478,7 +482,9 @@ class DevSupervisor implements WorkerRuntime {
             }
           );
 
-          //todo call the API to crash the run with a good message
+          this.#failRunWithMissingWorker(message).catch((error) => {
+            logger.debug("[DevSupervisor] Failed to fail run with missing worker", { error });
+          });
           continue;
         }
 
@@ -586,6 +592,33 @@ class DevSupervisor implements WorkerRuntime {
       //dequeue again
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
     }
+  }
+
+  async #failRunWithMissingWorker(message: DequeuedMessage) {
+    const start = await this.options.client.dev.startRunAttempt(
+      message.run.friendlyId,
+      message.snapshot.friendlyId
+    );
+
+    if (!start.success) {
+      return;
+    }
+
+    const { run, snapshot, execution } = start.data;
+
+    await this.options.client.dev.completeRunAttempt(run.friendlyId, snapshot.friendlyId, {
+      completion: {
+        id: execution.run.id,
+        ok: false,
+        retry: undefined,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+          message:
+            "This run was assigned to a background worker version that is no longer available in the dev session because it was superseded by a rebuild. Trigger the run again to use the current version.",
+        },
+      },
+    });
   }
 
   async #startPresenceConnection() {

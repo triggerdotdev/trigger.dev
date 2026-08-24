@@ -46,17 +46,6 @@ export function shouldResetAlertsOnLimitChange(
   return isPercentageAlertMode(previousMode) !== isPercentageAlertMode(nextMode);
 }
 
-/** Configured billing limit mode before a save; null when billing limit was never configured. */
-export function getPreviousBillingLimitModeForAlertSync(
-  billingLimit: BillingLimitResult
-): BillingLimitMode | null {
-  if (!billingLimit.isConfigured) {
-    return null;
-  }
-
-  return billingLimit.mode;
-}
-
 export function hasConfiguredAlerts(
   alerts: BillingAlertsFormData,
   billingLimit: BillingLimitResult,
@@ -65,10 +54,6 @@ export function hasConfiguredAlerts(
   const mode = getBillingLimitMode(billingLimit);
   const effectiveLimitCents = getEffectiveLimitCents(billingLimit, planLimitCents);
   return storedAlertsToThresholds(alerts, mode, effectiveLimitCents, planLimitCents).length > 0;
-}
-
-export function hasSavedAlertThresholds(alerts: BillingAlertsFormData): boolean {
-  return alerts.alertLevels.length > 0;
 }
 
 /** Saved thresholds that would be cleared when the billing limit alert format changes. */
@@ -80,7 +65,7 @@ export function hadSavedAlertsToClearOnLimitChange(
   return hasConfiguredAlerts(alerts, billingLimit, planLimitCents);
 }
 
-export function normalizeThresholdValues(values: number[]): number[] {
+function normalizeThresholdValues(values: number[]): number[] {
   return [...values].sort((a, b) => a - b);
 }
 
@@ -89,7 +74,7 @@ export function thresholdValuesAreUnique(values: number[]): boolean {
   return new Set(normalized).size === normalized.length;
 }
 
-export function normalizeEmailValues(values: string[]): string[] {
+function normalizeEmailValues(values: string[]): string[] {
   return values.map((value) => value.trim()).filter(Boolean);
 }
 
@@ -208,6 +193,11 @@ export function isLegacyDollarAmountField(
     return false;
   }
 
+  // The exact $1 absolute base marker always wins, even with levels below 100 (e.g. a $5 alert).
+  if (rawAmount === ABSOLUTE_ALERT_BASE_CENTS) {
+    return false;
+  }
+
   if (!Number.isFinite(rawAmount) || rawAmount < 10) {
     return false;
   }
@@ -229,33 +219,6 @@ export function isLegacyDollarAmountField(
   const effectiveDollars = Math.round(options.effectiveLimitCents / 100);
 
   return rawAmount === planDollars || rawAmount === effectiveDollars;
-}
-export function isAbsoluteSavedAlerts(alerts: BillingAlertsFormData): boolean {
-  return getSavedAlertAmountCents(alerts) === ABSOLUTE_ALERT_BASE_CENTS;
-}
-
-/** Build a cleaned alerts payload when saving billing limits in the same alert format. */
-export function buildCleanedAlertsPayloadForLimitSave(
-  alerts: BillingAlertsFormData,
-  nextMode: BillingLimitMode,
-  effectiveLimitCents: number,
-  planLimitCents: number
-): { amount: number; alertLevels: number[]; emails: string[] } | null {
-  if (alerts.alertLevels.length === 0) {
-    return null;
-  }
-
-  const thresholds = storedAlertsToThresholds(
-    alerts,
-    nextMode,
-    effectiveLimitCents,
-    planLimitCents
-  );
-
-  return {
-    emails: alerts.emails,
-    ...thresholdsToAlertPayload(thresholds, nextMode, effectiveLimitCents),
-  };
 }
 
 /** Convert stored percentage alert levels to UI percent values (10, 50, 80). */
@@ -315,8 +278,9 @@ export function getAlertPreviewLimitCents(
   planLimitCents: number
 ): number {
   const amountCents = getSavedAlertAmountCents(alerts);
+  // Percentages always apply to the current limit, not the base stored at last save.
   if (amountCents > 0 && percentageAlertLevelsToUiThresholds(alerts.alertLevels).length > 0) {
-    return amountCents;
+    return effectiveLimitCents;
   }
   if (percentageAlertAmountMatches(amountCents, effectiveLimitCents, planLimitCents)) {
     return amountCents;
@@ -378,10 +342,6 @@ export function thresholdsToAlertPayload(
     amount: effectiveLimitCents,
     alertLevels: thresholds.map((percent) => percent / 100),
   };
-}
-
-export function isEmptyThreshold(value: number): boolean {
-  return !Number.isFinite(value) || value <= 0;
 }
 
 export function previewDollarAmountForPercent(

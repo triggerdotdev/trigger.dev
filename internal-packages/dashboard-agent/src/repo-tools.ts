@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
 import {
   getRepoInfoSchema,
@@ -38,10 +39,47 @@ export type RepoSnapshot = {
 };
 
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100MB ceiling on the download
-const MAX_READ_BYTES = 256 * 1024; // per read_file
+
+// The snapshot fetch is a network primitive on an internal worker, so the URL must be one
+// the webapp would have minted: https to GitHub's own archive hosts (the signed redirect
+// target of the `tarball` API is codeload). A validation failure is thrown before any
+// request leaves the worker.
+const ALLOWED_TARBALL_HOSTS = new Set(["codeload.github.com"]);
+
+function assertAllowedTarballUrl(tarballUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(tarballUrl);
+  } catch {
+    throw new Error("repo snapshot URL is not a valid URL");
+  }
+  if (url.protocol !== "https:" || !ALLOWED_TARBALL_HOSTS.has(url.hostname)) {
+    throw new Error(`repo snapshot URL host is not allowed (${url.hostname || "unparseable"})`);
+  }
+}
+// A tool result the model has to pay for on every later turn of the conversation:
+// 48KB is ~12k tokens, where the old 256KB ceiling was ~65k.
+export const MAX_READ_BYTES = 48 * 1024;
+export const MAX_READ_LINES = 1500;
 const MAX_LIST_FILES = 500;
 const MAX_MATCHES = 80;
 const FETCH_TIMEOUT_MS = 30_000;
+
+// Points at the mechanism the prompt already teaches — the stack-trace line is
+// where a truncated read gets resumed.
+const READ_TRUNCATION_NOTICE =
+  `Truncated to the first ${MAX_READ_LINES} lines / ${MAX_READ_BYTES / 1024}KB. ` +
+  "Read the part you need with startLine and endLine — the line from the stack trace or the search match is where to start.";
+
+/** Caps a read at both ceilings, whichever bites first. */
+function capRead(content: string): { content: string; truncated: boolean } {
+  const lines = content.split("\n");
+  let capped = lines.length > MAX_READ_LINES ? lines.slice(0, MAX_READ_LINES).join("\n") : content;
+  if (Buffer.byteLength(capped, "utf8") > MAX_READ_BYTES) {
+    capped = Buffer.from(capped, "utf8").subarray(0, MAX_READ_BYTES).toString("utf8");
+  }
+  return { content: capped, truncated: capped.length !== content.length };
+}
 
 // In-flight + completed extractions, keyed by workdir, so concurrent tool calls
 // in a turn extract once. Module scope: shared across turns of a warm run.
@@ -81,7 +119,13 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     let tarPath: string | undefined;
     try {
-      const res = await fetch(snapshot.tarballUrl, { signal: controller.signal });
+      assertAllowedTarballUrl(snapshot.tarballUrl);
+      // No redirects: the server resolves the one hop to a signed codeload URL itself, so
+      // following one here would just reopen the host check to a redirect target.
+      const res = await fetch(snapshot.tarballUrl, {
+        signal: controller.signal,
+        redirect: "error",
+      });
       if (!res.ok) throw new Error(`archive download failed (status ${res.status})`);
       const length = Number(res.headers.get("content-length") ?? 0);
       if (length > MAX_ARCHIVE_BYTES) throw new Error(`archive too large (${length} bytes)`);
@@ -92,6 +136,29 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
       const scratch = await mkdtemp(join(tmpdir(), "dashboard-agent-tar-"));
       tarPath = join(scratch, "repo.tar.gz");
       await writeFile(tarPath, bytes);
+
+      // List the archive's top-level entries before extracting: anything that resolves
+      // outside the root after `--strip-components=1` (`..` segments, absolute paths)
+      // rejects the archive. Both bsdtar and GNU tar refuse `..` members outright; this
+      // rejects rather than relying on the extractor, and the read tools' realpath checks
+      // keep any surviving symlink member from pointing a read outside the root.
+      const { stdout: listing } = await execFileAsync("tar", ["-tzf", tarPath], {
+        // The listing is a line per member; a 100MB archive can't hold more members
+        // than this fits at any plausible path length.
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      const roots = new Set<string>();
+      for (const entry of listing.split("\n")) {
+        const name = entry.replace(/\/+$/, "");
+        if (!name) continue;
+        if (isAbsolute(name) || name.split("/").includes("..")) {
+          throw new Error(`archive entry escapes the workspace (${name})`);
+        }
+        roots.add(name.split("/")[0]);
+        if (roots.size > 1) {
+          throw new Error("archive has more than one top-level entry; refusing to extract");
+        }
+      }
 
       await mkdir(workdir, { recursive: true });
       await execFileAsync("tar", ["-xzf", tarPath, "-C", workdir, "--strip-components=1"]);
@@ -236,23 +303,37 @@ export function buildRepoTools(
         if (realTarget && !isInside(workdir, realTarget)) {
           return { error: "Path escapes the repository root." };
         }
-        let content: string;
-        let truncated = false;
+        let whole: string;
         try {
-          const buf = await readFile(realTarget ?? target);
-          content = buf.subarray(0, MAX_READ_BYTES).toString("utf8");
-          truncated = buf.length > MAX_READ_BYTES;
+          whole = (await readFile(realTarget ?? target)).toString("utf8");
         } catch {
           return { error: `Couldn't read ${path} (not found or not a file).` };
         }
+        // The range is applied before the cap: capping first made a range past the
+        // ceiling come back empty rather than as the lines that were asked for.
         if (startLine != null || endLine != null) {
-          const lines = content.split("\n");
+          const lines = whole.split("\n");
           const from = Math.max(1, startLine ?? 1);
           const to = Math.min(lines.length, endLine ?? lines.length);
-          content = lines.slice(from - 1, to).join("\n");
-          return { path, content, startLine: from, endLine: to };
+          const range = capRead(lines.slice(from - 1, to).join("\n"));
+          // The cap can cut the range short, and a line number that outruns the
+          // content is a citation anchored to a line the model never saw.
+          const served = Math.min(to, from + range.content.split("\n").length - 1);
+          return {
+            path,
+            content: range.content,
+            startLine: from,
+            endLine: served,
+            ...(range.truncated ? { truncated: true, notice: READ_TRUNCATION_NOTICE } : {}),
+          };
         }
-        return { path, content, truncated };
+        const { content, truncated } = capRead(whole);
+        return {
+          path,
+          content,
+          truncated,
+          ...(truncated ? { notice: READ_TRUNCATION_NOTICE } : {}),
+        };
       },
     }),
 
@@ -280,7 +361,7 @@ export function buildRepoTools(
             .map((line) => {
               const m = line.match(/^([^:]+):(\d+):(.*)$/);
               return m
-                ? { file: m[1], line: Number(m[2]), text: m[3].slice(0, 300) }
+                ? { file: m[1], line: Number(m[2]), text: sliceWellFormed(m[3], 300) }
                 : { text: line };
             });
           return { matches, truncated: matches.length >= cap };

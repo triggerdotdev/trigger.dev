@@ -27,6 +27,22 @@ describe("SSEStreamSubscription retry behavior", () => {
     });
   }
 
+  /**
+   * A response.body that emits one SSE event then stays open (never closes),
+   * so the connection sits mid-read until the fetch signal aborts.
+   */
+  function makeOpenSSEResponse() {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`id: 1\ndata: {"hello":1}\n\n`));
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "X-Stream-Version": "v1" },
+    });
+  }
+
   // Drain a ReadableStream<SSEStreamPart> until it closes or errors.
   // Returns received chunks plus terminal state.
   async function drain(stream: ReadableStream<{ id: string; chunk: unknown }>) {
@@ -72,6 +88,30 @@ describe("SSEStreamSubscription retry behavior", () => {
     expect(attempts).toBe(8);
     expect(result.error).toBeUndefined();
     expect(result.chunks).toHaveLength(1);
+  });
+
+  it("does not reconnect after the consumer cancels the returned stream", async () => {
+    let attempts = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      attempts++;
+      return makeOpenSSEResponse();
+    });
+
+    const sub = new SSEStreamSubscription("http://example.test/sse", {
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      maxRetries: 10,
+    });
+
+    const stream = await sub.subscribe();
+    const reader = stream.getReader();
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+
+    await reader.cancel();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(attempts).toBe(1);
   });
 
   it("caps the exponential backoff at maxRetryDelayMs", async () => {

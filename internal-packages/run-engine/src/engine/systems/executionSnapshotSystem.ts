@@ -11,10 +11,11 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
-import { ExecutionSnapshotNotFoundError } from "../errors.js";
+import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
 
+import { boundedIn } from "@trigger.dev/database";
 /** Chunk size for fetching waitpoints to avoid NAPI string conversion limits */
 const WAITPOINT_CHUNK_SIZE = 100;
 
@@ -186,25 +187,34 @@ async function fetchWaitpointsInChunks(
   for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
     const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
     const waitpoints = runStore
-      ? await runStore.findManyWaitpoints({ where: { id: { in: chunk } } }, prisma, runId)
+      ? await runStore.findManyWaitpoints(
+          { where: { id: { in: boundedIn(chunk) } } },
+          prisma,
+          runId
+        )
       : await prisma.waitpoint.findMany({
-          where: { id: { in: chunk } },
+          where: { id: { in: boundedIn(chunk) } },
         });
     allWaitpoints.push(...waitpoints);
   }
   return allWaitpoints;
 }
 
-/* Gets the most recent valid snapshot for a run */
+/**
+ * Gets the most recent valid snapshot for a run. When `environmentId` is provided the read is scoped
+ * to that environment (tenant boundary): a run in another environment reads as not-found and rejects
+ * with a 404 rather than leaking existence. Internal callers omit it to read regardless of env.
+ */
 export async function getLatestExecutionSnapshot(
   prisma: PrismaClientOrTransaction,
   runId: string,
-  runStore?: RunStore
+  runStore?: RunStore,
+  environmentId?: string
 ): Promise<EnhancedExecutionSnapshot> {
   const snapshot = runStore
-    ? await runStore.findLatestExecutionSnapshot(runId, prisma)
+    ? await runStore.findLatestExecutionSnapshot(runId, prisma, environmentId)
     : await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { runId, isValid: true },
+        where: { runId, isValid: true, ...(environmentId ? { environmentId } : {}) },
         include: {
           completedWaitpoints: true,
           checkpoint: true,
@@ -213,6 +223,9 @@ export async function getLatestExecutionSnapshot(
       });
 
   if (!snapshot) {
+    if (environmentId) {
+      throw new ServiceValidationError(`No execution snapshot found for TaskRun ${runId}`, 404);
+    }
     throw new Error(`No execution snapshot found for TaskRun ${runId}`);
   }
 
@@ -295,19 +308,24 @@ export async function getExecutionSnapshotsSince(
   runStore?: RunStore,
   // The primary, for read-repair when `prisma` is a lagging read replica (see Step 3). Omit when
   // `prisma` is already the primary.
-  repairClient?: PrismaClientOrTransaction
+  repairClient?: PrismaClientOrTransaction,
+  // When set, scopes both reads to this environment (tenant boundary): a run in another env reads as
+  // not-found. Omit to read regardless of environment (internal callers).
+  environmentId?: string
 ): Promise<EnhancedExecutionSnapshot[]> {
+  const envScope = environmentId ? { environmentId } : {};
+
   // Step 1: Find the createdAt of the sinceSnapshotId
   const sinceSnapshot = runStore
     ? await runStore.findExecutionSnapshot(
         {
-          where: { id: sinceSnapshotId, runId },
+          where: { id: sinceSnapshotId, runId, ...envScope },
           select: { createdAt: true },
         },
         prisma
       )
     : await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { id: sinceSnapshotId, runId },
+        where: { id: sinceSnapshotId, runId, ...envScope },
         select: { createdAt: true },
       });
 
@@ -323,6 +341,7 @@ export async function getExecutionSnapshotsSince(
             runId,
             isValid: true,
             createdAt: { gt: sinceSnapshot.createdAt },
+            ...envScope,
           },
           include: {
             checkpoint: true,
@@ -338,6 +357,7 @@ export async function getExecutionSnapshotsSince(
           runId,
           isValid: true,
           createdAt: { gt: sinceSnapshot.createdAt },
+          ...envScope,
         },
         include: {
           checkpoint: true,
@@ -547,7 +567,7 @@ export class ExecutionSnapshotSystem {
       });
     }
 
-    this.$.logger.info("heartbeatRun snapshot heartbeat updated", {
+    this.$.logger.debug("heartbeatRun snapshot heartbeat updated", {
       id: latestSnapshot.id,
       runId: latestSnapshot.runId,
       lastHeartbeatAt: new Date(),

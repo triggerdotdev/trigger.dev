@@ -6,7 +6,7 @@
     "moduleResolution": "Node16",
     "moduleDetection": "force",
     "verbatimModuleSyntax": false,
-    "types": ["vitest/globals"],
+    "types": ["vitest/globals", "node"],
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,

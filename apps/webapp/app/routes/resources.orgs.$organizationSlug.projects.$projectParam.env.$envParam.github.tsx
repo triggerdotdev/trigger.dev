@@ -1,6 +1,12 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowUpCircleIcon,
+  ArrowUpRightIcon,
+  CheckCircleIcon,
+  LockClosedIcon,
+  PlusIcon,
+} from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
   Form,
@@ -21,7 +27,7 @@ import {
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { OctoKitty } from "~/components/GitHubLoginButton";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -34,10 +40,15 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import {
+  SettingsActions,
+  SettingsBlock,
+  SettingsRow,
+  SettingsRowDescription,
+} from "~/components/primitives/SettingsLayout";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
-import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
@@ -386,6 +397,7 @@ export function ConnectGitHubRepoModal({
   redirectUrl,
   preventDismiss,
   canManageGithub = true,
+  buttonVariant = "secondary/medium",
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
@@ -395,6 +407,7 @@ export function ConnectGitHubRepoModal({
   /** When true, prevents closing the modal via Escape key or clicking outside */
   preventDismiss?: boolean;
   canManageGithub?: boolean;
+  buttonVariant?: "secondary/small" | "secondary/medium";
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
@@ -429,6 +442,7 @@ export function ConnectGitHubRepoModal({
     const params = new URLSearchParams(searchParams);
 
     if (params.get("openGithubRepoModal") === "1") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(true);
       params.delete("openGithubRepoModal");
       setSearchParams(params);
@@ -437,6 +451,7 @@ export function ConnectGitHubRepoModal({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(false);
     }
   }, [lastSubmission]);
@@ -457,7 +472,7 @@ export function ConnectGitHubRepoModal({
       <DialogTrigger asChild>
         <Button
           type="button"
-          variant={"secondary/medium"}
+          variant={buttonVariant}
           LeadingIcon={OctoKitty}
           disabled={!canManageGithub}
           tooltip={
@@ -504,7 +519,7 @@ export function ConnectGitHubRepoModal({
                     setSelectedRepository(undefined);
                   }}
                   items={gitHubAppInstallations}
-                  variant="tertiary/small"
+                  variant="secondary/medium"
                   placeholder="Select account"
                   dropdownIcon
                   text={selectedInstallation ? selectedInstallation.accountHandle : undefined}
@@ -555,7 +570,7 @@ export function ConnectGitHubRepoModal({
                     );
                     setSelectedRepository(repository);
                   }}
-                  variant="tertiary/small"
+                  variant="secondary/medium"
                   placeholder="Select repository"
                   heading="Filter repositories"
                   dropdownIcon
@@ -597,7 +612,6 @@ export function ConnectGitHubRepoModal({
                     value="connect-repo"
                     variant="primary/medium"
                     LeadingIcon={isConnectRepositoryLoading ? SpinnerWhite : undefined}
-                    leadingIconClassName="text-white"
                     disabled={isConnectRepositoryLoading}
                   >
                     Connect repository
@@ -606,7 +620,7 @@ export function ConnectGitHubRepoModal({
                 cancelButton={
                   preventDismiss ? undefined : (
                     <DialogClose asChild>
-                      <Button variant="tertiary/medium">Cancel</Button>
+                      <Button variant="secondary/medium">Cancel</Button>
                     </DialogClose>
                   )
                 }
@@ -678,6 +692,90 @@ export function GitHubConnectionPrompt({
   );
 }
 
+function GitHubAppInstalledRow() {
+  return (
+    <SettingsRow
+      title="GitHub app"
+      action={
+        <span className="flex items-center gap-1.5 text-sm text-text-dimmed">
+          <CheckCircleIcon className="size-4 text-success" />
+          Installed
+        </span>
+      }
+    />
+  );
+}
+
+function GitHubSettingsRows({
+  gitHubAppInstallations,
+  organizationSlug,
+  projectSlug,
+  environmentSlug,
+  redirectUrl,
+  canManageGithub = true,
+}: {
+  gitHubAppInstallations: GitHubAppInstallation[];
+  organizationSlug: string;
+  projectSlug: string;
+  environmentSlug: string;
+  redirectUrl?: string;
+  canManageGithub?: boolean;
+}) {
+  const appInstalled = gitHubAppInstallations.length > 0;
+  const githubInstallationRedirect =
+    redirectUrl ||
+    v3ProjectSettingsIntegrationsPath(
+      { slug: organizationSlug },
+      { slug: projectSlug },
+      { slug: environmentSlug }
+    );
+
+  return (
+    <>
+      {appInstalled ? (
+        <GitHubAppInstalledRow />
+      ) : (
+        <SettingsRow
+          title="GitHub app"
+          description="Give Trigger.dev access to the repo you want to deploy from."
+          action={
+            <PermissionLink
+              hasPermission={canManageGithub}
+              noPermissionTooltip="You don't have permission to manage the GitHub integration"
+              to={githubAppInstallPath(
+                organizationSlug,
+                `${githubInstallationRedirect}?openGithubRepoModal=1`
+              )}
+              variant="secondary/small"
+              LeadingIcon={OctoKitty}
+            >
+              Install GitHub app
+            </PermissionLink>
+          }
+        />
+      )}
+
+      {appInstalled && (
+        <SettingsRow
+          title="GitHub repo"
+          description="Connect a GitHub repo to automatically deploy changes."
+          action={
+            <ConnectGitHubRepoModal
+              gitHubAppInstallations={gitHubAppInstallations}
+              organizationSlug={organizationSlug}
+              projectSlug={projectSlug}
+              environmentSlug={environmentSlug}
+              redirectUrl={redirectUrl}
+              canManageGithub={canManageGithub}
+              buttonVariant="secondary/small"
+            />
+          }
+        />
+      )}
+    </>
+  );
+}
+
 export function ConnectedGitHubRepoForm({
   connectedGitHubRepo,
   previewEnvironmentEnabled,
@@ -714,6 +812,7 @@ export function ConnectedGitHubRepoForm({
       gitSettingsValues.stagingBranch !==
         (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
       gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasGitSettingsChanges(hasChanges);
   }, [gitSettingsValues, connectedGitHubRepo]);
 
@@ -736,21 +835,36 @@ export function ConnectedGitHubRepoForm({
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between rounded-sm border bg-grid-dimmed p-2">
-        <div className="flex items-center gap-2">
-          <OctoKitty className="size-4" />
-          <a
-            href={connectedGitHubRepo.repository.htmlUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="max-w-52 truncate text-sm text-text-bright hover:underline"
-          >
-            {connectedGitHubRepo.repository.fullName}
-          </a>
-          {connectedGitHubRepo.repository.private && (
-            <LockClosedIcon className="size-3 text-text-dimmed" />
-          )}
-          <span className="text-xs text-text-dimmed">
+      <SettingsRow
+        title="GitHub repo"
+        action={
+          <span className="flex items-center gap-1.5 text-sm text-text-dimmed">
+            <CheckCircleIcon className="size-4 text-success" />
+            Connected
+          </span>
+        }
+      />
+
+      <SettingsRow
+        description={
+          <>
+            <span className="mr-2 inline-block size-1.5 rounded-full bg-success align-[0.15em]" />
+            {connectedGitHubRepo.repository.private ? "Private" : "Public"} repo
+            <OctoKitty className="ml-2 mr-1.5 inline size-3.5 align-text-bottom text-text-bright" />
+            <TextLink
+              href={connectedGitHubRepo.repository.htmlUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              tooltip={
+                <span className="flex items-center gap-1 text-text-bright">
+                  View repo
+                  <ArrowUpRightIcon className="size-3.5" />
+                </span>
+              }
+            >
+              {connectedGitHubRepo.repository.fullName}
+            </TextLink>{" "}
+            connected on{" "}
             <DateTime
               date={connectedGitHubRepo.createdAt}
               includeTime={false}
@@ -758,164 +872,193 @@ export function ConnectedGitHubRepoForm({
               showTimezone={false}
               showTooltip={false}
             />
-          </span>
-        </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              variant="minimal/small"
-              disabled={!canManageGithub}
-              tooltip={
-                canManageGithub
-                  ? undefined
-                  : "You don't have permission to manage the GitHub integration"
-              }
-            >
-              Disconnect
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>Disconnect GitHub repository</DialogHeader>
-            <div className="flex flex-col gap-3 pt-3">
-              <Paragraph className="mb-1">
-                Are you sure you want to disconnect{" "}
-                <span className="font-semibold">{connectedGitHubRepo.repository.fullName}</span>?
-                This will stop automatic deployments from GitHub.
-              </Paragraph>
-              <FormButtons
-                confirmButton={
-                  <Form method="post" action={actionUrl}>
-                    <input type="hidden" name="action" value="disconnect-repo" />
-                    {redirectUrl && <input type="hidden" name="redirectUrl" value={redirectUrl} />}
-                    <Button type="submit" variant="danger/medium">
-                      Disconnect repository
-                    </Button>
-                  </Form>
-                }
-                cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
-                }
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <Form method="post" action={actionUrl} {...getFormProps(gitSettingsForm)}>
-        {redirectUrl && <input type="hidden" name="redirectUrl" value={redirectUrl} />}
-        <Fieldset>
-          <InputGroup fullWidth>
-            <Hint>
-              Every push to the selected tracking branch creates a deployment in the corresponding
-              environment.
-            </Hint>
-            <div className="mt-1 grid grid-cols-[120px_1fr] gap-3">
-              <div className="flex items-center gap-1.5">
-                <EnvironmentIcon environment={{ type: "PRODUCTION" }} className="size-4" />
-                <span className={`text-sm ${environmentTextClassName({ type: "PRODUCTION" })}`}>
-                  {environmentFullTitle({ type: "PRODUCTION" })}
-                </span>
-              </div>
-              <Input
-                {...getInputProps(fields.productionBranch, { type: "text" })}
-                defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
-                placeholder="none"
-                variant="tertiary"
-                className="font-mono"
-                icon={GitBranchIcon}
-                onChange={(e) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    productionBranch: e.target.value,
-                  }));
-                }}
-              />
-              <div className="flex items-center gap-1.5">
-                <EnvironmentIcon environment={{ type: "STAGING" }} className="size-4" />
-                <span className={`text-sm ${environmentTextClassName({ type: "STAGING" })}`}>
-                  {environmentFullTitle({ type: "STAGING" })}
-                </span>
-              </div>
-              <Input
-                {...getInputProps(fields.stagingBranch, { type: "text" })}
-                defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
-                placeholder="none"
-                variant="tertiary"
-                className="font-mono"
-                icon={GitBranchIcon}
-                onChange={(e) => {
-                  setGitSettingsValues((prev) => ({
-                    ...prev,
-                    stagingBranch: e.target.value,
-                  }));
-                }}
-              />
-
-              <div className="flex items-center gap-1.5">
-                <EnvironmentIcon environment={{ type: "PREVIEW" }} className="size-4" />
-                <span className={`text-sm ${environmentTextClassName({ type: "PREVIEW" })}`}>
-                  {environmentFullTitle({ type: "PREVIEW" })}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Switch
-                  name="previewDeploymentsEnabled"
-                  disabled={!previewEnvironmentEnabled}
-                  defaultChecked={
-                    connectedGitHubRepo.previewDeploymentsEnabled && previewEnvironmentEnabled
-                  }
-                  variant="small"
-                  label="Create preview deployments for pull requests"
-                  labelPosition="right"
-                  onCheckedChange={(checked) => {
-                    setGitSettingsValues((prev) => ({
-                      ...prev,
-                      previewDeploymentsEnabled: checked,
-                    }));
-                  }}
-                />
-                {!previewEnvironmentEnabled && (
-                  <InfoIconTooltip
-                    content={
-                      <span className="text-xs">
-                        <TextLink to={billingPath}>Upgrade</TextLink> your plan to enable preview
-                        branches
-                      </span>
-                    }
-                  />
-                )}
-              </div>
-            </div>
-            <FormError>{fields.productionBranch?.errors}</FormError>
-            <FormError>{fields.stagingBranch?.errors}</FormError>
-            <FormError>{fields.previewDeploymentsEnabled?.errors}</FormError>
-            <FormError>{gitSettingsForm.errors}</FormError>
-          </InputGroup>
-
-          <FormButtons
-            confirmButton={
+            .
+          </>
+        }
+        action={
+          <Dialog>
+            <DialogTrigger asChild>
               <Button
-                type="submit"
-                name="action"
-                value="update-git-settings"
                 variant="secondary/small"
-                disabled={isGitSettingsLoading || !hasGitSettingsChanges || !canManageGithub}
+                disabled={!canManageGithub}
                 tooltip={
                   canManageGithub
                     ? undefined
                     : "You don't have permission to manage the GitHub integration"
                 }
-                LeadingIcon={isGitSettingsLoading ? SpinnerWhite : undefined}
               >
-                Save
+                Disconnect
               </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>Disconnect GitHub repository</DialogHeader>
+              <div className="flex flex-col gap-3 pt-3">
+                <Paragraph className="mb-1">
+                  Are you sure you want to disconnect{" "}
+                  <span className="font-semibold">{connectedGitHubRepo.repository.fullName}</span>?
+                  This will stop automatic deployments from GitHub.
+                </Paragraph>
+                <FormButtons
+                  confirmButton={
+                    <Form method="post" action={actionUrl}>
+                      <input type="hidden" name="action" value="disconnect-repo" />
+                      {redirectUrl && (
+                        <input type="hidden" name="redirectUrl" value={redirectUrl} />
+                      )}
+                      <Button type="submit" variant="danger/medium">
+                        Disconnect repository
+                      </Button>
+                    </Form>
+                  }
+                  cancelButton={
+                    <DialogClose asChild>
+                      <Button variant="tertiary/medium">Cancel</Button>
+                    </DialogClose>
+                  }
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <Form method="post" action={actionUrl} {...getFormProps(gitSettingsForm)}>
+        {redirectUrl && <input type="hidden" name="redirectUrl" value={redirectUrl} />}
+
+        <SettingsBlock size="sm">
+          <Hint>
+            Every push to the selected tracking branch creates a deployment in the corresponding
+            environment.
+          </Hint>
+        </SettingsBlock>
+
+        <SettingsRow
+          action={
+            <Input
+              {...getInputProps(fields.productionBranch, { type: "text" })}
+              defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
+              placeholder="none"
+              variant="medium"
+              className="font-mono"
+              containerClassName="w-64"
+              icon={GitBranchIcon}
+              onChange={(e) => {
+                setGitSettingsValues((prev) => ({
+                  ...prev,
+                  productionBranch: e.target.value,
+                }));
+              }}
+            />
+          }
+        >
+          <EnvironmentRowLabel type="PRODUCTION" />
+        </SettingsRow>
+
+        <SettingsRow
+          action={
+            <Input
+              {...getInputProps(fields.stagingBranch, { type: "text" })}
+              defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
+              placeholder="none"
+              variant="medium"
+              className="font-mono"
+              containerClassName="w-64"
+              icon={GitBranchIcon}
+              onChange={(e) => {
+                setGitSettingsValues((prev) => ({
+                  ...prev,
+                  stagingBranch: e.target.value,
+                }));
+              }}
+            />
+          }
+        >
+          <EnvironmentRowLabel type="STAGING" />
+        </SettingsRow>
+
+        <SettingsRow
+          action={
+            previewEnvironmentEnabled ? (
+              <Switch
+                name="previewDeploymentsEnabled"
+                defaultChecked={connectedGitHubRepo.previewDeploymentsEnabled}
+                variant="medium"
+                onCheckedChange={(checked) => {
+                  setGitSettingsValues((prev) => ({
+                    ...prev,
+                    previewDeploymentsEnabled: checked,
+                  }));
+                }}
+              />
+            ) : (
+              <>
+                {connectedGitHubRepo.previewDeploymentsEnabled && (
+                  <input type="hidden" name="previewDeploymentsEnabled" value="on" />
+                )}
+                <LinkButton
+                  to={billingPath}
+                  variant="secondary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                  leadingIconClassName="text-indigo-500"
+                >
+                  Upgrade
+                </LinkButton>
+              </>
+            )
+          }
+        >
+          <EnvironmentRowLabel
+            type="PREVIEW"
+            description={
+              previewEnvironmentEnabled ? undefined : "Upgrade your plan to enable preview branches"
             }
           />
-        </Fieldset>
+        </SettingsRow>
+
+        <FormError>{fields.productionBranch?.errors}</FormError>
+        <FormError>{fields.stagingBranch?.errors}</FormError>
+        <FormError>{fields.previewDeploymentsEnabled?.errors}</FormError>
+        <FormError>{gitSettingsForm.errors}</FormError>
+
+        <SettingsActions>
+          <Button
+            type="submit"
+            name="action"
+            value="update-git-settings"
+            variant="secondary/small"
+            disabled={isGitSettingsLoading || !hasGitSettingsChanges || !canManageGithub}
+            tooltip={
+              canManageGithub
+                ? undefined
+                : "You don't have permission to manage the GitHub integration"
+            }
+            LeadingIcon={isGitSettingsLoading ? Spinner : undefined}
+          >
+            Save
+          </Button>
+        </SettingsActions>
       </Form>
     </>
+  );
+}
+
+function EnvironmentRowLabel({
+  type,
+  description,
+}: {
+  type: "PRODUCTION" | "STAGING" | "PREVIEW";
+  description?: React.ReactNode;
+}) {
+  return (
+    <div className="flex-1 space-y-1">
+      <div className="flex items-center gap-1.5">
+        <EnvironmentIcon environment={{ type }} className="size-4" />
+        <span className={cn("text-sm", environmentTextClassName({ type }))}>
+          {environmentFullTitle({ type })}
+        </span>
+      </div>
+      {description ? <SettingsRowDescription>{description}</SettingsRowDescription> : null}
+    </div>
   );
 }
 
@@ -928,13 +1071,16 @@ export function GitHubSettingsPanel({
   projectSlug,
   environmentSlug,
   billingPath,
+  layout = "compact",
 }: {
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
   billingPath: string;
+  layout?: "settings" | "compact";
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const location = useLocation();
 
   // Preserve current search params (e.g. origin=marketplace, next=...) but strip
@@ -946,16 +1092,18 @@ export function GitHubSettingsPanel({
     return search ? `${location.pathname}?${search}` : location.pathname;
   })();
   useEffect(() => {
-    fetcher.load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
-  }, [organizationSlug, projectSlug, environmentSlug]);
+    load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
+  }, [organizationSlug, projectSlug, environmentSlug, load]);
 
   const data = fetcher.data;
+
+  const canManageGithub = data?.canManageGithub ?? true;
 
   // Loading state
   if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
-        <SpinnerWhite className="size-4" />
+        <Spinner color="blue" className="size-4" />
         <span className="text-sm">Loading GitHub settings...</span>
       </div>
     );
@@ -967,35 +1115,49 @@ export function GitHubSettingsPanel({
   }
 
   // Connected repository exists - show form
-  if (data.connectedRepository) {
+  if (data?.connectedRepository) {
     return (
-      <ConnectedGitHubRepoForm
-        connectedGitHubRepo={data.connectedRepository}
-        previewEnvironmentEnabled={data.isPreviewEnvironmentEnabled}
-        organizationSlug={organizationSlug}
-        projectSlug={projectSlug}
-        environmentSlug={environmentSlug}
-        billingPath={billingPath}
-        redirectUrl={effectiveRedirectUrl}
-        canManageGithub={data.canManageGithub}
-      />
+      <>
+        {layout === "settings" && <GitHubAppInstalledRow />}
+        <ConnectedGitHubRepoForm
+          connectedGitHubRepo={data.connectedRepository}
+          previewEnvironmentEnabled={data.isPreviewEnvironmentEnabled}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          billingPath={billingPath}
+          redirectUrl={effectiveRedirectUrl}
+          canManageGithub={data.canManageGithub}
+        />
+      </>
     );
   }
 
   // No connected repository - show connection prompt
-  return (
-    <div className="flex flex-col gap-2">
-      <GitHubConnectionPrompt
-        gitHubAppInstallations={data.installations ?? []}
+  if (layout === "settings") {
+    return (
+      <GitHubSettingsRows
+        gitHubAppInstallations={data?.installations ?? []}
         organizationSlug={organizationSlug}
         projectSlug={projectSlug}
         environmentSlug={environmentSlug}
         redirectUrl={effectiveRedirectUrl}
-        canManageGithub={data.canManageGithub}
+        canManageGithub={canManageGithub}
       />
-      {!data.connectedRepository && (
-        <Hint>Connect your GitHub repository to automatically deploy your changes.</Hint>
-      )}
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <GitHubConnectionPrompt
+        gitHubAppInstallations={data?.installations ?? []}
+        organizationSlug={organizationSlug}
+        projectSlug={projectSlug}
+        environmentSlug={environmentSlug}
+        redirectUrl={effectiveRedirectUrl}
+        canManageGithub={canManageGithub}
+      />
+      <Hint>Connect a GitHub repo to automatically deploy changes.</Hint>
     </div>
   );
 }

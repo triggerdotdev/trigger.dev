@@ -7,10 +7,15 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./tool-schemas": "./src/tool-schemas.ts"
+    "./tool-curation": "./src/tool-curation.ts",
+    "./tool-schemas": "./src/tool-schemas.ts",
+    "./prompt-prefix": "./src/prompt-prefix.ts",
+    "./model-provider": "./src/model-provider.ts"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "4.0.117",
     "@ai-sdk/anthropic": "^3.0.0",
+    "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.116",
@@ -18,6 +23,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider": "3.0.8",
+    "@internal/testcontainers": "workspace:*",
     "@trigger.dev/build": "workspace:*",
     "trigger.dev": "workspace:*",
     "vitest": "4.1.7"
@@ -26,7 +32,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:evals": "vitest run --config vitest.eval.config.ts",
+    "test:evals": "DASHBOARD_AGENT_EVAL_CONTEXT=ci vitest run --config vitest.eval.config.ts",
     "dev": "trigger dev",
     "deploy": "trigger deploy"
   }

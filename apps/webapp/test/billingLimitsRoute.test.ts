@@ -266,12 +266,53 @@ describe("isBillingLimitFormDirty", () => {
     gracePeriodMs: 86_400_000,
   };
 
+  it("is not dirty when no mode is selected, regardless of other inputs", () => {
+    expect(
+      isBillingLimitFormDirty({
+        billingLimit: unconfiguredLimit,
+        mode: "",
+        customAmount: "999.00",
+        cancelInProgressRuns: true,
+      })
+    ).toBe(false);
+
+    // Even a configured limit stays clean while the form has no selection.
+    expect(
+      isBillingLimitFormDirty({
+        billingLimit: configuredPlanLimit,
+        mode: "",
+        customAmount: "50.00",
+        cancelInProgressRuns: true,
+      })
+    ).toBe(false);
+  });
+
   it("is dirty when billing limit has never been saved", () => {
     expect(
       isBillingLimitFormDirty({
         billingLimit: unconfiguredLimit,
         mode: "none",
         customAmount: "",
+        cancelInProgressRuns: false,
+      })
+    ).toBe(true);
+  });
+
+  it("is dirty when an unconfigured limit picks a real mode (initial save)", () => {
+    expect(
+      isBillingLimitFormDirty({
+        billingLimit: unconfiguredLimit,
+        mode: "plan",
+        customAmount: "",
+        cancelInProgressRuns: false,
+      })
+    ).toBe(true);
+
+    expect(
+      isBillingLimitFormDirty({
+        billingLimit: unconfiguredLimit,
+        mode: "custom",
+        customAmount: "100.00",
         cancelInProgressRuns: false,
       })
     ).toBe(true);

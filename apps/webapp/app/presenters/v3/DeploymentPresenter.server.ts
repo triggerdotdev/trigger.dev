@@ -101,6 +101,7 @@ export class DeploymentPresenter {
         externalBuildData: true,
         projectId: true,
         type: true,
+        externalId: true,
         environment: {
           select: {
             id: true,
@@ -272,6 +273,7 @@ export class DeploymentPresenter {
         errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
         isBuilt: !!deployment.builtAt,
         type: deployment.type,
+        externalId: deployment.externalId,
         git: gitMetadata,
         triggeredVia: deployment.triggeredVia,
         vercelDeploymentUrl,

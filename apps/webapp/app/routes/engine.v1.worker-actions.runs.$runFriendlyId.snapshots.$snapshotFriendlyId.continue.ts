@@ -17,6 +17,7 @@ export const loader = createLoaderWorkerApiRoute(
     authenticatedWorker,
     params,
     runnerId,
+    environmentId,
   }): Promise<TypedResponse<WorkerApiContinueRunExecutionRequestBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;
 
@@ -27,10 +28,17 @@ export const loader = createLoaderWorkerApiRoute(
         runFriendlyId,
         snapshotFriendlyId,
         runnerId,
+        environmentId,
       });
 
       return json(continuationResult);
     } catch (error) {
+      // An authorization rejection is thrown as a Response; propagate it as-is rather than
+      // masking it as a generic 422.
+      if (error instanceof Response) {
+        throw error;
+      }
+
       logger.warn("Failed to continue run execution", {
         runFriendlyId,
         snapshotFriendlyId,

@@ -260,7 +260,7 @@ export function ChartBarRenderer({
       {/* When legend is shown below the chart, render tooltip with cursor only (no content popup).
           Otherwise render the full tooltip with zoom instructions. */}
       <ChartTooltip
-        cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
+        cursor={{ fill: "rgba(255, 255, 255, 0.12)" }}
         content={
           syncZoomSelection && zoomFrom != null && zoomTo != null ? (
             <ZoomRangeTooltip from={zoomFrom} to={zoomTo} />

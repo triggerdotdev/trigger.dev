@@ -5,7 +5,9 @@ import { AnimatedNumber } from "../AnimatedNumber";
 import TooltipPortal from "../TooltipPortal";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
-const THEMES = { light: "", dark: '[data-theme="dark"]' } as const;
+// :is() keeps this one selector once interpolated below; a comma would break
+// scoping. `light` is unscoped on purpose: it's the base the dark rule overrides.
+const THEMES = { light: "", dark: ':is([data-theme="dark"], [data-theme="black"])' } as const;
 
 export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
 
@@ -176,7 +178,10 @@ const ChartTooltipContent = React.forwardRef<
             {payload.map((item, index) => {
               const key = `${nameKey || item.name || item.dataKey || "value"}`;
               const itemConfig = getPayloadConfigFromPayload(config, item, key);
-              const indicatorColor = color || item.payload.fill || item.color;
+              // Prefer the series' configured colour over item.color: a threshold/gradient line's
+              // recharts colour is a `url(#…)` gradient ref, which is invalid as a CSS background and
+              // renders no swatch. The config colour is the intended solid series colour.
+              const indicatorColor = color || itemConfig?.color || item.payload.fill || item.color;
 
               return (
                 <div
@@ -216,7 +221,7 @@ const ChartTooltipContent = React.forwardRef<
                       )}
                       <div
                         className={cn(
-                          "flex flex-1 justify-between leading-none",
+                          "flex flex-1 justify-between gap-3 leading-none",
                           nestLabel ? "items-end" : "items-center"
                         )}
                       >
@@ -246,8 +251,6 @@ const ChartTooltipContent = React.forwardRef<
   }
 );
 ChartTooltipContent.displayName = "ChartTooltip";
-
-const ChartLegend = RechartsPrimitive.Legend;
 
 type ExtendedLegendPayload = Parameters<
   NonNullable<RechartsPrimitive.LegendProps["formatter"]>
@@ -453,12 +456,4 @@ function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key:
   return configLabelKey in config ? config[configLabelKey] : config[key as keyof typeof config];
 }
 
-export {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  ChartLegendContentRows,
-  ChartStyle,
-};
+export { ChartContainer, ChartTooltip, ChartTooltipContent };

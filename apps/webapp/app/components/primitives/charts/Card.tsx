@@ -19,7 +19,7 @@ const CardHeader = ({ children, draggable }: { children: ReactNode; draggable?: 
   return (
     <Header3
       className={cn(
-        "drag-handle mb-3 flex items-center justify-between gap-2 pl-4 pr-3",
+        "drag-handle mb-3 flex items-start justify-between gap-2 pl-4 pr-3",
         draggable && "cursor-grab active:cursor-grabbing"
       )}
     >

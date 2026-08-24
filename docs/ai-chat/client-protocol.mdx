@@ -320,7 +320,7 @@ The output stream uses [S2](https://s2.dev) under the hood and follows the stand
 | Event | Meaning |
 | --- | --- |
 | `batch` | One or more records. The records you actually care about. |
-| `ping` | Keepalive (~every 5s on idle). Body is `{"timestamp": <ms>}`. Ignore it. |
+| `ping` | Keepalive (~every 5s on idle). Body is `{"timestamp": <ms>}`, and on backends that report it a `tail` (same `{seq_num, timestamp}` shape as a batch tail). The tail is what lets you tell you have caught up to the live edge; if you don't need caught-up detection, ignore the ping. |
 | _(no `event:`, just `data: [DONE]`)_ | Stream is closing — server sends this once before EOF. |
 
 A `batch` event in raw SSE format looks like this — note the `data` is a single line of JSON, no embedded newlines (per the SSE spec):
@@ -359,7 +359,7 @@ Decoded `data` payload:
 | `records[].timestamp` | Unix ms when the record was written to S2. |
 | `records[].body` | For data records: a JSON-encoded **string** wrapping `{ data: UIMessageChunk, id: string }`. For control records: an empty string (semantics live in `headers`). For S2 command records: opaque bytes. See [Records on session.out](#records-on-session-out). |
 | `records[].headers` | Optional `[name, value]` pairs. Empty for data records; a `trigger-control` entry for control records; a single empty-name `["", "<op>"]` entry for S2 command records. |
-| `tail.seq_num` | Latest known tail of the S2 stream — useful for detecting how far behind the live edge you are. Skip if you don't need it. |
+| `tail.seq_num` | Latest known tail of the S2 stream, useful for detecting how far behind the live edge you are. Track the **highest `seq_num` you have received**, counting every record in the batch (including the command records you skip, see below), not just the last application-visible one. When `highest received seq_num + 1 === tail.seq_num` you have drained the backlog and are caught up to the live edge. The same `tail` also rides on `ping` events. Skip if you don't need it. |
 | `tail.timestamp` | Timestamp of `tail.seq_num`. |
 
 ### Records on `session.out`
@@ -651,6 +651,8 @@ On **reconnect-on-reload** paths (resuming a chat where nothing may be streaming
 - Sets the `X-Session-Settled: true` response header so the client can tell the close is terminal rather than a mid-stream drop.
 
 **Do not send `X-Peek-Settled` on the active-send response-stream path.** The peek would race the newly-triggered turn's first chunk — if the agent hasn't written the new turn's first record yet, the peek sees the prior turn's `turn-complete` and closes the SSE before the response lands on S2. The built-in `TriggerChatTransport.reconnectToStream` sets the header; `sendMessages → subscribeToStream` does not.
+
+If you use `TriggerChatTransport` (or `useChat`, which builds on it), this is handled for you: the reconnect path sends `X-Peek-Settled`, so a settled idle reconnect closes promptly on the server's `wait=0` fast-close instead of waiting out the long poll. Consuming `.out` directly, send the same header on your reconnect reads and treat an `X-Session-Settled: true` response as a terminal close.
 
 ```ts
 // Reconnect path (page reload)

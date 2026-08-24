@@ -1,36 +1,75 @@
-import { Link } from "@remix-run/react";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import type { DiagnosisBlock } from "@internal/dashboard-agent";
-import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { TextLink } from "~/components/primitives/TextLink";
 import { toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
+import { CategoryBadge, ConfidenceBadge, EVIDENCE_ROW_CLASS } from "./agent-badges";
+import { AgentCard, AgentCardBody, AgentCardHeader } from "./agent-card";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { v3RunPath } from "~/utils/pathBuilder";
+import { planDiagnosisActions } from "./diagnosis-actions";
+import { isRunFriendlyId } from "./run-id";
 
-// The "why did this run fail?" failure card — the first block in the dashboard
-// agent's view catalog. Rendered from a `diagnosis` block the agent emits via
-// the render_view tool (see internal-packages/dashboard-agent tool-schemas).
-// Everything here is plain presentation of validated fields; no markup comes
-// from the model, so there's nothing to sanitize beyond outbound URLs.
+// No markup comes from the model, so only outbound URLs need checking.
 
-const CATEGORY_LABELS: Record<DiagnosisBlock["category"], string> = {
-  user_code_error: "Code error",
-  configuration: "Configuration",
-  dependency: "Dependency",
-  timeout: "Timeout",
-  out_of_memory: "Out of memory",
-  rate_limit: "Rate limit",
-  external_service: "External service",
-  infrastructure: "Infrastructure",
-  cancellation: "Cancelled",
-  unknown: "Unknown",
-};
+function Em({ children }: { children: React.ReactNode }) {
+  return <span className="font-semibold text-text-bright">{children}</span>;
+}
 
-const CONFIDENCE_STYLES: Record<DiagnosisBlock["confidence"], string> = {
-  high: "border-emerald-500/40 text-emerald-400",
-  medium: "border-amber-500/40 text-amber-400",
-  low: "border-border-bright text-text-dimmed",
+const CATEGORY_SENTENCES: Record<DiagnosisBlock["category"], React.ReactNode> = {
+  user_code_error: (
+    <>
+      A <Em>bug</Em> in the task's own code
+    </>
+  ),
+  configuration: (
+    <>
+      A <Em>misconfigured setting</Em> on the task, queue or environment
+    </>
+  ),
+  dependency: (
+    <>
+      A <Em>package or build dependency</Em> problem
+    </>
+  ),
+  timeout: (
+    <>
+      The run hit its <Em>time limit</Em>
+    </>
+  ),
+  out_of_memory: (
+    <>
+      The run ran out of <Em>memory</Em>
+    </>
+  ),
+  rate_limit: (
+    <>
+      A <Em>rate limit</Em> was hit
+    </>
+  ),
+  external_service: (
+    <>
+      A <Em>third-party service</Em> the task calls failed
+    </>
+  ),
+  infrastructure: (
+    <>
+      A <Em>platform-side</Em> problem — not your code
+    </>
+  ),
+  cancellation: (
+    <>
+      The run was <Em>cancelled</Em> before finishing
+    </>
+  ),
+  unknown: (
+    <>
+      The cause <Em>couldn't be classified</Em>
+    </>
+  ),
 };
 
 const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string> = {
@@ -43,104 +82,73 @@ const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string
   historical_match: "History",
 };
 
-// Build a run-page path in the current org/project/env, or null when that route
-// context is absent (e.g. the storybook page) so the card degrades to plain
-// text rather than throwing.
-function useRunPath(runId: string): string | null {
+// Null when the route context is absent, so the card degrades to plain text.
+function useRunPathResolver(): (runId: string) => string | null {
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
   const environment = useOptionalEnvironment();
-  if (!organization || !project || !environment) return null;
-  return v3RunPath(organization, project, environment, { friendlyId: runId });
+  return (runId) =>
+    organization && project && environment
+      ? v3RunPath(organization, project, environment, { friendlyId: runId })
+      : null;
 }
 
-// Internal link to a run page, built from the canonical path builder so it stays
-// correct if the route shape changes. Falls back to plain text off-context.
+function useRunPath(runId: string): string | null {
+  return useRunPathResolver()(runId);
+}
+
 function RunLink({ runId, className }: { runId: string; className?: string }) {
   const to = useRunPath(runId);
   if (!to) return <span className={cn("font-mono text-text-dimmed", className)}>{runId}</span>;
   return (
-    <Link to={to} className={cn("text-indigo-400 underline hover:text-indigo-300", className)}>
+    <TextLink to={to} className={className}>
       {runId}
-    </Link>
+    </TextLink>
   );
 }
 
-// Render an evidence `reference`: a run id links to its run page, an https URL
-// becomes an external link, everything else (error id, file:line, version) is
-// shown as monospace text.
 function EvidenceReference({ reference }: { reference: string }) {
-  if (/^run_[a-z0-9]+$/i.test(reference)) {
+  if (isRunFriendlyId(reference)) {
     return <RunLink runId={reference} className="font-mono text-xs" />;
   }
   const safeUrl = toSafeUrl(reference);
   if (safeUrl) {
     return (
-      <a
+      <TextLink
         href={safeUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="font-mono text-xs text-indigo-400 underline hover:text-indigo-300"
+        className="font-mono text-xs"
       >
         {reference}
-      </a>
+      </TextLink>
     );
   }
   return <span className="font-mono text-xs text-text-dimmed">{reference}</span>;
 }
 
 function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["actions"]> }) {
-  const buttonClass =
-    "inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-xs text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover";
-  return (
-    <div className="flex flex-wrap gap-2 pt-1">
-      {actions.map((action, i) => {
-        if (action.kind === "view_run" && /^run_[a-z0-9]+$/i.test(action.target)) {
-          return (
-            <RunActionButton
-              key={i}
-              runId={action.target}
-              label={action.label}
-              className={buttonClass}
-            />
-          );
-        }
-        if (action.kind === "docs") {
-          const safeUrl = toSafeUrl(action.target);
-          if (!safeUrl) return null;
-          return (
-            <a
-              key={i}
-              href={safeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass}
-            >
-              {action.label}
-            </a>
-          );
-        }
-        return null;
-      })}
-    </div>
-  );
-}
+  const runPath = useRunPathResolver();
+  const planned = planDiagnosisActions(actions, {
+    runPath,
+    docsUrl: (target) => toSafeUrl(target),
+  });
+  if (planned.length === 0) return null;
 
-function RunActionButton({
-  runId,
-  label,
-  className,
-}: {
-  runId: string;
-  label: string;
-  className: string;
-}) {
-  const to = useRunPath(runId);
-  if (!to) return <span className={className}>{label}</span>;
   return (
-    <Link to={to} className={className}>
-      {label}
-    </Link>
+    <div className="flex flex-wrap gap-2 pt-2">
+      {planned.map((action, i) =>
+        action.kind === "docs" ? (
+          <LinkButton key={i} to={action.to} variant="docs/small" LeadingIcon={BookOpenIcon}>
+            {action.label}
+          </LinkButton>
+        ) : (
+          <LinkButton key={i} to={action.to} variant="primary/small">
+            {action.label}
+          </LinkButton>
+        )
+      )}
+    </div>
   );
 }
 
@@ -150,19 +158,24 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
   const actions = block.actions ?? [];
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-3 py-2">
-        <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
-        <Badge variant="small" className="border-rose-500/40 text-rose-400">
-          {CATEGORY_LABELS[block.category] ?? block.category}
-        </Badge>
-        <Badge variant="small" className={cn("uppercase", CONFIDENCE_STYLES[block.confidence])}>
-          {block.confidence} confidence
-        </Badge>
-        {block.runId ? <RunLink runId={block.runId} className="ml-auto font-mono text-xs" /> : null}
-      </div>
+    <AgentCard>
+      <AgentCardHeader className="space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
+          <ConfidenceBadge confidence={block.confidence} />
+        </div>
+        <p className="text-sm text-text-dimmed">
+          {CATEGORY_SENTENCES[block.category] ?? block.category}
+        </p>
+        {block.runId ? (
+          <div className="truncate">
+            {/* `block` so the ellipsis still lands: the link itself is inline-flex. */}
+            <RunLink runId={block.runId} className="block truncate font-mono text-xs" />
+          </div>
+        ) : null}
+      </AgentCardHeader>
 
-      <div className="space-y-3 px-3 py-3">
+      <AgentCardBody density="roomy">
         <p className="text-sm text-text-bright">{block.summary}</p>
 
         <Section title="Likely cause">
@@ -171,18 +184,20 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
         {evidence.length > 0 ? (
           <Section title="Evidence">
-            <ul className="space-y-1.5">
+            <ul className="space-y-3">
               {evidence.map((item, i) => (
-                <li key={i} className="text-xs text-text-dimmed">
-                  <span className="mr-1.5 rounded-sm bg-background-raised px-1 py-0.5 text-[10px] uppercase tracking-wide text-text-dimmed">
+                <li key={i} className={EVIDENCE_ROW_CLASS}>
+                  <CategoryBadge className="justify-self-start">
                     {EVIDENCE_LABELS[item.type] ?? item.type}
-                  </span>
-                  <span className="text-text-bright">{item.detail}</span>
-                  {item.reference ? (
-                    <span className="ml-1.5">
-                      <EvidenceReference reference={item.reference} />
-                    </span>
-                  ) : null}
+                  </CategoryBadge>
+                  <div className="min-w-0 space-y-1 text-xs">
+                    <p className="text-text-bright">{item.detail}</p>
+                    {item.reference ? (
+                      <div className="break-all">
+                        <EvidenceReference reference={item.reference} />
+                      </div>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -197,7 +212,7 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
         {nextSteps.length > 0 ? (
           <Section title="Next steps">
-            <ol className="list-decimal space-y-1 pl-4">
+            <ol className="list-decimal space-y-2 pl-5">
               {nextSteps.map((step, i) => (
                 <li key={i} className="text-sm text-text-dimmed">
                   {step}
@@ -208,14 +223,14 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
         ) : null}
 
         {actions.length > 0 ? <DiagnosisActions actions={actions} /> : null}
-      </div>
-    </div>
+      </AgentCardBody>
+    </AgentCard>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <h4 className="text-xs font-medium uppercase tracking-wide text-text-dimmed">{title}</h4>
       {children}
     </div>

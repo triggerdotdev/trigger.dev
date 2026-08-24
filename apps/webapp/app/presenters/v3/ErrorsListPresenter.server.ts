@@ -9,7 +9,11 @@ const errorsListGranularity = new TimeGranularity([
   { max: "3 months", granularity: "1w" },
   { max: "Infinity", granularity: "30d" },
 ]);
-import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import {
+  type ErrorGroupStatus,
+  type PrismaClientOrTransaction,
+  boundedIn,
+} from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -37,28 +41,10 @@ export type ErrorsListOptions = {
   pageSize?: number;
 };
 
-export const ErrorsListOptionsSchema = z.object({
-  userId: z.string().optional(),
-  projectId: z.string(),
-  tasks: z.array(z.string()).optional(),
-  versions: z.array(z.string()).optional(),
-  statuses: z.array(z.enum(["UNRESOLVED", "RESOLVED", "IGNORED"])).optional(),
-  period: z.string().optional(),
-  from: z.number().int().nonnegative().optional(),
-  to: z.number().int().nonnegative().optional(),
-  defaultPeriod: z.string().optional(),
-  retentionLimitDays: z.number().int().positive().optional(),
-  search: z.string().max(1000).optional(),
-  direction: z.enum(["forward", "backward"]).optional(),
-  cursor: z.string().optional(),
-  pageSize: z.number().int().positive().max(1000).optional(),
-});
-
 const DEFAULT_PAGE_SIZE = 25;
 
 export type ErrorsList = Awaited<ReturnType<ErrorsListPresenter["call"]>>;
 export type ErrorGroup = ErrorsList["errorGroups"][0];
-export type ErrorsListAppliedFilters = ErrorsList["filters"];
 export type ErrorOccurrences = Awaited<ReturnType<ErrorsListPresenter["getOccurrences"]>>;
 export type ErrorOccurrenceActivity = ErrorOccurrences["data"][string];
 
@@ -457,7 +443,7 @@ export class ErrorsListPresenter extends BasePresenter {
 
     if (statuses.includes("UNRESOLVED")) {
       const excluded = await this.replica.errorGroupState.findMany({
-        where: { environmentId, status: { in: excludedStatuses } },
+        where: { environmentId, status: { in: boundedIn(excludedStatuses) } },
         select: { taskIdentifier: true, errorFingerprint: true },
       });
       if (excluded.length === 0) {
@@ -470,7 +456,7 @@ export class ErrorsListPresenter extends BasePresenter {
     }
 
     const included = await this.replica.errorGroupState.findMany({
-      where: { environmentId, status: { in: statuses } },
+      where: { environmentId, status: { in: boundedIn(statuses) } },
       select: { taskIdentifier: true, errorFingerprint: true },
     });
     if (included.length === 0) {

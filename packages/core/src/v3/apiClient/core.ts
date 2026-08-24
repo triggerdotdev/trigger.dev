@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { fromZodError, ValidationError } from "zod-validation-error";
+import { fromZodError } from "zod-validation-error";
 import type { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
@@ -272,9 +272,6 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
-    }
-
-    if (error instanceof ValidationError) {
     }
 
     if (options?.retry) {
@@ -605,13 +602,15 @@ async function waitForRetry(
 // https://stackoverflow.com/a/34491287
 export function isEmptyObj(obj: object | null | undefined): boolean {
   if (!obj) return true;
-  for (const _k in obj) return false;
+  for (const key in obj) {
+    if (Object.hasOwn(obj, key)) return false;
+  }
   return true;
 }
 
 // https://eslint.org/docs/latest/rules/no-prototype-builtins
 export function hasOwn(obj: object, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(obj, key);
+  return Object.hasOwn(obj, key);
 }
 
 // If the requestInit has a header x-trigger-worker = true, then we will do
@@ -725,6 +724,13 @@ export type ApiResult<TSuccessResult> =
   | {
       success: false;
       error: string;
+      /**
+       * HTTP status code, when the failure originated from an API response
+       * (e.g. 429 for rate limiting). Undefined for connection/transport
+       * errors that never reached the server. Lets callers distinguish
+       * transient failures worth retrying from fatal ones.
+       */
+      statusCode?: number;
     };
 
 export async function wrapZodFetch<T extends z.ZodTypeAny>(
@@ -754,6 +760,7 @@ export async function wrapZodFetch<T extends z.ZodTypeAny>(
       return {
         success: false,
         error: error.message,
+        statusCode: error.status,
       };
     } else if (error instanceof Error) {
       return {

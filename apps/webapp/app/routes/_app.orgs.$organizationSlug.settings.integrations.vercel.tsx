@@ -35,6 +35,9 @@ import { requireOrganization } from "~/services/org.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema, v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Vercel integration");
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {

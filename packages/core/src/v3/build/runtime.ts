@@ -6,13 +6,27 @@ import { homedir } from "node:os";
 
 export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
-export type ExperimentalConfigRuntime = "experimental-node-24" | "experimental-node-26";
+export type DeprecatedConfigRuntime = "experimental-node-24" | "experimental-node-26";
 
-export function isExperimentalConfigRuntime(
-  runtime: unknown
-): runtime is ExperimentalConfigRuntime {
+export function isDeprecatedConfigRuntime(runtime: unknown): runtime is DeprecatedConfigRuntime {
   return runtime === "experimental-node-24" || runtime === "experimental-node-26";
 }
+
+/** Maps a deprecated runtime alias to the runtime that should be used instead. */
+export function deprecatedRuntimeReplacement(runtime: DeprecatedConfigRuntime): BuildRuntime {
+  switch (runtime) {
+    case "experimental-node-24":
+      return "node-24";
+    case "experimental-node-26":
+      return "node-26";
+  }
+}
+
+/** @deprecated Renamed to {@link DeprecatedConfigRuntime}. */
+export type ExperimentalConfigRuntime = DeprecatedConfigRuntime;
+
+/** @deprecated Renamed to {@link isDeprecatedConfigRuntime}. */
+export const isExperimentalConfigRuntime = isDeprecatedConfigRuntime;
 
 export function resolveBuildRuntime(runtime: unknown): BuildRuntime {
   const parsedRuntime = ConfigRuntime.safeParse(runtime);

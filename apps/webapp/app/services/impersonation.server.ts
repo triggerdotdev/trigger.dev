@@ -5,8 +5,9 @@ import { singleton } from "~/utils/singleton";
 import { createRedisClient, type RedisClient } from "~/redis.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { resolveImpersonationState, type ImpersonationState } from "~/utils/impersonationState";
 
-export const impersonationSessionStorage = createCookieSessionStorage({
+const impersonationSessionStorage = createCookieSessionStorage({
   cookie: {
     name: "__impersonate", // use any name you want here
     sameSite: "lax", // this helps with CSRF
@@ -18,7 +19,16 @@ export const impersonationSessionStorage = createCookieSessionStorage({
   },
 });
 
-export function getImpersonationSession(request: Request) {
+const IMPERSONATED_USER_ID_KEY = "impersonatedUserId";
+
+/**
+ * Display-only "view as user" flag. It lives on the impersonation cookie so it
+ * is scoped to the impersonation session by construction: stop impersonating
+ * and the flag goes with it.
+ */
+const VIEWING_AS_USER_KEY = "viewingAsUser";
+
+function getImpersonationSession(request: Request) {
   return impersonationSessionStorage.getSession(request.headers.get("Cookie"));
 }
 
@@ -29,13 +39,13 @@ export function commitImpersonationSession(session: Session) {
 export async function getImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
-  return session.get("impersonatedUserId") as string | undefined;
+  return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;
 }
 
 export async function setImpersonationId(userId: string, request: Request) {
   const session = await getImpersonationSession(request);
 
-  session.set("impersonatedUserId", userId);
+  session.set(IMPERSONATED_USER_ID_KEY, userId);
 
   return session;
 }
@@ -43,7 +53,44 @@ export async function setImpersonationId(userId: string, request: Request) {
 export async function clearImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
-  session.unset("impersonatedUserId");
+  session.unset(IMPERSONATED_USER_ID_KEY);
+  // The view-as-user flag only means anything inside an impersonation session,
+  // so it never outlives one.
+  session.unset(VIEWING_AS_USER_KEY);
+
+  return session;
+}
+
+/**
+ * The impersonation state for a request, resolved against `resolvedUserId` — the
+ * id the request actually authenticated as (what `getUser`/`getUserId` return).
+ *
+ * This is the one place the impersonation flags come from, so the values the
+ * server computes for a route and the value the root loader publishes to the
+ * client cannot disagree. See `resolveImpersonationState` for why the
+ * impersonated id has to match the resolved user rather than merely be present.
+ */
+export async function getImpersonationState(
+  request: Request,
+  resolvedUserId: string | undefined
+): Promise<ImpersonationState> {
+  const session = await getImpersonationSession(request);
+
+  return resolveImpersonationState({
+    impersonatedUserId: session.get(IMPERSONATED_USER_ID_KEY),
+    viewingAsUser: session.get(VIEWING_AS_USER_KEY),
+    resolvedUserId,
+  });
+}
+
+export async function setViewingAsUser(value: boolean, request: Request) {
+  const session = await getImpersonationSession(request);
+
+  if (value) {
+    session.set(VIEWING_AS_USER_KEY, true);
+  } else {
+    session.unset(VIEWING_AS_USER_KEY);
+  }
 
   return session;
 }

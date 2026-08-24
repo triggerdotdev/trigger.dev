@@ -2,18 +2,23 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
     // Next authenticate the request
-    const authenticationResult = await authenticateApiRequest(request);
+    const authResult = await authenticateApiKeyWithScope(request, {
+      action: "read",
+      resource: { type: "deployments" },
+    });
 
-    if (!authenticationResult) {
+    if (!authResult.ok) {
       logger.info("Invalid or missing api key", { url: request.url });
-      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+      return json({ error: authResult.error }, { status: authResult.status });
     }
+
+    const authenticationResult = authResult.authentication;
 
     const authenticatedEnv = authenticationResult.environment;
 

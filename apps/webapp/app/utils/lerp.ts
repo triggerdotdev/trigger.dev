@@ -10,6 +10,6 @@ export function inverseLerp(min: number, max: number, value: number) {
 }
 
 /** Clamps a value between a min and max */
-export function clamp(value: number, min: number, max: number) {
+function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }

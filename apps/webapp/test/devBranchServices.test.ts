@@ -4,7 +4,11 @@ import slug from "slug";
 import { describe, expect, vi } from "vitest";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
-import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
+import {
+  createTestOrgProjectWithMember,
+  createTestUser,
+  uniqueId,
+} from "./fixtures/environmentVariablesFixtures";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -76,6 +80,62 @@ describe("UpsertBranchService — DEVELOPMENT parent", () => {
       expect(second.branch.id).toBe(first.branch.id);
     }
   );
+
+  postgresTest("allows different members to use the same branch name", async ({ prisma }) => {
+    const {
+      organization,
+      project,
+      user: firstUser,
+      orgMember: firstMember,
+    } = await createTestOrgProjectWithMember(prisma);
+    const secondUser = await createTestUser(prisma);
+    const secondMember = await prisma.orgMember.create({
+      data: {
+        organizationId: organization.id,
+        userId: secondUser.id,
+        role: "MEMBER",
+      },
+    });
+
+    const [firstRoot, secondRoot] = await Promise.all([
+      createDevRoot(prisma, project.id, organization.id, firstMember.id),
+      createDevRoot(prisma, project.id, organization.id, secondMember.id),
+    ]);
+
+    const options = {
+      projectId: project.id,
+      env: "development" as const,
+      branchName: "shared-name",
+    };
+    const [firstResult, secondResult] = await Promise.all([
+      new UpsertBranchService(prisma).call(
+        { type: "userMembership", userId: firstUser.id },
+        options
+      ),
+      new UpsertBranchService(prisma).call(
+        { type: "userMembership", userId: secondUser.id },
+        options
+      ),
+    ]);
+
+    expect(firstResult.success && secondResult.success).toBe(true);
+    if (!firstResult.success || !secondResult.success) return;
+    expect(firstResult.branch.id).not.toBe(secondResult.branch.id);
+    expect(firstResult.branch.slug).toBe(secondResult.branch.slug);
+    expect(firstResult.branch.shortcode).toBe(`dev-shared-name-${firstRoot.shortcode}`);
+    expect(secondResult.branch.shortcode).toBe(`dev-shared-name-${secondRoot.shortcode}`);
+    expect(firstResult.branch.orgMemberId).toBe(firstMember.id);
+    expect(secondResult.branch.orgMemberId).toBe(secondMember.id);
+
+    const firstRetry = await new UpsertBranchService(prisma).call(
+      { type: "userMembership", userId: firstUser.id },
+      options
+    );
+    expect(firstRetry.success).toBe(true);
+    if (!firstRetry.success) return;
+    expect(firstRetry.alreadyExisted).toBe(true);
+    expect(firstRetry.branch.id).toBe(firstResult.branch.id);
+  });
 
   postgresTest(
     "rejects an invalid branch name without touching the database",

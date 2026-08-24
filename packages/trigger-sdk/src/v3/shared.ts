@@ -1,5 +1,4 @@
 import { SpanKind } from "@opentelemetry/api";
-import type { SerializableJson } from "@trigger.dev/core";
 import {
   type ApiClient,
   type ApiRequestOptions,
@@ -24,6 +23,7 @@ import {
   lifecycleHooks,
   makeIdempotencyKey,
   packetRequiresOffloading,
+  resolveExternalDeploymentId,
   parsePacket,
   RateLimitError,
   resourceCatalog,
@@ -71,17 +71,13 @@ import {
   type inferToolParameters,
   type RunHandle,
   type RunHandleFromTypes,
-  type RunHandleOutput,
-  type RunHandlePayload,
   type RunTypes,
   type SchemaParseFn,
   type Task,
-  type TaskBatchOutputHandle,
   type TaskIdentifier,
   type TaskOptions,
   type TaskOptionsWithSchema,
   type TaskOutput,
-  type TaskOutputHandle,
   type TaskPayload,
   type TaskRunResult,
   type TaskSchema,
@@ -106,17 +102,12 @@ export type {
   BatchTriggerOptions,
   Queue,
   RunHandle,
-  RunHandleOutput,
-  RunHandlePayload,
-  SerializableJson,
   Task,
-  TaskBatchOutputHandle,
   TaskFromIdentifier,
   TaskIdentifier,
   TaskOptions,
   TaskOptionsWithSchema,
   TaskOutput,
-  TaskOutputHandle,
   TaskPayload,
   TaskRunResult,
   TaskSchema,
@@ -133,6 +124,14 @@ function scopedEnvVar(name: string): string | undefined {
   const scope = sdkScope.getStore();
   if (scope && !scope.inheritContext) return undefined;
   return getEnvVar(name);
+}
+
+function resolveTriggerExternalDeploymentId(explicit?: string): string | undefined {
+  return resolveExternalDeploymentId({
+    explicit,
+    clientConfig: apiClientManager.externalDeploymentId,
+    read: scopedEnvVar,
+  });
 }
 
 export function queue(options: QueueOptions): Queue {
@@ -747,9 +746,12 @@ export async function batchTriggerById<TTask extends AnyTask>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            externalDeploymentId: resolveTriggerExternalDeploymentId(
+              item.options?.externalDeploymentId
+            ),
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1005,7 +1007,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             region: item.options?.region,
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1269,9 +1271,12 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            externalDeploymentId: resolveTriggerExternalDeploymentId(
+              item.options?.externalDeploymentId
+            ),
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1532,7 +1537,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             region: item.options?.region,
             debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -1631,6 +1636,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
   }
 }
 
+export function uniqueBatchTaskIdentifiers(items: BatchItemNDJSON[]): string[] {
+  return Array.from(new Set(items.map((item) => item.task))).sort();
+}
+
 /**
  * Helper function that executes a 2-phase batch trigger:
  * 1. Creates the batch record with expected run count
@@ -1678,6 +1687,7 @@ async function executeBatchTwoPhase(
     batch = await apiClient.createBatch(
       {
         runCount: items.length,
+        taskIdentifiers: uniqueBatchTaskIdentifiers(items),
         parentRunId: options.parentRunId,
         resumeParentOnCompletion: options.resumeParentOnCompletion,
         idempotencyKey: options.idempotencyKey,
@@ -2012,9 +2022,12 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(
+          item.options?.externalDeploymentId
+        ),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2066,7 +2079,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2115,9 +2128,12 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(
+          item.options?.externalDeploymentId
+        ),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2168,7 +2184,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2219,9 +2235,12 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         priority: item.options?.priority,
         region: item.options?.region,
         lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(
+          item.options?.externalDeploymentId
+        ),
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2281,7 +2300,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         region: item.options?.region,
         debounce: item.options?.debounce,
       },
-    };
+    } satisfies BatchItemNDJSON;
   }
 }
 
@@ -2332,6 +2351,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         priority: options?.priority,
         region: options?.region,
         lockToVersion: options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+        externalDeploymentId: resolveTriggerExternalDeploymentId(options?.externalDeploymentId),
         debounce: options?.debounce,
       },
     },
@@ -2418,8 +2438,12 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             priority: item.options?.priority,
             region: item.options?.region,
             lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
+            externalDeploymentId: resolveTriggerExternalDeploymentId(
+              item.options?.externalDeploymentId
+            ),
+            debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 
@@ -2849,8 +2873,9 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
+            debounce: item.options?.debounce,
           },
-        };
+        } satisfies BatchItemNDJSON;
       })
     );
 

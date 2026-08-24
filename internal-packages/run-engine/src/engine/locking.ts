@@ -1,8 +1,12 @@
-// import { default: Redlock } from "redlock";
-const { default: Redlock } = require("redlock");
 import { AsyncLocalStorage } from "async_hooks";
 import type { Redis } from "@internal/redis";
-import type * as redlock from "redlock";
+import * as redlockModule from "redlock";
+
+// redlock is CJS with `exports.default`; probe the interop shapes instead of
+// a bare require(), which breaks in ESM module runners.
+const Redlock = ((redlockModule as any).default?.default ??
+  (redlockModule as any).default ??
+  redlockModule) as typeof redlockModule.default;
 import { tryCatch } from "@trigger.dev/core";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { Tracer, Meter, ObservableResult, Attributes, Histogram } from "@internal/tracing";
@@ -34,12 +38,12 @@ export class LockAcquisitionTimeoutError extends Error {
 
 interface LockContext {
   resources: string;
-  signal: redlock.RedlockAbortSignal;
+  signal: redlockModule.RedlockAbortSignal;
   lockType: string;
 }
 
 interface ManualLockContext {
-  lock: redlock.Lock;
+  lock: redlockModule.Lock;
   timeout: NodeJS.Timeout | null | undefined;
   extension: Promise<void> | undefined;
 }
@@ -60,7 +64,7 @@ export interface LockRetryConfig {
 }
 
 export class RunLocker {
-  private redlock: InstanceType<typeof redlock.default>;
+  private redlock: InstanceType<typeof redlockModule.default>;
   private asyncLocalStorage: AsyncLocalStorage<LockContext>;
   private logger: Logger;
   private tracer: Tracer;
@@ -216,7 +220,7 @@ export class RunLocker {
     let totalWaitTime = 0;
 
     // Retry the lock acquisition with exponential backoff
-    let lock: redlock.Lock | undefined;
+    let lock: redlockModule.Lock | undefined;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxAttempts; attempt++) {
@@ -346,7 +350,7 @@ export class RunLocker {
 
     // Create an AbortController for our signal
     const controller = new AbortController();
-    const signal = controller.signal as redlock.RedlockAbortSignal;
+    const signal = controller.signal as redlockModule.RedlockAbortSignal;
 
     const manualContext: ManualLockContext = {
       lock,
@@ -425,7 +429,7 @@ export class RunLocker {
   #setupAutoExtension(
     context: ManualLockContext,
     duration: number,
-    signal: redlock.RedlockAbortSignal,
+    signal: redlockModule.RedlockAbortSignal,
     controller: AbortController
   ): void {
     if (this.automaticExtensionThreshold > duration - 100) {
@@ -460,7 +464,7 @@ export class RunLocker {
   async #extendLock(
     context: ManualLockContext,
     duration: number,
-    signal: redlock.RedlockAbortSignal,
+    signal: redlockModule.RedlockAbortSignal,
     controller: AbortController,
     scheduleNext: () => void
   ): Promise<void> {

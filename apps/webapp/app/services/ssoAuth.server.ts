@@ -11,7 +11,7 @@ import { logger } from "./logger.server";
 import { postAuthentication } from "./postAuth.server";
 import { ssoController } from "./sso.server";
 
-export type SsoVerifyParams = {
+type SsoVerifyParams = {
   profile: SsoProfile;
   flow: SsoFlow;
 };

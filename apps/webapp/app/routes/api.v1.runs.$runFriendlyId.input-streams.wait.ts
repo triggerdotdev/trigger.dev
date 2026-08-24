@@ -33,21 +33,23 @@ const { action, loader } = createActionApiRoute(
   },
   async ({ authentication, body, params }) => {
     try {
-      const run = await runStore.findRun(
-        {
-          friendlyId: params.runFriendlyId,
-          runtimeEnvironmentId: authentication.environment.id,
+      const where = {
+        friendlyId: params.runFriendlyId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
+        select: {
+          id: true,
+          friendlyId: true,
+          realtimeStreamsVersion: true,
+          streamBasinName: true,
         },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            realtimeStreamsVersion: true,
-            streamBasinName: true,
-          },
-        },
-        $replica
-      );
+      };
+      // Replica lag can null out a live run; a spurious 404 fails the .wait() registration on a run
+      // that exists. Re-read the owning primary on a replica miss.
+      const run =
+        (await runStore.findRun(where, args, $replica)) ??
+        (await runStore.findRunOnPrimary(where, args));
 
       if (!run) {
         return json({ error: "Run not found" }, { status: 404 });

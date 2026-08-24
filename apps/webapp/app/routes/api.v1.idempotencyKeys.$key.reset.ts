@@ -13,7 +13,7 @@ const BodySchema = z.object({
   taskIdentifier: z.string().min(1, "Task identifier is required"),
 });
 
-export const { action } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     params: ParamsSchema,
     body: BodySchema,
@@ -50,3 +50,7 @@ export const { action } = createActionApiRoute(
     }
   }
 );
+
+export const action = route.action;
+// The builder's loader handles CORS OPTIONS preflight
+export const loader = route.loader;

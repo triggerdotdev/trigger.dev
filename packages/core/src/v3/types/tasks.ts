@@ -918,6 +918,28 @@ export type TriggerOptions = {
   version?: string;
 
   /**
+   * Pin this run to the deployment that was deployed under this external id — a commit SHA,
+   * a CI run id, a release tag — matching `trigger.dev deploy --external-id`.
+   *
+   * Use this when the code making the call and the tasks it triggers must be the same
+   * release. If nothing has been deployed under the id yet the run waits for it rather than
+   * running on the wrong version, and gives up after an hour if it never arrives.
+   *
+   * Usually you don't set this by hand: the SDK reads `TRIGGER_EXTERNAL_DEPLOYMENT_ID`, and
+   * with `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` it discovers your hosting platform's
+   * commit variable automatically. Setting it here always wins over both.
+   *
+   * `version` (and the `TRIGGER_VERSION` environment variable) take precedence over this.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { externalDeploymentId: process.env.VERCEL_GIT_COMMIT_SHA });
+   * ```
+   */
+  externalDeploymentId?: string;
+
+  /**
    * Specify the region to run the task in. This overrides the default region set for your project in the dashboard.
    *
    * Check the Regions page in the dashboard for regions that are available to you.
@@ -939,6 +961,9 @@ export type TriggerOptions = {
    * "push" the existing run's execution time later rather than creating new runs.
    *
    * The debounce key is scoped to the task identifier, so different tasks can use the same key without conflicts.
+   *
+   * There is no time limit by default: while triggers keep arriving on the same key, the run
+   * keeps being pushed back and never executes. Set `maxDelay` to bound that.
    *
    * @example
    *
@@ -964,10 +989,18 @@ export type TriggerOptions = {
      * Duration string specifying how long to delay the run. If another trigger with the same key
      * occurs within this duration, the delay is extended.
      *
-     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
-     * `{number}d` (days), `{number}w` (weeks). Minimum delay is 1 second.
+     * When you also set `maxDelay`, keep `delay` well below it. A run is only pushed back while
+     * the new execution time stays inside `maxDelay`, so a `delay` at or above `maxDelay` leaves
+     * no room to push and every trigger creates its own run.
      *
-     * @example "1s", "5s", "1m", "30m", "1h"
+     * Must be a duration, not a date: the value is re-applied every time the run is pushed
+     * back, so an absolute date cannot work and debouncing silently stops collapsing.
+     *
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` or
+     * `{number}hr` (hours), `{number}d` (days), `{number}w` (weeks), optionally combined.
+     * Minimum delay is 1 second.
+     *
+     * @example "1s", "5s", "1m", "30m", "1h", "2h30m"
      */
     delay: string;
     /**
@@ -988,12 +1021,15 @@ export type TriggerOptions = {
      * (measured from the first trigger), the current debounced run will be allowed to execute
      * and a new run will be created for subsequent triggers.
      *
-     * If not specified, falls back to the server's default maximum (typically 1 hour).
+     * Without it a continuously triggered key is pushed back indefinitely and never runs. The
+     * gap between the two values is the room you have to push: a `delay` of `"10s"` with a
+     * `maxDelay` of `"5m"` keeps extending for just under 5 minutes from the first trigger,
+     * then runs.
      *
-     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
-     * `{number}d` (days), `{number}w` (weeks).
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` or
+     * `{number}hr` (hours), `{number}d` (days), `{number}w` (weeks), optionally combined.
      *
-     * @example "30m", "2h", "1d"
+     * @example "30m", "2h", "1d", "2h30m"
      */
     maxDelay?: string;
   };

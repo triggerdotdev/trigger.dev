@@ -45,21 +45,23 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Environment not found", { status: 404 });
   }
 
-  const run = await runStore.findRun(
-    {
-      friendlyId: runId,
-      runtimeEnvironmentId: environment.id,
+  const runWhere = {
+    friendlyId: runId,
+    runtimeEnvironmentId: environment.id,
+  };
+  const runArgs = {
+    select: {
+      id: true,
+      friendlyId: true,
+      realtimeStreamsVersion: true,
+      streamBasinName: true,
     },
-    {
-      select: {
-        id: true,
-        friendlyId: true,
-        realtimeStreamsVersion: true,
-        streamBasinName: true,
-      },
-    },
-    $replica
-  );
+  };
+  // Replica lag can null out a live run; a spurious 404 breaks the dashboard Agent tab subscription
+  // (useRealtimeStream surfaces the error and does not auto-retry). Re-read the primary on a miss.
+  const run =
+    (await runStore.findRun(runWhere, runArgs, $replica)) ??
+    (await runStore.findRunOnPrimary(runWhere, runArgs));
 
   if (!run) {
     return new Response("Run not found", { status: 404 });

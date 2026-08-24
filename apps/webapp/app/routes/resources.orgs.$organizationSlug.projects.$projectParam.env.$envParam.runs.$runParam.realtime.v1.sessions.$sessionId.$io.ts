@@ -1,6 +1,6 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -8,7 +8,7 @@ import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import {
   canonicalSessionAddressingKey,
-  resolveSessionByIdOrExternalId,
+  resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { requireUserId } from "~/services/session.server";
@@ -51,22 +51,27 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   // Verify the run lives in this environment — keeps callers from
   // subscribing to arbitrary sessions via `/runs/$runParam/...`.
-  const run = await runStore.findRun(
-    {
-      friendlyId: runParam,
-      runtimeEnvironmentId: environment.id,
-    },
-    {
-      select: { id: true, friendlyId: true },
-    },
-    $replica
-  );
+  const runWhere = {
+    friendlyId: runParam,
+    runtimeEnvironmentId: environment.id,
+  };
+  const runArgs = {
+    select: { id: true, friendlyId: true },
+  };
+  // Replica lag can null out a live run; a spurious 404 breaks the dashboard Agent tab subscription
+  // (useRealtimeStream surfaces the error and does not auto-retry). Re-read the primary on a miss.
+  const run =
+    (await runStore.findRun(runWhere, runArgs, $replica)) ??
+    (await runStore.findRunOnPrimary(runWhere, runArgs));
 
   if (!run) {
     return new Response("Run not found", { status: 404 });
   }
 
-  const session = await resolveSessionByIdOrExternalId($replica, environment.id, sessionId);
+  // Replica lag can null out a just-created session; a spurious 404 breaks the dashboard Agent tab
+  // subscription (useRealtimeStream surfaces the error and does not auto-retry). Resolve replica-first
+  // with a writer fallback — the same helper the sibling `.in/append` route uses.
+  const session = await resolveSessionWithWriterFallback(environment.id, sessionId);
 
   if (!session) {
     return new Response("Session not found", { status: 404 });
@@ -76,10 +81,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // this environment is enough to subscribe to any session in the same
   // environment — defeats the point of scoping subscriptions through the
   // run route. SessionRun.runId is indexed (@unique), so this is cheap.
-  const linkedSessionRun = await $replica.sessionRun.findFirst({
-    where: { runId: run.id, sessionId: session.id },
-    select: { id: true },
-  });
+  // Replica lag can null out the just-created run↔session linkage row; a spurious 404 breaks the
+  // dashboard Agent tab subscription (client does not auto-retry). Re-read the primary on a miss.
+  const linkWhere = { runId: run.id, sessionId: session.id };
+  const linkedSessionRun =
+    (await $replica.sessionRun.findFirst({ where: linkWhere, select: { id: true } })) ??
+    (await prisma.sessionRun.findFirst({ where: linkWhere, select: { id: true } }));
 
   if (!linkedSessionRun) {
     return new Response("Session not found for run", { status: 404 });

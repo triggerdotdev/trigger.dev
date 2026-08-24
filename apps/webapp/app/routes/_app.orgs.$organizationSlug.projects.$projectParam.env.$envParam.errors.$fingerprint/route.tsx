@@ -1,6 +1,6 @@
 import { parseWithZod } from "@conform-to/zod";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
@@ -23,6 +23,10 @@ import { BugIcon } from "~/assets/icons/BugIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { errorWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import { errorGroupPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import {
   CustomIgnoreDialog,
@@ -70,6 +74,8 @@ import {
   type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
@@ -83,14 +89,20 @@ import {
 } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
+import { errorAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  return [
-    {
-      title: `Error Details | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => errorAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [
+  params.fingerprint ? ErrorId.toFriendlyId(params.fingerprint) : "Error",
+  "Errors",
+]);
+
+const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
 
 const emptyStringToUndefined = z.preprocess(
   (v) => (v === "" ? undefined : v),
@@ -260,6 +272,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      columns: getRunColumnsForSelect(request),
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -319,9 +332,9 @@ export default function Page() {
   } = useTypedLoaderData<typeof loader>();
 
   const location = useOptimisticLocation();
-  const searchParams = new URLSearchParams(location.search);
 
   const errorsPath = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
     const base = v3ErrorsPath(
       { slug: organizationSlug },
       { slug: projectParam },
@@ -339,7 +352,7 @@ export default function Page() {
     }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
-  }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
+  }, [organizationSlug, projectParam, envParam, location.search]);
 
   const alertsHref = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -526,6 +539,12 @@ function ErrorGroupDetail({
                   >
                     Bulk replay…
                   </PermissionLink>
+                  <RunsDisplayOptions
+                    sampleFilters={{
+                      errorId: ErrorId.toFriendlyId(fingerprint),
+                      rootOnly: "false",
+                    }}
+                  />
                   <ListPagination list={runList} />
                 </div>
               )}
@@ -578,8 +597,21 @@ function ErrorDetailSidebar({
 }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="border-b border-grid-dimmed px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
+        {/* Both buttons self-hide when the agent isn't available. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <InvestigateButton
+            prompt={errorGroupPrompt(
+              ErrorId.toFriendlyId(errorGroup.fingerprint),
+              errorGroup.taskIdentifier
+            )}
+            label="Investigate this error"
+          />
+          <WatchButton
+            spec={errorWatchRecommendation(ErrorId.toFriendlyId(errorGroup.fingerprint))}
+          />
+        </div>
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col gap-4">
@@ -589,7 +621,11 @@ function ErrorDetailSidebar({
               <Property.Label>Error status</Property.Label>
               <Property.Value>
                 <div className="flex items-center justify-between">
-                  <ErrorStatusBadge status={errorGroup.state.status} className="w-fit" />
+                  <ErrorStatusBadge
+                    status={errorGroup.state.status}
+                    prominence="bright"
+                    className="w-fit"
+                  />
                   <ErrorStatusDropdown
                     state={errorGroup.state}
                     taskIdentifier={errorGroup.taskIdentifier}
@@ -799,7 +835,7 @@ function ErrorStatusDropdown({
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverArrowTrigger variant="primary" disabled={isSubmitting} className="items-center">
-          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-text-bright" />
+          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-white" />
           Mark error as…
         </PopoverArrowTrigger>
         <PopoverContent className="inline-flex min-w-0! flex-col p-1" align="end">
@@ -831,7 +867,6 @@ function ActivityChart({
   activity: ErrorGroupActivity;
   versions: ErrorGroupActivityVersions;
 }) {
-  const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
   const colors = useMemo(
     () => versions.map((_, i) => ERROR_CHART_COLORS[i % ERROR_CHART_COLORS.length]),
     [versions]

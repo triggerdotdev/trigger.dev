@@ -9,6 +9,7 @@ export const TaskRunV2 = z.object({
   run_id: z.string(),
   updated_at: z.number().int(),
   created_at: z.number().int(),
+  queue_timestamp: z.number().int().nullish(),
   status: z.string(),
   environment_type: z.string(),
   friendly_id: z.string(),
@@ -55,6 +56,7 @@ export const TaskRunV2 = z.object({
   root_trigger_source: z.string().default(""),
   task_kind: z.string().default(""),
   is_warm_start: z.boolean().nullish(),
+  external_deployment_id: z.string().default(""),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -69,6 +71,7 @@ export const TASK_RUN_COLUMNS = [
   "run_id",
   "updated_at",
   "created_at",
+  "queue_timestamp",
   "status",
   "environment_type",
   "friendly_id",
@@ -117,6 +120,7 @@ export const TASK_RUN_COLUMNS = [
   "root_trigger_source",
   "task_kind",
   "is_warm_start",
+  "external_deployment_id",
 ] as const;
 
 export type TaskRunColumnName = (typeof TASK_RUN_COLUMNS)[number];
@@ -138,6 +142,7 @@ export type TaskRunFieldTypes = {
   run_id: string;
   updated_at: number;
   created_at: number;
+  queue_timestamp: number | null;
   status: string;
   environment_type: string;
   friendly_id: string;
@@ -186,6 +191,7 @@ export type TaskRunFieldTypes = {
   root_trigger_source: string;
   task_kind: string;
   is_warm_start: boolean | null;
+  external_deployment_id: string;
 };
 
 /**
@@ -306,6 +312,7 @@ export type TaskRunInsertArray = [
   run_id: string,
   updated_at: number,
   created_at: number,
+  queue_timestamp: number | null,
   status: string,
   environment_type: string,
   friendly_id: string,
@@ -354,6 +361,7 @@ export type TaskRunInsertArray = [
   root_trigger_source: string,
   task_kind: string,
   is_warm_start: boolean | null,
+  external_deployment_id: string,
 ];
 
 /**

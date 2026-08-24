@@ -293,7 +293,12 @@ describe("RunEngine ttl", () => {
         );
         assertNonNullable(messageAfterTrigger);
         expect(messageAfterTrigger.ttlExpiresAt).toBeDefined();
+        // First enqueue anchors the scheduling-delay clock at the trigger time.
+        expect(messageAfterTrigger.eligibleAtMs).toBe(
+          (run.queueTimestamp ?? run.createdAt).getTime()
+        );
 
+        const beforeReenqueue = Date.now();
         await engine.enqueueSystem.enqueueRun({
           run,
           env: authenticatedEnvironment,
@@ -308,6 +313,10 @@ describe("RunEngine ttl", () => {
         );
         assertNonNullable(messageAfterReenqueue);
         expect(messageAfterReenqueue.ttlExpiresAt).toBeUndefined();
+        // Re-enqueues anchor to now so the wait metric measures only this queue stint,
+        // while the ordering timestamp keeps the run's original position.
+        expect(messageAfterReenqueue.eligibleAtMs).toBeGreaterThanOrEqual(beforeReenqueue);
+        expect(messageAfterReenqueue.timestamp).toBe(messageAfterTrigger.timestamp);
       } finally {
         await engine.quit();
       }

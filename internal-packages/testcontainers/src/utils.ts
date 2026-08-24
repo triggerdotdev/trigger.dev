@@ -4,7 +4,6 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { RedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import { tryCatch } from "@trigger.dev/core";
 import Redis from "ioredis";
 import path from "path";
 import { isDebug } from "std-env";
@@ -13,8 +12,15 @@ import { GenericContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
 import type { TestContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
-import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
+
+async function tryCatch<T, E = Error>(promise: Promise<T>): Promise<[E, null] | [null, T]> {
+  try {
+    return [null, await promise];
+  } catch (error) {
+    return [error as E, null];
+  }
+}
 
 /** Returns the container's connection URI with the database path swapped to `database`. */
 export function postgresUriWithDatabase(uri: string, database: string): string {
@@ -161,6 +167,20 @@ export async function createPostgresContainer(
   return { url: container.getConnectionUri(), container, network };
 }
 
+/**
+ * A second schema-loaded Postgres on its own container (no shared network alias), for tests that
+ * exercise a split across two databases. The caller owns stopping the returned container.
+ */
+export async function createStandalonePostgresContainer() {
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .start();
+
+  await pushDatabaseSchema(container.getConnectionUri());
+
+  return { url: container.getConnectionUri(), container };
+}
+
 export async function createClickHouseContainer(network: StartedNetwork) {
   const container = await withCiResourceLimits(new ClickHouseContainer())
     .withNetwork(network)
@@ -281,18 +301,6 @@ export async function createElectricContainer(
   return {
     container,
     origin: `http://${container.getHost()}:${container.getMappedPort(3000)}`,
-  };
-}
-
-export async function createMinIOContainer(network: StartedNetwork) {
-  const container = await withCiResourceLimits(new MinIOContainer())
-    .withNetwork(network)
-    .withNetworkAliases("minio")
-    .start();
-
-  return {
-    container,
-    network,
   };
 }
 

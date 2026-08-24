@@ -1,25 +1,37 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { motion } from "framer-motion";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { BookIcon } from "~/assets/icons/BookIcon";
 import { BulbIcon } from "~/assets/icons/BulbIcon";
+import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { ASK_AGENT_LABEL } from "~/components/dashboard-agent/agent-identity";
+import { aiMenuEntries } from "~/components/dashboard-agent/ai-entry-points";
+import { ASK_AI_SHORTCUT, askAiCanOpen } from "~/components/dashboard-agent/ask-ai-channels";
+import { requestAskAi } from "~/components/dashboard-agent/askAiOpenRequest";
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
+import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
+import {
+  requestDashboardAgent,
+  useDashboardAgentAvailable,
+} from "~/components/dashboard-agent/dashboardAgentOpenRequest";
+import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { sanitizeHttpUrl } from "~/utils/sanitizeUrl";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useRecentChangelogs } from "~/routes/resources.platform-changelogs";
 import { cn } from "~/utils/cn";
+import { sanitizeHttpUrl } from "~/utils/sanitizeUrl";
 import { Feedback } from "../Feedback";
 import { Shortcuts } from "../Shortcuts";
-import { Button } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import { SideMenuItem } from "./SideMenuItem";
+import { SideMenuItem, SideMenuItemButton } from "./SideMenuItem";
 
 export function HelpAndFeedback({
   disableShortcut = false,
@@ -33,7 +45,14 @@ export function HelpAndFeedback({
   projectId?: string;
 }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
+  // Hosted outside the popover (below) and opened from the menu item, so the popover closing never
+  // unmounts the feedback form mid-submit — that teardown was intermittently canceling the POST to
+  // /resources/feedback, so messages sent from the sidebar were silently lost.
+  const [isFeedbackOpen, setFeedbackOpen] = useState(false);
   const _currentPlan = useCurrentPlan();
+  const agentAvailable = useDashboardAgentAvailable();
+  const askAiAvailable = askAiCanOpen(useAskAiAvailability());
+  const aiEntries = aiMenuEntries({ agent: agentAvailable, askAi: askAiAvailable });
   const { changelogs } = useRecentChangelogs(organizationId, projectId);
 
   useShortcutKeys({
@@ -49,36 +68,45 @@ export function HelpAndFeedback({
     <motion.div
       layout="position"
       transition={{ duration: 0.2, ease: "easeInOut" }}
-      className={isCollapsed ? undefined : "flex-1"}
+      className={isCollapsed ? undefined : "min-w-0 flex-1"}
     >
       <Popover open={isHelpMenuOpen} onOpenChange={setHelpMenuOpen}>
         <SimpleTooltip
           button={
             <PopoverTrigger
               className={cn(
-                "group flex h-8 items-center gap-1.5 rounded pl-1.75 pr-2 transition-colors hover:bg-background-hover focus-custom",
+                "group flex h-8 items-center gap-1.5 rounded pl-1.75 pr-2 hover:bg-background-hover focus-custom",
                 isCollapsed ? "w-full" : "w-full justify-between"
               )}
             >
-              <span className="flex items-center gap-1.5 overflow-hidden">
+              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                 <QuestionMarkIcon className="size-5 min-w-5 shrink-0 text-success" />
+                {/*
+                      Width + opacity follow --sm-label-opacity so the label tracks a drag both
+                      directions (no CSS transition — it would lag the per-frame writes).
+                    */}
                 <span
-                  className={cn(
-                    "overflow-hidden whitespace-nowrap text-2sm text-text-bright transition-all duration-150",
-                    isCollapsed ? "max-w-0 opacity-0" : "max-w-[150px] opacity-100"
-                  )}
+                  className="min-w-0 overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed group-hover:text-text-bright"
+                  style={{
+                    maxWidth: "calc(var(--sm-label-opacity, 1) * 150px)",
+                    opacity: "var(--sm-label-opacity, 1)",
+                  }}
                 >
                   Help & Feedback
                 </span>
               </span>
-              <ShortcutKey
-                className={cn(
-                  "size-4 flex-none transition-all duration-150",
-                  isCollapsed ? "hidden" : ""
-                )}
-                shortcut={{ key: "h" }}
-                variant="medium/bright"
-              />
+              {/*
+                    Hover chevron, only when expanded. Its 16px width follows --sm-label-opacity so
+                    an invisible chevron never holds width mid-drag and clips the help icon.
+                  */}
+              {!isCollapsed && (
+                <span
+                  className="overflow-hidden opacity-0 group-hover:opacity-100"
+                  style={{ maxWidth: "calc(var(--sm-label-opacity, 1) * 16px)" }}
+                >
+                  <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
+                </span>
+              )}
             </PopoverTrigger>
           }
           content={
@@ -89,9 +117,10 @@ export function HelpAndFeedback({
           }
           side="right"
           sideOffset={8}
-          hidden={!isCollapsed}
+          delayDuration={isCollapsed ? 0 : 500}
           buttonClassName="h-8! w-full"
           asChild
+          tabbable
           disableHoverableContent
         />
         <PopoverContent
@@ -100,7 +129,41 @@ export function HelpAndFeedback({
           sideOffset={isCollapsed ? 8 : 4}
           align="start"
         >
-          <Fragment>
+          <>
+            {/* This popover lives in the app layout, above both AI hosts, so it opens them
+                through their open-request bridges rather than context. The hosts register the
+                keystrokes; this only shows them. */}
+            {aiEntries.length > 0 && (
+              <div className="flex flex-col gap-1 p-1">
+                {aiEntries.map((entry) =>
+                  entry === "agent" ? (
+                    <SideMenuItemButton
+                      key={entry}
+                      icon={<AgentMonoLogo size={18} decorative />}
+                      name={ASK_AGENT_LABEL}
+                      data-action="ask-agent"
+                      trailing={<ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />}
+                      onClick={() => {
+                        setHelpMenuOpen(false);
+                        requestDashboardAgent();
+                      }}
+                    />
+                  ) : (
+                    <SideMenuItemButton
+                      key={entry}
+                      icon={AISparkleIcon}
+                      name="Ask AI"
+                      data-action="ask-ai"
+                      trailing={<ShortcutKey shortcut={ASK_AI_SHORTCUT} variant="medium" />}
+                      onClick={() => {
+                        setHelpMenuOpen(false);
+                        requestAskAi();
+                      }}
+                    />
+                  )
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-1 p-1">
               <SideMenuItem
                 name="Documentation"
@@ -132,20 +195,14 @@ export function HelpAndFeedback({
                 target="_blank"
               />
               <Shortcuts />
-              <Feedback
-                button={
-                  <Button
-                    variant="small-menu-item"
-                    className="pl-2"
-                    LeadingIcon={EnvelopeIcon}
-                    leadingIconClassName="pr-1 text-text-dimmed group-hover/button:text-text-bright"
-                    data-action="contact-us"
-                    fullWidth
-                    textAlignLeft
-                  >
-                    Contact us…
-                  </Button>
-                }
+              <SideMenuItemButton
+                icon={EnvelopeIcon}
+                name="Contact us…"
+                data-action="contact-us"
+                onClick={() => {
+                  setHelpMenuOpen(false);
+                  setFeedbackOpen(true);
+                }}
               />
             </div>
             <div className="flex flex-col gap-1 p-1">
@@ -175,9 +232,11 @@ export function HelpAndFeedback({
                 target="_blank"
               />
             </div>
-          </Fragment>
+          </>
         </PopoverContent>
       </Popover>
+      {/* Hosted outside the popover so closing the menu can't unmount the form mid-submit. */}
+      <Feedback open={isFeedbackOpen} setOpen={setFeedbackOpen} />
     </motion.div>
   );
 }

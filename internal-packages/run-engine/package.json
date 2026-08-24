@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@internal/redis": "workspace:*",
+    "@internal/metrics-pipeline": "workspace:*",
     "@internal/run-store": "workspace:*",
     "@trigger.dev/redis-worker": "workspace:*",
     "@internal/tracing": "workspace:*",
@@ -28,7 +29,7 @@
     "@trigger.dev/database": "workspace:*",
     "@internal/cache": "workspace:*",
     "assert-never": "^1.2.1",
-    "nanoid": "3.3.8",
+    "nanoid": "3.3.18",
     "redlock": "5.0.0-beta.2",
     "seedrandom": "^3.0.5",
     "zod": "3.25.76",
@@ -46,6 +47,7 @@
     "test": "vitest --sequence.concurrent=false --no-file-parallelism",
     "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
-    "dev": "tsc --watch  -p tsconfig.build.json"
+    "dev": "tsc --watch  -p tsconfig.build.json",
+    "test:bench": "vitest --config ./vitest.bench.config.ts --run"
   }
 }

@@ -84,6 +84,12 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the bulk
+    // action's "override region" picker, so it decides which region a submitted
+    // bulk replay can re-route runs to. "View as user" only changes what is
+    // shown.
+    const isAdmin = user.admin || user.isImpersonating;
+
     const presenter = new CreateBulkActionPresenter();
     const [data, regionsResult] = await Promise.all([
       presenter.call({
@@ -96,7 +102,7 @@ export const loader = dashboardLoader(
         new RegionsPresenter().call({
           userId: user.id,
           projectSlug: projectParam,
-          isAdmin: user.admin || user.isImpersonating,
+          isAdmin,
         })
       ),
     ]);
@@ -249,22 +255,17 @@ export function CreateBulkActionInspector({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const { value, replace, del } = useSearchParams();
-  const [action, setAction] = useState<BulkActionAction>(
-    bulkActionActionFromString(value("action"))
-  );
+  const action = bulkActionActionFromString(value("action"));
   const location = useOptimisticLocation();
   const user = useUser();
 
   useEffect(() => {
-    fetcher.load(
+    load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/bulkaction${location.search}`
     );
-  }, [organization.id, project.id, environment.id, location.search]);
-
-  useEffect(() => {
-    setAction(bulkActionActionFromString(value("action")));
-  }, [value("action")]);
+  }, [organization.slug, project.slug, environment.slug, location.search, load]);
 
   const mode = bulkActionModeFromString(value("mode"));
 

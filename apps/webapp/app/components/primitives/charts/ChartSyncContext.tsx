@@ -25,6 +25,8 @@ type ChartSyncContextValue = {
 
   /** Whether drag-to-zoom is active (an onZoom handler was provided). */
   zoomEnabled: boolean;
+  /** The commit handler, re-exposed so a nested group (e.g. a fullscreen chart) can inherit it. */
+  onZoom?: (range: ChartZoomRange) => void;
   /** Current drag selection, mirrored across charts; null when not dragging. */
   zoomSelection: ZoomSelection | null;
   startZoom: (x: number | string) => void;
@@ -103,6 +105,7 @@ export function ChartSyncProvider({
       activeX,
       setActiveX,
       zoomEnabled: onZoom != null,
+      onZoom,
       zoomSelection,
       startZoom,
       updateZoom,

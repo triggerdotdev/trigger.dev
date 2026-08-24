@@ -76,3 +76,17 @@ apps/**/public/build
 ailogger-output.log
 # per-package vitest timing capture (transient; merged into root test-timings.json)
 .vitest-timing.json
+
+# local git worktree checkouts (not source) — keeps oxfmt/oxlint from descending into them
+.worktrees/
+
+# local planning/design docs, not committed
+**/docs/superpowers/
+
+# observability-map CLI output artifact, not committed
+observability-map.json
+
+.claude/worktrees/
+
+# CPU benchmark artifacts (profiles + summaries)
+.bench/

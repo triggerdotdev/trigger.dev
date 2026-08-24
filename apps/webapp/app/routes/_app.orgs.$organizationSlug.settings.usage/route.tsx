@@ -1,5 +1,5 @@
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
-import { Await, type MetaFunction } from "@remix-run/react";
+import { Await } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense, useMemo } from "react";
@@ -7,7 +7,8 @@ import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { URL } from "url";
 import { UsageBar } from "~/components/billing/UsageBar";
 import { getUsageBarBillingLimitDollars } from "~/components/billing/billingAlertsFormat";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { PageContainer } from "~/components/layout/AppLayout";
+import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { Card } from "~/components/primitives/charts/Card";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
@@ -35,14 +36,9 @@ import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/nu
 import { useBillingLimit } from "~/hooks/useOrganizations";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Usage | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Usage");
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -114,6 +110,9 @@ export default function Page() {
   const currentPlan = useCurrentPlan();
   const billingLimit = useBillingLimit();
   const planLimitCents = currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0;
+  // Enterprise bills against prepaid credits, not a per-month included-usage tier,
+  // so the "Included usage" marker doesn't apply.
+  const isEnterprise = currentPlan?.v3Subscription?.plan?.type === "enterprise";
   const billingLimitDollars = isCurrentMonth
     ? getUsageBarBillingLimitDollars(billingLimit, planLimitCents)
     : undefined;
@@ -126,13 +125,12 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Usage" />
       </NavBar>
-      <PageBody scrollable={true} className="p-0">
-        <div className="flex flex-col gap-6">
-          <div>
+      <MetricsLayout.Root>
+        <MetricsLayout.Filters>
+          <div className="flex items-center gap-2">
             <Select
               name="month"
               placeholder="Select a month"
-              className="m-3"
               defaultValue={month}
               items={months.map((date) => ({
                 label: monthDateFormatter.format(date),
@@ -153,47 +151,93 @@ export default function Page() {
                 ))
               }
             </Select>
-            {promoCredits && (
-              <div className="flex flex-col gap-1 border-t border-grid-dimmed p-3">
-                <div className="flex items-end gap-8">
-                  <div className="flex flex-col gap-1">
-                    <Header2 className="whitespace-nowrap">Promo credits</Header2>
-                    <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
-                      {formatCurrency(promoCredits.remainingCents / 100, false)}
-                    </p>
-                  </div>
-                  <div className="flex w-full flex-1 flex-col gap-1 pb-1">
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-charcoal-700">
-                      <div
-                        className="h-full rounded-full bg-blue-500"
-                        style={{
-                          width: `${
-                            promoCredits.grantedCents > 0
-                              ? Math.min(
-                                  100,
-                                  Math.max(
-                                    0,
-                                    (promoCredits.remainingCents / promoCredits.grantedCents) * 100
-                                  )
+          </div>
+        </MetricsLayout.Filters>
+
+        <MetricsLayout.Grid columns={{ base: 1 }}>
+          {promoCredits && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-end gap-8">
+                <div className="flex flex-col gap-1">
+                  <Header2 className="whitespace-nowrap">Credits</Header2>
+                  <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
+                    {formatCurrency(promoCredits.remainingCents / 100, false)}
+                  </p>
+                </div>
+                <div className="flex w-full flex-1 flex-col gap-1 pb-1">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-background-raised">
+                    <div
+                      className="h-full rounded-full bg-blue-500"
+                      style={{
+                        width: `${
+                          promoCredits.grantedCents > 0
+                            ? Math.min(
+                                100,
+                                Math.max(
+                                  0,
+                                  (promoCredits.remainingCents / promoCredits.grantedCents) * 100
                                 )
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <Paragraph variant="extra-small" className="text-text-dimmed">
-                      {formatCurrency(promoCredits.remainingCents / 100, false)} of{" "}
-                      {formatCurrency(promoCredits.grantedCents / 100, false)} remaining
-                      {promoCredits.expiresAt
-                        ? ` · expires ${creditExpiryFormatter.format(new Date(promoCredits.expiresAt))}`
-                        : ""}
-                    </Paragraph>
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
                   </div>
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    {formatCurrency(promoCredits.remainingCents / 100, false)} of{" "}
+                    {formatCurrency(promoCredits.grantedCents / 100, false)} remaining
+                    {promoCredits.expiresAt
+                      ? ` · expires ${creditExpiryFormatter.format(new Date(promoCredits.expiresAt))}`
+                      : ""}
+                  </Paragraph>
                 </div>
               </div>
-            )}
-            <div className="flex w-full flex-col gap-2 border-t border-grid-dimmed p-3">
-              <Suspense fallback={<Spinner />}>
+            </div>
+          )}
+          <div className="flex w-full flex-col gap-2">
+            <Suspense fallback={<Spinner />}>
+              <Await
+                resolve={usage}
+                errorElement={
+                  <div className="flex min-h-40 items-center justify-center">
+                    <Paragraph variant="small">Failed to load graph.</Paragraph>
+                  </div>
+                }
+              >
+                {(usage) => (
+                  <div className="flex items-end gap-8">
+                    <div className="flex flex-col gap-1">
+                      <Header2 className="whitespace-nowrap">
+                        {isCurrentMonth ? "Month-to-date" : "Usage"}
+                      </Header2>
+                      <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
+                        {formatCurrency(usage.overall.current, false)}
+                      </p>
+                    </div>
+                    <UsageBar
+                      current={usage.overall.current}
+                      isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
+                      tierLimit={isCurrentMonth && !isEnterprise ? planLimitCents / 100 : undefined}
+                      billingLimit={billingLimitDollars}
+                    />
+                  </div>
+                )}
+              </Await>
+            </Suspense>
+          </div>
+        </MetricsLayout.Grid>
+
+        <MetricsLayout.Grid>
+          <Card>
+            <Card.Header>Usage by day</Card.Header>
+            <Card.Content>
+              <Suspense
+                fallback={
+                  <div className="flex min-h-40 items-center justify-center">
+                    <Spinner />
+                  </div>
+                }
+              >
                 <Await
                   resolve={usage}
                   errorElement={
@@ -202,136 +246,89 @@ export default function Page() {
                     </div>
                   }
                 >
-                  {(usage) => (
-                    <div className="flex items-end gap-8">
-                      <div className="flex flex-col gap-1">
-                        <Header2 className="whitespace-nowrap">
-                          {isCurrentMonth ? "Month-to-date" : "Usage"}
-                        </Header2>
-                        <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
-                          {formatCurrency(usage.overall.current, false)}
-                        </p>
-                      </div>
-                      <UsageBar
-                        current={usage.overall.current}
-                        isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
-                        tierLimit={isCurrentMonth ? planLimitCents / 100 : undefined}
-                        billingLimit={billingLimitDollars}
-                      />
-                    </div>
-                  )}
+                  {(u) => <UsageChart data={u.timeSeries} />}
                 </Await>
               </Suspense>
-            </div>
-          </div>
-
-          <div className="px-3">
-            <Card>
-              <Card.Header>Usage by day</Card.Header>
-              <Card.Content>
-                <Suspense
-                  fallback={
-                    <div className="flex min-h-40 items-center justify-center">
-                      <Spinner />
-                    </div>
-                  }
-                >
-                  <Await
-                    resolve={usage}
-                    errorElement={
-                      <div className="flex min-h-40 items-center justify-center">
-                        <Paragraph variant="small">Failed to load graph.</Paragraph>
-                      </div>
-                    }
-                  >
-                    {(u) => <UsageChart data={u.timeSeries} />}
-                  </Await>
-                </Suspense>
-              </Card.Content>
-            </Card>
-          </div>
-          <div>
-            <Header2 spacing className="pl-3">
-              Tasks
-            </Header2>
-            <Suspense fallback={<Spinner />}>
-              <Await
-                resolve={tasks}
-                errorElement={
-                  <div className="flex min-h-40 items-center justify-center">
-                    <Paragraph variant="small">Failed to load.</Paragraph>
-                  </div>
-                }
-              >
-                {(tasks) => {
-                  return (
-                    <>
-                      <Table>
-                        <TableHeader>
+            </Card.Content>
+          </Card>
+        </MetricsLayout.Grid>
+        <MetricsLayout.Content>
+          <Header2 className="pl-3">Tasks</Header2>
+          <Suspense fallback={<Spinner />}>
+            <Await
+              resolve={tasks}
+              errorElement={
+                <div className="flex min-h-40 items-center justify-center">
+                  <Paragraph variant="small">Failed to load.</Paragraph>
+                </div>
+              }
+            >
+              {(tasks) => {
+                return (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHeaderCell>Task</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Runs</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
+                          <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {tasks.length === 0 ? (
                           <TableRow>
-                            <TableHeaderCell>Task</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Runs</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
-                            <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
+                            <TableCell colSpan={6}>
+                              <div className="flex items-center justify-center py-8">
+                                <Paragraph variant="base/bright">No runs for this period</Paragraph>
+                              </div>
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {tasks.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={6}>
-                                <div className="flex items-center justify-center py-8">
-                                  <Paragraph variant="base/bright">
-                                    No runs for this period
-                                  </Paragraph>
-                                </div>
+                        ) : (
+                          tasks.map((task) => (
+                            <TableRow key={task.taskIdentifier}>
+                              <TableCell>{task.taskIdentifier}</TableCell>
+                              <TableCell alignment="right" className="tabular-nums">
+                                {formatNumber(task.runCount)}
+                              </TableCell>
+                              <TableCell alignment="right">
+                                {formatDurationMilliseconds(task.averageDuration, {
+                                  style: "short",
+                                })}
+                              </TableCell>
+                              <TableCell alignment="right" className="tabular-nums">
+                                {formatCurrencyAccurate(task.averageCost)}
+                              </TableCell>
+                              <TableCell alignment="right" className="tabular-nums">
+                                {formatDurationMilliseconds(task.totalDuration, {
+                                  style: "short",
+                                })}
+                              </TableCell>
+                              <TableCell alignment="right" className="tabular-nums">
+                                {formatCurrencyAccurate(task.totalCost)}
                               </TableCell>
                             </TableRow>
-                          ) : (
-                            tasks.map((task) => (
-                              <TableRow key={task.taskIdentifier}>
-                                <TableCell>{task.taskIdentifier}</TableCell>
-                                <TableCell alignment="right" className="tabular-nums">
-                                  {formatNumber(task.runCount)}
-                                </TableCell>
-                                <TableCell alignment="right">
-                                  {formatDurationMilliseconds(task.averageDuration, {
-                                    style: "short",
-                                  })}
-                                </TableCell>
-                                <TableCell alignment="right" className="tabular-nums">
-                                  {formatCurrencyAccurate(task.averageCost)}
-                                </TableCell>
-                                <TableCell alignment="right" className="tabular-nums">
-                                  {formatDurationMilliseconds(task.totalDuration, {
-                                    style: "short",
-                                  })}
-                                </TableCell>
-                                <TableCell alignment="right" className="tabular-nums">
-                                  {formatCurrencyAccurate(task.totalCost)}
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                      <InfoPanel
-                        icon={InformationCircleIcon}
-                        variant="minimal"
-                        panelClassName="max-w-full"
-                      >
-                        Dev environment runs are excluded from the usage data above, since they do
-                        not have an associated compute cost.
-                      </InfoPanel>
-                    </>
-                  );
-                }}
-              </Await>
-            </Suspense>
-          </div>
-        </div>
-      </PageBody>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                    <InfoPanel
+                      icon={InformationCircleIcon}
+                      variant="minimal"
+                      panelClassName="max-w-full"
+                    >
+                      Dev environment runs are excluded from the usage data above, since they do not
+                      have an associated compute cost.
+                    </InfoPanel>
+                  </>
+                );
+              }}
+            </Await>
+          </Suspense>
+        </MetricsLayout.Content>
+      </MetricsLayout.Root>
     </PageContainer>
   );
 }

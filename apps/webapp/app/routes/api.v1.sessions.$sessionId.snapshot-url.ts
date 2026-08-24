@@ -40,7 +40,7 @@ function sessionResource(
   return anyResource([...ids].map((id) => ({ type: "sessions" as const, id })));
 }
 
-export const { action } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     ...routeConfig,
     method: "PUT",
@@ -94,3 +94,5 @@ export const loader = createLoaderApiRoute(
     return json({ presignedUrl: signed.url });
   }
 );
+
+export const action = route.action;

@@ -224,6 +224,37 @@ export class TaskContextMetricExporter implements PushMetricExporter {
   }
 }
 
+function isFiniteDataPointValue(value: unknown): boolean {
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return (["sum", "min", "max"] as const).every((key) => {
+      const component = (value as Record<string, unknown>)[key];
+      return typeof component !== "number" || Number.isFinite(component);
+    });
+  }
+
+  return true;
+}
+
+function dropNonFiniteDataPoints(metrics: ResourceMetrics): ResourceMetrics {
+  return {
+    ...metrics,
+    scopeMetrics: metrics.scopeMetrics.map((scope) => ({
+      ...scope,
+      metrics: scope.metrics.map(
+        (metric) =>
+          ({
+            ...metric,
+            dataPoints: metric.dataPoints.filter((dp) => isFiniteDataPointValue(dp.value)),
+          }) as MetricData
+      ),
+    })),
+  };
+}
+
 export class BufferingMetricExporter implements PushMetricExporter {
   selectAggregationTemporality?: (instrumentType: InstrumentType) => AggregationTemporality;
   selectAggregation?: (instrumentType: InstrumentType) => AggregationOption;
@@ -245,7 +276,7 @@ export class BufferingMetricExporter implements PushMetricExporter {
   }
 
   export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
-    this._buffer.push(metrics);
+    this._buffer.push(dropNonFiniteDataPoints(metrics));
 
     const now = Date.now();
     if (now - this._lastFlushTime >= this._flushIntervalMs) {

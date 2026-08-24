@@ -2,6 +2,9 @@ import type { ReactElement } from "react";
 
 import { z } from "zod";
 import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
+import AlertDashboardAgentWatchEmail, {
+  AlertDashboardAgentWatchEmailSchema,
+} from "../emails/alert-dashboard-agent-watch";
 import AlertErrorGroupEmail, { AlertErrorGroupEmailSchema } from "../emails/alert-error-group";
 import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
@@ -34,6 +37,7 @@ export const DeliverEmailSchema = z
     AlertRunEmailSchema,
     AlertAttemptEmailSchema,
     AlertErrorGroupEmailSchema,
+    AlertDashboardAgentWatchEmailSchema,
     AlertDeploymentFailureEmailSchema,
     AlertDeploymentSuccessEmailSchema,
     MfaEnabledEmailSchema,
@@ -127,6 +131,13 @@ export class EmailClient {
         return {
           subject: `[${data.organization}] ${classLabel}: ${data.error.type ?? "Error"} in ${data.taskIdentifier} [${data.environment}]`,
           component: <AlertErrorGroupEmail {...data} />,
+        };
+      }
+      case "alert-dashboard-agent-watch": {
+        return {
+          // The headline is the same sentence the chat and Slack use; `identity` is a key.
+          subject: `[${data.organization}] ${data.headline ?? `Watch update: ${data.identity}`}`,
+          component: <AlertDashboardAgentWatchEmail {...data} />,
         };
       }
       case "alert-deployment-failure": {

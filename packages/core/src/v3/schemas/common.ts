@@ -4,6 +4,25 @@ import type { RuntimeEnvironmentType as DBRuntimeEnvironmentType } from "@trigge
 
 export type Enum<T extends string> = { [K in T]: K };
 
+const DANGEROUS_METADATA_KEY_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Prototype-pollution guard for run metadata operation keys. JSON paths are applied via
+ * JSONHeroPath, so dangerous path segments must be rejected. Literal keys are assigned directly,
+ * where only __proto__ can change the target object's prototype.
+ */
+export function isSafeMetadataKey(key: string): boolean {
+  if (!key.startsWith("$.")) {
+    return key !== "__proto__";
+  }
+
+  return !key.split(/[.[\]'"]+/).some((segment) => DANGEROUS_METADATA_KEY_SEGMENTS.has(segment));
+}
+
+const MetadataOperationKey = z.string().refine(isSafeMetadataKey, {
+  message: "Metadata key may not reference __proto__, constructor, or prototype",
+});
+
 export const RunMetadataUpdateOperation = z.object({
   type: z.literal("update"),
   value: z.record(z.unknown()),
@@ -13,7 +32,7 @@ export type RunMetadataUpdateOperation = z.infer<typeof RunMetadataUpdateOperati
 
 export const RunMetadataSetKeyOperation = z.object({
   type: z.literal("set"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: DeserializedJsonSchema,
 });
 
@@ -21,14 +40,14 @@ export type RunMetadataSetKeyOperation = z.infer<typeof RunMetadataSetKeyOperati
 
 export const RunMetadataDeleteKeyOperation = z.object({
   type: z.literal("delete"),
-  key: z.string(),
+  key: MetadataOperationKey,
 });
 
 export type RunMetadataDeleteKeyOperation = z.infer<typeof RunMetadataDeleteKeyOperation>;
 
 export const RunMetadataAppendKeyOperation = z.object({
   type: z.literal("append"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: DeserializedJsonSchema,
 });
 
@@ -36,7 +55,7 @@ export type RunMetadataAppendKeyOperation = z.infer<typeof RunMetadataAppendKeyO
 
 export const RunMetadataRemoveFromKeyOperation = z.object({
   type: z.literal("remove"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: DeserializedJsonSchema,
 });
 
@@ -44,7 +63,7 @@ export type RunMetadataRemoveFromKeyOperation = z.infer<typeof RunMetadataRemove
 
 export const RunMetadataIncrementKeyOperation = z.object({
   type: z.literal("increment"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: z.number(),
 });
 

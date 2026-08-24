@@ -80,21 +80,26 @@ export const action = dashboardAction(
       // The project-scope + membership auth is a control-plane concern resolved
       // separately below; joining project/organization here is a cross-DB join
       // that returns nothing once the run lives in the run-ops DB.
-      const taskRun = await runStore.findRun(
-        { friendlyId: runParam },
-        {
-          select: {
-            id: true,
-            engine: true,
-            status: true,
-            friendlyId: true,
-            taskEventStore: true,
-            createdAt: true,
-            completedAt: true,
-            projectId: true,
-          },
-        }
-      );
+      const cancelRunSelect = {
+        id: true,
+        engine: true,
+        status: true,
+        friendlyId: true,
+        taskEventStore: true,
+        createdAt: true,
+        completedAt: true,
+        projectId: true,
+      };
+      let taskRun = await runStore.findRun({ friendlyId: runParam }, { select: cancelRunSelect });
+      if (!taskRun) {
+        // Read-your-writes: a just-created run may not have replicated. Re-read the owning primary
+        // before treating it as absent (mirrors resolveRunOrganizationId's primary fallback above).
+        taskRun = await runStore.findRun(
+          { friendlyId: runParam },
+          { select: cancelRunSelect },
+          prisma
+        );
+      }
 
       // Project-scope + membership auth is control-plane only — keyed by the
       // run's projectId. A miss is treated as not-found (mirrors the old where).

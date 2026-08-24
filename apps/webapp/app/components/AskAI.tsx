@@ -1,3 +1,9 @@
+/**
+ * Mostly superseded by the dashboard agent (`components/dashboard-agent`), which owns every
+ * entry point except two: ⌘I and the CLI's `?aiHelp=` link still open Ask AI. `AskAIRoot` is
+ * mounted by the `_app` layout for those; the `AskAI` button below is mounted nowhere.
+ */
+
 import {
   ArrowPathIcon,
   ArrowUpIcon,
@@ -12,11 +18,16 @@ import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import { marked } from "marked";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTypedRouteLoaderData } from "remix-typedjson";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
-import { useFeatures } from "~/hooks/useFeatures";
-import { type loader } from "~/root";
+import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import {
+  ASK_AI_DEEP_LINK_PARAM,
+  ASK_AI_SHORTCUT,
+  askAiCanOpen,
+} from "./dashboard-agent/ask-ai-channels";
+import { useAskAiHost } from "./dashboard-agent/askAiOpenRequest";
 import { Button } from "./primitives/Buttons";
 import { Callout } from "./primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./primitives/Dialog";
@@ -33,18 +44,99 @@ import {
 } from "./primitives/Tooltip";
 import { ClientOnly } from "remix-utils/client-only";
 
-function useKapaWebsiteId() {
-  const routeMatch = useTypedRouteLoaderData<typeof loader>("root");
-  return routeMatch?.kapa.websiteId;
+/** Open/close state for the Ask AI dialog, including the `?aiHelp=` deep-link handling. */
+function useAskAIState() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [initialQuery, setInitialQuery] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const openAskAI = useCallback((question?: string) => {
+    if (question) {
+      setInitialQuery(question);
+    } else {
+      setInitialQuery(undefined);
+    }
+    setIsOpen(true);
+  }, []);
+
+  const closeAskAI = useCallback(() => {
+    setIsOpen(false);
+    setInitialQuery(undefined);
+  }, []);
+
+  // Handle URL param functionality
+  useEffect(() => {
+    const aiHelp = searchParams.get(ASK_AI_DEEP_LINK_PARAM);
+    if (aiHelp) {
+      // Delay to avoid hCaptcha bot detection
+      window.setTimeout(() => openAskAI(aiHelp), 1000);
+
+      // Clone instead of mutating in place
+      const next = new URLSearchParams(searchParams);
+      next.delete(ASK_AI_DEEP_LINK_PARAM);
+      setSearchParams(next);
+    }
+  }, [searchParams, setSearchParams, openAskAI]);
+
+  return { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI };
 }
 
-export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
-  const { isManagedCloud } = useFeatures();
-  const websiteId = useKapaWebsiteId();
+/**
+ * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog). It renders no page content and wraps
+ * nothing: entry points reach it through `requestAskAi`, so the Kapa provider mounting after
+ * hydration can never remount the app around it.
+ */
+export function AskAIRoot() {
+  const availability = useAskAiAvailability();
 
-  if (!isManagedCloud || !websiteId) {
+  if (!askAiCanOpen(availability)) {
     return null;
   }
+
+  const websiteId = availability.kapaWebsiteId!;
+
+  return <ClientOnly>{() => <AskAIRootProvider websiteId={websiteId} />}</ClientOnly>;
+}
+
+function AskAIRootProvider({ websiteId }: { websiteId: string }) {
+  const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
+
+  useShortcutKeys({
+    shortcut: ASK_AI_SHORTCUT,
+    action: () => openAskAI(),
+  });
+  useAskAiHost(openAskAI);
+
+  return (
+    <KapaProvider
+      integrationId={websiteId}
+      callbacks={{
+        askAI: {
+          onQuerySubmit: () => openAskAI(),
+          onAnswerGenerationCompleted: () => openAskAI(),
+        },
+      }}
+      botProtectionMechanism="hcaptcha"
+    >
+      <AskAIDialog
+        initialQuery={initialQuery}
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        closeAskAI={closeAskAI}
+      />
+    </KapaProvider>
+  );
+}
+
+/** @deprecated Mounted nowhere: the sidebar's AI entry point is the dashboard agent. */
+export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
+  const availability = useAskAiAvailability();
+
+  if (!askAiCanOpen(availability)) {
+    return null;
+  }
+
+  const websiteId = availability.kapaWebsiteId!;
 
   return (
     <ClientOnly
@@ -72,37 +164,7 @@ type AskAIProviderProps = {
 };
 
 function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [initialQuery, setInitialQuery] = useState<string | undefined>();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const openAskAI = useCallback((question?: string) => {
-    if (question) {
-      setInitialQuery(question);
-    } else {
-      setInitialQuery(undefined);
-    }
-    setIsOpen(true);
-  }, []);
-
-  const closeAskAI = useCallback(() => {
-    setIsOpen(false);
-    setInitialQuery(undefined);
-  }, []);
-
-  // Handle URL param functionality
-  useEffect(() => {
-    const aiHelp = searchParams.get("aiHelp");
-    if (aiHelp) {
-      // Delay to avoid hCaptcha bot detection
-      window.setTimeout(() => openAskAI(aiHelp), 1000);
-
-      // Clone instead of mutating in place
-      const next = new URLSearchParams(searchParams);
-      next.delete("aiHelp");
-      setSearchParams(next);
-    }
-  }, [searchParams, openAskAI]);
+  const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
 
   return (
     <KapaProvider
@@ -211,6 +273,7 @@ function ChatMessages({
   // Reset feedback state when conversation is reset
   useEffect(() => {
     if (conversation.length === 0) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setFeedbackGivenForQAs(new Set());
     }
   }, [conversation.length]);
@@ -389,7 +452,7 @@ function ChatMessages({
         <div className="flex flex-col">
           <Callout variant="error" className="mb-4">
             <Paragraph className="font-semibold text-error">Error generating answer:</Paragraph>
-            <Paragraph className="text-rose-300">
+            <Paragraph className="text-rose-500 dark:text-rose-300">
               {error} If the problem persists after retrying, please contact support.
             </Paragraph>
           </Callout>
@@ -481,8 +544,12 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
           />
           {isGeneratingAnswer ? (
             <SimpleTooltip
+              asChild
+              tabbable
               button={
-                <span
+                <button
+                  type="button"
+                  aria-label="Stop generating"
                   onClick={() => stopGeneration()}
                   className="group relative z-10 flex size-10 min-w-10 cursor-pointer items-center justify-center"
                 >
@@ -491,7 +558,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
                     className="absolute inset-0 animate-spin"
                     hoverEffect
                   />
-                </span>
+                </button>
               }
               content="Stop generating"
             />

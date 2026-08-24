@@ -19,11 +19,13 @@ import type { BufferEntry, MollifierBuffer } from "@trigger.dev/redis-worker";
 
 const NOW = new Date("2026-05-21T10:00:00Z");
 
-function fakeReplica(row: { friendlyId: string } | null) {
-  return { taskRun: { findFirst: vi.fn(async () => row) } };
+function fakeReplica(row: { friendlyId: string; taskIdentifier?: string } | null) {
+  const result = row ? { ...row, taskIdentifier: row.taskIdentifier ?? "task-1" } : null;
+  return { taskRun: { findFirst: vi.fn(async () => result) } };
 }
-function fakeWriter(row: { friendlyId: string } | null) {
-  return { taskRun: { findFirst: vi.fn(async () => row) } };
+function fakeWriter(row: { friendlyId: string; taskIdentifier?: string } | null) {
+  const result = row ? { ...row, taskIdentifier: row.taskIdentifier ?? "task-1" } : null;
+  return { taskRun: { findFirst: vi.fn(async () => result) } };
 }
 
 function fakeBuffer(entry: BufferEntry | null): MollifierBuffer {
@@ -47,7 +49,7 @@ describe("resolveRunForMutation", () => {
         getBuffer: () => null,
       },
     });
-    expect(result).toEqual({ source: "pg", friendlyId: "run_1" });
+    expect(result).toEqual({ source: "pg", friendlyId: "run_1", taskIdentifier: "task-1" });
   });
 
   it("returns { source: 'buffer' } when PG misses and the buffer entry matches env+org", async () => {
@@ -55,7 +57,7 @@ describe("resolveRunForMutation", () => {
       runId: "run_1",
       envId: "env_a",
       orgId: "org_1",
-      payload: "{}",
+      payload: JSON.stringify({ taskIdentifier: "task-1" }),
       status: "QUEUED",
       attempts: 0,
       createdAt: NOW,
@@ -71,7 +73,11 @@ describe("resolveRunForMutation", () => {
         getBuffer: () => fakeBuffer(entry),
       },
     });
-    expect(result).toEqual({ source: "buffer", friendlyId: "run_1" });
+    expect(result).toEqual({
+      source: "buffer",
+      friendlyId: "run_1",
+      taskIdentifier: "task-1",
+    });
   });
 
   it("returns null when PG misses and the buffer entry env doesn't match", async () => {

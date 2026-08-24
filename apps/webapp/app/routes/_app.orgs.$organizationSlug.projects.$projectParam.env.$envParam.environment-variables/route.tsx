@@ -16,7 +16,6 @@ import {
   useFetcher,
   useNavigation,
   useRevalidator,
-  type MetaFunction,
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -41,6 +40,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Switch } from "~/components/primitives/Switch";
@@ -56,10 +56,8 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useSearchParams } from "~/hooks/useSearchParam";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
@@ -78,6 +76,7 @@ import {
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import {
   DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
@@ -87,14 +86,16 @@ import {
   shouldSyncEnvVar,
   type TriggerEnvironmentType,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Environment variables | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("envvars"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Environment variables");
 
 type PageVercelIntegration = NonNullable<
   Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>["vercelIntegration"]
@@ -115,6 +116,8 @@ export type EnvironmentVariablesPageLoaderData = {
   accessibleEnvironmentIds: string[];
   // Environment ids whose env vars the current role can write (create/edit/delete).
   writableEnvironmentIds: string[];
+  pagination: { currentPage: number; totalPages: number; totalCount: number };
+  search?: string;
 };
 
 export const environmentVariablesRouteId =
@@ -123,6 +126,10 @@ export const environmentVariablesRouteId =
 export const loader = dashboardLoader(
   {
     params: EnvironmentParamSchema,
+    searchParams: z.object({
+      page: z.coerce.number().int().min(1).catch(1),
+      search: z.string().trim().min(1).optional().catch(undefined),
+    }),
     context: async (params) => {
       const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
       return organizationId ? { organizationId } : {};
@@ -130,15 +137,17 @@ export const loader = dashboardLoader(
     // No hard authorization: the page lists every environment. Values in
     // environments the role can't read are masked per-tier below.
   },
-  async ({ params, user, ability }) => {
+  async ({ params, searchParams, user, ability }) => {
     const { projectParam } = params;
 
     try {
       const presenter = new EnvironmentVariablesPresenter();
-      const { environmentVariables, environments, hasStaging, vercelIntegration } =
+      const { environmentVariables, environments, hasStaging, vercelIntegration, pagination } =
         await presenter.call({
           userId: user.id,
           projectSlug: projectParam,
+          page: searchParams.page,
+          search: searchParams.search,
         });
 
       const accessibleEnvironmentIds = environments
@@ -174,6 +183,8 @@ export const loader = dashboardLoader(
         vercelIntegration,
         accessibleEnvironmentIds,
         writableEnvironmentIds,
+        pagination,
+        search: searchParams.search,
       });
     } catch (error) {
       console.error(error);
@@ -265,6 +276,24 @@ export const action = dashboardAction(
     });
     if (!project) {
       return json(submission.reply({ formErrors: ["Project not found"] }));
+    }
+
+    // Per-env write gate for the mutating value actions: `environmentId` is a
+    // user-supplied hidden field and the repository only checks project
+    // membership. Mirrors the create route's check.
+    if (submission.value.action === "edit" || submission.value.action === "delete") {
+      const submittedEnvs = await prisma.runtimeEnvironment.findMany({
+        where: { projectId: project.id, id: submission.value.environmentId },
+        select: { id: true, type: true, orgMember: { select: { userId: true } } },
+      });
+      const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
+        submittedEnvs,
+        [submission.value.environmentId],
+        userId
+      );
+      if (unauthorizedEnvironmentId) {
+        return json(submission.reply({ formErrors: ["This environment is not writable by you."] }));
+      }
     }
 
     switch (submission.value.action) {
@@ -372,17 +401,12 @@ function EnvironmentVariablesListPage({
   loaderData: EnvironmentVariablesPageLoaderData;
 }) {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, vercelIntegration } = loaderData;
+  const { environmentVariables, vercelIntegration, pagination, search } = loaderData;
+  const hasSearch = Boolean(search);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { value } = useSearchParams();
-  const urlSearch = value("search") ?? "";
-  const { filteredItems } = useFuzzyFilter<EnvironmentVariableWithSetValues>({
-    items: environmentVariables,
-    keys: ["key", "value", "environment.type", "environment.branchName"],
-    filterText: urlSearch,
-  });
+  const filteredItems = environmentVariables;
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
@@ -427,6 +451,7 @@ function EnvironmentVariablesListPage({
   const [isVirtualized, setIsVirtualized] = useState(false);
 
   useLayoutEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsVirtualized(shouldVirtualize);
   }, [shouldVirtualize]);
 
@@ -444,20 +469,22 @@ function EnvironmentVariablesListPage({
       <NavBar>
         <PageTitle title="Environment variables" />
         <PageAccessories>
-          <LinkButton
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("v3/deploy-environment-variables")}
-            variant="docs/small"
-          >
-            Environment variables docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("v3/deploy-environment-variables")}
+              variant="docs/small"
+            >
+              Environment variables docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("flex h-full min-h-0 flex-col")}>
-          {environmentVariables.length > 0 && (
+          {(environmentVariables.length > 0 || hasSearch) && (
             <div className="flex items-center justify-between gap-2 px-2 py-2">
-              <SearchInput placeholder="Search variables…" autoFocus />
+              <SearchInput placeholder="Search variables…" resetParams={["page"]} autoFocus />
               <div className="flex items-center justify-end gap-1.5">
                 <Switch
                   variant="secondary/small"
@@ -552,7 +579,7 @@ function EnvironmentVariablesListPage({
                 <TableBody>
                   <TableRow>
                     <TableCell colSpan={vercelColumnCount}>
-                      {environmentVariables.length === 0 ? (
+                      {!hasSearch ? (
                         <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                           <Header2>You haven't set any environment variables yet.</Header2>
                           <LinkButton
@@ -575,6 +602,14 @@ function EnvironmentVariablesListPage({
               )}
             </Table>
           </div>
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-end border-t border-grid-dimmed px-2 py-2">
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.totalPages}
+              />
+            </div>
+          )}
         </div>
       </PageBody>
       <Outlet />
@@ -722,6 +757,7 @@ function EnvironmentVariablesVirtualTableBody({
   vercelIntegration: PageVercelIntegration | null;
   columnCount: number;
 }) {
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: groupedEnvironmentVariables.length,
     getScrollElement: () => scrollRef.current,
@@ -780,6 +816,7 @@ function EditEnvironmentVariablePanel({
   // Close dialog on successful submission
   useEffect(() => {
     if (lastSubmission?.success && fetcher.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [lastSubmission?.success, fetcher.state]);
@@ -797,12 +834,7 @@ function EditEnvironmentVariablePanel({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          LeadingIcon={PencilSquareIcon}
-          fullWidth
-          textAlignLeft
-        ></Button>
+        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft />
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>Edit environment variable</DialogHeader>
@@ -894,7 +926,7 @@ function DeleteEnvironmentVariableButton({
         fullWidth
         textAlignLeft
         LeadingIcon={TrashIcon}
-        leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
+        leadingIconClassName="text-rose-500 group-hover/button:text-white dark:group-hover/button:text-text-bright transition-colors"
         className="ml-0.5 transition-colors group-hover/button:bg-error"
       >
         {isLoading ? "Deleting" : ""}

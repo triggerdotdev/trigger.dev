@@ -231,10 +231,10 @@ services:
           "--query",
           "SELECT 1",
         ]
-      interval: "3s"
-      timeout: "5s"
-      retries: "5"
-      start_period: "10s"
+      interval: 3s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   clickhouse_migrator:
     build:

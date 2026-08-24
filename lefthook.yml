@@ -10,8 +10,41 @@ pre-commit:
 # implementation and only runs hooks when "Run hooks" is enabled in its
 # settings - with that off, this protects plain `git push` only.
 pre-push:
+  parallel: true
   jobs:
     - name: format
-      run: pnpm exec oxfmt --check .
+      run: |
+        pnpm exec oxfmt --check . || {
+          echo ""
+          echo "✖ Formatting issues found. Fix them with:"
+          echo ""
+          echo "    pnpm run format"
+          echo ""
+          echo "  then stage the changes and re-push."
+          echo ""
+          exit 1
+        }
     - name: lint
-      run: pnpm exec oxlint .
+      run: |
+        pnpm exec oxlint . || {
+          echo ""
+          echo "✖ Lint errors found. Auto-fix what's fixable with:"
+          echo ""
+          echo "    pnpm run lint:fix"
+          echo ""
+          echo "  then review, stage, and re-push (some rules need a manual fix)."
+          echo ""
+          exit 1
+        }
+    - name: knip
+      run: |
+        pnpm run knip || {
+          echo ""
+          echo "✖ Unused code or dependencies found. Run:"
+          echo ""
+          echo "    pnpm run knip"
+          echo ""
+          echo "  then remove the unused items or update knip.json and re-push."
+          echo ""
+          exit 1
+        }

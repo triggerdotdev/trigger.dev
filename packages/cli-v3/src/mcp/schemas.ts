@@ -1,11 +1,12 @@
 import {
   ApiDeploymentListParams,
   MachinePresetName,
+  ReportPeriodSchema,
   RunStatus,
 } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 
-export const ProjectRefSchema = z
+const ProjectRefSchema = z
   .string()
   .describe(
     "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
@@ -99,6 +100,12 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
       maxDuration: z
         .number()
         .describe("The maximum duration in seconds of the task run")
+        .optional(),
+      region: z
+        .string()
+        .describe(
+          "The region to run the task in, overriding the default region set for the project. Available regions are listed on the Regions page in the dashboard, and this has no effect in the dev environment"
+        )
         .optional(),
       tags: z
         .array(z.string())
@@ -195,7 +202,7 @@ export const ListRunsInput = CommonProjectsInput.extend({
 
 export type ListRunsInput = z.output<typeof ListRunsInput>;
 
-export const CommonDeployInput = CommonProjectsInput.omit({
+const CommonDeployInput = CommonProjectsInput.omit({
   environment: true,
 }).extend({
   environment: z
@@ -204,7 +211,7 @@ export const CommonDeployInput = CommonProjectsInput.omit({
     .default("prod"),
 });
 
-export type CommonDeployInput = z.output<typeof CommonDeployInput>;
+type CommonDeployInput = z.output<typeof CommonDeployInput>;
 
 export const DeployInput = CommonDeployInput.extend({
   skipPromotion: z
@@ -270,6 +277,37 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
 });
 
 export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
+
+// Re-exported from core so the CLI, the API clients and the route share one period grammar. The
+// route stays the authoritative boundary.
+export { ReportPeriodSchema };
+
+// `environment` inherits CommonProjectsInput's `.default("dev")` — intentional: the MCP server
+// is dev-centric (often `--dev-only`), so an unspecified env reports on dev. The `trigger report`
+// CLI defaults to prod instead (a manual prod check). Agents should pass `environment` explicitly.
+export const GetReportInput = CommonProjectsInput.pick({
+  projectRef: true,
+  configPath: true,
+  environment: true,
+  branch: true,
+}).extend({
+  key: z
+    .enum(["health"])
+    .describe(
+      "The report to render. 'health' answers 'is work flowing, and is a problem my code or the platform?' with an interpreted verdict (flow / execution / liveness)."
+    ),
+  period: ReportPeriodSchema.optional().describe(
+    "Time period shorthand for the live window, e.g. '1h' (default), '24h', '7d'. Minutes (m) to weeks (w), max 90d. Seconds are not supported — reports bucket by whole minutes."
+  ),
+  color: z
+    .boolean()
+    .optional()
+    .describe(
+      "Return the report as ANSI-coloured text instead of markdown. Only renders in hosts that display ANSI in tool output."
+    ),
+});
+
+export type GetReportInput = z.output<typeof GetReportInput>;
 
 export const RunDashboardQueryInput = CommonProjectsInput.extend({
   dashboardKey: z

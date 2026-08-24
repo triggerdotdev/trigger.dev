@@ -2,6 +2,7 @@ import type { UIMessage } from "@ai-sdk/react";
 import { memo } from "react";
 import { AssistantResponse, ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 
 // ---------------------------------------------------------------------------
 // AgentMessageView — renders an AI SDK UIMessage[] conversation.
@@ -136,7 +137,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     return (
       <div key={i} className="border-l-2 border-amber-500/40 pl-2">
         <ChatBubble>
-          <div className="whitespace-pre-wrap text-xs italic text-amber-200/70">{p.text ?? ""}</div>
+          <div className="whitespace-pre-wrap text-xs italic text-amber-700 dark:text-amber-200/70">
+            {p.text ?? ""}
+          </div>
         </ChatBubble>
       </div>
     );
@@ -161,6 +164,8 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
       resultOutput = lastText?.text ?? undefined;
     } else if (p.output != null) {
       resultOutput = typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+    } else if (p.state === "output-error" && p.errorText) {
+      resultOutput = p.errorText;
     }
 
     // Status label for the tool row. AI SDK 7 HITL adds the
@@ -176,7 +181,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         ? "approved"
         : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
     } else if (p.state === "output-error") {
-      resultSummary = `error: ${p.errorText ?? "unknown"}`;
+      const errorText = p.errorText ?? "unknown";
+      resultSummary =
+        errorText.length > 160 ? `error: ${errorText.slice(0, 160)}…` : `error: ${errorText}`;
     }
 
     return (
@@ -213,12 +220,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     }
     return (
       <div key={i} className="text-xs">
-        <a
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-indigo-400 underline hover:text-indigo-300"
-        >
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={textLinkClassName()}>
           {label}
         </a>
       </div>
@@ -268,12 +270,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     }
     return (
       <div key={i} className="text-xs">
-        <a
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-indigo-400 underline hover:text-indigo-300"
-        >
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={textLinkClassName()}>
           {p.filename ?? "Download file"}
         </a>
       </div>

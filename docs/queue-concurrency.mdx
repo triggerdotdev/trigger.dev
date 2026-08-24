@@ -199,6 +199,10 @@ For example, if you have a queue with a `concurrencyLimit` of 1:
 - When the executing run reaches a waitpoint and checkpoints, it releases its slot
 - The next queued run can then begin execution
 
+### Short time-based waits keep their slot
+
+Checkpointing takes time, so a run doesn't checkpoint the moment it reaches a waitpoint. For [`wait.for()`](/wait-for) and [`wait.until()`](/wait-until) it happens 60 seconds into the wait, so anything shorter stays `EXECUTING` and holds its slot for the whole wait. If you're polling in a loop, use an interval comfortably above 60 seconds so the slot is actually released between polls.
+
 ### Waiting for a subtask on a different queue
 
 When a parent task triggers and waits for a subtask on a different queue, the parent task will checkpoint and release its concurrency slot once it reaches the wait point. This prevents environment deadlocks where all concurrency slots would be occupied by waiting tasks.

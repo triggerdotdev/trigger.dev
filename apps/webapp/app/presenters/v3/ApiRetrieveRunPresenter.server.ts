@@ -289,6 +289,8 @@ export class ApiRetrieveRunPresenter {
         attemptCount:
           taskRun.engine === "V1" ? taskRun.attempts.length : (taskRun.attemptNumber ?? 0),
         attempts: [],
+        // Related runs are an embedded projection of the authorized run, not independent reads.
+        // Preserve the established response shape for run-scoped credentials.
         relatedRuns: {
           root: taskRun.rootTaskRun
             ? await createCommonRunStructure(taskRun.rootTaskRun, this.apiVersion)
@@ -297,7 +299,9 @@ export class ApiRetrieveRunPresenter {
             ? await createCommonRunStructure(taskRun.parentTaskRun, this.apiVersion)
             : undefined,
           children: await Promise.all(
-            taskRun.childRuns.map(async (r) => await createCommonRunStructure(r, this.apiVersion))
+            taskRun.childRuns.map(
+              async (run) => await createCommonRunStructure(run, this.apiVersion)
+            )
           ),
         },
       };

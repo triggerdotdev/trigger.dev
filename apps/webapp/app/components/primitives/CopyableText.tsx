@@ -11,12 +11,26 @@ export function CopyableText({
   className,
   asChild,
   variant,
+  hideTooltip,
+  truncate,
 }: {
   value: string;
   copyValue?: string;
   className?: string;
   asChild?: boolean;
   variant?: "icon-right" | "text-below";
+  /**
+   * Hide the "Copy"/"Copied" hint tooltip. Use when this is rendered inside another
+   * Radix tooltip (e.g. the admin debug panel): the nested tooltip would otherwise
+   * fire Radix's global "one tooltip open at a time" close and dismiss the parent.
+   */
+  hideTooltip?: boolean;
+  /**
+   * Ellipsise the value rather than letting it overflow its column. For unbreakable strings
+   * (hashes, opaque ids) that offer no wrap opportunity. The copy button moves into a reserved
+   * right gutter so it stays visible instead of sitting outside the column.
+   */
+  truncate?: boolean;
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(copyValue ?? value);
@@ -24,43 +38,63 @@ export function CopyableText({
   const resolvedVariant = variant ?? "icon-right";
 
   if (resolvedVariant === "icon-right") {
+    const iconButton = (
+      <button
+        type="button"
+        aria-label={copied ? "Copied" : "Copy"}
+        onClick={copy}
+        onMouseDown={(e) => e.stopPropagation()}
+        className={cn(
+          "ml-1 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
+          asChild && "p-1",
+          copied
+            ? "text-green-500"
+            : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
+        )}
+      >
+        {copied ? (
+          <ClipboardCheckIcon className="size-3.5" />
+        ) : (
+          <ClipboardIcon className="size-3.5" />
+        )}
+      </button>
+    );
+
     return (
       <span
-        className={cn("group relative inline-flex h-6 items-center", className)}
+        className={cn(
+          "group relative inline-flex h-6 items-center",
+          truncate && "max-w-full pr-7",
+          className
+        )}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <span onMouseEnter={() => setIsHovered(true)}>{value}</span>
         <span
-          onClick={copy}
-          onMouseDown={(e) => e.stopPropagation()}
+          className={cn(truncate && "min-w-0 truncate")}
+          onMouseEnter={() => setIsHovered(true)}
+        >
+          {value}
+        </span>
+        <span
           className={cn(
-            "absolute -right-6 top-0 z-10 size-6 font-sans",
-            isHovered ? "flex" : "hidden"
+            "absolute top-0 z-10 flex size-6 font-sans transition-opacity has-focus-visible:pointer-events-auto has-focus-visible:opacity-100",
+            // Truncated values reserve a right gutter, so the button sits inside it
+            truncate ? "right-0" : "-right-6",
+            isHovered ? "opacity-100" : "pointer-events-none opacity-0"
           )}
         >
-          <SimpleTooltip
-            button={
-              <span
-                className={cn(
-                  "ml-1 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
-                  asChild && "p-1",
-                  copied
-                    ? "text-green-500"
-                    : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
-                )}
-              >
-                {copied ? (
-                  <ClipboardCheckIcon className="size-3.5" />
-                ) : (
-                  <ClipboardIcon className="size-3.5" />
-                )}
-              </span>
-            }
-            content={copied ? "Copied!" : "Copy"}
-            className="font-sans"
-            disableHoverableContent
-            asChild={asChild}
-          />
+          {hideTooltip ? (
+            iconButton
+          ) : (
+            <SimpleTooltip
+              asChild
+              tabbable
+              button={iconButton}
+              content={copied ? "Copied!" : "Copy"}
+              className="font-sans"
+              disableHoverableContent
+            />
+          )}
         </span>
       </span>
     );

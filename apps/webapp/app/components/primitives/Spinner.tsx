@@ -1,3 +1,4 @@
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { cn } from "~/utils/cn";
 
 type CustomColor = {
@@ -10,7 +11,7 @@ export function Spinner({
   color = "blue",
 }: {
   className?: string;
-  color?: "blue" | "white" | "muted" | "dark" | CustomColor;
+  color?: "blue" | "white" | "muted" | "dark" | "inherit" | CustomColor;
 }) {
   const colors = {
     blue: {
@@ -21,13 +22,22 @@ export function Spinner({
       background: "rgba(255, 255, 255, 0.4)",
       foreground: "rgba(255, 255, 255)",
     },
+    /* Theme tokens rather than fixed values, so a muted spinner stays muted
+       against a light surface instead of staying dark-theme navy. */
     muted: {
-      background: "#1C2433",
-      foreground: "#3C4B62",
+      background: "var(--color-grid-bright)",
+      foreground: "var(--color-text-dimmed)",
     },
     dark: {
-      background: "rgba(18, 19, 23, 0.35)",
-      foreground: "#1A1B1F",
+      background: "color-mix(in srgb, var(--color-charcoal-900) 35%, transparent)",
+      foreground: "var(--color-charcoal-900)",
+    },
+    /* Takes the surrounding text color, so it follows both the theme and
+       whatever it sits on - white on a primary button, dark ink on a
+       secondary one once the theme is light. */
+    inherit: {
+      background: "color-mix(in srgb, currentColor 40%, transparent)",
+      foreground: "currentColor",
     },
   };
 
@@ -75,4 +85,17 @@ export function ButtonSpinner() {
 
 export function SpinnerWhite({ className }: { className?: string }) {
   return <Spinner className={className} color="white" />;
+}
+
+/** The dashboard agent's spinner. `size` is the logo's pixel size; the matrix does not scale from CSS. */
+export function AgentSpinner({ size = 16 }: { size?: number }) {
+  return (
+    <AgentMonoLogo
+      size={size}
+      active
+      // Resting on the playlist's first shape avoids a logo-head flash on mount.
+      restShape="square"
+      decorative
+    />
+  );
 }

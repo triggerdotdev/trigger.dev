@@ -23,6 +23,11 @@ export const RUN_OPS_ID_LENGTH = 26;
 export const RUN_OPS_ID_REGION_INDEX = 24;
 export const RUN_OPS_ID_VERSION_INDEX = 25;
 export const RUN_OPS_ID_VERSION = "1";
+// Gen-2 id: same 26-char layout, but index 24 carries a routing SHARD KEY rather
+// than a region char. MUST stay 26 chars: a 27-char shape could collide with the
+// pre-cutover base62 format, which must keep classifying legacy.
+export const RUN_OPS_ID_VERSION_2 = "2";
+export const RUN_OPS_ID_SHARD_INDEX = RUN_OPS_ID_REGION_INDEX;
 const RUN_OPS_ID_CORE_BYTES = 15; // 6 timestamp + 9 random → exactly 24 base32hex chars
 const RUN_OPS_ID_CORE_LENGTH = 24;
 const RUN_OPS_ID_TIMESTAMP_BYTES = 6;
@@ -33,6 +38,8 @@ export const DEFAULT_REGION_CHAR = "0";
 // decoding), NOT part of the base32hex core — so it may use the full DNS-safe
 // lowercase [a-z0-9] range (e.g. "w" for us-west-2, which is outside [0-9a-v]).
 const REGION_CHAR_PATTERN = /^[a-z0-9]$/;
+// Same slot, same range: the gen-2 shard key is a region char's positional twin.
+const SHARD_CHAR_PATTERN = REGION_CHAR_PATTERN;
 /** One lowercase [a-z0-9] char per supported region, at RUN_OPS_ID_REGION_INDEX. */
 export const REGION_CODES: Readonly<Record<string, string>> = {
   "us-east-1": "e",
@@ -46,7 +53,7 @@ export function regionCharForRegion(region: string | undefined): string {
 
 // globalThis.crypto is absent on Node 18.20 (a supported engine) without a flag, so fall back to
 // node:crypto's webcrypto, loaded only when the global is missing to stay isomorphic.
-type RandomFiller = (array: Uint8Array) => void;
+type RandomFiller = (array: Uint8Array<ArrayBuffer>) => void;
 
 function resolveGetRandomValues(): RandomFiller {
   const globalCrypto = (globalThis as { crypto?: Crypto }).crypto;
@@ -110,13 +117,9 @@ export function base32hexDecode(s: string): Uint8Array {
   return Uint8Array.from(out);
 }
 
-/**
- * Mint a run-ops v1 id body (26 chars, no prefix): 24-char base32hex core
- * (6-byte ms timestamp + 9 CSPRNG bytes) + region char + version char "1".
- * The trailing version char at RUN_OPS_ID_VERSION_INDEX is the residency
- * discriminator — see runOpsResidency.ts.
- */
-export function generateRunOpsId(region?: string): string {
+// Shared by both generations. The buffer MUST be per-call — a hoisted one would
+// let concurrent mints overwrite each other's bytes.
+function mintRunOpsIdCore(): string {
   const core = new Uint8Array(RUN_OPS_ID_CORE_BYTES);
 
   let ms = Date.now();
@@ -126,11 +129,35 @@ export function generateRunOpsId(region?: string): string {
   }
   getRandomValues(core.subarray(RUN_OPS_ID_TIMESTAMP_BYTES));
 
-  return `${base32hexEncode(core)}${regionCharForRegion(region)}${RUN_OPS_ID_VERSION}`;
+  return base32hexEncode(core);
+}
+
+/**
+ * Mint a run-ops v1 id body (26 chars, no prefix): 24-char base32hex core
+ * (6-byte ms timestamp + 9 CSPRNG bytes) + region char + version char "1".
+ * The trailing version char at RUN_OPS_ID_VERSION_INDEX is the residency
+ * discriminator — see runOpsResidency.ts.
+ */
+export function generateRunOpsId(region?: string): string {
+  return `${mintRunOpsIdCore()}${regionCharForRegion(region)}${RUN_OPS_ID_VERSION}`;
+}
+
+/**
+ * Mint a gen-2 id body (26 chars, no prefix): the same core, then the shard key,
+ * then version char "2". Throws on a shard char outside [a-z0-9] — an id that
+ * cannot be routed must never be minted.
+ */
+export function generateRunOpsIdV2(shardChar: string): string {
+  if (!SHARD_CHAR_PATTERN.test(shardChar)) {
+    throw new Error(`invalid run-ops shard char: ${JSON.stringify(shardChar)}`);
+  }
+
+  return `${mintRunOpsIdCore()}${shardChar}${RUN_OPS_ID_VERSION_2}`;
 }
 
 export type ParsedRunId =
   | { format: "b32hex"; table: "partitioned"; timestamp: Date; region: string; version: string }
+  | { format: "b32hexV2"; table: "partitioned"; timestamp: Date; shard: string; version: string }
   | { format: "legacy"; table: "legacy" };
 
 const LEGACY_RUN_ID: ParsedRunId = { format: "legacy", table: "legacy" };
@@ -149,6 +176,15 @@ export function parseRunOpsIdBody(
   const region = body[RUN_OPS_ID_REGION_INDEX] ?? "";
   if (!REGION_CHAR_PATTERN.test(region)) return undefined;
 
+  const timestamp = parseRunOpsIdCoreTimestamp(body);
+  if (timestamp === undefined) return undefined;
+
+  return { timestamp, region, version: RUN_OPS_ID_VERSION };
+}
+
+// Decode the leading 24-char core and recover its embedded ms timestamp.
+// Returns undefined (never throws) when the core is outside the base32hex alphabet.
+function parseRunOpsIdCoreTimestamp(body: string): Date | undefined {
   let core: Uint8Array;
   try {
     core = base32hexDecode(body.slice(0, RUN_OPS_ID_CORE_LENGTH));
@@ -161,7 +197,26 @@ export function parseRunOpsIdBody(
     ms = ms * 256 + (core[i] ?? 0);
   }
 
-  return { timestamp: new Date(ms), region, version: RUN_OPS_ID_VERSION };
+  return new Date(ms);
+}
+
+/**
+ * Parse a gen-2 id body (no prefix): the mirror of {@link parseRunOpsIdBody},
+ * requiring version "2" at index 25 and a shard key in [a-z0-9] at index 24.
+ * Total: returns undefined for any other string, and never throws.
+ */
+export function parseRunOpsIdV2Body(
+  body: string
+): { timestamp: Date; shard: string; version: string } | undefined {
+  if (body.length !== RUN_OPS_ID_LENGTH) return undefined;
+  if (body[RUN_OPS_ID_VERSION_INDEX] !== RUN_OPS_ID_VERSION_2) return undefined;
+  const shard = body[RUN_OPS_ID_SHARD_INDEX] ?? "";
+  if (!SHARD_CHAR_PATTERN.test(shard)) return undefined;
+
+  const timestamp = parseRunOpsIdCoreTimestamp(body);
+  if (timestamp === undefined) return undefined;
+
+  return { timestamp, shard, version: RUN_OPS_ID_VERSION_2 };
 }
 
 /** True if the (prefixless) id body is a well-formed run-ops v1 id. */
@@ -169,11 +224,18 @@ export function isRunOpsIdBody(body: string): boolean {
   return parseRunOpsIdBody(body) !== undefined;
 }
 
-/** Parse a `run_`-prefixed friendly id; anything not a well-formed v1 id is legacy. */
+/** Parse a `run_`-prefixed friendly id; anything not a well-formed v1/gen-2 id is legacy. */
 export function parseRunId(id: string): ParsedRunId {
   if (!id.startsWith("run_")) return LEGACY_RUN_ID;
-  const parsed = parseRunOpsIdBody(id.slice(4));
-  return parsed ? { format: "b32hex", table: "partitioned", ...parsed } : LEGACY_RUN_ID;
+  const body = id.slice(4);
+
+  const v1 = parseRunOpsIdBody(body);
+  if (v1) return { format: "b32hex", table: "partitioned", ...v1 };
+
+  const v2 = parseRunOpsIdV2Body(body);
+  if (v2) return { format: "b32hexV2", table: "partitioned", ...v2 };
+
+  return LEGACY_RUN_ID;
 }
 
 export function generateInternalId(): string {
@@ -267,6 +329,77 @@ export const BulkActionId = new IdUtil("bulk");
 export const AttemptId = new IdUtil("attempt");
 export const ErrorId = new IdUtil("error");
 export const SessionId = new IdUtil("session");
+export const WebhookEndpointId = new IdUtil("wh"); // wh_...
+
+/**
+ * Webhook delivery id: time-encoded so the partition key (`createdAt`) is recoverable from the id.
+ * The body is `base32hex(6-byte big-endian unix ms timestamp + 9 CSPRNG bytes)` (24 chars) plus a
+ * version char "1", prefixed `whd_`. `WebhookDelivery` is RANGE-partitioned on `createdAt`, and the
+ * engine sets the row's `createdAt` to the mint timestamp, so a point lookup by id can recover the
+ * partition from the id alone instead of threading `createdAt` through every caller.
+ */
+const WEBHOOK_DELIVERY_ID_PREFIX = "whd";
+const WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES = 6;
+const WEBHOOK_DELIVERY_ID_CORE_BYTES = 15;
+const WEBHOOK_DELIVERY_ID_CORE_LENGTH = 24;
+const WEBHOOK_DELIVERY_ID_VERSION = "1";
+const WEBHOOK_DELIVERY_ID_BODY_LENGTH = 25;
+
+function webhookDeliveryIdBody(idOrFriendlyId: string): string {
+  return idOrFriendlyId.startsWith(`${WEBHOOK_DELIVERY_ID_PREFIX}_`)
+    ? idOrFriendlyId.slice(WEBHOOK_DELIVERY_ID_PREFIX.length + 1)
+    : idOrFriendlyId;
+}
+
+export const WebhookDeliveryId = {
+  /**
+   * Mint a delivery id. The row's `createdAt` MUST be set to the returned `timestamp` so the id's
+   * embedded timestamp equals the partition key that {@link WebhookDeliveryId.parseTimestamp} recovers.
+   */
+  generate(): { id: string; friendlyId: string; timestamp: Date } {
+    const timestamp = new Date();
+    const core = new Uint8Array(WEBHOOK_DELIVERY_ID_CORE_BYTES);
+    let ms = timestamp.getTime();
+    for (let i = WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES - 1; i >= 0; i--) {
+      core[i] = ms % 256;
+      ms = Math.floor(ms / 256);
+    }
+    getRandomValues(core.subarray(WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES));
+    const id = `${base32hexEncode(core)}${WEBHOOK_DELIVERY_ID_VERSION}`;
+    return { id, friendlyId: `${WEBHOOK_DELIVERY_ID_PREFIX}_${id}`, timestamp };
+  },
+
+  toFriendlyId(id: string): string {
+    return id.startsWith(`${WEBHOOK_DELIVERY_ID_PREFIX}_`)
+      ? id
+      : `${WEBHOOK_DELIVERY_ID_PREFIX}_${id}`;
+  },
+
+  toId(idOrFriendlyId: string): string {
+    return webhookDeliveryIdBody(idOrFriendlyId);
+  },
+
+  /**
+   * Decode the mint timestamp (== the row's `createdAt` partition key) from an id or friendlyId.
+   * Returns `undefined` if the value is not a well-formed time-encoded id.
+   */
+  parseTimestamp(idOrFriendlyId: string): Date | undefined {
+    const body = webhookDeliveryIdBody(idOrFriendlyId);
+    if (body.length !== WEBHOOK_DELIVERY_ID_BODY_LENGTH) return undefined;
+    if (body[WEBHOOK_DELIVERY_ID_CORE_LENGTH] !== WEBHOOK_DELIVERY_ID_VERSION) return undefined;
+    let core: Uint8Array;
+    try {
+      core = base32hexDecode(body.slice(0, WEBHOOK_DELIVERY_ID_CORE_LENGTH));
+    } catch {
+      return undefined;
+    }
+    let ms = 0;
+    for (let i = 0; i < WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES; i++) {
+      ms = ms * 256 + (core[i] ?? 0);
+    }
+    return new Date(ms);
+  },
+};
 
 export class IdGenerator {
   private alphabet: string;

@@ -1,12 +1,15 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
   type FeatureFlagKey,
   FeatureFlagCatalog,
+  GLOBAL_LOCKED_FLAGS,
+  validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
+import { env } from "~/env.server";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 
 export type FlagsOptions<T extends FeatureFlagKey> = {
@@ -25,21 +28,25 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   async function flag<T extends FeatureFlagKey>(
     opts: FlagsOptions<T>
   ): Promise<z.infer<(typeof FeatureFlagCatalog)[T]> | undefined> {
+    const flagSchema = FeatureFlagCatalog[opts.key];
+
+    const override = opts.overrides?.[opts.key];
+
+    if (override !== undefined) {
+      const parsed = flagSchema.safeParse(override);
+
+      if (parsed.success) {
+        return parsed.data;
+      }
+
+      // an override that fails the schema is ignored: the global value still wins
+    }
+
     const value = await _prisma.featureFlag.findFirst({
       where: {
         key: opts.key,
       },
     });
-
-    const flagSchema = FeatureFlagCatalog[opts.key];
-
-    if (opts.overrides?.[opts.key] !== undefined) {
-      const parsed = flagSchema.safeParse(opts.overrides[opts.key]);
-
-      if (parsed.success) {
-        return parsed.data;
-      }
-    }
 
     if (value !== null) {
       const parsed = flagSchema.safeParse(value.value);
@@ -53,6 +60,32 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   }
 
   return flag;
+}
+
+const cachedFlagStore = new Map<string, { value: unknown; expiresAt: number }>();
+
+/**
+ * flag() behind a short process-level TTL cache, for global flags read on hot
+ * paths (e.g. the root loader) where a database round-trip per request is too
+ * expensive. Flips propagate within ttlMs per process. Overrides are rejected
+ * by the type: a scoped resolution must never be reused across scopes.
+ */
+export async function cachedFlag<T extends FeatureFlagKey>(
+  opts: Omit<FlagsOptions<T>, "overrides"> & {
+    defaultValue: z.infer<(typeof FeatureFlagCatalog)[T]>;
+  },
+  ttlMs = 30_000
+): Promise<z.infer<(typeof FeatureFlagCatalog)[T]>> {
+  // defaultValue resolves the flag when the row is absent, so it's part of the key
+  const cacheKey = `${opts.key}:${JSON.stringify(opts.defaultValue)}`;
+  const hit = cachedFlagStore.get(cacheKey);
+  if (hit && hit.expiresAt > Date.now()) {
+    return hit.value as z.infer<(typeof FeatureFlagCatalog)[T]>;
+  }
+
+  const value = await flag(opts);
+  cachedFlagStore.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
+  return value;
 }
 
 export function makeSetFlag(_prisma: PrismaClientOrTransaction = prisma) {
@@ -74,12 +107,12 @@ export function makeSetFlag(_prisma: PrismaClientOrTransaction = prisma) {
   };
 }
 
-export type AllFlagsOptions = {
+type AllFlagsOptions = {
   defaultValues?: Partial<FeatureFlagCatalog>;
   overrides?: Record<string, unknown>;
 };
 
-export function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
+function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
   return async function flags(options?: AllFlagsOptions): Promise<Partial<FeatureFlagCatalog>> {
     const rows = await _prisma.featureFlag.findMany();
 
@@ -126,7 +159,6 @@ export function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
 
 export const flag = makeFlag();
 export const flags = makeFlags();
-export const setFlag = makeSetFlag();
 
 // Utility function to set multiple feature flags at once
 export function makeSetMultipleFlags(_prisma: PrismaClientOrTransaction = prisma) {
@@ -190,4 +222,79 @@ export async function applyGlobalMintKindFlip(
 
     return makeSetMultipleFlags(tx)(stamped);
   });
+}
+
+/**
+ * Replace-semantics write for the global admin flags page: catalog keys present in
+ * `requestedFlags` are upserted, catalog keys absent from it are deleted.
+ *
+ * A locked flag absent from the payload means the page never offered it for editing, not that
+ * the admin unset it, so it survives the sweep. Only a self-hosted page that says it unlocked
+ * them can delete one.
+ */
+export async function replaceGlobalFeatureFlags(
+  client: PrismaClient,
+  params: {
+    requestedFlags: Record<string, unknown>;
+    catalogKeys: FeatureFlagKey[];
+    isManagedCloud: boolean;
+    unlockLockedFlags: boolean;
+  }
+): Promise<void> {
+  const canDeleteLocked = params.unlockLockedFlags && !params.isManagedCloud;
+  const upsertOps: ReturnType<typeof client.featureFlag.upsert>[] = [];
+  const keysToDelete: string[] = [];
+
+  for (const key of params.catalogKeys) {
+    if (key in params.requestedFlags) {
+      const value = params.requestedFlags[key];
+      upsertOps.push(
+        client.featureFlag.upsert({
+          where: { key },
+          create: { key, value: value as any },
+          update: { value: value as any },
+        })
+      );
+    } else if (canDeleteLocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
+      keysToDelete.push(key);
+    }
+  }
+
+  await client.$transaction([
+    ...upsertOps,
+    ...(keysToDelete.length > 0
+      ? [client.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
+      : []),
+  ]);
+}
+
+/** The global flag set, with the env-var defaults this app applies. */
+export async function globalFeatureFlags() {
+  return flags({
+    defaultValues: {
+      hasAiAccess: env.AI_FEATURES_ENABLED === "1",
+      hasDashboardAgentAccess: env.DASHBOARD_AGENT_ENABLED === "1",
+      hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+    },
+  });
+}
+
+/** The global set with one org's overrides on top. */
+export function mergeOrgFeatureFlags(
+  globalFlags: Partial<FeatureFlagCatalog>,
+  orgFeatureFlags: unknown
+) {
+  const parsed = orgFeatureFlags
+    ? validatePartialFeatureFlags(orgFeatureFlags as Record<string, unknown>)
+    : ({ success: false } as const);
+  return { ...globalFlags, ...(parsed.success ? parsed.data : {}) };
+}
+
+/**
+ * The flags that apply to one organization. Server-side callers that need the
+ * same set the side menu sees should use this rather than assembling their own,
+ * so a partial set can't silently disagree with it.
+ */
+export async function resolveOrganizationFeatureFlags(orgFeatureFlags: unknown) {
+  return mergeOrgFeatureFlags(await globalFeatureFlags(), orgFeatureFlags);
 }

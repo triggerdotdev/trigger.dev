@@ -4,6 +4,7 @@ import {
   BulkActionStatus,
   BulkActionType,
   type PrismaClient,
+  boundedIn,
 } from "@trigger.dev/database";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
@@ -313,7 +314,7 @@ export class BulkActionService extends BaseService {
         // still be cuid-resident, and merges (disjoint by construction). In single-DB mode it
         // reads the collapsed store's replica, byte-identical to the pre-migration read.
         const runs = await this.runStore.findRuns({
-          where: { id: { in: runIdsToProcess } },
+          where: { id: { in: boundedIn(runIdsToProcess) } },
           select: {
             id: true,
             engine: true,
@@ -362,7 +363,7 @@ export class BulkActionService extends BaseService {
         // Route the member hydration through the run store (NEW-first, legacy-replica probe for
         // the misses, disjoint merge). Full-row read: replay needs the whole TaskRun.
         const runs = await this.runStore.findRuns({
-          where: { id: { in: runIdsToProcess } },
+          where: { id: { in: boundedIn(runIdsToProcess) } },
         });
 
         await pMap(
@@ -533,7 +534,7 @@ export class BulkActionService extends BaseService {
   }
 }
 
-export function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
+function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
   const {
     cursor: _cursor,
     direction: _direction,

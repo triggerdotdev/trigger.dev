@@ -163,7 +163,8 @@ export class ReplayTaskRunService extends BaseService {
             traceparent: `00-${existingTaskRun.traceId}-${existingTaskRun.spanId}-01`,
           },
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
-            existingTaskRun.realtimeStreamsVersion
+            existingTaskRun.realtimeStreamsVersion,
+            authenticatedEnvironment.organization.streamBasinName
           ),
           triggerSource: overrideOptions.triggerSource ?? "api",
           triggerAction: "replay",

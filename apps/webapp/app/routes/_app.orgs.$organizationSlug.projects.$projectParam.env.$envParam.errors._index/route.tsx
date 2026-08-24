@@ -1,10 +1,19 @@
 import * as Ariakit from "@ariakit/react";
 import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { Form, useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import {
   Bar,
   BarChart,
@@ -76,14 +85,15 @@ import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { errorsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Errors | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => errorsAgentPageContext(),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Errors");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -557,9 +567,9 @@ function ErrorGroupRow({
   envParam: string;
 }) {
   const location = useOptimisticLocation();
-  const searchParams = new URLSearchParams(location.search);
 
   const errorPath = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
     const base = v3ErrorPath(
       { slug: organizationSlug },
       { slug: projectParam },
@@ -578,7 +588,7 @@ function ErrorGroupRow({
     }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
-  }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, searchParams.toString()]);
+  }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, location.search]);
 
   const errorMessage = `${errorGroup.errorMessage}`;
 
@@ -627,6 +637,17 @@ function ErrorGroupRow({
   );
 }
 
+function renderErrorActionsPopoverContent(props: ComponentProps<typeof ErrorStatusMenuItems>) {
+  return (
+    <>
+      <PopoverSectionHeader title="Mark error as…" />
+      <div className="flex flex-col gap-1 p-1">
+        <ErrorStatusMenuItems {...props} />
+      </div>
+    </>
+  );
+}
+
 function ErrorActionsCell({
   errorGroup,
   organizationSlug,
@@ -663,26 +684,21 @@ function ErrorActionsCell({
     <>
       <TableCellMenu
         isSticky
-        popoverContent={(close) => (
-          <>
-            <PopoverSectionHeader title="Mark error as…" />
-            <div className="flex flex-col gap-1 p-1">
-              <ErrorStatusMenuItems
-                status={errorGroup.status}
-                taskIdentifier={errorGroup.taskIdentifier}
-                onAction={(data) => {
-                  close();
-                  pendingToast.current = statusActionToastMessage(data);
-                  fetcher.submit(data, { method: "post", action: actionUrl });
-                }}
-                onCustomIgnore={() => {
-                  close();
-                  setCustomIgnoreOpen(true);
-                }}
-              />
-            </div>
-          </>
-        )}
+        popoverContent={(close) =>
+          renderErrorActionsPopoverContent({
+            status: errorGroup.status,
+            taskIdentifier: errorGroup.taskIdentifier,
+            onAction: (data) => {
+              close();
+              pendingToast.current = statusActionToastMessage(data);
+              fetcher.submit(data, { method: "post", action: actionUrl });
+            },
+            onCustomIgnore: () => {
+              close();
+              setCustomIgnoreOpen(true);
+            },
+          })
+        }
       />
       <CustomIgnoreDialog
         open={customIgnoreOpen}

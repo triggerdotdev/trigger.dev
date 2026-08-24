@@ -3,7 +3,7 @@ import Long from "long";
 import _m0 from "protobufjs/minimal";
 import { ResourceSpans } from "../../../trace/v1/trace";
 
-export const protobufPackage = "opentelemetry.proto.collector.trace.v1";
+const protobufPackage = "opentelemetry.proto.collector.trace.v1";
 
 export interface ExportTraceServiceRequest {
   /**
@@ -281,7 +281,7 @@ export const ExportTracePartialSuccess = {
  * OpenTelemetry and a collector, or between a collector and a central collector (in this
  * case spans are sent/received to/from multiple Applications).
  */
-export interface TraceService {
+interface TraceService {
   /**
    * For performance reasons, it is recommended to keep this RPC
    * alive for the entire life of the application.
@@ -289,8 +289,8 @@ export interface TraceService {
   export(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse>;
 }
 
-export const TraceServiceServiceName = "opentelemetry.proto.collector.trace.v1.TraceService";
-export class TraceServiceClientImpl implements TraceService {
+const TraceServiceServiceName = "opentelemetry.proto.collector.trace.v1.TraceService";
+class TraceServiceClientImpl implements TraceService {
   private readonly rpc: Rpc;
   private readonly service: string;
   constructor(rpc: Rpc, opts?: { service?: string }) {
@@ -311,7 +311,7 @@ interface Rpc {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin
+type DeepPartial<T> = T extends Builtin
   ? T
   : T extends globalThis.Array<infer U>
     ? globalThis.Array<DeepPartial<U>>
@@ -322,7 +322,7 @@ export type DeepPartial<T> = T extends Builtin
         : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin
+type Exact<P, I extends P> = P extends Builtin
   ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 

@@ -1,8 +1,11 @@
 import {
   type RealtimeRunSkipColumns,
+  type ApiClient,
   type ApiClientConfiguration,
+  type CreatePublicTokenRequestBody,
   apiClientManager,
   generateJWT as internal_generateJWT,
+  isAdditionalApiKey,
 } from "@trigger.dev/core/v3";
 import "@trigger.dev/core/v3/sdk-scope-storage";
 
@@ -80,7 +83,7 @@ type PublicTokenPermissionProperties = {
   sessions?: string | string[];
 };
 
-export type PublicTokenPermissions = {
+type PublicTokenPermissions = {
   read?: PublicTokenPermissionProperties;
 
   write?: PublicTokenPermissionProperties;
@@ -100,9 +103,11 @@ export type PublicTokenPermissions = {
   };
 };
 
-export type CreatePublicTokenOptions = {
+type CreatePublicTokenOptions = {
   /**
-   * A collection of permission scopes to be granted to the token.
+   * A collection of permission scopes to be granted to the token. This remains
+   * optional for root API key compatibility; additional API keys require at
+   * least one scope.
    *
    * @example
    *
@@ -117,7 +122,8 @@ export type CreatePublicTokenOptions = {
   scopes?: PublicTokenPermissions;
 
   /**
-   * The expiration time for the token. This can be a number representing the time in milliseconds, a `Date` object, or a string.
+   * The expiration time for the token: a duration string, a `Date`, or a Unix
+   * timestamp in **seconds**.
    *
    * @example
    *
@@ -146,6 +152,35 @@ export type CreatePublicTokenOptions = {
   };
 };
 
+// A `Date` becomes Unix seconds; duration strings and numbers pass through. A
+// bare number is already Unix seconds, matching how the local signing path
+// reads it, so both key types treat the option the same.
+function serverExpirationTime(
+  expirationTime: number | Date | string | undefined
+): number | string | undefined {
+  return expirationTime instanceof Date
+    ? Math.floor(expirationTime.getTime() / 1000)
+    : expirationTime;
+}
+
+async function createServerPublicToken(
+  apiClient: ApiClient,
+  body: CreatePublicTokenRequestBody
+): Promise<string> {
+  try {
+    const result = await apiClient.createPublicToken(body);
+    return result.token;
+  } catch (error) {
+    if (error !== null && typeof error === "object" && "status" in error && error.status === 404) {
+      throw new Error(
+        "This additional API key cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key."
+      );
+    }
+
+    throw error;
+  }
+}
+
 /**
  * Creates a public token using the provided options.
  *
@@ -170,7 +205,26 @@ export type CreatePublicTokenOptions = {
  * ```
  */
 async function createPublicToken(options?: CreatePublicTokenOptions): Promise<string> {
+  const scopes = options?.scopes ? flattenScopes(options.scopes) : [];
   const apiClient = apiClientManager.clientOrThrow();
+
+  if (isAdditionalApiKey(apiClient.accessToken)) {
+    // Additional keys cannot self-sign, and the server rejects empty scope
+    // lists because they cannot authorize anything. Keep the legacy root-key
+    // behaviour unchanged while failing clearly for this new credential type.
+    if (scopes.length === 0) {
+      throw new Error(
+        "auth.createPublicToken() requires at least one scope when using an additional API key. " +
+          'For example: auth.createPublicToken({ scopes: { read: { runs: ["run_1234"] } } })'
+      );
+    }
+
+    return createServerPublicToken(apiClient, {
+      scopes,
+      expirationTime: serverExpirationTime(options?.expirationTime),
+      realtime: options?.realtime,
+    });
+  }
 
   const claims = await apiClient.generateJWTClaims();
 
@@ -178,7 +232,7 @@ async function createPublicToken(options?: CreatePublicTokenOptions): Promise<st
     secretKey: apiClient.accessToken,
     payload: {
       ...claims,
-      scopes: options?.scopes ? flattenScopes(options.scopes) : undefined,
+      scopes: options?.scopes ? scopes : undefined,
       realtime: options?.realtime,
     },
     expirationTime: options?.expirationTime,
@@ -197,9 +251,10 @@ async function withPublicToken(options: CreatePublicTokenOptions, fn: () => Prom
   await withAuth({ accessToken: token }, fn);
 }
 
-export type CreateTriggerTokenOptions = {
+type CreateTriggerTokenOptions = {
   /**
-   * The expiration time for the token. This can be a number representing the time in milliseconds, a `Date` object, or a string.
+   * The expiration time for the token: a duration string, a `Date`, or a Unix
+   * timestamp in **seconds**.
    *
    * @example
    *
@@ -271,6 +326,21 @@ async function createTriggerPublicToken(
   options?: CreateTriggerTokenOptions
 ): Promise<string> {
   const apiClient = apiClientManager.clientOrThrow();
+  const scopes = flattenScopes({
+    trigger: {
+      tasks: task,
+    },
+  });
+  const oneTimeUse = typeof options?.multipleUse === "boolean" ? !options.multipleUse : true;
+
+  if (isAdditionalApiKey(apiClient.accessToken)) {
+    return createServerPublicToken(apiClient, {
+      scopes,
+      expirationTime: serverExpirationTime(options?.expirationTime),
+      oneTimeUse,
+      realtime: options?.realtime,
+    });
+  }
 
   const claims = await apiClient.generateJWTClaims();
 
@@ -278,13 +348,9 @@ async function createTriggerPublicToken(
     secretKey: apiClient.accessToken,
     payload: {
       ...claims,
-      otu: typeof options?.multipleUse === "boolean" ? !options.multipleUse : true,
+      otu: oneTimeUse,
       realtime: options?.realtime,
-      scopes: flattenScopes({
-        trigger: {
-          tasks: task,
-        },
-      }),
+      scopes,
     },
     expirationTime: options?.expirationTime,
   });
@@ -343,6 +409,21 @@ async function createBatchTriggerPublicToken(
   options?: CreateTriggerTokenOptions
 ): Promise<string> {
   const apiClient = apiClientManager.clientOrThrow();
+  const scopes = flattenScopes({
+    batchTrigger: {
+      tasks: task,
+    },
+  });
+  const oneTimeUse = typeof options?.multipleUse === "boolean" ? !options.multipleUse : true;
+
+  if (isAdditionalApiKey(apiClient.accessToken)) {
+    return createServerPublicToken(apiClient, {
+      scopes,
+      expirationTime: serverExpirationTime(options?.expirationTime),
+      oneTimeUse,
+      realtime: options?.realtime,
+    });
+  }
 
   const claims = await apiClient.generateJWTClaims();
 
@@ -350,13 +431,9 @@ async function createBatchTriggerPublicToken(
     secretKey: apiClient.accessToken,
     payload: {
       ...claims,
-      otu: typeof options?.multipleUse === "boolean" ? !options.multipleUse : true,
+      otu: oneTimeUse,
       realtime: options?.realtime,
-      scopes: flattenScopes({
-        batchTrigger: {
-          tasks: task,
-        },
-      }),
+      scopes,
     },
     expirationTime: options?.expirationTime,
   });

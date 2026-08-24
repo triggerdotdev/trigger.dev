@@ -2,11 +2,16 @@ import { json } from "@remix-run/server-runtime";
 import { QueryError } from "@internal/clickhouse";
 import { z } from "zod";
 import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
-import { executeQuery, type QueryScope } from "~/services/queryService.server";
+import {
+  executeQuery,
+  isQueryConcurrencyRejection,
+  type QueryScope,
+} from "~/services/queryService.server";
 import { logger } from "~/services/logger.server";
 import { rowsToCSV } from "~/utils/dataExport";
 import { detectQueryTables } from "~/v3/detectQueryTables";
 import { querySchemas } from "~/v3/querySchemas";
+import { queryScopeCeilingFor, resolveQueryScope } from "~/v3/queryScope";
 
 const BodySchema = z.object({
   query: z.string(),
@@ -51,10 +56,20 @@ const { action, loader } = createActionApiRoute(
     const { query, scope, period, from, to, format } = body;
     const env = authentication.environment;
 
+    // The credential's own scope is the ceiling, not the body's. See queryScope.ts.
+    const resolvedScope = resolveQueryScope({
+      ceiling: queryScopeCeilingFor(authentication.type),
+      requested: scope as QueryScope,
+    });
+    if (!resolvedScope.ok) {
+      return json({ error: resolvedScope.error }, { status: 403 });
+    }
+
     const queryResult = await executeQuery({
       name: "api-query",
       query,
-      scope: scope as QueryScope,
+      userAuthoredQuery: true,
+      scope: resolvedScope.scope,
       organizationId: env.organization.id,
       projectId: env.project.id,
       environmentId: env.id,
@@ -67,6 +82,12 @@ const { action, loader } = createActionApiRoute(
     });
 
     if (!queryResult.success) {
+      // A concurrency rejection is "too busy", not a bad query: 429 so callers retry it
+      // instead of rewriting a query that was fine.
+      if (isQueryConcurrencyRejection(queryResult.error)) {
+        return json({ error: queryResult.error.message }, { status: 429 });
+      }
+
       // QueryError surfaces customer SQL problems (invalid syntax,
       // unsupported construct). Returned to the caller as 400; system
       // handles it gracefully, no alert needed.

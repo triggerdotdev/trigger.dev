@@ -2,19 +2,9 @@ import { type ClickHouse } from "@internal/clickhouse";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
-export type DailyTaskActivity = Record<string, ({ day: string } & Record<TaskRunStatus, number>)[]>;
 export type CurrentRunningStats = Record<string, { queued: number; running: number }>;
-export type AverageDurations = Record<string, number>;
 
-export interface EnvironmentMetricsRepository {
-  getDailyTaskActivity(options: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-    days: number;
-    tasks: string[];
-  }): Promise<DailyTaskActivity>;
-
+interface EnvironmentMetricsRepository {
   getCurrentRunningStats(options: {
     organizationId: string;
     projectId: string;
@@ -22,14 +12,6 @@ export interface EnvironmentMetricsRepository {
     days: number;
     tasks: string[];
   }): Promise<CurrentRunningStats>;
-
-  getAverageDurations(options: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-    days: number;
-    tasks: string[];
-  }): Promise<AverageDurations>;
 }
 
 export type ClickHouseEnvironmentMetricsRepositoryOptions = {
@@ -38,45 +20,6 @@ export type ClickHouseEnvironmentMetricsRepositoryOptions = {
 
 export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetricsRepository {
   constructor(private readonly options: ClickHouseEnvironmentMetricsRepositoryOptions) {}
-
-  public async getDailyTaskActivity({
-    organizationId,
-    projectId,
-    environmentId,
-    days,
-    tasks,
-  }: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-    days: number;
-    tasks: string[];
-  }): Promise<DailyTaskActivity> {
-    if (tasks.length === 0) {
-      return {};
-    }
-
-    const [queryError, activity] = await this.options.clickhouse.taskRuns.getTaskActivity({
-      organizationId,
-      projectId,
-      environmentId,
-      days,
-    });
-
-    if (queryError) {
-      throw queryError;
-    }
-
-    return fillInDailyTaskActivity(
-      activity.map((a) => ({
-        taskIdentifier: a.task_identifier,
-        status: a.status as TaskRunStatus,
-        day: new Date(a.day),
-        count: BigInt(a.count),
-      })),
-      days
-    );
-  }
 
   public async getCurrentRunningStats({
     organizationId,
@@ -115,82 +58,6 @@ export class ClickHouseEnvironmentMetricsRepository implements EnvironmentMetric
       tasks
     );
   }
-
-  public async getAverageDurations({
-    organizationId,
-    projectId,
-    environmentId,
-    days,
-    tasks,
-  }: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-    days: number;
-    tasks: string[];
-  }): Promise<AverageDurations> {
-    if (tasks.length === 0) {
-      return {};
-    }
-
-    const [queryError, durations] = await this.options.clickhouse.taskRuns.getAverageDurations({
-      organizationId,
-      projectId,
-      environmentId,
-      days,
-    });
-
-    if (queryError) {
-      throw queryError;
-    }
-
-    return Object.fromEntries(durations.map((d) => [d.task_identifier, Number(d.duration)]));
-  }
-}
-
-type TaskActivityResults = Array<{
-  taskIdentifier: string;
-  status: TaskRunStatus;
-  day: Date;
-  count: bigint;
-}>;
-
-function fillInDailyTaskActivity(activity: TaskActivityResults, days: number): DailyTaskActivity {
-  //today with no time
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-
-  return activity.reduce((acc, a) => {
-    let existingTask = acc[a.taskIdentifier];
-
-    if (!existingTask) {
-      existingTask = [];
-      //populate the array with the past 7 days
-      for (let i = days; i >= 0; i--) {
-        const day = new Date(today);
-        day.setUTCDate(today.getDate() - i);
-        day.setUTCHours(0, 0, 0, 0);
-
-        existingTask.push({
-          day: day.toISOString(),
-          ["COMPLETED_SUCCESSFULLY"]: 0,
-        } as { day: string } & Record<TaskRunStatus, number>);
-      }
-
-      acc[a.taskIdentifier] = existingTask;
-    }
-
-    const dayString = a.day.toISOString();
-    const day = existingTask.find((d) => d.day === dayString);
-
-    if (!day) {
-      return acc;
-    }
-
-    day[a.status] = Number(a.count);
-
-    return acc;
-  }, {} as DailyTaskActivity);
 }
 
 type CurrentRunningStatsResults = Array<{

@@ -14,6 +14,7 @@ import {
   isOOMRunError,
   SuspendedProcessError,
 } from "@trigger.dev/core/v3";
+import { UnexpectedExitError } from "@trigger.dev/core/v3/errors";
 import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
 import type { CliApiClient } from "../apiClient.js";
@@ -22,6 +23,7 @@ import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import type { BackgroundWorker } from "../dev/backgroundWorker.js";
 import { eventBus } from "../utilities/eventBus.js";
 import type { TaskRunProcessPool } from "../dev/taskRunProcessPool.js";
@@ -598,6 +600,15 @@ export class DevRunController {
 
     if (!this.opts.worker.manifest) {
       throw new Error(`No worker manifest for Dev ${run.friendlyId}`);
+    }
+
+    const workerEntryPoint = this.opts.worker.manifest.workerEntryPoint;
+    if (!existsSync(workerEntryPoint)) {
+      throw new UnexpectedExitError(
+        1,
+        null,
+        `Dev worker build directory was removed before the run could start, likely cleaned up by a concurrent rebuild. Missing worker entry: ${workerEntryPoint}`
+      );
     }
 
     this.snapshotPoller.start();

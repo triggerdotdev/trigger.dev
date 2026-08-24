@@ -645,11 +645,24 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
     maxParams: 1,
     aggregate: true,
   },
+  quantilesTDigestMerge: {
+    clickhouseName: "quantilesTDigestMerge",
+    minArgs: 1,
+    maxArgs: 1,
+    minParams: 1,
+    aggregate: true,
+  },
   sumMerge: { clickhouseName: "sumMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   avgMerge: { clickhouseName: "avgMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   countMerge: { clickhouseName: "countMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   minMerge: { clickhouseName: "minMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   maxMerge: { clickhouseName: "maxMerge", minArgs: 1, maxArgs: 1, aggregate: true },
+  deltaSumTimestampMerge: {
+    clickhouseName: "deltaSumTimestampMerge",
+    minArgs: 1,
+    maxArgs: 1,
+    aggregate: true,
+  },
 
   // Statistical functions
   simpleLinearRegression: {

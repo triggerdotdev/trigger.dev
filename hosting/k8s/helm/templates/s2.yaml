@@ -56,7 +56,10 @@ spec:
           {{- end }}
           image: "{{ .Values.s2.image.registry }}/{{ .Values.s2.image.repository }}:{{ .Values.s2.image.tag }}{{ with .Values.s2.image.digest }}@{{ . }}{{ end }}"
           imagePullPolicy: {{ .Values.s2.image.pullPolicy }}
-          command:
+          # args, not command: the image ENTRYPOINT is ["./s2"] and these are its
+          # subcommand/flags. Using command would override the entrypoint and try to
+          # exec "lite" directly (StartError).
+          args:
             - "lite"
             - "--init-file"
             - "/config/s2-spec.json"

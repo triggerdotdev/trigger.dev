@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { inviteMembers } from "~/models/member.server";
+import { checkInviteRateLimit, InviteRateLimitError } from "~/services/inviteRateLimiter.server";
 import { logger } from "~/services/logger.server";
 import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
 import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -57,9 +58,27 @@ export const action = createActionPATApiRoute(
       return json({ error: "Membership is managed by Directory Sync" }, { status: 403 });
     }
 
-    // Returns only the invites created by this call; already-invited emails are
-    // skipped (re-sending is the dashboard's dedicated resend flow, not this).
-    const created = await inviteMembers({
+    // Every invite emails the address, so cap per-org and per-inviter sends.
+    if (env.LOGIN_RATE_LIMITS_ENABLED) {
+      try {
+        await checkInviteRateLimit(organization.id, authentication.userId, body.emails.length);
+      } catch (error) {
+        if (error instanceof InviteRateLimitError) {
+          return json(
+            { error: "Too many invites sent. Please try again later." },
+            {
+              status: 429,
+              headers: {
+                "Retry-After": Math.ceil(error.retryAfter / 1000).toString(),
+              },
+            }
+          );
+        }
+        throw error;
+      }
+    }
+
+    const { created, alreadyMembers, alreadyInvited } = await inviteMembers({
       slug: organization.slug,
       emails: body.emails,
       userId: authentication.userId,
@@ -85,13 +104,11 @@ export const action = createActionPATApiRoute(
     // Report per-email outcome so callers aren't misled by an empty list on
     // re-invite. 201 when something was created, 200 when everything already
     // existed.
-    const createdEmails = new Set(created.map((invite) => invite.email));
-    const alreadyInvited = [...new Set(body.emails)].filter((email) => !createdEmails.has(email));
-
     return json(
       {
         invited: created.map((invite) => ({ id: invite.id, email: invite.email })),
         alreadyInvited,
+        alreadyMembers,
       },
       { status: created.length > 0 ? 201 : 200 }
     );

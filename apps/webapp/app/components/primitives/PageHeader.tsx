@@ -7,6 +7,7 @@ import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
 import { SimpleTooltip } from "./Tooltip";
 import { DashboardAgentLauncher } from "../dashboard-agent/dashboardAgentLauncher";
+import { FavoritePageButton } from "../navigation/FavoritePageButton";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -46,8 +47,10 @@ type PageTitleProps = {
 };
 
 export function PageTitle({ title, backButton, accessory }: PageTitleProps) {
+  const titleText = typeof title === "string" ? title : undefined;
+
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       {backButton && (
         <div className="group -ml-1.5 flex items-center gap-0">
           <Link
@@ -60,17 +63,24 @@ export function PageTitle({ title, backButton, accessory }: PageTitleProps) {
         </div>
       )}
       <Header2 className="flex items-center gap-1">{title}</Header2>
-      {accessory !== undefined &&
-        (typeof accessory === "string" ? (
-          <SimpleTooltip
-            button={<QuestionMarkIcon className="size-4 text-text-dimmed" />}
-            content={accessory}
-            className="max-w-xs"
-            disableHoverableContent
-          />
-        ) : (
-          accessory
-        ))}
+      {accessory !== undefined && (
+        // ml-px optically evens the accessory against the title's tight text edge
+        <span className="ml-px flex items-center">
+          {typeof accessory === "string" ? (
+            <SimpleTooltip
+              button={<QuestionMarkIcon className="size-4 text-text-dimmed" />}
+              content={accessory}
+              className="max-w-xs"
+              disableHoverableContent
+            />
+          ) : (
+            accessory
+          )}
+        </span>
+      )}
+      {/* -ml-1 pulls the star's button box near-flush: its inner padding then provides the
+          visual gap, matching the title-to-accessory spacing while hovered */}
+      <FavoritePageButton pageTitle={titleText} className="-ml-1" />
     </div>
   );
 }

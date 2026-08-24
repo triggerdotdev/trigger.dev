@@ -10,11 +10,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 # Secrets configuration
-# IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
-# For production deployments:
-# 1. Generate new secrets using: openssl rand -hex 16
-# 2. Override these values in your values.yaml or use external secret management
-# 3. Each secret must be exactly 32 hex characters (16 bytes)
+# No working defaults are shipped. Leave a secret empty and the chart generates a
+# strong random value on first install, retained across upgrades (so sessions and
+# encrypted data survive). Set a value explicitly to control it yourself, or use
+# secrets.existingSecret / external secret management. Explicit values win.
 secrets:
   # Enable/disable creation of secrets
   # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
@@ -27,17 +26,23 @@ secrets:
   #   - SESSION_SECRET
   #   - MAGIC_LINK_SECRET
   #   - ENCRYPTION_KEY
+  #   - PROVIDER_SECRET
+  #   - COORDINATOR_SECRET
   #   - MANAGED_WORKER_SECRET
   existingSecret: ""
 
-  # Session secret for user authentication (32 hex chars)
-  sessionSecret: "2818143646516f6fffd707b36f334bbb"
-  # Magic link secret for passwordless login (32 hex chars)
-  magicLinkSecret: "44da78b7bbb0dfe709cf38931d25dcdd"
-  # Encryption key for sensitive data (32 hex chars)
-  encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
-  # Worker secret for managed worker authentication (32 hex chars)
-  managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
+  # Session secret for user authentication
+  sessionSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Magic link secret for passwordless login
+  magicLinkSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Encryption key for sensitive data
+  encryptionKey: "" # Leave empty to auto-generate, or set a strong value.
+  # Provider socket secret
+  providerSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Coordinator socket secret
+  coordinatorSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Worker secret for managed worker authentication
+  managedWorkerSecret: "" # Leave empty to auto-generate, or set a strong value.
   # Object store credentials moved to s3.auth and s3.external section
 
 # Webapp configuration
@@ -291,6 +296,10 @@ supervisor:
       forceEnabled: true
       namespace: "" # Default: uses release namespace
       workerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
+      runnerTolerations: [] # Run pod tolerations, e.g. ["dedicated=runs:NoSchedule"]
+      # Per-org run pod placement, keyed by the org's internal ID (the `org` label on run pods).
+      # Merged over the default node selector. e.g. {"<orgId>": {"nodeSelector": {"pool": "dedicated"}, "tolerations": ["dedicated=runs:NoSchedule"]}}
+      orgPlacementOverrides: {}
       ephemeralStorageSizeLimit: "" # Default: 10Gi
       ephemeralStorageSizeRequest: "" # Default: 2Gi´
     podCleaner:
@@ -381,7 +390,7 @@ supervisor:
         key: ""
 
   nodeSelector: {}
-  tolerations: []
+  tolerations: [] # For the supervisor pod itself, not run pods
   affinity: {}
 
 # PostgreSQL configuration
@@ -397,10 +406,16 @@ postgres:
   # Bitnami PostgreSQL chart configuration (when deploy: true)
   auth:
     enablePostgresUser: true
-    postgresPassword: "postgres"
+    postgresPassword: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
     username: "postgres"
-    password: "postgres"
+    password: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
     database: "main"
+    # Read the auto-generated password from the chart-managed datastore secret
+    # (templates/datastore-secret.yaml). Must equal trigger-v4.datastore.secretName.
+    existingSecret: "trigger-datastore"
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      userPasswordKey: "password"
 
   primary:
     persistence:
@@ -617,40 +632,117 @@ s2:
     existingSecretAccessTokenKey: "access-token"
 
 # ClickHouse configuration
-# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/clickhouse
+# Deploys a single-node ClickHouse using the official image:
+# https://hub.docker.com/r/clickhouse/clickhouse-server
+# For clustered/replicated setups, use an external ClickHouse (deploy: false).
 clickhouse:
   deploy: true
 
   image:
-    # Use bitnami legacy repo
-    repository: bitnamilegacy/clickhouse
-    # image: docker.io/bitnamilegacy/clickhouse:25.7.5-debian-12-r0
+    registry: docker.io
+    repository: clickhouse/clickhouse-server
+    # Trigger.dev requires ClickHouse >= 25.8
+    tag: "26.2"
+    # Pinning by digest is strongly recommended for reproducible deployments
+    digest: ""
+    pullPolicy: IfNotPresent
 
   # TLS/Secure connection configuration
   secure: false # Set to true to use HTTPS and secure connections
 
-  # Bitnami ClickHouse chart configuration (when deploy: true)
   auth:
     username: "default"
-    password: "password"
+    password: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
+    # Read the auto-generated password from the chart-managed datastore secret.
+    existingSecret: "trigger-datastore"
+    existingSecretKey: "clickhouse-admin-password"
 
-  # Single-node configuration (disable clustering for dev/test)
-  keeper:
+  podAnnotations: {}
+
+  # The official image runs ClickHouse as uid 101. fsGroup makes the persistent
+  # volume writable by that user without running the container as root, and
+  # OnRootMismatch relabels volumes carried over from older chart versions
+  # (different uid) on first mount without rechecking every file on later mounts.
+  podSecurityContext:
+    fsGroup: 101
+    fsGroupChangePolicy: OnRootMismatch
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+
+  # One-time root init container that chowns the data volume to the ClickHouse
+  # uid. Only needed on storage that doesn't support fsGroup ownership changes
+  # (e.g. NFS, hostPath); on such storage a data volume carried over from the
+  # Bitnami-based chart is otherwise unreadable by the non-root server.
+  volumePermissions:
     enabled: false
+    image:
+      registry: docker.io
+      repository: busybox
+      tag: "1.35"
+      pullPolicy: IfNotPresent
 
-  shards: 1
-  replicaCount: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  service:
+    type: ClusterIP
+    ports:
+      http: 8123
+      native: 9000
 
   persistence:
     enabled: true
     size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: ""
+    retain: false
+    # Name of an existing PVC to use for ClickHouse data instead of creating
+    # one. Normally left empty: upgrades from chart versions that bundled the
+    # Bitnami ClickHouse subchart adopt the old data PVC automatically. Set
+    # this explicitly when rendering manifests without cluster access (e.g.
+    # GitOps tools that use `helm template`), where auto-detection can't run:
+    # the old PVC is named data-<release>-clickhouse-shard0-0.
+    existingClaim: ""
 
   ## ClickHouse resource requests and limits
   ## ref: http://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-  ## @param resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if resources is set (resources is recommended for production).
-  ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
-  resourcesPreset: "xlarge"
-  resources: {}
+  ## ClickHouse can be very resource intensive. The defaults below match the
+  ## resource preset the chart previously applied; size them to your workload
+  ## for production (see values-production-example.yaml).
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 3Gi
+    limits:
+      cpu: 3000m
+      memory: 6Gi
+
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  # Generous startup window: first boot on a large adopted data volume can
+  # spend a while loading metadata before the HTTP listener answers.
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
 
   # External ClickHouse connection (when deploy: false)
   external:
@@ -709,14 +801,18 @@ s3:
   # MinIO provides S3-compatible storage when deployed internally
   auth:
     rootUser: "admin"
-    rootPassword: "very-safe-password"
+    rootPassword: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
     # Webapp credentials for S3 access (defaults to root credentials if not specified)
     accessKeyId: "" # Defaults to rootUser if empty
     secretAccessKey: "" # Defaults to rootPassword if empty
-    # Existing secret support for webapp credentials
-    existingSecret: "" # If set, accessKeyId/secretAccessKey will be ignored
-    accessKeyIdSecretKey: "access-key-id" # Key in existingSecret containing access key ID
-    secretAccessKeySecretKey: "secret-access-key" # Key in existingSecret containing secret access key
+    # Read the auto-generated root credentials from the chart-managed datastore secret.
+    # The same keys serve the MinIO subchart (rootUser/rootPassword) and the webapp's
+    # S3 credentials, so both stay in sync. Must equal trigger-v4.datastore.secretName.
+    existingSecret: "trigger-datastore"
+    rootUserSecretKey: "minio-root-user"
+    rootPasswordSecretKey: "minio-root-password"
+    accessKeyIdSecretKey: "minio-root-user" # Key in existingSecret containing access key ID
+    secretAccessKeySecretKey: "minio-root-password" # Key in existingSecret containing secret access key
 
   # The required "packets" bucket is created by default.
   defaultBuckets: "packets"
@@ -729,8 +825,8 @@ s3:
   # External S3 connection (when deploy: false)
   external:
     endpoint: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
-    accessKeyId: "admin" # Default for internal MinIO - change for production
-    secretAccessKey: "very-safe-password" # Default for internal MinIO - change for production
+    accessKeyId: "" # Required when s3.deploy=false — no default. Set explicitly or use existingSecret.
+    secretAccessKey: "" # Required when s3.deploy=false — no default. Set explicitly or use existingSecret.
     #
     # Secure credential management
     existingSecret: "" # Name of existing secret containing S3 credentials
@@ -769,7 +865,7 @@ registry:
   auth:
     enabled: true
     username: "registry-user"
-    password: "very-secure-indeed"
+    password: "" # Required when registry.deploy=true and auth.enabled — no default. Set a strong value.
 
   # External Registry connection (when deploy: false)
   external:

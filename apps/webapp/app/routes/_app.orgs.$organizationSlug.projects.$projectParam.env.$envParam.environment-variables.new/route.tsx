@@ -10,7 +10,7 @@ import {
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -35,7 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
-import { prisma } from "~/db.server";
+import { boundedIn, prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -55,6 +55,10 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New environment variable");
 
 const Variable = z.object({
   key: EnvironmentVariableKey,
@@ -127,7 +131,7 @@ export const action = dashboardAction(
     // that can't write a deployed tier can't create vars there via a direct
     // POST (the disabled checkboxes are not the boundary).
     const targetEnvironments = await prisma.runtimeEnvironment.findMany({
-      where: { id: { in: submission.value.environmentIds } },
+      where: { id: { in: boundedIn(submission.value.environmentIds) } },
       select: { type: true },
     });
     const hasDeniedEnvironment = targetEnvironments.some(
@@ -162,6 +166,31 @@ export const action = dashboardAction(
     });
     if (!project) {
       return json(submission.reply({ formErrors: ["Project not found"] }));
+    }
+
+    // The submitted `environmentIds` are user-supplied. Shared env types are
+    // writable by any member; a DEV env only by its owner. See
+    // findUnauthorizedEnvironmentId.
+    const submittedEnvs = await prisma.runtimeEnvironment.findMany({
+      where: {
+        projectId: project.id,
+        id: { in: boundedIn(submission.value.environmentIds) },
+      },
+      select: { id: true, type: true, orgMember: { select: { userId: true } } },
+    });
+    const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
+      submittedEnvs,
+      submission.value.environmentIds,
+      userId
+    );
+    if (unauthorizedEnvironmentId) {
+      return json(
+        submission.reply({
+          fieldErrors: {
+            environmentIds: ["One or more of the selected environments is not writable by you."],
+          },
+        })
+      );
     }
 
     const repository = new EnvironmentVariablesRepository(prisma);
@@ -541,7 +570,7 @@ function VariableFields({
     insertAfter,
   } = useList<Variable>([{ key: "", value: "" }]);
 
-  const handlePaste = useCallback((index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
@@ -564,7 +593,7 @@ function VariableFields({
       form.insert({ name: variablesFields.name });
     }
     insertAfter(index, rest);
-  }, []);
+  };
 
   const fields = variablesFields.getFieldList();
 

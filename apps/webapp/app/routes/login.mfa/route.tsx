@@ -197,6 +197,7 @@ export default function LoginMfaPage() {
   // Reset hideError when a new error appears
   React.useEffect(() => {
     if (rawMfaError) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHideError(false);
     }
   }, [rawMfaError]);
@@ -252,11 +253,7 @@ export default function LoginMfaPage() {
                   data-action="verify recovery code"
                 >
                   {isLoading ? <Spinner className="mr-2 size-5" color="white" /> : null}
-                  {isLoading ? (
-                    <span className="text-text-bright">Verifying…</span>
-                  ) : (
-                    <span className="text-text-bright">Verify</span>
-                  )}
+                  {isLoading ? <span>Verifying…</span> : <span>Verify</span>}
                 </Button>
                 {typeof mfaError === "string" && <FormError>{mfaError}</FormError>}
               </Fieldset>
@@ -304,11 +301,7 @@ export default function LoginMfaPage() {
                   data-action="verify mfa code"
                 >
                   {isLoading ? <Spinner className="mr-2 size-5" color="white" /> : null}
-                  {isLoading ? (
-                    <span className="text-text-bright">Verifying…</span>
-                  ) : (
-                    <span className="text-text-bright">Verify</span>
-                  )}
+                  {isLoading ? <span>Verifying…</span> : <span>Verify</span>}
                 </Button>
                 {typeof mfaError === "string" && <FormError>{mfaError}</FormError>}
               </Fieldset>

@@ -64,6 +64,7 @@ vi.mock("~/presenters/v3/NextRunListPresenter.server", () => ({
 
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
@@ -156,6 +157,7 @@ async function seedRun(
 ) {
   return (prisma as PrismaClient).taskRun.create({
     data: {
+      id: `run_${generateRunOpsId()}`,
       friendlyId,
       taskIdentifier: "my-task",
       status: "PENDING",

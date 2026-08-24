@@ -1,17 +1,15 @@
 "use client";
 
 import { CheckIcon } from "@heroicons/react/20/solid";
-import { EllipsisVerticalIcon } from "@heroicons/react/24/solid";
+import { EllipsisHorizontalIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Link } from "@remix-run/react";
 import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { ButtonContent, type ButtonContentPropsType } from "./Buttons";
 import { type RenderIcon } from "./Icon";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
-import { ShortcutKey } from "./ShortcutKey";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -53,6 +51,7 @@ function PopoverSectionHeader({
   );
 }
 
+/* oxlint-disable react/button-has-type -- The trigger supports form button semantics. */
 const PopoverMenuItem = React.forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
   {
@@ -143,6 +142,7 @@ const PopoverMenuItem = React.forwardRef<
   }
 );
 PopoverMenuItem.displayName = "PopoverMenuItem";
+/* oxlint-enable react/button-has-type */
 
 function PopoverCustomTrigger({
   isOpen,
@@ -163,48 +163,6 @@ function PopoverCustomTrigger({
   );
 }
 
-function PopoverSideMenuTrigger({
-  isOpen,
-  children,
-  className,
-  shortcut,
-  hideShortcutKey = false,
-  ...props
-}: {
-  isOpen?: boolean;
-  shortcut?: useShortcutKeys.ShortcutDefinition;
-  hideShortcutKey?: boolean;
-} & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
-  const ref = React.useRef<HTMLButtonElement>(null);
-  useShortcutKeys.useShortcutKeys({
-    shortcut: shortcut,
-    action: (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (ref.current) {
-        ref.current.click();
-      }
-    },
-  });
-
-  return (
-    <PopoverTrigger
-      {...props}
-      ref={ref}
-      className={cn(
-        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-background-hover",
-        shortcut && !hideShortcutKey ? "justify-between gap-x-1.5" : "",
-        className
-      )}
-    >
-      {children}
-      {shortcut && !hideShortcutKey && (
-        <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant={"small"} />
-      )}
-    </PopoverTrigger>
-  );
-}
-
 const popoverArrowTriggerVariants = {
   minimal: {
     trigger: "text-text-dimmed hover:bg-background-raised hover:text-text-bright",
@@ -212,10 +170,11 @@ const popoverArrowTriggerVariants = {
     icon: "text-text-dimmed group-hover:text-text-bright",
   },
   primary: {
+    // White ink, not text-bright, which flips dark on the light theme.
     trigger:
-      "bg-indigo-600 border border-indigo-500 text-text-bright hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
-    text: "text-text-bright hover:text-white",
-    icon: "text-text-bright",
+      "bg-indigo-600 border border-indigo-500 text-white hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
+    text: "text-white",
+    icon: "text-white",
   },
   secondary: {
     trigger:
@@ -279,20 +238,29 @@ const popoverVerticalEllipseVariants = {
       "size-6 rounded border border-border-bright bg-secondary text-text-bright hover:bg-surface-control hover:border-border-brighter",
     icon: "size-4",
   },
+  // No box/background — the icon inherits the trigger's text color, so callers
+  // can drive brightening from a parent hover (e.g. a section header).
+  ghost: {
+    trigger: "p-1 text-text-faint hover:text-text-bright",
+    icon: "size-4",
+  },
 } as const;
 
 type PopoverVerticalEllipseVariant = keyof typeof popoverVerticalEllipseVariants;
 
-function PopoverVerticalEllipseTrigger({
+function PopoverEllipseTrigger({
   isOpen,
   variant = "minimal",
+  orientation = "vertical",
   className,
   ...props
 }: {
   isOpen?: boolean;
   variant?: PopoverVerticalEllipseVariant;
+  orientation?: "vertical" | "horizontal";
 } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   const styles = popoverVerticalEllipseVariants[variant];
+  const Icon = orientation === "horizontal" ? EllipsisHorizontalIcon : EllipsisVerticalIcon;
   return (
     <PopoverTrigger
       {...props}
@@ -302,10 +270,13 @@ function PopoverVerticalEllipseTrigger({
         className
       )}
     >
-      <EllipsisVerticalIcon className={cn(styles.icon, "transition")} />
+      <Icon className={cn(styles.icon, "transition")} />
     </PopoverTrigger>
   );
 }
+
+// Back-compat alias: the trigger now supports both orientations.
+const PopoverVerticalEllipseTrigger = PopoverEllipseTrigger;
 
 export {
   Popover,
@@ -314,9 +285,7 @@ export {
   PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
-  PopoverSideMenuTrigger,
+  PopoverEllipseTrigger,
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 };
-
-export type { PopoverArrowTriggerVariant };

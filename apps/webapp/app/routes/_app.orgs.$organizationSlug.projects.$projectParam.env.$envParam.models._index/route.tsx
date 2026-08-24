@@ -6,12 +6,7 @@ import {
   CubeIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import {
-  Form,
-  type MetaFunction,
-  type ShouldRevalidateFunctionArgs,
-  useFetcher,
-} from "@remix-run/react";
+import { Form, type ShouldRevalidateFunctionArgs, useFetcher } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -67,6 +62,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { UsageSparkline } from "~/components/primitives/UsageSparkline";
 import {
   appliedSummary,
@@ -109,10 +105,15 @@ import { parseFiniteInt } from "~/utils/searchParams";
 
 import { IconColumns3 } from "@tabler/icons-react";
 import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Models | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Models");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -755,6 +756,14 @@ function CompareDialog({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useFetcher<typeof compareLoader>();
+  const loadComparison = fetcher.load;
+  const wasOpenRef = useRef(false);
+  const canCompare = models.length >= 2;
+  const comparisonPath = `${v3ModelComparePath(
+    organization,
+    project,
+    environment
+  )}?models=${models.join(",")}`;
 
   const comparison = (fetcher.data as { comparison?: ModelComparisonItem[] } | undefined)
     ?.comparison;
@@ -763,13 +772,14 @@ function CompareDialog({
     [comparison, models, catalogModels]
   );
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on open; other deps are stable per dialog mount
   useEffect(() => {
-    if (open && models.length >= 2) {
-      const params = models.join(",");
-      fetcher.load(`${v3ModelComparePath(organization, project, environment)}?models=${params}`);
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = open;
+
+    if (open && !wasOpen && canCompare) {
+      loadComparison(comparisonPath);
     }
-  }, [open]);
+  }, [open, canCompare, comparisonPath, loadComparison]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1311,21 +1321,21 @@ function YourModelsTab({
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className="w-[18%]">Model</TableHeaderCell>
-                <TableHeaderCell className="w-[12%]">Provider</TableHeaderCell>
+                <TableHeaderCell className="w-[24%]">Model</TableHeaderCell>
+                <TableHeaderCell className="w-[10%]">Provider</TableHeaderCell>
                 <TableHeaderCell className="w-[8%]" alignment="right">
                   Calls
                 </TableHeaderCell>
                 <TableHeaderCell className="w-[8%]" alignment="right">
                   Cost
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[10%]" alignment="right">
+                <TableHeaderCell className="w-[9%]" alignment="right">
                   Cache savings
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[9%]" alignment="right">
+                <TableHeaderCell className="w-[8%]" alignment="right">
                   Avg TTFC
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[11%]" alignment="right">
+                <TableHeaderCell className="w-[9%]" alignment="right">
                   Avg tokens/sec
                 </TableHeaderCell>
                 <TableHeaderCell className="w-[12%]">Calls trend</TableHeaderCell>
@@ -1351,7 +1361,13 @@ function YourModelsTab({
                     isSelected={!!catalogItem && selectedModelId === catalogItem.friendlyId}
                   >
                     <TableCell onClick={select} isTabbableCell={!!select}>
-                      {displayId}
+                      <SimpleTooltip
+                        asChild
+                        button={<span className="block truncate">{displayId}</span>}
+                        content={displayId}
+                        side="top"
+                        disableHoverableContent
+                      />
                     </TableCell>
                     <TableCell onClick={select}>
                       <span className="flex items-center gap-1.5">

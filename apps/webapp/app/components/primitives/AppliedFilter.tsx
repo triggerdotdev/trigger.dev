@@ -4,11 +4,11 @@ import { cn } from "~/utils/cn";
 
 const variants = {
   "secondary/small": {
-    box: "h-6 bg-secondary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-surface-control group-hover:border-border-brighter text-text-bright border border-border-bright",
+    box: "h-6 bg-secondary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 shadow-xs group-hover:bg-background-raised text-text-bright border border-border-bright/50",
     clear: "size-6 text-text-bright hover:text-text-bright transition-colors",
   },
   "tertiary/small": {
-    box: "h-6 bg-tertiary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-surface-control",
+    box: "h-6 bg-tertiary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-background-raised",
     clear: "size-6 text-text-dimmed hover:text-text-bright transition-colors",
   },
   "minimal/medium": {
@@ -67,6 +67,7 @@ export function AppliedFilter({
       </div>
       {removable && (
         <button
+          type="button"
           className={cn(
             "group flex size-6 items-center justify-center focus-custom",
             variantClassName.clear

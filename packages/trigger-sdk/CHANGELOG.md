@@ -1,5 +1,111 @@
 # @trigger.dev/sdk
 
+## 4.5.12
+
+### Patch Changes
+
+- Define stable execution windows on declarative scheduled tasks. Schedule API responses now expose both the nominal CRON time and its assigned time, while the dashboard shows configured windows and upcoming assignments. ([#4572](https://github.com/triggerdotdev/trigger.dev/pull/4572))
+- Pin runs to the deployment your calling code came from, so an old release never triggers tasks from a new one: set `TRIGGER_EXTERNAL_DEPLOYMENT_ID` to the id you deployed with, or `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` to detect the commit automatically on Vercel and most CI systems. Runs triggered before that deployment finishes building wait for it, then start pinned. ([#4664](https://github.com/triggerdotdev/trigger.dev/pull/4664))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- Watch-mode chat streams now survive quiet windows and page reloads, and a reply cut off by a lost connection shows an error instead of appearing finished. Aborting a resumed subscription only closes your local stream — call `stopGeneration(chatId)` or pass `stopOnAbort: true` to stop the run. Also fixed a race where quickly restarting a stream could break stop and reconnect, and stopping a chat now hands it back to your other tabs instead of leaving them read-only. ([#4516](https://github.com/triggerdotdev/trigger.dev/pull/4516))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+
+## 4.5.10
+
+### Patch Changes
+
+- `debounce` now works when you pass an array of items to `batchTrigger` or `batchTriggerAndWait`, and when you trigger from `useTaskTrigger`. Previously the option was accepted by the types and dropped before the request was sent, so every trigger created its own run instead of collapsing onto the debounce key. ([#4520](https://github.com/triggerdotdev/trigger.dev/pull/4520))
+
+  ```ts
+  await myTask.batchTrigger([
+    {
+      payload: { id: "a" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+    {
+      payload: { id: "b" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+  ]);
+  ```
+
+  The streaming (async iterable) forms of the batch calls were already forwarding `debounce` correctly.
+
+- Fix a preloaded `chat.agent` run dropping an in-flight message when it retries after an out-of-memory error. The message being processed when the run hit the OOM is now recovered and re-run on the retry, instead of being skipped while the run waited for a new message. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- Allow task-scoped environment API keys to run batch operations for their permitted tasks. The SDK declares the batch's task set before creation, and `@trigger.dev/core/v3/apiKeys` now exports the additional-key format helper. ([#4389](https://github.com/triggerdotdev/trigger.dev/pull/4389))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Correct the `expirationTime` docs on `auth.createPublicToken` and the trigger-token helpers: a number is a Unix timestamp in seconds, not milliseconds. ([#4388](https://github.com/triggerdotdev/trigger.dev/pull/4388))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Preserve the partial assistant message when a chat turn's model stream fails mid-response. `chat.agent` now passes the recovered partial to `onTurnComplete`, and `chat.createSession`'s `turn.complete()` keeps it before rethrowing, instead of dropping the streamed-so-far output. ([#4348](https://github.com/triggerdotdev/trigger.dev/pull/4348))
+- Allow additional environment API keys to create scoped public access tokens through the Trigger.dev API. Use server-issued public access tokens for batch operations so environment-scoped API keys can read batch results. ([#4387](https://github.com/triggerdotdev/trigger.dev/pull/4387))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+
+## 4.5.7
+
+### Patch Changes
+
+- Custom chat agent loops get two ergonomic wins for owning the turn loop. ([#4304](https://github.com/triggerdotdev/trigger.dev/pull/4304))
+
+  `chat.writeTurnComplete()` now returns the turn boundary's resume cursors (`lastEventId` for the output stream and `sessionInEventId` for the input stream), so you can persist them straight from the task instead of round-tripping them back from the client.
+
+  ```ts
+  const { lastEventId, sessionInEventId } = await chat.writeTurnComplete();
+  await db.chats.update(chatId, { lastEventId, sessionInEventId });
+  ```
+
+  `chat.pipeAndCapture()` no longer throws when a stream is stopped or fails. It now returns a `PipeAndCaptureResult` whose `message` holds any partial output captured before the stop or failure, alongside a typed `status` (`"complete" | "aborted" | "error"`) and, on failure, the `error`. Read the message off the result:
+
+  ```ts
+  const { message, status, error } = await chat.pipeAndCapture(result, {
+    signal,
+  });
+  if (message) conversation.addResponse(message);
+  if (status === "error") logger.error("turn failed", { error });
+  ```
+
+  Note: `pipeAndCapture` previously resolved to `UIMessage | undefined`. Update call sites to read `.message` from the returned result.
+
+- Suppress a build-time warning that could appear in Vite-based projects when the optional `@ai-sdk/otel` package is not installed. ([#4188](https://github.com/triggerdotdev/trigger.dev/pull/4188))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.7`
+
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
 ## 4.5.4
 
 ### Patch Changes

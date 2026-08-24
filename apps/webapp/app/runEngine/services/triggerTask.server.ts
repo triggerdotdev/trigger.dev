@@ -7,6 +7,7 @@ import type { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
   type TriggerTaskRequestBody,
+  formatDurationMilliseconds,
   RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
@@ -14,6 +15,7 @@ import {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import {
+  parseNaturalLanguageDurationInMs,
   parseTraceparent,
   RunId,
   serializeTraceparent,
@@ -23,6 +25,7 @@ import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
+import { removeNullBytesFromKey } from "~/utils/nullBytes";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
@@ -33,6 +36,7 @@ import type {
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
+import { clampPriorityMs } from "../../v3/utils/priority";
 import {
   type IdempotencyKeyConcern,
   type ClaimedIdempotency,
@@ -70,6 +74,9 @@ import {
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
+import type { ExternalDeploymentCache } from "~/services/externalDeploymentCache.server";
+import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
+import { resolveExternalDeployment } from "~/v3/services/resolveExternalDeployment.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -88,6 +95,7 @@ export class RunEngineTriggerTaskService {
   private readonly traceEventConcern: TraceEventConcern;
   private readonly triggerRacepointSystem: TriggerRacepointSystem;
   private readonly metadataMaximumSize: number;
+  private readonly maximumDebounceDurationMs: number | undefined;
   // Mollifier hooks are DI'd so tests can drive the call-site's mollify branch
   // deterministically (stub the gate to return mollify, inject a real or fake
   // buffer, force the global-enabled predicate to true so the call site
@@ -96,6 +104,7 @@ export class RunEngineTriggerTaskService {
   private readonly evaluateGate: MollifierEvaluateGate;
   private readonly getMollifierBuffer: MollifierGetBuffer;
   private readonly isMollifierGloballyEnabled: () => boolean;
+  private readonly externalDeploymentCache: ExternalDeploymentCache;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -107,10 +116,12 @@ export class RunEngineTriggerTaskService {
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
     metadataMaximumSize: number;
+    maximumDebounceDurationMs?: number;
     triggerRacepointSystem?: TriggerRacepointSystem;
     evaluateGate?: MollifierEvaluateGate;
     getMollifierBuffer?: MollifierGetBuffer;
     isMollifierGloballyEnabled?: () => boolean;
+    externalDeploymentCache?: ExternalDeploymentCache;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -121,11 +132,73 @@ export class RunEngineTriggerTaskService {
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
+    this.maximumDebounceDurationMs =
+      opts.maximumDebounceDurationMs ?? env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS;
     this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
     this.evaluateGate = opts.evaluateGate ?? defaultEvaluateGate;
     this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
     this.isMollifierGloballyEnabled =
       opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
+    this.externalDeploymentCache = opts.externalDeploymentCache ?? externalDeploymentCacheInstance;
+  }
+
+  /**
+   * A debounced run is only pushed back while its new execution time stays inside the effective
+   * ceiling, which is the trigger's own `maxDelay` or, failing that, whatever ceiling the server
+   * is configured with. The room available to push is that ceiling minus `delay`, so a `delay`
+   * at or above it leaves none: the debounce key does nothing and every trigger creates its own
+   * run. Rejecting is better than accepting a trigger we know cannot debounce.
+   *
+   * With no `maxDelay` and no server ceiling there is nothing to conflict with, which is the
+   * default.
+   */
+  #validateDebounceWindow(
+    debounce: NonNullable<NonNullable<TriggerTaskRequestBody["options"]>["debounce"]>
+  ) {
+    const delayMs = parseNaturalLanguageDurationInMs(debounce.delay);
+
+    if (delayMs === undefined) {
+      throw new ServiceValidationError(
+        `Invalid debounce delay: ${debounce.delay}. debounce.delay must be a duration, not a ` +
+          `date, because it is re-applied every time the run is pushed back. Supported formats: ` +
+          `{number}s, {number}m, {number}h or {number}hr, {number}d, {number}w, optionally ` +
+          `combined (for example "2h30m").`
+      );
+    }
+
+    if (debounce.maxDelay !== undefined) {
+      const maxDelayMs = parseNaturalLanguageDurationInMs(debounce.maxDelay);
+
+      if (maxDelayMs === undefined) {
+        throw new ServiceValidationError(
+          `Invalid debounce maxDelay: ${debounce.maxDelay}. ` +
+            `Supported formats: {number}s, {number}m, {number}h or {number}hr, {number}d, ` +
+            `{number}w, optionally combined (for example "2h30m").`
+        );
+      }
+
+      if (maxDelayMs <= delayMs) {
+        throw new ServiceValidationError(
+          `debounce.maxDelay (${debounce.maxDelay}) must be longer than debounce.delay ` +
+            `(${debounce.delay}). A debounced run is only pushed back while it stays inside ` +
+            `maxDelay, so with these values every trigger would create its own run.`
+        );
+      }
+
+      return;
+    }
+
+    const serverCeilingMs = this.maximumDebounceDurationMs;
+
+    if (serverCeilingMs !== undefined && delayMs >= serverCeilingMs) {
+      throw new ServiceValidationError(
+        `debounce.delay (${debounce.delay}) is at or above this server's maximum debounce ` +
+          `duration of ${formatDurationMilliseconds(serverCeilingMs, { style: "short" })}. A ` +
+          `debounced run is only pushed back while it stays inside that window, so with this ` +
+          `delay every trigger would create its own run. Either shorten the delay, or set ` +
+          `debounce.maxDelay above ${debounce.delay}.`
+      );
+    }
   }
 
   // Mint a new run's friendlyId. The id-kind decides which store the run is born
@@ -270,9 +343,12 @@ export class RunEngineTriggerTaskService {
             if (debounceDelayError || !debounceDelayUntil) {
               throw new ServiceValidationError(
                 `Invalid debounce delay: ${body.options.debounce.delay}. ` +
-                  `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+                  `Supported formats: {number}s, {number}m, {number}h or {number}hr, {number}d, ` +
+                  `{number}w, optionally combined (for example "2h30m").`
               );
             }
+
+            this.#validateDebounceWindow(body.options.debounce);
           }
 
           const parentRun = body.options?.parentRunId
@@ -324,7 +400,7 @@ export class RunEngineTriggerTaskService {
             });
           }
 
-          const lockedToBackgroundWorker = body.options?.lockToVersion
+          const explicitlyLockedToBackgroundWorker = body.options?.lockToVersion
             ? await this.prisma.backgroundWorker.findFirst({
                 where: {
                   projectId: environment.projectId,
@@ -339,6 +415,34 @@ export class RunEngineTriggerTaskService {
                 },
               })
             : undefined;
+
+          const externalDeploymentId = body.options?.lockToVersion
+            ? undefined
+            : body.options?.externalDeploymentId;
+
+          const externalDeploymentResolution =
+            externalDeploymentId && environment.type !== "DEVELOPMENT"
+              ? await resolveExternalDeployment({
+                  prisma: this.prisma,
+                  environmentId: environment.id,
+                  externalDeploymentId,
+                  cache: this.externalDeploymentCache,
+                })
+              : undefined;
+
+          const lockedToBackgroundWorker =
+            explicitlyLockedToBackgroundWorker ??
+            (externalDeploymentResolution?.outcome === "deployed"
+              ? {
+                  id: externalDeploymentResolution.worker.workerId,
+                  version: externalDeploymentResolution.worker.version,
+                  sdkVersion: externalDeploymentResolution.worker.sdkVersion,
+                  cliVersion: externalDeploymentResolution.worker.cliVersion,
+                }
+              : undefined);
+
+          const parkedOnExternalDeploymentId =
+            externalDeploymentResolution?.outcome === "park" ? externalDeploymentId : undefined;
 
           const { queueName, lockedQueueId, taskTtl, taskKind } =
             await this.queueConcern.resolveQueueProperties(
@@ -433,6 +537,7 @@ export class RunEngineTriggerTaskService {
             rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
             rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
             taskKind: taskKind ?? "STANDARD",
+            externalDeploymentId,
           };
 
           // Route runs in a scheduled lineage (the scheduled run itself and every
@@ -568,6 +673,7 @@ export class RunEngineTriggerTaskService {
                       depth,
                       parentRun: parentRun ?? undefined,
                       annotations,
+                      parkedOnExternalDeploymentId,
                       planType,
                       taskId,
                       payloadPacket,
@@ -647,6 +753,7 @@ export class RunEngineTriggerTaskService {
                   depth,
                   parentRun: parentRun ?? undefined,
                   annotations,
+                  parkedOnExternalDeploymentId,
                   planType,
                   taskId,
                   payloadPacket,
@@ -752,7 +859,7 @@ export class RunEngineTriggerTaskService {
       // Pipeline returned successfully — publish the claim if we held
       // one. Waiters polling for our key resolve to this runId.
       if (idempotencyClaim && result?.run?.friendlyId) {
-        await publishMollifierClaim({
+        const published = await publishMollifierClaim({
           envId: idempotencyClaim.envId,
           taskIdentifier: idempotencyClaim.taskIdentifier,
           idempotencyKey: idempotencyClaim.idempotencyKey,
@@ -760,6 +867,17 @@ export class RunEngineTriggerTaskService {
           runId: result.run.friendlyId,
           ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
         });
+        if (!published) {
+          // Our claim expired mid-pipeline and another claimant took it, so this publish no-op'd: a
+          // different run is now canonical for this key while we return ours (a cross-DB dup under the
+          // split). Rare now the claim TTL is floored (C1); surfaced for monitoring pending auto-
+          // convergence (re-resolve the current winner + cancel this orphan).
+          logger.warn("mollifier claim publish no-op'd; winner lost the claim mid-pipeline", {
+            envId: idempotencyClaim.envId,
+            taskIdentifier: idempotencyClaim.taskIdentifier,
+            runId: result.run.friendlyId,
+          });
+        }
       }
       return result;
     } catch (err) {
@@ -811,7 +929,9 @@ export class RunEngineTriggerTaskService {
       triggerAction: string;
       rootTriggerSource: string;
       rootScheduleId?: string | undefined;
+      externalDeploymentId?: string | undefined;
     };
+    parkedOnExternalDeploymentId?: string;
     planType?: string;
     taskId: string;
     payloadPacket: { data?: string; dataType: string };
@@ -826,7 +946,7 @@ export class RunEngineTriggerTaskService {
       environment: args.environment,
       idempotencyKey: args.idempotencyKey,
       idempotencyKeyExpiresAt: args.idempotencyKey ? args.idempotencyKeyExpiresAt : undefined,
-      idempotencyKeyOptions: args.body.options?.idempotencyKeyOptions,
+      idempotencyKeyOptions: removeNullBytesFromKey(args.body.options?.idempotencyKeyOptions),
       taskIdentifier: args.taskId,
       payload: args.payloadPacket.data ?? "",
       payloadType: args.payloadPacket.dataType,
@@ -876,7 +996,9 @@ export class RunEngineTriggerTaskService {
         ? clampMaxDuration(args.body.options.maxDuration)
         : undefined,
       machine: args.body.options?.machine,
-      priorityMs: args.body.options?.priority ? args.body.options.priority * 1_000 : undefined,
+      priorityMs: args.body.options?.priority
+        ? clampPriorityMs(args.body.options.priority)
+        : undefined,
       queueTimestamp:
         args.options.queueTimestamp ??
         (args.parentRun && args.body.options?.resumeParentOnCompletion
@@ -889,8 +1011,9 @@ export class RunEngineTriggerTaskService {
       planType: args.planType,
       realtimeStreamsVersion: args.options.realtimeStreamsVersion,
       streamBasinName: args.environment.organization.streamBasinName,
-      debounce: args.body.options?.debounce,
+      debounce: removeNullBytesFromKey(args.body.options?.debounce),
       annotations: args.annotations,
+      parkedOnExternalDeploymentId: args.parkedOnExternalDeploymentId,
     };
   }
 

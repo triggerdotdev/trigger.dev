@@ -1,15 +1,25 @@
+import type { ClickHouse } from "@internal/clickhouse";
 import type { PrismaClient, TaskRunStatus } from "@trigger.dev/database";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { prisma } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
-import { BILLABLE_ENVIRONMENT_TYPES } from "./billingLimitConstants";
+import {
+  BILLABLE_ENVIRONMENT_TYPES,
+  BILLING_LIMIT_QUEUED_COUNT_MAX_EXECUTION_S,
+} from "./billingLimitConstants";
 
+import { boundedIn } from "@trigger.dev/database";
 export type BillableEnvironmentRef = {
   id: string;
   projectId: string;
 };
 
+/**
+ * Environments whose runs a billing limit must act on. Archived branches stay included:
+ * archiving is a soft update that cancels nothing, so an archived branch can still hold
+ * executing runs that enforcement has to cancel.
+ */
 export async function getBillableEnvironmentsForBillingLimit(
   organizationId: string,
   prismaClient: PrismaClient = prisma
@@ -17,7 +27,7 @@ export async function getBillableEnvironmentsForBillingLimit(
   return prismaClient.runtimeEnvironment.findMany({
     where: {
       organizationId,
-      type: { in: [...BILLABLE_ENVIRONMENT_TYPES] },
+      type: { in: boundedIn([...BILLABLE_ENVIRONMENT_TYPES]) },
     },
     select: {
       id: true,
@@ -72,27 +82,37 @@ async function countRunsForBillableEnvironment(
   });
 }
 
-/** Same source as BillingLimitBulkCancelService — ClickHouse countRuns(QUEUED_STATUSES). */
+/**
+ * Same table and statuses as BillingLimitBulkCancelService's per-environment counts, but a
+ * single org-level ClickHouse query filtered on environment_type. Deliberately NOT a
+ * per-environment loop: an org can have thousands of (mostly archived) preview environments,
+ * and sequential per-env counts hold the billing-limits loader open past the edge timeout.
+ * The count is display-only, so a server-side execution cap beats an unbounded query.
+ */
 export async function countBillableQueuedRunsForOrganization(
-  organizationId: string
+  organizationId: string,
+  clickhouse?: ClickHouse
 ): Promise<number> {
-  const environments = await getBillableEnvironmentsForBillingLimit(organizationId);
+  const client =
+    clickhouse ??
+    (await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard"));
 
-  if (environments.length === 0) {
-    return 0;
+  const queryBuilder = client.taskRuns.countQueryBuilder({
+    settings: { max_execution_time: BILLING_LIMIT_QUEUED_COUNT_MAX_EXECUTION_S },
+  });
+
+  queryBuilder
+    .where("organization_id = {organizationId: String}", { organizationId })
+    .where("environment_type IN {environmentTypes: Array(String)}", {
+      environmentTypes: [...BILLABLE_ENVIRONMENT_TYPES],
+    })
+    .where("status IN {statuses: Array(String)}", { statuses: [...QUEUED_STATUSES] });
+
+  const [queryError, result] = await queryBuilder.execute();
+
+  if (queryError) {
+    throw queryError;
   }
 
-  const runsRepository = await createBillingLimitRunsRepository(organizationId);
-
-  let total = 0;
-
-  for (const environment of environments) {
-    total += await countQueuedRunsForBillableEnvironment(
-      runsRepository,
-      organizationId,
-      environment
-    );
-  }
-
-  return total;
+  return result[0]?.count ?? 0;
 }

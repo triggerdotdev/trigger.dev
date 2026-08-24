@@ -1,4 +1,8 @@
-import { type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import {
+  type Prisma,
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+} from "@trigger.dev/database";
 import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
@@ -141,7 +145,31 @@ export class UpsertBranchService {
       const branchSlug = `${slug(`${parentEnvironment.slug}-${sanitizedBranchName}`)}`;
       const apiKey = createApiKeyForEnv(parentEnvironment.type);
       const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
-      const shortcode = branchSlug;
+      const isDevelopmentBranch = parentEnvironment.type === "DEVELOPMENT";
+      // Dev branches can share a slug across members, so their identity is scoped by
+      // orgMemberId. Shortcodes remain project-scoped and use the parent's unique
+      // shortcode to distinguish otherwise identical branch slugs.
+      const shortcode = isDevelopmentBranch
+        ? `${branchSlug}-${parentEnvironment.shortcode}`
+        : branchSlug;
+      let branchWhere: Prisma.RuntimeEnvironmentWhereUniqueInput;
+      if (isDevelopmentBranch) {
+        invariant(parentEnvironment.orgMemberId, "Development branches require an org member");
+        branchWhere = {
+          projectId_slug_orgMemberId: {
+            projectId: parentEnvironment.project.id,
+            slug: branchSlug,
+            orgMemberId: parentEnvironment.orgMemberId,
+          },
+        };
+      } else {
+        branchWhere = {
+          projectId_shortcode: {
+            projectId: parentEnvironment.project.id,
+            shortcode,
+          },
+        };
+      }
       const billingPause = await getInitialEnvPauseStateForBillingLimit(
         parentEnvironment.organization.id,
         parentEnvironment.type
@@ -149,12 +177,7 @@ export class UpsertBranchService {
 
       const now = new Date();
       const branch = await this.#prismaClient.runtimeEnvironment.upsert({
-        where: {
-          projectId_shortcode: {
-            projectId: parentEnvironment.project.id,
-            shortcode: shortcode,
-          },
-        },
+        where: branchWhere,
         create: {
           slug: branchSlug,
           apiKey,

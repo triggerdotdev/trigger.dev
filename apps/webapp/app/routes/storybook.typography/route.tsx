@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -18,6 +19,9 @@ export default function Story({
 }: TypographyProps) {
   return (
     <div className="flex flex-col gap-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Headers.tsx", "Paragraph.tsx", "TextLink.tsx"]} />
+      </div>
       <div className="flex flex-col gap-2">
         <Header1>{header1}</Header1>
         <Header1 textColor="dimmed">{header1}</Header1>
@@ -53,6 +57,24 @@ export default function Story({
           check them out in your project here in triggerdotdev/jobs/examples. You can also see the
           examples in more detail in the docs.
         </Paragraph>
+        <div className="mt-3 space-y-1">
+          <Paragraph variant="extra-extra-small/caps">Variants</Paragraph>
+          <Paragraph>
+            <TextLink href="#" variant="primary">
+              primary
+            </TextLink>
+            {" · "}
+            <TextLink href="#" variant="secondary">
+              secondary
+            </TextLink>
+          </Paragraph>
+          <Paragraph variant="extra-extra-small/caps">With a shortcut and a tooltip</Paragraph>
+          <Paragraph>
+            <TextLink href="#" shortcut={{ key: "d", modifiers: ["mod"] }} tooltip="Open the docs">
+              Docs
+            </TextLink>
+          </Paragraph>
+        </div>
       </div>
       <div>
         <Header2>Custom event JSON payload</Header2>

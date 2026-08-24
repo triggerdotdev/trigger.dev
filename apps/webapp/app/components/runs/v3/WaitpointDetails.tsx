@@ -87,9 +87,7 @@ export function WaitpointDetailTable({
               <div>
                 <div className="flex w-full flex-wrap items-center justify-between gap-1">
                   {waitpoint.completedAfter ? (
-                    <>
-                      <DateTimeAccurate date={waitpoint.completedAfter} />
-                    </>
+                    <DateTimeAccurate date={waitpoint.completedAfter} />
                   ) : (
                     "–"
                   )}
@@ -127,9 +125,8 @@ export function WaitpointDetailTable({
           {waitpoint.completedAt ? <DateTimeAccurate date={waitpoint.completedAt} /> : "–"}
         </Property.Value>
       </Property.Item>
-      {waitpoint.status === "WAITING" ? null : waitpoint.status === "TIMED_OUT" ? (
-        <></>
-      ) : waitpoint.output ? (
+      {waitpoint.status === "WAITING" ? null : waitpoint.status ===
+        "TIMED_OUT" ? null : waitpoint.output ? (
         <PacketDisplay title="Output" data={waitpoint.output} dataType={waitpoint.outputType} />
       ) : waitpoint.completedAfter ? null : (
         "Completed with no output"

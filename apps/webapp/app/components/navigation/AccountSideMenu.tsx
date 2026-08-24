@@ -7,7 +7,6 @@ import {
   personalAccessTokensPath,
   rootPath,
 } from "~/utils/pathBuilder";
-import { AskAI } from "../AskAI";
 import { LinkButton } from "../primitives/Buttons";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
@@ -34,7 +33,7 @@ export function AccountSideMenu({ user }: { user: User }) {
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="mb-6 flex grow flex-col overflow-y-auto pl-2.5 pr-0 pt-2 scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <SideMenuHeader title="Account" />
         <SideMenuItem
           name="Profile"
@@ -45,6 +44,7 @@ export function AccountSideMenu({ user }: { user: User }) {
         />
         <SideMenuItem
           name="Personal Access Tokens"
+          nameClassName="tracking-[-0.04em]"
           icon={ShieldIcon}
           activeIconColor="text-text-bright"
           to={personalAccessTokensPath()}
@@ -60,7 +60,6 @@ export function AccountSideMenu({ user }: { user: User }) {
       </div>
       <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
         <HelpAndFeedback />
-        <AskAI />
       </div>
     </div>
   );

@@ -304,6 +304,7 @@ async function seedRunWithTree(
     runFriendlyId: `run_${runId}`,
     parentFriendlyId: `run_${parentId}`,
     rootFriendlyId: `run_${rootId}`,
+    childId,
     childFriendlyId: `run_${childId}`,
     attemptId: attempt.id,
   };
@@ -353,6 +354,10 @@ describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant
       await prisma.taskRun.update({
         where: { id: tree.run.id },
         data: { scheduleId },
+      });
+      await prisma.taskRun.update({
+        where: { id: tree.childId },
+        data: { taskIdentifier: "other-task" },
       });
 
       const env = authEnv(organization, project, runtimeEnvironment);

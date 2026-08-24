@@ -81,6 +81,18 @@ pnpm run lint:fix    # oxlint — auto-fixes lint violations
 pnpm run lint        # oxlint — check only (no fixes)
 ```
 
+### Dead code
+
+We use knip to control unused dependencies and code. It is enforced by CI `code-quality`.
+
+Scan your code before pushing with:
+
+```bash
+pnpm run knip
+```
+
+If there are false positives, edit ./knip.json so that it passes.
+
 ### Imports
 
 **Prefer static imports over dynamic imports.** Only use dynamic `import()` when:
@@ -92,7 +104,21 @@ Dynamic imports add unnecessary overhead in hot paths and make code harder to an
 
 ## Changesets and Server Changes
 
-When modifying any public package (`packages/*` or `integrations/*`), add a changeset:
+Changesets and `.server-changes/` files are **user-facing release notes**. They ship verbatim into the changelog that customers read to decide what to upgrade for or pay attention to. They are not a catalog of every change: anyone who wants the exact history reads the commits. So the question is not "did I touch a public package or a server app?" but **"would a user or customer care about this change?"**
+
+**Add one** when the change is something a user would notice, act on, or want to hear about: a new feature, a bug fix they could have hit, a behavior or performance change they would feel, a breaking change.
+
+**Skip it** (no changeset, no `.server-changes/` file) when the change is not worth communicating to users, even if it touches a public package or a server app. For example:
+
+- internal-only or admin-only changes, refactors, test-only changes, chores
+- performance or query tuning with no user-visible behavior change
+- changes to a public package that is not consumed independently (e.g. `@trigger.dev/redis-worker`), where a version bump means nothing to a user
+
+When in doubt, ask a maintainer rather than adding a note by default. An unnecessary entry is noise in the changelog, not a safe default.
+
+### How to add one
+
+When a **public package** (`packages/*` or `integrations/*`) change is user-facing, add a changeset:
 
 ```bash
 pnpm run changeset:add
@@ -102,9 +128,9 @@ pnpm run changeset:add
 - Confirm with maintainers before selecting **minor** (new features)
 - **Never** select major without explicit approval
 
-When modifying only server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file instead. See `.server-changes/README.md` for format and documentation.
+When a **server-only** change (`apps/webapp/`, `apps/supervisor/`, etc., with no package changes) is user-facing, add a `.server-changes/` file instead. See `.server-changes/README.md` for format and documentation.
 
-**Write the description for users, not maintainers.** Both changesets and `.server-changes/` notes ship verbatim in user-visible release notes. Lead with what changed *for the user* - one plain sentence describing behavior, not implementation, and never naming internal tools or infra. The full writing guidance in `.server-changes/README.md` applies to changesets too.
+**Write the description for users, not maintainers.** Both changesets and `.server-changes/` notes ship verbatim in user-visible release notes. Lead with what changed *for the user*: one plain sentence describing behavior, not implementation, and never naming internal tools or infra. The full writing guidance in `.server-changes/README.md` applies to changesets too.
 
 ## Dependency Pinning
 

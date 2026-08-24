@@ -39,12 +39,12 @@ import {
 } from "../utilities/accessTokens.js";
 import { links } from "@trigger.dev/core/v3";
 
-export const LoginCommandOptions = CommonCommandOptions.extend({
+const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
   browser: z.boolean().default(true),
 });
 
-export type LoginCommandOptions = z.infer<typeof LoginCommandOptions>;
+type LoginCommandOptions = z.infer<typeof LoginCommandOptions>;
 
 export function configureLoginCommand(program: Command) {
   return commonOptions(
@@ -75,7 +75,7 @@ Examples:
     });
 }
 
-export async function loginCommand(options: unknown) {
+async function loginCommand(options: unknown) {
   return await wrapCommandAction("loginCommand", LoginCommandOptions, options, async (opts) => {
     return await _loginCommand(opts);
   });
@@ -295,9 +295,10 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         const indexResult = await pRetry(
           () => getPersonalAccessToken(apiClient, authorizationCodeResult.authorizationCode),
           {
-            //this means we're polling, same distance between each attempt
+            //poll at a fixed 1s interval. ~5 min window so the user has time to
+            //approve the consent screen; stays within the code's 10-min validity.
             factor: 1,
-            retries: 60,
+            retries: 300,
             minTimeout: 1000,
           }
         );
@@ -404,6 +405,15 @@ export async function getPersonalAccessToken(apiClient: CliApiClient, authorizat
       const token = await apiClient.getPersonalAccessToken(authorizationCode);
 
       if (!token.success) {
+        // A 429 from the per-code poll rate limiter is transient: the auth code
+        // is still valid and the user may just not have approved the consent
+        // screen yet. Throw a regular (retryable) error so the poll loop backs
+        // off and keeps polling, rather than an AbortError, which pRetry treats
+        // as fatal and would abandon the whole login.
+        if (token.statusCode === 429) {
+          throw new Error(token.error);
+        }
+
         throw new AbortError(token.error);
       }
 

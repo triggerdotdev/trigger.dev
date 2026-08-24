@@ -29,6 +29,7 @@ import {
   GetPersonalAccessTokenResponseSchema,
   GetProjectEnvResponse,
   GetProjectResponseBody,
+  GetProjectRuntimesResponseBody,
   GetProjectsResponseBody,
   InitializeDeploymentResponseBody,
   PromoteDeploymentResponseBody,
@@ -45,6 +46,11 @@ import {
   GenerateRegistryCredentialsResponseBody,
   RemoteBuildProviderStatusResponseBody,
 } from "@trigger.dev/core/v3";
+import {
+  ReportViewModelSchema,
+  type ReportFormat,
+  type ReportViewModel,
+} from "@trigger.dev/core/v3/schemas";
 import type {
   WorkloadDebugLogRequestBody,
   WorkloadHeartbeatRequestBody,
@@ -93,6 +99,11 @@ const CliPlatformNotificationResponseSchema = z.object({
       firstSeenAt: z.string(),
     })
     .nullable(),
+});
+
+const MarkProjectInitializedResponseBody = z.object({
+  id: z.string(),
+  initializedAt: z.string().nullable(),
 });
 
 export class CliApiClient {
@@ -174,12 +185,43 @@ export class CliApiClient {
     });
   }
 
+  async markProjectInitialized(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("markProjectInitialized: No access token");
+    }
+
+    return wrapZodFetch(
+      MarkProjectInitializedResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/init`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+
   async getProjects() {
     if (!this.accessToken) {
       throw new Error("getProjects: No access token");
     }
 
     return wrapZodFetch(GetProjectsResponseBody, `${this.apiURL}/api/v1/projects`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProjectRuntimes() {
+    if (!this.accessToken) {
+      throw new Error("getProjectRuntimes: No access token");
+    }
+
+    return wrapZodFetch(GetProjectRuntimesResponseBody, `${this.apiURL}/api/v1/projects/runtimes`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -368,6 +410,61 @@ export class CliApiClient {
     );
   }
 
+  /**
+   * `format: "json"` returns a `ReportViewModel`; "markdown" (default) and "ansi" return a rendered
+   * string. `period` is a shorthand like "1h" or "7d", capped at 90d. Seconds are not accepted.
+   */
+  async getReport(
+    key: string,
+    options: { period?: string; format: "json" }
+  ): Promise<ReportViewModel>;
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: "markdown" | "ansi" }
+  ): Promise<string>;
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: ReportFormat }
+  ): Promise<string | ReportViewModel> {
+    if (!this.accessToken) {
+      throw new Error("getReport: No access token");
+    }
+
+    const searchParams = new URLSearchParams({ format: options?.format ?? "markdown" });
+    if (options?.period) {
+      searchParams.set("period", options.period);
+    }
+
+    const response = await fetch(
+      `${this.apiURL}/api/v1/reports/${encodeURIComponent(key)}?${searchParams.toString()}`,
+      {
+        method: "GET",
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      let bodySnippet = "";
+      try {
+        const text = (await response.text()).trim();
+        bodySnippet = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+      } catch {
+        // best-effort; ignore
+      }
+      throw new Error(
+        `Failed to fetch report "${key}": ${response.status} ${response.statusText}${
+          bodySnippet ? ` — ${bodySnippet}` : ""
+        }`
+      );
+    }
+
+    if (options?.format === "json") {
+      return ReportViewModelSchema.parse(await response.json());
+    }
+
+    return response.text();
+  }
+
   async importEnvVars(
     projectRef: string,
     slug: string,
@@ -510,8 +607,8 @@ export class CliApiClient {
     source.onConnectionError((error) => {
       let message = error.message ?? "Unknown error";
 
-      if (error.status !== undefined) {
-        message = `HTTP ${error.status} ${message}`;
+      if (error.code !== undefined) {
+        message = `HTTP ${error.code} ${message}`;
       }
 
       resolvePromise({
@@ -606,6 +703,7 @@ export class CliApiClient {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
+        "x-trigger-cli-version": VERSION,
       },
       signal,
     });

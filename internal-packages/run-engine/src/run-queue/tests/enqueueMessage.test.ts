@@ -179,6 +179,53 @@ describe("RunQueue.enqueueMessage fast path", () => {
     }
   );
 
+  redisTest("should not fast-path a future-scored message", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer, "runqueue:fp-future-score:");
+
+    try {
+      await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
+
+      const futureMessage: InputPayload = {
+        ...messageDev,
+        runId: "r_future_score",
+        timestamp: Date.now() + 60_000,
+      };
+
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: futureMessage,
+        workerQueue: authenticatedEnvDev.id,
+        enableFastPath: true,
+      });
+
+      const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, futureMessage.queue);
+      const queueConcurrency = await queue.currentConcurrencyOfQueue(
+        authenticatedEnvDev,
+        futureMessage.queue
+      );
+      const dequeued = await queue.dequeueMessageFromWorkerQueue(
+        "test_12345",
+        authenticatedEnvDev.id,
+        { blockingPop: false }
+      );
+
+      expect({
+        // A future-scored message must remain in the sorted set until it is eligible.
+        queueLength,
+        // It must not claim concurrency before it becomes eligible.
+        queueConcurrency,
+        // It must not be visible to a worker before its timestamp.
+        dequeuedMessageId: dequeued?.messageId,
+      }).toEqual({
+        queueLength: 1,
+        queueConcurrency: 0,
+        dequeuedMessageId: undefined,
+      });
+    } finally {
+      await queue.quit();
+    }
+  });
+
   redisTest("should take slow path when enableFastPath is false", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, "runqueue:fp2:");
 

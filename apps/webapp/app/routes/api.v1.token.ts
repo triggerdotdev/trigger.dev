@@ -4,6 +4,10 @@ import type { GetPersonalAccessTokenResponse } from "@trigger.dev/core/v3";
 import { GetPersonalAccessTokenRequestSchema } from "@trigger.dev/core/v3";
 import { generateErrorMessage } from "zod-error";
 import { logger } from "~/services/logger.server";
+import {
+  AuthorizationCodeRateLimitError,
+  checkAuthorizationCodeTokenPollRateLimit,
+} from "~/services/authCodeRateLimiter.server";
 import { getPersonalAccessTokenFromAuthorizationCode } from "~/services/personalAccessToken.server";
 import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 
@@ -23,6 +27,20 @@ export async function action({ request }: ActionFunctionArgs) {
   const body = GetPersonalAccessTokenRequestSchema.safeParse(anyBody);
   if (!body.success) {
     return json({ error: generateErrorMessage(body.error.issues) }, { status: 422 });
+  }
+
+  // Per-code rate limit (keyed by the code, not the IP, so the CLI's poll loop
+  // isn't broken behind a shared NAT).
+  try {
+    await checkAuthorizationCodeTokenPollRateLimit(body.data.authorizationCode);
+  } catch (error) {
+    if (error instanceof AuthorizationCodeRateLimitError) {
+      return json(
+        { error: "Too many requests, please try again later." },
+        { status: 429, headers: { "Retry-After": Math.ceil(error.retryAfter / 1000).toString() } }
+      );
+    }
+    throw error;
   }
 
   try {

@@ -3,6 +3,7 @@ import { ManageConcurrencyPresenter } from "~/presenters/v3/ManageConcurrencyPre
 import { BaseService } from "./baseService.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { concurrencySystem } from "./concurrencySystemInstance.server";
 
 type Input = {
   userId: string;
@@ -87,8 +88,16 @@ export class AllocateConcurrencyService extends BaseService {
       });
 
       if (!updatedEnvironment.paused) {
-        await updateEnvConcurrencyLimits(updatedEnvironment);
+        await updateEnvConcurrencyLimits(updatedEnvironment, undefined, this._prisma);
       }
+
+      // Percent-based queue overrides follow the environment limit automatically. Note the
+      // deliberate asymmetry with the env-level push above: `updateEnvConcurrencyLimits` is gated
+      // on `!paused`, but we recalculate queue limits even for paused environments. Queue-level
+      // pushes on a paused env are inert (the env-level gate stops dequeueing regardless), and
+      // keeping the queue limits synced means resume needs no extra reconciliation — skipping
+      // them here would instead leave stale engine limits after the env resumes.
+      await concurrencySystem.queues.recalculatePercentLimits(updatedEnvironment);
 
       // maximumConcurrencyLimit changed in the control-plane; drop any cached copy.
       controlPlaneResolver.invalidateEnvironment(environment.id);

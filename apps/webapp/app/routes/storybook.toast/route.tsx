@@ -1,10 +1,14 @@
-import { Toaster, toast } from "sonner";
+import { ComponentNames } from "../storybook/StoryKit";
+import { toast } from "sonner";
 import { Button } from "~/components/primitives/Buttons";
 import { ToastUI } from "~/components/primitives/Toast";
 
 export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-4 p-4">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Toast.tsx"]} />
+      </div>
       <ToastUI variant="success" message="Success UI" t="-" />
       <ToastUI
         variant="success"
@@ -16,6 +20,18 @@ export default function Story() {
         variant="error"
         message="This is a long error message that wraps over multiple lines so we can test the UI."
         t="-"
+      />
+      <ToastUI variant="agent" message="Agent info UI" t="-" />
+      <ToastUI
+        variant="agent"
+        title="Watch update"
+        message="Error error_c4b4a797 happened again — 1 new occurrence since the watch started."
+        t="-"
+        actionNode={
+          <Button variant="secondary/small" className="my-2 self-start">
+            Open chat
+          </Button>
+        }
       />
       <br />
       <Button
@@ -38,8 +54,33 @@ export default function Story() {
       >
         Trigger error toast
       </Button>
-
-      <Toaster />
+      <Button
+        variant="secondary/medium"
+        onClick={() =>
+          toast.custom(
+            (t) => (
+              <ToastUI
+                variant="agent"
+                title="Watch update"
+                message="Error error_c4b4a797 happened again — 1 new occurrence since the watch started."
+                t={t as string}
+                actionNode={
+                  <Button
+                    variant="secondary/small"
+                    className="my-2 self-start"
+                    onClick={() => toast.dismiss(t as string)}
+                  >
+                    Open chat
+                  </Button>
+                }
+              />
+            ),
+            { duration: Infinity }
+          )
+        }
+      >
+        Trigger agent toast
+      </Button>
     </div>
   );
 }

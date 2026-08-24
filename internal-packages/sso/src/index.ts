@@ -56,7 +56,8 @@ export class LazyController implements SsoController {
     }
     const moduleName = "@triggerdotdev/plugins/sso";
     const importer =
-      options?.importer ?? ((m: string) => import(m) as Promise<{ default: SsoPlugin }>);
+      options?.importer ??
+      ((m: string) => import(/* @vite-ignore */ m) as Promise<{ default: SsoPlugin }>);
     try {
       const module = await importer(moduleName);
       const plugin: SsoPlugin = module.default;

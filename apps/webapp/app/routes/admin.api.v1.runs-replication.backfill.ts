@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { type TaskRun } from "@trigger.dev/database";
+import { type TaskRun, boundedIn } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
@@ -30,9 +30,9 @@ export async function action({ request }: ActionFunctionArgs) {
       const batchRuns = await runStore.findRuns(
         {
           where: {
-            id: { in: batch },
+            id: { in: boundedIn(batch) },
             status: {
-              in: FINAL_RUN_STATUSES,
+              in: boundedIn(FINAL_RUN_STATUSES),
             },
           },
         },

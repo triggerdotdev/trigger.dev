@@ -62,7 +62,12 @@ async function seedControlPlane(prisma: PrismaClient) {
 async function seedWorker(
   prisma: PrismaClient,
   ctx: { projectId: string; environmentId: string },
-  opts?: { promote?: boolean }
+  opts?: {
+    promote?: boolean;
+    createdAt?: Date;
+    deploymentType?: "MANAGED" | "UNMANAGED" | "V1";
+    deploymentCreatedAt?: Date;
+  }
 ) {
   const n = seedCounter++;
   const worker = await prisma.backgroundWorker.create({
@@ -74,6 +79,7 @@ async function seedWorker(
       version: `2024.1.${n}`,
       metadata: {},
       engine: "V2",
+      ...(opts?.createdAt ? { createdAt: opts.createdAt } : {}),
     },
   });
   const task = await prisma.backgroundWorkerTask.create({
@@ -104,11 +110,12 @@ async function seedWorker(
         contentHash: `hash_${n}`,
         version: worker.version,
         shortCode: `dep_${n}`,
-        type: "MANAGED",
+        type: opts?.deploymentType ?? "MANAGED",
         status: "DEPLOYED",
         projectId: ctx.projectId,
         environmentId: ctx.environmentId,
         workerId: worker.id,
+        ...(opts?.deploymentCreatedAt ? { createdAt: opts.deploymentCreatedAt } : {}),
       },
     });
     await prisma.workerDeploymentPromotion.create({
@@ -217,7 +224,7 @@ heteroPostgresTest(
 // --- resolveWorkerVersion ---------------------------------------------------
 
 heteroPostgresTest(
-  "resolveWorkerVersion (pinned) returns worker/tasks/queues and caches it",
+  "resolveWorkerVersion (pinned) returns worker/tasks/queues and reads fresh each call",
   async ({ prisma14 }) => {
     const { environment, project } = await seedControlPlane(prisma14);
     const { worker, task, queue } = await seedWorker(prisma14, {
@@ -243,6 +250,37 @@ heteroPostgresTest(
     const readsAfterFirst = reads();
     expect(readsAfterFirst).toBeGreaterThanOrEqual(1);
 
+    const second = await resolver.resolveWorkerVersion({
+      environmentId: environment.id,
+      backgroundWorkerId: worker.id,
+    });
+    expect(second?.worker.id).toBe(worker.id);
+    expect(reads()).toBeGreaterThan(readsAfterFirst);
+  }
+);
+
+heteroPostgresTest(
+  "resolveWorkerVersion (pinned) serves from cache when the kill-switch is off",
+  async ({ prisma14 }) => {
+    const { environment, project } = await seedControlPlane(prisma14);
+    const { worker } = await seedWorker(prisma14, {
+      projectId: project.id,
+      environmentId: environment.id,
+    });
+    const { client: counting, reads } = countQueries(prisma14);
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: counting,
+      controlPlanePrimary: counting,
+      cache: new ControlPlaneCache(),
+      splitEnabled: () => true,
+      workerVersionFreshReadEnabled: () => false,
+    });
+
+    await resolver.resolveWorkerVersion({
+      environmentId: environment.id,
+      backgroundWorkerId: worker.id,
+    });
+    const readsAfterFirst = reads();
     const second = await resolver.resolveWorkerVersion({
       environmentId: environment.id,
       backgroundWorkerId: worker.id,
@@ -276,7 +314,7 @@ heteroPostgresTest(
 
     const second = await resolver.resolveWorkerVersion({ environmentId: environment.id });
     expect(second?.worker.id).toBe(worker.id);
-    expect(reads()).toBe(readsAfterFirst);
+    expect(reads()).toBeGreaterThan(readsAfterFirst);
   }
 );
 
@@ -746,5 +784,105 @@ heteroPostgresTest(
     const readsAfterFirst = reads();
     await resolver.resolveRunLockedWorker({ lockedById: task.id, lockedToVersionId: worker.id });
     expect(reads()).toBe(readsAfterFirst * 2);
+  }
+);
+
+heteroPostgresTest(
+  "resolveWorkerVersion (DEVELOPMENT) resolves the newest worker by createdAt, not by id",
+  async ({ prisma14 }) => {
+    const { environment, project } = await seedControlPlane(prisma14);
+    const ctx = { projectId: project.id, environmentId: environment.id };
+
+    const newest = await seedWorker(prisma14, ctx, {
+      createdAt: new Date("2026-07-31T12:00:00.000Z"),
+    });
+    const oldest = await seedWorker(prisma14, ctx, {
+      createdAt: new Date("2026-07-30T12:00:00.000Z"),
+    });
+
+    expect(oldest.worker.id > newest.worker.id).toBe(true);
+    expect(oldest.worker.createdAt < newest.worker.createdAt).toBe(true);
+
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: prisma14,
+      controlPlanePrimary: prisma14,
+      cache: new ControlPlaneCache(),
+      splitEnabled: () => true,
+    });
+
+    const resolved = await resolver.resolveWorkerVersion({
+      environmentId: environment.id,
+      type: "DEVELOPMENT",
+    });
+
+    expect(resolved).not.toBeNull();
+    expect(resolved!.worker.id).toBe(newest.worker.id);
+  }
+);
+
+heteroPostgresTest(
+  "resolveWorkerVersion latest-MANAGED fallback resolves by createdAt, not by id",
+  async ({ prisma14 }) => {
+    const { environment, project } = await seedControlPlane(prisma14);
+    const ctx = { projectId: project.id, environmentId: environment.id };
+
+    await seedWorker(prisma14, ctx, { promote: true, deploymentType: "V1" });
+
+    const newest = await seedWorker(prisma14, ctx, {
+      promote: false,
+      deploymentCreatedAt: new Date("2026-07-31T12:00:00.000Z"),
+    });
+    const oldest = await seedWorker(prisma14, ctx, {
+      promote: false,
+      deploymentCreatedAt: new Date("2026-07-30T12:00:00.000Z"),
+    });
+
+    const newestDeployment = await prisma14.workerDeployment.create({
+      data: {
+        friendlyId: `deployment_newest_${environment.id}`,
+        contentHash: "hash_newest",
+        version: newest.worker.version,
+        shortCode: "dep_newest",
+        type: "MANAGED",
+        status: "DEPLOYED",
+        projectId: project.id,
+        environmentId: environment.id,
+        workerId: newest.worker.id,
+        createdAt: new Date("2026-07-31T12:00:00.000Z"),
+      },
+    });
+    const oldestDeployment = await prisma14.workerDeployment.create({
+      data: {
+        friendlyId: `deployment_oldest_${environment.id}`,
+        contentHash: "hash_oldest",
+        version: oldest.worker.version,
+        shortCode: "dep_oldest",
+        type: "MANAGED",
+        status: "DEPLOYED",
+        projectId: project.id,
+        environmentId: environment.id,
+        workerId: oldest.worker.id,
+        createdAt: new Date("2026-07-30T12:00:00.000Z"),
+      },
+    });
+
+    expect(oldestDeployment.id > newestDeployment.id).toBe(true);
+    expect(oldestDeployment.createdAt < newestDeployment.createdAt).toBe(true);
+
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: prisma14,
+      controlPlanePrimary: prisma14,
+      cache: new ControlPlaneCache(),
+      splitEnabled: () => true,
+    });
+
+    const resolved = await resolver.resolveWorkerVersion({
+      environmentId: environment.id,
+      type: "PRODUCTION",
+    });
+
+    expect(resolved).not.toBeNull();
+    expect(resolved!.deployment!.id).toBe(newestDeployment.id);
+    expect(resolved!.worker.id).toBe(newest.worker.id);
   }
 );

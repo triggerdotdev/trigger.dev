@@ -27,12 +27,27 @@ export function useUser(matches?: UIMatch[]): User {
 }
 
 export function useUserChanged(callback: (user: User | undefined) => void) {
-  useChanged(useOptionalUser, callback);
+  const user = useOptionalUser();
+  useChanged(user, callback);
+}
+
+/**
+ * Whether the admin has switched to "view as user" for the current
+ * impersonation session. Display only — see `hasAdminDisplayAccess`.
+ */
+export function useIsViewingAsUser(matches?: UIMatch[]): boolean {
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+    matches,
+  });
+
+  return routeMatch?.isViewingAsUser === true;
 }
 
 export function useHasAdminAccess(matches?: UIMatch[]): boolean {
   const user = useOptionalUser(matches);
   const isImpersonating = useIsImpersonating(matches);
+  const isViewingAsUser = useIsViewingAsUser(matches);
 
-  return Boolean(user?.admin) || isImpersonating;
+  return (Boolean(user?.admin) || isImpersonating) && !isViewingAsUser;
 }

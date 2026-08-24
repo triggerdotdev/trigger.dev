@@ -20,7 +20,10 @@ helm template trigger . --dependency-update
 ### Installation
 
 ```bash
-# Deploy with default values (testing/development only)
+# A bare install works: application, control-plane, and bundled-datastore
+# secrets are auto-generated on first install (and retained across upgrades)
+# when you don't set them. Provide a values file to pin any of them or to
+# point at external datastores.
 helm install trigger .
 
 # Deploy to specific namespace
@@ -59,24 +62,28 @@ npx trigger.dev@latest deploy --push
 
 ### Secrets Configuration
 
-**IMPORTANT**: The default secrets are for **TESTING ONLY** and must be changed for production.
+**IMPORTANT**: The chart ships no working secret defaults. Application, control-plane, and bundled-datastore secrets (postgres/clickhouse/minio/registry) are **auto-generated per install** (and retained across upgrades) when left unset. You can still set them explicitly - e.g. to share `managedWorkerSecret` with an external supervisor, or to manage everything via `secrets.existingSecret`. Explicit values always win over generation.
 
-#### Required Secrets
+#### Auto-generated secrets
 
-All secrets must be exactly **32 hexadecimal characters** (16 bytes):
+Left unset, these are generated on first install and preserved on `helm upgrade` (rotating them would invalidate sessions and orphan encrypted data, so they are never regenerated once set):
 
 - `sessionSecret` - User authentication sessions
-- `magicLinkSecret` - Passwordless login tokens  
+- `magicLinkSecret` - Passwordless login tokens
 - `encryptionKey` - Sensitive data encryption
-- `managedWorkerSecret` - Worker authentication
+- `managedWorkerSecret` - Worker authentication (set explicitly if an external supervisor must share it)
+- `providerSecret` - Provider control-plane socket authentication
+- `coordinatorSecret` - Coordinator control-plane socket authentication
 
-#### Generate Production Secrets
+#### Generating secrets yourself
+
+If you prefer to set them explicitly (e.g. to reuse across clusters):
 
 ```bash
-for i in {1..4}; do openssl rand -hex 16; done
+for i in {1..6}; do openssl rand -hex 16; done
 ```
 
-#### Configure Production Secrets
+#### Configure secrets explicitly
 
 ```yaml
 # values-production.yaml
@@ -85,6 +92,8 @@ secrets:
   magicLinkSecret: "your-generated-secret-2" 
   encryptionKey: "your-generated-secret-3"
   managedWorkerSecret: "your-generated-secret-4"
+  providerSecret: "your-generated-secret-5"
+  coordinatorSecret: "your-generated-secret-6"
   objectStore:
     accessKeyId: "your-s3-access-key"
     secretAccessKey: "your-s3-secret-key"

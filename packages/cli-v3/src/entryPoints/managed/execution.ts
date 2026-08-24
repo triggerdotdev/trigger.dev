@@ -951,7 +951,7 @@ export class RunExecution {
 
     this.sendDebugLog(`[override] processing: ${reason}`, {
       overrides,
-      currentEnv: this.env.raw,
+      currentEnv: this.env.rawForLogging,
     });
 
     // Override the env with the new values

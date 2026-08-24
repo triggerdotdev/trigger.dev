@@ -67,7 +67,7 @@ function SpanEvent({ spanEvent }: { spanEvent: OtelSpanEvent }) {
   );
 }
 
-export function SpanEventError({
+function SpanEventError({
   spanEvent,
   exception,
 }: {
@@ -85,7 +85,7 @@ export function SpanEventError({
       />
       {enhancedException.message && (
         <Callout variant="error">
-          <pre className="text-wrap font-sans text-sm font-normal text-rose-200">
+          <pre className="text-wrap font-sans text-sm font-normal text-rose-500 dark:text-rose-200">
             {enhancedException.message}
           </pre>
         </Callout>

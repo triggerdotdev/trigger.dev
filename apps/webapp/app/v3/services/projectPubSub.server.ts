@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { singleton } from "~/utils/singleton";
-import type { ZodSubscriber } from "../utils/zodPubSub.server";
 import { ZodPubSub } from "../utils/zodPubSub.server";
 import { env } from "~/env.server";
 import { Gauge } from "prom-client";
@@ -14,9 +13,10 @@ const messageCatalog = {
     taskCount: z.number(),
     type: z.union([z.literal("local"), z.literal("deployed")]),
   }),
+  PROJECT_INITIALIZED: z.object({
+    initializedAt: z.coerce.date(),
+  }),
 };
-
-export type ProjectSubscriber = ZodSubscriber<typeof messageCatalog>;
 
 export const projectPubSub = singleton("projectPubSub", initializeProjectPubSub);
 

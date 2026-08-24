@@ -266,10 +266,13 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
           ...helper.toStreamTextOptions({ tools: headStartTools }),
           model: anthropic("claude-sonnet-4-6"),
           system: "You are a helpful assistant.",
-          stopWhen: stepCountIs(15),
         }),
     });
     ```
+
+    <Warning>
+      Don't set `stopWhen` here. The spread pins it to `stepCountIs(1)`, and overriding it makes the handler run steps the agent is supposed to own — the handover then splices a stream that has already moved past step 1.
+    </Warning>
 
     <Tip>
       Use the **same model** on both sides (route handler and `chat.agent`) to avoid a tone or style shift between step 1 and step 2+. Your LLM provider keys stay server-side in your warm process — Trigger.dev never holds them in this design.
@@ -589,10 +592,10 @@ if (turn === 0 && payload.trigger === "handover-prepare") {
       messages: conversation.modelMessages,
       stopWhen: stepCountIs(10),
     });
-    const response = await chat.pipeAndCapture(result, {
+    const { message } = await chat.pipeAndCapture(result, {
       originalMessages: conversation.uiMessages,
     });
-    if (response) await conversation.addResponse(response);
+    if (message) await conversation.addResponse(message);
   }
   await chat.writeTurnComplete(); // on isFinal the warm partial is already the response
   return;

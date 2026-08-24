@@ -13,11 +13,13 @@ import {
   createBackgroundFiles,
   createWorkerResources,
   syncDeclarativeSchedules,
+  syncDeclarativeWebhooks,
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 import { env } from "~/env.server";
+import { webhookPrisma } from "~/db.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -51,6 +53,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       const deployment = await this._prisma.workerDeployment.findFirst({
         where: {
           friendlyId: deploymentId,
+          environmentId: environment.id,
         },
       });
 
@@ -221,6 +224,29 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         });
 
         const serviceError = new ServiceValidationError("Error syncing declarative schedules");
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
+
+        throw serviceError;
+      }
+
+      const [webhooksError] = await tryCatch(
+        syncDeclarativeWebhooks(
+          body.metadata.webhooks,
+          backgroundWorker,
+          environment,
+          this._prisma,
+          webhookPrisma
+        )
+      );
+
+      if (webhooksError) {
+        logger.error("Error syncing declarative webhooks", { error: webhooksError });
+
+        const serviceError =
+          webhooksError instanceof ServiceValidationError
+            ? webhooksError
+            : new ServiceValidationError("Error syncing declarative webhooks");
 
         await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
 

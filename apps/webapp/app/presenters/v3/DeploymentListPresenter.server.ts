@@ -17,7 +17,7 @@ import {
 
 const pageSize = 20;
 
-export type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
+type DeploymentList = Awaited<ReturnType<DeploymentListPresenter["call"]>>;
 export type DeploymentListItem = DeploymentList["deployments"][0];
 
 export class DeploymentListPresenter {
@@ -43,24 +43,6 @@ export class DeploymentListPresenter {
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
         id: true,
-        environments: {
-          select: {
-            id: true,
-            type: true,
-            slug: true,
-            orgMember: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
         connectedGithubRepository: {
           select: {
             branchTracking: true,
@@ -171,6 +153,7 @@ export class DeploymentListPresenter {
         userDisplayName: string | null;
         userAvatarUrl: string | null;
         type: WorkerInstanceGroupType;
+        externalId: string | null;
         git: Prisma.JsonValue | null;
         integrationDeploymentId: string | null;
       }[]
@@ -191,6 +174,7 @@ export class DeploymentListPresenter {
   wd."builtAt",
   wd."deployedAt",
   wd."type",
+  wd."externalId",
   wd."git"
   ${vercelSelect}
 FROM
@@ -276,6 +260,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
                 avatarUrl: deployment.userAvatarUrl,
               }
             : undefined,
+          externalId: deployment.externalId,
           git: processGitMetadata(deployment.git),
           vercelDeploymentUrl,
         };

@@ -22,8 +22,31 @@ export default defineConfig({
 This is usually required if you are using certain ORMs, like TypeORM, that require this option to be enabled. It's not enabled by default because there is a performance cost to enabling it.
 
 <Note>
-  emitDecoratorMetadata works by hooking into the esbuild bundle process and using the TypeScript
-  compiler API to compile files where we detect the use of decorators. This means you must have
-  `emitDecoratorMetadata` enabled in your `tsconfig.json` file, as well as `typescript` installed in
-  your `devDependencies`.
+  `emitDecoratorMetadata` hooks into the esbuild bundle process and uses the TypeScript compiler API
+  to compile files containing decorators. Enable `emitDecoratorMetadata` in your `tsconfig.json` and
+  install `typescript` in your `devDependencies`.
 </Note>
+
+## Using with TypeScript 7
+
+TypeScript 7 does not expose the JavaScript compiler API required by this extension. Install the TypeScript 6 compatibility package alongside TypeScript 7:
+
+<CodeGroup>
+
+```bash npm
+npm install --save-dev @typescript/typescript6@latest
+```
+
+```bash pnpm
+pnpm add --save-dev @typescript/typescript6@latest
+```
+
+```bash bun
+bun add --dev @typescript/typescript6@latest
+```
+
+</CodeGroup>
+
+Your project continues using TypeScript 7 for its normal type checking and compiler commands. The extension loads the compatibility package only when it needs to emit decorator metadata.
+
+Restart the Trigger.dev dev server after installing the package.

@@ -1,5 +1,79 @@
 # @trigger.dev/react-hooks
 
+## 4.5.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+
+## 4.5.10
+
+### Patch Changes
+
+- `debounce` now works when you pass an array of items to `batchTrigger` or `batchTriggerAndWait`, and when you trigger from `useTaskTrigger`. Previously the option was accepted by the types and dropped before the request was sent, so every trigger created its own run instead of collapsing onto the debounce key. ([#4520](https://github.com/triggerdotdev/trigger.dev/pull/4520))
+
+  ```ts
+  await myTask.batchTrigger([
+    {
+      payload: { id: "a" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+    {
+      payload: { id: "b" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+  ]);
+  ```
+
+  The streaming (async iterable) forms of the batch calls were already forwarding `debounce` correctly.
+
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+
+## 4.5.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.7`
+
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
 ## 4.5.4
 
 ### Patch Changes

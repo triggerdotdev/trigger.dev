@@ -1,4 +1,4 @@
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, boundedIn, withTransactionStartRetry } from "@trigger.dev/database";
 import type {
   BatchTaskRun,
   BatchTaskRunItemStatus,
@@ -6,6 +6,7 @@ import type {
   PrismaClientOrTransaction,
   TaskRun,
   TaskRunStatus,
+  TransactionStartRetryConfig,
   WaitpointTag,
 } from "@trigger.dev/database";
 import type {
@@ -21,6 +22,7 @@ import type {
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
   LockRunData,
+  PromotePendingVersionArgs,
   ReadClient,
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
@@ -84,7 +86,10 @@ export interface RunOpsCapableClient {
  * per-call `tx` so they share one transaction (see `runInTransaction`).
  */
 export interface RunOpsTransactionalClient extends RunOpsCapableClient {
-  $transaction: <R>(fn: (tx: RunOpsCapableClient) => Promise<R>) => Promise<R>;
+  $transaction: <R>(
+    fn: (tx: RunOpsCapableClient) => Promise<R>,
+    options?: { timeout?: number; maxWait?: number; isolationLevel?: unknown }
+  ) => Promise<R>;
 }
 
 /**
@@ -99,11 +104,20 @@ export type RunStoreSchemaVariant = "legacy" | "dedicated";
 // (apps/webapp/app/presenters/v3/WaitpointPresenter.server.ts) — keep the values in sync.
 export const CONNECTED_RUNS_LIMIT = 5;
 
+export const RUN_OPS_WRITE_TX_TIMEOUT_MS = 15_000;
+
 export type PostgresRunStoreOptions = {
   prisma: RunOpsCapableClient;
   readOnlyPrisma: RunOpsCapableClient;
   /** Defaults to `"legacy"` so existing callers/tests are unaffected. */
   schemaVariant?: RunStoreSchemaVariant;
+  /**
+   * `maxWait` (ms) applied when THIS store opens its own transaction. Threaded from the app
+   * boundary (IoC). Undefined leaves Prisma's own default (2000ms), preserving test behavior.
+   */
+  maxWait?: number;
+  /** Env-driven P2028-at-acquisition retry config, threaded from the app boundary (IoC). */
+  transactionStartRetry?: TransactionStartRetryConfig;
 };
 
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
@@ -234,7 +248,7 @@ async function batchHydrateJoinRelation(
     return byParent;
   }
   const links = (await join.findMany({
-    where: { [joinParentField]: { in: parentIds } },
+    where: { [joinParentField]: { in: boundedIn(parentIds) } },
     select: { [joinParentField]: true, [joinTargetField]: true },
   })) as Record<string, string>[];
   if (links.length === 0) {
@@ -242,7 +256,7 @@ async function batchHydrateJoinRelation(
   }
   const targetIds = [...new Set(links.map((l) => l[joinTargetField]))];
   const rows = (await targetDelegate.findMany(
-    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn(targetIds) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const link of links) {
@@ -267,7 +281,7 @@ const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (
     return byParent;
   }
   const rows = (await client.waitpoint.findMany(
-    targetFindManyArgs({ completedByTaskRunId: { in: parentIds } }, projection, [
+    targetFindManyArgs({ completedByTaskRunId: { in: boundedIn(parentIds) } }, projection, [
       "completedByTaskRunId",
     ])
   )) as Record<string, unknown>[];
@@ -311,7 +325,7 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
     return byParent;
   }
   const edges = (await client.taskRunWaitpoint.findMany({
-    where: { waitpointId: { in: parentIds } },
+    where: { waitpointId: { in: boundedIn(parentIds) } },
   })) as Record<string, unknown>[];
   const nestedTaskRun = projection?.select?.taskRun;
   const runProjection = nestedTaskRun ? projectionOf(nestedTaskRun as SubProjection) : undefined;
@@ -321,7 +335,7 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
     const runs = (
       runIds.length > 0
         ? await client.taskRun.findMany(
-            targetFindManyArgs({ id: { in: runIds } }, runProjection, ["id"])
+            targetFindManyArgs({ id: { in: boundedIn(runIds) } }, runProjection, ["id"])
           )
         : []
     ) as Record<string, unknown>[];
@@ -371,7 +385,7 @@ const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parents, 
   }
   const targetIds = [...new Set(links.map((l) => l.taskRunId))];
   const rows = (await client.taskRun.findMany(
-    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn(targetIds) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const link of links) {
@@ -427,7 +441,7 @@ async function batchHydrateEdgeTarget(
     return byParent;
   }
   const rows = (await targetDelegate.findMany(
-    targetFindManyArgs({ id: { in: [...new Set(targetIds)] } }, projection, ["id"])
+    targetFindManyArgs({ id: { in: boundedIn([...new Set(targetIds)]) } }, projection, ["id"])
   )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const p of parents) {
@@ -624,6 +638,8 @@ export class PostgresRunStore implements RunStore {
   private readonly prisma: RunOpsCapableClient;
   private readonly readOnlyPrisma: RunOpsCapableClient;
   private readonly schemaVariant: RunStoreSchemaVariant;
+  private readonly maxWait?: number;
+  private readonly transactionStartRetry?: TransactionStartRetryConfig;
 
   constructor(options: PostgresRunStoreOptions) {
     // Normalize foreign (run-ops-generation) Prisma known-request-errors to the control-plane
@@ -632,6 +648,8 @@ export class PostgresRunStore implements RunStore {
     this.prisma = wrapRunOpsClientForErrorNormalization(options.prisma);
     this.readOnlyPrisma = wrapRunOpsClientForErrorNormalization(options.readOnlyPrisma);
     this.schemaVariant = options.schemaVariant ?? "legacy";
+    this.maxWait = options.maxWait;
+    this.transactionStartRetry = options.transactionStartRetry;
   }
 
   // The writer handle in read-client form, so the routing layer can honor a caller-passed client
@@ -649,8 +667,18 @@ export class PostgresRunStore implements RunStore {
     _runId: string | undefined,
     fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
   ): Promise<R> {
-    return (this.prisma as RunOpsTransactionalClient).$transaction((tx) =>
-      fn(this, tx as unknown as PrismaClientOrTransaction)
+    let entered = false;
+    return withTransactionStartRetry(
+      () =>
+        (this.prisma as RunOpsTransactionalClient).$transaction(
+          (tx) => {
+            entered = true;
+            return fn(this, tx as unknown as PrismaClientOrTransaction);
+          },
+          { maxWait: this.maxWait }
+        ),
+      this.transactionStartRetry,
+      () => !entered
     );
   }
 
@@ -661,16 +689,33 @@ export class PostgresRunStore implements RunStore {
   // (snapshot + completed-waitpoints, run + associated-waitpoint) which must commit together.
   #withOptionalTransaction<R>(
     tx: PrismaClientOrTransaction | undefined,
-    fn: (client: PrismaClientOrTransaction) => Promise<R>
+    fn: (client: PrismaClientOrTransaction) => Promise<R>,
+    options?: { timeout?: number; maxWait?: number }
   ): Promise<R> {
     const alreadyInTransaction =
       tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
     if (alreadyInTransaction) {
       return fn(tx);
     }
-    return (this.prisma as RunOpsTransactionalClient).$transaction((t) =>
-      fn(t as unknown as PrismaClientOrTransaction)
+    const txOptions = { maxWait: this.maxWait, ...options };
+    let entered = false;
+    return withTransactionStartRetry(
+      () =>
+        (this.prisma as RunOpsTransactionalClient).$transaction((t) => {
+          entered = true;
+          return fn(t as unknown as PrismaClientOrTransaction);
+        }, txOptions),
+      this.transactionStartRetry,
+      () => !entered
     );
+  }
+
+  #writeClientWithoutTransaction(
+    tx: PrismaClientOrTransaction | undefined
+  ): PrismaClientOrTransaction {
+    const alreadyInTransaction =
+      tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
+    return (alreadyInTransaction ? tx : this.prisma) as PrismaClientOrTransaction;
   }
 
   async createRun(
@@ -680,6 +725,7 @@ export class PostgresRunStore implements RunStore {
     const client = tx ?? this.prisma;
 
     const snapshotCreate = {
+      id: params.snapshot.id,
       engine: params.snapshot.engine,
       executionStatus: params.snapshot.executionStatus,
       description: params.snapshot.description,
@@ -693,19 +739,31 @@ export class PostgresRunStore implements RunStore {
     };
 
     if (this.schemaVariant === "dedicated") {
-      // The run + its associated RUN-type waitpoint are two writes here (the legacy branch below nests
-      // them). Commit them together so a crash / lagging read never leaves a run without its waitpoint.
-      return this.#withOptionalTransaction(tx, async (c) => {
-        const run = (await c.taskRun.create({
+      if (!params.associatedWaitpoint) {
+        const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: {
             ...params.data,
             executionSnapshots: { create: snapshotCreate },
           },
         })) as TaskRun;
+        return { ...run, associatedWaitpoint: null };
+      }
 
-        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
-        return { ...run, associatedWaitpoint };
-      });
+      return this.#withOptionalTransaction(
+        tx,
+        async (c) => {
+          const run = (await c.taskRun.create({
+            data: {
+              ...params.data,
+              executionSnapshots: { create: snapshotCreate },
+            },
+          })) as TaskRun;
+
+          const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+          return { ...run, associatedWaitpoint };
+        },
+        { timeout: RUN_OPS_WRITE_TX_TIMEOUT_MS }
+      );
     }
 
     return client.taskRun.create({
@@ -783,15 +841,25 @@ export class PostgresRunStore implements RunStore {
     const client = tx ?? this.prisma;
 
     if (this.schemaVariant === "dedicated") {
-      // Run + associated RUN-type waitpoint are two writes here; commit them together (see createRun).
-      return this.#withOptionalTransaction(tx, async (c) => {
-        const run = (await c.taskRun.create({
+      if (!params.associatedWaitpoint) {
+        const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: { ...params.data },
         })) as TaskRun;
+        return { ...run, associatedWaitpoint: null };
+      }
 
-        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
-        return { ...run, associatedWaitpoint };
-      });
+      return this.#withOptionalTransaction(
+        tx,
+        async (c) => {
+          const run = (await c.taskRun.create({
+            data: { ...params.data },
+          })) as TaskRun;
+
+          const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+          return { ...run, associatedWaitpoint };
+        },
+        { timeout: RUN_OPS_WRITE_TX_TIMEOUT_MS }
+      );
     }
 
     return client.taskRun.create({
@@ -1254,16 +1322,75 @@ export class PostgresRunStore implements RunStore {
 
   async promotePendingVersionRuns(
     runId: string,
+    args?: PromotePendingVersionArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
     const prisma = tx ?? this.prisma;
 
     const result = await prisma.taskRun.updateMany({
       where: { id: runId, status: "PENDING_VERSION" },
-      data: { status: "PENDING" },
+      data: {
+        status: args?.status ?? "PENDING",
+        lockedToVersionId: args?.lockedToVersionId,
+        taskVersion: args?.taskVersion,
+        sdkVersion: args?.sdkVersion,
+        cliVersion: args?.cliVersion,
+      },
     });
 
     return { count: result.count };
+  }
+
+  async expireParkedRun(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      statusReason: string;
+      snapshot: ExpireSnapshotInput;
+    },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }> {
+    const prisma = tx ?? this.prisma;
+
+    try {
+      await prisma.taskRun.update({
+        where: { id: runId, status: "PENDING_VERSION" },
+        data: {
+          status: "EXPIRED",
+          statusReason: data.statusReason,
+          completedAt: data.completedAt,
+          expiredAt: data.expiredAt,
+          error: data.error as Prisma.InputJsonValue,
+          executionSnapshots: {
+            create: {
+              engine: data.snapshot.engine,
+              executionStatus: data.snapshot.executionStatus,
+              description: data.snapshot.description,
+              runStatus: data.snapshot.runStatus,
+              environmentId: data.snapshot.environmentId,
+              environmentType: data.snapshot.environmentType,
+              projectId: data.snapshot.projectId,
+              organizationId: data.snapshot.organizationId,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      const normalized = normalizeRunOpsError(error);
+
+      if (
+        normalized instanceof Prisma.PrismaClientKnownRequestError &&
+        normalized.code === "P2025"
+      ) {
+        return { count: 0 };
+      }
+
+      throw error;
+    }
+
+    return { count: 1 };
   }
 
   async suspendForCheckpoint<I extends Prisma.TaskRunInclude>(
@@ -1312,9 +1439,10 @@ export class PostgresRunStore implements RunStore {
           executionSnapshots: {
             create: {
               engine: "V2",
-              executionStatus: "DELAYED",
-              description: "Delayed run was rescheduled to a future date",
-              runStatus: "DELAYED",
+              executionStatus: data.snapshot.executionStatus ?? "DELAYED",
+              description:
+                data.snapshot.description ?? "Delayed run was rescheduled to a future date",
+              runStatus: data.snapshot.runStatus ?? "DELAYED",
               environmentId: data.snapshot.environmentId,
               environmentType: data.snapshot.environmentType,
               projectId: data.snapshot.projectId,
@@ -1434,7 +1562,7 @@ export class PostgresRunStore implements RunStore {
 
     // byFriendlyIds — only clears idempotencyKey, not idempotencyKeyExpiresAt
     const result = await prisma.taskRun.updateMany({
-      where: { friendlyId: { in: params.byFriendlyIds } },
+      where: { friendlyId: { in: boundedIn(params.byFriendlyIds) } },
       data: { idempotencyKey: null },
     });
     return { count: result.count };
@@ -1667,7 +1795,9 @@ export class PostgresRunStore implements RunStore {
         ? { include: args.include }
         : {};
     const rows = (await this.findRuns(
-      { where: { id: { in: ids } }, ...projected } as Parameters<PostgresRunStore["findRuns"]>[0],
+      { where: { id: { in: boundedIn(ids) } }, ...projected } as Parameters<
+        PostgresRunStore["findRuns"]
+      >[0],
       client
     )) as Record<string, unknown>[];
     const byId = new Map<string, unknown>();
@@ -1708,15 +1838,17 @@ export class PostgresRunStore implements RunStore {
 
   async findLatestExecutionSnapshot(
     runId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    environmentId?: string
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
     const prisma = client ?? this.readOnlyPrisma;
+    const where = { runId, isValid: true, ...(environmentId ? { environmentId } : {}) };
 
     if (this.schemaVariant === "dedicated") {
       const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { runId, isValid: true },
+        where,
         include: { checkpoint: true },
         orderBy: { createdAt: "desc" },
       });
@@ -1728,7 +1860,7 @@ export class PostgresRunStore implements RunStore {
     }
 
     return prisma.taskRunExecutionSnapshot.findFirst({
-      where: { runId, isValid: true },
+      where,
       include: {
         completedWaitpoints: true,
         checkpoint: true,
@@ -1757,7 +1889,7 @@ export class PostgresRunStore implements RunStore {
       return [];
     }
     return client.waitpoint.findMany({
-      where: { id: { in: links.map((l) => l.waitpointId) } },
+      where: { id: { in: boundedIn(links.map((l) => l.waitpointId)) } },
     });
   }
 
@@ -1879,7 +2011,7 @@ export class PostgresRunStore implements RunStore {
           ?.filter((c) => c.index !== undefined)
           .sort((a, b) => a.index! - b.index!)
           .map((w) => w.id),
-        isValid: error ? false : true,
+        isValid: !error,
         error,
       },
       include: { checkpoint: true },

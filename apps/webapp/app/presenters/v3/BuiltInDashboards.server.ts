@@ -550,7 +550,186 @@ const llmDashboard: BuiltInDashboard = {
   },
 };
 
-const builtInDashboards: BuiltInDashboard[] = [overviewDashboard, llmDashboard];
+const queuesDashboard: BuiltInDashboard = {
+  key: "queues",
+  title: "Queues",
+  filters: ["queues"],
+  layout: {
+    version: "1",
+    layout: [
+      { i: "env-used", x: 0, y: 0, w: 3, h: 4 },
+      { i: "env-limit", x: 3, y: 0, w: 3, h: 4 },
+      { i: "env-avail", x: 6, y: 0, w: 3, h: 4 },
+      { i: "env-sat", x: 9, y: 0, w: 3, h: 4 },
+      { i: "sat-time", x: 0, y: 4, w: 6, h: 9 },
+      { i: "used-limit", x: 6, y: 4, w: 6, h: 9 },
+      { i: "t-pressure", x: 0, y: 13, w: 12, h: 2, minH: 2, maxH: 2 },
+      { i: "pressure", x: 0, y: 15, w: 12, h: 11 },
+      { i: "t-trends", x: 0, y: 26, w: 12, h: 2, minH: 2, maxH: 2 },
+      { i: "running-q", x: 0, y: 28, w: 6, h: 9 },
+      { i: "queued-q", x: 6, y: 28, w: 6, h: 9 },
+      { i: "throttled-q", x: 0, y: 37, w: 6, h: 9 },
+      { i: "throughput", x: 6, y: 37, w: 6, h: 9 },
+      { i: "wait-pct", x: 0, y: 46, w: 12, h: 9 },
+    ],
+    widgets: {
+      "env-used": {
+        title: "Concurrency in use",
+        query: `SELECT argMax(max_env_running, bucket_start) AS in_use\nFROM env_metrics`,
+        display: { type: "bignumber", column: "in_use", aggregation: "max", abbreviate: false },
+      },
+      "env-limit": {
+        title: "Environment limit",
+        query: `SELECT argMax(max_env_limit, bucket_start) AS env_limit\nFROM env_metrics`,
+        display: { type: "bignumber", column: "env_limit", aggregation: "max", abbreviate: false },
+      },
+      "env-avail": {
+        title: "Available slots",
+        query: `SELECT argMax(max_env_limit, bucket_start) - argMax(max_env_running, bucket_start) AS available\nFROM env_metrics`,
+        display: { type: "bignumber", column: "available", aggregation: "max", abbreviate: false },
+      },
+      "env-sat": {
+        title: "Env saturation",
+        query: `SELECT round(argMax(max_env_running, bucket_start) * 100.0 / nullIf(argMax(max_env_limit, bucket_start), 0), 1) AS saturation\nFROM env_metrics`,
+        display: {
+          type: "bignumber",
+          column: "saturation",
+          aggregation: "max",
+          abbreviate: false,
+          suffix: "%",
+        },
+      },
+      "sat-time": {
+        title: "Environment saturation over time",
+        query: `SELECT timeBucket() AS t,\n  round(max(max_env_running) * 100.0 / nullIf(max(max_env_limit), 0), 1) AS saturation\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+        display: {
+          type: "chart",
+          chartType: "line",
+          xAxisColumn: "t",
+          yAxisColumns: ["saturation"],
+          groupByColumn: null,
+          stacked: false,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "max",
+        },
+      },
+      "used-limit": {
+        title: "Concurrency used vs limit",
+        query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS limit\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+        // Single-series gauge: carry the last known used/limit across idle buckets instead of dropping to 0.
+        fillGaps: true,
+        display: {
+          type: "chart",
+          chartType: "line",
+          xAxisColumn: "t",
+          yAxisColumns: ["used", "limit"],
+          groupByColumn: null,
+          stacked: false,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "max",
+        },
+      },
+      "t-pressure": { title: "Queue pressure", query: "", display: { type: "title" } },
+      pressure: {
+        title: "Queue pressure",
+        query: `SELECT queue,\n  argMax(max_running, bucket_start) AS running,\n  argMax(max_queued, bucket_start) AS queued,\n  argMax(max_limit, bucket_start) AS limit,\n  running + queued AS demand,\n  max(max_queued) AS peak_queued,\n  sum(throttled_count) AS throttled,\n  multiIf(running >= limit AND queued > 0, 'queue-limited', queued > 0, 'backlogged', 'healthy') AS status\nFROM queue_metrics\nGROUP BY queue\nORDER BY peak_queued DESC`,
+        display: {
+          type: "table",
+          prettyFormatting: true,
+          sorting: [{ id: "peak_queued", desc: true }],
+        },
+      },
+      "t-trends": { title: "Per-queue trends", query: "", display: { type: "title" } },
+      "running-q": {
+        title: "Running by queue",
+        query: `SELECT timeBucket() AS t, queue, max(max_running) AS running\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+        // Grouped gauge: carry each queue's running across idle buckets (per-group LOCF).
+        fillGaps: true,
+        display: {
+          type: "chart",
+          chartType: "line",
+          xAxisColumn: "t",
+          yAxisColumns: ["running"],
+          groupByColumn: "queue",
+          stacked: false,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "max",
+        },
+      },
+      "queued-q": {
+        title: "Queue depth (backlog) by queue",
+        query: `SELECT timeBucket() AS t, queue, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+        // Grouped gauge: carry each queue's backlog across idle buckets (per-group LOCF).
+        fillGaps: true,
+        display: {
+          type: "chart",
+          chartType: "line",
+          xAxisColumn: "t",
+          yAxisColumns: ["queued"],
+          groupByColumn: "queue",
+          stacked: false,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "max",
+        },
+      },
+      "throttled-q": {
+        title: "Throttled buckets by queue",
+        query: `SELECT timeBucket() AS t, queue, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+        // Grouped counter: per-group zero-fill so idle buckets read 0, not a gap.
+        fillGaps: true,
+        display: {
+          type: "chart",
+          chartType: "bar",
+          xAxisColumn: "t",
+          yAxisColumns: ["throttled"],
+          groupByColumn: "queue",
+          stacked: true,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "sum",
+        },
+      },
+      throughput: {
+        title: "Enqueued vs started",
+        // Counter states merge per queue, then sum outside: a single merge across queues
+        // mixes unrelated odometers and returns wrong totals.
+        query: `SELECT t, sum(enq) AS enqueued, sum(st) AS started\nFROM (\n  SELECT timeBucket() AS t, queue,\n    deltaSumTimestampMerge(enqueue_delta) AS enq,\n    deltaSumTimestampMerge(started_delta) AS st\n  FROM queue_metrics\n  GROUP BY t, queue\n)\nGROUP BY t\nORDER BY t`,
+        display: {
+          type: "chart",
+          chartType: "line",
+          xAxisColumn: "t",
+          yAxisColumns: ["enqueued", "started"],
+          groupByColumn: null,
+          stacked: false,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "sum",
+        },
+      },
+      "wait-pct": {
+        title: "Scheduling delay p50/p95/p99 (ms)",
+        query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+        display: {
+          type: "chart",
+          chartType: "line",
+          xAxisColumn: "t",
+          yAxisColumns: ["p50", "p95", "p99"],
+          groupByColumn: null,
+          stacked: false,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "max",
+        },
+      },
+    },
+  },
+};
+
+const builtInDashboards: BuiltInDashboard[] = [overviewDashboard, llmDashboard, queuesDashboard];
 
 export function builtInDashboardList(): BuiltInDashboard[] {
   return builtInDashboards;

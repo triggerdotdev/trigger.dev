@@ -10,15 +10,51 @@ import {
   OrganizationSettingsSideMenu,
 } from "~/components/navigation/OrganizationSettingsSideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
+import { organizationHasProjectRuntimeUpdate } from "~/services/projectRuntimeUpdates.server";
 import { rbac } from "~/services/rbac.server";
+import { requireUserId } from "~/services/session.server";
 import { ssoController } from "~/services/sso.server";
 
 const SETTINGS_ROUTE_ID = "routes/_app.orgs.$organizationSlug.settings";
 
+// The side-menu dot links to the Projects settings page, which requires `read` on
+// `deployments`, so gate the dot on the same ability the page checks.
+async function canReadDeployments({
+  request,
+  userId,
+  organizationSlug,
+}: {
+  request: Request;
+  userId: string;
+  organizationSlug: string;
+}) {
+  // Membership-scoped so the dot is never computed against an org the user is not in.
+  const organizationId = await resolveOrgIdFromSlugForUser(organizationSlug, userId);
+  if (!organizationId) {
+    return false;
+  }
+
+  const auth = await rbac.authenticateAuthorizeSession(
+    request,
+    { userId, organizationId },
+    { action: "read", resource: { type: "deployments" } }
+  );
+  return auth.ok;
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const [isUsingPlugin, isSsoUsingPlugin] = await Promise.all([
+  const userId = await requireUserId(request);
+  const organizationSlug = params.organizationSlug;
+
+  const [isUsingPlugin, isSsoUsingPlugin, hasProjectRuntimeUpdate] = await Promise.all([
     rbac.isUsingPlugin(),
     ssoController.isUsingPlugin(),
+    organizationSlug
+      ? canReadDeployments({ request, userId, organizationSlug }).then((canRead) =>
+          canRead ? organizationHasProjectRuntimeUpdate({ organizationSlug, userId }) : false
+        )
+      : Promise.resolve(false),
   ]);
   return typedjson({
     buildInfo: {
@@ -30,6 +66,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     } satisfies BuildInfo,
     isUsingPlugin,
     isSsoUsingPlugin,
+    hasProjectRuntimeUpdate,
   });
 };
 
@@ -37,11 +74,13 @@ function SettingsChrome({
   buildInfo,
   isUsingPlugin,
   isSsoUsingPlugin,
+  hasProjectRuntimeUpdate,
   children,
 }: {
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
   isSsoUsingPlugin: boolean;
+  hasProjectRuntimeUpdate: boolean;
   children: ReactNode;
 }) {
   const organization = useOrganization();
@@ -54,6 +93,7 @@ function SettingsChrome({
           buildInfo={buildInfo}
           isUsingPlugin={isUsingPlugin}
           isSsoUsingPlugin={isSsoUsingPlugin}
+          hasProjectRuntimeUpdate={hasProjectRuntimeUpdate}
         />
         <MainBody>{children}</MainBody>
       </div>
@@ -62,13 +102,15 @@ function SettingsChrome({
 }
 
 export default function Page() {
-  const { buildInfo, isUsingPlugin, isSsoUsingPlugin } = useTypedLoaderData<typeof loader>();
+  const { buildInfo, isUsingPlugin, isSsoUsingPlugin, hasProjectRuntimeUpdate } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <SettingsChrome
       buildInfo={buildInfo}
       isUsingPlugin={isUsingPlugin}
       isSsoUsingPlugin={isSsoUsingPlugin}
+      hasProjectRuntimeUpdate={hasProjectRuntimeUpdate}
     >
       <Outlet />
     </SettingsChrome>
@@ -81,7 +123,12 @@ export default function Page() {
 // available via useRouteLoaderData.
 export function ErrorBoundary() {
   const data = useRouteLoaderData(SETTINGS_ROUTE_ID) as
-    | { buildInfo: BuildInfo; isUsingPlugin: boolean; isSsoUsingPlugin: boolean }
+    | {
+        buildInfo: BuildInfo;
+        isUsingPlugin: boolean;
+        isSsoUsingPlugin: boolean;
+        hasProjectRuntimeUpdate: boolean;
+      }
     | undefined;
 
   if (!data) {
@@ -93,6 +140,7 @@ export function ErrorBoundary() {
       buildInfo={data.buildInfo}
       isUsingPlugin={data.isUsingPlugin}
       isSsoUsingPlugin={data.isSsoUsingPlugin}
+      hasProjectRuntimeUpdate={data.hasProjectRuntimeUpdate}
     >
       <RouteErrorDisplay />
     </SettingsChrome>

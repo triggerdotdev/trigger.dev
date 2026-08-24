@@ -2,11 +2,14 @@
   "compilerOptions": {
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    // antlr4ts@0.5.0-alpha.4 uses deep-subpath CJS imports that resolve
+    // consistently under bundler resolution; nodenext's stricter ESM path
+    // duplicates its types. tsql is always bundled downstream.
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "moduleDetection": "force",
     "verbatimModuleSyntax": false,
-    "types": ["vitest/globals"],
+    "types": ["vitest/globals", "node"],
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,

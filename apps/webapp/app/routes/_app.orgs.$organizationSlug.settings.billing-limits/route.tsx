@@ -1,5 +1,4 @@
 import { parseWithZod } from "@conform-to/zod";
-import type { MetaFunction } from "@remix-run/react";
 import { json, redirect } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -74,15 +73,14 @@ import {
   v3BillingLimitsPath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
 const billingLimitsAuthorization = {
   action: "manage" as const,
   resource: { type: "billing-limits" as const },
 };
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Billing limits | Trigger.dev` }];
-};
+export const meta = pageMeta("Billing limits");
 
 export const loader = dashboardLoader(
   {

@@ -1,5 +1,6 @@
 import { BookOpenIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useParams } from "@remix-run/react";
+import { Outlet, useParams } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TestHasNoTasks } from "~/components/BlankStatePanels";
@@ -36,14 +37,19 @@ import { type TaskListItem, TestPresenter } from "~/presenters/v3/TestPresenter.
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
+import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Test | Trigger.dev`,
-    },
-  ];
+const TASK_FILTER_KEYS = ["taskIdentifier", "friendlyId", "id", "filePath", "triggerSource"];
+
+export const handle: Handle = {
+  agentPageContext: (data) => testAgentPageContext(data),
 };
+
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Test");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -85,9 +91,15 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Test" />
         <PageAccessories>
-          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/run-tests")}>
-            Test docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/run-tests")}
+            >
+              Test docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -128,7 +140,7 @@ function TaskSelector({
 }) {
   const { filterText, setFilterText, filteredItems } = useFuzzyFilter<TaskListItem>({
     items: tasks,
-    keys: ["taskIdentifier", "friendlyId", "id", "filePath", "triggerSource"],
+    keys: TASK_FILTER_KEYS,
   });
   const hasTaskInEnvironment = activeTaskIdentifier
     ? tasks.some((t) => t.taskIdentifier === activeTaskIdentifier)

@@ -52,12 +52,14 @@ jobs:
 
       - name: Lint Helm Chart
         run: |
-          helm lint ./hosting/k8s/helm/
+          helm lint ./hosting/k8s/helm/ \
+            --values ./hosting/k8s/helm/ci/lint-values.yaml
 
       - name: Render templates
         run: |
           helm template test-release ./hosting/k8s/helm/ \
             --values ./hosting/k8s/helm/values.yaml \
+            --values ./hosting/k8s/helm/ci/lint-values.yaml \
             --output-dir ./helm-output
 
       - name: Validate manifests

@@ -46,13 +46,28 @@ import {
   assertSafeWebhookUrl,
   UnsafeWebhookUrlError,
 } from "~/v3/services/alerts/safeWebhookUrl.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+type SlackChannel = { id?: string; name?: string; is_private?: boolean };
+
+function renderSlackChannel(channels: SlackChannel[], value: string | string[]) {
+  if (typeof value !== "string") return;
+  const channel = channels.find((channel) => value === `${channel.id}/${channel.name}`);
+  return channel ? <SlackChannelTitle {...channel} /> : undefined;
+}
+
+export const meta = pageMeta("New alert");
 
 const FormSchema = z
   .object({
     alertTypes: z
-      .array(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
+      .array(
+        z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS", "DASHBOARD_AGENT_WATCH"])
+      )
       .min(1)
-      .or(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
+      .or(
+        z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS", "DASHBOARD_AGENT_WATCH"])
+      ),
     environmentTypes: z
       .array(z.enum(["STAGING", "PRODUCTION", "PREVIEW"]))
       .min(1)
@@ -224,7 +239,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const [isOpen, setIsOpen] = useState(false);
   const { slack, option, emailAlertsEnabled } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
@@ -260,10 +274,6 @@ export default function Page() {
   });
 
   useEffect(() => {
-    setIsOpen(true);
-  }, []);
-
-  useEffect(() => {
     if (navigation.state !== "idle") return;
     if (lastSubmission !== undefined) return;
 
@@ -272,7 +282,7 @@ export default function Page() {
 
   return (
     <Dialog
-      open={isOpen}
+      open
       onOpenChange={(o) => {
         if (!o) {
           navigate(v3ProjectAlertsPath(organization, project, environment));
@@ -335,21 +345,15 @@ export default function Page() {
                       filter={(channel, search) =>
                         channel.name?.toLowerCase().includes(search.toLowerCase()) ?? false
                       }
-                      text={(value) => {
-                        const channel = slack.channels.find((s) => value === `${s.id}/${s.name}`);
-                        if (!channel) return;
-                        return <SlackChannelTitle {...channel} />;
-                      }}
+                      text={(value) => renderSlackChannel(slack.channels, value)}
                     >
-                      {(matches) => (
-                        <>
-                          {matches?.map((channel) => (
-                            <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
-                              <SlackChannelTitle {...channel} />
-                            </SelectItem>
-                          ))}
-                        </>
-                      )}
+                      {(matches) =>
+                        matches?.map((channel) => (
+                          <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
+                            <SlackChannelTitle {...channel} />
+                          </SelectItem>
+                        ))
+                      }
                     </Select>
                     {selectedSlackChannel && selectedSlackChannel.is_private && (
                       <Callout
@@ -453,6 +457,18 @@ export default function Page() {
                 defaultChecked
               />
 
+              <div className="flex items-center gap-1">
+                <CheckboxWithLabel
+                  name={alertTypes.name}
+                  id="DASHBOARD_AGENT_WATCH"
+                  value="DASHBOARD_AGENT_WATCH"
+                  variant="simple/small"
+                  label="Dashboard agent watches"
+                  className="pr-0"
+                />
+                <InfoIconTooltip content="You'll receive an alert when a watch you set up with the dashboard agent fires." />
+              </div>
+
               <FormError id={alertTypes.errorId}>{alertTypes.errors}</FormError>
             </InputGroup>
             <InputGroup>
@@ -471,7 +487,7 @@ export default function Page() {
               cancelButton={
                 <LinkButton
                   to={v3ProjectAlertsPath(organization, project, environment)}
-                  variant="tertiary/medium"
+                  variant="secondary/medium"
                 >
                   Cancel
                 </LinkButton>

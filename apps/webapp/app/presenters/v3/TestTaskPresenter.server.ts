@@ -6,6 +6,7 @@ import {
   type RuntimeEnvironmentType,
   type TaskRunStatus,
   type TaskRunTemplate,
+  boundedIn,
 } from "@trigger.dev/database";
 import { inferSchema } from "@jsonhero/schema-infer";
 import parse from "parse-duration";
@@ -108,6 +109,10 @@ export type TestTaskResult =
       taskRunTemplates: TaskRunTemplate[];
     }
   | {
+      foundTask: true;
+      triggerSource: "WEBHOOK";
+    }
+  | {
       foundTask: false;
     };
 
@@ -119,7 +124,6 @@ export type ScheduledTaskResult = Extract<
   TestTaskResult,
   { foundTask: true; triggerSource: "SCHEDULED" }
 >;
-
 type RawRun = {
   id: string;
   queue: string;
@@ -385,6 +389,9 @@ export class TestTaskPresenter {
         // AGENT tasks are filtered out by TestPresenter and shouldn't reach here
         return { foundTask: false };
       }
+      case "WEBHOOK": {
+        return { foundTask: true, triggerSource: "WEBHOOK" };
+      }
       default: {
         return task.triggerSource satisfies never;
       }
@@ -401,7 +408,7 @@ export class TestTaskPresenter {
     return this.runStore.findRuns(
       {
         where: {
-          id: { in: ids },
+          id: { in: boundedIn(ids) },
           payloadType: { in: ["application/json", "application/super+json"] },
         },
         select: RECENT_RUNS_SELECT,

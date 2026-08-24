@@ -141,8 +141,7 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   }
 
   queueConcurrencyLimitKeyFromQueue(queue: string) {
-    const concurrencyQueueName = queue.replace(/:ck:.+$/, "");
-    return `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`;
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.CONCURRENCY_LIMIT_PART}`;
   }
 
   queueCurrentConcurrencyKeyFromQueue(queue: string) {
@@ -313,12 +312,14 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   }
 
   ckIndexKeyFromQueue(queue: string): string {
-    const baseQueue = queue.replace(/:ck:.+$/, "");
-    return `${baseQueue}:${constants.CK_INDEX_PART}`;
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.CK_INDEX_PART}`;
   }
 
+  // indexOf instead of /:ck:.+$/ (queue names are user-controlled; polynomial regex).
+  // Only strips when at least one character follows ":ck:", matching the old semantics.
   baseQueueKeyFromQueue(queue: string): string {
-    return queue.replace(/:ck:.+$/, "");
+    const idx = queue.indexOf(":ck:");
+    return idx === -1 || idx + 4 >= queue.length ? queue : queue.slice(0, idx);
   }
 
   queueLengthCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
@@ -342,7 +343,8 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   }
 
   toCkWildcard(queue: string): string {
-    return queue.replace(/:ck:.+$/, ":ck:*");
+    const base = this.baseQueueKeyFromQueue(queue);
+    return base === queue ? queue : `${base}:ck:*`;
   }
 
   descriptorFromQueue(queue: string): QueueDescriptor {

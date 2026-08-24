@@ -6,6 +6,7 @@ import { startSpan } from "~/v3/tracing.server";
 import { FINAL_RUN_STATUSES } from "../v3/taskStatus";
 import { Logger } from "@trigger.dev/core/logger";
 
+import { boundedIn } from "@trigger.dev/database";
 export class RunsBackfillerService {
   private readonly prisma: PrismaClientOrTransaction;
   private readonly runsReplicationInstance: RunsReplicationService;
@@ -49,7 +50,7 @@ export class RunsBackfillerService {
               lte: to,
             },
             status: {
-              in: FINAL_RUN_STATUSES,
+              in: boundedIn(FINAL_RUN_STATUSES),
             },
             ...(cursor ? { id: { gt: cursor } } : {}),
           },

@@ -15,15 +15,16 @@ import { join, relative, sep } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
 import { writeFile } from "node:fs/promises";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
+import { logger } from "../utilities/logger.js";
 import { readPackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { isWindows } from "std-env";
 import { pathToFileURL } from "node:url";
-import { logger } from "../utilities/logger.js";
+import { logBuildWorkerStart } from "./buildWorkerLogging.js";
 import { SdkVersionExtractor } from "./plugins.js";
 import { spinner } from "../utilities/windows.js";
 
-export type BuildWorkerEventListener = {
+type BuildWorkerEventListener = {
   onBundleStart?: () => void;
   onBundleComplete?: (result: BundleResult) => void;
 };
@@ -42,9 +43,7 @@ export type BuildWorkerOptions = {
 };
 
 export async function buildWorker(options: BuildWorkerOptions) {
-  logger.debug("Starting buildWorker", {
-    options,
-  });
+  logBuildWorkerStart(options);
 
   const resolvedConfig = options.resolvedConfig;
 
@@ -143,6 +142,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
   return buildManifest;
 }
 
+/** @knipignore Exported for the CLI end-to-end suite. */
 export function rewriteBuildManifestPaths(
   buildManifest: BuildManifest,
   destinationDir: string

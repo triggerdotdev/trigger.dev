@@ -1,16 +1,19 @@
 import { ZodError } from "zod";
 import { CronPattern } from "../schedules";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { resolveProjectScopedEnvironments } from "./resolveProjectScopedEnvironments";
 import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { boundedIn, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { validateScheduleWindowSyntax } from "../scheduleWindow.server";
 
 type Schedule = {
   cron: string;
   timezone?: string;
   taskIdentifier: string;
   friendlyId?: string;
+  window?: string;
 };
 
 export class CheckScheduleService extends BaseService {
@@ -38,11 +41,19 @@ export class CheckScheduleService extends BaseService {
       }
     }
 
+    const windowValidation = validateScheduleWindowSyntax(schedule.window);
+    if (!windowValidation.valid) {
+      throw new ServiceValidationError(windowValidation.message);
+    }
+
     //check the task exists
     const task = await this._prisma.backgroundWorkerTask.findFirst({
       where: {
         slug: schedule.taskIdentifier,
         projectId: projectId,
+      },
+      select: {
+        triggerSource: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -69,6 +80,9 @@ export class CheckScheduleService extends BaseService {
       select: {
         organizationId: true,
         environments: {
+          where: {
+            id: { in: boundedIn(environmentIds) },
+          },
           select: {
             id: true,
             type: true,
@@ -82,7 +96,19 @@ export class CheckScheduleService extends BaseService {
       throw new ServiceValidationError("Project not found");
     }
 
-    const environments = project.environments.filter((env) => environmentIds.includes(env.id));
+    // Reject (don't silently drop) any environmentId that doesn't belong to the
+    // authorized project.
+    const scopedEnvironments = resolveProjectScopedEnvironments(
+      environmentIds,
+      project.environments
+    );
+    if (scopedEnvironments.kind === "foreign") {
+      throw new ServiceValidationError(
+        `Environment ${scopedEnvironments.foreignEnvironmentId} does not belong to this project.`
+      );
+    }
+
+    const environments = scopedEnvironments.environments;
     if (environments.some((env) => env.archivedAt)) {
       throw new ServiceValidationError("Can't add or edit a schedule for an archived branch");
     }
@@ -115,12 +141,14 @@ export class CheckScheduleService extends BaseService {
         projectId,
         active: true,
         environment: {
+          projectId,
           type: {
             not: "DEVELOPMENT",
           },
           archivedAt: null,
         },
         taskSchedule: {
+          projectId,
           active: true,
         },
       },

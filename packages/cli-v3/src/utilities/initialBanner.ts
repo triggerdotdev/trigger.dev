@@ -55,7 +55,6 @@ export async function printInitialBanner(performUpdateCheck = true, profile?: st
 Run \`npm install --save-dev trigger.dev@${newMajor}\` to update to the latest version.
 After installation, run Trigger.dev with \`npx trigger.dev\`.`
         );
-      } else {
       }
     } else {
       $spinner.stop("On latest version");

@@ -156,4 +156,30 @@ describe("IdempotencyKeyConcern · claim resolution", () => {
       h.orgFlag = true; // restore for any later tests in this file
     }
   });
+
+  it("floors the claim TTL for a short idempotency-key TTL so the claim can't expire mid-pipeline", async () => {
+    // A 2s customer key TTL must NOT shrink the claim below the pipeline floor — else the claim expires
+    // while the winner is still creating and a polling loser re-claims (cross-DB dup under the split).
+    // Capture the ttlSeconds the concern hands the buffer's claim.
+    let capturedTtl: number | undefined;
+    h.buffer = {
+      claimIdempotency: vi.fn(async (input: { ttlSeconds: number }) => {
+        capturedTtl = input.ttlSeconds;
+        return { kind: "claimed" as const };
+      }),
+      lookupIdempotency: vi.fn(async () => null),
+    } as unknown as MollifierBuffer;
+
+    const findFirst = vi.fn(async () => null);
+    const concern = makeConcern({ findFirst });
+
+    const request = makeRequest();
+    (request.body.options as { idempotencyKeyTTL?: string }).idempotencyKeyTTL = "2s";
+
+    const result = await concern.handleTriggerRequest(request, undefined);
+
+    expect(result.isCached).toBe(false);
+    // Floored at TRIGGER_MOLLIFIER_CLAIM_MIN_TTL_SECONDS (default 5), NOT the ~2s key TTL.
+    expect(capturedTtl).toBeGreaterThanOrEqual(5);
+  });
 });

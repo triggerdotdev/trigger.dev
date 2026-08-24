@@ -42,6 +42,8 @@ function isUnsafeIPv4(host: string): boolean {
   if (a === 169 && b === 254) return true;
   // 100.64/10 carrier-grade NAT
   if (a === 100 && b >= 64 && b <= 127) return true;
+  // 198.18/15 benchmarking
+  if (a === 198 && b >= 18 && b <= 19) return true;
   // 224/4 multicast
   if (a >= 224 && a <= 239) return true;
   // 240/4 reserved

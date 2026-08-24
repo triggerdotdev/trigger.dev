@@ -13,6 +13,10 @@ config({ path: path.resolve(__dirname, "../.env") });
 // the pair — the ioredis mock below forces lazyConnect, so nothing ever dials.
 process.env.REDIS_HOST ??= "localhost";
 process.env.REDIS_PORT ??= "6379";
+process.env.SESSION_SECRET ??= "test-session-secret";
+process.env.PROVIDER_SECRET ??= "test-provider-secret";
+process.env.COORDINATOR_SECRET ??= "test-coordinator-secret";
+process.env.MANAGED_WORKER_SECRET ??= "test-managed-worker-secret";
 
 // Worker singletons construct a RedisWorker at import time whose ioredis client
 // connects eagerly, so any test importing the service graph opens real Redis

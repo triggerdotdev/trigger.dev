@@ -1,5 +1,5 @@
 import { type Span } from "@opentelemetry/api";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, boundedIn } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
@@ -10,8 +10,6 @@ import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { startActiveSpan } from "~/v3/tracer.server";
-
-export type SessionDetail = NonNullable<Awaited<ReturnType<SessionPresenter["call"]>>>;
 
 export class SessionPresenter {
   constructor(private readonly replica: PrismaClientOrTransaction) {}
@@ -90,7 +88,7 @@ export class SessionPresenter {
       return runIds.length > 0
         ? runStore.findRuns(
             {
-              where: { id: { in: runIds } },
+              where: { id: { in: boundedIn(runIds) } },
               select: { id: true, friendlyId: true, status: true },
             },
             this.replica

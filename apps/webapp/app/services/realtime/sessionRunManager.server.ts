@@ -8,6 +8,7 @@ import { logger } from "~/services/logger.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
+import { determineRealtimeStreamsVersion } from "./v1StreamsGlobal.server";
 
 /**
  * Schema for `Session.triggerConfig` (stored as JSONB). The wire-format
@@ -20,11 +21,11 @@ import { isFinalRunStatus } from "~/v3/taskStatus";
  * an `isContinuation` flag) come in via the `payloadOverrides` argument
  * to `ensureRunForSession` and shallow-merge on top of `basePayload`.
  */
-export const SessionTriggerConfigSchema = SessionTriggerConfigZod;
+const SessionTriggerConfigSchema = SessionTriggerConfigZod;
 
 export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfigSchema>;
 
-export type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
+type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
 
 /**
  * Hard cap on how many times `ensureRunForSession` will recurse on the
@@ -275,6 +276,12 @@ export async function ensureRunForSession(
  * Trigger a single run for a session. Builds `TriggerTaskRequestBody`
  * by shallow-merging `payloadOverrides` over `config.basePayload` and
  * threading `config`'s machine/queue/tags through the trigger options.
+ *
+ * A session's own channels are always v2, so the run is stamped to match
+ * rather than inheriting the `realtimeStreamsVersion` column default. Without
+ * this, run-scoped `streams.*` calls inside a session run resolve to v1 while
+ * the session it belongs to is on v2. `determineRealtimeStreamsVersion`
+ * degrades to v1 where v2 streams are not configured.
  */
 async function triggerSessionRun(params: {
   session: Pick<Session, "id" | "taskIdentifier">;
@@ -310,6 +317,10 @@ async function triggerSessionRun(params: {
   const result = await service.call(session.taskIdentifier, environment, body, {
     triggerSource: "session",
     triggerAction: "trigger",
+    realtimeStreamsVersion: determineRealtimeStreamsVersion(
+      "v2",
+      environment.organization.streamBasinName
+    ),
   });
 
   if (!result) {
@@ -478,8 +489,10 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
 async function getRunStatusAndFriendlyId(
   runId: string
 ): Promise<{ status: TaskRunStatus; friendlyId: string } | null> {
-  // Use the read replica — this is a hot-path probe and stale-by-ms is
-  // fine. The append handler re-checks if it ends up reusing the runId.
+  // Use the read replica — hot-path probe, stale-by-ms is fine. The dangerous
+  // stale shape (looks-vanished → double-trigger) is closed by the writer re-probe
+  // in ensureRunForSession; a stale-non-final reuse self-heals via the durable S2
+  // stream + next-append re-probe (there is no append-handler re-check).
   // `friendlyId` is fetched alongside `status` so the dead-run-detection
   // branch in `ensureRunForSession` can forward the public-form id as
   // `payload.previousRunId` without a second read. `Session.currentRunId`
@@ -520,6 +533,6 @@ async function cancelLostRaceRun(
   await service.call(run, { reason: "Lost session-run claim race" });
 }
 
-export class SessionRunManagerError extends Error {
+class SessionRunManagerError extends Error {
   readonly name = "SessionRunManagerError";
 }

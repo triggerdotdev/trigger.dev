@@ -2,7 +2,6 @@ import { column, type BucketThreshold, type TableSchema } from "@internal/tsql";
 import { z } from "zod";
 import { autoFormatSQL } from "~/components/code/TSQLEditor";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
-import { logger } from "~/services/logger.server";
 
 export const QueryScopeSchema = z.enum(["organization", "project", "environment"]);
 export type QueryScope = z.infer<typeof QueryScopeSchema>;
@@ -443,10 +442,7 @@ export const runsSchema: TableSchema = {
       ...column("Array(String)", {
         description: "Any bulk actions that operated on this run.",
         example: '["bulk_12345678", "bulk_34567890"]',
-        whereTransform: (value: string) => {
-          logger.log(`WHERE TRANSFORM: ${value}`);
-          return value.replace(/^bulk_/, "");
-        },
+        whereTransform: (value: string) => value.replace(/^bulk_/, ""),
       }),
     },
   },
@@ -455,7 +451,7 @@ export const runsSchema: TableSchema = {
 /**
  * Schema definition for the metrics table (trigger_dev.metrics_v1)
  */
-export const metricsSchema: TableSchema = {
+const metricsSchema: TableSchema = {
   name: "metrics",
   clickhouseName: "trigger_dev.metrics_v1",
   description: "Host and runtime metrics collected during task execution",
@@ -614,12 +610,339 @@ export const metricsSchema: TableSchema = {
 };
 
 /**
- * All available schemas for the query editor
+ * Schema definition for the queue_metrics table (trigger_dev.queue_metrics_v1).
+ * Pre-aggregated into 10-second buckets. Counter columns re-aggregate with sum(),
+ * gauges with max(), and wait_quantiles with quantilesMerge() — never FINAL.
  */
+const queueMetricsSchema: TableSchema = {
+  name: "queue_metrics",
+  clickhouseName: "trigger_dev.queue_metrics_v1",
+  description: "Per-queue depth, concurrency, throttling, and scheduling-delay metrics",
+  timeConstraint: "bucket_start",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    queue: {
+      name: "queue",
+      clickhouseName: "queue_name",
+      ...column("LowCardinality(String)", {
+        description: "The queue name",
+        example: "my-queue",
+        coreColumn: true,
+      }),
+    },
+    bucket_start: {
+      name: "bucket_start",
+      ...column("DateTime", {
+        description: "The start of the 10-second aggregation bucket",
+        example: "2024-01-15 09:30:00",
+        coreColumn: true,
+      }),
+    },
+    // Cumulative-counter delta states. Read with deltaSumTimestampMerge(<col>) (loss-tolerant,
+    // reset-safe), never sum(); opaque like wait_quantiles. Merging across queues is
+    // invalid (mixes unrelated odometers): totals must GROUP BY queue, then sum outside.
+    enqueue_delta: {
+      name: "enqueue_delta",
+      mergeGroupKey: "queue",
+      ...column("String", {
+        description:
+          "Runs enqueued (cumulative-counter delta). Read with deltaSumTimestampMerge(enqueue_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues. Per-bucket values can undercount by one inter-reading delta at bucket boundaries (the bridge lives in the prior bucket's state); totals over the whole range are exact.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    started_delta: {
+      name: "started_delta",
+      mergeGroupKey: "queue",
+      ...column("String", {
+        description:
+          "Runs dequeued/started (throughput). Read with deltaSumTimestampMerge(started_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues. Per-bucket values can undercount by one inter-reading delta at bucket boundaries (the bridge lives in the prior bucket's state); totals over the whole range are exact.",
+        coreColumn: true,
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    ack_delta: {
+      name: "ack_delta",
+      mergeGroupKey: "queue",
+      ...column("String", {
+        description:
+          "Runs acked (completed). Read with deltaSumTimestampMerge(ack_delta) grouped by queue; sum per-queue results for totals.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    nack_delta: {
+      name: "nack_delta",
+      mergeGroupKey: "queue",
+      ...column("String", {
+        description:
+          "Runs nacked. Read with deltaSumTimestampMerge(nack_delta) grouped by queue; sum per-queue results for totals.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    dlq_delta: {
+      name: "dlq_delta",
+      mergeGroupKey: "queue",
+      ...column("String", {
+        description:
+          "Runs dead-lettered. Read with deltaSumTimestampMerge(dlq_delta) grouped by queue; sum per-queue results for totals.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    throttled_count: {
+      name: "throttled_count",
+      ...column("UInt64", {
+        description: "Gauge emissions where running>=limit and queued>0. Aggregate with sum().",
+        coreColumn: true,
+      }),
+    },
+    max_queued: {
+      name: "max_queued",
+      ...column("UInt32", {
+        description: "Peak queue depth in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    max_running: {
+      name: "max_running",
+      ...column("UInt32", {
+        description: "Peak running (concurrency) in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    max_limit: {
+      name: "max_limit",
+      ...column("UInt32", {
+        description: "The queue concurrency limit. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    max_env_queued: {
+      name: "max_env_queued",
+      ...column("UInt32", {
+        description: "Peak environment-wide queued in the bucket. Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
+    max_env_running: {
+      name: "max_env_running",
+      ...column("UInt32", {
+        description: "Peak environment-wide running in the bucket. Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
+    max_env_limit: {
+      name: "max_env_limit",
+      ...column("UInt32", {
+        description: "The environment concurrency limit. Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
+    max_ck_backlogged: {
+      name: "max_ck_backlogged",
+      ...column("UInt32", {
+        description:
+          "Peak number of distinct concurrency keys with queued runs in the bucket. Aggregate with max(). Zero for queues that do not use concurrency keys.",
+        fillMode: "carry",
+      }),
+    },
+    max_ck_wait_ms: {
+      name: "max_ck_wait_ms",
+      ...column("UInt32", {
+        description:
+          "Worst head-of-line wait (ms) across concurrency keys in the bucket: how long the most-starved key's oldest queued run has been waiting. Aggregate with max(). Zero for queues that do not use concurrency keys.",
+        fillMode: "carry",
+      }),
+    },
+    wait_ms_sum: {
+      name: "wait_ms_sum",
+      ...column("UInt64", {
+        description: "Sum of scheduling delays (ms). Mean = wait_ms_sum/wait_ms_count.",
+      }),
+    },
+    wait_ms_count: {
+      name: "wait_ms_count",
+      ...column("UInt64", {
+        description: "Count of scheduling-delay samples. Aggregate with sum().",
+      }),
+    },
+    wait_quantiles: {
+      name: "wait_quantiles",
+      ...column("String", {
+        description:
+          "Scheduling-delay (dequeue minus eligible-at) quantile state. Read with quantilesMerge(0.5,0.9,0.95,0.99)(wait_quantiles)[n].",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+  },
+  timeBucketThresholds: [
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
+    { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },
+    { maxRangeSeconds: 30 * 24 * 60 * 60, interval: { value: 1, unit: "HOUR" } },
+    { maxRangeSeconds: 90 * 24 * 60 * 60, interval: { value: 6, unit: "HOUR" } },
+    { maxRangeSeconds: 180 * 24 * 60 * 60, interval: { value: 1, unit: "DAY" } },
+    { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
+  ] satisfies BucketThreshold[],
+  // Ranges whose bucket interval is >= 5 minutes read the 5m rollup instead (same
+  // logical columns, ~30x fewer rows).
+  rollups: [{ minIntervalSeconds: 300, clickhouseName: "trigger_dev.queue_metrics_5m_v1" }],
+  queryCache: { ttlSeconds: 30, alignSeconds: 30 },
+  queryClient: "queueMetrics",
+};
+
+/**
+ * Schema definition for the env_metrics table (trigger_dev.env_metrics_v1).
+ * Environment-level rollup of queue_metrics with the queue dimension dropped, so
+ * header tiles and saturation charts cost the same regardless of how many queues
+ * the environment has. Keeps the full 10-second granularity: row count is
+ * queue-independent, so even 30-day ranges stay small.
+ */
+export const envMetricsSchema: TableSchema = {
+  name: "env_metrics",
+  clickhouseName: "trigger_dev.env_metrics_v1",
+  description:
+    "Environment-level concurrency, saturation, throttling, and scheduling-delay metrics (10-second buckets)",
+  timeConstraint: "bucket_start",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    bucket_start: {
+      name: "bucket_start",
+      ...column("DateTime", {
+        description: "The start of the 10-second aggregation bucket",
+        example: "2024-01-15 09:30:00",
+        coreColumn: true,
+      }),
+    },
+    max_env_queued: {
+      name: "max_env_queued",
+      ...column("UInt32", {
+        description: "Peak environment-wide queued in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    max_env_running: {
+      name: "max_env_running",
+      ...column("UInt32", {
+        description: "Peak environment-wide running in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    max_env_limit: {
+      name: "max_env_limit",
+      ...column("UInt32", {
+        description: "The environment concurrency limit. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    throttled_count: {
+      name: "throttled_count",
+      ...column("UInt64", {
+        description:
+          "Gauge emissions where a queue was at its limit with work queued. Aggregate with sum().",
+        coreColumn: true,
+      }),
+    },
+    wait_ms_sum: {
+      name: "wait_ms_sum",
+      ...column("UInt64", {
+        description: "Sum of scheduling delays (ms). Mean = wait_ms_sum/wait_ms_count.",
+      }),
+    },
+    wait_ms_count: {
+      name: "wait_ms_count",
+      ...column("UInt64", {
+        description: "Count of scheduling-delay samples. Aggregate with sum().",
+      }),
+    },
+    wait_quantiles: {
+      name: "wait_quantiles",
+      ...column("String", {
+        description:
+          "Scheduling-delay quantile state (TDigest). Read with quantilesTDigestMerge(0.5,0.9,0.95,0.99)(wait_quantiles)[n].",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+  },
+  timeBucketThresholds: [
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
+    { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },
+    { maxRangeSeconds: 30 * 24 * 60 * 60, interval: { value: 1, unit: "HOUR" } },
+    { maxRangeSeconds: 90 * 24 * 60 * 60, interval: { value: 6, unit: "HOUR" } },
+    { maxRangeSeconds: 180 * 24 * 60 * 60, interval: { value: 1, unit: "DAY" } },
+    { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
+  ] satisfies BucketThreshold[],
+  queryCache: { ttlSeconds: 30, alignSeconds: 30 },
+  queryClient: "queueMetrics",
+};
+
 /**
  * Schema definition for the llm_metrics table (trigger_dev.llm_metrics_v1)
  */
-export const llmMetricsSchema: TableSchema = {
+const llmMetricsSchema: TableSchema = {
   name: "llm_metrics",
   clickhouseName: "trigger_dev.llm_metrics_v1",
   description: "LLM metrics: token usage, cost, performance, and behavior from GenAI spans",
@@ -880,7 +1203,7 @@ export const llmMetricsSchema: TableSchema = {
  * Schema definition for the llm_models table (trigger_dev.llm_model_aggregates_v1)
  * Global table — no tenant columns. Contains anonymized cross-tenant model performance data.
  */
-export const llmModelsSchema: TableSchema = {
+const llmModelsSchema: TableSchema = {
   name: "llm_models",
   clickhouseName: "trigger_dev.llm_model_aggregates_v1",
   description:
@@ -975,12 +1298,175 @@ export const llmModelsSchema: TableSchema = {
   },
 };
 
+/**
+ * Per-concurrency-key drill-down for queues that shard work with `concurrencyKey`
+ * (e.g. per-tenant fairness). Rows are activity-bound: a (queue, key, bucket) row exists
+ * only when that key had events, so key cardinality cannot inflate the table.
+ */
+const queueMetricsByKeySchema: TableSchema = {
+  name: "queue_metrics_by_key",
+  clickhouseName: "trigger_dev.queue_metrics_ck_v1",
+  description: "Per-concurrency-key queue metrics: backlog, throughput, and wait by key",
+  hidden: true,
+  timeConstraint: "bucket_start",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    queue: {
+      name: "queue",
+      clickhouseName: "queue_name",
+      ...column("LowCardinality(String)", {
+        description: "The queue name",
+        example: "my-queue",
+        coreColumn: true,
+      }),
+    },
+    concurrency_key: {
+      name: "concurrency_key",
+      ...column("String", {
+        description: "The concurrency key the run was sharded by (e.g. a tenant id)",
+        example: "tenant-42",
+        coreColumn: true,
+      }),
+    },
+    bucket_start: {
+      name: "bucket_start",
+      ...column("DateTime", {
+        description: "The start of the 10-second aggregation bucket",
+        example: "2024-01-15 09:30:00",
+        coreColumn: true,
+      }),
+    },
+    enqueue_delta: {
+      name: "enqueue_delta",
+      mergeGroupKey: ["queue", "concurrency_key"],
+      ...column("String", {
+        description:
+          "Runs enqueued for this key (cumulative-counter delta). Read with deltaSumTimestampMerge(enqueue_delta) grouped by queue and concurrency_key, or with both pinned; never merge across keys.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    started_delta: {
+      name: "started_delta",
+      mergeGroupKey: ["queue", "concurrency_key"],
+      ...column("String", {
+        description:
+          "Runs dequeued/started for this key (throughput). Read with deltaSumTimestampMerge(started_delta) grouped by queue and concurrency_key, or with both pinned; never merge across keys.",
+        coreColumn: true,
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    ack_delta: {
+      name: "ack_delta",
+      mergeGroupKey: ["queue", "concurrency_key"],
+      ...column("String", {
+        description:
+          "Runs acked (completed) for this key. Read with deltaSumTimestampMerge(ack_delta) grouped by queue and concurrency_key, or with both pinned.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    max_queued: {
+      name: "max_queued",
+      ...column("UInt32", {
+        description: "Peak backlog for this key in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    max_running: {
+      name: "max_running",
+      ...column("UInt32", {
+        description: "Peak running for this key in the bucket. Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
+    wait_ms_sum: {
+      name: "wait_ms_sum",
+      ...column("UInt64", {
+        description:
+          "Sum of scheduling delays (ms) for this key. Mean = wait_ms_sum/wait_ms_count.",
+      }),
+    },
+    wait_ms_count: {
+      name: "wait_ms_count",
+      ...column("UInt64", {
+        description: "Count of scheduling-delay samples for this key. Aggregate with sum().",
+      }),
+    },
+  },
+  timeBucketThresholds: [
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
+    { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },
+    { maxRangeSeconds: 30 * 24 * 60 * 60, interval: { value: 1, unit: "HOUR" } },
+    { maxRangeSeconds: 90 * 24 * 60 * 60, interval: { value: 6, unit: "HOUR" } },
+    { maxRangeSeconds: 180 * 24 * 60 * 60, interval: { value: 1, unit: "DAY" } },
+    { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
+  ] satisfies BucketThreshold[],
+  queryCache: { ttlSeconds: 30, alignSeconds: 30 },
+  queryClient: "queueMetrics",
+};
+
 export const querySchemas: TableSchema[] = [
   runsSchema,
   metricsSchema,
   llmMetricsSchema,
   llmModelsSchema,
+  queueMetricsSchema,
+  envMetricsSchema,
+  queueMetricsByKeySchema,
 ];
+
+/** Tables whose listing is deferred until queue metrics are rolled out. */
+const QUEUE_METRICS_TABLE_NAMES = new Set([
+  queueMetricsSchema.name,
+  envMetricsSchema.name,
+  queueMetricsByKeySchema.name,
+]);
+
+/**
+ * Schemas shown in user-facing listings (editor autocomplete, schema docs, schema API, AI query
+ * context). Listing only: `querySchemas` stays the compile-time set, so a query naming an unlisted
+ * table still runs, with tenancy enforced as usual.
+ *
+ * Server callers pass `env.QUEUE_METRICS_QUERY_TABLES_VISIBLE === "1"`; client callers read
+ * `queueMetricsQueryTables` from `useFeatures()`. This module is imported by browser code, so it
+ * must not reach for `env.server` itself.
+ */
+export function listableQuerySchemas(options: { includeQueueMetrics: boolean }): TableSchema[] {
+  return querySchemas.filter((s) => {
+    if (s.hidden) return false;
+    if (!options.includeQueueMetrics && QUEUE_METRICS_TABLE_NAMES.has(s.name)) return false;
+    return true;
+  });
+}
 
 /**
  * Default query for the query editor

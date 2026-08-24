@@ -1,8 +1,6 @@
 import { json } from "@remix-run/server-runtime";
-import type { BatchTriggerTaskV2Response } from "@trigger.dev/core/v3";
-import { BatchTriggerTaskV2RequestBody, generateJWT } from "@trigger.dev/core/v3";
+import { BatchTriggerTaskV2RequestBody } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
-import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
@@ -16,7 +14,7 @@ import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
-import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { publicAccessTokenResponseHeaders } from "~/services/publicAccessTokenResponse.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -118,17 +116,18 @@ const { action, loader } = createActionApiRoute(
         spanParentAsLink: spanParentAsLink === 1,
         oneTimeUseToken,
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
-          realtimeStreamsVersion ?? undefined
+          realtimeStreamsVersion ?? undefined,
+          authentication.environment.organization.streamBasinName
         ),
         triggerSource: isFromWorker ? "sdk" : (sanitizeTriggerSource(triggerSourceHeader) ?? "api"),
         triggerAction: "trigger",
       });
 
-      const $responseHeaders = await responseHeaders(
-        batch,
-        authentication.environment,
-        triggerClient
-      );
+      const $responseHeaders = await publicAccessTokenResponseHeaders({
+        environment: authentication.environment,
+        scopes: [`read:batch:${batch.id}`],
+        expirationTime: "1h",
+      });
 
       return json(batch, { status: 202, headers: $responseHeaders });
     } catch (error) {
@@ -162,39 +161,5 @@ const { action, loader } = createActionApiRoute(
     }
   }
 );
-
-async function responseHeaders(
-  batch: BatchTriggerTaskV2Response,
-  environment: AuthenticatedEnvironment,
-  triggerClient?: string | null
-): Promise<Record<string, string>> {
-  const claimsHeader = JSON.stringify({
-    sub: environment.id,
-    pub: true,
-  });
-
-  if (triggerClient === "browser") {
-    const claims = {
-      sub: environment.id,
-      pub: true,
-      scopes: [`read:batch:${batch.id}`],
-    };
-
-    const jwt = await generateJWT({
-      secretKey: extractJwtSigningSecretKey(environment),
-      payload: claims,
-      expirationTime: "1h",
-    });
-
-    return {
-      "x-trigger-jwt-claims": claimsHeader,
-      "x-trigger-jwt": jwt,
-    };
-  }
-
-  return {
-    "x-trigger-jwt-claims": claimsHeader,
-  };
-}
 
 export { action, loader };

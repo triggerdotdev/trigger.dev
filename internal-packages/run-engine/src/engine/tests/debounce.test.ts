@@ -3177,4 +3177,81 @@ describe("RunEngine debounce", () => {
       }
     );
   }
+
+  containerTest(
+    "Debounce: with no server ceiling configured, a long delay keeps extending one run",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runIds: string[] = [];
+
+        for (let i = 0; i < 4; i++) {
+          const run = await engine.trigger(
+            {
+              number: i + 1,
+              friendlyId: `run_long${i}`,
+              environment: authenticatedEnvironment,
+              taskIdentifier,
+              payload: `{"data": ${i}}`,
+              payloadType: "application/json",
+              context: {},
+              traceContext: {},
+              traceId: `t1234${i}`,
+              spanId: `s1234${i}`,
+              workerQueue: "main",
+              queue: "task/test-task",
+              isTest: false,
+              tags: [],
+              delayUntil: new Date(Date.now() + 12 * 60 * 60 * 1000),
+              debounce: {
+                key: "user-123",
+                delay: "12h",
+              },
+            },
+            prisma
+          );
+
+          runIds.push(run.id);
+        }
+
+        expect(new Set(runIds).size).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

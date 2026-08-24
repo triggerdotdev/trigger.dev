@@ -1,5 +1,10 @@
 import { MachinePresetName, parsePacket, RunStatus } from "@trigger.dev/core/v3";
-import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
+import {
+  type Project,
+  type RuntimeEnvironment,
+  type TaskRunStatus,
+  boundedIn,
+} from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
 import type { API_VERSIONS } from "~/api/versions";
@@ -178,6 +183,7 @@ export class ApiRunListPresenter extends BasePresenter {
     return this.trace("call", async (span) => {
       const options: RunListOptions = {
         projectId: project.id,
+        columns: { visibleStandardIds: [], smartSources: ["metadata"] },
       };
 
       // pagination
@@ -208,7 +214,7 @@ export class ApiRunListPresenter extends BasePresenter {
             where: {
               projectId: project.id,
               slug: {
-                in: searchParams["filter[env]"],
+                in: boundedIn(searchParams["filter[env]"]),
               },
             },
           });
@@ -305,7 +311,7 @@ export class ApiRunListPresenter extends BasePresenter {
           const metadata = await parsePacket(
             {
               data: run.metadata ?? undefined,
-              dataType: run.metadataType,
+              dataType: run.metadataType ?? "application/json",
             },
             {
               filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],

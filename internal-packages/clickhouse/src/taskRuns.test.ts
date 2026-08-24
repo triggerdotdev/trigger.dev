@@ -29,6 +29,7 @@ describe("Task Runs V2", () => {
     });
 
     const now = Date.now();
+    const queueTimestamp = now + 30_000;
     const taskRunData: TaskRunInsertArray = [
       "env_1234", // environment_id
       "org_1234", // organization_id
@@ -36,6 +37,7 @@ describe("Task Runs V2", () => {
       "run_1234", // run_id
       now, // updated_at
       now, // created_at
+      queueTimestamp, // queue_timestamp
       "PENDING", // status
       "DEVELOPMENT", // environment_type
       "friendly_1234", // friendly_id
@@ -91,6 +93,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // external_deployment_id
     ];
 
     const [insertError, insertResult] = await insert([taskRunData]);
@@ -105,6 +108,7 @@ describe("Task Runs V2", () => {
       schema: z.object({
         environment_id: z.string(),
         run_id: z.string(),
+        queue_timestamp: z.coerce.date().nullable(),
         concurrency_key: z.string(),
         bulk_action_group_ids: z.array(z.string()),
       }),
@@ -121,6 +125,7 @@ describe("Task Runs V2", () => {
         expect.objectContaining({
           environment_id: "env_1234",
           run_id: "run_1234",
+          queue_timestamp: new Date(queueTimestamp),
           concurrency_key: "concurrency_key_1234",
           bulk_action_group_ids: ["bulk_action_group_id_1234", "bulk_action_group_id_1235"],
         }),
@@ -183,6 +188,7 @@ describe("Task Runs V2", () => {
         "run_mixed", // run_id
         now, // updated_at
         now, // created_at
+        null, // queue_timestamp
         "COMPLETED_SUCCESSFULLY", // status
         "DEVELOPMENT", // environment_type
         "friendly_mixed", // friendly_id
@@ -231,6 +237,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // external_deployment_id
       ];
 
       const [insertError, insertResult] = await insert([taskRunData]);
@@ -282,6 +289,7 @@ describe("Task Runs V2", () => {
       "cma45oli70002qrdy47w0j4n7", // run_id
       createdAt, // updated_at
       createdAt, // created_at
+      null, // queue_timestamp
       "PENDING", // status
       "PRODUCTION", // environment_type
       "run_cma45oli70002qrdy47w0j4n7", // friendly_id
@@ -330,6 +338,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // external_deployment_id
     ];
 
     const run2: TaskRunInsertArray = [
@@ -339,6 +348,7 @@ describe("Task Runs V2", () => {
       "cma45oli70002qrdy47w0j4n7", // run_id
       createdAt, // updated_at
       createdAt, // created_at
+      null, // queue_timestamp
       "COMPLETED_SUCCESSFULLY", // status
       "PRODUCTION", // environment_type
       "run_cma45oli70002qrdy47w0j4n7", // friendly_id
@@ -387,6 +397,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // external_deployment_id
     ];
 
     const [insertError, insertResult] = await insert([run1, run2]);
@@ -443,6 +454,7 @@ describe("Task Runs V2", () => {
         "cma45oli70002qrdy47w0j4n7", // run_id
         createdAt, // updated_at
         createdAt, // created_at
+        null, // queue_timestamp
         "PENDING", // status
         "PRODUCTION", // environment_type
         "run_cma45oli70002qrdy47w0j4n7", // friendly_id
@@ -491,6 +503,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // external_deployment_id
       ];
 
       const [_insertError, _insertResult] = await insert([taskRun]);
@@ -555,6 +568,7 @@ describe("Task Runs V2", () => {
         "root_run_1", // run_id
         baseCreatedAt, // updated_at
         baseCreatedAt, // created_at
+        null, // queue_timestamp
         "EXECUTING", // status
         "DEVELOPMENT", // environment_type
         "run_root_1", // friendly_id
@@ -603,6 +617,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // external_deployment_id
       ];
 
       const childA_v1: TaskRunInsertArray = [
@@ -612,6 +627,7 @@ describe("Task Runs V2", () => {
         "child_a",
         baseCreatedAt + 1_000,
         baseCreatedAt + 1_000,
+        null, // queue_timestamp
         "PENDING",
         "DEVELOPMENT",
         "run_child_a",
@@ -660,6 +676,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const childA_v2: TaskRunInsertArray = [...childA_v1];
@@ -673,6 +690,7 @@ describe("Task Runs V2", () => {
         "child_b",
         baseCreatedAt + 2_000,
         baseCreatedAt + 2_000,
+        null, // queue_timestamp
         "EXECUTING",
         "DEVELOPMENT",
         "run_child_b",
@@ -721,6 +739,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const childDeleted_v1: TaskRunInsertArray = [
@@ -730,6 +749,7 @@ describe("Task Runs V2", () => {
         "child_deleted",
         baseCreatedAt + 3_000,
         baseCreatedAt + 3_000,
+        null, // queue_timestamp
         "PENDING",
         "DEVELOPMENT",
         "run_child_deleted",
@@ -778,6 +798,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const childDeleted_v2: TaskRunInsertArray = [...childDeleted_v1];
@@ -907,6 +928,7 @@ describe("Task Runs V2", () => {
         "cma45oli70002qrdy47w0j4n7",
         createdAt,
         createdAt,
+        null, // queue_timestamp
         "PENDING",
         "PRODUCTION",
         "run_cma45oli70002qrdy47w0j4n7",
@@ -955,6 +977,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const rdsSnapshot: TaskRunInsertArray = [...base];
@@ -1010,6 +1033,7 @@ describe("Task Runs V2", () => {
         "cma45oli70002qrdy47w0j4n7",
         createdAt,
         createdAt,
+        null, // queue_timestamp
         "PENDING",
         "PRODUCTION",
         "run_cma45oli70002qrdy47w0j4n7",
@@ -1058,6 +1082,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const earlier: TaskRunInsertArray = [...base];
@@ -1113,6 +1138,7 @@ describe("Task Runs V2", () => {
         "cma45oli70002qrdy47w0j4n7",
         createdAt,
         createdAt,
+        null, // queue_timestamp
         "PENDING",
         "PRODUCTION",
         "run_cma45oli70002qrdy47w0j4n7",
@@ -1161,6 +1187,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // external_deployment_id
       ];
 
       const rdsSnapshot: TaskRunInsertArray = [...base];

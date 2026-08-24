@@ -1203,6 +1203,16 @@ paths:
                     description: Error message describing the query error
         "401":
           description: Unauthorized - API key is missing or invalid
+        "429":
+          description: Query service is busy or rate limited - retry shortly
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message describing why the query was turned away
         "500":
           description: Internal server error during query execution
       tags:
@@ -3001,7 +3011,10 @@ paths:
                   type: integer
                   minimum: 0
                   maximum: 100000
-                  description: The new concurrency limit to set for the queue
+                  description: |
+                    The new concurrency limit to set for the queue. It may not exceed your
+                    environment's maximum concurrency limit: a higher value is rejected with a
+                    400, not capped to the maximum.
       responses:
         "200":
           description: Concurrency limit overridden successfully
@@ -3010,7 +3023,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/QueueObject"
         "400":
-          description: Invalid request parameters
+          description: |
+            Invalid request parameters, or the requested concurrency limit exceeds the
+            environment's maximum concurrency limit.
         "401":
           description: Unauthorized request
         "404":

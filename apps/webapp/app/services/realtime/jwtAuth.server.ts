@@ -1,15 +1,21 @@
-import { validateJWT, type ValidationResult } from "@trigger.dev/core/v3/jwt";
+import {
+  extractJWTSub,
+  isPublicJWT,
+  validateJWT,
+  type ValidationResult,
+} from "@trigger.dev/core/v3/jwt";
+import { resolveJwtSigningKey } from "@trigger.dev/rbac";
 import { $replica } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 
-export type ValidatePublicJwtKeySuccess = {
+type ValidatePublicJwtKeySuccess = {
   ok: true;
   environment: AuthenticatedEnvironment;
   claims: Record<string, unknown>;
 };
 
-export type ValidatePublicJwtKeyError = {
+type ValidatePublicJwtKeyError = {
   ok: false;
   error: string;
 };
@@ -33,10 +39,10 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
     return { ok: false, error: "Invalid Public Access Token, environment not found." };
   }
 
-  let result = await validateJWT(
-    token,
-    environment.parentEnvironment?.apiKey ?? environment.apiKey
-  );
+  // A disabled root key does not invalidate public JWTs: disabling rotates
+  // the stored apiKey (killing tokens signed with the old value), and the
+  // rotated value keeps signing server-issued tokens so Realtime still works.
+  let result = await validateJWT(token, resolveJwtSigningKey(environment));
 
   // PATs are signed with the env's apiKey at mint time. If the env's apiKey
   // has since been rotated, signature verification fails against the current
@@ -105,60 +111,8 @@ async function validateAgainstRevokedApiKeys(
   return primaryResult;
 }
 
-export function isPublicJWT(token: string): boolean {
-  // Split the token
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-
-  try {
-    // Decode the payload (second part)
-    const payload = JSON.parse(decodeBase64Url(parts[1]));
-
-    if (payload === null || typeof payload !== "object") return false;
-
-    // Check for the pub: true claim
-    return "pub" in payload && payload.pub === true;
-  } catch (_error) {
-    // If there's any error in decoding or parsing, it's not a valid JWT
-    return false;
-  }
-}
+export { isPublicJWT };
 
 export function extractJwtSigningSecretKey(environment: AuthenticatedEnvironment) {
-  return environment.parentEnvironment?.apiKey ?? environment.apiKey;
-}
-
-function extractJWTSub(token: string): string | undefined {
-  // Split the token
-  const parts = token.split(".");
-  if (parts.length !== 3) return;
-
-  try {
-    // Decode the payload (second part)
-    const payload = JSON.parse(decodeBase64Url(parts[1]));
-
-    if (payload === null || typeof payload !== "object") return;
-
-    // Check for the pub: true claim
-    return "sub" in payload && typeof payload.sub === "string" ? payload.sub : undefined;
-  } catch (_error) {
-    // If there's any error in decoding or parsing, it's not a valid JWT
-    return;
-  }
-}
-
-function decodeBase64Url(str: string): string {
-  // Replace URL-safe characters and add padding
-  str = str.replace(/-/g, "+").replace(/_/g, "/");
-  switch (str.length % 4) {
-    case 2:
-      str += "==";
-      break;
-    case 3:
-      str += "=";
-      break;
-  }
-
-  // Decode using Node.js Buffer
-  return Buffer.from(str, "base64").toString("utf8");
+  return resolveJwtSigningKey(environment);
 }

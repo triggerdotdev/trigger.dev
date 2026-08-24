@@ -568,11 +568,12 @@ function SeriesColorPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
+          aria-label="Change series color"
           className="shrink-0 rounded p-0.5 hover:bg-background-raised"
           title="Change series color"
         >
           <span
-            className="block h-4 w-4 rounded-full border border-white/30"
+            className="block h-4 w-4 rounded-full border border-text-bright/30"
             style={{ backgroundColor: color }}
           />
         </button>
@@ -587,7 +588,7 @@ function SeriesColorPicker({
                 onColorChange(c);
                 setOpen(false);
               }}
-              className="group/swatch flex h-6 w-6 items-center justify-center rounded-full border border-white/30"
+              className="group/swatch flex h-6 w-6 items-center justify-center rounded-full border border-text-bright/30"
               style={{ backgroundColor: c }}
               title={c}
             >

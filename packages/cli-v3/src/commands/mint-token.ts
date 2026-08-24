@@ -24,10 +24,10 @@ export function configureMintTokenCommand(program: Command) {
       .description(
         "Mint a short-lived token (tr_uat_) that authenticates as you, from your stored personal access token"
       )
-      .option("--ttl <seconds>", "Token lifetime in seconds (default 3600, max 31536000)")
+      .option("--ttl <seconds>", "Token lifetime in seconds (default 3600, max 604800)")
       .option(
         "--cap <scopes>",
-        "Comma-separated scope cap, e.g. read:runs,read:tasks (defaults to your full role)"
+        "Comma-separated scope cap, e.g. read:runs,read:tasks (omit for read-only: read:all)"
       )
       .option("--client <label>", "Attribution label recorded in the token (default: cli)")
   ).action(async (options) => {
@@ -37,7 +37,7 @@ export function configureMintTokenCommand(program: Command) {
   });
 }
 
-export async function mintTokenCommand(options: unknown) {
+async function mintTokenCommand(options: unknown) {
   return await wrapCommandAction(
     "mintTokenCommand",
     MintTokenCommandOptions,

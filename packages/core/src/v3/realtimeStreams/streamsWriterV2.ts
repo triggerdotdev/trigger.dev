@@ -183,10 +183,16 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       const lastAcked = session.lastAckedPosition();
 
       if (lastAcked?.end) {
-        this.lastSeqNum = lastAcked.end.seqNum;
-        this.log(
-          `[S2MetadataStream] Written ${this.lastSeqNum} records, ending at seqNum=${this.lastSeqNum}`
-        );
+        /**
+         * S2's ack `end.seqNum` is exclusive: the seq AFTER the last record
+         * written (equal to the tail). Report the last record's own seq
+         * (`end - 1`) as `lastEventId` so a resume subscribe, which reads
+         * from `lastEventId + 1`, lands on the next record instead of
+         * skipping one. Matches the inclusive seq the one-shot control
+         * writer returns.
+         */
+        this.lastSeqNum = lastAcked.end.seqNum - 1;
+        this.log(`[S2MetadataStream] Wrote through seqNum=${this.lastSeqNum}`);
       }
     } catch (error) {
       if (this.aborted) {

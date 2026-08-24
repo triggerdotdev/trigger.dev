@@ -47,7 +47,7 @@ See [Quick Start](/ai-chat/quick-start) for the matching server actions and a ru
 
 ## Why use AI Agents on Trigger.dev
 
-- **Resume across refreshes, deploys, and crashes.** A chat in progress when you redeploy keeps streaming on the new version. Mid-stream refreshes pick up where they left off.
+- **Resume across refreshes, deploys, and crashes.** A chat in progress keeps streaming through a redeploy, pinned to the version it started on. Move it onto new code when you choose with a [version upgrade](/ai-chat/patterns/version-upgrades). Mid-stream refreshes pick up where they left off.
 - **Native AI SDK support.** Text, tool calls, reasoning, and custom `data-*` parts all flow through `useChat` over a custom `ChatTransport`. No custom protocol to maintain.
 - **Multi-turn for free.** Each turn is a step inside the same durable task; conversation history accumulates server-side, so clients only ship the new message.
 - **Fast cold starts.** Opt-in [Head Start](/ai-chat/fast-starts#head-start) runs the first `streamText` step in your warm Next.js / Hono / SvelteKit server while the agent boots in parallel — cuts time-to-first-chunk roughly in half.

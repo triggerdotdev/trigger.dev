@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
 import { IconTimeline } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import {
   useDateRange,
 } from "~/components/primitives/charts/DateRangeContext";
 import type { ZoomRange } from "~/components/primitives/charts/hooks/useZoomSelection";
+import { MiniLineChart } from "~/components/metrics/MiniLineChart";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
@@ -20,6 +22,7 @@ import SegmentedControl from "~/components/primitives/SegmentedControl";
 // Date formatters for chart display
 const xAxisTickFormatter = (value: string) => formatISODate(value);
 const tooltipLabelFormatter = (label: string) => formatISODateLong(label);
+const MINI_LINE_BUCKET_START_MS = Date.UTC(2025, 0, 1);
 
 /**
  * Helper function to filter chart data by date range.
@@ -262,6 +265,128 @@ function ChartsDashboard() {
             />
           </Card.Content>
         </Card>
+
+        {/* Line with per-bucket warning overlay (queues redesign) */}
+        <Card>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <IconTimeline className="size-5 text-warning" />
+              Warning overlay{" "}
+              <span className="font-normal text-text-dimmed">(per-bucket recolour)</span>
+            </div>
+          </Card.Header>
+          <Card.Content>
+            {/* The base line stays the series colour; buckets strictly above `threshold` retrace
+                in the warning colour, so the same line reads blue -> yellow -> blue as it crosses. */}
+            <Chart.Root config={queueDepthConfig} data={API_DATA.queueDepthData} dataKey="day">
+              <Chart.Line
+                lineType="monotone"
+                warningOverlay={{ threshold: 5000 }}
+                referenceLines={[{ y: 5000, label: "Threshold 5,000" }]}
+                xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+                tooltipLabelFormatter={tooltipLabelFormatter}
+              />
+            </Chart.Root>
+          </Card.Content>
+        </Card>
+
+        {/* Line with gradient threshold split (queues redesign) */}
+        <Card>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <IconTimeline className="size-5 text-warning" />
+              Threshold stroke{" "}
+              <span className="font-normal text-text-dimmed">(gradient split)</span>
+            </div>
+          </Card.Header>
+          <Card.Content>
+            {/* Gradient split above the threshold. Best when the threshold sits mid-domain — if it
+                sits far below the data max the split collapses onto the baseline; prefer
+                `warningOverlay` in that case (see the Warning overlay example). */}
+            <Chart.Root config={queueDepthConfig} data={API_DATA.queueDepthData} dataKey="day">
+              <Chart.Line
+                lineType="monotone"
+                thresholdStroke={{ value: 5000, aboveColor: "var(--color-warning)" }}
+                xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+                tooltipLabelFormatter={tooltipLabelFormatter}
+              />
+            </Chart.Root>
+          </Card.Content>
+        </Card>
+
+        {/* Line with outside-placed reference line label (queues redesign) */}
+        <Card>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <IconTimeline className="size-5 text-indigo-500" />
+              Reference line{" "}
+              <span className="font-normal text-text-dimmed">(label outside, in the gutter)</span>
+            </div>
+          </Card.Header>
+          <Card.Content>
+            {/* labelPlacement: "outside" renders the label in the right gutter at the line's y;
+                the chart's right margin is widened automatically so it isn't clipped. */}
+            <Chart.Root config={queueDepthConfig} data={API_DATA.queueDepthData} dataKey="day">
+              <Chart.Line
+                lineType="monotone"
+                referenceLines={[{ y: 8000, label: "Limit 8,000", labelPlacement: "outside" }]}
+                xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+                tooltipLabelFormatter={tooltipLabelFormatter}
+              />
+            </Chart.Root>
+          </Card.Content>
+        </Card>
+
+        {/* MiniLineChart backlog sparklines (queues redesign) */}
+        <Card>
+          <Card.Header>
+            <div className="flex items-center gap-1.5">
+              <IconTimeline className="size-5 text-tasks-bright" />
+              Mini line chart{" "}
+              <span className="font-normal text-text-dimmed">(inline backlog sparkline)</span>
+            </div>
+          </Card.Header>
+          <Card.Content>
+            {/* Fixed-size inline sparkline sized for a table cell, with a trailing peak label. The
+                second row passes aligned `throttled` buckets so throttled stretches retrace the same
+                line in the warning colour. */}
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-grid-dimmed text-left text-text-dimmed">
+                  <th className="py-1.5 pr-4 font-normal">Queue</th>
+                  <th className="py-1.5 font-normal">Backlog</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-grid-dimmed">
+                  <td className="py-1.5 pr-4 text-text-bright">emails</td>
+                  <td className="py-1.5">
+                    <MiniLineChart
+                      data={API_DATA.miniLineData}
+                      bucketStartMs={MINI_LINE_BUCKET_START_MS}
+                      peak={Math.max(...API_DATA.miniLineData)}
+                      unitLabel={{ singular: "queued", plural: "queued" }}
+                      color="var(--color-tasks)"
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-4 text-text-bright">image-processing</td>
+                  <td className="py-1.5">
+                    <MiniLineChart
+                      data={API_DATA.miniLineThrottledData}
+                      bucketStartMs={MINI_LINE_BUCKET_START_MS}
+                      throttled={API_DATA.miniLineThrottledBuckets}
+                      peak={Math.max(...API_DATA.miniLineThrottledData)}
+                      unitLabel={{ singular: "queued", plural: "queued" }}
+                      color="var(--color-tasks)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </Card.Content>
+        </Card>
       </div>
     </div>
   );
@@ -273,6 +398,9 @@ export default function Story() {
       defaultStartDate={API_DATA.defaultDateRange.startDate}
       defaultEndDate={API_DATA.defaultDateRange.endDate}
     >
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Chart.tsx", "ChartCompound.tsx", "BigNumberCard.tsx"]} />
+      </div>
       <ChartsDashboard />
     </DateRangeProvider>
   );
@@ -681,6 +809,30 @@ const API_DATA = {
       "analyze-document": 5678,
     },
   ],
+  // Single-series queue depth that crosses the 5,000 threshold twice (blue -> yellow -> blue),
+  // used by the warning overlay, threshold stroke and outside reference-line examples.
+  queueDepthData: [
+    { day: "2023-11-01", queued: 1200 },
+    { day: "2023-11-02", queued: 2400 },
+    { day: "2023-11-03", queued: 3800 },
+    { day: "2023-11-04", queued: 4600 },
+    { day: "2023-11-05", queued: 6200 },
+    { day: "2023-11-06", queued: 7400 },
+    { day: "2023-11-07", queued: 6800 },
+    { day: "2023-11-08", queued: 5200 },
+    { day: "2023-11-09", queued: 3600 },
+    { day: "2023-11-10", queued: 2800 },
+    { day: "2023-11-11", queued: 3400 },
+    { day: "2023-11-12", queued: 5600 },
+    { day: "2023-11-13", queued: 7800 },
+    { day: "2023-11-14", queued: 6400 },
+    { day: "2023-11-15", queued: 4200 },
+  ],
+  // Inline sparkline buckets (oldest first). No throttling on this one.
+  miniLineData: [3, 5, 8, 12, 9, 14, 20, 18, 11, 7, 4, 6],
+  // A backlog that was throttled across a stretch in the middle; `throttled` aligns 1:1 with `data`.
+  miniLineThrottledData: [2, 4, 9, 16, 24, 30, 27, 19, 12, 8, 5, 3],
+  miniLineThrottledBuckets: [0, 0, 0, 6, 14, 18, 11, 0, 0, 0, 0, 0],
 };
 
 const lineChartConfig = {
@@ -691,6 +843,13 @@ const lineChartConfig = {
   "failure-rate": {
     label: "Failure Rate",
     color: "#F43F5E",
+  },
+} satisfies ChartConfig;
+
+const queueDepthConfig = {
+  queued: {
+    label: "Queue depth",
+    color: "var(--color-tasks)",
   },
 } satisfies ChartConfig;
 

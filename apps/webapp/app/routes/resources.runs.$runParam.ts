@@ -11,6 +11,7 @@ import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 
+import { boundedIn } from "@trigger.dev/database";
 export type RunInspectorData = UseDataFunctionReturn<typeof loader>;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -113,7 +114,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           error: true,
         },
         where: {
-          status: { in: FINAL_ATTEMPT_STATUSES },
+          status: { in: boundedIn(FINAL_ATTEMPT_STATUSES) },
           taskRunId: run.id,
         },
         orderBy: {

@@ -1,4 +1,4 @@
-import { type WorkloadType } from "@trigger.dev/database";
+import { type WorkloadType, boundedIn } from "@trigger.dev/database";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
@@ -87,7 +87,7 @@ export class RegionsPresenter extends BasePresenter {
         : // Hide hidden unless they're allowed to use them
           project.allowedWorkerQueues.length > 0
           ? {
-              masterQueue: { in: project.allowedWorkerQueues },
+              masterQueue: { in: boundedIn(project.allowedWorkerQueues) },
             }
           : defaultVisibilityFilter(hasComputeAccess),
       orderBy: {

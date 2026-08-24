@@ -1,7 +1,6 @@
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -11,6 +10,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { TabButton } from "~/components/primitives/Tabs";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
@@ -19,6 +19,7 @@ import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
+import { TitleBar } from "~/components/primitives/TitleBar";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -29,15 +30,24 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import {
+  QUEUE_METRIC_COLORS,
+  QueueMetricChart,
+  QueueSidebarStats,
+  type QueueLiveCounts,
+  type QueueMetricIds,
+} from "~/components/queues/QueueMetricCards";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -48,15 +58,26 @@ import { requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
   v3EnvironmentPath,
+  v3QueuePath,
   v3QueuesPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
+import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { engine } from "~/v3/runEngine.server";
+import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
-  return [{ title: slug ? `${slug} | Tasks | Trigger.dev` : "Task | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => taskAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.task?.slug ?? params.taskParam ?? "Task",
+  "Tasks",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),
@@ -97,6 +118,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   if (!task) throw new Response("Task not found", { status: 404 });
 
+  // Live queue counts (two O(1) Redis reads) shown in the sidebar; history charts fetch
+  // client-side through the metric resource. Flag off = no extra reads at all.
+  let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
+  if (task.queue && (await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
+    const queueName = task.queue.name;
+    const [lengths, concurrency] = await Promise.all([
+      engine.lengthOfQueues(environment, [queueName]),
+      engine.currentConcurrencyOfQueues(environment, [queueName]),
+    ]);
+    queueMetrics = {
+      live: {
+        queued: lengths?.[queueName] ?? 0,
+        running: concurrency?.[queueName] ?? 0,
+      },
+      ids: {
+        organizationId: project.organizationId,
+        projectId: project.id,
+        environmentId: environment.id,
+      },
+    };
+  }
+
   const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
 
   const activity = presenter
@@ -121,6 +164,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      includeHasAnyRuns: true,
+      columns: getRunColumnsForSelect(request),
     })
     .catch(() => null);
 
@@ -128,11 +173,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     task,
     activity,
     runList,
+    queueMetrics,
   });
 };
 
 export default function Page() {
-  const { task, activity, runList } = useTypedLoaderData<typeof loader>();
+  const { task, activity, runList, queueMetrics } = useTypedLoaderData<typeof loader>();
   const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
   const project = useProject();
@@ -143,6 +189,43 @@ export default function Page() {
     taskIdentifier: task.slug,
   });
   const queuesPath = v3QueuesPath(organization, project, environment);
+  const queuePath = task.queue
+    ? v3QueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
+    : undefined;
+
+  const { value } = useSearchParams();
+  const timeRange = {
+    period: value("period") ?? null,
+    from: value("from") ?? null,
+    to: value("to") ?? null,
+  };
+
+  const runsByStatusChart = (
+    <Suspense fallback={<ActivityChartSkeleton />}>
+      <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
+        {(result) => <ActivityChart activity={result} />}
+      </TypedAwait>
+    </Suspense>
+  );
+
+  const activityPanel =
+    queueMetrics && task.queue ? (
+      <TaskActivityCard
+        runsByStatusChart={runsByStatusChart}
+        queueName={task.queue.name}
+        ids={queueMetrics.ids}
+        timeRange={timeRange}
+      />
+    ) : (
+      <ChartCard title="Runs by status">{runsByStatusChart}</ChartCard>
+    );
+
+  // New-runs banner state is lifted here so the button can live in the top bar,
+  // while the count/action originate from the live-reload hook inside the
+  // deferred runs table below. Count drives visibility; the ref exposes the
+  // click action (kept current by TaskRunsList each render).
+  const [newRunsCount, setNewRunsCount] = useState(0);
+  const showNewRunsRef = useRef<() => void>(() => {});
 
   return (
     <PageContainer>
@@ -161,33 +244,15 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="task-main" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              {/* Top bar — title on the left; TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
-              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <Header2>Runs</Header2>
-                <div className="ml-auto flex items-center gap-1.5">
-                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
-                </div>
+              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright px-2">
+                <TimeFilter defaultPeriod="7d" labelName="Runs" />
               </div>
 
               <ResizablePanelGroup orientation="vertical" className="max-h-full">
                 {/* Activity chart */}
                 <ResizablePanel id="task-activity" min="220px" default="320px">
                   <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-2">
-                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
-                      <ChartCard title="Runs by status">
-                        <Suspense fallback={<ActivityChartSkeleton />}>
-                          <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
-                            {(result) => <ActivityChart activity={result} />}
-                          </TypedAwait>
-                        </Suspense>
-                      </ChartCard>
-                    </ChartSyncProvider>
+                    <ChartSyncProvider onZoom={zoomToTimeFilter}>{activityPanel}</ChartSyncProvider>
                   </div>
                 </ResizablePanel>
 
@@ -195,28 +260,40 @@ export default function Page() {
 
                 {/* Runs table */}
                 <ResizablePanel id="task-content" min="160px">
-                  <div className="h-full overflow-hidden">
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                        {(list) =>
-                          list ? (
-                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-                              <TaskRunsTable
-                                total={list.runs.length}
-                                hasFilters={list.hasFilters}
-                                filters={list.filters}
-                                runs={list.runs}
-                                variant="dimmed"
-                                showTopBorder={false}
-                                stickyHeader
+                  <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the title. */}
+                    <TitleBar title="Runs" className="-mt-px">
+                      {newRunsCount > 0 ? (
+                        <NewRunsButton
+                          count={newRunsCount}
+                          onClick={() => showNewRunsRef.current()}
+                        />
+                      ) : null}
+                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={runList} errorElement={null}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </TitleBar>
+                    <div className="min-h-0 overflow-hidden">
+                      <Suspense fallback={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                          {(list) =>
+                            list ? (
+                              <TaskRunsList
+                                list={list}
+                                taskSlug={task.slug}
+                                onNewRunsCountChange={setNewRunsCount}
+                                showNewRunsRef={showNewRunsRef}
                               />
-                            </div>
-                          ) : (
-                            <TableLoading />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
+                            ) : (
+                              <TableLoading />
+                            )
+                          }
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -225,7 +302,13 @@ export default function Page() {
 
           <ResizableHandle id="task-detail-handle" />
           <ResizablePanel id="task-detail" min="280px" default="380px" max="500px" isStaticAtRest>
-            <TaskDetailSidebar task={task} testPath={testPath} queuesPath={queuesPath} />
+            <TaskDetailSidebar
+              task={task}
+              testPath={testPath}
+              queuesPath={queuesPath}
+              queuePath={queuePath}
+              queueMetrics={queueMetrics}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
@@ -237,10 +320,14 @@ function TaskDetailSidebar({
   task,
   testPath,
   queuesPath,
+  queuePath,
+  queueMetrics,
 }: {
   task: TaskDetail;
   testPath: string;
   queuesPath: string;
+  queuePath: string | undefined;
+  queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null;
 }) {
   const showExportName = task.exportName && task.exportName !== task.slug;
   const retrySummary = formatRetrySummary(task.retry);
@@ -314,11 +401,21 @@ function TaskDetailSidebar({
               <Property.Label>Queue</Property.Label>
               <Property.Value>
                 <div className="flex flex-col gap-0.5">
-                  <TextLink to={queuesPath}>{task.queue.name}</TextLink>
+                  <TextLink to={queueMetrics && queuePath ? queuePath : queuesPath}>
+                    {task.queue.name}
+                  </TextLink>
                   <Paragraph variant="extra-small" className="text-text-dimmed">
                     Concurrency: {task.queue.concurrencyLimit ?? "Unlimited"}
                     {task.queue.paused ? " · Paused" : ""}
                   </Paragraph>
+                  {queueMetrics ? (
+                    <QueueSidebarStats
+                      live={queueMetrics.live}
+                      ids={queueMetrics.ids}
+                      queueName={task.queue.name}
+                      defaultPeriod="7d"
+                    />
+                  ) : null}
                 </div>
               </Property.Value>
             </Property.Item>
@@ -376,6 +473,63 @@ function formatRetrySummary(retry: TaskDetail["retry"]): string {
   if (!retry || retry.maxAttempts === undefined) return "–";
   if (retry.maxAttempts <= 1) return "Disabled";
   return `${retry.maxAttempts} attempts`;
+}
+
+// Activity panel for tasks with a queue: tabs in the card header switch between the
+// runs-by-status chart and the queue backlog, so we never add a second chart alongside.
+function TaskActivityCard({
+  runsByStatusChart,
+  queueName,
+  ids,
+  timeRange,
+}: {
+  runsByStatusChart: React.ReactNode;
+  queueName: string;
+  ids: QueueMetricIds;
+  timeRange: { period: string | null; from: string | null; to: string | null };
+}) {
+  const [view, setView] = useState<"runs" | "queue">("runs");
+  return (
+    <ChartCard
+      headerVariant="tabs"
+      title={
+        <>
+          <TabButton
+            isActive={view === "runs"}
+            layoutId="task-activity-view"
+            variant="title"
+            size="small"
+            onClick={() => setView("runs")}
+          >
+            Runs by status
+          </TabButton>
+          <TabButton
+            isActive={view === "queue"}
+            layoutId="task-activity-view"
+            variant="title"
+            size="small"
+            onClick={() => setView("queue")}
+          >
+            Queue backlog
+          </TabButton>
+        </>
+      }
+    >
+      {view === "queue" ? (
+        <QueueMetricChart
+          query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          defaultPeriod="7d"
+          series={[{ key: "queued", label: "Queued", color: QUEUE_METRIC_COLORS.queued }]}
+        />
+      ) : (
+        runsByStatusChart
+      )}
+    </ChartCard>
+  );
 }
 
 function ActivityChart({ activity }: { activity: TaskActivity }) {

@@ -3,6 +3,7 @@ import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { portablePageSearch, requestedOrganizationPortablePage } from "~/utils/pageSwitching";
 import {
   newOrganizationPath,
   newProjectPath,
@@ -49,5 +50,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw redirect(newProjectPath({ slug: organizationSlug }));
   }
 
-  return redirect(v3ProjectPath({ slug: organizationSlug }, bestProject));
+  const projectPath = v3ProjectPath({ slug: organizationSlug }, bestProject);
+
+  return redirect(
+    `${projectPath}${portablePageSearch(requestedOrganizationPortablePage(request))}`
+  );
 };

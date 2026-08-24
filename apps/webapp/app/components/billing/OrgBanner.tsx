@@ -151,14 +151,20 @@ function NoLimitConfiguredBanner() {
       variant="warning"
       action={
         canManageBillingLimits ? (
-          <LinkButton variant="tertiary/small" to={v3BillingLimitsPath(organization)}>
-            Configure billing limit
+          <LinkButton
+            variant="tertiary/small"
+            className="system:border-transparent system:bg-warning system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90"
+            to={v3BillingLimitsPath(organization)}
+          >
+            <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
+              Billing limit settings
+            </span>
           </LinkButton>
         ) : undefined
       }
     >
       {canManageBillingLimits
-        ? "Protect your organization from unexpected usage spikes."
+        ? "Add a billing limit to your account to prevent overspending"
         : "Billing limits are not configured for this organization. Contact an organization administrator to configure them."}
     </AnimatedOrgBannerBar>
   );

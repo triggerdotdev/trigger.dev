@@ -23,10 +23,18 @@ jobs:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
         with:
           node-version: 24.18.0
           cache: "pnpm"
+
+      - name: Restore Turbo cache
+        uses: WarpBuilds/cache@40f3443ae7b70e568d6e2070ea897f3df94d7553 # v1
+        with:
+          path: node_modules/.cache/turbo
+          key: turbo-typecheck-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-typecheck-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile

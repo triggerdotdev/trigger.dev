@@ -1,25 +1,31 @@
 import {
   Prisma,
   PrismaClient,
+  boundedIn,
   $transaction as transac,
   type PrismaClientOrTransaction,
   type PrismaReplicaClient,
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
+  type WebhookDatabase,
+  type WebhookReplicaDatabase,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { markReadReplicaClient } from "@internal/run-store";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import invariant from "tiny-invariant";
-import { z } from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import { buildPrismaConnectionUrl } from "./utils/prismaConnectionUrl";
 import {
   captureInfrastructureErrors,
   infraErrorAlreadyLogged,
   logTransactionInfrastructureError,
 } from "./utils/prismaErrors";
 import { singleton } from "./utils/singleton";
+import { registerDatabaseMetricsSource } from "./utils/databaseMetrics.server";
 import {
   isSplitEnabled,
   assertSplitRealtimeInterlock,
@@ -27,6 +33,13 @@ import {
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
+import {
+  controlPlaneTransactionResilience,
+  registerTransactionResilience,
+  resilienceForClient,
+  runOpsLegacyTransactionResilience,
+  runOpsTransactionResilience,
+} from "./v3/transactionResilience.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
@@ -36,6 +49,8 @@ export type {
   PrismaClientOrTransaction,
   PrismaTransactionOptions,
   PrismaReplicaClient,
+  WebhookDatabase,
+  WebhookReplicaDatabase,
 };
 
 // Boundary logger for transac(): skips an error the client extension already
@@ -52,6 +67,18 @@ function logTransactionPrismaError(error: Prisma.PrismaClientKnownRequestError) 
     message: error.message,
     name: error.name,
   });
+}
+
+function withTransactionDefaults(
+  client: PrismaClientOrTransaction,
+  options?: PrismaTransactionOptions
+): PrismaTransactionOptions {
+  const resilience = resilienceForClient(client as object);
+  return {
+    maxWait: resilience.maxWait,
+    ...options,
+    startRetry: options?.startRetry ?? resilience.startRetry,
+  };
 }
 
 export async function $transaction<R>(
@@ -88,42 +115,58 @@ async function $transactionInner<R>(
   options?: PrismaTransactionOptions
 ): Promise<R | undefined> {
   if (typeof fnOrName === "string") {
+    const effectiveOptions = withTransactionDefaults(prisma, options);
     return await startActiveSpan(fnOrName, async (span) => {
       span.setAttribute("$transaction", true);
 
-      if (options?.isolationLevel) {
-        span.setAttribute("isolation_level", options.isolationLevel);
+      if (effectiveOptions.isolationLevel) {
+        span.setAttribute("isolation_level", effectiveOptions.isolationLevel);
       }
 
-      if (options?.timeout) {
-        span.setAttribute("timeout", options.timeout);
+      if (effectiveOptions.timeout) {
+        span.setAttribute("timeout", effectiveOptions.timeout);
       }
 
-      if (options?.maxWait) {
-        span.setAttribute("max_wait", options.maxWait);
+      if (effectiveOptions.maxWait) {
+        span.setAttribute("max_wait", effectiveOptions.maxWait);
       }
 
-      if (options?.swallowPrismaErrors) {
-        span.setAttribute("swallow_prisma_errors", options.swallowPrismaErrors);
+      if (effectiveOptions.swallowPrismaErrors) {
+        span.setAttribute("swallow_prisma_errors", effectiveOptions.swallowPrismaErrors);
       }
 
       const fn = fnOrOptions as (prisma: PrismaTransactionClient, span: Span) => Promise<R>;
 
-      return transac(prisma, (client) => fn(client, span), logTransactionPrismaError, options);
+      return transac(
+        prisma,
+        (client) => fn(client, span),
+        logTransactionPrismaError,
+        effectiveOptions
+      );
     });
   } else {
     return transac(
       prisma,
       fnOrName,
       logTransactionPrismaError,
-      typeof fnOrOptions === "function" ? undefined : fnOrOptions
+      withTransactionDefaults(prisma, typeof fnOrOptions === "function" ? undefined : fnOrOptions)
     );
   }
 }
 
-export { Prisma };
+export { Prisma, boundedIn };
 
-function tagDatasource<T extends PrismaClient>(datasource: "writer" | "replica", client: T): T {
+type DatasourceLabel =
+  | "control-plane-writer"
+  | "control-plane-replica"
+  | "legacy-run-ops-writer"
+  | "legacy-run-ops-replica"
+  | "run-ops-writer"
+  | "run-ops-replica"
+  | "webhook-writer"
+  | "webhook-replica";
+
+function tagDatasource<T extends PrismaClient>(datasource: DatasourceLabel, client: T): T {
   return client.$extends({
     name: "datasource-tagger",
     query: {
@@ -141,7 +184,7 @@ function tagDatasource<T extends PrismaClient>(datasource: "writer" | "replica",
 // Same extension as tagDatasource but typed for RunOpsPrismaClient (different
 // generated package — does not extend @trigger.dev/database.PrismaClient).
 function tagDatasourceRunOps(
-  datasource: "writer" | "replica",
+  datasource: DatasourceLabel,
   client: RunOpsPrismaClient
 ): RunOpsPrismaClient {
   return client.$extends({
@@ -167,7 +210,10 @@ function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClien
 }
 
 export const prisma = singleton("prisma", () =>
-  captureInfrastructureErrors(tagDatasource("writer", getClient()))
+  registerTransactionResilience(
+    captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient())),
+    controlPlaneTransactionResilience
+  )
 );
 
 export const $replica: PrismaReplicaClient = singleton("replica", () => {
@@ -175,12 +221,60 @@ export const $replica: PrismaReplicaClient = singleton("replica", () => {
   // Brand ONLY a real replica so the run-store routing layer keeps replica reads off the primary.
   // No replica configured → fall back to the writer `prisma`, which must stay UNBRANDED.
   return replica
-    ? markReadReplicaClient(captureInfrastructureErrors(tagDatasource("replica", replica)))
+    ? markReadReplicaClient(
+        captureInfrastructureErrors(tagDatasource("control-plane-replica", replica))
+      )
     : prisma;
 });
 
-export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
-export type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
+/**
+ * Webhook feature data-plane seam. The whole webhook feature (WebhookEndpoint + WebhookDelivery)
+ * can run on a dedicated Postgres via WEBHOOK_DATABASE_URL; unset reuses the main prisma instance,
+ * so single-DB installs open no extra pool.
+ */
+export const webhookPrisma: WebhookDatabase = singleton("webhookPrisma", () => {
+  if (!env.WEBHOOK_DATABASE_URL) {
+    return prisma;
+  }
+  return captureInfrastructureErrors(
+    tagDatasource(
+      "webhook-writer",
+      buildWriterClient({
+        url: env.WEBHOOK_DATABASE_URL,
+        clientType: "webhook-writer",
+        connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+      })
+    )
+  );
+});
+
+/**
+ * Webhook reader chain: an explicit webhook replica, else the webhook writer once split (no
+ * separate replica yet), else the main $replica when the feature is not split.
+ */
+export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica", () => {
+  if (env.WEBHOOK_DATABASE_READ_REPLICA_URL) {
+    return markReadReplicaClient(
+      captureInfrastructureErrors(
+        tagDatasource(
+          "webhook-replica",
+          buildReplicaClient({
+            url: env.WEBHOOK_DATABASE_READ_REPLICA_URL,
+            clientType: "webhook-reader",
+            connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+          })
+        )
+      )
+    );
+  }
+  if (env.WEBHOOK_DATABASE_URL) {
+    return webhookPrisma;
+  }
+  return $replica;
+});
+
+type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
+type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
 export type RunOpsTopology = {
   newRunOps: NewRunOpsClients;
   legacyRunOps: RunOpsClients;
@@ -233,16 +327,16 @@ export function selectRunOpsTopology(
   if (config.legacySharesControlPlane) {
     legacyRunOps = controlPlane;
   } else {
-    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
+    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "legacy-run-ops-writer");
     const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
-      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
+      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "legacy-run-ops-replica")
       : legacyWriter;
     legacyRunOps = { writer: legacyWriter, replica: legacyReplica };
   }
 
-  const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-new-writer");
+  const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-writer");
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
-    ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-new-reader")
+    ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-replica")
     : newWriter;
 
   return {
@@ -294,8 +388,18 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
     {
       controlPlane: { writer: prisma, replica: $replica },
       buildNewWriter: (url, clientType) =>
-        captureInfraErrorsRunOps(
-          tagDatasourceRunOps("writer", buildRunOpsWriterClient({ url, clientType }))
+        registerTransactionResilience(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-writer",
+              buildRunOpsWriterClient({
+                url,
+                clientType,
+                useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsTransactionResilience
         ),
       // Brand the run-ops replica (only built for a real replica URL) so routed replica reads stay
       // off the primary. When no replica URL is set, selectRunOpsTopology reuses the writer here —
@@ -303,19 +407,47 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       buildNewReplica: (url, clientType) =>
         markReadReplicaClient(
           captureInfraErrorsRunOps(
-            tagDatasourceRunOps("replica", buildRunOpsReplicaClient({ url, clientType }))
+            tagDatasourceRunOps(
+              "run-ops-replica",
+              buildRunOpsReplicaClient({
+                url,
+                clientType,
+                useDriverAdapter: env.RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
+              })
+            )
           )
         ),
       // Legacy client shares the exact control-plane wrapper stack (the legacy DB carries the full
       // control-plane schema); markReadReplicaClient only on a real replica URL, as with the NEW replica.
       buildLegacyWriter: (url, clientType) =>
-        captureInfrastructureErrors(
-          tagDatasource("writer", buildWriterClient({ url, clientType }))
+        registerTransactionResilience(
+          captureInfrastructureErrors(
+            tagDatasource(
+              "legacy-run-ops-writer",
+              buildWriterClient({
+                url,
+                clientType,
+                poolTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT,
+                connectTimeout: env.RUN_OPS_LEGACY_DATABASE_WRITER_CONNECTION_TIMEOUT,
+                useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+              })
+            )
+          ),
+          runOpsLegacyTransactionResilience
         ),
       buildLegacyReplica: (url, clientType) =>
         markReadReplicaClient(
           captureInfrastructureErrors(
-            tagDatasource("replica", buildReplicaClient({ url, clientType }))
+            tagDatasource(
+              "legacy-run-ops-replica",
+              buildReplicaClient({
+                url,
+                clientType,
+                poolTimeout: env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_POOL_TIMEOUT,
+                connectTimeout: env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT,
+                useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
+              })
+            )
           )
         ),
     }
@@ -382,7 +514,62 @@ function getClient() {
   const url = env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL;
   invariant(typeof url === "string", "neither CONTROL_PLANE_DATABASE_URL nor DATABASE_URL is set");
 
-  return buildWriterClient({ url, clientType: "writer" });
+  return buildWriterClient({
+    url,
+    clientType: "control-plane-writer",
+    poolTimeout: env.DATABASE_WRITER_POOL_TIMEOUT,
+    connectTimeout: env.DATABASE_WRITER_CONNECTION_TIMEOUT,
+    useDriverAdapter: env.CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+  });
+}
+
+type DriverAdapterPool = {
+  adapter: PrismaPg;
+  pool: Pool;
+  poolCounters: { opened: () => number; closed: () => number };
+};
+
+function buildDriverAdapterPool(
+  connectionString: string,
+  clientType: string,
+  poolTimeoutSeconds: number,
+  connectionLimit: number
+): DriverAdapterPool {
+  const pool = new Pool({
+    connectionString,
+    max: connectionLimit,
+    connectionTimeoutMillis: poolTimeoutSeconds * 1000,
+    application_name: env.SERVICE_NAME,
+  });
+  pool.on("error", (error) => {
+    logger.error("prisma driver adapter pool error", {
+      clientType,
+      error: error instanceof Error ? error.message : String(error),
+      ignoreError: true,
+    });
+  });
+
+  let opened = 0;
+  let closed = 0;
+  pool.on("connect", () => {
+    opened += 1;
+  });
+  pool.on("remove", () => {
+    closed += 1;
+  });
+
+  let schema: string | undefined;
+  try {
+    schema = new URL(connectionString).searchParams.get("schema") ?? undefined;
+  } catch {
+    schema = undefined;
+  }
+
+  return {
+    adapter: new PrismaPg(pool, { schema, disposeExternalPool: true }),
+    pool,
+    poolCounters: { opened: () => opened, closed: () => closed },
+  };
 }
 
 // Generalized writer builder shared by the control-plane client and the run-ops
@@ -391,77 +578,110 @@ function getClient() {
 export function buildWriterClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
+  poolTimeout,
+  connectTimeout,
+  useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
+  poolTimeout?: number;
+  connectTimeout?: number;
+  useDriverAdapter?: boolean;
 }): PrismaClient {
-  const databaseUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const databaseUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: connectionLimit.toString(),
+    poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
+    connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
-  console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
+  console.log(
+    `🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}${
+      useDriverAdapter ? " (pg driver adapter)" : ""
+    }`
+  );
 
-  const client = new PrismaClient({
-    datasources: {
-      db: {
-        url: databaseUrl.href,
-      },
+  const logConfig = [
+    // events
+    {
+      emit: "event",
+      level: "error",
     },
-    log: [
-      // events
-      {
-        emit: "event",
-        level: "error",
-      },
-      {
-        emit: "event",
-        level: "info",
-      },
-      {
-        emit: "event",
-        level: "warn",
-      },
-      // stdout
-      ...((process.env.PRISMA_LOG_TO_STDOUT === "1"
-        ? [
-            {
-              emit: "stdout",
-              level: "error",
-            },
-            {
-              emit: "stdout",
-              level: "info",
-            },
-            {
-              emit: "stdout",
-              level: "warn",
-            },
-          ]
-        : []) satisfies Prisma.LogDefinition[]),
-      // Query performance monitoring
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-        ? [
-            {
-              emit: "event",
-              level: "query",
-            },
-          ]
-        : []) satisfies Prisma.LogDefinition[]),
-      // verbose
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
-        ? [
-            {
-              emit: "stdout",
-              level: "query",
-            },
-          ]
-        : []) satisfies Prisma.LogDefinition[]),
-    ],
-  });
+    {
+      emit: "event",
+      level: "info",
+    },
+    {
+      emit: "event",
+      level: "warn",
+    },
+    // stdout
+    ...((process.env.PRISMA_LOG_TO_STDOUT === "1"
+      ? [
+          {
+            emit: "stdout",
+            level: "error",
+          },
+          {
+            emit: "stdout",
+            level: "info",
+          },
+          {
+            emit: "stdout",
+            level: "warn",
+          },
+        ]
+      : []) satisfies Prisma.LogDefinition[]),
+    // Query performance monitoring
+    ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+    process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+      ? [
+          {
+            emit: "event",
+            level: "query",
+          },
+        ]
+      : []) satisfies Prisma.LogDefinition[]),
+    // verbose
+    ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+      ? [
+          {
+            emit: "stdout",
+            level: "query",
+          },
+        ]
+      : []) satisfies Prisma.LogDefinition[]),
+  ] satisfies Prisma.LogDefinition[];
+
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
+        env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const client = driverPool
+    ? new PrismaClient({ adapter: driverPool.adapter, log: logConfig })
+    : new PrismaClient({
+        datasources: { db: { url: databaseUrl.href } },
+        log: logConfig,
+      });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client }
+  );
 
   // Only use structured logging if we're not already logging to stdout
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
@@ -529,7 +749,13 @@ function getReplicaClient() {
     return;
   }
 
-  return buildReplicaClient({ url, clientType: "reader" });
+  return buildReplicaClient({
+    url,
+    clientType: "control-plane-replica",
+    poolTimeout: env.DATABASE_READ_REPLICA_POOL_TIMEOUT,
+    connectTimeout: env.DATABASE_READ_REPLICA_CONNECTION_TIMEOUT,
+    useDriverAdapter: env.CONTROL_PLANE_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
+  });
 }
 
 // Generalized replica builder shared by the control-plane replica and the run-ops
@@ -538,77 +764,110 @@ function getReplicaClient() {
 export function buildReplicaClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
+  poolTimeout,
+  connectTimeout,
+  useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
+  poolTimeout?: number;
+  connectTimeout?: number;
+  useDriverAdapter?: boolean;
 }): PrismaClient {
-  const replicaUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const replicaUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: connectionLimit.toString(),
+    poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
+    connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
-  console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
+  console.log(
+    `🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}${
+      useDriverAdapter ? " (pg driver adapter)" : ""
+    }`
+  );
 
-  const replicaClient = new PrismaClient({
-    datasources: {
-      db: {
-        url: replicaUrl.href,
-      },
+  const logConfig = [
+    // events
+    {
+      emit: "event",
+      level: "error",
     },
-    log: [
-      // events
-      {
-        emit: "event",
-        level: "error",
-      },
-      {
-        emit: "event",
-        level: "info",
-      },
-      {
-        emit: "event",
-        level: "warn",
-      },
-      // stdout
-      ...((process.env.PRISMA_LOG_TO_STDOUT === "1"
-        ? [
-            {
-              emit: "stdout",
-              level: "error",
-            },
-            {
-              emit: "stdout",
-              level: "info",
-            },
-            {
-              emit: "stdout",
-              level: "warn",
-            },
-          ]
-        : []) satisfies Prisma.LogDefinition[]),
-      // Query performance monitoring
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-        ? [
-            {
-              emit: "event",
-              level: "query",
-            },
-          ]
-        : []) satisfies Prisma.LogDefinition[]),
-      // verbose
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1"
-        ? [
-            {
-              emit: "stdout",
-              level: "query",
-            },
-          ]
-        : []) satisfies Prisma.LogDefinition[]),
-    ],
-  });
+    {
+      emit: "event",
+      level: "info",
+    },
+    {
+      emit: "event",
+      level: "warn",
+    },
+    // stdout
+    ...((process.env.PRISMA_LOG_TO_STDOUT === "1"
+      ? [
+          {
+            emit: "stdout",
+            level: "error",
+          },
+          {
+            emit: "stdout",
+            level: "info",
+          },
+          {
+            emit: "stdout",
+            level: "warn",
+          },
+        ]
+      : []) satisfies Prisma.LogDefinition[]),
+    // Query performance monitoring
+    ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+    process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+      ? [
+          {
+            emit: "event",
+            level: "query",
+          },
+        ]
+      : []) satisfies Prisma.LogDefinition[]),
+    // verbose
+    ...((process.env.VERBOSE_PRISMA_LOGS === "1"
+      ? [
+          {
+            emit: "stdout",
+            level: "query",
+          },
+        ]
+      : []) satisfies Prisma.LogDefinition[]),
+  ] satisfies Prisma.LogDefinition[];
+
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
+        env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const replicaClient = driverPool
+    ? new PrismaClient({ adapter: driverPool.adapter, log: logConfig })
+    : new PrismaClient({
+        datasources: { db: { url: replicaUrl.href } },
+        log: logConfig,
+      });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client: replicaClient,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client: replicaClient }
+  );
 
   // Only use structured logging if we're not already logging to stdout
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
@@ -668,31 +927,73 @@ export function buildReplicaClient({
 function buildRunOpsWriterClient({
   url,
   clientType,
+  useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  useDriverAdapter?: boolean;
 }): RunOpsPrismaClient {
-  const databaseUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+  const databaseUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    poolTimeout: (env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT).toString(),
+    connectTimeout: (
+      env.RUN_OPS_DATABASE_WRITER_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
+    ).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
-  console.log(`🔌 setting up run-ops prisma client to ${redactUrlSecrets(databaseUrl)}`);
+  console.log(
+    `🔌 setting up run-ops prisma client to ${redactUrlSecrets(databaseUrl)}${
+      useDriverAdapter ? " (pg driver adapter)" : ""
+    }`
+  );
 
-  const client = new RunOpsPrismaClient({
-    datasources: { db: { url: databaseUrl.href } },
-    log: [
-      { emit: "event", level: "error" },
-      { emit: "event", level: "info" },
-      { emit: "event", level: "warn" },
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-        ? [{ emit: "event", level: "query" }]
-        : []) as { emit: "event"; level: "query" }[]),
-    ],
-  });
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
+        env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const client = driverPool
+    ? new RunOpsPrismaClient({
+        adapter: driverPool.adapter,
+        log: [
+          { emit: "event", level: "error" },
+          { emit: "event", level: "info" },
+          { emit: "event", level: "warn" },
+          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+            ? [{ emit: "event", level: "query" }]
+            : []) as { emit: "event"; level: "query" }[]),
+        ],
+      })
+    : new RunOpsPrismaClient({
+        datasources: { db: { url: databaseUrl.href } },
+        log: [
+          { emit: "event", level: "error" },
+          { emit: "event", level: "info" },
+          { emit: "event", level: "warn" },
+          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+            ? [{ emit: "event", level: "query" }]
+            : []) as { emit: "event"; level: "query" }[]),
+        ],
+      });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client }
+  );
 
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
     client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
@@ -719,34 +1020,77 @@ function buildRunOpsWriterClient({
 function buildRunOpsReplicaClient({
   url,
   clientType,
+  useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  useDriverAdapter?: boolean;
 }): RunOpsPrismaClient {
-  const replicaUrl = extendQueryParams(url, {
-    // The new run-ops replica connects unpooled, so allow capping it independently of the writer.
-    connection_limit: (
+  const replicaUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: (
       env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
     ).toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
+    poolTimeout: (
+      env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
+    ).toString(),
+    connectTimeout: (
+      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
+    ).toString(),
+    applicationName: env.SERVICE_NAME,
   });
 
-  console.log(`🔌 setting up run-ops read replica connection to ${redactUrlSecrets(replicaUrl)}`);
+  console.log(
+    `🔌 setting up run-ops read replica connection to ${redactUrlSecrets(replicaUrl)}${
+      useDriverAdapter ? " (pg driver adapter)" : ""
+    }`
+  );
 
-  const client = new RunOpsPrismaClient({
-    datasources: { db: { url: replicaUrl.href } },
-    log: [
-      { emit: "event", level: "error" },
-      { emit: "event", level: "info" },
-      { emit: "event", level: "warn" },
-      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-        ? [{ emit: "event", level: "query" }]
-        : []) as { emit: "event"; level: "query" }[]),
-    ],
-  });
+  const driverPool = useDriverAdapter
+    ? buildDriverAdapterPool(
+        url,
+        clientType,
+        env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
+        env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
+      )
+    : undefined;
+
+  const client = driverPool
+    ? new RunOpsPrismaClient({
+        adapter: driverPool.adapter,
+        log: [
+          { emit: "event", level: "error" },
+          { emit: "event", level: "info" },
+          { emit: "event", level: "warn" },
+          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+            ? [{ emit: "event", level: "query" }]
+            : []) as { emit: "event"; level: "query" }[]),
+        ],
+      })
+    : new RunOpsPrismaClient({
+        datasources: { db: { url: replicaUrl.href } },
+        log: [
+          { emit: "event", level: "error" },
+          { emit: "event", level: "info" },
+          { emit: "event", level: "warn" },
+          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+            ? [{ emit: "event", level: "query" }]
+            : []) as { emit: "event"; level: "query" }[]),
+        ],
+      });
+
+  registerDatabaseMetricsSource(
+    driverPool
+      ? {
+          clientType,
+          usesDriverAdapter: true,
+          client,
+          pool: driverPool.pool,
+          poolCounters: driverPool.poolCounters,
+        }
+      : { clientType, usesDriverAdapter: false, client }
+  );
 
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
     client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
@@ -789,19 +1133,6 @@ export function sameDatabaseTarget(a: string | undefined, b: string | undefined)
   }
 }
 
-function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {
-  const url = new URL(hrefOrUrl);
-  const query = url.searchParams;
-
-  for (const [key, val] of Object.entries(queryParams)) {
-    query.set(key, val);
-  }
-
-  url.search = query.toString();
-
-  return url;
-}
-
 function redactUrlSecrets(hrefOrUrl: string | URL) {
   const url = new URL(hrefOrUrl);
   url.password = "";
@@ -809,10 +1140,6 @@ function redactUrlSecrets(hrefOrUrl: string | URL) {
 }
 
 export type { PrismaClient } from "@trigger.dev/database";
-
-export const PrismaErrorSchema = z.object({
-  code: z.string(),
-});
 
 function getDatabaseSchema() {
   if (!isValidDatabaseUrl(env.DATABASE_URL)) {
@@ -830,6 +1157,6 @@ function getDatabaseSchema() {
   return schemaFromSearchParam;
 }
 
-export const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
+const DATABASE_SCHEMA = singleton("DATABASE_SCHEMA", getDatabaseSchema);
 
 export const sqlDatabaseSchema = Prisma.sql([`${DATABASE_SCHEMA}`]);

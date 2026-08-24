@@ -25,13 +25,25 @@ export interface ReplicaLagSource {
 /** Aurora: replicas share the storage layer and reject every standard WAL function;
  * `aurora_replica_status()` is the only live lag source. Max across readers, since the
  * `$replica` pool balances over all of them. No reader rows = `$replica` is the writer =
- * no lag. Throws on non-Aurora (the function doesn't exist). */
+ * no lag. Throws on non-Aurora, but detects that with a `to_regproc` lookup rather than by
+ * letting the call fail — an unresolvable function is a query error the driver reports to the
+ * error log (and Sentry) regardless of the app-level catch, once per sample. */
 export class AuroraReplicaLagSource implements ReplicaLagSource {
   readonly name = "aurora";
+  #available: boolean | undefined;
 
   constructor(private readonly db: RawQueryable) {}
 
   async sampleLagMs(): Promise<number | undefined> {
+    if (this.#available === undefined) {
+      const probe = await this.db.$queryRawUnsafe<{ available: boolean | null }[]>(
+        `SELECT to_regproc('aurora_replica_status') IS NOT NULL AS available`
+      );
+      this.#available = probe[0]?.available === true;
+    }
+    if (!this.#available) {
+      throw new Error("aurora_replica_status() is not available on this database");
+    }
     const rows = await this.db.$queryRawUnsafe<{ lag: number | null }[]>(
       `SELECT max(replica_lag_in_msec)::float8 AS lag FROM aurora_replica_status() WHERE session_id <> 'MASTER_SESSION_ID' AND replica_lag_in_msec IS NOT NULL`
     );
@@ -47,7 +59,7 @@ export class AuroraReplicaLagSource implements ReplicaLagSource {
  * low-traffic systems, which (measured locally) pins the estimate at the delay cap — so
  * mid-apply reports undefined and the tripwire's observed-staleness floor carries the
  * estimate instead. */
-export class VanillaPgReplicaLagSource implements ReplicaLagSource {
+class VanillaPgReplicaLagSource implements ReplicaLagSource {
   readonly name = "vanilla-pg";
 
   constructor(private readonly db: RawQueryable) {}

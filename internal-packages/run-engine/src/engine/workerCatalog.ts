@@ -52,7 +52,20 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 60_000,
   },
+  expireParkedExternalDeploymentRun: {
+    schema: z.object({
+      runId: z.string(),
+      externalDeploymentId: z.string(),
+    }),
+    visibilityTimeoutMs: 60_000,
+  },
   tryCompleteBatch: {
+    schema: z.object({
+      batchId: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+  },
+  expireBatch: {
     schema: z.object({
       batchId: z.string(),
     }),

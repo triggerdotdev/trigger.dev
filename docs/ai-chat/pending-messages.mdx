@@ -179,10 +179,14 @@ for (let turn = 0; turn < 100; turn++) {
     stopWhen: stepCountIs(15),
   });
 
-  const response = await chat.pipeAndCapture(result);
+  const { message, status, error } = await chat.pipeAndCapture(result);
   sub.off();
 
-  if (response) await conversation.addResponse(response);
+  // Keep any partial output, then branch on the outcome: pipeAndCapture no
+  // longer throws, so rethrow a real failure and don't complete a failed turn.
+  if (message) await conversation.addResponse(message);
+  if (status === "error") throw error;
+
   await chat.writeTurnComplete();
 }
 ```

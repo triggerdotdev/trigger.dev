@@ -2,6 +2,7 @@ import {
   type Prisma,
   type PrismaClient,
   type PrismaClientOrTransaction,
+  boundedIn,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import { BoundedTtlCache } from "./boundedTtlCache";
@@ -14,7 +15,7 @@ import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.
  */
 
 /** The TaskRun columns the realtime feed projects (mirrors DEFAULT_ELECTRIC_COLUMNS). */
-export const RUN_HYDRATOR_SELECT = {
+const RUN_HYDRATOR_SELECT = {
   id: true,
   taskIdentifier: true,
   createdAt: true,
@@ -82,9 +83,11 @@ export interface RunListResolver {
 }
 
 export type RunHydratorOptions = {
-  /** A read-replica Prisma client (`$replica`). Always Postgres. */
-  replica: Pick<PrismaClient, "taskRun">;
-  /** RunStore the reads are routed through; `replica` is passed as the read client. */
+  /** The Prisma client handed to the RunStore as the read client. Always Postgres. A branded
+   * replica (`$replica`) keeps routed reads on each store's replica; an unbranded writer
+   * (`prisma`) escalates them to each store's own primary. */
+  readClient: Pick<PrismaClient, "taskRun">;
+  /** RunStore the reads are routed through. */
   runStore: RunStore;
   /** Read-through cache TTL (ms) collapsing duplicate refetches for the same run. Set 0 to disable. Defaults to 250ms. */
   cacheTtlMs?: number;
@@ -150,11 +153,11 @@ export class RunHydrator {
       {
         where: {
           runtimeEnvironmentId: environmentId,
-          id: { in: ids },
+          id: { in: boundedIn(ids) },
         },
         select: buildHydratorSelect(skipColumns),
       },
-      this.options.replica as PrismaClientOrTransaction
+      this.options.readClient as PrismaClientOrTransaction
     );
     return rows as unknown as RealtimeRunRow[];
   }
@@ -166,7 +169,7 @@ export class RunHydrator {
         runtimeEnvironmentId: environmentId,
       },
       { select: RUN_HYDRATOR_SELECT },
-      this.options.replica as PrismaClientOrTransaction
+      this.options.readClient as PrismaClientOrTransaction
     );
 
     return (run ?? null) as RealtimeRunRow | null;

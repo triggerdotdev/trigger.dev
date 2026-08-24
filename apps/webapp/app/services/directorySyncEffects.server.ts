@@ -8,6 +8,7 @@ import {
   removeOrgMemberForDirectory,
 } from "~/models/orgMember.server";
 import { createPlatformNotification } from "~/services/platformNotifications.server";
+import { getSsoEntitlement, type SsoEntitlement } from "~/services/platform.v3.server";
 
 const LAST_OWNER_NOTIFICATION_TITLE = "Directory Sync: last Owner protected";
 
@@ -66,7 +67,8 @@ async function notifyLastOwnerProtected(userId: string, organizationId: string):
   }
 }
 
-async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
+/** Applies one effect, returning a user id that still needs provisioning queued. */
+async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> {
   switch (effect.kind) {
     case "provision": {
       const userId =
@@ -79,7 +81,7 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
           })
         ).userId;
 
-      await ensureOrgMember({
+      const membership = await ensureOrgMember({
         userId,
         organizationId: effect.organizationId,
         roleId: effect.roleId,
@@ -110,7 +112,8 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
           }
         }
       }
-      return;
+
+      return membership.devEnvironmentsQueued ? null : userId;
     }
     case "set_role": {
       const result = await rbac.setUserRole({
@@ -126,11 +129,11 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
             userId: effect.userId,
             organizationId: effect.organizationId,
           });
-          return;
+          return null;
         }
         throw retryableEffectError(`directorySync set_role failed: ${result.error}`);
       }
-      return;
+      return null;
     }
     case "deprovision": {
       const outcome = await removeOrgMemberForDirectory({
@@ -140,13 +143,60 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
       if (!outcome.removed && outcome.reason === "last_owner_protected") {
         await notifyLastOwnerProtected(effect.userId, effect.organizationId);
       }
-      return;
+      return null;
     }
   }
 }
 
-export async function applyDirectorySyncEffects(effects: DirectorySyncEffect[]): Promise<void> {
+/** Raised for a batch whose provisioning could not be queued, when the caller can retry. */
+export function unqueuedProvisioningError(userIds: string[]): Error {
+  return retryableEffectError(
+    `directorySync could not queue development environments for users ${userIds.join(", ")}`
+  );
+}
+
+/**
+ * Applies membership effects, skipping any org that isn't entitled to SSO.
+ *
+ * An unreadable entitlement throws rather than skipping: effects are
+ * idempotent and the worker retries, so retrying is lossless where dropping
+ * would silently lose a directory change.
+ *
+ * Reports memberships whose provisioning could not be queued rather than
+ * throwing, so a caller with no retry can still finish successfully.
+ */
+export async function applyDirectorySyncEffects(
+  effects: DirectorySyncEffect[]
+): Promise<{ unqueuedUserIds: string[] }> {
+  const entitlements = new Map<string, SsoEntitlement>();
+  const unqueuedUserIds: string[] = [];
+
   for (const effect of effects) {
-    await applyEffect(effect);
+    let entitlement = entitlements.get(effect.organizationId);
+    if (entitlement === undefined) {
+      entitlement = await getSsoEntitlement(effect.organizationId);
+      entitlements.set(effect.organizationId, entitlement);
+    }
+
+    if (entitlement === "unknown") {
+      throw retryableEffectError(
+        `directory sync: could not read the SSO entitlement for organization ${effect.organizationId}`
+      );
+    }
+
+    if (entitlement === "not_entitled") {
+      logger.warn("Directory Sync: skipping effect for org without the SSO entitlement", {
+        organizationId: effect.organizationId,
+        kind: effect.kind,
+      });
+      continue;
+    }
+
+    const unqueuedUserId = await applyEffect(effect);
+    if (unqueuedUserId) {
+      unqueuedUserIds.push(unqueuedUserId);
+    }
   }
+
+  return { unqueuedUserIds };
 }

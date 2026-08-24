@@ -1,31 +1,15 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { timingSafeEqual } from "crypto";
-import { uiComponent } from "@team-plain/typescript-sdk";
-import { z } from "zod";
+import { uiComponent } from "@team-plain/ui-components";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { generateImpersonationToken } from "~/services/impersonation.server";
-
-// Schema for the request body from Plain
-const PlainCustomerCardRequestSchema = z.object({
-  cardKeys: z.array(z.string()),
-  customer: z
-    .object({
-      id: z.string(),
-      email: z.string().optional(),
-      externalId: z.string().optional(),
-    })
-    .refine((data) => data.email || data.externalId, {
-      message: "Either customer.email or customer.externalId must be provided",
-      path: ["customer"],
-    }),
-  thread: z
-    .object({
-      id: z.string(),
-    })
-    .optional(),
-});
+import {
+  answerAllCardKeys,
+  emailLookupCandidates,
+  PlainCustomerCardRequestSchema,
+} from "~/utils/plainCustomerCards";
 
 function sanitizeHeaders(
   request: Request,
@@ -133,22 +117,55 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     };
 
-    const where = customer.externalId
-      ? { id: customer.externalId }
-      : customer.email
-        ? { email: customer.email }
-        : null;
+    // The external id is ours (`User.id`), so it's tried first. Falling back to email when it
+    // doesn't resolve covers a stale id — one naming a user row that no longer exists — instead of
+    // leaving the card blank for a customer we could still identify.
+    const byExternalId = customer.externalId
+      ? await prisma.user.findFirst({ where: { id: customer.externalId }, include: userInclude })
+      : null;
 
-    const user = where ? await prisma.user.findFirst({ where, include: userInclude }) : null;
+    // Emails aren't stored consistently cased, so try the address as sent and then its lowercased
+    // form — see `emailLookupCandidates`. Both are exact matches on the unique index.
+    const findByEmail = async () => {
+      for (const email of emailLookupCandidates(customer.email)) {
+        const match = await prisma.user.findFirst({ where: { email }, include: userInclude });
+        if (match) return match;
+      }
+      return null;
+    };
 
-    // If user not found, return empty cards
+    const user = byExternalId ?? (await findByEmail());
+
+    // An external id we set ourselves that no longer resolves is an anomaly worth seeing, even
+    // though the email match keeps the card useful — otherwise the stale link stays invisible.
+    if (customer.externalId && !byExternalId) {
+      logger.warn("Plain customer card external id did not resolve", {
+        resolvedByEmail: !!user,
+      });
+    }
+
+    /**
+     * Impersonation is offered only when the customer matched on `externalId` — a value we set
+     * ourselves from `User.id`.
+     *
+     * Matching on email is a weaker claim: the address on a Plain customer isn't verified, and for
+     * customers created outside our own writes it comes from whoever sent the message. Offering a
+     * one-click impersonation link off the back of that would let an unverified address stand in
+     * for an account, so email-matched customers get the account rows without it.
+     *
+     * Derived from which lookup actually matched, not from whether an external id was *sent* — an
+     * id that misses and falls through to email must not unlock impersonation.
+     */
+    const canImpersonate = Boolean(byExternalId);
+
+    // No matching user: still answer every requested key, with no data so Plain hides the cards.
     if (!user) {
+      // Presence flags only — the identifiers themselves don't need to persist in log storage.
       logger.info("User not found for Plain customer card request", {
-        customerId: customer.id,
-        externalId: customer.externalId,
+        hasExternalId: !!customer.externalId,
         hasEmail: !!customer.email,
       });
-      return json({ cards: [] });
+      return json({ cards: answerAllCardKeys(cardKeys, []) });
     }
 
     // Build cards based on requested cardKeys
@@ -158,10 +175,21 @@ export async function action({ request }: ActionFunctionArgs) {
     for (const cardKey of cardKeys) {
       switch (cardKey) {
         case accountDetailsKey: {
-          // Generate a signed one-time token for impersonation
-          const impersonationToken = await generateImpersonationToken(user.id);
-          // Build the impersonate URL with token for CSRF protection
-          const impersonateUrl = `${env.APP_ORIGIN}/admin/impersonate?impersonate=${user.id}&impersonationToken=${encodeURIComponent(impersonationToken)}`;
+          // Only mint a token when the button will actually be rendered — see `canImpersonate`.
+          const impersonationComponents = canImpersonate
+            ? [
+                uiComponent.spacer({ size: "M" }),
+                uiComponent.divider({ spacingSize: "M" }),
+                uiComponent.spacer({ size: "M" }),
+                uiComponent.linkButton({
+                  label: "Impersonate User",
+                  // The one-time token is what protects this link against CSRF.
+                  url: `${env.APP_ORIGIN}/admin/impersonate?impersonate=${user.id}&impersonationToken=${encodeURIComponent(
+                    await generateImpersonationToken(user.id)
+                  )}`,
+                }),
+              ]
+            : [];
 
           cards.push({
             key: accountDetailsKey,
@@ -241,13 +269,7 @@ export async function action({ request }: ActionFunctionArgs) {
                       }),
                     ],
                   }),
-                  uiComponent.spacer({ size: "M" }),
-                  uiComponent.divider({ spacingSize: "M" }),
-                  uiComponent.spacer({ size: "M" }),
-                  uiComponent.linkButton({
-                    label: "Impersonate User",
-                    url: impersonateUrl,
-                  }),
+                  ...impersonationComponents,
                 ],
               }),
             ],
@@ -420,13 +442,13 @@ export async function action({ request }: ActionFunctionArgs) {
         }
 
         default:
-          // Unknown card key - skip it
+          // Unknown card key - answered with no data by answerAllCardKeys below.
           logger.info("Unknown card key requested", { cardKey });
           break;
       }
     }
 
-    return json({ cards });
+    return json({ cards: answerAllCardKeys(cardKeys, cards) });
   } catch (error) {
     logger.error("Error processing Plain customer card request", {
       error: error instanceof Error ? error.message : String(error),

@@ -7,6 +7,7 @@ import { logger } from "~/services/logger.server";
 import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
+import { getQueueMetricsEmitter } from "./queueMetrics.server";
 import { runEnginePendingVersionLookup } from "./runEnginePendingVersionLookup.server";
 import { pickRunOpsStoreForCompletion } from "./runOpsMigration/crossSeamGuard.server";
 import { runEngineControlPlaneResolver } from "./runOpsMigration/runEngineControlPlaneResolver.server";
@@ -83,6 +84,7 @@ function createRunEngine() {
         tracer,
       },
       shardCount: env.RUN_ENGINE_RUN_QUEUE_SHARD_COUNT,
+      queueMetrics: env.QUEUE_METRICS_EMIT_ENABLED === "1" ? getQueueMetricsEmitter() : undefined,
       processWorkerQueueDebounceMs: env.RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS,
       dequeueBlockingTimeoutSeconds: env.RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS,
       masterQueueConsumersIntervalMs: env.RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS,
@@ -158,6 +160,7 @@ function createRunEngine() {
     },
     retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
     pendingVersionRunIdLookup: runEnginePendingVersionLookup,
+    externalDeploymentParkDeadlineMs: env.EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS,
     billing: {
       getCurrentPlan: async (orgId: string) => {
         const plan = await getCurrentPlan(orgId);

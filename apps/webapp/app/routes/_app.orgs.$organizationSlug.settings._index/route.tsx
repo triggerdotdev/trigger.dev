@@ -5,14 +5,14 @@ import {
   CheckIcon,
   ExclamationTriangleIcon,
   FolderIcon,
-  GlobeAltIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useActionData, useNavigation, useSubmit } from "@remix-run/react";
+import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import {
   MainHorizontallyCenteredContainer,
@@ -54,14 +54,9 @@ import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { extractDomain, faviconUrl as buildFaviconUrl } from "~/utils/favicon";
 import { OrganizationParamsSchema, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Organization settings | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Organization settings");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -515,7 +510,7 @@ function LogoForm({
                     onLoad={() => setFaviconError(false)}
                   />
                 ) : (
-                  <GlobeAltIcon className="size-6 text-text-dimmed" />
+                  <GlobeLinesIcon className="size-6 text-indigo-500" />
                 )}
               </button>
               <Input
@@ -612,9 +607,10 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
   return (
     <Popover>
       <PopoverTrigger
+        aria-label="Choose custom avatar color"
         className={cn(iconTileClass, "border-grid-dimmed hover:border-border-bright")}
       >
-        <img src={colorWheelIcon} className="m-0 block size-[30px] p-0" />
+        <img src={colorWheelIcon} alt="" className="m-0 block size-[30px] p-0" />
       </PopoverTrigger>
       <PopoverContent
         className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
@@ -681,7 +677,7 @@ function RadioDot({ active }: { active: boolean }) {
 }
 
 const iconTileClass =
-  "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-charcoal-775";
+  "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-background-bright";
 
 function toRecord(json: unknown): Record<string, unknown> {
   return json && typeof json === "object" ? (json as Record<string, unknown>) : {};

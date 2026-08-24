@@ -123,6 +123,18 @@ export interface ColumnSchema {
    */
   customRenderType?: string;
   /**
+   * Gap-fill behavior when the opt-in `fillGaps` feature emits rows for empty
+   * time buckets: `"carry"` = gauge (LOCF via INTERPOLATE), `"zero"` (default)
+   * = counter (missing buckets get 0).
+   */
+  fillMode?: "zero" | "carry";
+  /**
+   * Aggregate-state column whose states only merge correctly within one value of the
+   * named column(s) (e.g. per-queue counter states). Queries referencing it must GROUP BY
+   * every listed column or pin each to a single value; other shapes fail to compile.
+   */
+  mergeGroupKey?: string | string[];
+  /**
    * Example value for documentation purposes.
    *
    * Used in help/documentation UI to show users what values look like.
@@ -409,6 +421,26 @@ export interface TableSchema {
    * is needed to get correct results. Not needed for plain MergeTree tables.
    */
   useFinal?: boolean;
+  /**
+   * Coarser physical rollups with an identical logical schema, substituted by callers
+   * (not the printer) when the timeBucket() interval is at least minIntervalSeconds.
+   */
+  rollups?: Array<{ minIntervalSeconds: number; clickhouseName: string }>;
+  /**
+   * Opt into the ClickHouse query cache; callers align time bounds to alignSeconds
+   * so repeated auto-refresh queries share cache entries.
+   */
+  queryCache?: { ttlSeconds: number; alignSeconds: number };
+  /**
+   * Excluded from user-facing listings (query editor, schema docs, schema API) by
+   * callers; the engine still compiles queries against it.
+   */
+  hidden?: boolean;
+  /**
+   * Names the connection pool callers should read this table through, for a read family heavy
+   * enough to want its own capacity. Callers resolve the name; unset means the default pool.
+   */
+  queryClient?: string;
 }
 
 /**
@@ -579,13 +611,6 @@ export function validateGroupColumn(
     );
   }
   return col;
-}
-
-/**
- * Get the actual ClickHouse column name (handles aliasing)
- */
-export function getClickHouseColumnName(col: ColumnSchema): string {
-  return col.clickhouseName ?? col.name;
 }
 
 /**
@@ -791,22 +816,6 @@ export function getInternalValueFromMappingCaseInsensitive(
   }
 
   return null;
-}
-
-/**
- * Get all column names available for autocomplete
- */
-export function getTableColumnNames(schema: SchemaRegistry, tableName: string): string[] {
-  const table = findTable(schema, tableName);
-  if (!table) return [];
-  return Object.keys(table.columns);
-}
-
-/**
- * Get all table names available for autocomplete
- */
-export function getAllTableNames(schema: SchemaRegistry): string[] {
-  return Object.keys(schema.tables);
 }
 
 /**

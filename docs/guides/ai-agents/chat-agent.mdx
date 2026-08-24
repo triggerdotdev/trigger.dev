@@ -1,0 +1,124 @@
+---
+title: "Build a chat agent"
+sidebarTitle: "Chat agent"
+description: "Create a durable, multi-turn chat agent with chat.agent(), then add tools to it like any AI SDK agent."
+---
+
+## Overview
+
+Build a **durable, multi-turn chat agent**. A durable session owns the conversation, streams tokens to your UI, and stays alive across many back-and-forth messages. The other guides in this section are one-shot workflows (trigger a task, run a fixed sequence of LLM calls, return a result); a chat agent instead owns the session for its whole lifetime.
+
+[`chat.agent()`](/ai-chat/overview) handles the queuing, retries, resumability and streaming for you. You write the model call, Trigger.dev owns the session. For the full feature set (sessions, fast starts, compaction, sub-agents, the frontend transport), see the [AI chat docs](/ai-chat/overview).
+
+## A minimal agent
+
+Define an agent with `chat.agent()`. The `run` function receives the conversation `messages` (already converted from the frontend's `UIMessage[]`) and an abort `signal`. Return a `StreamTextResult` and it's piped to the frontend automatically.
+
+```typescript trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { streamText, stepCountIs } from "ai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    return streamText({
+      // Spread chat.toStreamTextOptions() FIRST: it wires up prepareStep
+      // (compaction, steering, background injection) and telemetry.
+      ...chat.toStreamTextOptions(),
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    });
+  },
+});
+```
+
+<Warning>
+  Always spread `chat.toStreamTextOptions()` into your `streamText` call, and spread it first. It
+  wires up the `prepareStep` callback that drives compaction, mid-turn steering and background
+  injection. Those features silently no-op if the spread is missing.
+</Warning>
+
+## Add tools
+
+A chat agent uses tools exactly like any other AI SDK agent. Declare them on the config so their results survive across turns, then pass the `tools` you receive in `run` straight to `streamText`:
+
+```typescript trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { streamText, stepCountIs, tool } from "ai";
+import { z } from "zod";
+
+const getCurrentTime = tool({
+  description: "Get the current server time as an ISO string.",
+  inputSchema: z.object({}),
+  execute: async () => ({ now: new Date().toISOString() }),
+});
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  // Declared here so tool results survive history re-conversion across turns.
+  tools: { getCurrentTime },
+  run: async ({ messages, tools, signal }) => {
+    return streamText({
+      // Pass tools INTO toStreamTextOptions (not separately to streamText): it
+      // merges them with any auto-injected skill tools and sets streamText's
+      // `tools`. Passing tools separately after the spread drops the skill tools.
+      ...chat.toStreamTextOptions({ tools }),
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      stopWhen: stepCountIs(15),
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+Swap `getCurrentTime` for whatever your agent needs to do: query a database, call an API, or trigger another Trigger.dev task. See [Tools](/ai-chat/tools) for how tool results are persisted and replayed across turns.
+
+## Wire up the frontend
+
+The browser talks to Trigger.dev directly through the [chat transport](/ai-chat/frontend), so there's no API route to maintain. Expose two server actions (one to start the session, one to mint a session-scoped token) and pass them to `useTriggerChatTransport`, then hand the transport to the AI SDK's `useChat`:
+
+```typescript app/actions.ts
+"use server";
+
+import { auth } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const startChatSession = chat.createStartSessionAction("my-chat");
+
+export async function mintChatAccessToken(chatId: string) {
+  // Authorize the caller for this chatId before minting: confirm the logged-in
+  // user owns this session (e.g. look it up in your database). Otherwise anyone
+  // who learns a session ID could mint read/write access to it.
+  return auth.createPublicToken({
+    scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
+    expirationTime: "1h",
+  });
+}
+```
+
+See the [Quick Start](/ai-chat/quick-start) for the complete frontend component.
+
+## A full example
+
+For a complete, real-world chat agent, see the ClickHouse chat agent example. It builds on everything above with generative UI, a versioned system prompt, and real tools against a live database.
+
+<CardGroup cols={2}>
+  <Card title="ClickHouse chat agent" icon="chart-column" href="/guides/example-projects/clickhouse-chat-agent">
+    A full example project: a chat agent that answers questions about your data with charts, tables
+    and maps.
+  </Card>
+  <Card title="AI chat overview" icon="message-bot" href="/ai-chat/overview">
+    How chat agents, sessions and the turn loop work.
+  </Card>
+  <Card title="Tools" icon="wrench" href="/ai-chat/tools">
+    Declaring tools on your agent and how they persist across turns.
+  </Card>
+  <Card title="Fast starts" icon="bolt" href="/ai-chat/fast-starts">
+    Cut first-turn latency with preload and head start.
+  </Card>
+</CardGroup>

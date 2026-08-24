@@ -1,4 +1,3 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
 import {
   DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
   DASHBOARD_AGENT_MODEL,
@@ -6,8 +5,17 @@ import {
   dashboardAgentCodeToolSchemas,
   dashboardAgentToolSchemas,
 } from "@internal/dashboard-agent/tool-schemas";
+import {
+  describePromptPrefix,
+  promptCacheAttributes,
+} from "@internal/dashboard-agent/prompt-prefix";
+import {
+  resolveDashboardAgentModel,
+  withCacheBreakpoint,
+} from "@internal/dashboard-agent/model-provider";
+import { ApiClient, SessionStreamInstance, writeTurnCompleteRecord } from "@trigger.dev/core/v3";
 import { chat as chatServer } from "@trigger.dev/sdk/chat-server";
-import { streamText, type UIMessage } from "ai";
+import { streamText, type UIMessage, type UIMessageChunk } from "ai";
 import { env } from "~/env.server";
 import {
   dashboardAgentApiOrigin,
@@ -17,19 +25,69 @@ import { logger } from "~/services/logger.server";
 
 const TASK_ID = "dashboard-agent";
 
-const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+/** Shown when the warm first turn produced nothing. The provider error is only logged. */
+export const HEAD_START_FAILURE_ERROR_TEXT =
+  "The assistant couldn't start this response. Please send your message again.";
+
+/** A seam so the failure path is testable without S2 credentials or a live session. */
+export type DashboardAgentSessionOutWriter = {
+  writeChunk(chunk: UIMessageChunk): Promise<void>;
+  /** The `turn-complete` control record that closes the client's stream. */
+  writeTurnComplete(): Promise<void>;
+};
 
 /**
- * Server-owned head start. The webapp generates the chatId and owns the chat
- * record, then kicks off step 1 here via `chat.startHeadStart` (the detached
- * flow): it creates the session (externalId = chatId), triggers the
- * handover-prepare run, and streams step 1 into `session.out` in the background.
- * The browser resumes that stream rather than streaming step 1 inline. Step 1
- * runs the agent's SCHEMA-ONLY tools + the shared model/prompt for the mode the
- * agent run will be in; the agent run picks up tool execution and step 2+.
- *
- * `metadata` (the delegated UAT + context) is merged into the run's wire payload
- * server-side, so it reaches the agent without touching the browser.
+ * Surface a failed warm step 1 as a visible error turn. `turn-complete` is written even if
+ * the error chunk fails, so a resumed stream always terminates.
+ */
+export async function writeHeadStartFailureToSessionOut(
+  writer: DashboardAgentSessionOutWriter
+): Promise<void> {
+  try {
+    await writer.writeChunk({
+      type: "error",
+      errorText: HEAD_START_FAILURE_ERROR_TEXT,
+    } as UIMessageChunk);
+  } finally {
+    await writer.writeTurnComplete();
+  }
+}
+
+function singleChunkStream(chunk: UIMessageChunk): ReadableStream<UIMessageChunk> {
+  return new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+}
+
+// Writes as the agent's own environment: `.out` appends are private-only.
+function createSessionOutWriter(
+  chatId: string,
+  accessToken: string
+): DashboardAgentSessionOutWriter {
+  const apiClient = new ApiClient(dashboardAgentApiOrigin(), accessToken);
+  return {
+    async writeChunk(chunk) {
+      const instance = new SessionStreamInstance<UIMessageChunk>({
+        apiClient,
+        baseUrl: apiClient.baseUrl,
+        sessionId: chatId, // Sessions are addressable by externalId (chatId).
+        io: "out",
+        source: singleChunkStream(chunk),
+      });
+      await instance.wait();
+    },
+    async writeTurnComplete() {
+      await writeTurnCompleteRecord(apiClient, chatId);
+    },
+  };
+}
+
+/**
+ * Server-owned head start: creates the session, triggers the handover-prepare run, and
+ * streams step 1 into `session.out`. `metadata` is merged into the run's payload server-side.
  */
 export async function startDashboardAgentHeadStart(params: {
   chatId: string;
@@ -47,8 +105,7 @@ export async function startDashboardAgentHeadStart(params: {
     messages: params.messages,
     metadata: params.metadata,
     triggerConfig: dashboardAgentTriggerConfig(),
-    // Scope session creation + the agent trigger to the agent's project/env. The
-    // Anthropic key here only powers the warm step-1 call.
+    // Scopes session creation and the agent trigger to the agent's own environment.
     apiClient: {
       baseURL: dashboardAgentApiOrigin(),
       accessToken: env.DASHBOARD_AGENT_SECRET_KEY,
@@ -56,17 +113,45 @@ export async function startDashboardAgentHeadStart(params: {
     run: async ({ chat: helper }) =>
       streamText({
         ...helper.toStreamTextOptions({ tools }),
-        model: anthropic(DASHBOARD_AGENT_MODEL),
-        system,
+        model: resolveDashboardAgentModel(DASHBOARD_AGENT_MODEL),
+        // A structured system message, not a bare string: without provider options
+        // the provider neither writes nor reads the cache, so this call paid full price
+        // for the prefix and the agent's step 2 then paid for a fresh write. The tool
+        // key order is frozen (see `tool-schemas.ts`) so both prefixes are identical
+        // — the logged fingerprint is how a drift becomes visible.
+        system: {
+          role: "system",
+          content: system,
+          providerOptions: withCacheBreakpoint(undefined, "prefix"),
+        },
+        onStepFinish: (step) => {
+          logger.info(
+            "Dashboard agent prompt cache",
+            promptCacheAttributes({
+              source: "head-start",
+              usage: step.usage,
+              prefix: describePromptPrefix({ system, tools }),
+            })
+          );
+        },
       }),
   });
 
-  // The webapp is long-lived, so step 1's drain + the handover dispatch run in
-  // the background after this resolves (createSession + trigger have completed).
-  // Log a warm-step failure for observability: startHeadStart has already fired
-  // handover-skip so the agent run exits cleanly, but the client (mounted as
-  // streaming) then resumes an empty session.out, so the turn looks lost.
-  completion.catch((error) => {
+  // Step 1's drain and the handover dispatch continue in the background. On failure
+  // `startHeadStart` already fired handover-skip, so nothing else writes to session.out.
+  completion.catch(async (error) => {
     logger.error("Dashboard agent head start failed", { chatId: params.chatId, error });
+
+    const accessToken = env.DASHBOARD_AGENT_SECRET_KEY;
+    if (!accessToken) return;
+
+    try {
+      await writeHeadStartFailureToSessionOut(createSessionOutWriter(params.chatId, accessToken));
+    } catch (writeError) {
+      logger.error("Failed to write dashboard agent head start error to session.out", {
+        chatId: params.chatId,
+        error: writeError,
+      });
+    }
   });
 }

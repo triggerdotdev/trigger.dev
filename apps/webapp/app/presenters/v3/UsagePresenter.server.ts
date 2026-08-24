@@ -1,5 +1,8 @@
 import type { DataPoint } from "regression";
-import { linear } from "regression";
+// Default-import: regression is CJS and its named exports aren't statically
+// analyzable under ESM interop.
+import regression from "regression";
+const { linear } = regression;
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
@@ -10,16 +13,6 @@ import { BasePresenter } from "./basePresenter.server";
 type Options = {
   organizationId: string;
   startDate: Date;
-};
-
-export type TaskUsageItem = {
-  taskIdentifier: string;
-  runCount: number;
-  averageDuration: number;
-  averageCost: number;
-  totalDuration: number;
-  totalCost: number;
-  totalBaseCost: number;
 };
 
 export type UsageSeriesData = {

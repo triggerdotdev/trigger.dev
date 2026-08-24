@@ -1,0 +1,2 @@
+ALTER TABLE "trigger_dashboard_agent"."investigations" ADD COLUMN "sweep_attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "trigger_dashboard_agent"."investigations" ADD COLUMN "last_sweep_attempt_at" timestamp with time zone;

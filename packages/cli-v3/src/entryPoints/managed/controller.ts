@@ -76,7 +76,7 @@ export class ManagedRunController {
     });
 
     const properties = {
-      ...env.raw,
+      ...env.rawForLogging,
       TRIGGER_POD_SCHEDULED_AT_MS: env.TRIGGER_POD_SCHEDULED_AT_MS.toISOString(),
       TRIGGER_DEQUEUED_AT_MS: env.TRIGGER_DEQUEUED_AT_MS.toISOString(),
     };

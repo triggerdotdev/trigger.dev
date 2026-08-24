@@ -151,7 +151,7 @@ export class TaskRunProcess {
     };
 
     logger.debug(`initializing task run process`, {
-      env: fullEnv,
+      envKeys: Object.keys(fullEnv),
       path: workerManifest.workerEntryPoint,
       cwd,
     });

@@ -1,12 +1,12 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
-import { PageBody } from "~/components/layout/AppLayout";
+import { PageContainer } from "~/components/layout/AppLayout";
+import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
@@ -20,11 +20,6 @@ import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -43,8 +38,11 @@ import {
   type AgentDetail,
 } from "~/presenters/v3/AgentDetailPresenter.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUser } from "~/services/session.server";
 import {
   docsPath,
@@ -53,11 +51,19 @@ import {
   v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { agent?: AgentDetail | null } | undefined)?.agent?.slug;
-  return [{ title: slug ? `${slug} | Agents | Trigger.dev` : "Agent | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => agentsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.agent?.slug ?? params.agentParam ?? "Agent",
+  "Agents",
+]);
 
 const AgentParamSchema = EnvironmentParamSchema.extend({
   agentParam: z.string(),
@@ -158,6 +164,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      columns: getRunColumnsForSelect(request),
     })
     .catch(() => null);
 
@@ -174,6 +181,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => null);
 
+  // The [main | config] split is draggable and its width is persisted to a cookie by the
+  // Resizable primitive; hydrate it here so a reload keeps the user's saved split.
+  const sidebarSnapshot = await getResizableSnapshot(request, "agent-detail-sidebar");
+
   return typeddefer({
     agent,
     runActivity,
@@ -182,6 +193,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     llmTokenActivity,
     runList,
     sessionList,
+    sidebarSnapshot,
   });
 };
 
@@ -196,6 +208,7 @@ export default function Page() {
     llmTokenActivity,
     runList,
     sessionList,
+    sidebarSnapshot,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -209,7 +222,7 @@ export default function Page() {
   const tabLabel = tab === "sessions" ? "Sessions" : "Runs";
 
   return (
-    <>
+    <PageContainer>
       <NavBar>
         <PageTitle
           backButton={{ to: tasksPath, text: "Tasks" }}
@@ -221,143 +234,137 @@ export default function Page() {
           }
         />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("ai-chat/overview")}
-          >
-            Agents docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("ai-chat/overview")}
+            >
+              Agents docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
-      <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="agent-main" min="300px">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              {/* Top bar — tabs on the left; TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
-              <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <TabContainer className="-mb-px">
-                  <TabButton
-                    isActive={tab === "sessions"}
-                    layoutId="agent-page-tabs"
-                    onClick={() => setTab("sessions")}
-                  >
-                    Sessions
-                  </TabButton>
-                  <TabButton
-                    isActive={tab === "runs"}
-                    layoutId="agent-page-tabs"
-                    onClick={() => setTab("runs")}
-                  >
-                    Runs
-                  </TabButton>
-                </TabContainer>
-                <div className="ml-auto flex items-center gap-2 self-center">
-                  <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
-                  {tab === "sessions" ? (
-                    <Suspense fallback={null}>
-                      <TypedAwait resolve={sessionList} errorElement={null}>
-                        {(list) => (list ? <ListPagination list={list} /> : null)}
-                      </TypedAwait>
-                    </Suspense>
-                  ) : (
+      <MetricsLayout.Root>
+        <MetricsLayout.Filters>
+          <div className="flex items-center gap-2">
+            <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
+          </div>
+        </MetricsLayout.Filters>
+
+        {/* Activity / LLM spend / Token charts as a fixed-height chart row (three-up), synced +
+            drag-to-zoom. The old draggable charts/table split is intentionally dropped — the
+            charts get a fixed row and the table flows below in the page scroll. */}
+        <ChartSyncProvider onZoom={zoomToTimeFilter}>
+          <MetricsLayout.Grid kind="charts" columns={{ base: 1, sm: 3 }}>
+            <ChartCard title={tabLabel}>
+              {tab === "sessions" ? (
+                <Suspense fallback={<ActivityChartSkeleton />}>
+                  <TypedAwait resolve={sessionActivity} errorElement={<ActivityChartSkeleton />}>
+                    {(result) => <ActivityChart activity={result} />}
+                  </TypedAwait>
+                </Suspense>
+              ) : (
+                <Suspense fallback={<ActivityChartSkeleton />}>
+                  <TypedAwait resolve={runActivity} errorElement={<ActivityChartSkeleton />}>
+                    {(result) => <ActivityChart activity={result} />}
+                  </TypedAwait>
+                </Suspense>
+              )}
+            </ChartCard>
+
+            <ChartCard title="LLM spend ($)">
+              <Suspense fallback={<ActivityChartSkeleton />}>
+                <TypedAwait resolve={llmCostActivity} errorElement={<ActivityChartSkeleton />}>
+                  {(result) => (
+                    <ScalarActivityChart
+                      activity={result}
+                      seriesKey="cost"
+                      label="Spend"
+                      color="var(--color-agents)"
+                      valueFormatter={formatCurrency}
+                    />
+                  )}
+                </TypedAwait>
+              </Suspense>
+            </ChartCard>
+
+            <ChartCard title="Tokens">
+              <Suspense fallback={<ActivityChartSkeleton />}>
+                <TypedAwait resolve={llmTokenActivity} errorElement={<ActivityChartSkeleton />}>
+                  {(result) => (
+                    <ScalarActivityChart
+                      activity={result}
+                      seriesKey="tokens"
+                      label="Tokens"
+                      color="#14B8A6"
+                      valueFormatter={formatTokens}
+                    />
+                  )}
+                </TypedAwait>
+              </Suspense>
+            </ChartCard>
+          </MetricsLayout.Grid>
+        </ChartSyncProvider>
+
+        {/* Tabs alone on their row (Queue detail pattern), then the table below them. */}
+        <MetricsLayout.Content>
+          {/* Single child so Content's gap-2.5 can't separate the bar from the table. */}
+          <div className="flex flex-col">
+            <TabContainer variant="title" className="justify-between border-y px-2">
+              <div className="flex items-stretch gap-x-6">
+                <TabButton
+                  isActive={tab === "sessions"}
+                  layoutId="agent-page-tabs"
+                  variant="title"
+                  onClick={() => setTab("sessions")}
+                >
+                  Sessions
+                </TabButton>
+                <TabButton
+                  isActive={tab === "runs"}
+                  layoutId="agent-page-tabs"
+                  variant="title"
+                  onClick={() => setTab("runs")}
+                >
+                  Runs
+                </TabButton>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {tab === "sessions" ? (
+                  <Suspense fallback={null}>
+                    <TypedAwait resolve={sessionList} errorElement={null}>
+                      {(list) => (list ? <ListPagination list={list} /> : null)}
+                    </TypedAwait>
+                  </Suspense>
+                ) : (
+                  <>
+                    <RunsDisplayOptions sampleFilters={{ tasks: agent.slug, rootOnly: "false" }} />
                     <Suspense fallback={null}>
                       <TypedAwait resolve={runList} errorElement={null}>
                         {(list) => (list ? <ListPagination list={list} /> : null)}
                       </TypedAwait>
                     </Suspense>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
+            </TabContainer>
+            <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
+          </div>
+        </MetricsLayout.Content>
 
-              <ResizablePanelGroup orientation="vertical" className="max-h-full">
-                {/* Activity / LLM cost / Token charts */}
-                <ResizablePanel id="agent-activity" min="220px" default="320px">
-                  <div className="flex h-full flex-col overflow-hidden bg-background p-2">
-                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
-                      <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
-                        <ChartCard title={tabLabel}>
-                          {tab === "sessions" ? (
-                            <Suspense fallback={<ActivityChartSkeleton />}>
-                              <TypedAwait
-                                resolve={sessionActivity}
-                                errorElement={<ActivityChartSkeleton />}
-                              >
-                                {(result) => <ActivityChart activity={result} />}
-                              </TypedAwait>
-                            </Suspense>
-                          ) : (
-                            <Suspense fallback={<ActivityChartSkeleton />}>
-                              <TypedAwait
-                                resolve={runActivity}
-                                errorElement={<ActivityChartSkeleton />}
-                              >
-                                {(result) => <ActivityChart activity={result} />}
-                              </TypedAwait>
-                            </Suspense>
-                          )}
-                        </ChartCard>
-
-                        <ChartCard title="LLM spend ($)">
-                          <Suspense fallback={<ActivityChartSkeleton />}>
-                            <TypedAwait
-                              resolve={llmCostActivity}
-                              errorElement={<ActivityChartSkeleton />}
-                            >
-                              {(result) => (
-                                <ScalarActivityChart
-                                  activity={result}
-                                  seriesKey="cost"
-                                  label="Spend"
-                                  color="var(--color-agents)"
-                                  valueFormatter={formatCurrency}
-                                />
-                              )}
-                            </TypedAwait>
-                          </Suspense>
-                        </ChartCard>
-
-                        <ChartCard title="Tokens">
-                          <Suspense fallback={<ActivityChartSkeleton />}>
-                            <TypedAwait
-                              resolve={llmTokenActivity}
-                              errorElement={<ActivityChartSkeleton />}
-                            >
-                              {(result) => (
-                                <ScalarActivityChart
-                                  activity={result}
-                                  seriesKey="tokens"
-                                  label="Tokens"
-                                  color="#14B8A6"
-                                  valueFormatter={formatTokens}
-                                />
-                              )}
-                            </TypedAwait>
-                          </Suspense>
-                        </ChartCard>
-                      </div>
-                    </ChartSyncProvider>
-                  </div>
-                </ResizablePanel>
-
-                <ResizableHandle id="agent-activity-handle" />
-
-                {/* Table */}
-                <ResizablePanel id="agent-content" min="160px">
-                  <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle id="agent-detail-handle" />
-          <ResizablePanel id="agent-detail" min="280px" default="380px" max="500px" isStaticAtRest>
-            <AgentDetailSidebar agent={agent} playgroundPath={playgroundPath} />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </PageBody>
-    </>
+        <MetricsLayout.Sidebar
+          resizable
+          autosaveId="agent-detail-sidebar"
+          snapshot={sidebarSnapshot}
+          min="280px"
+          defaultSize="380px"
+          max="500px"
+        >
+          <AgentDetailSidebar agent={agent} playgroundPath={playgroundPath} />
+        </MetricsLayout.Sidebar>
+      </MetricsLayout.Root>
+    </PageContainer>
   );
 }
 
@@ -368,52 +375,43 @@ function AgentContentArea({
   sessionList,
   runList,
 }: { tab: AgentTab } & Pick<LoaderData, "sessionList" | "runList">) {
-  return (
-    <div className="h-full overflow-hidden">
-      {tab === "sessions" ? (
-        <Suspense fallback={<TableLoading />}>
-          <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
-            {(list) =>
-              list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-                  <SessionsTable
-                    sessions={list.sessions}
-                    filters={list.filters}
-                    hasFilters={list.hasFilters}
-                    showTopBorder={false}
-                    stickyHeader
-                  />
-                </div>
-              ) : (
-                <TableLoading />
-              )
-            }
-          </TypedAwait>
-        </Suspense>
-      ) : (
-        <Suspense fallback={<TableLoading />}>
-          <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-            {(list) =>
-              list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-                  <TaskRunsTable
-                    total={list.runs.length}
-                    hasFilters={list.hasFilters}
-                    filters={list.filters}
-                    runs={list.runs}
-                    variant="dimmed"
-                    showTopBorder={false}
-                    stickyHeader
-                  />
-                </div>
-              ) : (
-                <TableLoading />
-              )
-            }
-          </TypedAwait>
-        </Suspense>
-      )}
-    </div>
+  // No `stickyHeader` — it drops the table's own overflow-x-auto and the charts scroll with it.
+  return tab === "sessions" ? (
+    <Suspense fallback={<TableLoading />}>
+      <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
+        {(list) =>
+          list ? (
+            <SessionsTable
+              sessions={list.sessions}
+              filters={list.filters}
+              hasFilters={list.hasFilters}
+              showTopBorder={false}
+            />
+          ) : (
+            <TableLoading />
+          )
+        }
+      </TypedAwait>
+    </Suspense>
+  ) : (
+    <Suspense fallback={<TableLoading />}>
+      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+        {(list) =>
+          list ? (
+            <TaskRunsTable
+              total={list.runs.length}
+              hasFilters={list.hasFilters}
+              filters={list.filters}
+              runs={list.runs}
+              variant="dimmed"
+              showTopBorder={false}
+            />
+          ) : (
+            <TableLoading />
+          )
+        }
+      </TypedAwait>
+    </Suspense>
   );
 }
 

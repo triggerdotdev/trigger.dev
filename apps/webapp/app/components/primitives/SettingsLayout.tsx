@@ -1,7 +1,9 @@
+import { ExclamationCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { type ReactNode } from "react";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { cn } from "~/utils/cn";
 import { Header2, Header3 } from "./Headers";
+import { labelVariants } from "./Label";
 import { Paragraph } from "./Paragraph";
 
 // A composable layout system for settings pages: a centered container holds
@@ -38,6 +40,13 @@ export function SettingsContainer({
   );
 }
 
+/**
+ * For pages that hand-roll their sections. Must stay in step with the `mt-13` in
+ * `SettingsSection`: Tailwind only generates classes written as full literals,
+ * so the two can't be composed.
+ */
+export const SETTINGS_SECTION_GAP = "mt-13";
+
 /** A group of related rows. Adds vertical spacing between sibling sections. */
 export function SettingsSection({
   children,
@@ -47,7 +56,7 @@ export function SettingsSection({
   className?: string;
 }) {
   return (
-    <section className={cn("w-full [&:not(:first-child)]:mt-12", className)}>{children}</section>
+    <section className={cn("w-full [&:not(:first-child)]:mt-13", className)}>{children}</section>
   );
 }
 
@@ -81,7 +90,7 @@ export function SettingsHeader({
         className
       )}
     >
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         <Heading>{title}</Heading>
         {description ? <Paragraph variant="small">{description}</Paragraph> : null}
       </div>
@@ -100,7 +109,7 @@ export function SettingsRowTitle({
   htmlFor?: string;
   className?: string;
 }) {
-  const classes = cn("font-sans text-sm font-semibold leading-tight text-text-bright", className);
+  const classes = cn(labelVariants.medium.text, className);
   return htmlFor ? (
     <label htmlFor={htmlFor} className={classes}>
       {children}
@@ -110,7 +119,6 @@ export function SettingsRowTitle({
   );
 }
 
-/** Description/subtitle typography for a row. */
 export function SettingsRowDescription({
   children,
   className,
@@ -119,11 +127,14 @@ export function SettingsRowDescription({
   className?: string;
 }) {
   return (
-    <Paragraph variant="small" className={className}>
+    <Paragraph variant="extra-small" className={className}>
       {children}
     </Paragraph>
   );
 }
+
+/** Title-to-description spacing, shared with anything hand-rolling the pair. */
+export const SETTINGS_ROW_TITLE_GAP = "space-y-0.5";
 
 /**
  * A single settings row: title + description on the left, action on the right.
@@ -152,21 +163,21 @@ export function SettingsRow({
   className?: string;
   titleClassName?: string;
   size?: RowSize;
-  align?: "center" | "start";
+  align?: "center" | "start" | "end";
   bordered?: boolean;
 }) {
   return (
     <div
       className={cn(
         "flex w-full justify-between gap-8",
-        align === "center" ? "items-center" : "items-start",
+        align === "center" ? "items-center" : align === "end" ? "items-end" : "items-start",
         rowSize[size],
         bordered && "border-b border-grid-dimmed",
         className
       )}
     >
       {children ?? (
-        <div className="flex-1 space-y-1">
+        <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
           {title ? (
             <SettingsRowTitle htmlFor={htmlFor} className={titleClassName}>
               {title}
@@ -201,6 +212,38 @@ export function SettingsBlock({
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * A warning or error as a settings row: hazard icon and title on the left in the
+ * severity colour, the explanation beneath in the usual dimmed body text, and
+ * the recovery action on the right.
+ */
+export function SettingsAlertRow({
+  variant,
+  title,
+  description,
+  action,
+}: {
+  variant: "warning" | "error";
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+}) {
+  const Icon = variant === "error" ? ExclamationCircleIcon : ExclamationTriangleIcon;
+  const color = variant === "error" ? "text-error" : "text-warning";
+
+  return (
+    <SettingsRow action={action}>
+      <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+        <div className="flex items-center gap-1.5">
+          <Icon className={cn("size-4 shrink-0", color)} />
+          <SettingsRowTitle className={color}>{title}</SettingsRowTitle>
+        </div>
+        {description ? <SettingsRowDescription>{description}</SettingsRowDescription> : null}
+      </div>
+    </SettingsRow>
   );
 }
 

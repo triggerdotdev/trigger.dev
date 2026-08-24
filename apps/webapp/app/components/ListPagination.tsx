@@ -14,13 +14,31 @@ type List = {
 export const DirectionSchema = z.union([z.literal("forward"), z.literal("backward")]);
 export type Direction = z.infer<typeof DirectionSchema>;
 
-export function ListPagination({ list, className }: { list: List; className?: string }) {
+export function ListPagination({
+  list,
+  className,
+  cursorParam = "cursor",
+  directionParam = "direction",
+}: {
+  list: List;
+  className?: string;
+  cursorParam?: string;
+  directionParam?: string;
+}) {
   const bothDisabled = !list.pagination.previous && !list.pagination.next;
 
   return (
     <div className={cn("flex items-center", className)}>
-      <PreviousButton cursor={list.pagination.previous} />
-      <NextButton cursor={list.pagination.next} />
+      <PreviousButton
+        cursor={list.pagination.previous}
+        cursorParam={cursorParam}
+        directionParam={directionParam}
+      />
+      <NextButton
+        cursor={list.pagination.next}
+        cursorParam={cursorParam}
+        directionParam={directionParam}
+      />
       <div
         className={cn(
           "order-2 h-6 w-px bg-surface-control transition-colors peer-hover/next:bg-surface-control-hover peer-hover/prev:bg-surface-control-hover",
@@ -31,8 +49,16 @@ export function ListPagination({ list, className }: { list: List; className?: st
   );
 }
 
-function PreviousButton({ cursor }: { cursor?: string }) {
-  const path = useCursorPath(cursor, "backward");
+function PreviousButton({
+  cursor,
+  cursorParam,
+  directionParam,
+}: {
+  cursor?: string;
+  cursorParam: string;
+  directionParam: string;
+}) {
+  const path = useCursorPath(cursor, "backward", cursorParam, directionParam);
 
   return (
     <div className={cn("peer/prev order-1", !path && "pointer-events-none")}>
@@ -53,8 +79,16 @@ function PreviousButton({ cursor }: { cursor?: string }) {
   );
 }
 
-function NextButton({ cursor }: { cursor?: string }) {
-  const path = useCursorPath(cursor, "forward");
+function NextButton({
+  cursor,
+  cursorParam,
+  directionParam,
+}: {
+  cursor?: string;
+  cursorParam: string;
+  directionParam: string;
+}) {
+  const path = useCursorPath(cursor, "forward", cursorParam, directionParam);
 
   return (
     <div className={cn("peer/next order-3", !path && "pointer-events-none")}>
@@ -75,7 +109,12 @@ function NextButton({ cursor }: { cursor?: string }) {
   );
 }
 
-function useCursorPath(cursor: string | undefined, direction: Direction) {
+function useCursorPath(
+  cursor: string | undefined,
+  direction: Direction,
+  cursorParam: string,
+  directionParam: string
+) {
   const location = useLocation();
 
   if (!cursor) {
@@ -83,7 +122,7 @@ function useCursorPath(cursor: string | undefined, direction: Direction) {
   }
 
   const search = new URLSearchParams(location.search);
-  search.set("cursor", cursor);
-  search.set("direction", direction);
+  search.set(cursorParam, cursor);
+  search.set(directionParam, direction);
   return location.pathname + "?" + search.toString();
 }

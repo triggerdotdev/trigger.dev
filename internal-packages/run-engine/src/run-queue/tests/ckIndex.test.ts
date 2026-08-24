@@ -471,4 +471,46 @@ describe("CK Index", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "concurrencyKeyBreakdown lists backlogged keys most-starved first",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const now = Date.now();
+        const enqueue = (runId: string, concurrencyKey: string, timestamp: number) =>
+          queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId, concurrencyKey, timestamp }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+
+        // ck-a has the oldest head (most starved) and 2 queued; ck-b has 1.
+        await enqueue("r1", "ck-a", now - 10_000);
+        await enqueue("r2", "ck-a", now - 5_000);
+        await enqueue("r3", "ck-b", now - 2_000);
+
+        const breakdown = await queue.concurrencyKeyBreakdown(authenticatedEnvDev, "task/my-task");
+        expect(breakdown.totalBackloggedKeys).toBe(2);
+        expect(breakdown.keys).toEqual([
+          { concurrencyKey: "ck-a", queued: 2, running: 0, oldestEnqueuedAt: now - 10_000 },
+          { concurrencyKey: "ck-b", queued: 1, running: 0, oldestEnqueuedAt: now - 2_000 },
+        ]);
+
+        const limited = await queue.concurrencyKeyBreakdown(authenticatedEnvDev, "task/my-task", {
+          limit: 1,
+        });
+        expect(limited.totalBackloggedKeys).toBe(2);
+        expect(limited.keys).toHaveLength(1);
+        expect(limited.keys[0]!.concurrencyKey).toBe("ck-a");
+
+        // Queues with no CK backlog return an empty breakdown.
+        const empty = await queue.concurrencyKeyBreakdown(authenticatedEnvDev, "task/other-task");
+        expect(empty).toEqual({ totalBackloggedKeys: 0, keys: [] });
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });

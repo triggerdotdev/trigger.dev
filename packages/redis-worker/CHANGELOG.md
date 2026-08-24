@@ -1,5 +1,63 @@
 # @trigger.dev/redis-worker
 
+## 4.5.12
+
+### Patch Changes
+
+- Fair queue tenants can no longer get permanently stuck behind leaked concurrency slots. Slots are now freed on every path that finishes a message, a failed release no longer causes a message to run twice or lose its retry, and a background sweep frees any slot that does leak, so a tenant's queues recover on their own instead of needing manual cleanup. ([#4540](https://github.com/triggerdotdev/trigger.dev/pull/4540))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+
+## 4.5.10
+
+### Patch Changes
+
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+
+## 4.5.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.7`
+
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
 ## 4.5.4
 
 ### Patch Changes

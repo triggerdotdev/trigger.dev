@@ -12,6 +12,7 @@ import { DeploymentService } from "./deployment.server";
 import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
+import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
 
 export class FinalizeDeploymentService extends BaseService {
   public async call(
@@ -123,9 +124,24 @@ export class FinalizeDeploymentService extends BaseService {
         }
       );
 
-      await updateEnvConcurrencyLimits(authenticatedEnv);
+      await updateEnvConcurrencyLimits(authenticatedEnv, undefined, this._prisma);
     } catch (err) {
       logger.error("Failed to publish WORKER_CREATED event", { err });
+    }
+
+    if (deployment.externalId) {
+      const [cacheError] = await tryCatch(
+        externalDeploymentCacheInstance.setIfNewer(authenticatedEnv.id, deployment.externalId, {
+          workerId: deployment.worker.id,
+          version: deployment.worker.version,
+          sdkVersion: deployment.worker.sdkVersion ?? "",
+          cliVersion: deployment.worker.cliVersion ?? "",
+        })
+      );
+
+      if (cacheError) {
+        logger.error("Error caching external deployment resolution", { error: cacheError });
+      }
     }
 
     if (deployment.worker.engine === "V2") {

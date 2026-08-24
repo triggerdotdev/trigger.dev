@@ -1,0 +1,430 @@
+---
+title: "Version skew protection"
+description: "Pin task runs to the deployment that matches the release of your app that triggered them."
+---
+
+Your app and your tasks are deployed separately, so they are never live at exactly the same instant. In the window between them, an app running new code can trigger tasks built from old code — or the other way around. That's **version skew**.
+
+Version skew protection closes the window. You give a deployment an **external deployment id**, your app sends the same id when it triggers, and Trigger.dev pins the run to the deployment carrying that id.
+
+<Note>
+  Version skew protection requires `@trigger.dev/sdk` and the `trigger.dev` CLI on [v4.5.12 or
+  later](https://github.com/triggerdotdev/trigger.dev/releases/tag/v4.5.12), the release that
+  introduced external deployment ids. On an older version no id is sent, and runs execute on the
+  current version with no warning.
+</Note>
+
+## The guarantee
+
+Once your app is sending an external deployment id, a triggered run has one of four outcomes:
+
+| Situation                                            | What happens                                                        |
+| ---------------------------------------------------- | ------------------------------------------------------------------- |
+| A deployment with that id is live                     | The run is **pinned** to it and executes immediately.                 |
+| A deployment with that id is still building           | The run **waits**, then executes pinned to it once the build lands.   |
+| No deployment with that id ever arrives               | The run waits up to **1 hour**, then expires.                         |
+| No id was sent at all                                 | Nothing changes — the run executes on the current version.            |
+
+**The id is the contract.** There is no dashboard setting and nothing to switch on: if a trigger carries an external deployment id, that id is honoured. If it doesn't, behaviour is exactly what it is today.
+
+This works identically in production, staging and preview (including per-branch preview deployments), with no per-environment configuration.
+
+## Quick start
+
+The id is free-form and opaque to Trigger.dev — a commit SHA, a release tag, a CI run id, anything up to **128 characters**. The only rule is that both halves carry the **same value**.
+
+<Steps>
+
+<Step title="Deploy your tasks with an external id">
+
+```bash
+npx trigger.dev@latest deploy --external-id "$(git rev-parse HEAD)"
+```
+
+</Step>
+
+<Step title="Give your running app the same value">
+
+Set this in your hosting platform's runtime environment variables, alongside `TRIGGER_SECRET_KEY`:
+
+```bash
+TRIGGER_EXTERNAL_DEPLOYMENT_ID=<the-same-commit-sha>
+```
+
+</Step>
+
+</Steps>
+
+<Warning>
+  Whatever you use on both sides, make sure it can't expand to an empty string. An unset shell
+  variable deploys with no id at all, which silently gives you no protection rather than an error.
+</Warning>
+
+That's it. Every task triggered by that release of your app now runs on the deployment you built for it.
+
+This recipe works on **every platform**, needs no integration, and is not git-specific. If you deploy to Vercel with the [Vercel integration](/vercel-integration), both halves are filled in for you — see [Automatic skew protection on Vercel](#automatic-skew-protection-on-vercel).
+
+## Deploying with an external id
+
+```bash
+npx trigger.dev@latest deploy --external-id <value>
+```
+
+The value is stored on the deployment. It is never interpreted, parsed or validated beyond its length — the only constraint is **128 characters or fewer**.
+
+### Reusing an id
+
+Because deploys are often retried, redeployed and re-run by CI, repeating an id is a normal thing to do rather than an error. What happens depends on the state of the deployment that already holds it:
+
+| Existing deployment for this id           | Default behaviour                                                                                         | With `--force`     |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------ |
+| **Deployed**                              | **No build.** The CLI reports the existing version, sets the same outputs, and exits successfully.          | Builds a new one.  |
+| **Building** (a deploy is in flight)      | **Error**, naming the version that is already building. Two builds racing for one id is almost always an accident. | **Cancels the in-flight build**, then starts a new one. |
+| **Failed, cancelled or timed out**        | **Rebuilds.** No flag needed — builds fail for reasons that have nothing to do with your code.              | Rebuilds.          |
+| **None**                                  | Builds.                                                                                                     | Builds.            |
+
+Deploying an id that is already live prints the existing version and stops:
+
+```bash
+Version 20250228.1 was already deployed for --external-id abc123 — nothing to build
+```
+
+Deploying an id that is mid-build fails, telling you which version is already building:
+
+```bash
+A deployment for external id "abc123" is already in progress (version 20250228.1). Wait for it to finish, or deploy again with --force to cancel it and start a new one.
+```
+
+The short-circuit on an already-deployed id makes `--external-id` useful on its own as **deploy idempotency**: a CI job that runs twice for the same commit builds once — provided the second run starts after the first has finished — and the short-circuited run still gets the version number in its output.
+
+A second run that starts while the first is still building hits the **Building** row above and errors. Only in the brief window before the first run has registered its build do both see "nothing deployed yet"; then both build, and the higher version wins.
+
+<Tip>
+  In GitHub Actions, the short-circuited run sets the same step outputs (such as
+  `deploymentVersion`) as a real build, so downstream steps work unchanged. One exception:
+  `needsPromotion` is always `false` on a short-circuit, because a reused version is never promoted —
+  so a workflow that gates a promote step on that output will skip promotion on the repeat run.
+</Tip>
+
+`--force` starts a new build for an id that already has one. It is non-destructive with respect to deployments that already **succeeded** — both remain, and the newer version wins. It *is* destructive to a build still in flight, which it cancels, because one id should not have two live builds racing to define it. It requires `--external-id`: on its own there is no previous deployment for it to build over, so it errors.
+
+<Note>
+  A cancelled deployment can never be deployed, so the build it replaces can't land. The build
+  itself is signalled to stop and usually does within seconds — but one running elsewhere (a
+  `--local-build`, or a deploy from someone else's machine) can keep going for a few minutes before
+  it notices.
+</Note>
+
+### Redeploying the same commit
+
+The short-circuit is keyed on the id alone, not on what went into the build. If you use the commit SHA as your id and then change something the commit doesn't capture — a synced environment variable, a secret, a dependency resolved at build time — redeploying that commit produces **no new build**, and the deployed image keeps the older inputs.
+
+Three ways out, in order of preference:
+
+- **Make a new commit.** `git commit --allow-empty -m "redeploy"` gives you a new SHA, which is a new id, which builds. This is the only remedy that also works for the Vercel and GitHub integrations, which never pass `--force`.
+- **Pass `--force`**, if you drive deploys yourself.
+- **Use an id that captures more than the commit** — `${GITHUB_SHA}-${GITHUB_RUN_ID}`, say — if your builds legitimately depend on inputs outside the tree. You lose idempotency in exchange.
+
+See the [deploy command reference](/cli-deploy-commands) for all deploy flags.
+
+## Automatic discovery
+
+Setting the id yourself is the explicit path, and it always works. The SDK can also **discover** an id from the variables your hosting platform or CI system already injects, so you don't have to wire anything up.
+
+Discovery happens at **runtime**, on each trigger call — never at module load — so a prebuilt bundle can't pin a stale value.
+
+The SDK takes the first of these that yields a value:
+
+1. **`externalDeploymentId` passed to the trigger call** — always honoured.
+2. **`externalDeploymentId` passed to `configure()`** — always honoured.
+3. **`TRIGGER_EXTERNAL_DEPLOYMENT_ID`** — always honoured.
+4. **Platform and CI variables** — read **only** when `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION` is set to `1` or `true`.
+
+The first three are explicit acts on your part, so they need no opt-in. Only the fourth — reading a commit SHA your platform injected on its own — requires one, because that value is there whether or not anyone asked for this feature.
+
+```bash
+TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1
+```
+
+The value is trimmed and matched case-insensitively, so `true`, `TRUE` and `True` are all the same thing. Any other value — including `0`, an empty string, or the variable being absent — leaves automatic discovery off. The variable gates *discovery* only; an id you set explicitly is always honoured either way.
+
+<Warning>
+  **Most platforms expose the commit SHA to the build, not to the running process.** Discovery reads
+  `process.env` inside your live application, so a variable that only exists during the build is a
+  variable the SDK cannot see. On those platforms nothing is discovered and **nothing breaks** — your
+  runs simply execute on the current version, silently, as they do today. If your platform is marked
+  "Build only" below, use the [manual recipe](#the-manual-recipe) instead.
+</Warning>
+
+### Hosting platforms
+
+Read first, because a hosting variable describes the deployment that is *running*.
+
+| Platform                      | Variable                                        | Available in the running app?                                                                                            |
+| ----------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Vercel**                    | `VERCEL_GIT_COMMIT_SHA`                         | **Yes** — build and runtime, provided "Automatically expose System Environment Variables" is on for the project.           |
+| **Railway**                   | `RAILWAY_GIT_COMMIT_SHA`                        | **Yes** — injected at build and runtime, no configuration.                                                                 |
+| **Render**                    | `RENDER_GIT_COMMIT`                             | **Yes** — exposed in both build and runtime environments.                                                                  |
+| **Cloudflare Pages**          | `CF_PAGES_COMMIT_SHA`                           | **Yes** for Pages Functions; also present during the build.                                                                |
+| **Cloudflare Workers Builds** | `WORKERS_CI_COMMIT_SHA`                         | **Build only** — not injected into the deployed Worker. Must be forwarded.                                                 |
+| **Netlify**                   | `COMMIT_REF`                                    | **Build only** in the general case. Must be forwarded. (`CACHED_COMMIT_REF` is the *previous* build's SHA and is not read.) |
+| **AWS Amplify Hosting**       | `AWS_COMMIT_ID`                                 | **Build only.** Must be forwarded.                                                                                         |
+| **Heroku**                    | `HEROKU_BUILD_COMMIT`, then `HEROKU_SLUG_COMMIT` | **Runtime, opt-in** — requires dyno metadata.                                                                              |
+| **Koyeb**                     | `KOYEB_GIT_SHA`                                 | **Runtime only** (not available during the build).                                                                         |
+| **DigitalOcean App Platform** | —                                               | No fixed variable. Bind `${_self.COMMIT_HASH}` to a variable named `COMMIT_HASH` and the generic tier below picks it up.    |
+| **Fly.io**                    | —                                               | Nothing is injected. Set one of the generic names below at deploy time.                                                    |
+
+### CI systems
+
+Read second. These are correct when your application *is* the CI job, and they are the natural source for `--external-id` in a pipeline. Once the job has ended they no longer exist, so they cannot be discovered from a long-running app.
+
+| System              | Variable             |
+| ------------------- | -------------------- |
+| GitHub Actions      | `GITHUB_SHA`         |
+| GitLab CI           | `CI_COMMIT_SHA`      |
+| CircleCI            | `CIRCLE_SHA1`        |
+| Bitbucket Pipelines | `BITBUCKET_COMMIT`   |
+| Buildkite           | `BUILDKITE_COMMIT`   |
+| Azure Pipelines     | `BUILD_SOURCEVERSION` |
+| Google Cloud Build  | `COMMIT_SHA`         |
+| Drone / Woodpecker  | `DRONE_COMMIT_SHA`   |
+| Jenkins (git plugin) | `GIT_COMMIT`        |
+| TeamCity            | `BUILD_VCS_NUMBER`   |
+| Travis CI           | `TRAVIS_COMMIT`      |
+
+### Generic fallbacks
+
+Read last, after every named source above is exhausted:
+
+```text
+COMMIT_SHA  →  COMMIT_HASH  →  GIT_COMMIT  →  GIT_SHA  →  GIT_HASH
+```
+
+These are the answer for any platform not listed: set one of them and you get pinning with no other changes. They go last precisely because they are unnamespaced and could plausibly be set by something other than your deploy.
+
+Empty and whitespace-only values are skipped rather than treated as a match, and a value longer than 128 characters is skipped rather than sent — so a generic name holding something that isn't a deployment id degrades to "no id discovered" instead of an error.
+
+<Tip>
+  If a generic name means something else in your environment, you have two clean escapes: set
+  `TRIGGER_EXTERNAL_DEPLOYMENT_ID` explicitly (it outranks all discovery), or leave
+  `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION` off and use the manual recipe.
+</Tip>
+
+## The manual recipe
+
+If your platform only exposes the commit at build time — or injects nothing at all — set the id yourself. This is not a lesser mode: it is the same mechanism, and the same code path the Vercel integration uses with both halves filled in automatically.
+
+Read the commit in the place where it *is* available, and write it into both halves:
+
+```bash
+# 1. Deploy side — name the deployment after the commit.
+npx trigger.dev@latest deploy --external-id "$(git rev-parse HEAD)"
+
+# 2. Application side — give the running app the same value.
+TRIGGER_EXTERNAL_DEPLOYMENT_ID=<the-same-commit-sha>
+```
+
+Substitute a real value on both sides — and prefer something that fails loudly over a bare shell variable. On the platforms this section is about, the platform's own commit variable is usually **not** set in the shell you are deploying from, so `--external-id "$COMMIT_SHA"` would quietly deploy with no id and leave you unprotected.
+
+Whatever your platform calls its build-time commit variable — `COMMIT_REF` on Netlify, `AWS_COMMIT_ID` on Amplify, `WORKERS_CI_COMMIT_SHA` on Cloudflare Workers Builds, `$(git rev-parse HEAD)` in a bespoke pipeline — read it there and forward it.
+
+Half two can be a runtime environment variable set in your platform's configuration, or a build-time constant inlined into your bundle. Either works.
+
+Three things are worth knowing:
+
+- **It needs no `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION`.** That variable gates discovery, not pinning, and an explicitly set id is always honoured.
+- **It is not Vercel-specific, or even git-specific.** A release tag or CI run id is fine — the value only has to match on both sides.
+- **Any name the SDK reads works.** `TRIGGER_EXTERNAL_DEPLOYMENT_ID` is the clearest, but one of the [generic fallbacks](#generic-fallbacks) does the same job.
+
+### Example: Netlify
+
+Netlify exposes `COMMIT_REF` to the build only, so forward it:
+
+```bash
+# In your build command or CI step
+npx trigger.dev@latest deploy --external-id "$COMMIT_REF"
+```
+
+Then set `TRIGGER_EXTERNAL_DEPLOYMENT_ID` to the same commit in your site's runtime environment variables — for example by writing it during the build, or by having your deploy pipeline set it through the Netlify API.
+
+## Setting the id in code
+
+Environment variables are the usual way, but you can also pass the id directly. Both forms always win over discovery.
+
+Per trigger call:
+
+```ts
+import { myTask } from "./trigger/tasks";
+
+await myTask.trigger(
+  { foo: "bar" },
+  { externalDeploymentId: process.env.VERCEL_GIT_COMMIT_SHA }
+);
+```
+
+Or once, for every trigger made by the process:
+
+```ts
+import { configure } from "@trigger.dev/sdk";
+
+configure({
+  externalDeploymentId: process.env.MY_RELEASE_ID,
+});
+```
+
+An empty or whitespace-only value counts as "not supplied" rather than an error, so wiring up a variable that isn't always present is safe.
+
+Batch triggers carry the id too. `batchTrigger` resolves it per item exactly as `trigger` does, and it survives the asynchronous materialisation of batch items — so a large batch triggered during a deploy waits and releases item by item, each pinned to the deployment its calling code came from.
+
+## Waiting and expiry
+
+When a run arrives with an id that isn't deployed yet, it doesn't fail — it **waits**. This is the ordinary case, not an edge case: your app frequently goes live a few seconds before your task build finishes.
+
+A waiting run shows in the dashboard with the status **Pending version** and the reason _"Waiting for a deployment with this run's external deployment id"_. As soon as a deployment carrying that id is deployed, the run is released and executes pinned to it.
+
+An unknown id waits too, for the same reason: "we haven't seen this deployment" and "this deployment hasn't been created yet" look identical from the outside, and the second is common — your app often goes live before your deploy pipeline has even claimed a runner.
+
+<Warning>
+  A run waiting on an external deployment id that never arrives **expires after 1 hour**. It moves
+  to `EXPIRED` with a message naming the id it waited for — `Run expired because no deployment with
+  external id 'abc123' became available`. This bounds — but does not diagnose — the configuration
+  mistakes that produce a deployment which never lands. See [When nothing ever
+  lands](#when-nothing-ever-lands).
+</Warning>
+
+A shorter [run-level `ttl`](/triggering#ttl) that you set yourself still wins — the one-hour deadline is a backstop, not an extension. Note that the run still expires *as* an external-deployment expiry: the status reason and message name the id it was waiting for, not the `ttl`.
+
+<Note>
+  This deadline applies only to runs waiting on an external deployment id. Runs that wait for the
+  reasons that already exist — such as triggering a task before your first deploy — keep waiting
+  indefinitely, unchanged.
+</Note>
+
+## When nothing ever lands
+
+Waiting is the right answer to a race and the wrong answer to a misconfiguration, and for the first hour the two look identical. Three setups produce an id that will never be deployed, and each expires **every** run from the affected release.
+
+### The commit didn't build any tasks
+
+The most damaging one, and the easiest to create by accident. If your deploy workflow is filtered on paths — `paths: ['trigger/**']` in a monorepo is the usual shape — a commit that only touches your application produces **no Trigger.dev deployment at all**. Your app still sends that commit's SHA, nothing ever holds it, and every run from that release waits an hour and expires.
+
+If you filter deploys by path, derive the id from the same filter on both sides — the SHA of the last commit that touched your task directory, not the commit being deployed:
+
+```bash
+TASK_ID=$(git log -1 --format=%H -- trigger/)
+npx trigger.dev@latest deploy --external-id "$TASK_ID"
+```
+
+Compute the same value where you set your app's variable. In GitHub Actions this needs `fetch-depth: 0` on `actions/checkout` — the default shallow clone can't see far enough back.
+
+### Two applications, one Trigger.dev project
+
+If two deployables share one Trigger.dev project and only one of them deploys tasks, the other still sends its own commit SHA — an id nothing will ever hold. Give the application that doesn't build tasks either no id, or the id of the deployment it should run against.
+
+### A preview deployment promoted to production
+
+Ids resolve **within a single environment**. An id deployed to a preview branch does not exist in production, so promoting that preview build in your hosting platform — without a production deploy carrying the same id — parks and expires every production run. Deploy to production the normal way rather than promoting a preview artifact.
+
+<Tip>
+  A run that hit one of these shows as `EXPIRED` with `Run expired because no deployment with
+  external id '…' became available`. An environment producing nothing but that message has a
+  configuration problem, not a timing problem.
+</Tip>
+
+## Precedence
+
+Several things can pin a run. The SDK sends an **explicit version** — the `version` option if you passed one, otherwise `TRIGGER_VERSION` — and the external deployment id, whenever it has them. The server then prefers the explicit version, then the id, then the current version:
+
+```text
+explicit version (version option, else TRIGGER_VERSION)  >  external deployment id  >  current version
+```
+
+- An explicit `version` passed to `trigger()` always wins. Because the SDK folds the option and the variable into a single value before sending, the `version` option overrides `TRIGGER_VERSION` on the client, and the server only ever sees the winner.
+- An explicit version therefore beats an external deployment id. This is what makes migration from [atomic deploys](/deployment/atomic-deployment) safe: the legacy pin keeps governing until you remove the variable.
+- An external deployment id sent alongside an explicit version is **ignored, not an error**.
+- A trigger carrying neither runs on the current version.
+
+<Warning>
+  **Don't leave a stale `TRIGGER_VERSION` behind.** A `TRIGGER_VERSION` naming a version that
+  doesn't exist *in the environment being triggered* is not a soft failure and not a fallback —
+  **every trigger fails** with a `422`, wherever the trigger came from. It also suppresses the
+  external deployment id, so skew protection can't rescue it.
+
+  The usual way to hit this is setting `TRIGGER_VERSION` at the project level on your hosting
+  platform: a version built in production doesn't exist in preview, so every preview trigger fails.
+  Remove the variable once you've confirmed skew protection is working.
+</Warning>
+
+```ts
+// Explicit version wins, even if an external deployment id is discovered.
+await myTask.trigger({ foo: "bar" }, { version: "20250228.1" });
+```
+
+## Automatic skew protection on Vercel
+
+If you use the [Vercel integration](/vercel-integration), version skew protection is set up for you and both halves are automatic:
+
+- The integration sets **`TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1`** on your Vercel project when you connect it, and adds it on the next build if it is missing — so projects connected before this existed pick it up without reconnecting. It only ever adds the variable, never overwrites one that is already there.
+- The integration passes **your commit SHA** as the deploy's external id.
+- `VERCEL_GIT_COMMIT_SHA` is available at runtime on Vercel, so the SDK discovers the matching id with no work from you.
+
+This covers production, staging and preview alike.
+
+### Opting out
+
+Set `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION` to `0` on your Vercel project. A `0` you set today stays `0` through every subsequent build.
+
+Opting out only disables automatic *discovery*. You can still pin explicitly at any time by setting `TRIGGER_EXTERNAL_DEPLOYMENT_ID` yourself.
+
+## Replacing automatic atomic deployments
+
+<Warning>
+  **Automatic atomic deployments are deprecated.** The setting still exists in your Vercel
+  integration settings, is labelled Deprecated, and keeps working — nothing is being switched off
+  for you. New connections have it off by default. Version skew protection is the supported
+  mechanism.
+</Warning>
+
+[Atomic deployments](/vercel-integration#atomic-deployments) solved the same problem by gating your Vercel deployment on the Trigger.dev build, then spawning a **second** Vercel deployment with `TRIGGER_VERSION` baked in and promoting it.
+
+Version skew protection replaces it and is strictly less invasive:
+
+| | Automatic atomic deployments | Version skew protection |
+| --- | --- | --- |
+| Vercel deployments per release | Two — the original, then a redeploy | One |
+| Blocks your Vercel deployment | Yes, until the task build finishes | Never |
+| `Auto-assign Custom Production Domains` | Must be disabled | Untouched |
+| Environments covered | Production only | Production, staging **and** preview |
+| Configuration | A setting on the production environment | None — the id is the contract |
+| Runs triggered before the build lands | Run on the previous version | Wait, then run on the right version |
+
+### Migrating
+
+1. Make sure your app and your deploys are on **v4.5.12 or later** — the release that introduced external deployment ids. The CLI (`trigger.dev`) and the SDK (`@trigger.dev/sdk`) version together, so `npx trigger.dev@latest update` moves both; see the [v4.5.12 release notes](https://github.com/triggerdotdev/trigger.dev/releases/tag/v4.5.12).
+2. Confirm skew protection is working — deploy, then check that runs triggered by the new release are pinned to the new version.
+3. Turn **Atomic deployments** off in your project's Vercel settings.
+4. **Remove the `TRIGGER_VERSION` variable** from your Vercel project. Until you do, it outranks the external deployment id and keeps governing.
+5. Decide who promotes. Under atomic deployments Trigger.dev promoted for you; without it, either re-enable `Auto-assign Custom Production Domains` in Vercel or promote deliberately from your own pipeline.
+
+Both mechanisms can run at the same time without conflict while the variable still names a live version — `TRIGGER_VERSION` simply keeps winning — so there is no broken intermediate state and no need to do all of this at once.
+
+<Warning>
+  **Step 4 is not optional, and don't do it before step 2.** While `TRIGGER_VERSION` names a version
+  that exists in the environment being triggered, it simply keeps winning — safe, and why the two
+  mechanisms coexist. The moment it names a version that environment doesn't have, **every trigger
+  fails outright** with a `422`, and the external deployment id it suppresses can't catch it.
+</Warning>
+
+<Note>
+  If you want your Vercel deployment to stay **gated** on the Trigger.dev build, atomic deployments
+  remain the way to do that. Version skew protection never blocks a deployment; it makes blocking
+  unnecessary by making runs wait instead.
+</Note>
+
+## Related
+
+- [Deployment overview](/deployment/overview) — versions, current version and version locking
+- [Deploy CLI command](/cli-deploy-commands) — every deploy flag
+- [Vercel integration](/vercel-integration)
+- [Preview branches](/deployment/preview-branches)
+- [Atomic deploys](/deployment/atomic-deployment) (deprecated for Vercel)

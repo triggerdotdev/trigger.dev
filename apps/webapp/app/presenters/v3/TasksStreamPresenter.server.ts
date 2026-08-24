@@ -88,6 +88,10 @@ export class TasksStreamPresenter {
         safeSend({ data: message.createdAt.toISOString() });
       });
 
+      subscriber.on("PROJECT_INITIALIZED", async (message) => {
+        safeSend({ data: message.initializedAt.toISOString() });
+      });
+
       pinger = setInterval(() => {
         if (signal.aborted) {
           return close();

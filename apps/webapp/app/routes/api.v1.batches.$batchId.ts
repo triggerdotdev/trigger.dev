@@ -12,6 +12,11 @@ export const loader = createLoaderApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
+    // A just-created batch may not yet have replicated to the read replica this client-less
+    // findBatchTaskRunByFriendlyId lookup routes to; return a retryable 404 so the SDK retries through
+    // replica lag rather than stranding a live batch on a permanent 404 (mirrors the run-get routes,
+    // e.g. api.v3.runs.$runId).
+    shouldRetryNotFound: true,
     findResource: (params, auth) => {
       return runStore.findBatchTaskRunByFriendlyId(params.batchId, auth.environment.id, {
         include: { errors: true },

@@ -12,6 +12,7 @@ import type {
 import { SeverityNumber, Span_SpanKind, Status_StatusCode } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { generateSpanId } from "./eventRepository/common.server";
+import { unwrapWorkerIdInMetadata } from "./workerIdUnwrap.server";
 import type {
   CreatableEventKind,
   CreatableEventStatus,
@@ -468,7 +469,11 @@ function resolveDataPointContext(
 
 function extractEventProperties(attributes: KeyValue[], prefix?: string) {
   return {
-    metadata: convertSelectedKeyValueItemsToMap(attributes, [SemanticInternalAttributes.METADATA]),
+    // Decode a deployment-token worker.id back to its friendlyId so the credential never lands in
+    // stored span/log metadata (the metrics path unwraps its own worker_id separately).
+    metadata: unwrapWorkerIdInMetadata(
+      convertSelectedKeyValueItemsToMap(attributes, [SemanticInternalAttributes.METADATA])
+    ),
     environmentId: extractStringAttribute(attributes, [
       prefix,
       SemanticInternalAttributes.ENVIRONMENT_ID,

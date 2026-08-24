@@ -1,5 +1,6 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import parseDuration from "parse-duration";
+import { boundedIn } from "@trigger.dev/database";
 import {
   convertSessionListInputOptionsToFilterOptions,
   type FilterSessionsOptions,
@@ -83,7 +84,7 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
 
     let sessions = await this.options.prisma.session.findMany({
       where: {
-        id: { in: idsToReturn },
+        id: { in: boundedIn(idsToReturn) },
         runtimeEnvironmentId: options.environmentId,
       },
       orderBy: { createdAt: "desc" },

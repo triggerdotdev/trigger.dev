@@ -14,7 +14,14 @@ import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
-import { withBlockIoUringSeccompProfile } from "./kubernetesPodSpec.js";
+import {
+  nodetypeNodeSelector,
+  runPodTolerations,
+  runnerSecurityContext,
+  withRunnerSeccompProfile,
+  withNodeSelector,
+} from "./kubernetesPodSpec.js";
+import { rewriteImageRegistry } from "./imageRegistry.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -65,6 +72,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
         domain: opts.workloadApiDomain,
       });
     }
+
+    if (env.KUBERNETES_ORG_PLACEMENT_OVERRIDES) {
+      this.logger.info("[KubernetesWorkloadManager] Org placement overrides enabled", {
+        orgIds: Object.keys(env.KUBERNETES_ORG_PLACEMENT_OVERRIDES),
+      });
+    }
   }
 
   private addPlacementTags(
@@ -106,10 +119,30 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     try {
-      const basePodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
-      const podSpec = this.opts.checkpointsEnabled
-        ? withBlockIoUringSeccompProfile(basePodSpec, opts.runtime)
-        : basePodSpec;
+      const orgOverride = env.KUBERNETES_ORG_PLACEMENT_OVERRIDES?.[opts.orgId];
+      const taggedPodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
+      const basePodSpec = withNodeSelector(taggedPodSpec, orgOverride?.nodeSelector);
+
+      if (orgOverride?.nodeSelector) {
+        const replacedKeys = Object.keys(orgOverride.nodeSelector).filter(
+          (key) =>
+            taggedPodSpec.nodeSelector?.[key] !== undefined &&
+            taggedPodSpec.nodeSelector[key] !== orgOverride.nodeSelector?.[key]
+        );
+
+        if (replacedKeys.length > 0) {
+          this.logger.warn(
+            "[KubernetesWorkloadManager] Org placement override replaces node selector keys",
+            { orgId: opts.orgId, replacedKeys }
+          );
+        }
+      }
+      const podSpec = withRunnerSeccompProfile(basePodSpec, {
+        profilePath: env.KUBERNETES_RUNNER_SECCOMP_PROFILE_PATH,
+        runtimes: env.KUBERNETES_RUNNER_SECCOMP_PROFILE_RUNTIMES,
+        runtime: opts.runtime,
+        checkpointsEnabled: this.opts.checkpointsEnabled,
+      });
 
       await this.k8s.core.createNamespacedPod({
         namespace: this.namespace,
@@ -127,18 +160,27 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           spec: {
             ...podSpec,
             affinity: this.#getAffinity(opts),
-            tolerations: this.#getScheduleTolerations(this.#isScheduledRun(opts)),
+            tolerations: this.#getTolerations(this.#isScheduledRun(opts), orgOverride?.tolerations),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
                 name: "run-controller",
-                image: this.stripImageDigest(opts.image),
+                image: rewriteImageRegistry(
+                  this.stripImageDigest(opts.image),
+                  env.KUBERNETES_IMAGE_REGISTRY_REWRITE_FROM,
+                  env.KUBERNETES_IMAGE_REGISTRY_REWRITE_TO
+                ),
                 ports: [
                   {
                     containerPort: 8000,
                   },
                 ],
                 resources: this.#getResourcesForMachine(opts.machine),
+                securityContext: runnerSecurityContext(
+                  env.KUBERNETES_RUNNER_SECURITY_CONTEXT,
+                  env.KUBERNETES_RUNNER_RUN_AS_USER,
+                  opts.runtime
+                ),
                 env: [
                   {
                     name: "TRIGGER_DEQUEUED_AT_MS",
@@ -158,6 +200,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                   {
                     name: "TRIGGER_DEPLOYMENT_ID",
+                    value: opts.deploymentToken ?? opts.deploymentFriendlyId,
+                  },
+                  {
+                    // Plain friendlyId for telemetry (worker.id), not the opaque token in DEPLOYMENT_ID.
+                    name: "TRIGGER_DEPLOYMENT_FRIENDLY_ID",
                     value: opts.deploymentFriendlyId,
                   },
                   {
@@ -324,13 +371,12 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             schedulerName: env.KUBERNETES_SCHEDULER_NAME,
           }
         : {}),
-      ...(env.KUBERNETES_WORKER_NODETYPE_LABEL
+      ...(env.KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME
         ? {
-            nodeSelector: {
-              nodetype: env.KUBERNETES_WORKER_NODETYPE_LABEL,
-            },
+            priorityClassName: env.KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME,
           }
         : {}),
+      ...nodetypeNodeSelector(env.KUBERNETES_WORKER_NODETYPE_LABEL),
       ...(env.KUBERNETES_POD_DNS_NDOTS_OVERRIDE_ENABLED
         ? {
             dnsConfig: {
@@ -552,12 +598,16 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     };
   }
 
-  #getScheduleTolerations(isScheduledRun: boolean): k8s.V1Toleration[] | undefined {
-    if (!isScheduledRun || !env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS?.length) {
-      return undefined;
-    }
-
-    return env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS;
+  #getTolerations(
+    isScheduledRun: boolean,
+    orgTolerations?: k8s.V1Toleration[]
+  ): k8s.V1Toleration[] | undefined {
+    return runPodTolerations(
+      env.KUBERNETES_RUNNER_TOLERATIONS,
+      env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS,
+      isScheduledRun,
+      orgTolerations
+    );
   }
 
   #getProjectPodAffinity(projectId: string): k8s.V1PodAffinity | undefined {

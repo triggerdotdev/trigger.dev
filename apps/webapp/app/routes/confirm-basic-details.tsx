@@ -27,8 +27,12 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
+import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { rootPath } from "~/utils/pathBuilder";
 import { getVercelInstallParams } from "~/v3/vercel";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Confirm your details");
 
 const referralSourceOptions = [
   "Search engine",
@@ -72,10 +76,8 @@ function createSchema(
   return z
     .object({
       name: z.string().min(3, "Your name must be at least 3 characters").max(50),
-      email: z
-        .string()
-        .email()
-        .superRefine((email, ctx) => {
+      email: emailSchema.pipe(
+        z.string().superRefine((email, ctx) => {
           if (constraints.isEmailUnique === undefined) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -93,8 +95,9 @@ function createSchema(
               });
             });
           }
-        }),
-      confirmEmail: z.string(),
+        })
+      ),
+      confirmEmail: emailSchema,
       referralSource: z.string().optional(),
       referralSourceOther: z.string().optional(),
       role: z.string().optional(),
@@ -204,6 +207,10 @@ const HandIcon = forwardRef<HTMLDivElement, {}>(({}, ref) => {
 });
 const MotionHand = motion(HandIcon);
 
+function renderRole(value: string) {
+  return value ? <span className="text-text-bright">{value}</span> : undefined;
+}
+
 export default function Page() {
   const user = useUser();
   const lastSubmission = useActionData();
@@ -221,6 +228,7 @@ export default function Page() {
 
   useEffect(() => {
     const nonOtherReferral = referralSourceOptions.filter((r) => r !== "Other");
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setShuffledReferralSources([...shuffleArray(nonOtherReferral), "Other"]);
 
     const nonOtherRoles = roleOptions.filter((r) => r !== "Other");
@@ -290,6 +298,7 @@ export default function Page() {
                 </Label>
                 <Input
                   {...getInputProps(email, { type: "email" })}
+                  maxLength={MAX_EMAIL_LENGTH}
                   defaultValue={enteredEmail}
                   onChange={(e) => {
                     setEnteredEmail(e.target.value);
@@ -306,6 +315,7 @@ export default function Page() {
                   <Label htmlFor={confirmEmail.id}>Confirm email</Label>
                   <Input
                     {...getInputProps(confirmEmail, { type: "email" })}
+                    maxLength={MAX_EMAIL_LENGTH}
                     placeholder="Your email, again"
                     icon={EnvelopeIcon}
                     spellCheck={false}
@@ -313,9 +323,7 @@ export default function Page() {
                   <FormError id={confirmEmail.errorId}>{confirmEmail.errors}</FormError>
                 </InputGroup>
               ) : (
-                <>
-                  <input {...getInputProps(confirmEmail, { type: "hidden" })} value={user.email} />
-                </>
+                <input {...getInputProps(confirmEmail, { type: "hidden" })} value={user.email} />
               )}
 
               {isManagedCloud && (
@@ -385,7 +393,7 @@ export default function Page() {
                       icon={<UserGroupIcon className="mr-1 size-4.5 text-text-dimmed" />}
                       items={shuffledRoles}
                       className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
-                      text={(v) => (v ? <span className="text-text-bright">{v}</span> : undefined)}
+                      text={renderRole}
                     >
                       {(items) =>
                         items.map((item) => (

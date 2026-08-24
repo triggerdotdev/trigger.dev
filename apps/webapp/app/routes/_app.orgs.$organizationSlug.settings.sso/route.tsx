@@ -4,7 +4,6 @@ import {
   ClockIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { redirect } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
 import { useFetcher, useRevalidator } from "@remix-run/react";
@@ -36,43 +35,41 @@ import {
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { prisma } from "~/db.server";
+import { getUserId } from "~/services/session.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { getSsoEntitlement } from "~/services/platform.v3.server";
 import type { DirectorySyncEffect, DirectorySyncStatus, Role } from "@trigger.dev/plugins";
 import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.server";
+import { logger } from "~/services/logger.server";
 import { flag } from "~/v3/featureFlags.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => [{ title: "SSO & Directory Sync | Trigger.dev" }];
+export const meta = pageMeta("SSO & Directory Sync");
 
 const Params = z.object({ organizationSlug: z.string() });
 
-async function resolveOrg(slug: string) {
+async function resolveOrg(slug: string, userId: string) {
+  // Scoped to membership: ability.can is not a tenant floor (the cloud RBAC
+  // plugin returns a permissive ability for a non-member), so without the
+  // members filter a non-member reaches the handler for any org slug.
   // Primary (not replica): this scopes the RBAC/entitlement checks, so lag
   // could run them against a stale/missing org.
   return prisma.organization.findFirst({
-    where: { slug },
+    where: { slug, members: { some: { userId } } },
     select: { id: true, title: true },
   });
 }
 
-function planAllowsSso(plan: unknown): boolean {
-  if (!plan || typeof plan !== "object") return false;
-  const subscription = (plan as { v3Subscription?: { plan?: { code?: string } } }).v3Subscription;
-  return subscription?.plan?.code === "enterprise";
-}
-
 // Client-side upsell is cosmetic; gate real IdP mutations server-side.
 async function requireSsoEntitlement(orgId: string): Promise<void> {
-  const plan = await getCurrentPlan(orgId);
-  if (!planAllowsSso(plan)) {
-    throw new Response("SSO requires an Enterprise plan", { status: 403 });
+  if ((await getSsoEntitlement(orgId)) !== "entitled") {
+    throw new Response("This organization is not entitled to SSO", { status: 403 });
   }
 }
 
@@ -124,8 +121,10 @@ const EMPTY_SSO_STATUS = {
 export const loader = dashboardLoader(
   {
     params: Params,
-    context: async (params) => {
-      const org = await resolveOrg(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const org = await resolveOrg(params.organizationSlug, userId);
       return org ? { organizationId: org.id, orgTitle: org.title } : {};
     },
     // Plan-gated before role-gated: non-Enterprise orgs render the upsell for
@@ -142,16 +141,14 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    // Not Enterprise: render the upsell for every role, skip role check +
-    // queries, return empty data.
-    const plan = await getCurrentPlan(orgId);
-    if (!planAllowsSso(plan)) {
+    if ((await getSsoEntitlement(orgId)) !== "entitled") {
       return typedjson({
         status: EMPTY_SSO_STATUS,
         orgTitle: context.orgTitle,
         jitRoles: [] as Role[],
         directorySync: EMPTY_DIRECTORY_SYNC_STATUS,
         hasSso: false,
+        isEntitled: false,
       });
     }
 
@@ -182,6 +179,7 @@ export const loader = dashboardLoader(
       jitRoles,
       directorySync,
       hasSso,
+      isEntitled: true,
     });
   }
 );
@@ -219,8 +217,10 @@ const ActionSchema = z.discriminatedUnion("action", [
 export const action = dashboardAction(
   {
     params: Params,
-    context: async (params) => {
-      const org = await resolveOrg(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const org = await resolveOrg(params.organizationSlug, userId);
       return org ? { organizationId: org.id } : {};
     },
     authorization: { action: "manage", resource: { type: "sso" } },
@@ -337,7 +337,19 @@ export const action = dashboardAction(
           effects.push(...result.value.effects);
         }
         if (effects.length > 0) {
-          await applyDirectorySyncEffects(effects);
+          // The save itself has already been persisted, so a provisioning
+          // enqueue that failed must not turn it into an error page. There is no
+          // retry on this path; the members are repaired on their next sync.
+          const { unqueuedUserIds } = await applyDirectorySyncEffects(effects);
+          if (unqueuedUserIds.length > 0) {
+            logger.warn(
+              "directorySync: could not queue development environments after settings save",
+              {
+                organizationId: orgId,
+                userIds: unqueuedUserIds,
+              }
+            );
+          }
         }
         return redirect(`/orgs/${params.organizationSlug}/settings/sso`);
       }
@@ -363,6 +375,7 @@ function useOverrideDraft<T>(serverValue: T): {
   const [override, setOverride] = useState<{ value: T } | null>(null);
   useEffect(() => {
     // Server matches the pending edit → clear the override.
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setOverride((current) => (current && Object.is(current.value, serverValue) ? null : current));
   }, [serverValue]);
   const value = override ? override.value : serverValue;
@@ -374,11 +387,10 @@ function useOverrideDraft<T>(serverValue: T): {
 }
 
 export default function Page() {
-  const { status, orgTitle, jitRoles, directorySync, hasSso } = useTypedLoaderData<typeof loader>();
+  const { status, orgTitle, jitRoles, directorySync, hasSso, isEntitled } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  const _plan = useCurrentPlan();
 
-  const isEntitled = planAllowsSso(_plan);
   const activeConnections = status.connections.filter((c) => c.state === "active");
   const hasActive = activeConnections.length > 0;
 
@@ -408,6 +420,7 @@ export default function Page() {
 
   useEffect(() => {
     if (portalFetcher.data?.ok && portalFetcher.data.url) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setPortalUrl(portalFetcher.data.url);
     }
   }, [portalFetcher.data]);
@@ -668,7 +681,7 @@ function DomainList({ domains }: { domains: ReadonlyArray<DomainRow> }) {
             <div className="flex flex-col">
               <span className="font-mono text-sm text-text-bright">{d.domain}</span>
               {d.state === "failed" && d.verificationFailedReason && (
-                <span className="mt-0.5 text-xs text-rose-400">
+                <span className="mt-0.5 text-xs text-rose-500 dark:text-rose-400">
                   Reason: <span className="font-mono">{d.verificationFailedReason}</span>
                 </span>
               )}
@@ -848,7 +861,7 @@ function StatusIndicator({ label, active = true }: { label: string; active?: boo
         active ? "text-success" : "text-text-dimmed"
       )}
     >
-      <span className={cn("size-1.5 rounded-full", active ? "bg-success" : "bg-charcoal-500")} />
+      <span className={cn("size-1.5 rounded-full", active ? "bg-success" : "bg-text-dimmed")} />
       {label}
     </span>
   );
@@ -906,6 +919,7 @@ function DirectorySyncSection({
   // server value so polled-in groups appear and matched overrides drop.
   const [draftGroupRoles, setDraftGroupRoles] = useState<Record<string, string>>({});
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setDraftGroupRoles((current) => {
       const next: Record<string, string> = {};
       for (const g of directorySync.groups) {

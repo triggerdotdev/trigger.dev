@@ -27,6 +27,25 @@ const INFRASTRUCTURE_PRISMA_CODES = new Set([
  * (which both scrubs the message and is retryable by the SDK) instead of
  * folding `.message` into a client-facing error.
  */
+const CONNECTIVITY_ERRNO = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "EPIPE",
+]);
+const CONNECTIVITY_MESSAGE =
+  /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|database not reachable|can't reach database|connection terminated|server has closed the connection|timed out fetching a new connection/i;
+
+export function looksLikeConnectivityError(error: unknown): boolean {
+  const e = error as { code?: unknown; message?: unknown };
+  if (typeof e?.code === "string" && CONNECTIVITY_ERRNO.has(e.code)) {
+    return true;
+  }
+  return typeof e?.message === "string" && CONNECTIVITY_MESSAGE.test(e.message);
+}
+
 export function isInfrastructureError(error: unknown): boolean {
   if (
     error instanceof Prisma.PrismaClientInitializationError ||
@@ -37,10 +56,13 @@ export function isInfrastructureError(error: unknown): boolean {
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return INFRASTRUCTURE_PRISMA_CODES.has(error.code);
+    if (INFRASTRUCTURE_PRISMA_CODES.has(error.code)) {
+      return true;
+    }
+    return error.code === "P2010" && looksLikeConnectivityError(error);
   }
 
-  return false;
+  return looksLikeConnectivityError(error);
 }
 
 // One-shot marker so a single infra error is logged exactly once: the client

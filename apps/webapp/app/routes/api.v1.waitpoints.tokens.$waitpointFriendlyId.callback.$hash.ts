@@ -36,12 +36,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // Resolve wherever the waitpoint resides. The store routes by the waitpoint id's residency
     // (id-shape) and probes both run-ops DBs, so a token on either store resolves; the env is
     // resolved below from the row via the control-plane resolver.
-    const waitpoint = await runStore.findWaitpoint({
+    let waitpoint = await runStore.findWaitpoint({
       where: {
         id: waitpointId,
       },
       select: { id: true, status: true, environmentId: true },
     });
+
+    if (!waitpoint) {
+      // Read-your-writes: a token whose callback fires right after mint may not have replicated
+      // yet. Re-read the owning primary before 404ing (mirrors complete.ts's primary fallback).
+      waitpoint = await runStore.findWaitpointOnPrimary({
+        where: { id: waitpointId },
+        select: { id: true, status: true, environmentId: true },
+      });
+    }
 
     if (!waitpoint) {
       return json({ error: "Waitpoint not found" }, { status: 404 });

@@ -1,3 +1,4 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import pLimit from "p-limit";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
@@ -15,6 +16,13 @@ import {
   setMeta,
   type WideEventOptions,
 } from "../wideEvents/index.js";
+
+const SNAPSHOT_CALLBACK_NONCE_METADATA_KEY = "snapshotCallbackNonce";
+const SNAPSHOT_CALLBACK_TOKEN_METADATA_KEY = "snapshotCallbackToken";
+
+// Domain-separation label so the callback-signing key is derived from, rather
+// than equal to, the secret used for other protocols. Bump the suffix to rotate.
+const SNAPSHOT_CALLBACK_KEY_INFO = "compute-snapshot-callback-v1";
 
 type DelayedSnapshot = {
   runnerId: string;
@@ -34,6 +42,7 @@ export type ComputeSnapshotServiceOptions = {
   workerClient: SupervisorHttpClient;
   tracing?: OtlpTraceService;
   wideEventOpts: WideEventOptions;
+  snapshotCallbackSecret: string;
 };
 
 export class ComputeSnapshotService {
@@ -48,12 +57,25 @@ export class ComputeSnapshotService {
   private readonly workerClient: SupervisorHttpClient;
   private readonly tracing?: OtlpTraceService;
   private readonly wideEventOpts: WideEventOptions;
+  private readonly snapshotCallbackKey: Buffer;
 
   constructor(opts: ComputeSnapshotServiceOptions) {
     this.computeManager = opts.computeManager;
     this.workerClient = opts.workerClient;
     this.tracing = opts.tracing;
     this.wideEventOpts = opts.wideEventOpts;
+
+    // Reject an empty secret up front: an empty HMAC key would make callback
+    // tokens forgeable by anyone. Guarding here (rather than only at env parse)
+    // also covers the case where the secret is read from an empty file.
+    if (!opts.snapshotCallbackSecret) {
+      throw new Error("snapshotCallbackSecret must not be empty");
+    }
+    // Derive a dedicated key by domain separation so the raw secret is never
+    // used directly as a MAC key for this protocol.
+    this.snapshotCallbackKey = createHmac("sha256", opts.snapshotCallbackSecret)
+      .update(SNAPSHOT_CALLBACK_KEY_INFO)
+      .digest();
 
     this.dispatchLimit = pLimit(this.computeManager.snapshotDispatchLimit);
     this.timerWheel = new TimerWheel<DelayedSnapshot>({
@@ -146,13 +168,27 @@ export class ComputeSnapshotService {
       instanceId: body.instance_id,
       status: body.status,
       error: body.status === "failed" ? body.error : undefined,
-      metadata: body.metadata,
+      runId,
+      snapshotFriendlyId,
       durationMs: body.duration_ms,
     });
 
     if (!runId || !snapshotFriendlyId) {
-      this.logger.error("Snapshot callback missing metadata", { body });
+      this.logger.error("Snapshot callback missing metadata", {
+        status: body.status,
+        instanceId: body.instance_id,
+        metadataKeys: Object.keys(body.metadata ?? {}),
+      });
       return { ok: false as const, status: 400 };
+    }
+
+    if (!this.#verifyCallbackToken(body.metadata, runId, snapshotFriendlyId)) {
+      this.logger.error("Snapshot callback failed token verification", {
+        runId,
+        snapshotFriendlyId,
+        instanceId: body.instance_id,
+      });
+      return { ok: false as const, status: 401 };
     }
 
     this.#emitSnapshotSpan(runId, body.duration_ms, snapshotId);
@@ -266,11 +302,18 @@ export class ComputeSnapshotService {
         },
       },
       async () => {
+        const callbackNonce = randomBytes(16).toString("hex");
         const result = await this.computeManager.snapshot({
           runnerId: snapshot.runnerId,
           metadata: {
             runId: snapshot.runFriendlyId,
             snapshotFriendlyId: snapshot.snapshotFriendlyId,
+            [SNAPSHOT_CALLBACK_NONCE_METADATA_KEY]: callbackNonce,
+            [SNAPSHOT_CALLBACK_TOKEN_METADATA_KEY]: this.#createCallbackToken(
+              callbackNonce,
+              snapshot.runFriendlyId,
+              snapshot.snapshotFriendlyId
+            ),
           },
         });
 
@@ -278,6 +321,51 @@ export class ComputeSnapshotService {
           throw new Error("Snapshot dispatch returned no result");
         }
       }
+    );
+  }
+
+  #createCallbackToken(nonce: string, runFriendlyId: string, snapshotFriendlyId: string): string {
+    return createHmac("sha256", this.snapshotCallbackKey)
+      .update(nonce)
+      .update("\0")
+      .update(runFriendlyId)
+      .update("\0")
+      .update(snapshotFriendlyId)
+      .digest("hex");
+  }
+
+  /**
+   * Verify that a callback carries a token this supervisor issued for the given
+   * run and snapshot. The token binds only the identifiers known at dispatch
+   * time (nonce, run, snapshot); it intentionally does not cover result fields
+   * such as the snapshot location or status/error, which are produced by the
+   * gateway after the snapshot and so cannot be signed in advance. Verification
+   * is also stateless, so a token is not single-use.
+   *
+   * This closes the primary risk (a caller that can merely reach the endpoint
+   * cannot mint a valid token, so cannot forge a result for an arbitrary run).
+   * It does not defend against an attacker who can observe a genuine callback
+   * and then replay it or alter its unsigned result fields - that relies on the
+   * gateway->supervisor callback channel being authenticated and encrypted.
+   */
+  #verifyCallbackToken(
+    metadata: Record<string, string> | undefined,
+    runFriendlyId: string,
+    snapshotFriendlyId: string
+  ): boolean {
+    const nonce = metadata?.[SNAPSHOT_CALLBACK_NONCE_METADATA_KEY];
+    const token = metadata?.[SNAPSHOT_CALLBACK_TOKEN_METADATA_KEY];
+
+    if (!nonce || !token) {
+      return false;
+    }
+
+    const expected = this.#createCallbackToken(nonce, runFriendlyId, snapshotFriendlyId);
+    const expectedBuffer = Buffer.from(expected, "hex");
+    const tokenBuffer = Buffer.from(token, "hex");
+
+    return (
+      expectedBuffer.length === tokenBuffer.length && timingSafeEqual(expectedBuffer, tokenBuffer)
     );
   }
 

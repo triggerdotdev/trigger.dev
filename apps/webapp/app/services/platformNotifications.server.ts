@@ -1,69 +1,29 @@
-import { z } from "zod";
-import { errAsync, fromPromise, type ResultAsync } from "neverthrow";
-import { prisma } from "~/db.server";
+import type { z } from "zod";
+import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
+import { Prisma, prisma, sqlDatabaseSchema } from "~/db.server";
 import {
   type PlatformNotificationScope,
   type PlatformNotificationSurface,
+  type PrismaClientOrTransaction,
 } from "@trigger.dev/database";
 import { incrementCliRequestCounter } from "./platformNotificationCounter.server";
+import {
+  CreateDraftPlatformNotificationSchema,
+  type CreateDraftPlatformNotificationInput,
+  CreatePlatformNotificationSchema,
+  type CreatePlatformNotificationInput,
+  type PayloadV1,
+  PayloadV1Schema,
+  PublishDraftPlatformNotificationSchema,
+  type PublishDraftPlatformNotificationInput,
+  UpdateDraftPlatformNotificationSchema,
+  type UpdateDraftPlatformNotificationInput,
+  UpdatePlatformNotificationSchema,
+} from "./platformNotificationSchemas";
+import { isCliVersionEligible } from "./platformNotificationVersionTargeting";
 
-// --- Payload schema (spec v1) ---
-
-const DiscoverySchema = z.object({
-  filePatterns: z.array(z.string().min(1)).min(1),
-  contentPattern: z
-    .string()
-    .max(200)
-    .optional()
-    .refine(
-      (val) => {
-        if (!val) return true;
-        try {
-          new RegExp(val);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { message: "contentPattern must be a valid regular expression" }
-    ),
-  matchBehavior: z.enum(["show-if-found", "show-if-not-found"]),
-});
-
-// Constrain URL fields to http/https; `.url()` alone accepts other schemes
-// that would be unsafe to render into an `<a href>`.
-const httpUrl = z
-  .string()
-  .url()
-  .refine(
-    (v) => {
-      try {
-        const proto = new URL(v).protocol;
-        return proto === "http:" || proto === "https:";
-      } catch {
-        return false;
-      }
-    },
-    { message: "URL must use http or https" }
-  );
-
-const CardDataV1Schema = z.object({
-  type: z.enum(["card", "info", "warn", "error", "success", "changelog"]),
-  title: z.string(),
-  description: z.string(),
-  image: httpUrl.optional(),
-  actionLabel: z.string().optional(),
-  actionUrl: httpUrl.optional(),
-  dismissOnAction: z.boolean().optional(),
-  discovery: DiscoverySchema.optional(),
-});
-
-const PayloadV1Schema = z.object({
-  version: z.literal("1"),
-  data: CardDataV1Schema,
-});
-
-export type PayloadV1 = z.infer<typeof PayloadV1Schema>;
+export { UpdatePlatformNotificationSchema } from "./platformNotificationSchemas";
+export type { CreatePlatformNotificationInput, PayloadV1 } from "./platformNotificationSchemas";
 
 export type PlatformNotificationWithPayload = {
   id: string;
@@ -76,42 +36,65 @@ export type PlatformNotificationWithPayload = {
 
 // --- Read: admin list with interaction stats ---
 
-export async function getAdminNotificationsList({
-  page = 1,
-  pageSize = 20,
-  hideInactive = false,
-}: {
-  page?: number;
-  pageSize?: number;
-  hideInactive?: boolean;
-}) {
-  const where = hideInactive ? { archivedAt: null, endsAt: { gt: new Date() } } : {};
+export async function getAdminNotificationsList(
+  {
+    page = 1,
+    pageSize = 20,
+    hideInactive = false,
+  }: {
+    page?: number;
+    pageSize?: number;
+    hideInactive?: boolean;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
+  // Drafts carry placeholder dates, so exempt them from the "inactive" (expired)
+  // filter: a draft is neither active nor expired and must stay visible to admins.
+  const where = hideInactive
+    ? { archivedAt: null, OR: [{ isDraft: true }, { endsAt: { gt: new Date() } }] }
+    : {};
 
   const [notifications, total] = await Promise.all([
-    prisma.platformNotification.findMany({
+    db.platformNotification.findMany({
       where,
       orderBy: [{ createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: {
-        _count: {
-          select: { interactions: true },
-        },
-        interactions: {
-          select: {
-            webappDismissedAt: true,
-            webappClickedAt: true,
-            cliDismissedAt: true,
-          },
-        },
-      },
     }),
-    prisma.platformNotification.count({ where }),
+    db.platformNotification.count({ where }),
   ]);
+
+  const notificationIds = notifications.map((n) => n.id);
+
+  const interactionStats =
+    notificationIds.length > 0
+      ? await db.$queryRaw<
+          {
+            notificationId: string;
+            seen: bigint;
+            clicked: bigint;
+            dismissed: bigint;
+          }[]
+        >`
+          SELECT
+            "notificationId",
+            COUNT(*) AS seen,
+            COUNT(*) FILTER (WHERE "webappClickedAt" IS NOT NULL) AS clicked,
+            COUNT(*) FILTER (
+              WHERE "webappDismissedAt" IS NOT NULL OR "cliDismissedAt" IS NOT NULL
+            ) AS dismissed
+          FROM ${sqlDatabaseSchema}."PlatformNotificationInteraction"
+          WHERE "notificationId" IN (${Prisma.join(notificationIds)})
+          GROUP BY "notificationId"
+        `
+      : [];
+
+  const statsById = new Map(interactionStats.map((row) => [row.notificationId, row]));
 
   return {
     notifications: notifications.map((n) => {
       const parsed = PayloadV1Schema.safeParse(n.payload);
+      const stats = statsById.get(n.id);
       return {
         id: n.id,
         friendlyId: n.friendlyId,
@@ -124,6 +107,7 @@ export async function getAdminNotificationsList({
         priority: n.priority,
         startsAt: n.startsAt,
         endsAt: n.endsAt,
+        isDraft: n.isDraft,
         archivedAt: n.archivedAt,
         createdAt: n.createdAt,
         payload: n.payload,
@@ -136,15 +120,16 @@ export async function getAdminNotificationsList({
           ? (parsed.data.data.dismissOnAction ?? false)
           : false,
         payloadDiscovery: parsed.success ? (parsed.data.data.discovery ?? null) : null,
+        payloadMinimumCliVersion: parsed.success
+          ? (parsed.data.data.minimumCliVersion ?? null)
+          : null,
         cliMaxShowCount: n.cliMaxShowCount,
         cliMaxDaysAfterFirstSeen: n.cliMaxDaysAfterFirstSeen,
         cliShowEvery: n.cliShowEvery,
         stats: {
-          seen: n._count.interactions,
-          clicked: n.interactions.filter((i) => i.webappClickedAt !== null).length,
-          dismissed: n.interactions.filter(
-            (i) => i.webappDismissedAt !== null || i.cliDismissedAt !== null
-          ).length,
+          seen: stats ? Number(stats.seen) : 0,
+          clicked: stats ? Number(stats.clicked) : 0,
+          dismissed: stats ? Number(stats.dismissed) : 0,
         },
       };
     }),
@@ -156,21 +141,25 @@ export async function getAdminNotificationsList({
 
 // --- Read: active notifications for webapp ---
 
-export async function getActivePlatformNotifications({
-  userId,
-  organizationId,
-  projectId,
-}: {
-  userId: string;
-  organizationId: string;
-  projectId?: string;
-}) {
+export async function getActivePlatformNotifications(
+  {
+    userId,
+    organizationId,
+    projectId,
+  }: {
+    userId: string;
+    organizationId: string;
+    projectId?: string;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
   const now = new Date();
 
-  const notifications = await prisma.platformNotification.findMany({
+  const notifications = await db.platformNotification.findMany({
     where: {
       surface: "WEBAPP",
       archivedAt: null,
+      isDraft: false,
       startsAt: { lte: now },
       endsAt: { gt: now },
       AND: [
@@ -340,25 +329,30 @@ export async function verifyOrgMembership({
 
 // --- Read: recent changelogs (for Help & Feedback) ---
 
-export async function getRecentChangelogs({
-  userId,
-  organizationId,
-  projectId,
-  limit = 2,
-}: {
-  userId: string;
-  organizationId?: string;
-  projectId?: string;
-  limit?: number;
-}) {
+export async function getRecentChangelogs(
+  {
+    userId,
+    organizationId,
+    projectId,
+    limit = 2,
+  }: {
+    userId: string;
+    organizationId?: string;
+    projectId?: string;
+    limit?: number;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
   // NOTE: Intentionally not filtering by archivedAt or endsAt.
   // We want to show archived and expired changelogs in the "What's new" section
   // so users can still find recent release notes.
-  // We DO filter by scope (to prevent user-scoped changelogs leaking to others)
-  // and by startsAt (to hide changelogs scheduled for the future).
-  const notifications = await prisma.platformNotification.findMany({
+  // We DO filter by scope (to prevent user-scoped changelogs leaking to others),
+  // by startsAt (to hide changelogs scheduled for the future), and by isDraft
+  // (drafts have no real schedule and must never surface to users).
+  const notifications = await db.platformNotification.findMany({
     where: {
       surface: "WEBAPP",
+      isDraft: false,
       payload: { path: ["data", "type"], equals: "changelog" },
       startsAt: { lte: new Date() },
       OR: [
@@ -394,7 +388,8 @@ function isCliNotificationExpired(
     id: string;
     cliMaxDaysAfterFirstSeen: number | null;
     cliMaxShowCount: number | null;
-  }
+  },
+  db: PrismaClientOrTransaction = prisma
 ): boolean {
   if (!interaction) return false;
 
@@ -418,7 +413,7 @@ function isCliNotificationExpired(
   // For time-based expiration, persist the dismiss on the next request
   // (showCount-based dismissal is handled inline at display time)
   if (expired && !interaction.cliDismissedAt) {
-    void prisma.platformNotificationInteraction.update({
+    void db.platformNotificationInteraction.update({
       where: {
         notificationId_userId: {
           notificationId: notification.id,
@@ -432,13 +427,18 @@ function isCliNotificationExpired(
   return expired;
 }
 
-export async function getNextCliNotification({
-  userId,
-  projectRef,
-}: {
-  userId: string;
-  projectRef?: string;
-}): Promise<{
+export async function getNextCliNotification(
+  {
+    userId,
+    projectRef,
+    cliVersion,
+  }: {
+    userId: string;
+    projectRef?: string;
+    cliVersion?: string;
+  },
+  db: PrismaClientOrTransaction = prisma
+): Promise<{
   id: string;
   payload: PayloadV1;
   showCount: number;
@@ -451,7 +451,7 @@ export async function getNextCliNotification({
   let projectId: string | undefined;
 
   if (projectRef) {
-    const project = await prisma.project.findFirst({
+    const project = await db.project.findFirst({
       where: {
         externalRef: projectRef,
         deletedAt: null,
@@ -471,7 +471,7 @@ export async function getNextCliNotification({
 
   // If no projectRef or project not found, get org from membership
   if (!organizationId) {
-    const membership = await prisma.orgMember.findFirst({
+    const membership = await db.orgMember.findFirst({
       where: { userId },
       select: { organizationId: true },
     });
@@ -493,10 +493,11 @@ export async function getNextCliNotification({
     scopeFilter.push({ scope: "PROJECT", projectId });
   }
 
-  const notifications = await prisma.platformNotification.findMany({
+  const notifications = await db.platformNotification.findMany({
     where: {
       surface: "CLI",
       archivedAt: null,
+      isDraft: false,
       startsAt: { lte: now },
       endsAt: { gt: now },
       AND: [{ OR: scopeFilter }],
@@ -520,10 +521,11 @@ export async function getNextCliNotification({
     const interaction = n.interactions[0] ?? null;
 
     if (interaction?.cliDismissedAt) continue;
-    if (isCliNotificationExpired(interaction, n)) continue;
 
     const parsed = PayloadV1Schema.safeParse(n.payload);
     if (!parsed.success) continue;
+    if (!isCliVersionEligible(parsed.data.data.minimumCliVersion, cliVersion)) continue;
+    if (isCliNotificationExpired(interaction, n, db)) continue;
 
     // Check cliShowEvery using the global request counter
     if (n.cliShowEvery !== null && requestCounter % n.cliShowEvery !== 0) {
@@ -536,7 +538,7 @@ export async function getNextCliNotification({
     const reachedMaxShows =
       n.cliMaxShowCount !== null && (interaction?.showCount ?? 0) + 1 >= n.cliMaxShowCount;
 
-    const updated = await prisma.platformNotificationInteraction.upsert({
+    const updated = await db.platformNotificationInteraction.upsert({
       where: { notificationId_userId: { notificationId: n.id, userId } },
       update: {
         showCount: { increment: 1 },
@@ -562,163 +564,12 @@ export async function getNextCliNotification({
   return null;
 }
 
-// --- Create: admin endpoint support ---
+// --- Create and update: admin endpoint support ---
 
-const SCOPE_REQUIRED_FK: Record<string, "userId" | "organizationId" | "projectId"> = {
-  USER: "userId",
-  ORGANIZATION: "organizationId",
-  PROJECT: "projectId",
-};
-
-const ALL_FK_FIELDS = ["userId", "organizationId", "projectId"] as const;
-const CLI_ONLY_FIELDS = ["cliMaxDaysAfterFirstSeen", "cliMaxShowCount", "cliShowEvery"] as const;
-
-const NotificationBaseFields = {
-  title: z.string().min(1),
-  payload: PayloadV1Schema,
-  surface: z.enum(["WEBAPP", "CLI"]),
-  scope: z.enum(["USER", "PROJECT", "ORGANIZATION", "GLOBAL"]),
-  userId: z.string().optional(),
-  organizationId: z.string().optional(),
-  projectId: z.string().optional(),
-  endsAt: z
-    .string()
-    .datetime()
-    .transform((s) => new Date(s)),
-  priority: z.number().int().default(0),
-  cliMaxDaysAfterFirstSeen: z.number().int().positive().optional(),
-  cliMaxShowCount: z.number().int().positive().optional(),
-  cliShowEvery: z.number().int().min(2).optional(),
-};
-
-export const CreatePlatformNotificationSchema = z
-  .object({
-    ...NotificationBaseFields,
-    startsAt: z
-      .string()
-      .datetime()
-      .transform((s) => new Date(s))
-      .optional(),
-  })
-  .superRefine((data, ctx) => {
-    validateScopeForeignKeys(data, ctx);
-    validateSurfaceFields(data, ctx);
-    validatePayloadTypeForSurface(data, ctx);
-    validateStartsAt(data, ctx);
-    validateEndsAt(data, ctx);
-  });
-
-function validateScopeForeignKeys(
-  data: { scope: string; userId?: string; organizationId?: string; projectId?: string },
-  ctx: z.RefinementCtx
-) {
-  const requiredFk = SCOPE_REQUIRED_FK[data.scope];
-
-  if (requiredFk && !data[requiredFk]) {
-    ctx.addIssue({
-      code: "custom",
-      message: `${requiredFk} is required when scope is ${data.scope}`,
-      path: [requiredFk],
-    });
-  }
-
-  const forbiddenFks = ALL_FK_FIELDS.filter((fk) => fk !== requiredFk);
-  for (const fk of forbiddenFks) {
-    if (data[fk]) {
-      ctx.addIssue({
-        code: "custom",
-        message: `${fk} must not be set when scope is ${data.scope}`,
-        path: [fk],
-      });
-    }
-  }
-}
-
-function validateSurfaceFields(
-  data: {
-    surface: string;
-    cliMaxDaysAfterFirstSeen?: number;
-    cliMaxShowCount?: number;
-    cliShowEvery?: number;
-  },
-  ctx: z.RefinementCtx
-) {
-  if (data.surface !== "WEBAPP") return;
-
-  for (const field of CLI_ONLY_FIELDS) {
-    if (data[field] !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        message: `${field} is not allowed for WEBAPP surface`,
-        path: [field],
-      });
-    }
-  }
-}
-
-function validateStartsAt(data: { startsAt?: Date }, ctx: z.RefinementCtx) {
-  if (!data.startsAt) return;
-
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  if (data.startsAt < oneHourAgo) {
-    ctx.addIssue({
-      code: "custom",
-      message: "startsAt must be within the last hour or in the future",
-      path: ["startsAt"],
-    });
-  }
-}
-
-const CLI_TYPES = new Set(["info", "warn", "error", "success"]);
-const WEBAPP_TYPES = new Set(["card", "changelog"]);
-
-function validatePayloadTypeForSurface(
-  data: { surface: string; payload: PayloadV1 },
-  ctx: z.RefinementCtx
-) {
-  const allowedTypes = data.surface === "CLI" ? CLI_TYPES : WEBAPP_TYPES;
-  if (!allowedTypes.has(data.payload.data.type)) {
-    ctx.addIssue({
-      code: "custom",
-      message: `payload.data.type "${data.payload.data.type}" is not allowed for ${data.surface} surface`,
-      path: ["payload", "data", "type"],
-    });
-  }
-}
-
-function validateEndsAt(data: { startsAt?: Date; endsAt: Date }, ctx: z.RefinementCtx) {
-  const effectiveStart = data.startsAt ?? new Date();
-  if (data.endsAt <= effectiveStart) {
-    ctx.addIssue({
-      code: "custom",
-      message: "endsAt must be after startsAt",
-      path: ["endsAt"],
-    });
-  }
-}
-
-export type CreatePlatformNotificationInput = z.input<typeof CreatePlatformNotificationSchema>;
-
-// --- Update: admin endpoint support ---
-
-export const UpdatePlatformNotificationSchema = z
-  .object({
-    ...NotificationBaseFields,
-    id: z.string().min(1),
-    startsAt: z
-      .string()
-      .datetime()
-      .transform((s) => new Date(s)),
-  })
-  .superRefine((data, ctx) => {
-    validateScopeForeignKeys(data, ctx);
-    validateSurfaceFields(data, ctx);
-    validatePayloadTypeForSurface(data, ctx);
-    // NOTE: No validateStartsAt — existing notifications may have past startsAt
-    validateEndsAt(data, ctx);
-  });
-
-type CreateError = { type: "validation"; issues: z.ZodIssue[] } | { type: "db"; message: string };
+type CreateError =
+  | { type: "validation"; issues: z.ZodIssue[] }
+  | { type: "db"; message: string }
+  | { type: "conflict"; message: string };
 
 export function createPlatformNotification(
   input: CreatePlatformNotificationInput
@@ -793,6 +644,131 @@ export function updatePlatformNotification(
       type: "db",
       message: e instanceof Error ? e.message : String(e),
     })
+  );
+}
+
+export function createDraftPlatformNotification(
+  input: CreateDraftPlatformNotificationInput,
+  db: PrismaClientOrTransaction = prisma
+): ResultAsync<{ id: string; friendlyId: string }, CreateError> {
+  const parseResult = CreateDraftPlatformNotificationSchema.safeParse(input);
+
+  if (!parseResult.success) {
+    return errAsync({ type: "validation", issues: parseResult.error.issues });
+  }
+
+  const data = parseResult.data;
+
+  // Drafts carry no real schedule. Store placeholder dates (ignored while
+  // isDraft is true) — publishing sets the real startsAt/endsAt.
+  const now = new Date();
+
+  return fromPromise(
+    db.platformNotification.create({
+      data: {
+        title: data.title,
+        payload: data.payload,
+        surface: data.surface as PlatformNotificationSurface,
+        scope: data.scope as PlatformNotificationScope,
+        userId: data.userId,
+        organizationId: data.organizationId,
+        projectId: data.projectId,
+        startsAt: now,
+        endsAt: now,
+        priority: data.priority,
+        cliMaxDaysAfterFirstSeen: data.cliMaxDaysAfterFirstSeen,
+        cliMaxShowCount: data.cliMaxShowCount,
+        cliShowEvery: data.cliShowEvery,
+        isDraft: true,
+      },
+      select: { id: true, friendlyId: true },
+    }),
+    (e): CreateError => ({
+      type: "db",
+      message: e instanceof Error ? e.message : String(e),
+    })
+  );
+}
+
+export function updateDraftPlatformNotification(
+  input: UpdateDraftPlatformNotificationInput,
+  db: PrismaClientOrTransaction = prisma
+): ResultAsync<{ id: string }, CreateError> {
+  const parseResult = UpdateDraftPlatformNotificationSchema.safeParse(input);
+
+  if (!parseResult.success) {
+    return errAsync({ type: "validation", issues: parseResult.error.issues });
+  }
+
+  const data = parseResult.data;
+
+  // Editing a draft touches content only; startsAt/endsAt/isDraft are left as-is
+  // so the notification stays an unscheduled draft until it is published.
+  // `isDraft: true` in the predicate makes this a no-op against a non-draft row,
+  // so draft-only semantics can never be applied to an active/pending/archived one.
+  return fromPromise(
+    db.platformNotification.updateMany({
+      where: { id: data.id, isDraft: true },
+      data: {
+        title: data.title,
+        payload: data.payload,
+        surface: data.surface as PlatformNotificationSurface,
+        scope: data.scope as PlatformNotificationScope,
+        userId: data.scope === "USER" ? data.userId : null,
+        organizationId: data.scope === "ORGANIZATION" ? data.organizationId : null,
+        projectId: data.scope === "PROJECT" ? data.projectId : null,
+        priority: data.priority,
+        cliMaxDaysAfterFirstSeen:
+          data.surface === "CLI" ? (data.cliMaxDaysAfterFirstSeen ?? null) : null,
+        cliMaxShowCount: data.surface === "CLI" ? (data.cliMaxShowCount ?? null) : null,
+        cliShowEvery: data.surface === "CLI" ? (data.cliShowEvery ?? null) : null,
+      },
+    }),
+    (e): CreateError => ({
+      type: "db",
+      message: e instanceof Error ? e.message : String(e),
+    })
+  ).andThen(({ count }) =>
+    count === 0
+      ? errAsync<{ id: string }, CreateError>({
+          type: "conflict",
+          message: "Notification not found or is not a draft",
+        })
+      : okAsync({ id: data.id })
+  );
+}
+
+export function publishDraftPlatformNotification(
+  input: PublishDraftPlatformNotificationInput,
+  db: PrismaClientOrTransaction = prisma
+): ResultAsync<{ id: string }, CreateError> {
+  const parseResult = PublishDraftPlatformNotificationSchema.safeParse(input);
+
+  if (!parseResult.success) {
+    return errAsync({ type: "validation", issues: parseResult.error.issues });
+  }
+
+  const data = parseResult.data;
+
+  // `isDraft: true` in the predicate ensures we only publish an actual draft:
+  // a request naming a non-draft id updates zero rows and reports a conflict
+  // rather than resetting a live notification's schedule.
+  return fromPromise(
+    db.platformNotification.updateMany({
+      where: { id: data.id, isDraft: true },
+      data: { startsAt: data.startsAt, endsAt: data.endsAt, isDraft: false },
+    }),
+    (e): CreateError => ({
+      type: "db",
+      message: e instanceof Error ? e.message : String(e),
+    })
+  ).andThen(({ count }) =>
+    count === 0
+      ? errAsync<{ id: string }, CreateError>({
+          type: "conflict",
+          message: "Notification not found or is not a draft",
+        })
+      : okAsync({ id: data.id })
   );
 }
 

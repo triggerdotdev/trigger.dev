@@ -5,6 +5,7 @@ import { env } from "~/env.server";
 import { v3ProjectPath } from "~/utils/pathBuilder";
 import { authenticateRequest } from "~/services/apiAuth.server";
 
+import { boundedIn } from "@trigger.dev/database";
 export async function loader({ request }: LoaderFunctionArgs) {
   const authenticationResult = await authenticateRequest(request, {
     personalAccessToken: true,
@@ -112,7 +113,7 @@ async function getIdentityFromPAT(
     where: {
       externalRef: projectRef,
       organizationId: {
-        in: orgs.map((org) => org.id),
+        in: boundedIn(orgs.map((org) => org.id)),
       },
     },
   });

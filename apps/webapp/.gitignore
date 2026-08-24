@@ -7,6 +7,9 @@ node_modules
 /cypress/screenshots
 /cypress/videos
 
+# Output of `pnpm run agent-ui:screenshots`
+/screenshots
+
 /app/styles/tailwind.css
 
 # Ensure the .env symlink is not removed by accident

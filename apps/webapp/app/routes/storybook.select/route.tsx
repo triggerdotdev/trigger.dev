@@ -1,6 +1,5 @@
 import { CircleStackIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigate } from "@remix-run/react";
-import { useCallback } from "react";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -17,6 +16,41 @@ import {
   runStatusTitle,
 } from "~/components/runs/v3/TaskRunStatus";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
+
+const SELECT_VARIANTS = [
+  "secondary/small",
+  "secondary/medium",
+  "tertiary/small",
+  "tertiary/medium",
+  "minimal/small",
+  "minimal/medium",
+] as const;
+
+/** One sample per variant, so the page covers the component's whole surface. */
+function VariantSample({
+  variant,
+  disabled,
+  dropdownIcon,
+}: {
+  variant: (typeof SELECT_VARIANTS)[number];
+  disabled?: boolean;
+  dropdownIcon?: boolean;
+}) {
+  return (
+    <Select
+      aria-label={variant}
+      variant={variant}
+      text={variant}
+      defaultValue={[]}
+      disabled={disabled}
+      dropdownIcon={dropdownIcon}
+    >
+      <SelectItem value="one">Item one</SelectItem>
+      <SelectItem value="two">Item two</SelectItem>
+    </Select>
+  );
+}
 
 const branches = [
   "main",
@@ -45,89 +79,139 @@ const branches = [
   "rsckeys",
 ];
 
-export default function Story() {
+export default function Story_() {
   return (
-    <div className="flex h-full max-w-full flex-wrap items-start justify-start gap-2 px-4 py-16">
-      <Form className="space-y-4">
-        <div className="flex gap-16">
-          <ProjectSelector />
-          <Statuses />
+    <StoryPage
+      title="Select"
+      componentNames={["Select.tsx"]}
+      description="All six variants and every option: headings, search, groups, links, shortcuts, multi-select and the live filter demos below."
+    >
+      <StorySection title="Variants" description="Every variant the component declares.">
+        <StoryGrid min="14rem">
+          {SELECT_VARIANTS.map((variant) => (
+            <Story key={variant} label={variant}>
+              <VariantSample variant={variant} />
+            </Story>
+          ))}
+        </StoryGrid>
+      </StorySection>
 
-          <Select name="static" text="Static" defaultValue={[]} shortcut={{ key: "e" }}>
-            <SelectItem value={"value"} shortcut={{ key: "1" }}>
-              Item 1
-            </SelectItem>
-            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
-              Item 2
-            </SelectItem>
-          </Select>
+      <StorySection title="States">
+        <StoryGrid min="14rem">
+          <Story label="With dropdown icon">
+            <VariantSample variant="secondary/small" dropdownIcon />
+          </Story>
+          <Story label="Disabled">
+            <VariantSample variant="secondary/small" disabled />
+          </Story>
+          <Story label="Placeholder (no value)">
+            <Select aria-label="Placeholder" variant="secondary/small" placeholder="Choose one…">
+              <SelectItem value="one">Item one</SelectItem>
+            </Select>
+          </Story>
+          <Story label="Item with icon">
+            <Select aria-label="With icons" variant="secondary/small" text="With icons">
+              <SelectItem value="db" icon={<CircleStackIcon className="size-4" />}>
+                Database
+              </SelectItem>
+              <SelectItem value="logo" icon={<LogoIcon className="size-4" />}>
+                Trigger
+              </SelectItem>
+            </Select>
+          </Story>
+        </StoryGrid>
+      </StorySection>
 
-          <Select
-            variant="tertiary/medium"
-            text="Tertiary medium"
-            defaultValue={[]}
-            shortcut={{ key: "e" }}
-          >
-            <SelectItem value={"value"} shortcut={{ key: "1" }}>
-              Item 1
-            </SelectItem>
-            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
-              Item 2
-            </SelectItem>
-          </Select>
+      <StorySection
+        title="Interactive demos"
+        description="Searchable, grouped, multi-select and URL-driven examples."
+      >
+        <Form className="space-y-4">
+          <div className="flex gap-16">
+            <ProjectSelector />
+            <Statuses />
 
-          <Select variant="minimal/small" text="Minimal" defaultValue={[]} shortcut={{ key: "e" }}>
-            <SelectItem value={"value"} shortcut={{ key: "1" }}>
-              Item 1
-            </SelectItem>
-            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
-              Item 2
-            </SelectItem>
-          </Select>
+            <Select name="static" text="Static" defaultValue={[]} shortcut={{ key: "e" }}>
+              <SelectItem value={"value"} shortcut={{ key: "1" }}>
+                Item 1
+              </SelectItem>
+              <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+                Item 2
+              </SelectItem>
+            </Select>
 
-          <Select
-            variant="minimal/medium"
-            text="Tertiary medium"
-            defaultValue={[]}
-            shortcut={{ key: "e" }}
-          >
-            <SelectItem value={"value"} shortcut={{ key: "1" }}>
-              Item 1
-            </SelectItem>
-            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
-              Item 2
-            </SelectItem>
-          </Select>
+            <Select
+              variant="tertiary/medium"
+              text="Tertiary medium"
+              defaultValue={[]}
+              shortcut={{ key: "e" }}
+            >
+              <SelectItem value={"value"} shortcut={{ key: "1" }}>
+                Item 1
+              </SelectItem>
+              <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+                Item 2
+              </SelectItem>
+            </Select>
 
-          <Select
-            name="static"
-            text="Heading"
-            defaultValue={[]}
-            showHeading={true}
-            heading="A heading"
-            shortcut={{ key: "h" }}
-          >
-            <SelectItem value={"value"} shortcut={{ key: "1" }}>
-              Item 1
-            </SelectItem>
-            <SelectItem value={"value2"} shortcut={{ key: "2" }}>
-              Item 2
-            </SelectItem>
-          </Select>
+            <Select
+              variant="minimal/small"
+              text="Minimal"
+              defaultValue={[]}
+              shortcut={{ key: "e" }}
+            >
+              <SelectItem value={"value"} shortcut={{ key: "1" }}>
+                Item 1
+              </SelectItem>
+              <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+                Item 2
+              </SelectItem>
+            </Select>
 
-          <Select
-            name="branch2"
-            heading={"Filter by status..."}
-            defaultValue={"main"}
-            items={branches}
-          >
-            {(matches) => matches?.map((value) => <SelectItem key={value} value={value} />)}
-          </Select>
+            <Select
+              variant="minimal/medium"
+              text="Tertiary medium"
+              defaultValue={[]}
+              shortcut={{ key: "e" }}
+            >
+              <SelectItem value={"value"} shortcut={{ key: "1" }}>
+                Item 1
+              </SelectItem>
+              <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+                Item 2
+              </SelectItem>
+            </Select>
 
-          <Button variant="tertiary/small">Submit</Button>
-        </div>
-      </Form>
-    </div>
+            <Select
+              name="static"
+              text="Heading"
+              defaultValue={[]}
+              showHeading={true}
+              heading="A heading"
+              shortcut={{ key: "h" }}
+            >
+              <SelectItem value={"value"} shortcut={{ key: "1" }}>
+                Item 1
+              </SelectItem>
+              <SelectItem value={"value2"} shortcut={{ key: "2" }}>
+                Item 2
+              </SelectItem>
+            </Select>
+
+            <Select
+              name="branch2"
+              heading={"Filter by status..."}
+              defaultValue={"main"}
+              items={branches}
+            >
+              {(matches) => matches?.map((value) => <SelectItem key={value} value={value} />)}
+            </Select>
+
+            <Button variant="tertiary/small">Submit</Button>
+          </div>
+        </Form>
+      </StorySection>
+    </StoryPage>
   );
 }
 
@@ -141,13 +225,13 @@ function Statuses() {
   const location = useOptimisticLocation();
   const search = new URLSearchParams(location.search);
 
-  const handleChange = useCallback((values: string[]) => {
+  const handleChange = (values: string[]) => {
     search.delete("status");
     for (const value of values) {
       search.append("status", value);
     }
     navigate(`${location.pathname}?${search.toString()}`, { replace: true });
-  }, []);
+  };
 
   return (
     <Select
@@ -160,19 +244,17 @@ function Statuses() {
       filter={(item, search) => item.title.toLowerCase().includes(search.toLowerCase())}
       shortcut={{ key: "s" }}
     >
-      {(matches, { shortcutsEnabled }) => (
-        <>
-          {matches?.map((item, index) => (
-            <SelectItem
-              key={item.value}
-              value={item.value}
-              shortcut={shortcutFromIndex(index, { shortcutsEnabled })}
-            >
-              <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
-            </SelectItem>
-          ))}
-        </>
-      )}
+      {(matches, { shortcutsEnabled }) =>
+        matches?.map((item, index) => (
+          <SelectItem
+            key={item.value}
+            value={item.value}
+            shortcut={shortcutFromIndex(index, { shortcutsEnabled })}
+          >
+            <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
+          </SelectItem>
+        ))
+      }
     </Select>
   );
 }

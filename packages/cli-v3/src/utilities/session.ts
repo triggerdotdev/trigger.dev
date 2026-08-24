@@ -112,6 +112,7 @@ export async function getProjectClient(options: GetEnvOptions) {
   return {
     id: projectEnv.data.projectId,
     name: projectEnv.data.name,
+    defaultRuntime: projectEnv.data.defaultRuntime,
     client,
   };
 }

@@ -12,7 +12,12 @@ import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.serv
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  perPage: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce
+    .number()
+    .int()
+    .positive()
+    .transform((n) => Math.min(n, 100))
+    .optional(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -46,6 +51,7 @@ export async function action({ request }: ActionFunctionArgs) {
       externalId: body.data.externalId,
       deduplicationKey: body.data.deduplicationKey,
       timezone: body.data.timezone,
+      window: body.data.window,
     };
 
     const schedule = await service.call(authenticationResult.environment.projectId, options);
@@ -61,10 +67,12 @@ export async function action({ request }: ActionFunctionArgs) {
         description: schedule.cronDescription,
       },
       timezone: schedule.timezone,
+      window: schedule.window,
       externalId: schedule.externalId ?? undefined,
       deduplicationKey: schedule.deduplicationKey,
       environments: schedule.environments,
       nextRun: schedule.nextRun,
+      nextRunEffectiveAt: schedule.nextRunEffectiveAt,
     };
 
     return json(responseObject, { status: 200 });
@@ -116,12 +124,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
         description: schedule.cronDescription,
       },
       timezone: schedule.timezone,
+      window: schedule.window,
       deduplicationKey: schedule.userProvidedDeduplicationKey
         ? schedule.deduplicationKey
         : undefined,
       externalId: schedule.externalId,
       active: schedule.active,
       nextRun: schedule.nextRun,
+      nextRunEffectiveAt: schedule.nextRunEffectiveAt,
       environments: schedule.environments,
     })),
     pagination: {

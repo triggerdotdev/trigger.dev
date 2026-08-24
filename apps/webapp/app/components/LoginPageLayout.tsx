@@ -47,6 +47,7 @@ export function LoginPageLayout({
   const [randomQuote, setRandomQuote] = useState<QuoteType | null>(null);
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * quotes.length);
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setRandomQuote(quotes[randomIndex]);
   }, []);
 
@@ -72,7 +73,7 @@ export function LoginPageLayout({
         {rightContent ?? (
           <>
             <div className="flex h-full flex-col items-center justify-center px-16">
-              <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-charcoal-750 before:content-['❝'] lg-height:text-xl md-height:text-lg">
+              <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-grid-bright before:content-['❝'] dark:before:text-charcoal-750 lg-height:text-xl md-height:text-lg">
                 {randomQuote?.quote}
               </Header3>
               <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { findProjectByRef } from "~/models/project.server";
 import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { resolveUserActorEnvironmentScope } from "~/services/userActorEnvironment.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 
@@ -35,12 +36,18 @@ export const loader = createLoaderPATApiRoute(
       return json({ error: "Project not found" }, { status: 404 });
     }
 
+    // A delegated token signed for one environment only ever lists that one.
+    const scope = await resolveUserActorEnvironmentScope(authentication.userActor, {
+      projectId: project.id,
+    });
+
     const environments = await $replica.runtimeEnvironment.findMany({
       where: {
         projectId: project.id,
-        // Only base/parent environments. Branch children (preview branches)
-        // are excluded — syncs target the parent and branches override elsewhere.
-        parentEnvironmentId: null,
+        // A scoped token lists exactly the environment it was signed for, branch child or not —
+        // otherwise a token minted on a preview branch would list nothing at all. Unscoped
+        // callers get base/parent environments only: syncs target the parent.
+        ...(scope.scoped ? { id: scope.environmentId } : { parentEnvironmentId: null }),
         archivedAt: null,
         OR: [
           { type: { in: ["STAGING", "PRODUCTION", "PREVIEW"] } },

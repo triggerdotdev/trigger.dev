@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { Form, useActionData, useParams, type MetaFunction } from "@remix-run/react";
+import { Form, useActionData, useParams } from "@remix-run/react";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { useState } from "react";
@@ -45,10 +45,12 @@ import {
   SparklesIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { textLinkClassName } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Add Private Connection | Trigger.dev` }];
-};
+export const meta = pageMeta("Add Private Connection");
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -325,11 +327,7 @@ output "endpoint_service_name" {
               )}
             </div>
           ))}
-          <button
-            type="button"
-            onClick={addPort}
-            className="text-xs text-indigo-400 transition hover:text-indigo-300"
-          >
+          <button type="button" onClick={addPort} className={cn(textLinkClassName(), "text-xs")}>
             + Add port
           </button>
         </div>
@@ -471,11 +469,7 @@ After creating everything, give me the VPC Endpoint Service name (it looks like 
               )}
             </div>
           ))}
-          <button
-            type="button"
-            onClick={addPort}
-            className="text-xs text-indigo-400 transition hover:text-indigo-300"
-          >
+          <button type="button" onClick={addPort} className={cn(textLinkClassName(), "text-xs")}>
             + Add port
           </button>
         </div>
@@ -555,13 +549,15 @@ export default function Page() {
           }}
         />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("private-networking/overview")}
-          >
-            Private connection docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("private-networking/overview")}
+            >
+              Private connection docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>

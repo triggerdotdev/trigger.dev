@@ -9,10 +9,11 @@ import { runtime } from "../runtime-api.js";
 import { StandardLocalsManager } from "../locals/manager.js";
 import { StandardLifecycleHooksManager } from "../lifecycleHooks/manager.js";
 import { NoopRuntimeManager } from "../runtime/noopRuntimeManager.js";
+import type { RuntimeManager } from "../runtime/manager.js";
 import { unregisterGlobal } from "../utils/globals.js";
 import type { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import type { LocalsKey } from "../locals/types.js";
-import type { SessionChannelIO } from "../sessionStreams/types.js";
+import type { SessionChannelIO, SessionStreamManager } from "../sessionStreams/types.js";
 import { TestInputStreamManager } from "./test-input-stream-manager.js";
 import { TestRealtimeStreamsManager } from "./test-realtime-streams-manager.js";
 import { TestRunMetadataManager } from "./test-run-metadata-manager.js";
@@ -23,7 +24,7 @@ import { TestSessionStreamManager } from "./test-session-stream-manager.js";
  * `TaskRunContext`. Each sub-object is a partial of its real shape —
  * unset fields get sensible defaults.
  */
-export type MockTaskRunContextOverrides = {
+type MockTaskRunContextOverrides = {
   task?: Partial<TaskRunContext["task"]>;
   attempt?: Partial<TaskRunContext["attempt"]>;
   run?: Partial<TaskRunContext["run"]>;
@@ -45,6 +46,20 @@ export type MockTaskContextOptions = {
   worker?: Partial<ServerBackgroundWorker>;
   /** Whether this is a warm start. */
   isWarmStart?: boolean;
+  /**
+   * Session-streams manager installed as the `session-streams` global. Defaults
+   * to an in-memory {@link TestSessionStreamManager}. Pass a real
+   * `StandardSessionStreamManager` (with an ApiClient pointed at a running
+   * webapp) to drive the task's `.in`/`.out` against real streams.
+   */
+  sessionStreamManager?: SessionStreamManager;
+  /**
+   * Runtime manager installed as the `runtime` global. Defaults to a
+   * {@link NoopRuntimeManager}. Pass a `TestRuntimeManager` (wired to a
+   * {@link SessionWaitpointBackend}) to make `session.in.wait()` suspend and
+   * resume in place against real streams, without the run-engine.
+   */
+  runtimeManager?: RuntimeManager;
 };
 
 /**
@@ -215,11 +230,11 @@ export async function runInMockTaskContext<T>(
 
   const localsManager = new StandardLocalsManager();
   const lifecycleManager = new StandardLifecycleHooksManager();
-  const runtimeManager = new NoopRuntimeManager();
+  const runtimeManager = options?.runtimeManager ?? new NoopRuntimeManager();
   const metadataManager = new TestRunMetadataManager();
   const inputManager = new TestInputStreamManager();
   const outputManager = new TestRealtimeStreamsManager();
-  const sessionStreamManager = new TestSessionStreamManager();
+  const sessionStreamManager = options?.sessionStreamManager ?? new TestSessionStreamManager();
 
   // Unregister any previously-installed managers so `setGlobal*` wins —
   // `registerGlobal` returns false silently if an entry already exists.
@@ -263,8 +278,16 @@ export async function runInMockTaskContext<T>(
     sessions: {
       in: {
         send: (sessionId, data, io = "in") =>
-          sessionStreamManager.__sendFromTest(sessionId, io, data),
-        close: (sessionId, io = "in") => sessionStreamManager.__closeFromTest(sessionId, io),
+          sessionStreamManager instanceof TestSessionStreamManager
+            ? sessionStreamManager.__sendFromTest(sessionId, io, data)
+            : Promise.reject(
+                new Error("drivers.sessions.in.send requires the default TestSessionStreamManager")
+              ),
+        close: (sessionId, io = "in") => {
+          if (sessionStreamManager instanceof TestSessionStreamManager) {
+            sessionStreamManager.__closeFromTest(sessionId, io);
+          }
+        },
       },
     },
     ctx,
@@ -286,7 +309,9 @@ export async function runInMockTaskContext<T>(
     localsManager.reset();
     inputManager.reset();
     outputManager.reset();
-    sessionStreamManager.reset();
+    if (sessionStreamManager instanceof TestSessionStreamManager) {
+      sessionStreamManager.reset();
+    }
     metadataManager.reset();
   }
 }

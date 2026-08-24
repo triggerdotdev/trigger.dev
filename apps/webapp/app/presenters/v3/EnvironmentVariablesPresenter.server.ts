@@ -8,8 +8,11 @@ import type { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectInteg
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { loadEnvironmentVariablesEnvironments } from "./environmentVariablesEnvironments.server";
 
+import { boundedIn, type Prisma } from "@trigger.dev/database";
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
 export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
+
+const DEFAULT_ENV_VARS_PAGE_SIZE = 50;
 
 export class EnvironmentVariablesPresenter {
   #prismaClient: PrismaClient;
@@ -20,7 +23,19 @@ export class EnvironmentVariablesPresenter {
     this.#replicaClient = replicaClient;
   }
 
-  public async call({ userId, projectSlug }: { userId: User["id"]; projectSlug: Project["slug"] }) {
+  public async call({
+    userId,
+    projectSlug,
+    page = 1,
+    pageSize = DEFAULT_ENV_VARS_PAGE_SIZE,
+    search,
+  }: {
+    userId: User["id"];
+    projectSlug: Project["slug"];
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  }) {
     const project = await this.#replicaClient.project.findFirst({
       select: {
         id: true,
@@ -52,6 +67,18 @@ export class EnvironmentVariablesPresenter {
     // values in archived branch environments, which would otherwise all be loaded here.
     const environmentIds = sortedEnvironments.map((env) => env.id);
 
+    const variableWhere: Prisma.EnvironmentVariableWhereInput = {
+      projectId: project.id,
+      values: { some: { environmentId: { in: boundedIn(environmentIds) } } },
+      ...(search ? { key: { contains: search, mode: "insensitive" } } : {}),
+    };
+
+    const totalCount = await this.#replicaClient.environmentVariable.count({
+      where: variableWhere,
+    });
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const currentPage = Math.min(Math.max(1, page), totalPages);
+
     const environmentVariables = await this.#replicaClient.environmentVariable.findMany({
       select: {
         id: true,
@@ -63,23 +90,21 @@ export class EnvironmentVariablesPresenter {
             version: true,
             lastUpdatedBy: true,
             updatedAt: true,
-            valueReference: {
-              select: {
-                key: true,
-              },
-            },
             isSecret: true,
           },
           where: {
             environmentId: {
-              in: environmentIds,
+              in: boundedIn(environmentIds),
             },
           },
         },
       },
-      where: {
-        projectId: project.id,
+      where: variableWhere,
+      orderBy: {
+        key: "asc",
       },
+      skip: (currentPage - 1) * pageSize,
+      take: pageSize,
     });
 
     const userIds = new Set(
@@ -103,7 +128,7 @@ export class EnvironmentVariablesPresenter {
         ? await this.#replicaClient.user.findMany({
             where: {
               id: {
-                in: Array.from(userIds),
+                in: boundedIn(Array.from(userIds)),
               },
             },
             select: {
@@ -151,58 +176,61 @@ export class EnvironmentVariablesPresenter {
     }
 
     return {
-      environmentVariables: environmentVariables
-        .flatMap((environmentVariable) => {
-          return sortedEnvironments.flatMap((env) => {
-            const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
-            const isSecret = valueRecord?.isSecret ?? false;
+      environmentVariables: environmentVariables.flatMap((environmentVariable) => {
+        return sortedEnvironments.flatMap((env) => {
+          const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
+          const isSecret = valueRecord?.isSecret ?? false;
 
-            if (!valueRecord) {
-              return [];
-            }
+          if (!valueRecord) {
+            return [];
+          }
 
-            const val = isSecret
-              ? undefined
-              : variableValuesByEnvAndKey.get(`${env.id}:${environmentVariable.key}`);
+          const val = isSecret
+            ? undefined
+            : variableValuesByEnvAndKey.get(`${env.id}:${environmentVariable.key}`);
 
-            if (!isSecret && val === undefined) {
-              return [];
-            }
+          if (!isSecret && val === undefined) {
+            return [];
+          }
 
-            const lastUpdatedBy = valueRecord.lastUpdatedBy as EnvironmentVariableUpdater | null;
+          const lastUpdatedBy = valueRecord.lastUpdatedBy as EnvironmentVariableUpdater | null;
 
-            const updatedByUser =
-              lastUpdatedBy?.type === "user"
-                ? (() => {
-                    const user = usersRecord[lastUpdatedBy.userId];
-                    return user
-                      ? {
-                          id: user.id,
-                          name: user.displayName || user.name || "Unknown",
-                          avatarUrl: user.avatarUrl,
-                        }
-                      : null;
-                  })()
-                : null;
+          const updatedByUser =
+            lastUpdatedBy?.type === "user"
+              ? (() => {
+                  const user = usersRecord[lastUpdatedBy.userId];
+                  return user
+                    ? {
+                        id: user.id,
+                        name: user.displayName || user.name || "Unknown",
+                        avatarUrl: user.avatarUrl,
+                      }
+                    : null;
+                })()
+              : null;
 
-            return [
-              {
-                id: environmentVariable.id,
-                key: environmentVariable.key,
-                environment: { type: env.type, id: env.id, branchName: env.branchName },
-                value: isSecret ? "" : val!,
-                isSecret,
-                version: valueRecord.version,
-                lastUpdatedBy,
-                updatedByUser,
-                updatedAt: valueRecord.updatedAt,
-              },
-            ];
-          });
-        })
-        .sort((a, b) => a.key.localeCompare(b.key)),
+          return [
+            {
+              id: environmentVariable.id,
+              key: environmentVariable.key,
+              environment: { type: env.type, id: env.id, branchName: env.branchName },
+              value: isSecret ? "" : val!,
+              isSecret,
+              version: valueRecord.version,
+              lastUpdatedBy,
+              updatedByUser,
+              updatedAt: valueRecord.updatedAt,
+            },
+          ];
+        });
+      }),
       environments: sortedEnvironments,
       hasStaging,
+      pagination: {
+        currentPage,
+        totalPages,
+        totalCount,
+      },
       // Vercel integration data
       vercelIntegration: vercelIntegration
         ? {

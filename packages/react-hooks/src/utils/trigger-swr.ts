@@ -5,7 +5,7 @@ import type { ApiRequestOptions } from "@trigger.dev/core/v3";
 // eslint-disable-next-line import/export
 export * from "swr";
 // eslint-disable-next-line import/export
-export { default as useSWR, SWRConfig } from "swr";
+export { default as useSWR } from "swr";
 
 export type CommonTriggerHookOptions = {
   /**

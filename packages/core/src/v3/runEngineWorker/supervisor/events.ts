@@ -49,5 +49,3 @@ export type WorkerEvents = {
     },
   ];
 };
-
-export type WorkerEventArgs<T extends keyof WorkerEvents> = WorkerEvents[T];

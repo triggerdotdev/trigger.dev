@@ -1,6 +1,6 @@
-import { type ActionFunction, type LoaderFunction, redirect, createCookie } from "@remix-run/node";
+import { type ActionFunction, type LoaderFunction, redirect } from "@remix-run/node";
 import { authenticator } from "~/services/auth.server";
-import { env } from "~/env.server";
+import { githubRedirectCookie } from "~/services/redirectCookies.server";
 import { sanitizeRedirectPath } from "~/utils";
 
 export let loader: LoaderFunction = () => redirect("/login");
@@ -23,15 +23,8 @@ export let action: ActionFunction = async ({ request }) => {
     if (error instanceof Response) {
       // we need to append a Set-Cookie header with a cookie storing the
       // returnTo value (store the sanitized path)
-      error.headers.append("Set-Cookie", await redirectCookie.serialize(safeRedirect));
+      error.headers.append("Set-Cookie", await githubRedirectCookie.serialize(safeRedirect));
     }
     throw error;
   }
 };
-
-export const redirectCookie = createCookie("redirect-to", {
-  maxAge: 60 * 60, // 1 hour
-  httpOnly: true,
-  sameSite: "lax",
-  secure: env.NODE_ENV === "production",
-});

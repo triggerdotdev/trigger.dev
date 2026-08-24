@@ -1,5 +1,81 @@
 # internal-platform
 
+## 4.5.12
+
+### Patch Changes
+
+- Unrelated runs are no longer merged into a single trace in your external observability tool when they happen to execute on the same warm worker process. ([#4534](https://github.com/triggerdotdev/trigger.dev/pull/4534))
+- List the current Production runtime for every accessible project with `trigger projects list`. Add `--needs-update` to identify projects currently running Node.js 21. ([#4659](https://github.com/triggerdotdev/trigger.dev/pull/4659))
+- Task metrics no longer go missing for projects that configure their own `metricExporters` or `metricReaders`, and the flush error that came with it is gone. ([#4613](https://github.com/triggerdotdev/trigger.dev/pull/4613))
+- `idempotencyKeys.reset()` now works when your idempotency key is itself 64 characters long (for example if you use a hash of your own as the key). Previously any 64-character key was assumed to be already hashed, so passing one along with a `scope` silently ignored the scope and the reset never found a matching run. Keys returned by `idempotencyKeys.create()` continue to be reset exactly as before. ([#4626](https://github.com/triggerdotdev/trigger.dev/pull/4626))
+- Define stable execution windows on declarative scheduled tasks. Schedule API responses now expose both the nominal CRON time and its assigned time, while the dashboard shows configured windows and upcoming assignments. ([#4572](https://github.com/triggerdotdev/trigger.dev/pull/4572))
+- Pin runs to the deployment your calling code came from, so an old release never triggers tasks from a new one: set `TRIGGER_EXTERNAL_DEPLOYMENT_ID` to the id you deployed with, or `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` to detect the commit automatically on Vercel and most CI systems. Runs triggered before that deployment finishes building wait for it, then start pinned. ([#4664](https://github.com/triggerdotdev/trigger.dev/pull/4664))
+
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- The current-worker API now reports each task's queue, so you can see which tasks write to a given queue. ([#4525](https://github.com/triggerdotdev/trigger.dev/pull/4525))
+
+## 4.5.10
+
+### Patch Changes
+
+- Fix a chunk occasionally dropped when a chat.agent run takes over from the warm first turn. The realtime stream writer now reports the inclusive last-written position as the resume cursor, so the agent's first record after the handover is no longer skipped. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- Allow task-scoped environment API keys to run batch operations for their permitted tasks. The SDK declares the batch's task set before creation, and `@trigger.dev/core/v3/apiKeys` now exports the additional-key format helper. ([#4389](https://github.com/triggerdotdev/trigger.dev/pull/4389))
+- Transient connection errors when a run starts are now retried for longer, so a brief connectivity blip no longer sends the run back through the queue and delays its first attempt. ([#4441](https://github.com/triggerdotdev/trigger.dev/pull/4441))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+
+## 4.5.9
+
+### Patch Changes
+
+- Ask whether an environment is healthy and get an answer instead of a wall of charts. `trigger report health` returns a verdict on three questions: is work flowing, are the runs that start succeeding, and is the telemetry fresh enough to trust either answer. When something looks wrong it names the most likely cause and a next action. ([#4131](https://github.com/triggerdotdev/trigger.dev/pull/4131))
+
+  ```bash
+  npx trigger.dev@latest report health --env prod --period 24h
+  ```
+
+  The verdict is computed server side, so the CLI, the new `get_report` MCP tool, and `GET /api/v1/reports/health` all return the same text with the same sparklines. In MCP hosts that support prompts, `report` is also available as a slash command.
+
+## 4.5.8
+
+### Patch Changes
+
+- Allow additional environment API keys to create scoped public access tokens through the Trigger.dev API. Use server-issued public access tokens for batch operations so environment-scoped API keys can read batch results. ([#4387](https://github.com/triggerdotdev/trigger.dev/pull/4387))
+
+## 4.5.7
+
+### Patch Changes
+
+- Add `node-24` and `node-26` as supported `runtime` options in `trigger.config.ts`. The `experimental-node-24` and `experimental-node-26` names are now deprecated aliases and emit a deprecation warning; switch to `node-24` / `node-26` instead. ([#4337](https://github.com/triggerdotdev/trigger.dev/pull/4337))
+
+  ```ts
+  import { defineConfig } from "@trigger.dev/sdk";
+
+  export default defineConfig({
+    runtime: "node-24",
+    project: "<your-project-ref>",
+  });
+  ```
+
+## 4.5.6
+
+### Patch Changes
+
+- Prevent prototype pollution when applying run metadata operations or reconstructing nested telemetry attributes, while preserving legitimate `constructor` and `prototype` fields. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Require explicit browser approval for CLI and MCP login, with resilient polling while approval is pending. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Add helpers to mint and verify the deployment-scoped token used to authenticate run controllers to the platform. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+
+## 4.5.5
+
+### Patch Changes
+
+- Add experimental Node.js 24 and 26 task runtimes. Set `runtime` to `experimental-node-24` or `experimental-node-26` in `trigger.config.ts`. ([#4085](https://github.com/triggerdotdev/trigger.dev/pull/4085))
+- Add `defaultRegion` to the project GET and list API responses; null when unset. ([#4146](https://github.com/triggerdotdev/trigger.dev/pull/4146))
+
 ## 4.5.4
 
 ### Patch Changes

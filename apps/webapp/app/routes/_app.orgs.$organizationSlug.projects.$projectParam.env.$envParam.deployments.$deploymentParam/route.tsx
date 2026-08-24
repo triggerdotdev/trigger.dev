@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@remix-run/react";
+import { useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -18,6 +18,7 @@ import { GitMetadata } from "~/components/GitMetadata";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -51,6 +52,19 @@ import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathB
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+
+export const handle: Handle = {
+  agentPageContext: (data) => deploymentAgentPageContext(data),
+};
+import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
+
+export const meta = pageMeta(({ params }) => [
+  params.deploymentParam ?? "Deployment",
+  "Deployments",
+]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -167,6 +181,21 @@ function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
   }
 }
 
+const EXTERNAL_ID_DISPLAY_LENGTH = 24;
+
+function ExternalIdValue({ externalId }: { externalId: string | null }) {
+  if (!externalId) {
+    return <>–</>;
+  }
+
+  const display =
+    externalId.length > EXTERNAL_ID_DISPLAY_LENGTH
+      ? `${externalId.slice(0, EXTERNAL_ID_DISPLAY_LENGTH)}…`
+      : externalId;
+
+  return <CopyableText value={display} copyValue={externalId} className="font-mono text-sm" />;
+}
+
 export default function Page() {
   const { deployment, eventStream } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -186,6 +215,7 @@ export default function Page() {
 
     const abortController = new AbortController();
 
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setLogs([]);
     setStreamError(null);
     setIsStreaming(true);
@@ -272,7 +302,13 @@ export default function Page() {
     return () => {
       abortController.abort();
     };
-  }, [eventStream?.s2?.basin, eventStream?.s2?.stream, eventStream?.s2?.accessToken, isPending]);
+  }, [
+    eventStream?.s2?.basin,
+    eventStream?.s2?.stream,
+    eventStream?.s2?.accessToken,
+    isPending,
+    logsDisabled,
+  ]);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -283,20 +319,28 @@ export default function Page() {
           <Property.Table>
             <Property.Item>
               <Property.Label>ID</Property.Label>
-              <Property.Value>{deployment.id}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.id} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Project ID</Property.Label>
-              <Property.Value>{deployment.projectId}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.projectId} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Org ID</Property.Label>
-              <Property.Value>{deployment.organizationId}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.organizationId} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             {deployment.imageReference && (
               <Property.Item>
                 <Property.Label>Image</Property.Label>
-                <Property.Value>{deployment.imageReference}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={deployment.imageReference} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
             )}
             <Property.Item>
@@ -307,12 +351,12 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Build Server</Property.Label>
                 <Property.Value>
-                  <Link
+                  <TextLink
                     to={`/resources/${deployment.projectId}/deployments/${deployment.id}/logs`}
-                    className="extra-small/bright/mono underline"
+                    className="font-mono text-xs"
                   >
                     {deployment.externalBuildData.buildId}
-                  </Link>
+                  </TextLink>
                 </Property.Value>
               </Property.Item>
             )}
@@ -423,6 +467,12 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Worker type</Property.Label>
                 <Property.Value>{capitalizeWord(deployment.type)}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>External ID</Property.Label>
+                <Property.Value>
+                  <ExternalIdValue externalId={deployment.externalId} />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Started at</Property.Label>
@@ -583,6 +633,7 @@ function LogsDisplay({
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
 

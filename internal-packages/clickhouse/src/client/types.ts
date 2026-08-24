@@ -4,6 +4,7 @@ import type { InsertError, QueryError } from "./errors.js";
 import {
   type ClickHouseSettings,
   type BaseQueryParams,
+  type CommandResult,
   type InsertResult,
 } from "@clickhouse/client";
 import type { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
@@ -135,6 +136,16 @@ export interface ClickhouseReader {
      * These will be merged with the default settings.
      */
     settings?: ClickHouseSettings;
+    /**
+     * Extra fields to attach to the error log if the query fails. Use this to
+     * record what produced the SQL, e.g. the TSQL a caller actually wrote.
+     */
+    logFields?: Record<string, unknown>;
+    /**
+     * Set when the SQL originates from whoever made the request rather than
+     * from us. Invalid-SQL rejections are then their mistake, not a bug.
+     */
+    userAuthoredQuery?: boolean;
   }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>>;
 
   queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
@@ -227,6 +238,14 @@ export interface ClickhouseReader {
   close(): Promise<void>;
 }
 
+export type ClickhouseCommandFunction<TInput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<CommandResult, QueryError>>;
+
 export type ClickhouseInsertFunction<TInput> = (
   events: TInput | TInput[],
   options?: {
@@ -236,6 +255,13 @@ export type ClickhouseInsertFunction<TInput> = (
 ) => Promise<Result<InsertResult, InsertError>>;
 
 export interface ClickhouseWriter {
+  command<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    query: string;
+    params?: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseCommandFunction<z.input<TSchema>>;
+
   insert<TSchema extends z.ZodSchema<any>>(req: {
     name: string;
     table: string;

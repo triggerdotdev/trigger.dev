@@ -14,7 +14,6 @@ import { loadConfig } from "../config.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import type { LoginResultOk } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
 import { verifyDirectory } from "./deploy.js";
 import { login } from "./login.js";
@@ -59,7 +58,7 @@ export function configurePreviewCommand(program: Command) {
   });
 }
 
-export async function previewArchiveCommand(dir: string, options: unknown) {
+async function previewArchiveCommand(dir: string, options: unknown) {
   return await wrapCommandAction(
     "previewArchiveCommand",
     PreviewCommandOptions,
@@ -129,7 +128,7 @@ async function _previewArchiveCommand(dir: string, options: PreviewCommandOption
 }
 
 export async function archivePreviewBranch(
-  authorization: LoginResultOk,
+  authorization: { auth: { apiUrl: string; accessToken: string } },
   branch: string,
   project: string
 ) {

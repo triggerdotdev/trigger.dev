@@ -15,7 +15,9 @@ fi
 
 # Run-ops split: migrate the dedicated NEW run-ops database only when it is configured. Single-DB
 # installs never set the URL, so this is a no-op there.
+{ set +x; } 2>/dev/null
 if [ -n "$RUN_OPS_DATABASE_URL" ]; then
+  set -x
   if [ "$SKIP_RUN_OPS_MIGRATIONS" != "1" ]; then
     echo "Running run-ops migrations"
     pnpm --filter @internal/run-ops-database db:migrate:deploy
@@ -24,13 +26,16 @@ if [ -n "$RUN_OPS_DATABASE_URL" ]; then
     echo "SKIP_RUN_OPS_MIGRATIONS=1, skipping run-ops migrations."
   fi
 else
+  set -x
   echo "RUN_OPS_DATABASE_URL not set, skipping run-ops migrations."
 fi
 
 # Run-ops split: keep the legacy runs DB's schema current by applying the full @trigger.dev/database
 # migrations to it too, pointed at its direct (non-pooled) URL. Only runs when that URL is configured;
 # installs that never set it skip this entirely.
+{ set +x; } 2>/dev/null
 if [ -n "$RUN_OPS_LEGACY_DIRECT_URL" ]; then
+  set -x
   if [ "$SKIP_RUN_OPS_LEGACY_MIGRATIONS" != "1" ]; then
     echo "Running legacy run-ops migrations"
     # Subshell with tracing off so `set -x` does not print the DSN (with credentials) to the logs.
@@ -40,6 +45,7 @@ if [ -n "$RUN_OPS_LEGACY_DIRECT_URL" ]; then
     echo "SKIP_RUN_OPS_LEGACY_MIGRATIONS=1, skipping legacy run-ops migrations."
   fi
 else
+  set -x
   echo "RUN_OPS_LEGACY_DIRECT_URL not set, skipping legacy run-ops migrations."
 fi
 
@@ -51,6 +57,7 @@ else
   echo "SKIP_DASHBOARD_AGENT_MIGRATIONS=1, skipping dashboard agent migrations."
 fi
 
+{ set +x; } 2>/dev/null
 if [ -n "$CLICKHOUSE_URL" ] && [ "$SKIP_CLICKHOUSE_MIGRATIONS" != "1" ]; then
   # Run ClickHouse migrations
   echo "Running ClickHouse migrations..."
@@ -76,6 +83,7 @@ elif [ "$SKIP_CLICKHOUSE_MIGRATIONS" = "1" ]; then
 else
   echo "CLICKHOUSE_URL not set, skipping ClickHouse migrations."
 fi
+set -x
 
 # Copy over required prisma files
 cp internal-packages/database/prisma/schema.prisma apps/webapp/prisma/

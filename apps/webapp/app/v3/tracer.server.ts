@@ -1,6 +1,7 @@
 import {
   type Attributes,
   type Context,
+  context as otelContext,
   createContextKey,
   DiagConsoleLogger,
   DiagLogLevel,
@@ -13,8 +14,17 @@ import {
   trace,
   metrics,
   type Meter,
+  type TextMapPropagator,
+  type TextMapGetter,
+  type TextMapSetter,
 } from "@opentelemetry/api";
-import { logs, SeverityNumber } from "@opentelemetry/api-logs";
+import {
+  CompositePropagator,
+  W3CBaggagePropagator,
+  W3CTraceContextPropagator,
+} from "@opentelemetry/core";
+import sentryRemix from "@sentry/remix";
+import { logs } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
@@ -55,13 +65,11 @@ import { singleton } from "~/utils/singleton";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
 import { CompactMetricExporter } from "./telemetry/compactMetricExporter.server";
 import { logger } from "~/services/logger.server";
-import { flattenAttributes } from "@trigger.dev/core/v3";
-import { prisma } from "~/db.server";
 import { metricsRegister } from "~/metrics.server";
-import type { Prisma } from "@trigger.dev/database";
+import { collectDatabaseClientMetrics } from "~/utils/databaseMetrics.server";
 import { performance } from "node:perf_hooks";
 
-export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
 export const DATASOURCE_CONTEXT_KEY = createContextKey("trigger.db.datasource");
 
@@ -123,12 +131,27 @@ class CustomWebappSampler implements Sampler {
   }
 }
 
-export const {
-  tracer,
-  logger: otelLogger,
-  provider,
-  meter,
-} = singleton("opentelemetry", setupTelemetry);
+class NonInheritingTraceContextPropagator implements TextMapPropagator {
+  private readonly _delegate = new CompositePropagator({
+    propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
+  });
+
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    this._delegate.inject(context, carrier, setter);
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    return trace.deleteSpan(this._delegate.extract(context, carrier, getter));
+  }
+
+  fields(): string[] {
+    return this._delegate.fields();
+  }
+}
+
+const telemetry = singleton("opentelemetry", setupTelemetry);
+
+export const { tracer, provider, meter } = telemetry;
 
 export async function startActiveSpan<T>(
   name: string,
@@ -161,38 +184,6 @@ export async function startActiveSpan<T>(
   });
 }
 
-export async function emitDebugLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.DEBUG,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitInfoLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.INFO,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitErrorLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.ERROR,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitWarnLog(message: string, params: Record<string, unknown> = {}) {
-  otelLogger.emit({
-    severityNumber: SeverityNumber.WARN,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
 function getResource() {
   const detectors: ResourceDetector[] = [serviceInstanceIdDetector];
 
@@ -209,9 +200,31 @@ function getResource() {
   return baseResource.merge(detectedResource);
 }
 
+/**
+ * Sentry's `withIsolationScope` only marks the OTel context; the fork itself is
+ * done by Sentry's context manager. We pass `skipOpenTelemetrySetup: true` to
+ * `Sentry.init` because we run our own OTel pipeline, which also skips the
+ * `setGlobalContextManager(new SentryContextManager())` that Sentry would
+ * otherwise do. Registering it here is what keeps per-request scopes (and so
+ * the request attributed to each Sentry event) from leaking between concurrent
+ * requests. It extends `AsyncLocalStorageContextManager`, so OTel behaviour is
+ * unchanged.
+ *
+ * Reached through the default export because `@sentry/remix` is CommonJS and
+ * Node's ESM loader does not detect this transitively re-exported name, so a
+ * named import resolves at build time and then fails when the server boots.
+ */
+function createContextManager() {
+  return new sentryRemix.SentryContextManager();
+}
+
 function setupTelemetry() {
   if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
     console.log(`🔦 Tracer disabled, returning a noop tracer`);
+
+    const contextManager = createContextManager();
+    contextManager.enable();
+    otelContext.setGlobalContextManager(contextManager);
 
     return {
       tracer: trace.getTracer("trigger.dev", "3.3.12"),
@@ -257,11 +270,14 @@ function setupTelemetry() {
     }
   }
 
+  const ratioSampler = new TraceIdRatioBasedSampler(samplingRate);
+
   const provider = new NodeTracerProvider({
     forceFlushTimeoutMillis: 15_000,
     resource: getResource(),
     sampler: new ParentBasedSampler({
-      root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
+      root: new CustomWebappSampler(ratioSampler),
+      remoteParentSampled: ratioSampler,
     }),
     spanLimits: {
       attributeCountLimit: 1024,
@@ -300,7 +316,10 @@ function setupTelemetry() {
     );
   }
 
-  provider.register();
+  provider.register({
+    contextManager: createContextManager(),
+    propagator: new NonInheritingTraceContextPropagator(),
+  });
 
   let instrumentations: Instrumentation[] = [
     new AwsSdkInstrumentation({
@@ -399,6 +418,10 @@ function configurePrismaMetrics({ meter }: { meter: Meter }) {
     description: "Idle (free) connections in the pool",
     unit: "connections",
   });
+  const waitingGauge = meter.createObservableGauge("db.pool.connections.waiting", {
+    description: "Requests waiting to acquire a pool connection",
+    unit: "requests",
+  });
 
   // Histogram statistics as gauges
   const queriesWaitTimeCount = meter.createObservableGauge("db.client.queries.wait_time.count", {
@@ -449,99 +472,81 @@ function configurePrismaMetrics({ meter }: { meter: Meter }) {
     }
   );
 
-  // Single helper so we hit Prisma only once per scrape ---------------------
-  async function readPrismaMetrics() {
-    const metrics = await prisma.$metrics.json();
-
-    // Extract counter values
-    const counters: Record<string, number> = {};
-    for (const counter of metrics.counters) {
-      counters[counter.key] = counter.value;
-    }
-
-    // Extract gauge values
-    const gauges: Record<string, number> = {};
-    for (const gauge of metrics.gauges) {
-      gauges[gauge.key] = gauge.value;
-    }
-
-    // Extract histogram values
-    const histograms: Record<string, Prisma.MetricHistogram> = {};
-    for (const histogram of metrics.histograms) {
-      histograms[histogram.key] = histogram.value;
-    }
-
-    return {
-      counters: {
-        queriesTotal: counters["prisma_client_queries_total"] ?? 0,
-        datasourceQueriesTotal: counters["prisma_datasource_queries_total"] ?? 0,
-        connectionsOpenedTotal: counters["prisma_pool_connections_opened_total"] ?? 0,
-        connectionsClosedTotal: counters["prisma_pool_connections_closed_total"] ?? 0,
-      },
-      gauges: {
-        queriesActive: gauges["prisma_client_queries_active"] ?? 0,
-        queriesWait: gauges["prisma_client_queries_wait"] ?? 0,
-        connectionsOpen: gauges["prisma_pool_connections_open"] ?? 0,
-        connectionsBusy: gauges["prisma_pool_connections_busy"] ?? 0,
-        connectionsIdle: gauges["prisma_pool_connections_idle"] ?? 0,
-      },
-      histograms: {
-        queriesWait: histograms["prisma_client_queries_wait_histogram_ms"],
-        queriesDuration: histograms["prisma_client_queries_duration_histogram_ms"],
-        datasourceQueriesDuration: histograms["prisma_datasource_queries_duration_histogram_ms"],
-      },
-    };
-  }
-
   meter.addBatchObservableCallback(
     async (res) => {
-      const { counters, gauges, histograms } = await readPrismaMetrics();
-
-      // Observe counters
-      res.observe(queriesTotal, counters.queriesTotal);
-      res.observe(datasourceQueriesTotal, counters.datasourceQueriesTotal);
-      res.observe(connectionsOpenedTotal, counters.connectionsOpenedTotal);
-      res.observe(connectionsClosedTotal, counters.connectionsClosedTotal);
-
-      // Observe gauges
-      res.observe(queriesActive, gauges.queriesActive);
-      res.observe(queriesWait, gauges.queriesWait);
-      res.observe(totalGauge, gauges.connectionsOpen);
-      res.observe(busyGauge, gauges.connectionsBusy);
-      res.observe(freeGauge, gauges.connectionsIdle);
-
-      // Observe histogram statistics as gauges
-      if (histograms.queriesWait) {
-        res.observe(queriesWaitTimeCount, histograms.queriesWait.count);
-        res.observe(queriesWaitTimeSum, histograms.queriesWait.sum);
-        res.observe(
-          queriesWaitTimeMean,
-          histograms.queriesWait.count > 0
-            ? histograms.queriesWait.sum / histograms.queriesWait.count
-            : 0
-        );
+      let clients: Awaited<ReturnType<typeof collectDatabaseClientMetrics>>;
+      try {
+        clients = await collectDatabaseClientMetrics();
+      } catch {
+        return;
       }
 
-      if (histograms.queriesDuration) {
-        res.observe(queriesDurationCount, histograms.queriesDuration.count);
-        res.observe(queriesDurationSum, histograms.queriesDuration.sum);
-        res.observe(
-          queriesDurationMean,
-          histograms.queriesDuration.count > 0
-            ? histograms.queriesDuration.sum / histograms.queriesDuration.count
-            : 0
-        );
-      }
+      for (const client of clients) {
+        const attributes = { db_client: client.clientType, db_driver: client.driver };
+        const { pool, counters, gauges, histograms } = client;
 
-      if (histograms.datasourceQueriesDuration) {
-        res.observe(datasourceQueriesDurationCount, histograms.datasourceQueriesDuration.count);
-        res.observe(datasourceQueriesDurationSum, histograms.datasourceQueriesDuration.sum);
-        res.observe(
-          datasourceQueriesDurationMean,
-          histograms.datasourceQueriesDuration.count > 0
-            ? histograms.datasourceQueriesDuration.sum / histograms.datasourceQueriesDuration.count
-            : 0
-        );
+        if (pool) {
+          res.observe(connectionsOpenedTotal, pool.openedTotal, attributes);
+          res.observe(connectionsClosedTotal, pool.closedTotal, attributes);
+          res.observe(totalGauge, pool.open, attributes);
+          res.observe(busyGauge, pool.busy, attributes);
+          res.observe(freeGauge, pool.idle, attributes);
+          res.observe(waitingGauge, pool.waiting, attributes);
+        }
+
+        if (!counters || !gauges) {
+          continue;
+        }
+
+        res.observe(queriesTotal, counters.queriesTotal, attributes);
+        res.observe(datasourceQueriesTotal, counters.datasourceQueriesTotal, attributes);
+        res.observe(queriesActive, gauges.queriesActive, attributes);
+        res.observe(queriesWait, gauges.queriesWait, attributes);
+
+        if (histograms.queriesWait) {
+          res.observe(queriesWaitTimeCount, histograms.queriesWait.count, attributes);
+          res.observe(queriesWaitTimeSum, histograms.queriesWait.sum, attributes);
+          res.observe(
+            queriesWaitTimeMean,
+            histograms.queriesWait.count > 0
+              ? histograms.queriesWait.sum / histograms.queriesWait.count
+              : 0,
+            attributes
+          );
+        }
+
+        if (histograms.queriesDuration) {
+          res.observe(queriesDurationCount, histograms.queriesDuration.count, attributes);
+          res.observe(queriesDurationSum, histograms.queriesDuration.sum, attributes);
+          res.observe(
+            queriesDurationMean,
+            histograms.queriesDuration.count > 0
+              ? histograms.queriesDuration.sum / histograms.queriesDuration.count
+              : 0,
+            attributes
+          );
+        }
+
+        if (histograms.datasourceQueriesDuration) {
+          res.observe(
+            datasourceQueriesDurationCount,
+            histograms.datasourceQueriesDuration.count,
+            attributes
+          );
+          res.observe(
+            datasourceQueriesDurationSum,
+            histograms.datasourceQueriesDuration.sum,
+            attributes
+          );
+          res.observe(
+            datasourceQueriesDurationMean,
+            histograms.datasourceQueriesDuration.count > 0
+              ? histograms.datasourceQueriesDuration.sum /
+                  histograms.datasourceQueriesDuration.count
+              : 0,
+            attributes
+          );
+        }
       }
     },
     [
@@ -554,6 +559,7 @@ function configurePrismaMetrics({ meter }: { meter: Meter }) {
       totalGauge,
       busyGauge,
       freeGauge,
+      waitingGauge,
       queriesWaitTimeCount,
       queriesWaitTimeSum,
       queriesWaitTimeMean,

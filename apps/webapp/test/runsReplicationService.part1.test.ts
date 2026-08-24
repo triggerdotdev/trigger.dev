@@ -73,6 +73,7 @@ describe("RunsReplicationService (part 1/7)", () => {
         },
       });
 
+      const queueTimestamp = new Date("2026-08-11T12:34:56.789Z");
       const taskRun = await prisma.taskRun.create({
         data: {
           friendlyId: "run_1234",
@@ -81,6 +82,7 @@ describe("RunsReplicationService (part 1/7)", () => {
           traceId: "1234",
           spanId: "1234",
           queue: "test",
+          queueTimestamp,
           workerQueue: "us-east-1-next",
           region: "us-east-1",
           planType: "free",
@@ -100,7 +102,8 @@ describe("RunsReplicationService (part 1/7)", () => {
 
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication",
-        query: "SELECT * FROM trigger_dev.task_runs_v2",
+        query:
+          "SELECT *, toString(toUnixTimestamp64Milli(queue_timestamp)) AS queue_timestamp_ms FROM trigger_dev.task_runs_v2",
         schema: z.any(),
       });
 
@@ -125,6 +128,7 @@ describe("RunsReplicationService (part 1/7)", () => {
           organization_id: organization.id,
           environment_type: "DEVELOPMENT",
           engine: "V2",
+          queue_timestamp_ms: queueTimestamp.getTime().toString(),
           trigger_source: "api",
           root_trigger_source: "dashboard",
           is_warm_start: 1,

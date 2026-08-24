@@ -5,6 +5,7 @@ export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./ap
 export * from "./apiClient/errors.js";
 export * from "./clock-api.js";
 export * from "./errors.js";
+export * from "./externalDeploymentId.js";
 export * from "./limits.js";
 export * from "./logger-api.js";
 export * from "./runtime-api.js";
@@ -30,6 +31,8 @@ export * from "./resource-catalog-api.js";
 export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
+export * from "./apiKeys.js";
+export * from "./workloadDeploymentToken.js";
 export * from "./idempotencyKeys.js";
 export * from "./streams/asyncIterableStream.js";
 export * from "./utils/getEnv.js";

@@ -1,10 +1,9 @@
-import { z } from "zod";
 import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
 import { TimeGranularity } from "~/utils/timeGranularity";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
-import { type Direction, DirectionSchema } from "~/components/ListPagination";
+import { type Direction } from "~/components/ListPagination";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
@@ -13,6 +12,12 @@ import {
   type NextRunList,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { sortVersionsDescending } from "~/utils/semver";
+import type { RunColumnId, SmartColumnSource } from "~/components/runs/v3/runColumns";
+
+type RunColumnsSelect = {
+  visibleStandardIds: RunColumnId[];
+  smartSources: SmartColumnSource[];
+};
 
 const errorGroupGranularity = new TimeGranularity([
   { max: "1h", granularity: "1m" },
@@ -34,24 +39,10 @@ export type ErrorGroupOptions = {
   to?: number;
   cursor?: string;
   direction?: Direction;
+  columns?: RunColumnsSelect;
 };
 
-export const ErrorGroupOptionsSchema = z.object({
-  userId: z.string().optional(),
-  projectId: z.string(),
-  fingerprint: z.string(),
-  versions: z.array(z.string()).optional(),
-  runsPageSize: z.number().int().positive().max(1000).optional(),
-  period: z.string().optional(),
-  from: z.number().int().nonnegative().optional(),
-  to: z.number().int().nonnegative().optional(),
-  cursor: z.string().optional(),
-  direction: DirectionSchema.optional(),
-});
-
 const DEFAULT_RUNS_PAGE_SIZE = 25;
-
-export type ErrorGroupDetail = Awaited<ReturnType<ErrorGroupPresenter["call"]>>;
 
 function parseClickHouseDateTime(value: string): Date {
   const asNum = Number(value);
@@ -115,6 +106,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       to,
       cursor,
       direction,
+      columns,
     }: ErrorGroupOptions
   ) {
     const displayableEnvironment = await findDisplayableEnvironment(environmentId, userId);
@@ -144,6 +136,7 @@ export class ErrorGroupPresenter extends BasePresenter {
         to: time.to.getTime(),
         cursor,
         direction,
+        columns,
       }),
       this.getState(environmentId, summary?.taskIdentifier, fingerprint),
     ]);
@@ -413,6 +406,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       to?: number;
       cursor?: string;
       direction?: Direction;
+      columns?: RunColumnsSelect;
     }
   ): Promise<NextRunList | undefined> {
     const runListPresenter = new NextRunListPresenter(this.replica, this.clickhouse);
@@ -428,6 +422,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       to: options.to,
       cursor: options.cursor,
       direction: options.direction,
+      columns: options.columns,
     });
 
     if (result.runs.length === 0) {

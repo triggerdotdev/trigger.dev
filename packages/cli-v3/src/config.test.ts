@@ -33,6 +33,10 @@ async function createProject(runtime?: string) {
 
 describe("loadConfig runtime", () => {
   it.each([
+    ["node", "node"],
+    ["node-22", "node-22"],
+    ["node-24", "node-24"],
+    ["node-26", "node-26"],
     ["experimental-node-24", "node-24"],
     ["experimental-node-26", "node-26"],
   ] as const)("normalizes %s before returning the resolved config", async (runtime, expected) => {
@@ -41,13 +45,31 @@ describe("loadConfig runtime", () => {
     await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: expected });
   });
 
-  it("keeps node as the default", async () => {
+  it("tracks whether runtime was explicitly configured", async () => {
+    const cwd = await createProject("node-22");
+
+    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({
+      runtime: "node-22",
+      runtimeWasExplicit: true,
+    });
+  });
+
+  it("tracks an omitted runtime separately from the legacy default", async () => {
+    const cwd = await createProject();
+
+    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({
+      runtime: "node",
+      runtimeWasExplicit: false,
+    });
+  });
+
+  it("keeps node as the legacy default when runtime is omitted", async () => {
     const cwd = await createProject();
 
     await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: "node" });
   });
 
-  it.each(["node-24", "node-26", "node-23"])(
+  it.each(["node-23"])(
     "rejects unsupported public runtime %s while loading config",
     async (runtime) => {
       const cwd = await createProject(runtime);

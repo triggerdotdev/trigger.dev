@@ -42,60 +42,70 @@ export function NotificationPanel({
     notifications: Notification[];
   };
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const dismissFetcher = useFetcher();
+  const { submit: submitDismiss } = useFetcher();
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const seenFetcher = useFetcher();
+  const { submit: submitSeen } = useFetcher();
   const clickedIdsRef = useRef<Set<string>>(new Set());
-  const clickFetcher = useFetcher();
+  const { submit: submitClick } = useFetcher();
 
   const visibleNotifications = notifications.filter((n) => !dismissedIds.has(n.id));
   const notification = visibleNotifications[0] ?? null;
+  const notificationId = notification?.id;
 
-  const handleDismiss = useCallback((id: string) => {
-    setDismissedIds((prev) => new Set(prev).add(id));
+  const handleDismiss = useCallback(
+    (id: string) => {
+      setDismissedIds((prev) => new Set(prev).add(id));
 
-    dismissFetcher.submit(
-      {},
-      {
-        method: "POST",
-        action: `/resources/platform-notifications/${id}/dismiss`,
-      }
-    );
-  }, []);
+      submitDismiss(
+        {},
+        {
+          method: "POST",
+          action: `/resources/platform-notifications/${id}/dismiss`,
+        }
+      );
+    },
+    [submitDismiss]
+  );
 
-  const fireClickBeacon = useCallback((id: string) => {
-    if (clickedIdsRef.current.has(id)) return;
-    clickedIdsRef.current.add(id);
+  const fireClickBeacon = useCallback(
+    (id: string) => {
+      if (clickedIdsRef.current.has(id)) return;
+      clickedIdsRef.current.add(id);
 
-    clickFetcher.submit(
-      {},
-      {
-        method: "POST",
-        action: `/resources/platform-notifications/${id}/clicked`,
-      }
-    );
-  }, []);
+      submitClick(
+        {},
+        {
+          method: "POST",
+          action: `/resources/platform-notifications/${id}/clicked`,
+        }
+      );
+    },
+    [submitClick]
+  );
 
   // Fire seen beacon
-  const fireSeenBeacon = useCallback((n: Notification) => {
-    if (seenIdsRef.current.has(n.id)) return;
-    seenIdsRef.current.add(n.id);
+  const fireSeenBeacon = useCallback(
+    (id: string) => {
+      if (seenIdsRef.current.has(id)) return;
+      seenIdsRef.current.add(id);
 
-    seenFetcher.submit(
-      {},
-      {
-        method: "POST",
-        action: `/resources/platform-notifications/${n.id}/seen`,
-      }
-    );
-  }, []);
+      submitSeen(
+        {},
+        {
+          method: "POST",
+          action: `/resources/platform-notifications/${id}/seen`,
+        }
+      );
+    },
+    [submitSeen]
+  );
 
   // Beacon current notification on mount
   useEffect(() => {
-    if (notification && !hasIncident) {
-      fireSeenBeacon(notification);
+    if (notificationId && !hasIncident) {
+      fireSeenBeacon(notificationId);
     }
-  }, [notification?.id, hasIncident]);
+  }, [notificationId, hasIncident, fireSeenBeacon]);
 
   if (!notification) {
     return null;
@@ -121,7 +131,7 @@ export function NotificationPanel({
 
   return (
     <Popover>
-      <div className={isCollapsed ? "p-1" : "p-2"}>
+      <div className={isCollapsed ? "p-1" : "p-2 pt-0"}>
         {isCollapsed ? (
           <SimpleTooltip
             asChild

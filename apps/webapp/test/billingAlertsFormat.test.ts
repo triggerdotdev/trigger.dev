@@ -90,6 +90,19 @@ describe("billingAlertsFormat", () => {
     ).toBe(10_000);
   });
 
+  it("previews saved percentage alerts against the current limit after it changes", () => {
+    // Percentage alerts saved against a $30 custom limit, limit later raised to $300.
+    const alerts = { amount: 30, emails: [], alertLevels: [0.75, 1.0] };
+
+    expect(getAlertPreviewLimitCents(alerts, 30_000, 10_000)).toBe(30_000);
+    expect(
+      previewDollarAmountForPercent(100, getAlertPreviewLimitCents(alerts, 30_000, 10_000))
+    ).toBe(300);
+    expect(
+      previewDollarAmountForPercent(75, getAlertPreviewLimitCents(alerts, 30_000, 10_000))
+    ).toBe(225);
+  });
+
   it("normalizes legacy API alerts with dollar amount field and whole percents", () => {
     expect(
       normalizeBillingAlertsFromApi(
@@ -150,6 +163,22 @@ describe("billingAlertsFormat", () => {
     );
   });
 
+  it("keeps seeded absolute defaults absolute when the plan limit is exactly $100", () => {
+    const normalized = normalizeBillingAlertsFromApi(
+      {
+        amount: 100,
+        emails: [],
+        alertLevels: [5, 100, 500, 1000, 2500],
+      },
+      { planLimitCents: 10_000, effectiveLimitCents: 10_000 }
+    );
+
+    expect(normalized.amount).toBe(1);
+    expect(storedAlertsToThresholds(normalized, "none", 10_000, 10_000)).toEqual([
+      5, 100, 500, 1000, 2500,
+    ]);
+  });
+
   it("normalizes cents-based alerts with whole-number levels when amount matches limit", () => {
     const normalized = normalizeBillingAlertsFromApi(
       {
@@ -173,14 +202,14 @@ describe("billingAlertsFormat", () => {
     expect(
       normalizeBillingAlertsFromApi(
         {
-          amount: 100,
+          amount: 300,
           emails: [],
           alertLevels: [10, 50, 80],
         },
-        { planLimitCents: 10_000, effectiveLimitCents: 10_000 }
+        { planLimitCents: 30_000, effectiveLimitCents: 30_000 }
       )
     ).toEqual({
-      amount: 100,
+      amount: 300,
       emails: [],
       alertLevels: [10, 50, 80],
     });

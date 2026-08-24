@@ -1,5 +1,5 @@
 import { Logger } from "@trigger.dev/core/logger";
-import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
+import { CronSchema, Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -11,7 +11,16 @@ import {
   runAttioUserSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
+import { purgeDashboardAgentChatsForOrganization } from "~/services/dashboardAgentChatRetention.server";
+import {
+  rearmDashboardAgentWatchBatches,
+  sweepDashboardAgentWatches,
+} from "~/services/dashboardAgentWatchSweep.server";
 import { logger } from "~/services/logger.server";
+import {
+  MembershipDevEnvironmentsSchema,
+  provisionDevEnvironmentsForMembership,
+} from "~/services/memberDevEnvironments.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
@@ -32,6 +41,11 @@ function initializeWorker() {
   };
 
   logger.debug(`👨‍🏭 Initializing common worker at host ${env.COMMON_WORKER_REDIS_HOST}`);
+
+  // Only schedule the agent watch cron where the agent is actually set up. Otherwise
+  // its sweeps hit a missing schema and drip a dead-letter entry every run.
+  const dashboardAgentConfigured =
+    env.DASHBOARD_AGENT_ENABLED === "1" || Boolean(env.DASHBOARD_AGENT_DATABASE_URL);
 
   const worker = new RedisWorker({
     name: "common-worker",
@@ -56,6 +70,13 @@ function initializeWorker() {
         visibilityTimeoutMs: 30_000,
         retry: {
           maxAttempts: 3,
+        },
+      },
+      "membership.provisionDevEnvironments": {
+        schema: MembershipDevEnvironmentsSchema,
+        visibilityTimeoutMs: 120_000,
+        retry: {
+          maxAttempts: 5,
         },
       },
       "v3.timeoutDeployment": {
@@ -135,6 +156,33 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      // @deprecated, moved to the dashboard agent project; remove once the queue drains.
+      "dashboardAgent.maintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      // The watch backstops: expiry, wake redelivery and dead batch chains.
+      "dashboardAgent.watchMaintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(dashboardAgentConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      // Soft-deletes a deleted organization's chats; retention hard-deletes them later.
+      "dashboardAgent.purgeOrganization": {
+        schema: z.object({
+          organizationId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -154,6 +202,9 @@ function initializeWorker() {
       },
       "attio.syncUser": async ({ payload }) => {
         await runAttioUserSync(payload);
+      },
+      "membership.provisionDevEnvironments": async ({ payload }) => {
+        await provisionDevEnvironmentsForMembership(payload);
       },
       "v3.timeoutDeployment": async ({ payload }) => {
         const service = new TimeoutDeploymentService();
@@ -189,6 +240,43 @@ function initializeWorker() {
       processBulkAction: async ({ payload }) => {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
+      },
+      // @deprecated, moved to the dashboard agent project; remove once the queue drains.
+      "dashboardAgent.maintenance": async () => {},
+      "dashboardAgent.watchMaintenance": async () => {
+        // Each backstop runs independently; the first failure is rethrown at the end.
+        let failure: unknown;
+
+        try {
+          const watches = await sweepDashboardAgentWatches();
+          if (watches.overdue > 0 || watches.undelivered > 0) {
+            logger.debug("Dashboard agent watch sweep", watches);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        try {
+          const batches = await rearmDashboardAgentWatchBatches();
+          if (batches.stale > 0) {
+            logger.debug("Dashboard agent watch batch re-arm", batches);
+          }
+        } catch (error) {
+          failure ??= error;
+        }
+
+        if (failure) throw failure;
+      },
+      "dashboardAgent.purgeOrganization": async ({ payload }) => {
+        const soft = await purgeDashboardAgentChatsForOrganization({
+          organizationId: payload.organizationId,
+        });
+        if (soft > 0) {
+          logger.debug("Dashboard agent organization purge", {
+            organizationId: payload.organizationId,
+            softDeleted: soft,
+          });
+        }
       },
     },
   });

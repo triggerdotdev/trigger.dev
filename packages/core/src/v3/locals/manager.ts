@@ -3,7 +3,7 @@ import type { LocalsKey, LocalsManager } from "./types.js";
 export class NoopLocalsManager implements LocalsManager {
   createLocal<T>(id: string): LocalsKey<T> {
     return {
-      __type: Symbol(),
+      __type: Symbol(id),
       id,
     };
   }

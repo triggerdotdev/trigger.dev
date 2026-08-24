@@ -19,14 +19,14 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 //
 // We attach no record headers (H=0), so the budget reduces to:
 //   8 + body ≤ 1048576  →  body ≤ 1048568
-export const S2_MAX_METERED_BYTES = 1024 * 1024; // 1 MiB
-export const S2_RECORD_BASE_OVERHEAD_BYTES = 8;
+const S2_MAX_METERED_BYTES = 1024 * 1024; // 1 MiB
+const S2_RECORD_BASE_OVERHEAD_BYTES = 8;
 
 /**
  * Thrown when a record's metered size would exceed S2's hard per-record
  * limit. Caught by the route handler and surfaced as 413.
  */
-export class S2RecordTooLargeError extends ServiceValidationError {
+class S2RecordTooLargeError extends ServiceValidationError {
   constructor(public readonly meteredBytes: number) {
     super(
       `Record metered size ${meteredBytes} bytes exceeds the S2 per-record limit of ${S2_MAX_METERED_BYTES} bytes. Reduce tool-output size or split into smaller parts.`,
@@ -44,6 +44,10 @@ export type S2RealtimeStreamsOptions = {
 
   // Custom endpoint for s2-lite (self-hosted)
   endpoint?: string; // e.g., "http://localhost:4566/v1"
+  /** Account-level API base for account/basin ops. Defaults to S2 cloud. */
+  accountUrl?: string;
+  /** Per-basin API base, with a `{basin}` placeholder. Defaults to S2 cloud. */
+  basinUrl?: string;
 
   // Skip access token issuance (s2-lite doesn't support /access-tokens)
   skipAccessTokens?: boolean;
@@ -73,6 +77,15 @@ export type S2RealtimeStreamsOptions = {
 // scope change auto-invalidates pre-deploy cached tokens.
 const S2_TOKEN_OPS = ["append", "create-stream", "trim"] as const;
 const S2_TOKEN_OPS_FINGERPRINT = [...S2_TOKEN_OPS].sort().join(",");
+
+/**
+ * Placeholder handed back as the S2 access token when `skipAccessTokens` is set
+ * and no token is configured (self-hosted s2-lite ignores the token entirely).
+ * The SDK's session-stream writer rejects an empty access token as "no S2
+ * credentials" and never opens the writer, so the token must be non-empty even
+ * when it is semantically unused.
+ */
+const SKIP_ACCESS_TOKENS_SENTINEL = "s2-skip-access-tokens";
 
 type S2IssueAccessTokenResponse = { access_token: string };
 type S2AppendInput = { records: { body: string }[] };
@@ -107,8 +120,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   constructor(opts: S2RealtimeStreamsOptions) {
     this.basin = opts.basin;
-    this.baseUrl = opts.endpoint ?? `https://${this.basin}.b.aws.s2.dev/v1`;
-    this.accountUrl = opts.endpoint ?? `https://aws.s2.dev/v1`;
+    this.baseUrl =
+      opts.endpoint ??
+      (opts.basinUrl ?? `https://{basin}.b.s2.dev/v1`).replace("{basin}", this.basin);
+    this.accountUrl = opts.endpoint ?? opts.accountUrl ?? `https://a.s2.dev/v1`;
     this.endpoint = opts.endpoint;
     this.token = opts.accessToken;
     this.streamPrefix = opts.streamPrefix ?? "";
@@ -168,7 +183,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     relativeName: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
     const accessToken = this.skipAccessTokens
-      ? this.token
+      ? this.token || SKIP_ACCESS_TOKENS_SENTINEL
       : await this.getS2AccessToken(randomUUID());
 
     return {
@@ -178,7 +193,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
-        ...(this.endpoint ? { "X-S2-Endpoint": this.endpoint } : {}),
+        "X-S2-Endpoint": this.baseUrl,
       },
     };
   }

@@ -60,18 +60,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const run = await runStore.findRun(
-    { friendlyId: runParam, projectId: project.id },
-    {
-      select: {
-        id: true,
-        friendlyId: true,
-        realtimeStreamsVersion: true,
-        streamBasinName: true,
-        runtimeEnvironmentId: true,
-      },
-    }
-  );
+  const runWhere = { friendlyId: runParam, projectId: project.id };
+  const runArgs = {
+    select: {
+      id: true,
+      friendlyId: true,
+      realtimeStreamsVersion: true,
+      streamBasinName: true,
+      runtimeEnvironmentId: true,
+    },
+  };
+  // Client-less findRun defaults to the read replica; replica lag can null out a live run and 404 a
+  // valid stream-viewer request (useRealtimeStream surfaces the error, no auto-retry). Re-read the
+  // owning primary on a replica miss.
+  const run =
+    (await runStore.findRun(runWhere, runArgs)) ??
+    (await runStore.findRunOnPrimary(runWhere, runArgs));
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });
@@ -249,6 +253,7 @@ export function RealtimeStreamViewer({
     .length;
 
   // Virtual rendering for list view
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
     getScrollElement: () => scrollRef.current,
@@ -535,6 +540,7 @@ export function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setChunks([]);
     setError(null);
 
