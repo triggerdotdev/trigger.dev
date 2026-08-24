@@ -3,4 +3,4 @@ area: webapp
 type: improvement
 ---
 
-The runs list and the runs.list API are more resilient: a single expensive query can no longer slow the runs list down for everyone. The list now loads from a bounded recent time window, which keeps it fast at scale.
+Improved the performance and reliability of the runs list and the runs.list API, especially for large projects and filtered views.

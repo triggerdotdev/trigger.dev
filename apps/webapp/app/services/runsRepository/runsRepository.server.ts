@@ -33,14 +33,6 @@ export type RunsRepositoryOptions = {
     // Resolved boot constant; when false the split branch is never entered.
     splitEnabled?: boolean;
   };
-
-  /**
-   * Hard cap on how far back the run-listing `created_at` lower bound may reach, in ms. When set
-   * and > 0, the list queries add `created_at >= now - maxCreatedAtAgeMs` so an unbounded filter
-   * can't scan every partition. Omitted / 0 => no cap. Applies to `listRuns`/`listRunIds` only,
-   * never to `countRuns` (billing and bulk counts must count runs of any age).
-   */
-  maxCreatedAtAgeMs?: number;
 };
 
 const RunStatus = z.enum(Object.values(TaskRunStatus) as [TaskRunStatus, ...TaskRunStatus[]]);

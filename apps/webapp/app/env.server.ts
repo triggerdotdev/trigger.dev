@@ -2241,15 +2241,6 @@ const EnvironmentSchema = z
     RUNS_LIST_CLICKHOUSE_MAX_CONCURRENT_QUERIES_FOR_USER: z.coerce.number().int().optional(),
     RUNS_LIST_CLICKHOUSE_READONLY: z.enum(["0", "1", "2"]).default("2"),
     /**
-     * Hard cap on how far back the runs list / runs.list API `created_at` lower bound may reach,
-     * in milliseconds. The display list adds `created_at >= now - this` so an unbounded filter
-     * can't scan all partitions. `0` disables the cap. Does not apply to count queries.
-     */
-    RUNS_LIST_MAX_CREATED_AT_AGE_MS: z.coerce
-      .number()
-      .int()
-      .default(30 * 24 * 60 * 60 * 1000),
-    /**
      * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every
      * queue-metrics read (dashboards, queue pages, run inspector, health report) go through it, so
      * metrics traffic never competes with runs-list or trace reads. Unset keeps the previous

@@ -127,8 +127,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         options,
         this.options.prisma,
         this.options.runStore ?? runStore
-      ),
-      this.options.maxCreatedAtAgeMs
+      )
     );
 
     const forward = options.page.direction === "forward" || !options.page.direction;
@@ -336,12 +335,6 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     };
   }
 
-  /**
-   * Deliberately NOT passed `maxCreatedAtAgeMs`: the only callers are billing limit checks and
-   * bulk actions, which must count runs of any age (a queued/delayed run older than the window
-   * still counts). Clamping here would undercount. Runaway counts are bounded instead by the
-   * read pool's server-side `max_execution_time`, not by a date cap.
-   */
   async countRuns(options: RunListInputOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.countQueryBuilder();
     applyRunFiltersToQueryBuilder(
@@ -419,14 +412,18 @@ export class ClickHouseRunsRepository implements IRunsRepository {
 }
 
 /**
- * Builds the shared WHERE clauses for the runs list. `maxCreatedAtAgeMs` (when > 0) floors the
- * `created_at` lower bound to `now - maxCreatedAtAgeMs`; it is ANDed with any period/from filter,
- * so the tighter bound wins, and it keeps an unbounded filter from scanning every partition.
+ * Builds the shared filter clauses for the runs list against `task_runs_v2 FINAL`.
+ *
+ * Immutable / additive-only columns go in PREWHERE so ClickHouse filters (and, for `tags`, uses
+ * the skip index) before FINAL reconciles versions and before materialising the wide columns,
+ * which is what bounds memory on these scans. `status` is the one lifecycle-mutable filter, so it
+ * stays in WHERE (post-FINAL): PREWHERE-ing it would keep a stale version and drop the winner. The
+ * `(organization_id, project_id, environment_id)` primary-key prefix and the `created_at` range
+ * stay in WHERE so they keep driving primary-key and partition pruning.
  */
 function applyRunFiltersToQueryBuilder<T>(
   queryBuilder: ClickhouseQueryBuilder<T>,
-  options: FilterRunsOptions,
-  maxCreatedAtAgeMs?: number
+  options: FilterRunsOptions
 ) {
   queryBuilder
     .where("organization_id = {organizationId: String}", {
@@ -439,34 +436,8 @@ function applyRunFiltersToQueryBuilder<T>(
       environmentId: options.environmentId,
     });
 
-  if (typeof maxCreatedAtAgeMs === "number" && maxCreatedAtAgeMs > 0) {
-    queryBuilder.where("created_at >= fromUnixTimestamp64Milli({createdAtFloor: Int64})", {
-      createdAtFloor: Date.now() - maxCreatedAtAgeMs,
-    });
-  }
-
-  if (options.tasks && options.tasks.length > 0) {
-    queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
-  }
-
-  if (options.versions && options.versions.length > 0) {
-    queryBuilder.where("task_version IN {versions: Array(String)}", {
-      versions: options.versions,
-    });
-  }
-
   if (options.statuses && options.statuses.length > 0) {
     queryBuilder.where("status IN {statuses: Array(String)}", { statuses: options.statuses });
-  }
-
-  if (options.tags && options.tags.length > 0) {
-    // Both hasAny and hasAll are served by the tags bloom_filter skip index.
-    const tagsFn = options.tagsMatch === "all" ? "hasAll" : "hasAny";
-    queryBuilder.where(`${tagsFn}(tags, {tags: Array(String)})`, { tags: options.tags });
-  }
-
-  if (options.scheduleId) {
-    queryBuilder.where("schedule_id = {scheduleId: String}", { scheduleId: options.scheduleId });
   }
 
   // Period is a number of milliseconds duration
@@ -486,49 +457,71 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
   }
 
+  if (options.tasks && options.tasks.length > 0) {
+    queryBuilder.prewhere("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
+  }
+
+  if (options.versions && options.versions.length > 0) {
+    queryBuilder.prewhere("task_version IN {versions: Array(String)}", {
+      versions: options.versions,
+    });
+  }
+
+  if (options.tags && options.tags.length > 0) {
+    // Both hasAny and hasAll are served by the tags bloom_filter skip index.
+    const tagsFn = options.tagsMatch === "all" ? "hasAll" : "hasAny";
+    queryBuilder.prewhere(`${tagsFn}(tags, {tags: Array(String)})`, { tags: options.tags });
+  }
+
+  if (options.scheduleId) {
+    queryBuilder.prewhere("schedule_id = {scheduleId: String}", {
+      scheduleId: options.scheduleId,
+    });
+  }
+
   if (typeof options.isTest === "boolean") {
-    queryBuilder.where("is_test = {isTest: Boolean}", { isTest: options.isTest });
+    queryBuilder.prewhere("is_test = {isTest: Boolean}", { isTest: options.isTest });
   }
 
   if (options.rootOnly) {
-    queryBuilder.where("root_run_id = ''");
+    queryBuilder.prewhere("root_run_id = ''");
   }
 
   if (options.batchId) {
-    queryBuilder.where("batch_id = {batchId: String}", { batchId: options.batchId });
+    queryBuilder.prewhere("batch_id = {batchId: String}", { batchId: options.batchId });
   }
 
   if (options.bulkId) {
-    queryBuilder.where("hasAny(bulk_action_group_ids, {bulkActionGroupIds: Array(String)})", {
+    queryBuilder.prewhere("hasAny(bulk_action_group_ids, {bulkActionGroupIds: Array(String)})", {
       bulkActionGroupIds: [options.bulkId],
     });
   }
 
   if (options.runId && options.runId.length > 0) {
     // it's important that in the query it's "runIds", otherwise it clashes with the cursor which is called "runId"
-    queryBuilder.where("friendly_id IN {runIds: Array(String)}", {
+    queryBuilder.prewhere("friendly_id IN {runIds: Array(String)}", {
       runIds: options.runId.map((runId) => RunId.toFriendlyId(runId)),
     });
   }
 
   if (options.queues && options.queues.length > 0) {
-    queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
+    queryBuilder.prewhere("queue IN {queues: Array(String)}", { queues: options.queues });
   }
 
   if (options.regions && options.regions.length > 0) {
-    queryBuilder.where("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
+    queryBuilder.prewhere("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
       regions: options.regions,
     });
   }
 
   if (options.machines && options.machines.length > 0) {
-    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
+    queryBuilder.prewhere("machine_preset IN {machines: Array(String)}", {
       machines: options.machines,
     });
   }
 
   if (options.errorId) {
-    queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
+    queryBuilder.prewhere("error_fingerprint = {errorFingerprint: String}", {
       errorFingerprint: ErrorId.toId(options.errorId),
     });
   }
@@ -539,11 +532,11 @@ function applyRunFiltersToQueryBuilder<T>(
     const effectiveKinds = includesStandard ? [...options.taskKinds, ""] : options.taskKinds;
 
     if (effectiveKinds.length === 1) {
-      queryBuilder.where("task_kind = {taskKind: String}", {
+      queryBuilder.prewhere("task_kind = {taskKind: String}", {
         taskKind: effectiveKinds[0]!,
       });
     } else {
-      queryBuilder.where("task_kind IN {taskKinds: Array(String)}", {
+      queryBuilder.prewhere("task_kind IN {taskKinds: Array(String)}", {
         taskKinds: effectiveKinds,
       });
     }

@@ -256,7 +256,6 @@ export class NextRunListPresenter {
     const runsRepository = new RunsRepository({
       clickhouse: this.clickhouse,
       prisma: this.replica as PrismaClient,
-      maxCreatedAtAgeMs: env.RUNS_LIST_MAX_CREATED_AT_AGE_MS,
       readThrough: this.readThroughDeps
         ? {
             newClient: this.readThroughDeps.newClient ?? this.replica,
