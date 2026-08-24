@@ -1,17 +1,11 @@
 <clickhouse>
     <profiles>
         <default>
-            <!-- Low-memory settings for the recommended webapp machine size. These were
-                 previously in config.d/override.xml where profile settings are silently
-                 ignored — they only take effect from the users config tree (#4343). -->
             <max_block_size>8192</max_block_size>
             <max_download_threads>1</max_download_threads>
             <input_format_parallel_parsing>0</input_format_parallel_parsing>
             <output_format_parallel_formatting>0</output_format_parallel_formatting>
-            <!-- The memory/query profilers sample stacks into system.trace_log
-                 (a Memory/MemoryPeak sample every 4 MB allocated, by default) — the main
-                 firehose that fills it. trace_log is disabled in override.xml; turn the
-                 samplers off too so they don't burn CPU producing discarded rows. -->
+            <!-- Samplers only feed trace_log, which is disabled -->
             <memory_profiler_step>0</memory_profiler_step>
             <memory_profiler_sample_probability>0</memory_profiler_sample_probability>
             <query_profiler_real_time_period_ns>0</query_profiler_real_time_period_ns>

@@ -10,14 +10,7 @@
     <mark_cache_size>524288000</mark_cache_size> <!-- 500MB -->
     <concurrent_threads_soft_limit_num>1</concurrent_threads_soft_limit_num>
 
-    <!-- ClickHouse's own telemetry tables have no TTL and grow without bound; on the
-         recommended webapp machine size their background merges eventually stop fitting
-         in memory and are retried forever (there is no backoff for failed merges),
-         pinning the CPU and ultimately failing the webapp's own inserts (#4343).
-         The ClickHouse low-RAM guide recommends disabling exactly these tables:
-         https://clickhouse.com/docs/operations/tips
-         Same list as the dev stack (docker/config/clickhouse-disable-system-logs.xml),
-         extended with the newer log tables. -->
+    <!-- ClickHouse's own telemetry, too heavy for the recommended machine size -->
     <metric_log remove="1"/>
     <asynchronous_metric_log remove="1"/>
     <part_log remove="1"/>
@@ -34,10 +27,7 @@
     <opentelemetry_span_log remove="1"/>
     <query_views_log remove="1"/>
 
-    <!-- Keep query_log and error_log (small and useful for debugging), but bounded.
-         A config-level TTL survives log-table recreation, unlike ALTER ... MODIFY TTL.
-         Note: ClickHouse renames the existing table to *_log_<N> when this changes;
-         drop those leftovers to reclaim disk. -->
+    <!-- A config-level ttl survives log-table recreation, unlike ALTER ... MODIFY TTL -->
     <query_log>
         <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
     </query_log>
@@ -45,6 +35,5 @@
         <ttl>event_date + INTERVAL 30 DAY DELETE</ttl>
     </error_log>
 
-    <!-- Profile settings do NOT live here: config.d is silently ignored for them.
-         See users-override.xml, mounted under users.d. -->
+    <!-- Profile settings only apply from users.d, see users-override.xml -->
 </clickhouse>
