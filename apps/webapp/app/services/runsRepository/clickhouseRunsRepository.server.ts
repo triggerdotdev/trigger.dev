@@ -414,15 +414,19 @@ export class ClickHouseRunsRepository implements IRunsRepository {
 /**
  * Builds the shared filter clauses for the runs list against `task_runs_v2 FINAL`.
  *
- * Immutable / additive-only columns go in PREWHERE so ClickHouse filters (and, for `tags`, uses
- * the skip index) before FINAL reconciles versions and before materialising the wide columns,
- * which is what bounds memory on these scans. A filter stays in WHERE (post-FINAL) when its truth
- * value can flip across a run's versions, since PREWHERE could then keep a stale version and drop
- * the winner: `status` (lifecycle-mutable), and `regions` (its `if(region != '', region,
- * worker_queue)` expression yields the worker_queue before dequeue and the region after, two
- * different non-empty values). The `(organization_id, project_id, environment_id)` primary-key
- * prefix and the `created_at` range stay in WHERE so they keep driving primary-key and partition
- * pruning.
+ * A filter may go in PREWHERE only if its truth value can never flip true->false across a run's
+ * versions, because PREWHERE is evaluated before FINAL reconciles versions and would otherwise keep
+ * a stale matching version and drop the winning one. That holds for trigger-time identity columns
+ * that never change (task_identifier, task_version, schedule_id, is_test, root_run_id, batch_id,
+ * friendly_id, queue, task_kind) and for append-only arrays under `hasAny`/`hasAll` (tags,
+ * bulk_action_group_ids), so those go in PREWHERE to filter (and, for tags, use the skip index)
+ * before FINAL and before materialising the wide columns, which is what bounds memory on these
+ * scans. Columns that reflect execution/outcome and change as a run runs stay in WHERE (post-FINAL):
+ * `status`, `machine_preset` (can escalate on OOM retry), `error_fingerprint` (set/cleared with
+ * status), and the `regions` expression (`if(region != '', region, worker_queue)` yields the
+ * worker_queue before dequeue and the region after). The `(organization_id, project_id,
+ * environment_id)` primary-key prefix and the `created_at` range also stay in WHERE so they keep
+ * driving primary-key and partition pruning.
  */
 function applyRunFiltersToQueryBuilder<T>(
   queryBuilder: ClickhouseQueryBuilder<T>,
@@ -446,6 +450,18 @@ function applyRunFiltersToQueryBuilder<T>(
   if (options.regions && options.regions.length > 0) {
     queryBuilder.where("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
       regions: options.regions,
+    });
+  }
+
+  if (options.machines && options.machines.length > 0) {
+    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
+      machines: options.machines,
+    });
+  }
+
+  if (options.errorId) {
+    queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
+      errorFingerprint: ErrorId.toId(options.errorId),
     });
   }
 
@@ -515,18 +531,6 @@ function applyRunFiltersToQueryBuilder<T>(
 
   if (options.queues && options.queues.length > 0) {
     queryBuilder.prewhere("queue IN {queues: Array(String)}", { queues: options.queues });
-  }
-
-  if (options.machines && options.machines.length > 0) {
-    queryBuilder.prewhere("machine_preset IN {machines: Array(String)}", {
-      machines: options.machines,
-    });
-  }
-
-  if (options.errorId) {
-    queryBuilder.prewhere("error_fingerprint = {errorFingerprint: String}", {
-      errorFingerprint: ErrorId.toId(options.errorId),
-    });
   }
 
   if (options.taskKinds && options.taskKinds.length > 0) {
