@@ -1,4 +1,4 @@
-import { ClickHouse } from "@internal/clickhouse";
+import { ClickHouse, type ClickHouseSettings } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
@@ -292,6 +292,40 @@ function initializeRealtimeClickhouseClient(): ClickHouse {
   });
 }
 
+/**
+ * Server-side query protection for the runs-list read pool. Safe as client-level settings ONLY
+ * because this pool is read-only (no inserts); a client-level `max_execution_time` on a mixed
+ * read+write pool would also kill slow inserts. `readonly=2` enforces read-only while still
+ * allowing these settings to apply (`readonly=1` rejects them). `max_concurrent_queries_for_user`
+ * is a per-ClickHouse-user (`default`) fail-fast circuit breaker, not per-tenant isolation.
+ */
+function getRunsListClickhouseSettings(): ClickHouseSettings {
+  const settings: ClickHouseSettings = {
+    max_execution_time: env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME,
+    timeout_before_checking_execution_speed: 0,
+  };
+
+  if (env.RUNS_LIST_CLICKHOUSE_READONLY !== "0") {
+    settings.readonly = env.RUNS_LIST_CLICKHOUSE_READONLY;
+  }
+  if (env.RUNS_LIST_CLICKHOUSE_MAX_THREADS !== undefined) {
+    settings.max_threads = env.RUNS_LIST_CLICKHOUSE_MAX_THREADS;
+  }
+  if (env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE !== undefined) {
+    settings.max_memory_usage = env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE.toString();
+  }
+  if (env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE_FOR_USER !== undefined) {
+    settings.max_memory_usage_for_user =
+      env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE_FOR_USER.toString();
+  }
+  if (env.RUNS_LIST_CLICKHOUSE_MAX_CONCURRENT_QUERIES_FOR_USER !== undefined) {
+    settings.max_concurrent_queries_for_user =
+      env.RUNS_LIST_CLICKHOUSE_MAX_CONCURRENT_QUERIES_FOR_USER;
+  }
+
+  return settings;
+}
+
 /** Runs list reads — dashboard + API (`RUNS_LIST_CLICKHOUSE_URL`);
  *  falls back to the default client if unset. */
 const defaultRunsListClickhouseClient = singleton(
@@ -319,6 +353,8 @@ function initializeRunsListClickhouseClient(): ClickHouse {
       request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
     },
     maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+    requestTimeoutMs: env.RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS,
+    clickhouseSettings: getRunsListClickhouseSettings(),
   });
 }
 
@@ -550,10 +586,25 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         },
         maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
+    case "runsList":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.RUNS_LIST_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+        requestTimeoutMs: env.RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS,
+        clickhouseSettings: getRunsListClickhouseSettings(),
+      });
     case "standard":
     case "query":
     case "admin":
-    case "runsList":
       return new ClickHouse({
         url: parsed.toString(),
         name,

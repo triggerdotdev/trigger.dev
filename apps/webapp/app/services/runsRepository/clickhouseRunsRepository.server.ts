@@ -127,7 +127,8 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         options,
         this.options.prisma,
         this.options.runStore ?? runStore
-      )
+      ),
+      this.options.maxCreatedAtAgeMs
     );
 
     const forward = options.page.direction === "forward" || !options.page.direction;
@@ -335,6 +336,12 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     };
   }
 
+  /**
+   * Deliberately NOT passed `maxCreatedAtAgeMs`: the only callers are billing limit checks and
+   * bulk actions, which must count runs of any age (a queued/delayed run older than the window
+   * still counts). Clamping here would undercount. Runaway counts are bounded instead by the
+   * read pool's server-side `max_execution_time`, not by a date cap.
+   */
   async countRuns(options: RunListInputOptions) {
     const queryBuilder = this.options.clickhouse.taskRuns.countQueryBuilder();
     applyRunFiltersToQueryBuilder(
@@ -411,9 +418,15 @@ export class ClickHouseRunsRepository implements IRunsRepository {
   }
 }
 
+/**
+ * Builds the shared WHERE clauses for the runs list. `maxCreatedAtAgeMs` (when > 0) floors the
+ * `created_at` lower bound to `now - maxCreatedAtAgeMs`; it is ANDed with any period/from filter,
+ * so the tighter bound wins, and it keeps an unbounded filter from scanning every partition.
+ */
 function applyRunFiltersToQueryBuilder<T>(
   queryBuilder: ClickhouseQueryBuilder<T>,
-  options: FilterRunsOptions
+  options: FilterRunsOptions,
+  maxCreatedAtAgeMs?: number
 ) {
   queryBuilder
     .where("organization_id = {organizationId: String}", {
@@ -425,6 +438,12 @@ function applyRunFiltersToQueryBuilder<T>(
     .where("environment_id = {environmentId: String}", {
       environmentId: options.environmentId,
     });
+
+  if (typeof maxCreatedAtAgeMs === "number" && maxCreatedAtAgeMs > 0) {
+    queryBuilder.where("created_at >= fromUnixTimestamp64Milli({createdAtFloor: Int64})", {
+      createdAtFloor: Date.now() - maxCreatedAtAgeMs,
+    });
+  }
 
   if (options.tasks && options.tasks.length > 0) {
     queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
