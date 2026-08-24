@@ -1980,7 +1980,13 @@ export class RoutingRunStore implements RunStore {
     ownerRunId?: string,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunCheckpointGetPayload<T>> {
-    const store = this.#routeOrNew(ownerRunId);
+    // A create is a mint decision the mint layer owns. Defaulting to NEW was harmless with one
+    // dedicated store; at N it is a silent write to the wrong shard, and the run-routed snapshot's
+    // checkpointId FK then resolves on a different database. Fail loud instead.
+    if (ownerRunId === undefined) {
+      throw new Error("createTaskRunCheckpoint requires ownerRunId to route");
+    }
+    const store = this.#route(ownerRunId);
     return store.createTaskRunCheckpoint(args, ownerRunId, undefined);
   }
 
@@ -1994,9 +2000,12 @@ export class RoutingRunStore implements RunStore {
   ): Promise<BatchTaskRun> {
     // Route by the batch's classifiable internal id: run-ops id→NEW, cuid→LEGACY. The caller's
     // `tx` is never forwarded — the create runs on the owning store's own client so the batch and
-    // its co-resident child runs/items land on the same DB. Mirrors the by-id waitpoint-write routing /
-    // updateBatchTaskRun.
-    const store = await this.#routeOrNewForWrite(data.id);
+    // its co-resident child runs/items land on the same DB. A create with no id is a mint decision
+    // the mint layer must have made; at N a silent NEW default is a wrong-shard write, so fail loud.
+    if (data.id === undefined) {
+      throw new Error("createBatchTaskRun requires data.id to route");
+    }
+    const store = await this.#routeForWrite(data.id);
     return store.createBatchTaskRun(data, undefined);
   }
 

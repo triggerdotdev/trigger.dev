@@ -192,10 +192,19 @@ describe("RoutingRunStore id-less fallbacks — the two defaults differ by role"
     expect(trace(log)).toEqual(["new:createRun"]);
   });
 
-  it("routes an id-less checkpoint create to new (#idlessRouteShard)", async () => {
+  it("throws for an id-less checkpoint create rather than defaulting to new", async () => {
     const { router, log } = buildRouter();
-    await router.createTaskRunCheckpoint({ data: {} } as never);
-    expect(trace(log)).toEqual(["new:createTaskRunCheckpoint"]);
+    await expect(router.createTaskRunCheckpoint({ data: {} } as never)).rejects.toThrow(
+      "createTaskRunCheckpoint requires ownerRunId to route"
+    );
+    expect(trace(log)).toEqual([]);
+  });
+
+  it("throws for a batch create with no id rather than defaulting to new", async () => {
+    const { router } = buildRouter();
+    await expect(router.createBatchTaskRun({} as never)).rejects.toThrow(
+      "createBatchTaskRun requires data.id to route"
+    );
   });
 
   it("routes an id-less waitpoint update to legacy (#idlessWaitpointShard)", async () => {
