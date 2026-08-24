@@ -48,6 +48,8 @@ export class DelayedRunSystem {
             throw new ServiceValidationError("Cannot reschedule a run that is not delayed");
           }
 
+          const isParked = snapshot.runStatus === "PENDING_VERSION";
+
           const updatedRun = await this.$.runStore.rescheduleRun(
             runId,
             {
@@ -57,6 +59,13 @@ export class DelayedRunSystem {
                 environmentType: snapshot.environmentType,
                 projectId: snapshot.projectId,
                 organizationId: snapshot.organizationId,
+                ...(isParked
+                  ? {
+                      executionStatus: "RUN_CREATED" as const,
+                      runStatus: "PENDING_VERSION" as const,
+                      description: "Parked run was rescheduled to a future date",
+                    }
+                  : {}),
               },
             },
             prisma

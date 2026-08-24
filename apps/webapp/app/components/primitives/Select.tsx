@@ -1,6 +1,7 @@
 import * as Ariakit from "@ariakit/react";
 import { type SelectProps as AriaSelectProps } from "@ariakit/react";
 import { SelectValue } from "@ariakit/react-core/select/select-value";
+import { useStoreState } from "@ariakit/react-core/utils/store";
 import { Link } from "@remix-run/react";
 import * as React from "react";
 import { Fragment, useMemo, useState } from "react";
@@ -29,8 +30,9 @@ const style = {
       "bg-transparent focus-custom hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
   },
   secondary: {
+    // Matches the secondary button's hover.
     button:
-      "bg-secondary focus-custom border border-border-bright/50 shadow-xs hover:text-text-bright text-text-bright hover:bg-background-raised",
+      "bg-secondary focus-custom border border-border-bright/50 shadow-xs text-text-bright hover:bg-background-raised dark:hover:bg-surface-control",
   },
 };
 
@@ -190,7 +192,7 @@ export function Select<TValue extends string | string[], TItem>({
     }
 
     return matchSorter(items, searchValue, filter);
-  }, [searchValue, items]);
+  }, [searchValue, items, filter]);
 
   const enableItemShortcuts = allowItemShortcuts && matches.length === items?.length;
 
@@ -225,7 +227,7 @@ export function Select<TValue extends string | string[], TItem>({
         {...props}
       />
       <SelectPopover className={popoverClassName}>
-        {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
+        {!searchable && showHeading && heading && <SelectHeading render={<span>{heading}</span>} />}
         {searchable && <ComboBox placeholder={heading} shortcut={shortcut} value={searchValue} />}
 
         <SelectList>
@@ -313,22 +315,20 @@ export function SelectTrigger({
     content = children;
   } else if (text !== undefined) {
     if (typeof text === "function") {
-      content = <SelectValue>{(value) => <>{text(value) ?? placeholder}</>}</SelectValue>;
+      content = <SelectValue>{(value) => text(value) ?? placeholder}</SelectValue>;
     } else {
       content = text;
     }
   } else {
     content = (
       <SelectValue>
-        {(value) => (
-          <>
-            {typeof value === "string"
-              ? (value ?? placeholder)
-              : value.length === 0
-                ? placeholder
-                : value.join(", ")}
-          </>
-        )}
+        {(value) =>
+          typeof value === "string"
+            ? (value ?? placeholder)
+            : value.length === 0
+              ? placeholder
+              : value.join(", ")
+        }
       </SelectValue>
     );
   }
@@ -356,8 +356,9 @@ export function SelectTrigger({
         </div>
         {dropdownIcon === true ? (
           <ChevronDown
+            // No transition: the trigger's hover is instant
             className={cn(
-              "size-4 flex-none text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
+              "size-4 flex-none text-text-dimmed group-hover:text-text-bright group-focus:text-text-bright"
             )}
           />
         ) : !dropdownIcon ? null : (
@@ -414,19 +415,20 @@ function SelectGroupedRenderer<TItem>({
   ) => React.ReactNode;
   enableItemShortcuts: boolean;
 }) {
-  let count = 0;
   return (
     <>
       {items.map((section, index) => {
-        const previousItem = items.at(index - 1);
-        count += previousItem ? previousItem.items.length : 0;
+        const startIndex = items
+          .slice(0, index)
+          .reduce((count, previousSection) => count + previousSection.items.length, 0);
+
         return (
           <Fragment key={index}>
             {children(section.items as ItemFromSection<TItem>[], {
               shortcutsEnabled: enableItemShortcuts,
               section: {
                 title: section.title,
-                startIndex: count - 1,
+                startIndex,
                 count: section.items.length,
               },
             })}
@@ -486,7 +488,7 @@ export function SelectItem({
   const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : props.render;
   const ref = React.useRef<HTMLDivElement>(null);
   const select = Ariakit.useSelectContext();
-  const selectValue = select?.useState("value");
+  const selectValue = useStoreState(select, "value");
 
   const isChecked = React.useMemo(() => {
     if (!props.value || selectValue == null) return false;
@@ -574,16 +576,20 @@ export interface SelectButtonItemProps extends Omit<Ariakit.SelectItemProps, "on
   icon?: React.ReactNode;
   checkIcon?: React.ReactNode;
   shortcut?: ShortcutDefinition;
+  accessibleLabel: string;
   onClick: React.ComponentProps<"button">["onClick"];
 }
 
 export function SelectButtonItem({
   checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  accessibleLabel,
   onClick,
   ...props
 }: SelectButtonItemProps) {
   const render = (
     <button
+      type="button"
+      aria-label={accessibleLabel}
       onClick={onClick}
       className={cn("block w-full text-left", selectItemClasses, props.className)}
     />
@@ -690,8 +696,8 @@ export function ComboBox({
   ...props
 }: ComboBoxProps) {
   const combobox = Ariakit.useComboboxContext();
-  const open = combobox?.useState("open");
-  const input = combobox?.useState("baseElement");
+  const open = useStoreState(combobox, "open");
+  const input = useStoreState(combobox, "baseElement");
 
   React.useEffect(() => {
     if (!open || !input) return;

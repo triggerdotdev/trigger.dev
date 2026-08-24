@@ -38,6 +38,8 @@ import {
   type AgentDetail,
 } from "~/presenters/v3/AgentDetailPresenter.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -162,6 +164,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      columns: getRunColumnsForSelect(request),
     })
     .catch(() => null);
 
@@ -335,11 +338,14 @@ export default function Page() {
                     </TypedAwait>
                   </Suspense>
                 ) : (
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
+                  <>
+                    <RunsDisplayOptions sampleFilters={{ tasks: agent.slug, rootOnly: "false" }} />
+                    <Suspense fallback={null}>
+                      <TypedAwait resolve={runList} errorElement={null}>
+                        {(list) => (list ? <ListPagination list={list} /> : null)}
+                      </TypedAwait>
+                    </Suspense>
+                  </>
                 )}
               </div>
             </TabContainer>

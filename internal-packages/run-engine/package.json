@@ -43,10 +43,11 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit -p tsconfig.freeze-test.json",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism",
     "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
-    "dev": "tsc --watch  -p tsconfig.build.json"
+    "dev": "tsc --watch  -p tsconfig.build.json",
+    "test:bench": "vitest --config ./vitest.bench.config.ts --run"
   }
 }

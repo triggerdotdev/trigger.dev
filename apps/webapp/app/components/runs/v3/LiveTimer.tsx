@@ -23,7 +23,7 @@ export function LiveTimer({
     }, updateInterval);
 
     return () => clearInterval(interval);
-  }, [startTime, endTime]);
+  }, [startTime, endTime, updateInterval]);
 
   return (
     <>
@@ -56,7 +56,7 @@ export function LiveCountdown({
     }, updateInterval);
 
     return () => clearInterval(interval);
-  }, [endTime]);
+  }, [endTime, updateInterval]);
 
   return (
     <>

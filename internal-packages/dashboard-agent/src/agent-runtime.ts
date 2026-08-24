@@ -271,6 +271,18 @@ export const dashboardAgentToolsKey = locals.create<ToolSet>("dashboard-agent.to
 // within a recycle.
 type DashboardAgentMode = "assistant" | "code";
 
+// The snapshot is fetched and extracted on the agent worker, so its URL must be one the
+// server would have minted: plain https. The host check lives in repo-tools' fetch.
+// Guarded at the schema edge too because old workers (the deployed version is pinned)
+// can still replay metadata that carries a snapshot.
+const repoSnapshotTarballUrlSchema = z.string().refine((value) => {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}, "tarballUrl must be an https URL");
+
 // A turn is in `code` mode when the project has a connected repo. Drives both the
 // tool set and the prompt.
 export function modeFor(clientData: { repoSnapshot?: unknown } | undefined): DashboardAgentMode {
@@ -312,7 +324,7 @@ export const clientDataSchema = z.object({
   // short-lived archive pointer the code-mode source tools read from.
   repoSnapshot: z
     .object({
-      tarballUrl: z.string(),
+      tarballUrl: repoSnapshotTarballUrlSchema,
       owner: z.string(),
       repo: z.string(),
       sha: z.string(),

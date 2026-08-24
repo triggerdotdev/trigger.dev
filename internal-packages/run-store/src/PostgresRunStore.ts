@@ -22,6 +22,7 @@ import type {
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
   LockRunData,
+  PromotePendingVersionArgs,
   ReadClient,
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
@@ -1321,16 +1322,75 @@ export class PostgresRunStore implements RunStore {
 
   async promotePendingVersionRuns(
     runId: string,
+    args?: PromotePendingVersionArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
     const prisma = tx ?? this.prisma;
 
     const result = await prisma.taskRun.updateMany({
       where: { id: runId, status: "PENDING_VERSION" },
-      data: { status: "PENDING" },
+      data: {
+        status: args?.status ?? "PENDING",
+        lockedToVersionId: args?.lockedToVersionId,
+        taskVersion: args?.taskVersion,
+        sdkVersion: args?.sdkVersion,
+        cliVersion: args?.cliVersion,
+      },
     });
 
     return { count: result.count };
+  }
+
+  async expireParkedRun(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      statusReason: string;
+      snapshot: ExpireSnapshotInput;
+    },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }> {
+    const prisma = tx ?? this.prisma;
+
+    try {
+      await prisma.taskRun.update({
+        where: { id: runId, status: "PENDING_VERSION" },
+        data: {
+          status: "EXPIRED",
+          statusReason: data.statusReason,
+          completedAt: data.completedAt,
+          expiredAt: data.expiredAt,
+          error: data.error as Prisma.InputJsonValue,
+          executionSnapshots: {
+            create: {
+              engine: data.snapshot.engine,
+              executionStatus: data.snapshot.executionStatus,
+              description: data.snapshot.description,
+              runStatus: data.snapshot.runStatus,
+              environmentId: data.snapshot.environmentId,
+              environmentType: data.snapshot.environmentType,
+              projectId: data.snapshot.projectId,
+              organizationId: data.snapshot.organizationId,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      const normalized = normalizeRunOpsError(error);
+
+      if (
+        normalized instanceof Prisma.PrismaClientKnownRequestError &&
+        normalized.code === "P2025"
+      ) {
+        return { count: 0 };
+      }
+
+      throw error;
+    }
+
+    return { count: 1 };
   }
 
   async suspendForCheckpoint<I extends Prisma.TaskRunInclude>(
@@ -1379,9 +1439,10 @@ export class PostgresRunStore implements RunStore {
           executionSnapshots: {
             create: {
               engine: "V2",
-              executionStatus: "DELAYED",
-              description: "Delayed run was rescheduled to a future date",
-              runStatus: "DELAYED",
+              executionStatus: data.snapshot.executionStatus ?? "DELAYED",
+              description:
+                data.snapshot.description ?? "Delayed run was rescheduled to a future date",
+              runStatus: data.snapshot.runStatus ?? "DELAYED",
               environmentId: data.snapshot.environmentId,
               environmentType: data.snapshot.environmentType,
               projectId: data.snapshot.projectId,

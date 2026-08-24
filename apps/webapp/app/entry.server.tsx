@@ -18,7 +18,7 @@ import type { OperatingSystemPlatform } from "./components/primitives/OperatingS
 import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
 import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
-import { eventLoopMonitor } from "./eventLoopMonitor.server";
+import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
 import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
@@ -358,6 +358,10 @@ export { wss } from "./v3/handleWebsockets.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
+}
+
+if (env.EVENT_LOOP_UTILIZATION_MONITOR_ENABLED === "1") {
+  eventLoopUtilizationMonitor.enable();
 }
 
 if (remoteBuildsEnabled()) {

@@ -192,6 +192,7 @@ const EnvironmentSchema = z
     // standard chat.agent SDK flow. When unset, the live agent is disabled — the
     // conversation store / History still work, no chat can start.
     DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
+    DASHBOARD_AGENT_BASE_URL: z.string().optional(),
     // Pins agent sessions to a specific deployed version (paired with
     // --skip-promotion deploys); unset => the project env's current version.
     DASHBOARD_AGENT_VERSION: z.string().optional(),
@@ -487,6 +488,31 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     TASK_META_CACHE_CURRENT_ENV_TTL_SECONDS: z.coerce.number().default(86400),
+
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    EXTERNAL_DEPLOYMENT_CACHE_TTL_SECONDS: z.coerce.number().default(2592000),
+    EXTERNAL_DEPLOYMENT_CACHE_MISSING_TTL_SECONDS: z.coerce.number().default(20),
+    EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS: z.coerce.number().default(3600000),
 
     // Runs-list empty-state check: how far back the ClickHouse "does this env have any run"
     // probe looks. Bounds the prove-absence partition scan. 0 = unbounded ("any run ever").
@@ -969,7 +995,8 @@ const EnvironmentSchema = z
 
     CENTS_PER_RUN: z.coerce.number().default(0),
 
-    EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+    EVENT_LOOP_MONITOR_ENABLED: z.string().default("0"),
+    EVENT_LOOP_UTILIZATION_MONITOR_ENABLED: z.string().default("1"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),

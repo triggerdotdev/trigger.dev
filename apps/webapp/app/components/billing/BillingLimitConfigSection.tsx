@@ -20,6 +20,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import type { BillingLimitResult } from "~/services/billingLimit.schemas";
 import { formatCurrency } from "~/utils/numberFormatter";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const billingLimitFormSchema = z.discriminatedUnion("mode", [
   z.object({
@@ -126,6 +127,7 @@ export function BillingLimitConfigSection({
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setMode(resetMode);
     setCustomAmount(savedCustomAmount);
     setCancelInProgressRuns(savedCancelInProgressRuns);
@@ -338,10 +340,7 @@ function LimitReachedCalloutContent({
       When this limit is reached, queued runs will be held for {gracePeriodLabel}, then new triggers
       will be rejected until you increase or remove the limit. Limits are enforced with a short
       delay, so spend may briefly exceed the limit before grace begins. See our{" "}
-      <a href="https://trigger.dev/terms" className="underline">
-        terms
-      </a>{" "}
-      for refund policy details.
+      <TextLink href="https://trigger.dev/terms">terms</TextLink> for refund policy details.
       {cancelInProgressRuns ? (
         <> In-progress runs will be cancelled when the limit is hit.</>
       ) : null}

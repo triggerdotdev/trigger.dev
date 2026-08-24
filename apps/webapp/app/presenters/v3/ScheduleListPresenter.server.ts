@@ -5,9 +5,9 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { calculateNextScheduleRunTimes, formatScheduleWindow } from "~/v3/scheduleWindow.server";
+import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
-import { previousScheduledTimestamp } from "~/v3/utils/calculateNextSchedule.server";
+import { resolveScheduleTimings } from "~/v3/scheduleTimings.server";
 import { env } from "~/env.server";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -16,6 +16,12 @@ type ScheduleListOptions = {
   environmentId: string;
   userId?: string;
   pageSize?: number;
+  /**
+   * Walking each cron backwards to approximate "last run" costs an order of
+   * magnitude more than everything else here, so it is opt-in: only the
+   * dashboard renders the column. Defaults off.
+   */
+  includeLastRun?: boolean;
 } & ScheduleListFilters;
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -54,6 +60,7 @@ export class ScheduleListPresenter extends BasePresenter {
     page,
     type,
     pageSize = DEFAULT_PAGE_SIZE,
+    includeLastRun = false,
   }: ScheduleListOptions) {
     const hasFilters =
       type !== undefined || tasks !== undefined || (search !== undefined && search !== "");
@@ -274,46 +281,33 @@ export class ScheduleListPresenter extends BasePresenter {
       skip: (page - 1) * pageSize,
     });
 
-    const schedules: ScheduleListItem[] = rawSchedules.map((schedule) => {
-      // Approximate "last run" from the cron's previous slot. Skip inactive
-      // schedules — the cron's previous slot reflects what *would* have
-      // fired, but a deactivated schedule didn't actually fire there. Skip
-      // when the cron's previous slot predates `updatedAt`: any config
-      // change (cron edited, timezone changed, deactivate/reactivate)
-      // bumps updatedAt, and a slot from before the most recent change
-      // didn't fire under the current configuration. cron-parser throws
-      // on malformed expressions, so degrade to undefined per-row rather
-      // than failing the whole list. UI is best-effort; the runs page is
-      // the source of truth.
-      let lastRun: Date | undefined;
-      if (schedule.active) {
-        try {
-          const cronPrev = previousScheduledTimestamp(
-            schedule.generatorExpression,
-            schedule.timezone
-          );
-          lastRun = cronPrev.getTime() > schedule.updatedAt.getTime() ? cronPrev : undefined;
-        } catch {
-          lastRun = undefined;
-        }
-      }
-
+    const instances = rawSchedules.map((schedule) => {
       const instance = schedule.instances.find(
         (instance) => instance.environmentId === environmentId
       );
       if (!instance) {
         throw new Error(`Schedule instance not found for environment: ${environmentId}`);
       }
-      const [nextRun] = calculateNextScheduleRunTimes({
+      return instance;
+    });
+
+    const timings = resolveScheduleTimings(
+      rawSchedules.map((schedule, index) => ({
         cron: schedule.generatorExpression,
         timezone: schedule.timezone,
         deduplicationKey: schedule.deduplicationKey,
         environmentId,
-        schedulePhase: instance.schedulePhase,
-        phaseSecret: env.ENCRYPTION_KEY,
+        schedulePhase: instances[index].schedulePhase,
         windowDurationSeconds: schedule.windowDurationSeconds,
         windowPercentage: schedule.windowPercentage,
-      });
+        active: schedule.active,
+        updatedAt: schedule.updatedAt,
+      })),
+      { phaseSecret: env.ENCRYPTION_KEY, includeLastRun }
+    );
+
+    const schedules: ScheduleListItem[] = rawSchedules.map((schedule, index) => {
+      const { nextRun, nextRunEffectiveAt, lastRun } = timings[index];
 
       return {
         id: schedule.id,
@@ -329,8 +323,8 @@ export class ScheduleListPresenter extends BasePresenter {
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun,
-        nextRun: nextRun.nominalAt,
-        nextRunEffectiveAt: nextRun.effectiveAt,
+        nextRun,
+        nextRunEffectiveAt,
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {

@@ -1,3 +1,4 @@
+import { readExternalDeploymentIdAnnotation } from "@internal/run-engine";
 import { prettyPrintPacket, RunAnnotations } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -124,6 +125,7 @@ export async function buildSyntheticSpanRun(args: {
     ttl: run.ttl ?? null,
     taskIdentifier: run.taskIdentifier ?? "",
     version: undefined,
+    externalDeploymentId: readExternalDeploymentIdAnnotation(run.annotations),
     sdkVersion: undefined,
     runtime: undefined,
     runtimeVersion: undefined,

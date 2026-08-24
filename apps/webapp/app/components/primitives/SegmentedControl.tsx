@@ -24,7 +24,7 @@ const theme = {
     selected: "absolute inset-0 rounded-[2px] outline-solid outline-3 outline-primary",
   },
   secondary: {
-    base: "bg-transparent dark:bg-background-raised/50",
+    base: "bg-segmented-track",
     active: "text-text-bright",
     inactive: "text-text-dimmed transition hover:text-text-bright",
     selected:
@@ -129,25 +129,23 @@ export default function SegmentedControl({
               }
             >
               {({ checked }) => (
-                <>
-                  <div
-                    className={cn(
-                      "relative flex h-full w-full items-center justify-between",
-                      variantStyle.option
-                    )}
-                  >
-                    <div className="z-10 flex h-full w-full items-center justify-center">
-                      <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
-                    </div>
-                    {checked && (
-                      <motion.div
-                        layoutId={`segmented-control-${name}`}
-                        transition={{ duration: 0.4, type: "spring" }}
-                        className={variantStyle.selected}
-                      />
-                    )}
+                <div
+                  className={cn(
+                    "relative flex h-full w-full items-center justify-between",
+                    variantStyle.option
+                  )}
+                >
+                  <div className="z-10 flex h-full w-full items-center justify-center">
+                    <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
                   </div>
-                </>
+                  {checked && (
+                    <motion.div
+                      layoutId={`segmented-control-${name}`}
+                      transition={{ duration: 0.4, type: "spring" }}
+                      className={variantStyle.selected}
+                    />
+                  )}
+                </div>
               )}
             </RadioGroup.Option>
           ))}

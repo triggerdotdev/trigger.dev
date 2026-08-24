@@ -1198,16 +1198,26 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.isShuttingDown = true;
     this.logger.log("Shutting down worker loops...", { signal });
 
-    // Wait for all worker loops to finish.
-    await Promise.race([
-      Promise.all(this.workerLoops),
-      Worker.delay(this.shutdownTimeoutMs).then(() => {
+    // Wait for all worker loops to finish, retaining ownership of the deadline timer so the
+    // losing timeout cannot keep the process alive after a prompt shutdown.
+    let shutdownDeadline: ReturnType<typeof setTimeout> | undefined;
+    const deadlinePromise = new Promise<void>((resolve) => {
+      shutdownDeadline = setTimeout(() => {
         this.logger.error("Worker shutdown timed out", {
           signal,
           shutdownTimeoutMs: this.shutdownTimeoutMs,
         });
-      }),
-    ]);
+        resolve();
+      }, this.shutdownTimeoutMs);
+    });
+
+    try {
+      await Promise.race([Promise.all(this.workerLoops), deadlinePromise]);
+    } finally {
+      if (shutdownDeadline) {
+        clearTimeout(shutdownDeadline);
+      }
+    }
 
     await this.subscriber?.unsubscribe();
     await this.subscriber?.quit();

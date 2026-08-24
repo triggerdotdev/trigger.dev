@@ -21,7 +21,7 @@ export function AskAgentButton({
   fallback?: React.ReactNode;
 }) {
   const available = useDashboardAgentAvailable();
-  if (!available) return <>{fallback}</>;
+  if (!available) return fallback;
 
   const button = (
     <Button

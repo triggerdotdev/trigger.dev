@@ -19,8 +19,8 @@ type UnitLabel = { singular: string; plural: string };
 export type UsageSparklineProps = {
   /** Equal-width time buckets, oldest first. */
   data?: number[];
-  /** Epoch ms of the first bucket's start. When omitted, the last bucket is anchored to now. */
-  bucketStartMs?: number;
+  /** Epoch ms of the first bucket's start. */
+  bucketStartMs: number;
   /** Width of each bucket in ms. Defaults to one hour. */
   bucketIntervalMs?: number;
   /** Bar colour. Defaults to blue. */
@@ -64,11 +64,9 @@ export function UsageSparkline({
   const total = totalOverride ?? data.reduce((a, b) => a + b, 0);
   const max = Math.max(...data);
 
-  // Map each bucket to a dated point so the tooltip can show the window it
-  // represents. Buckets are `intervalMs` wide; if the caller didn't pass the
-  // first bucket's start, anchor the last bucket to now (hourly default).
+  // Map each bucket to a dated point so the tooltip can show the window it represents.
   const intervalMs = bucketIntervalMs ?? 3600_000;
-  const startMs = bucketStartMs ?? Date.now() - (data.length - 1) * intervalMs;
+  const startMs = bucketStartMs;
   const chartData: UsageDatum[] = data.map((count, i) => ({
     date: new Date(startMs + i * intervalMs),
     count,

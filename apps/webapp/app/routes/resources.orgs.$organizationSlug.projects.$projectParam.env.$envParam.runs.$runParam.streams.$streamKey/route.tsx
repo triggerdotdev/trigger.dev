@@ -253,6 +253,7 @@ export function RealtimeStreamViewer({
     .length;
 
   // Virtual rendering for list view
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
     getScrollElement: () => scrollRef.current,
@@ -539,6 +540,7 @@ export function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setChunks([]);
     setError(null);
 

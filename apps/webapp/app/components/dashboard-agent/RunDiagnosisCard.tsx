@@ -101,7 +101,7 @@ function RunLink({ runId, className }: { runId: string; className?: string }) {
   const to = useRunPath(runId);
   if (!to) return <span className={cn("font-mono text-text-dimmed", className)}>{runId}</span>;
   return (
-    <TextLink to={to} variant="token" className={cn("underline", className)}>
+    <TextLink to={to} className={className}>
       {runId}
     </TextLink>
   );
@@ -116,10 +116,9 @@ function EvidenceReference({ reference }: { reference: string }) {
     return (
       <TextLink
         href={safeUrl}
-        variant="token"
         target="_blank"
         rel="noopener noreferrer"
-        className="font-mono text-xs underline"
+        className="font-mono text-xs"
       >
         {reference}
       </TextLink>

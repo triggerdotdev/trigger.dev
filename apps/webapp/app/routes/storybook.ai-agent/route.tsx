@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
@@ -26,6 +27,9 @@ import {
 export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["AgentDotMatrix.tsx"]} />
+      </div>
       <div className="flex max-w-3xl flex-col gap-1">
         <Header1>Trigger Agent — Icons & Buttons</Header1>
         <Paragraph variant="small">
@@ -795,7 +799,6 @@ function AgentOrb({
   colors = AGENT_ORB_PALETTE,
   restColor = "#ffffff",
   colored = true,
-  restShape = "triangle",
   dotCount = 21,
   orbitCount = 3,
   particlesPerOrbit = 3,
@@ -824,7 +827,7 @@ function AgentOrb({
     () => buildDotSpecs(effDotCount, orbitCount, effParticles),
     [effDotCount, orbitCount, effParticles]
   );
-  const restPoints = useMemo(() => triangleOutline(effDotCount), [restShape, effDotCount]);
+  const restPoints = useMemo(() => triangleOutline(effDotCount), [effDotCount]);
 
   useEffect(() => {
     activeRef.current = active;
@@ -846,7 +849,7 @@ function AgentOrb({
       restPoints,
       dotSpecs,
       orbitGeoms,
-      paletteRgb: colors.map(hexToRgb),
+      paletteRgb: colorsKey.split(",").map(hexToRgb),
       restRgb: hexToRgb(restColor),
       colored,
       radiusScale,
@@ -1129,7 +1132,7 @@ function AgentLogoMorph({
       outline: logoOutlinePoints(dotCount),
       dotSpecs: buildDotSpecs(dotCount, orbitCount, particlesPerOrbit),
       orbitGeoms: buildOrbitGeoms(orbitCount),
-      paletteRgb: colors.map(hexToRgb),
+      paletteRgb: colorsKey.split(",").map(hexToRgb),
       logoRgb: hexToRgb(logoColor),
     };
 

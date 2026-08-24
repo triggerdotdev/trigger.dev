@@ -397,3 +397,37 @@ export function updateUser({
     },
   });
 }
+
+/**
+ * One column each. `updateUser` above is the onboarding write and confirms basic
+ * details as a side effect, which is wrong for a profile edit.
+ */
+export function updateUserName({ id, name }: Pick<User, "id" | "name">) {
+  return prisma.user.update({
+    where: { id },
+    data: { name },
+  });
+}
+
+export function updateUserEmail({ id, email }: Pick<User, "id" | "email">) {
+  return prisma.user.update({
+    where: { id },
+    data: { email },
+  });
+}
+
+/**
+ * `updateMany` so the WHERE does the comparing: a redundant request updates zero
+ * rows rather than churning the row and its updatedAt.
+ */
+export async function updateUserMarketingEmails({
+  id,
+  marketingEmails,
+}: Pick<User, "id" | "marketingEmails">) {
+  const { count } = await prisma.user.updateMany({
+    where: { id, marketingEmails: { not: marketingEmails } },
+    data: { marketingEmails },
+  });
+
+  return { changed: count > 0 };
+}

@@ -40,12 +40,13 @@ export function SampleSourcePicker({
   }, [bodyFetcher.data, onLoad]);
 
   const manifest = listFetcher.data?.kind === "manifest" ? listFetcher.data : undefined;
-  const providers = manifest?.providers ?? [];
-  const samples = manifest?.samples ?? [];
+  const providers = manifest?.providers;
+  const samples = manifest?.samples;
   const listLoading = listFetcher.data === undefined;
 
   useEffect(() => {
-    if (providers.length === 0) return;
+    if (!providers || providers.length === 0) return;
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setSelectedProvider((current) => {
       if (current && providers.some((p) => p.id === current)) return current;
       if (endpointSource && providers.some((p) => p.id === endpointSource)) return endpointSource;
@@ -54,6 +55,8 @@ export function SampleSourcePicker({
   }, [providers, endpointSource]);
 
   const filteredProviders = useMemo(() => {
+    if (!providers) return [];
+
     const query = producerQuery.trim().toLowerCase();
     if (!query) return providers;
     return providers.filter(
@@ -72,7 +75,7 @@ export function SampleSourcePicker({
     return [...groups.entries()];
   }, [filteredProviders]);
 
-  const events = samples
+  const events = (samples ?? [])
     .filter((item) => item.provider === selectedProvider)
     .filter((item) => {
       const query = topicQuery.trim().toLowerCase();

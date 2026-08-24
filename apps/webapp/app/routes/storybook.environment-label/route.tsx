@@ -1,8 +1,12 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 
 export default function Story() {
   return (
     <div className="space-y-8 divide-y p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["EnvironmentLabel.tsx"]} />
+      </div>
       <div className="flex flex-col items-start gap-y-8">
         <EnvironmentLabel environment={{ type: "PRODUCTION" }} />
         <EnvironmentLabel environment={{ type: "STAGING" }} />

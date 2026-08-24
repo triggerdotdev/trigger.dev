@@ -41,6 +41,8 @@ import { testAgentPageContext } from "~/components/dashboard-agent/suggested-pro
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
+const TASK_FILTER_KEYS = ["taskIdentifier", "friendlyId", "id", "filePath", "triggerSource"];
+
 export const handle: Handle = {
   agentPageContext: (data) => testAgentPageContext(data),
 };
@@ -138,7 +140,7 @@ function TaskSelector({
 }) {
   const { filterText, setFilterText, filteredItems } = useFuzzyFilter<TaskListItem>({
     items: tasks,
-    keys: ["taskIdentifier", "friendlyId", "id", "filePath", "triggerSource"],
+    keys: TASK_FILTER_KEYS,
   });
   const hasTaskInEnvironment = activeTaskIdentifier
     ? tasks.some((t) => t.taskIdentifier === activeTaskIdentifier)

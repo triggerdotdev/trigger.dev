@@ -195,7 +195,7 @@ export function EnvironmentSelector({
                       className={ENV_POPOVER_ITEM_LABEL}
                       iconClassName={ENV_POPOVER_ITEM_ICON}
                     />
-                    <span className={cn("text-indigo-500", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
+                    <span className={cn("text-text-link", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
                   </div>
                 }
                 isSelected={false}
@@ -213,7 +213,7 @@ export function EnvironmentSelector({
                       className={ENV_POPOVER_ITEM_LABEL}
                       iconClassName={ENV_POPOVER_ITEM_ICON}
                     />
-                    <span className={cn("text-indigo-500", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
+                    <span className={cn("text-text-link", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
                   </div>
                 }
                 isSelected={false}
@@ -249,6 +249,7 @@ function Branches({
   }, []);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setMenuOpen(false);
   }, [navigation.location?.pathname]);
 

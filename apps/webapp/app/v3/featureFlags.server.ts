@@ -1,12 +1,15 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
   type FeatureFlagKey,
   FeatureFlagCatalog,
+  GLOBAL_LOCKED_FLAGS,
+  validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
+import { env } from "~/env.server";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 
 export type FlagsOptions<T extends FeatureFlagKey> = {
@@ -219,4 +222,79 @@ export async function applyGlobalMintKindFlip(
 
     return makeSetMultipleFlags(tx)(stamped);
   });
+}
+
+/**
+ * Replace-semantics write for the global admin flags page: catalog keys present in
+ * `requestedFlags` are upserted, catalog keys absent from it are deleted.
+ *
+ * A locked flag absent from the payload means the page never offered it for editing, not that
+ * the admin unset it, so it survives the sweep. Only a self-hosted page that says it unlocked
+ * them can delete one.
+ */
+export async function replaceGlobalFeatureFlags(
+  client: PrismaClient,
+  params: {
+    requestedFlags: Record<string, unknown>;
+    catalogKeys: FeatureFlagKey[];
+    isManagedCloud: boolean;
+    unlockLockedFlags: boolean;
+  }
+): Promise<void> {
+  const canDeleteLocked = params.unlockLockedFlags && !params.isManagedCloud;
+  const upsertOps: ReturnType<typeof client.featureFlag.upsert>[] = [];
+  const keysToDelete: string[] = [];
+
+  for (const key of params.catalogKeys) {
+    if (key in params.requestedFlags) {
+      const value = params.requestedFlags[key];
+      upsertOps.push(
+        client.featureFlag.upsert({
+          where: { key },
+          create: { key, value: value as any },
+          update: { value: value as any },
+        })
+      );
+    } else if (canDeleteLocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
+      keysToDelete.push(key);
+    }
+  }
+
+  await client.$transaction([
+    ...upsertOps,
+    ...(keysToDelete.length > 0
+      ? [client.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } })]
+      : []),
+  ]);
+}
+
+/** The global flag set, with the env-var defaults this app applies. */
+export async function globalFeatureFlags() {
+  return flags({
+    defaultValues: {
+      hasAiAccess: env.AI_FEATURES_ENABLED === "1",
+      hasDashboardAgentAccess: env.DASHBOARD_AGENT_ENABLED === "1",
+      hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+    },
+  });
+}
+
+/** The global set with one org's overrides on top. */
+export function mergeOrgFeatureFlags(
+  globalFlags: Partial<FeatureFlagCatalog>,
+  orgFeatureFlags: unknown
+) {
+  const parsed = orgFeatureFlags
+    ? validatePartialFeatureFlags(orgFeatureFlags as Record<string, unknown>)
+    : ({ success: false } as const);
+  return { ...globalFlags, ...(parsed.success ? parsed.data : {}) };
+}
+
+/**
+ * The flags that apply to one organization. Server-side callers that need the
+ * same set the side menu sees should use this rather than assembling their own,
+ * so a partial set can't silently disagree with it.
+ */
+export async function resolveOrganizationFeatureFlags(orgFeatureFlags: unknown) {
+  return mergeOrgFeatureFlags(await globalFeatureFlags(), orgFeatureFlags);
 }

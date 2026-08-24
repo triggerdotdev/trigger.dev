@@ -87,6 +87,12 @@ function patchVisibleRunsWithLiveUpdates(currentRuns: ListedRun[], liveRuns: Liv
       usageDurationMs: update.usageDurationMs,
       costInCents: update.costInCents,
       baseCostInCents: update.baseCostInCents,
+      metadata: update.metadata !== undefined ? update.metadata : run.metadata,
+      metadataType: update.metadataType !== undefined ? update.metadataType : run.metadataType,
+      payload: update.payload !== undefined ? update.payload : run.payload,
+      payloadType: update.payloadType !== undefined ? update.payloadType : run.payloadType,
+      output: update.output !== undefined ? update.output : run.output,
+      outputType: update.outputType !== undefined ? update.outputType : run.outputType,
     };
   });
 }
@@ -165,6 +171,7 @@ export function useRunsLiveReload({
   const location = useLocation();
   const runsPollFetcher = useTypedFetcher<typeof liveRunsLoader>();
   const runsPollFetcherStateRef = useRef(runsPollFetcher.state);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   runsPollFetcherStateRef.current = runsPollFetcher.state;
 
   const [visibleRuns, setVisibleRuns] = useState(runs);
@@ -192,6 +199,7 @@ export function useRunsLiveReload({
   // Single reset path: new loader data or changed filters re-baseline both the
   // visible rows and new-run tracking.
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setVisibleRuns(runs);
     resetNewRunsTracking();
   }, [runs, searchKeyWithoutPagination, resetNewRunsTracking]);
@@ -202,6 +210,7 @@ export function useRunsLiveReload({
     const data = runsPollFetcher.data;
     if (!data?.runs.length) return;
 
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setVisibleRuns((currentRuns) => patchVisibleRunsWithLiveUpdates(currentRuns, data.runs));
   }, [runsPollFetcher.data]);
 
@@ -241,6 +250,13 @@ export function useRunsLiveReload({
       if (hasActiveRuns) {
         searchParams.set("runIds", activeRunIdsParam);
       }
+
+      const locationParams = new URLSearchParams(location.search);
+      const colsValue = locationParams.get("cols");
+      if (colsValue) searchParams.set("cols", colsValue);
+      const hideValue = locationParams.get("hide");
+      if (hideValue) searchParams.set("hide", hideValue);
+      for (const smart of locationParams.getAll("sc")) searchParams.append("sc", smart);
 
       if (checkForNewRuns) {
         appendNewRunsSearchParams(searchParams, {

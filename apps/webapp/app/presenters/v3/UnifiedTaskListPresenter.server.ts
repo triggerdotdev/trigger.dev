@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { backstopPromise } from "~/utils/backstopPromise";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { agentListPresenter, type AgentActiveState } from "./AgentListPresenter.server";
@@ -69,26 +70,31 @@ class UnifiedTaskListPresenter {
     const items = toUnifiedItems(taskResult.tasks, agentResult.agents);
     const allSlugs = items.map((item) => item.slug);
 
+    // Backstopped: the route subscribes via typeddefer only after further
+    // awaits, so a rejection in that gap would be unhandled.
     const hourlyActivity: Promise<HourlyTaskActivity> =
       allSlugs.length === 0
         ? Promise.resolve({})
-        : (async () => {
-            const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-              args.organizationId,
-              "standard"
-            );
-            return getHourlyTaskActivity(clickhouse, {
-              organizationId: args.organizationId,
-              projectId: args.projectId,
-              environmentId: args.environmentId,
-              slugs: allSlugs,
-            });
-          })();
+        : backstopPromise(
+            (async () => {
+              const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+                args.organizationId,
+                "standard"
+              );
+              return getHourlyTaskActivity(clickhouse, {
+                organizationId: args.organizationId,
+                projectId: args.projectId,
+                environmentId: args.environmentId,
+                slugs: allSlugs,
+              });
+            })()
+          );
 
-    const runningStates: Promise<UnifiedRunningStates> = Promise.all([
-      taskResult.runningStats,
-      agentResult.activeStates,
-    ]).then(([runningStats, activeStates]) => mergeRunningStates(runningStats, activeStates));
+    const runningStates: Promise<UnifiedRunningStates> = backstopPromise(
+      Promise.all([taskResult.runningStats, agentResult.activeStates]).then(
+        ([runningStats, activeStates]) => mergeRunningStates(runningStats, activeStates)
+      )
+    );
 
     return { items, hourlyActivity, runningStates };
   }

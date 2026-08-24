@@ -41,6 +41,7 @@ const CustomizationSchema = z.object({
     .max(100)
     .optional(),
   removedFavoriteIds: z.array(z.string().max(64)).max(100).optional(),
+  knownItemIds: z.array(z.string().max(64)).max(500).optional(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -73,8 +74,14 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!customizationResult.success) {
       return json({ success: false, error: "Invalid request data" }, { status: 400 });
     }
-    const { sectionOrder, hiddenItems, sectionItemOrder, favorites, removedFavoriteIds } =
-      customizationResult.data;
+    const {
+      sectionOrder,
+      hiddenItems,
+      sectionItemOrder,
+      favorites,
+      removedFavoriteIds,
+      knownItemIds,
+    } = customizationResult.data;
     // The modal keeps its "Confirm" pending until this responds, so failures must come back as a
     // response (never a throw, which would escalate a preferences write to the error boundary).
     try {
@@ -85,6 +92,7 @@ export async function action({ request }: ActionFunctionArgs) {
         sectionItemOrder,
         favorites,
         removedFavoriteIds,
+        knownItemIds,
       });
       // undefined means nothing was written (impersonating, or the user row is gone)
       if (!updated) {

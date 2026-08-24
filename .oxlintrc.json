@@ -45,8 +45,8 @@
     "typescript/consistent-type-imports": "error",
     "import/no-duplicates": "error",
     "import/namespace": "off",
-    "react-hooks/exhaustive-deps": "off",
-    "react-hooks/rules-of-hooks": "off",
+    "react/exhaustive-deps": "error",
+    "react/rules-of-hooks": "off",
     "guard-for-in": "error",
     "symbol-description": "error",
     "no-unneeded-ternary": "error",
@@ -70,18 +70,37 @@
     "react/require-render-return": "error",
     "react/style-prop-object": "error",
     "react/void-dom-elements-no-children": "error",
+    "react/error-boundaries": "off",
+    "react/globals": "off",
+    "react/immutability": "off",
+    "react/incompatible-library": "off",
+    "react/preserve-manual-memoization": "off",
+    "react/purity": "off",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "react/set-state-in-render": "off",
+    "react/static-components": "off",
+    "react/unsupported-syntax": "off",
+    "react/use-memo": "off",
+    "react/void-use-memo": "off",
     "react/checked-requires-onchange-or-readonly": "error",
     "react/forward-ref-uses-ref": "error",
     "react/iframe-missing-sandbox": "error",
     "react/no-unknown-property": "error",
-    "jsx-a11y/alt-text": "off",
-    "jsx-a11y/aria-role": "off",
-    "jsx-a11y/click-events-have-key-events": "off",
-    "jsx-a11y/control-has-associated-label": "off",
-    "jsx-a11y/label-has-associated-control": "off",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/aria-role": "error",
+    "jsx-a11y/click-events-have-key-events": "error",
+    "jsx-a11y/control-has-associated-label": [
+      "error",
+      {
+        "depth": 4,
+        "ignoreElements": ["audio", "canvas", "embed", "input", "textarea", "tr", "td", "video"]
+      }
+    ],
+    "jsx-a11y/label-has-associated-control": "error",
     "jsx-a11y/no-autofocus": "off",
-    "jsx-a11y/no-noninteractive-element-interactions": "off",
-    "jsx-a11y/no-static-element-interactions": "off",
+    "jsx-a11y/no-noninteractive-element-interactions": "error",
+    "jsx-a11y/no-static-element-interactions": "error",
     "jsx-a11y/prefer-tag-over-role": "off",
     "jsx-a11y/anchor-ambiguous-text": "error",
     "jsx-a11y/anchor-has-content": "error",
@@ -115,8 +134,40 @@
     {
       "files": ["apps/webapp/app/**/*.ts", "apps/webapp/app/**/*.tsx"],
       "rules": {
+        "react/button-has-type": "error",
+        "react/jsx-no-useless-fragment": "error",
+        "react/no-unstable-nested-components": "error",
+        "react/error-boundaries": "error",
+        "react/globals": "error",
+        "react/hooks": "error",
+        "react/immutability": "error",
+        "react/incompatible-library": "error",
+        "react/memo-dependencies": "error",
+        "react/no-deriving-state-in-effects": "error",
+        "react/preserve-manual-memoization": "error",
+        "react/purity": "error",
+        "react/refs": "error",
+        "react/set-state-in-effect": "error",
+        "react/set-state-in-render": "error",
+        "react/static-components": "error",
+        "react/unsupported-syntax": "error",
+        "react/use-memo": "error",
+        "react/void-use-memo": "error",
+        "react/rules-of-hooks": "error",
         "trigger-runops/no-control-plane-run-graph-access": "error",
         "trigger-runops/no-control-plane-in-runops-slot": "error"
+      }
+    },
+    {
+      "files": ["packages/react-hooks/src/**/*.ts", "packages/react-hooks/src/**/*.tsx"],
+      "rules": {
+        "react/rules-of-hooks": "error"
+      }
+    },
+    {
+      "files": ["**/*.ts", "**/*.tsx"],
+      "rules": {
+        "no-redeclare": "off"
       }
     },
     {

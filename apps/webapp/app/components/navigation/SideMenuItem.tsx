@@ -240,6 +240,7 @@ export function SideMenuItem({
 }
 
 /** Button styled to match {@link SideMenuItem}, for entries that open a dialog rather than navigate. */
+/* oxlint-disable react/button-has-type -- Callers can select button, reset, or submit semantics. */
 export const SideMenuItemButton = forwardRef<
   HTMLButtonElement,
   {
@@ -276,3 +277,4 @@ export const SideMenuItemButton = forwardRef<
     </button>
   );
 });
+/* oxlint-enable react/button-has-type */

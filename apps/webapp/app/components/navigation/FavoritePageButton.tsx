@@ -1,23 +1,14 @@
 import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
 import { StarIcon as StarIconSolid } from "@heroicons/react/20/solid";
-import { useFetcher, useLocation, useSearchParams } from "@remix-run/react";
+import { useLocation, useSearchParams } from "@remix-run/react";
 import { useEffect } from "react";
-import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useOptionalUser } from "~/hooks/useUser";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import {
-  buildFavoriteLabel,
-  canonicalFavoriteUrl,
-  FAVORITE_SEARCH_PARAM,
-  FAVORITES_ACTION_PATH,
-  favoritePageUrl,
-  resolvePageMeta,
-  useFavorites,
-} from "./favoritePages";
+import { FAVORITE_SEARCH_PARAM, useFavoritePageToggle, useFavorites } from "./favoritePages";
 
 /**
  * The star in the page header that favorites the current page (full URL, including filters and
@@ -31,15 +22,10 @@ export function FavoritePageButton({
   className?: string;
 }) {
   const user = useOptionalUser();
-  const isImpersonating = useIsImpersonating();
   const location = useLocation();
   const favorites = useFavorites();
-  const fetcher = useFetcher();
   const [, setSearchParams] = useSearchParams();
-
-  // The marker param and pagination position never count toward URL identity, so paging through
-  // a favorited view keeps the same favorite (and never saves a soon-stale cursor)
-  const url = favoritePageUrl(location.pathname, location.search);
+  const { isFavorited, pageName, canFavorite, toggle } = useFavoritePageToggle(pageTitle);
 
   // A marker that isn't one of this user's favorites came from a shared link (or a favorite
   // that's since been removed): clean it from the URL so the page behaves like a normal visit.
@@ -58,34 +44,8 @@ export function FavoritePageButton({
       { replace: true, preventScrollReset: true }
     );
   }, [hasForeignMarker, setSearchParams]);
-  const existing = favorites.find((favorite) => canonicalFavoriteUrl(favorite.url) === url);
-  const isFavorited = existing !== undefined;
-  // The tooltip names the favorite: its custom name once saved, else the label saving would use
-  // (which includes detail-page ids and filter summaries, e.g. "Runs: Completed, last 7d")
-  const pageName =
-    existing?.label ?? buildFavoriteLabel(location.pathname, location.search, pageTitle);
 
-  const toggle = () => {
-    if (existing) {
-      fetcher.submit(
-        { intent: "remove", id: existing.id },
-        { method: "POST", action: FAVORITES_ACTION_PATH }
-      );
-    } else {
-      fetcher.submit(
-        {
-          intent: "add",
-          id: crypto.randomUUID(),
-          url,
-          label: buildFavoriteLabel(location.pathname, location.search, pageTitle),
-          icon: resolvePageMeta(location.pathname).icon,
-        },
-        { method: "POST", action: FAVORITES_ACTION_PATH }
-      );
-    }
-  };
-
-  const showButton = user !== undefined && !isImpersonating;
+  const showButton = canFavorite;
 
   // Option+F reports event.key "ƒ" on macOS, but the hotkeys matcher falls back to the physical
   // event.code ("KeyF"), so the standard hook captures it; exact modifier matching keeps the

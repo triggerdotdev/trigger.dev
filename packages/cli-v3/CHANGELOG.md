@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 4.5.12
+
+### Patch Changes
+
+- `trigger.dev deploy --external-id` tags a deployment with an id of your own — a commit SHA, a CI run id, a release tag — so runs triggered by that release of your app go to that deployment. Deploying an id that is already deployed builds nothing and reports the existing version instead of creating a duplicate; use `--force` to rebuild it. ([#4663](https://github.com/triggerdotdev/trigger.dev/pull/4663))
+- List the current Production runtime for every accessible project with `trigger projects list`. Add `--needs-update` to identify projects currently running Node.js 21. ([#4659](https://github.com/triggerdotdev/trigger.dev/pull/4659))
+- New projects created with `trigger init` use Node.js 24 by default. Deployments without explicit `runtime` now use their project's configured default runtime. ([#4649](https://github.com/triggerdotdev/trigger.dev/pull/4649))
+- Deployment builds now use custom base layer images and no longer install system packages during every build. This improves layer caching resulting in both faster deployments and faster image pulls on the worker cluster side. ([#4602](https://github.com/triggerdotdev/trigger.dev/pull/4602))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+  - `@trigger.dev/build@4.5.12`
+  - `@trigger.dev/schema-to-json@4.5.12`
+
 ## 4.5.11
 
 ### Patch Changes

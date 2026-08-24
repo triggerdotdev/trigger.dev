@@ -42,6 +42,19 @@ export const ErrorAlertsFormSchema = z.object({
   }, z.string().url().array()),
 });
 
+type SlackChannel = { id?: string; name?: string; is_private?: boolean };
+
+function renderSlackChannel(channels: SlackChannel[], value: string) {
+  const channel = channels.find((channel) => value === `${channel.id}/${channel.name}`);
+  if (!channel) return;
+
+  return (
+    <span className="text-text-bright">
+      <SlackChannelTitle {...channel} />
+    </span>
+  );
+}
+
 type ConfigureErrorAlertsProps = ErrorAlertChannelData & {
   connectToSlackHref?: string;
   formAction: string;
@@ -90,13 +103,15 @@ export function ConfigureErrorAlerts({
     }
   }, [fetcher.state, fetcher.data, closeHref, navigate, toast]);
 
-  const emailFieldValues = useRef<string[]>(
+  const [emailDefaultValues] = useState<string[]>(() =>
     existingEmails.length > 0 ? [...existingEmails.map((e) => e.email), ""] : [""]
   );
+  const emailFieldValues = useRef([...emailDefaultValues]);
 
-  const webhookFieldValues = useRef<string[]>(
+  const [webhookDefaultValues] = useState<string[]>(() =>
     existingWebhooks.length > 0 ? [...existingWebhooks.map((w) => w.url), ""] : [""]
   );
+  const webhookFieldValues = useRef([...webhookDefaultValues]);
 
   const [form, fields] = useForm<z.infer<typeof ErrorAlertsFormSchema>>({
     id: "configure-error-alerts",
@@ -105,8 +120,8 @@ export function ConfigureErrorAlerts({
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
-      emails: emailFieldValues.current,
-      webhooks: webhookFieldValues.current,
+      emails: emailDefaultValues,
+      webhooks: webhookDefaultValues,
     },
   });
   const { emails, webhooks, slackChannel, slackIntegrationId } = fields;
@@ -157,7 +172,7 @@ export function ConfigureErrorAlerts({
                           emailFieldValues.current[index] = e.target.value;
                           if (
                             emailFields.length === emailFieldValues.current.length &&
-                            emailFieldValues.current.every((v) => v !== "")
+                            emailFieldValues.current.every((value) => value !== "")
                           ) {
                             form.insert({ name: emails.name });
                           }
@@ -196,15 +211,7 @@ export function ConfigureErrorAlerts({
                       filter={(channel, search) =>
                         channel.name?.toLowerCase().includes(search.toLowerCase()) ?? false
                       }
-                      text={(value) => {
-                        const channel = slack.channels.find((s) => value === `${s.id}/${s.name}`);
-                        if (!channel) return;
-                        return (
-                          <span className="text-text-bright">
-                            <SlackChannelTitle {...channel} />
-                          </span>
-                        );
-                      }}
+                      text={(value) => renderSlackChannel(slack.channels, value)}
                     >
                       {(matches) => (
                         <>
@@ -319,7 +326,7 @@ export function ConfigureErrorAlerts({
                         webhookFieldValues.current[index] = e.target.value;
                         if (
                           webhookFields.length === webhookFieldValues.current.length &&
-                          webhookFieldValues.current.every((v) => v !== "")
+                          webhookFieldValues.current.every((value) => value !== "")
                         ) {
                           form.insert({ name: webhooks.name });
                         }
