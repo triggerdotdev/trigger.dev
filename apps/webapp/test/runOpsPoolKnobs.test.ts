@@ -1,41 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { resolveRunOpsPoolKnobs } from "~/v3/runOpsPoolKnobs.server";
-import { env } from "~/env.server";
+import { applyPoolKnobOverrides, type ResolvedPoolKnobs } from "~/v3/runOpsPoolKnobs.server";
 
-describe("resolveRunOpsPoolKnobs", () => {
-  it("new role: reproduces the run-ops builder expressions", () => {
-    const k = resolveRunOpsPoolKnobs("new");
-    expect(k.connectionLimit).toBe(env.DATABASE_CONNECTION_LIMIT);
-    expect(k.replicaConnectionLimit).toBe(
-      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
-    );
-    expect(k.writerPoolTimeout).toBe(
-      env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
-    );
-    expect(k.replicaPoolTimeout).toBe(
-      env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
-    );
-    expect(k.writerDriverAdapter).toBe(env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1");
-    expect(k.replicaDriverAdapter).toBe(env.RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER === "1");
+// Literal defaults, so the assertions lock the override logic against fixed values rather than
+// against the same env expression the implementation reads. No env import (webapp test rule).
+const DEFAULTS: ResolvedPoolKnobs = {
+  writerPoolTimeout: 10,
+  writerConnectionTimeout: 20,
+  writerDriverAdapter: false,
+  connectionLimit: 30,
+  replicaConnectionLimit: 40,
+  replicaPoolTimeout: 50,
+  replicaConnectionTimeout: 60,
+  replicaDriverAdapter: false,
+};
+
+describe("applyPoolKnobOverrides", () => {
+  it("returns the defaults verbatim when no descriptor knobs are given", () => {
+    expect(applyPoolKnobOverrides(DEFAULTS)).toEqual(DEFAULTS);
+    expect(applyPoolKnobOverrides(DEFAULTS, {})).toEqual(DEFAULTS);
   });
 
-  it("legacy role: uses RUN_OPS_LEGACY_* timeouts and the generic connection limit", () => {
-    const k = resolveRunOpsPoolKnobs("legacy");
-    expect(k.connectionLimit).toBe(env.DATABASE_CONNECTION_LIMIT);
-    expect(k.replicaConnectionLimit).toBe(env.DATABASE_CONNECTION_LIMIT);
-    expect(k.writerPoolTimeout).toBe(
-      env.RUN_OPS_LEGACY_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
-    );
-    expect(k.replicaPoolTimeout).toBe(
-      env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
-    );
-    expect(k.writerDriverAdapter).toBe(env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1");
-    expect(k.replicaDriverAdapter).toBe(env.RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER === "1");
+  it("overrides only the fields the descriptor sets", () => {
+    const result = applyPoolKnobOverrides(DEFAULTS, {
+      connectionLimit: 999,
+      writerDriverAdapter: true,
+      replicaPoolTimeout: 555,
+    });
+    expect(result.connectionLimit).toBe(999);
+    expect(result.writerDriverAdapter).toBe(true);
+    expect(result.replicaPoolTimeout).toBe(555);
+    // Untouched fields keep the defaults.
+    expect(result.writerPoolTimeout).toBe(10);
+    expect(result.replicaConnectionLimit).toBe(40);
+    expect(result.replicaDriverAdapter).toBe(false);
   });
 
-  it("a descriptor knob overrides its field", () => {
-    const k = resolveRunOpsPoolKnobs("new", { connectionLimit: 7, writerDriverAdapter: true });
-    expect(k.connectionLimit).toBe(7);
-    expect(k.writerDriverAdapter).toBe(true);
+  it("does not read the transaction knobs off the descriptor", () => {
+    const result = applyPoolKnobOverrides(DEFAULTS, { transactionMaxWaitMs: 1234 });
+    expect(result).toEqual(DEFAULTS);
   });
 });

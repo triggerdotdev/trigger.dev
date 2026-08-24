@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runOpsAddressFingerprint, buildRunOpsShardTable } from "~/db.server";
+import { runOpsAddressFingerprint, buildRunOpsShardTable } from "~/v3/runOpsShardTable";
 
 describe("runOpsAddressFingerprint", () => {
   it("returns host:port/db with no username or query params", () => {

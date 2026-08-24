@@ -124,12 +124,16 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     ...shardStores.map(({ key, store }) => [key, store] as const),
   ]);
 
+  // Ascending authority for a merge: legacy -> new -> shards in configured order. The router
+  // requires probeOrder to be the exact reverse (see the class invariant in runOpsStore.ts), so a
+  // duplicate id resolves the same way on the merge path and the probe path.
+  const precedence: ShardKey[] = ["legacy", "new", ...shardKeys];
+  const probeOrder = [...precedence].reverse();
+
   return RoutingRunStore.fromShards({
     shards: shardMap,
-    // Ascending authority for a merge: legacy -> new -> shards in configured order.
-    precedence: ["legacy", "new", ...shardKeys],
-    // Probe order for an id-less lookup: the reverse of precedence.
-    probeOrder: ["new", ...shardKeys, "legacy"],
+    precedence,
+    probeOrder,
     idlessRouteShard: "new",
     idlessWaitpointShard: "legacy",
     resolveShardKey: deps.resolveShardKey ?? resolveShard,
