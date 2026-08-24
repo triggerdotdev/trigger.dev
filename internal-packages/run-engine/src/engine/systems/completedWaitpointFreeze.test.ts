@@ -11,8 +11,37 @@ import type { CompletedWaitpoint } from "@trigger.dev/core/v3";
 import type {
   CompletedWaitpointRecord,
   CompletedWaitpointResolver,
+  CompletedWaitpointsPointer,
   ResolveCompletedWaitpointsArgs,
 } from "@internal/run-store";
+
+// The frozen key sets, pinned exactly and bidirectionally. Renames, removals, widenings and
+// required-to-optional all already break compilation through the usage sites below; an ADDED
+// OPTIONAL field does not, and on a jointly-owned frozen type that is the change neither lane
+// may make unilaterally. These fail on it.
+type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+
+const _recordKeys: Exact<
+  keyof CompletedWaitpointRecord,
+  | "id"
+  | "friendlyId"
+  | "type"
+  | "completedAt"
+  | "outputType"
+  | "outputIsError"
+  | "output"
+  | "completedByTaskRunId"
+  | "completedByBatchId"
+  | "completedAfter"
+  | "idempotencyKey"
+> = true;
+
+const _pointerKeys: Exact<keyof CompletedWaitpointsPointer, "cycleSeq" | "count"> = true;
+
+const _argsKeys: Exact<
+  keyof ResolveCompletedWaitpointsArgs,
+  "runId" | "batchId" | "pointer" | "order" | "records"
+> = true;
 import { enhanceExecutionSnapshotWithWaitpoints } from "./executionSnapshotSystem.js";
 
 function makeWaitpoint(overrides: Partial<Waitpoint>): Waitpoint {
