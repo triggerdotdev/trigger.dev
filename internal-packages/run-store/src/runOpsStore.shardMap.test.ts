@@ -23,6 +23,8 @@ type FakeConfig = {
   waitpoint?: Record<string, unknown> | null;
   // Rows this store returns from findRunsByIdempotencyKeys, regardless of filter.
   idempotencyMatches?: Array<Record<string, unknown>>;
+  // Waitpoint ids this store reports as pending (present = pending here) for count/collect probes.
+  pendingWaitpointIds?: string[];
 };
 
 type FakeStore = RunStore & {
@@ -95,6 +97,13 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       record("findRunsByIdempotencyKeys");
       return Promise.resolve((config.idempotencyMatches ?? []) as never);
     }) as FakeStore["findRunsByIdempotencyKeys"],
+
+    countPendingWaitpointsWithPresence: ((waitpointIds: string[], _client?: ReadClient) => {
+      record("countPendingWaitpointsWithPresence");
+      const pending = new Set(config.pendingWaitpointIds ?? []);
+      const found = waitpointIds.filter((id) => pending.has(id));
+      return Promise.resolve({ pendingIds: found, presentIds: found } as never);
+    }) as FakeStore["countPendingWaitpointsWithPresence"],
   };
 
   return store as unknown as FakeStore;
@@ -464,5 +473,80 @@ describe("RoutingRunStore findRunsByIdempotencyKeys tiebreak", () => {
       idempotencyKeys: ["k"],
     });
     expect(rows.map((r) => r.id)).toEqual(["a1"]);
+  });
+});
+
+describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", () => {
+  // resolveShard: "x:..." -> "x" (a gen-2 shard); a bare cuid -> "legacy".
+  function partitionRouter(pending: Record<string, string[]>, spy?: (k: string[]) => void) {
+    const log: Call[] = [];
+    const mk = (slot: string) => fakeStore(slot, log, { pendingWaitpointIds: pending[slot] ?? [] });
+    const router = new RoutingRunStore({
+      new: mk("new"),
+      legacy: mk("legacy"),
+      shards: [
+        { key: "a", store: mk("a") },
+        { key: "b", store: mk("b") },
+      ],
+      resolveShard: (id: string) => (id.includes(":") ? id.split(":")[0]! : "legacy"),
+      ...(spy ? { metrics: { recordDuplicateId: spy, recordWaitpointProbeFallback() {} } } : {}),
+    });
+    return { router, log };
+  }
+  const countCalls = (log: Call[]) =>
+    log.filter((c) => c.method === "countPendingWaitpointsWithPresence").map((c) => c.slot).sort();
+
+  it("sends a gen-2 absent id to its own shard only", async () => {
+    const { router, log } = partitionRouter({ b: ["b:w1"] });
+    expect(await router.countPendingWaitpoints(["b:w1"], undefined, "a:run")).toBe(1);
+    expect(countCalls(log)).toEqual(["a", "b"]); // run shard a (presence) + fallback b
+  });
+
+  it("contributes zero for a gen-2 id whose shard IS the run's shard", async () => {
+    const { router, log } = partitionRouter({});
+    expect(await router.countPendingWaitpoints(["a:w1"], undefined, "a:run")).toBe(0);
+    expect(countCalls(log)).toEqual(["a"]); // absent on a; no fallback leg (b-bucket empty, a skipped)
+  });
+
+  it("probes BOTH gen-1 stores for a cuid absent id when the run is on a gen-2 shard", async () => {
+    const { router, log } = partitionRouter({ legacy: ["cuid_w1"] });
+    expect(await router.countPendingWaitpoints(["cuid_w1"], undefined, "a:run")).toBe(1);
+    expect(countCalls(log)).toEqual(["a", "legacy", "new"]);
+  });
+
+  it("probes only legacy for a cuid when the run is on new", async () => {
+    const { router, log } = partitionRouter({ legacy: ["cuid_w1"] });
+    expect(await router.countPendingWaitpoints(["cuid_w1"], undefined, "new:run")).toBe(1);
+    // run shard resolves "new:run" -> "new" (presence); cuid -> {legacy, new} minus new = legacy
+    expect(countCalls(log)).toEqual(["legacy", "new"]);
+  });
+
+  it("probes only new for a cuid when the run is on legacy", async () => {
+    const { router, log } = partitionRouter({ new: ["cuid_w1"] });
+    expect(await router.countPendingWaitpoints(["cuid_w1"], undefined, "cuid_run")).toBe(1);
+    // run shard resolves cuid -> "legacy"; cuid -> {legacy, new} minus legacy = new only
+    expect(countCalls(log)).toEqual(["legacy", "new"]);
+  });
+
+  it("counts a drain-mirrored cuid ONCE and stays silent", async () => {
+    const seen: string[][] = [];
+    const { router } = partitionRouter({ new: ["cuid_w1"], legacy: ["cuid_w1"] }, (k) => seen.push(k));
+    expect(await router.countPendingWaitpoints(["cuid_w1"], undefined, "a:run")).toBe(1);
+    expect(seen).toEqual([]); // the gen-1 mirror is expected, never alarmed
+  });
+
+  it("returns zero for an id absent everywhere", async () => {
+    const { router } = partitionRouter({});
+    expect(await router.countPendingWaitpoints(["b:w9"], undefined, "a:run")).toBe(0);
+  });
+
+  it("returns the true total for a mixed gen-2 and cuid set with no double count", async () => {
+    const { router } = partitionRouter({ b: ["b:w1"], legacy: ["cuid_w1"], new: ["cuid_w1", "cuid_w2"] });
+    const count = await router.countPendingWaitpoints(
+      ["b:w1", "cuid_w1", "cuid_w2", "b:w9"],
+      undefined,
+      "a:run"
+    );
+    expect(count).toBe(3); // b:w1 + cuid_w1 (mirror, once) + cuid_w2; b:w9 absent
   });
 });

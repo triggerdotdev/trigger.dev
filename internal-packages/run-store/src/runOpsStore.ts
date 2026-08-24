@@ -201,6 +201,40 @@ export class RoutingRunStore implements RunStore {
     return [...byId.values(), ...passthrough];
   }
 
+  // Where to look for waitpoint ids the run's own shard did not return. A gen-2 id names exactly
+  // one shard, so it goes there and nowhere else — that is what keeps the legs disjoint and the sum
+  // sound. A cuid names no shard: drain can mirror it onto NEW while it keeps its id, and a gen-2
+  // run can block on a pre-gen-2 cuid token, so there is no single gen-1 partner. Both gen-1 stores
+  // are probed and the results are de-duped by id. A target equal to `runKey`, or an unconfigured
+  // key, is skipped: the id reached this function because the run's own store did not return it.
+  #partitionAbsentIds(runKey: ShardKey, ids: string[]): Array<{ key: ShardKey; ids: string[] }> {
+    const byKey = new Map<ShardKey, string[]>();
+    const push = (key: ShardKey, id: string) => {
+      if (key === runKey || !this.#shards.has(key)) return;
+      const bucket = byKey.get(key);
+      if (bucket) bucket.push(id);
+      else byKey.set(key, [id]);
+    };
+    for (const id of ids) {
+      const home = this.#shardKeyOfSafe(id);
+      if (home === LEGACY_SHARD) {
+        push(LEGACY_SHARD, id);
+        push(NEW_SHARD, id);
+      } else {
+        push(home, id);
+      }
+    }
+    return this.#precedence
+      .filter((key) => byKey.has(key))
+      .map((key) => ({ key, ids: byKey.get(key)! }));
+  }
+
+  // A cuid is deliberately probed on BOTH gen-1 stores, so the same id from both is the expected
+  // drain mirror, not a violation. Any other id maps to one shard, so a two-leg return is a bug.
+  #isGen1MirrorProbe(id: string): boolean {
+    return this.#shardKeyOfSafe(id) === LEGACY_SHARD;
+  }
+
   // The shard that owns an existing id. Throws only when an injected resolver throws.
   #shardKeyOf(id: string): ShardKey {
     return this.#resolveShardKey(id);
@@ -1333,15 +1367,41 @@ export class RoutingRunStore implements RunStore {
     if (missing.length === 0) {
       return pendingIds.length;
     }
-    const [other] = this.#shardsExcept(runKey);
-    if (other === undefined) {
+    const plan = this.#partitionAbsentIds(runKey, missing);
+    if (plan.length === 0) {
       return pendingIds.length;
     }
-    const otherPending = await other.store.countPendingWaitpoints(
-      missing,
-      RoutingRunStore.#ownPrimary(other.store, client)
+    const legs = await Promise.all(
+      plan.map(async ({ key, ids }) => {
+        const store = this.#shardStore(key);
+        const { pendingIds: found } = await store.countPendingWaitpointsWithPresence(
+          ids,
+          RoutingRunStore.#ownPrimary(store, client)
+        );
+        return { key, found };
+      })
     );
-    return pendingIds.length + otherPending;
+    // UNION by id, never a sum of counts. A cuid mirrored onto both gen-1 stores appears twice;
+    // summing it is exactly the double count that leaves pendingCount above zero forever and never
+    // unblocks the run. The run store's pending set seeds the union; missing ids are disjoint from
+    // it by construction. #reportDuplicateId is the tripwire for a NON-mirror two-leg return, which
+    // a consistent resolveShard makes unreachable — it guards a future partition bug.
+    const union = new Set(pendingIds);
+    const seenFrom = new Map<string, ShardKey[]>();
+    for (const { key, found } of legs) {
+      for (const id of found) {
+        const keys = seenFrom.get(id);
+        if (keys) keys.push(key);
+        else seenFrom.set(id, [key]);
+        union.add(id);
+      }
+    }
+    for (const [id, keys] of seenFrom) {
+      if (keys.length > 1 && !this.#isGen1MirrorProbe(id)) {
+        this.#reportDuplicateId(id, keys);
+      }
+    }
+    return union.size;
   }
 
   // Fan out and union: an id lives on exactly one store in steady state (a drain-mirror can put it on
@@ -1510,10 +1570,11 @@ export class RoutingRunStore implements RunStore {
     return rows;
   }
 
-  // Collect the scalar waitpoint rows (relation re-resolution happens in the caller). With a run id in
-  // scope and a bounded id set to partition on, route to the run's store and fall back to the other DB
-  // for ONLY the ids missing there (a rare cross-tree token) — the two legs are disjoint by
-  // construction, so no dedup is needed. Otherwise fan out to BOTH and dedup by id NEW-wins.
+  // Collect the scalar waitpoint rows (relation re-resolution happens in the caller). With a run id
+  // in scope and a bounded id set, route to the run's store and fall back for ONLY the ids missing
+  // there. The fallback targets come from #partitionAbsentIds: a gen-2 id to its own shard, a cuid
+  // to BOTH gen-1 stores. The cuid legs are not disjoint, so the fallback rows are merged by id.
+  // Otherwise (no bounded id set) fan out to every store and dedup by id NEW-wins.
   async #collectManyWaitpoints(
     scalarArgs: Record<string, unknown>,
     client: ReadClient | undefined,
@@ -1535,15 +1596,26 @@ export class RoutingRunStore implements RunStore {
         if (missing.length === 0) {
           return fromRun;
         }
-        const [other] = this.#shardsExcept(runKey);
-        if (other === undefined) {
+        // Same partition as countPendingWaitpoints: a gen-2 missing id goes to its own shard, a
+        // cuid to both gen-1 stores. The cuid legs are NOT disjoint, so merge by id (a drain mirror
+        // appears once) rather than concatenate.
+        const plan = this.#partitionAbsentIds(runKey, missing);
+        if (plan.length === 0) {
           return fromRun;
         }
-        const fromOther = (await other.store.findManyWaitpoints(
-          narrowArgsToIds(scalarArgs, missing) as Prisma.WaitpointFindManyArgs,
-          RoutingRunStore.#ownPrimary(other.store, client)
-        )) as Record<string, unknown>[];
-        return [...fromRun, ...fromOther];
+        const legs = await Promise.all(
+          plan.map(async ({ key, ids }) => {
+            const store = this.#shardStore(key);
+            return {
+              key,
+              rows: (await store.findManyWaitpoints(
+                narrowArgsToIds(scalarArgs, ids) as Prisma.WaitpointFindManyArgs,
+                RoutingRunStore.#ownPrimary(store, client)
+              )) as Record<string, unknown>[],
+            };
+          })
+        );
+        return [...fromRun, ...this.#mergeById(legs)];
       }
       // No bounded id set to partition on → fall through to the fan-out path.
     }
