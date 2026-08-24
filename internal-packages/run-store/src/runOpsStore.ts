@@ -1473,7 +1473,21 @@ export class RoutingRunStore implements RunStore {
     waitpointId: string | undefined
   ): RunStore {
     if (ownerId !== undefined) {
-      return this.#shardStore(this.#shardKeyOfSafe(ownerId));
+      const key = this.#shardKeyOfSafe(ownerId);
+      // A gen-2 shard holds only shard-stamped ids. A cuid waitpoint co-located here would be
+      // unroutable for its own completion, so the blocked run would never resume. The mint layer
+      // must stamp the owner's shard onto the waitpoint id. Fail loud rather than write it.
+      const isGen2 = key !== NEW_SHARD && key !== LEGACY_SHARD;
+      if (
+        isGen2 &&
+        typeof waitpointId === "string" &&
+        this.#shardKeyOfSafe(waitpointId) === LEGACY_SHARD
+      ) {
+        throw new Error(
+          `RoutingRunStore: refusing to co-locate cuid-shaped waitpoint "${waitpointId}" onto gen-2 shard "${key}"`
+        );
+      }
+      return this.#shardStore(key);
     }
     if (residency !== undefined) {
       return this.#shardStore(residency === "NEW" ? NEW_SHARD : LEGACY_SHARD);

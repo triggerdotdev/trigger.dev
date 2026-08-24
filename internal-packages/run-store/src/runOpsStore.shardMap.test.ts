@@ -83,6 +83,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       return Promise.resolve({ slot } as never);
     }) as FakeStore["updateWaitpoint"],
 
+    createWaitpoint: ((_args: unknown) => {
+      record("createWaitpoint");
+      return Promise.resolve({ slot } as never);
+    }) as FakeStore["createWaitpoint"],
+
     findManyTaskRunWaitpoints: ((_args: unknown, _client?: ReadClient) => {
       record("findManyTaskRunWaitpoints");
       return Promise.resolve((config.edges ?? []) as never);
@@ -607,5 +612,46 @@ describe("RoutingRunStore waitpoint probes at N", () => {
     } as never);
     expect((store as FakeStore).slot).toBe("legacy");
     expect(log.map((c) => c.slot)).not.toContain("a");
+  });
+});
+
+describe("RoutingRunStore gen-2 shard refuses a co-located cuid waitpoint", () => {
+  // resolveShard: "x:..." -> "x" (gen-2 shard); a bare id (no colon) -> "legacy".
+  function coLocateRouter() {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+      resolveShard: (id: string) => (id.includes(":") ? id.split(":")[0]! : "legacy"),
+    });
+    return { router, log };
+  }
+
+  it("throws when a cuid waitpoint is co-located onto a gen-2 shard", () => {
+    const { router, log } = coLocateRouter();
+    // Routing throws SYNCHRONOUSLY, before any write is issued.
+    expect(() =>
+      router.createWaitpoint({ data: { id: "cuid_w1" } } as never, undefined, {
+        coLocateWithRunId: "a:run_1",
+      })
+    ).toThrow("cuid-shaped waitpoint");
+    expect(trace(log)).toEqual([]);
+  });
+
+  it("allows a gen-2 waitpoint co-located onto its own shard", async () => {
+    const { router, log } = coLocateRouter();
+    await router.createWaitpoint({ data: { id: "a:w1" } } as never, undefined, {
+      coLocateWithRunId: "a:run_1",
+    });
+    expect(trace(log)).toEqual(["a:createWaitpoint"]);
+  });
+
+  it("allows a cuid waitpoint co-located onto a gen-1 store", async () => {
+    const { router, log } = coLocateRouter();
+    await router.createWaitpoint({ data: { id: "cuid_w1" } } as never, undefined, {
+      coLocateWithRunId: "legacy_run",
+    });
+    expect(trace(log)).toEqual(["legacy:createWaitpoint"]);
   });
 });
