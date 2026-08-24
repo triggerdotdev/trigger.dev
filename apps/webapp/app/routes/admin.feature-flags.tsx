@@ -14,6 +14,7 @@ import {
   type FeatureFlagKey,
   type FlagControlType,
   getAllFlagControlTypes,
+  lockedFlagsInPayload,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
 import { flags as getGlobalFlags, replaceGlobalFeatureFlags } from "~/v3/featureFlags.server";
@@ -96,17 +97,12 @@ export const action = dashboardAction(
 
     const { isManagedCloud } = featuresForRequest(request);
 
-    // On managed cloud, reject if payload includes locked flags
-    if (isManagedCloud) {
-      const lockedInPayload = Object.keys(parsed.data.flags).filter((key) =>
-        GLOBAL_LOCKED_FLAGS.includes(key)
+    const lockedInPayload = lockedFlagsInPayload(Object.keys(parsed.data.flags), isManagedCloud);
+    if (lockedInPayload.length > 0) {
+      return json(
+        { error: `Cannot modify locked flags: ${lockedInPayload.join(", ")}` },
+        { status: 400 }
       );
-      if (lockedInPayload.length > 0) {
-        return json(
-          { error: `Cannot modify locked flags: ${lockedInPayload.join(", ")}` },
-          { status: 400 }
-        );
-      }
     }
 
     const validationResult = validatePartialFeatureFlags(parsed.data.flags);

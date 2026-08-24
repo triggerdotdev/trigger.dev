@@ -190,6 +190,21 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardOverride,
 ];
 
+/**
+ * Locked flags present in a payload the global page must refuse. On managed cloud the page never
+ * offers them, so their presence means the request did not come from that page. Locally an admin
+ * may unlock and edit them, so nothing is refused.
+ */
+export function lockedFlagsInPayload(
+  payloadKeys: string[],
+  isManagedCloud: boolean
+): FeatureFlagKey[] {
+  if (!isManagedCloud) return [];
+  return payloadKeys.filter((key): key is FeatureFlagKey =>
+    GLOBAL_LOCKED_FLAGS.includes(key as FeatureFlagKey)
+  );
+}
+
 // Create a Zod schema from the existing catalog
 export const FeatureFlagCatalogSchema = z.object(FeatureFlagCatalog);
 export type FeatureFlagCatalog = z.infer<typeof FeatureFlagCatalogSchema>;

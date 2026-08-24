@@ -212,8 +212,14 @@ function gracedGroupFor(key: FeatureFlagKey) {
   return GRACED_GLOBAL_GROUPS.find((g) => g.primary === key || g.derived.includes(key));
 }
 
+// True when a save changes any graced group, and therefore needs the stamped path. Derived from
+// the group table, so adding a group cannot leave a caller silently writing an unstamped flip.
+export function touchesGracedGroup(requestedFlags: Record<string, unknown>): boolean {
+  return GRACED_GLOBAL_GROUPS.some((group) => requestedFlags[group.primary] !== undefined);
+}
+
 // Strips every derived key: a grace stamp is computed here, never accepted from a caller.
-function withoutDerivedKeys(
+export function withoutDerivedKeys(
   requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...requestedFlags };
