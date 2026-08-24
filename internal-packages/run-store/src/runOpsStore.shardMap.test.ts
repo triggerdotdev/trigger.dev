@@ -88,6 +88,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       return Promise.resolve({ slot } as never);
     }) as FakeStore["createWaitpoint"],
 
+    runInTransaction: ((_runId: unknown, fn: (store: unknown, tx: unknown) => unknown) => {
+      record("runInTransaction");
+      return Promise.resolve(fn(store, {}));
+    }) as FakeStore["runInTransaction"],
+
     findManyTaskRunWaitpoints: ((_args: unknown, _client?: ReadClient) => {
       record("findManyTaskRunWaitpoints");
       return Promise.resolve((config.edges ?? []) as never);
@@ -661,6 +666,34 @@ describe("RoutingRunStore gen-2 shard refuses a co-located cuid waitpoint", () =
     await router.createWaitpoint({ data: { id: "cuid_w1" } } as never, undefined, {
       coLocateWithRunId: "legacy_run",
     });
+    expect(trace(log)).toEqual(["legacy:createWaitpoint"]);
+  });
+});
+
+describe("RoutingRunStore id-less read/route defaults hold at N (never a gen-2 shard)", () => {
+  // With gen-2 shards a and b configured, each id-less default must still resolve to its named
+  // gen-1 store, never leak to a gen-2 shard.
+  it("#routeOrNew falls back to new for an id-less create", async () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    await router.createRun({ data: {} } as never);
+    expect(trace(log)).toEqual(["new:createRun"]);
+  });
+
+  it("#routeOrNew falls back to new for an id-less runInTransaction", async () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    await router.runInTransaction(undefined, async () => undefined);
+    expect(trace(log)).toEqual(["new:runInTransaction"]);
+  });
+
+  it("#resolveWaitpointStore(undefined) falls back to legacy for an id-less update", async () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    await router.updateWaitpoint({ where: { idempotencyKey: "k" }, data: {} } as never);
+    expect(trace(log)).toEqual(["legacy:updateWaitpoint"]);
+  });
+
+  it("#waitpointWriteStore with no owner and no residency falls back to legacy", async () => {
+    const { router, log } = buildNShardRouter(["a", "b"]);
+    await router.createWaitpoint({ data: {} } as never);
     expect(trace(log)).toEqual(["legacy:createWaitpoint"]);
   });
 });
