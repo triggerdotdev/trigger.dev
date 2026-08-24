@@ -6,6 +6,7 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
+import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
 
@@ -33,6 +34,88 @@ export function isValidFor(entry: { error?: unknown }): boolean {
   return !entry.error;
 }
 
+// ---------------------------------------------------------------------------
+// The completed-waitpoints freeze. Frozen jointly with the waitpoint lane.
+// Do not change a field here without re-agreeing the contract with that lane.
+// ---------------------------------------------------------------------------
+
+/**
+ * The once-per-wait-cycle pointer. `cycleSeq` names the snap:{runId}:wp:<cycleSeq>
+ * key. `count` is order.length -- NOT the record count -- so it is zero for any
+ * wait that carries no batch index.
+ */
+export type CompletedWaitpointsPointer = {
+  cycleSeq: number;
+  count: number;
+};
+
+/**
+ * A record's output.
+ * - `inline` holds the literal value. MANUAL and DATETIME are bounded by the offload
+ *   thresholds; error outputs are not (only BUILT_IN_ERROR truncates), so the bound is
+ *   the completion body limit. Postgres holds the same strings, so this is a copy.
+ * - `ref` holds an application/store reference that was already offloaded.
+ * - `deriveFromRun` means the resolver reads TaskRun.output for completedByTaskRunId.
+ *   Only a RUN record with outputIsError false AND a non-null completedByTaskRunId uses
+ *   it: TaskRun.output is a String column holding the same string verbatim, so the
+ *   re-read is byte-identical. A RUN error cannot use it, because TaskRun.error is
+ *   jsonb and never round-trips. Waitpoint.completedByTaskRun is onDelete: SetNull, so
+ *   an orphaned RUN waitpoint (the completing run row was deleted) has no run left to
+ *   derive from -- its output carries inline instead.
+ */
+export type CompletedWaitpointRecordOutput =
+  | { inline: string }
+  | { ref: string }
+  | { deriveFromRun: true }
+  | null;
+
+/**
+ * One completed waitpoint, one per DISTINCT id in a wait cycle. The resolver expands
+ * this into one CompletedWaitpoint per position of the id in the cycle's order list.
+ */
+export type CompletedWaitpointRecord = {
+  id: string;
+  friendlyId: string;
+  type: "RUN" | "BATCH" | "DATETIME" | "MANUAL";
+  /** ISO. The writer pins it, applying the null fallback once. */
+  completedAt: string;
+  /** Defaults to "application/json" at source. */
+  outputType: string;
+  outputIsError: boolean;
+  output: CompletedWaitpointRecordOutput;
+  /** RUN. The resolver derives friendlyId, and batch{} from the READING entry's batchId. */
+  completedByTaskRunId?: string;
+  /** BATCH. The resolver derives friendlyId. */
+  completedByBatchId?: string;
+  /** ISO. Any type may set it: a MANUAL waitpoint with a timeout does. */
+  completedAfter?: string;
+  /** Already resolved: userProvidedIdempotencyKey && !inactiveIdempotencyKey. */
+  idempotencyKey?: string;
+};
+
+/**
+ * What the store hands the resolver. The store owns the keyspace, so the store reads
+ * and parses the cycle hash. The resolver never touches Redis and never derives a key.
+ */
+export type ResolveCompletedWaitpointsArgs = {
+  runId: string;
+  /** The batchId of the entry being READ, never the entry that minted the cycle. */
+  batchId?: string;
+  pointer: CompletedWaitpointsPointer;
+  /** Index oracle only. A SUBSET of the record ids. Repeats preserved. */
+  order: string[];
+  /** The authoritative, complete set. Iterate this, never `order`. */
+  records: CompletedWaitpointRecord[];
+};
+
+/**
+ * This lane owns the signature. The waitpoint lane owns the implementation, which
+ * lives in run-engine because a deriveFromRun record needs a Postgres read.
+ */
+export type CompletedWaitpointResolver = (
+  args: ResolveCompletedWaitpointsArgs
+) => Promise<CompletedWaitpoint[]>;
+
 export type SnapshotEntryInput = {
   id: string;
   engine: "V2";
@@ -53,6 +136,16 @@ export type SnapshotEntryInput = {
   runnerId?: string;
   metadata?: unknown;
   error?: string;
+  /**
+   * RESERVED. Always unset. `append` rejects a set value.
+   *
+   * The pointer's physical form is the `<snapshotId>#c` sidecar field on the `e` hash,
+   * because the append Lua mints both halves after the client serializes the entry.
+   * The entry JSON must stay byte-identical to the caller's document, and the Postgres
+   * snapshot row has no pointer column, so a pointer inside the JSON would stop the two
+   * documents from being comparable for the dual-write comparator.
+   */
+  completedWaitpoints?: CompletedWaitpointsPointer;
 };
 
 export type WaitpointIds = { present: boolean; distinctIds: string[]; order: string[] };
@@ -67,7 +160,7 @@ export type SnapshotRead = {
   isValid: boolean;
   entry: Record<string, unknown>;
   raw: string;
-  cycle?: { cycleSeq: number; count: number };
+  cycle?: CompletedWaitpointsPointer;
   completedWaitpointIds?: WaitpointIds;
 };
 
@@ -155,9 +248,20 @@ export class RedisSnapshotStore {
     isTerminal: boolean;
     expectedCur?: string;
     cycle?:
-      | { kind: "new"; completedWaitpoints: CompletedWaitpointRef[]; records?: string }
+      | {
+          kind: "new";
+          completedWaitpoints: CompletedWaitpointRef[];
+          records?: CompletedWaitpointRecord[];
+        }
       | { kind: "carryForward"; cycleSeq: number };
   }): Promise<AppendResult> {
+    if (args.entry.completedWaitpoints !== undefined) {
+      throw new Error(
+        "completedWaitpoints is a reserved entry field and must stay unset. The pointer's " +
+          "physical form is the `<snapshotId>#c` sidecar field, which the append script mints. " +
+          "Writing it into the entry JSON breaks byte-comparability with the Postgres row."
+      );
+    }
     return this.#timed("append", async () => {
       const k = snapshotKeys(args.entry.runId);
       const raw = JSON.stringify(args.entry);
@@ -172,7 +276,7 @@ export class RedisSnapshotStore {
         const order = deriveOrder(args.cycle.completedWaitpoints);
         cycleMode = "new";
         orderJson = JSON.stringify(order);
-        records = args.cycle.records ?? "";
+        records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
         orderCount = String(order.length);
       } else if (args.cycle?.kind === "carryForward") {
         cycleMode = "carry";
@@ -199,11 +303,17 @@ export class RedisSnapshotStore {
         args.expectedCur !== undefined ? "1" : "0"
       )) as string[];
 
-      return this.#interpretAppend(reply, raw, orderJson, args.entry.runId);
+      return this.#interpretAppend(reply, raw, orderJson, records, args.entry.runId);
     });
   }
 
-  #interpretAppend(reply: string[], raw: string, orderJson: string, runId: string): AppendResult {
+  #interpretAppend(
+    reply: string[],
+    raw: string,
+    orderJson: string,
+    records: string,
+    runId: string
+  ): AppendResult {
     if (reply[0] === SKIPPED) {
       this.metrics?.recordSkippedNoKeyspace();
       this.metrics?.recordAppend("skippedNoKeyspace", "none");
@@ -224,7 +334,7 @@ export class RedisSnapshotStore {
     if (cycleMismatch) {
       this.metrics?.recordCycleMismatch();
     }
-    this.#observeSizes(raw, orderJson, cycleSeq, runId);
+    this.#observeSizes(raw, orderJson, records, cycleSeq, runId);
     this.metrics?.recordAppend("written", ttl);
     return {
       outcome: "written",
@@ -235,14 +345,21 @@ export class RedisSnapshotStore {
     };
   }
 
-  #observeSizes(raw: string, orderJson: string, cycleSeq: number, runId: string): void {
+  #observeSizes(
+    raw: string,
+    orderJson: string,
+    records: string,
+    cycleSeq: number,
+    runId: string
+  ): void {
     const entryBytes = Buffer.byteLength(raw, "utf8");
     this.metrics?.recordEntryBytes(entryBytes);
     if (this.highWater.entryBytes !== undefined && entryBytes > this.highWater.entryBytes) {
       this.logger.warn("RedisSnapshotStore entry above high-water mark", { runId, entryBytes });
     }
     if (orderJson !== "") {
-      const cycleBytes = Buffer.byteLength(orderJson, "utf8");
+      // The whole wp:<cycleSeq> key, not just its order field: records dominates it once populated.
+      const cycleBytes = Buffer.byteLength(orderJson, "utf8") + Buffer.byteLength(records, "utf8");
       this.metrics?.recordCycleKeyBytes(cycleBytes);
       if (this.highWater.cycleKeyBytes !== undefined && cycleBytes > this.highWater.cycleKeyBytes) {
         this.logger.warn("RedisSnapshotStore cycle key above high-water mark", {
@@ -469,13 +586,22 @@ export class RedisSnapshotStore {
           redis.call('HSET', wpKey(cycleSeq), 'order', orderJson, 'count', orderCount)
           if records ~= '' then
             redis.call('HSET', wpKey(cycleSeq), 'records', records)
+          else
+            -- A new cycle owns the whole key: a lost seq counter can re-mint a cycleSeq whose key
+            -- still holds another cycle's records, and order/count stay mutually consistent so the
+            -- mismatch check cannot see it. No-op on a fresh key.
+            redis.call('HDEL', wpKey(cycleSeq), 'records')
           end
         elseif cycleMode == 'carry' then
-          cycleSeq = cycleSeqIn
-          local c = redis.call('HGET', wpKey(cycleSeq), 'count')
-          if not c then
+          -- Attach a pointer only if this incarnation actually minted the cycle. seq can be
+          -- evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
+          -- incarnation's order and records under a consistent count, invisibly.
+          local minted = tonumber(redis.call('HGET', seqKey, 'c') or '0')
+          local c = redis.call('HGET', wpKey(cycleSeqIn), 'count')
+          if not c or minted < cycleSeqIn then
             mismatch = 1
           else
+            cycleSeq = cycleSeqIn
             orderCount = c
           end
         end
