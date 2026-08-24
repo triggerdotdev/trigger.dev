@@ -30,6 +30,7 @@ import {
   DialogFooter,
 } from "~/components/primitives/Dialog";
 import { cn } from "~/utils/cn";
+import { buildFlagChangeList } from "~/components/admin/flagChangeList";
 import {
   UNSET_VALUE,
   BooleanControl,
@@ -471,35 +472,7 @@ function ConfirmDialog({
     .filter((key) => !lockedKeys.includes(key))
     .sort();
 
-  type Change =
-    | { key: string; type: "added"; newVal: string }
-    | { key: string; type: "removed"; oldVal: string }
-    | { key: string; type: "changed"; oldVal: string; newVal: string };
-
-  const changes = editableKeys.flatMap<Change>((key) => {
-    const wasSet = key in initialValues;
-    const isSet = key in newValues;
-    const oldVal = initialValues[key];
-    const newVal = newValues[key];
-
-    if (!wasSet && !isSet) return [];
-    if (wasSet && isSet && stableStringify(oldVal) === stableStringify(newVal)) return [];
-
-    if (!wasSet && isSet) {
-      return [{ key, type: "added" as const, newVal: String(newVal) }];
-    }
-    if (wasSet && !isSet) {
-      return [{ key, type: "removed" as const, oldVal: String(oldVal) }];
-    }
-    return [
-      {
-        key,
-        type: "changed" as const,
-        oldVal: String(oldVal),
-        newVal: String(newVal),
-      },
-    ];
-  });
+  const changes = buildFlagChangeList({ editableKeys, lockedKeys, initialValues, newValues });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

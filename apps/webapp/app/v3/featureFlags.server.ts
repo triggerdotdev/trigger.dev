@@ -5,6 +5,7 @@ import {
   type FeatureFlagCatalogSchema,
   type FeatureFlagKey,
   FeatureFlagCatalog,
+  GRACED_FLAG_GROUPS,
 } from "~/v3/featureFlags";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { stampMintShardSetFlip } from "~/v3/runOpsMigration/mintShardGrace";
@@ -180,27 +181,12 @@ export function makeSetMultipleFlags(_prisma: PrismaClientOrTransaction = prisma
   };
 }
 
-// Global flag groups whose value carries its own grace stamp. `primary` is operator-supplied;
-// `derived` is computed server-side and must never be written from a request body. The pair is
-// named explicitly rather than by position, so a group declared in another order stays correct.
-const GRACED_GLOBAL_GROUPS = [
-  {
-    primary: FEATURE_FLAG.runOpsMintKind as FeatureFlagKey,
-    derived: [
-      FEATURE_FLAG.runOpsMintKindPrev,
-      FEATURE_FLAG.runOpsMintKindFlippedAt,
-    ] as FeatureFlagKey[],
-    stamp: stampMintKindFlip,
-  },
-  {
-    primary: FEATURE_FLAG.runOpsMintShardSet as FeatureFlagKey,
-    derived: [
-      FEATURE_FLAG.runOpsMintShardSetPrev,
-      FEATURE_FLAG.runOpsMintShardSetFlippedAt,
-    ] as FeatureFlagKey[],
-    stamp: stampMintShardSetFlip,
-  },
-] as const;
+// The key topology lives in the shared module, because the admin page needs it too. This adds
+// the stamping behaviour, which is server-only.
+const GRACED_GLOBAL_GROUPS = GRACED_FLAG_GROUPS.map((group) => ({
+  ...group,
+  stamp: group.primary === FEATURE_FLAG.runOpsMintKind ? stampMintKindFlip : stampMintShardSetFlip,
+}));
 
 const GRACED_GLOBAL_KEYS: FeatureFlagKey[] = GRACED_GLOBAL_GROUPS.flatMap((g) => [
   g.primary,
@@ -218,6 +204,21 @@ export function touchesGracedGroup(requestedFlags: Record<string, unknown>): boo
 }
 
 // Strips every derived key: a grace stamp is computed here, never accepted from a caller.
+// Only the flags whose stored value differs. Each write is a round trip inside an interactive
+// transaction, so writing an unchanged flag costs a round trip for nothing.
+export function flagsNeedingWrite(
+  requested: Record<string, unknown>,
+  existing: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(requested)) {
+    if (JSON.stringify(existing[key] ?? null) !== JSON.stringify(value ?? null)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 export function withoutDerivedKeys(
   requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>
 ): Record<string, unknown> {
@@ -339,7 +340,24 @@ export async function replaceGlobalFeatureFlags(
       }
     }
 
-    await makeSetMultipleFlags(tx)(toWrite as Partial<z.infer<typeof FeatureFlagCatalogSchema>>);
+    // One round trip to learn the stored values, then a write only for what actually differs.
+    // makeSetMultipleFlags upserts sequentially, so an unchanged flag costs a round trip for
+    // nothing, and this transaction is interactive and holds a pooled connection.
+    const writeKeys = Object.keys(toWrite);
+    if (writeKeys.length > 0) {
+      const storedRows = await tx.featureFlag.findMany({
+        where: { key: { in: boundedIn(writeKeys) } },
+        select: { key: true, value: true },
+      });
+      const stored: Record<string, unknown> = {};
+      for (const row of storedRows) {
+        stored[row.key] = row.value;
+      }
+
+      await makeSetMultipleFlags(tx)(
+        flagsNeedingWrite(toWrite, stored) as Partial<z.infer<typeof FeatureFlagCatalogSchema>>
+      );
+    }
 
     if (keysToDelete.length > 0) {
       await tx.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } });

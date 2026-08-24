@@ -191,6 +191,31 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
 ];
 
 /**
+ * Flag groups where the operator sets a `primary` and the server computes the rest. The topology
+ * lives here, not in the server module, because the admin page needs it too: unsetting a primary
+ * clears its stamps, and the page has to disclose that.
+ */
+export const GRACED_FLAG_GROUPS: ReadonlyArray<{
+  primary: FeatureFlagKey;
+  derived: readonly FeatureFlagKey[];
+}> = [
+  {
+    primary: FEATURE_FLAG.runOpsMintKind,
+    derived: [FEATURE_FLAG.runOpsMintKindPrev, FEATURE_FLAG.runOpsMintKindFlippedAt],
+  },
+  {
+    primary: FEATURE_FLAG.runOpsMintShardSet,
+    derived: [FEATURE_FLAG.runOpsMintShardSetPrev, FEATURE_FLAG.runOpsMintShardSetFlippedAt],
+  },
+];
+
+/** The stamps deleted alongside `primary`. Empty unless `primary` is a graced primary. */
+export function derivedFlagsClearedWith(primary: string): FeatureFlagKey[] {
+  const group = GRACED_FLAG_GROUPS.find((g) => g.primary === primary);
+  return group ? [...group.derived] : [];
+}
+
+/**
  * Locked flags present in a payload the global page must refuse. On managed cloud the page never
  * offers them, so their presence means the request did not come from that page. Locally an admin
  * may unlock and edit them, so nothing is refused.
