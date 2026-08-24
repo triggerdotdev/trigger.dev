@@ -9,14 +9,14 @@ import {
   type CompletedWaitpointRecord,
 } from "./redisSnapshotStore.js";
 
-export type BackfillEntry = {
+type BackfillEntry = {
   id: string;
   seq: number;
   raw: string;
   entry: Record<string, unknown>;
   cycle?: { cycleSeq: number; orderCount: number };
 };
-export type BackfillCycle = {
+type BackfillCycle = {
   cycleSeq: number;
   order: string[];
   records: CompletedWaitpointRecord[] | null;
