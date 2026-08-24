@@ -164,6 +164,48 @@ describe("createIfAbsent", () => {
       }
     }
   );
+
+  redisTest(
+    "reads a COMPLETED record back through createIfAbsent, with an envelope",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({
+          record: record("w_a"),
+          status: "COMPLETED",
+          completion: completion(),
+        });
+
+        const second = await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+
+        expect(second.outcome).toBe("exists");
+        if (second.outcome !== "exists") throw new Error("unreachable");
+        expect(second.status).toBe("COMPLETED");
+        expect(second.completion?.output).toEqual({ inline: '{"ok":true}' });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "reads a COMPLETED record back through createIfAbsent, with no envelope",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({ record: record("w_a"), status: "COMPLETED" });
+
+        const second = await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+
+        expect(second.outcome).toBe("exists");
+        if (second.outcome !== "exists") throw new Error("unreachable");
+        expect(second.status).toBe("COMPLETED");
+        expect(second.completion).toBeUndefined();
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 });
 
 describe("registerOrReport", () => {
@@ -746,6 +788,51 @@ describe("createWithIdempotencyKey", () => {
     }
   });
 
+  redisTest(
+    "the original creator's own retry does not discard its own record",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      const probe = createRedisClient(redisOptions);
+      try {
+        const withKey = record(idA, {
+          idempotencyKey: "key-1",
+          userProvidedIdempotencyKey: true,
+        });
+
+        const first = await store.createWithIdempotencyKey({
+          record: withKey,
+          environmentId: ENV_ID,
+          idempotencyKey: "key-1",
+        });
+        expect(first).toEqual({ waitpointId: idA, created: true });
+
+        // The SAME caller, retrying with the SAME record id and the SAME key — not a
+        // different id racing for the same reservation.
+        const retry = await store.createWithIdempotencyKey({
+          record: withKey,
+          environmentId: ENV_ID,
+          idempotencyKey: "key-1",
+        });
+
+        expect(retry).toEqual({ waitpointId: idA, created: false });
+        // The record must survive: a wrongly-discarded record would delete this too.
+        expect(await probe.exists(`wp:{${idA}}`)).toBe(1);
+
+        // The real proof: something usable is still there for every later caller that
+        // blocks on this id.
+        const registered = await store.registerOrReport({
+          waitpointId: idA,
+          runId: "run_1",
+          createdAt: NOW,
+        });
+        expect(registered.outcome).toBe("registered");
+      } finally {
+        probe.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
   redisTest("sets no expiry when the record carries none", async ({ redisOptions }) => {
     const store = coordinator(redisOptions);
     const probe = createRedisClient(redisOptions);
@@ -912,6 +999,51 @@ describe("absorbBlockers", () => {
         expect(result.pendingOfRequested).toBe(1);
         expect(result.storePendingTotal).toBe(1);
         expect(result.alreadyDelivered.map((d) => d.waitpointId)).toEqual(["w_a"]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a later absorb reads back the stored envelope, not a bare flag",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        const envelope = completion({ output: { inline: '{"first":true}' } });
+
+        // Reported once, with an envelope — this write is what's under test.
+        await store.absorbBlockers({
+          runId: RUN_ID,
+          edges: [edge("w_a", { reported: { completion: envelope } })],
+        });
+
+        // Same waitpoint id, arriving unreported this time: takes the "read `done` back"
+        // path, exposing whatever the first call actually stored under that id.
+        const second = await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+
+        expect(second.alreadyDelivered).toHaveLength(1);
+        expect(second.alreadyDelivered[0]!.completion).toEqual(envelope);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a later absorb for a no-envelope delivery reads back no completion",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.absorbBlockers({
+          runId: RUN_ID,
+          edges: [edge("w_a", { reported: {} })],
+        });
+
+        const second = await store.absorbBlockers({ runId: RUN_ID, edges: [edge("w_a")] });
+
+        expect(second.alreadyDelivered).toHaveLength(1);
+        expect(second.alreadyDelivered[0]!.completion).toBeUndefined();
       } finally {
         await store.quit();
       }
@@ -1543,4 +1675,163 @@ describe("the resume cycle drains and can start again", () => {
       await store.quit();
     }
   });
+});
+
+// Every test above is a sequence of awaits. Redis guarantees atomicity WITHIN a script, so
+// those tests can only ever prove single-script invariants. These races drive real
+// concurrent calls (Promise.all over N copies) against the multi-script TypeScript
+// sequences, and assert an invariant that holds regardless of who wins — never a timing.
+describe("genuine concurrency", () => {
+  const CONCURRENCY = 8;
+
+  redisTest(
+    "exactly one of N concurrent completers wins, and every caller sees its completion",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+        await store.registerOrReport({ waitpointId: "w_a", runId: "run_1", createdAt: NOW });
+        await store.registerOrReport({ waitpointId: "w_a", runId: "run_2", createdAt: NOW });
+
+        const results = await Promise.all(
+          Array.from({ length: CONCURRENCY }, (_, i) =>
+            store.complete({
+              waitpointId: "w_a",
+              completion: completion({ output: { inline: `{"racer":${i}}` } }),
+            })
+          )
+        );
+
+        const winners = results.filter((r) => r.outcome === "completed");
+        const losers = results.filter((r) => r.outcome === "already");
+        expect(winners).toHaveLength(1);
+        expect(losers).toHaveLength(CONCURRENCY - 1);
+
+        // Every caller, winner and losers alike, reads back the SAME stored completion.
+        const stored = winners[0]!.completion;
+        for (const r of results) {
+          expect(r.completion).toEqual(stored);
+        }
+
+        // And every caller returns the full watcher list — a race must never truncate it.
+        for (const r of results) {
+          expect(r.watchers.map((w) => w.runId).sort()).toEqual(["run_1", "run_2"]);
+        }
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a pre-existing registration survives N concurrent attempts to re-register its field",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({ record: record("w_a"), status: "PENDING" });
+        await store.registerOrReport({
+          waitpointId: "w_a",
+          runId: "run_1",
+          spanIdToComplete: "span_first",
+          createdAt: NOW,
+        });
+
+        // Same run, same (absent) batch index as the registration above, so every one of
+        // these collides on the exact same watcher field.
+        await Promise.all(
+          Array.from({ length: CONCURRENCY }, (_, i) =>
+            store.registerOrReport({
+              waitpointId: "w_a",
+              runId: "run_1",
+              spanIdToComplete: `span_racer_${i}`,
+              createdAt: NOW,
+            })
+          )
+        );
+
+        const completed = await store.complete({ waitpointId: "w_a", completion: completion() });
+        const forRun1 = completed.watchers.filter((w) => w.runId === "run_1");
+        expect(forRun1).toHaveLength(1);
+        expect(forRun1[0]!.spanIdToComplete).toBe("span_first");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "exactly one of N concurrent idempotency-keyed creators wins, and every loser cleans up",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      const probe = createRedisClient(redisOptions);
+      try {
+        const ids = Array.from({ length: CONCURRENCY }, () => generateWaitpointId("MANUAL"));
+
+        const results = await Promise.all(
+          ids.map((id) =>
+            store.createWithIdempotencyKey({
+              record: record(id, { idempotencyKey: "key-1", userProvidedIdempotencyKey: true }),
+              environmentId: ENV_ID,
+              idempotencyKey: "key-1",
+            })
+          )
+        );
+
+        const winners = results.filter((r) => r.created);
+        expect(winners).toHaveLength(1);
+
+        const winnerId = winners[0]!.waitpointId;
+        for (const r of results) {
+          expect(r.waitpointId).toBe(winnerId);
+        }
+        expect(await probe.exists(`wp:{${winnerId}}`)).toBe(1);
+
+        for (const id of ids) {
+          if (id === winnerId) continue;
+          expect(await probe.exists(`wp:{${id}}`)).toBe(0);
+          expect(await probe.exists(`wp:{${id}}:w`)).toBe(0);
+        }
+      } finally {
+        probe.disconnect();
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "registerBlocks racing complete never leaves a waitpoint double-booked or the pending count negative",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        for (let i = 0; i < 30; i++) {
+          const waitpointId = `w_race_${i}`;
+          const runId = `run_race_${i}`;
+          await store.createIfAbsent({ record: record(waitpointId), status: "PENDING" });
+
+          // Two edges for the SAME waitpoint: registerBlocks registers them one at a
+          // time, so a concurrent complete() has a real window to land between the two
+          // registrations — the exact straddle that makes absorbBlockers' per-group
+          // reported/unreported split matter, rather than racing a single all-or-nothing
+          // group.
+          const [blocked] = await Promise.all([
+            store.registerBlocks({
+              runId,
+              edges: [edge(waitpointId, { batchIndex: 0 }), edge(waitpointId, { batchIndex: 1 })],
+            }),
+            store.complete({ waitpointId, completion: completion() }),
+          ]);
+
+          const state = await store.readBlockState(runId);
+          const delivered = state.deliveredIds.includes(waitpointId);
+          const pending = state.pendingIds.includes(waitpointId);
+
+          expect(delivered && pending).toBe(false);
+          expect(blocked.storePendingTotal).toBeGreaterThanOrEqual(0);
+          expect(blocked.storePendingTotal).toBeLessThanOrEqual(1);
+        }
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 });
