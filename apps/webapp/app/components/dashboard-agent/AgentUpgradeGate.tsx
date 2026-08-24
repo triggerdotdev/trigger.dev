@@ -1,6 +1,7 @@
 import { Link } from "@remix-run/react";
 import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { v3BillingPath } from "~/utils/pathBuilder";
 import { ASK_AGENT_LABEL } from "./agent-identity";
@@ -48,10 +49,7 @@ export function AgentQuotaNotice({ remaining, limit }: { remaining: number; limi
         {remaining} of {limit} free messages left
       </span>
       <span aria-hidden>·</span>
-      <Link
-        to={v3BillingPath(organization)}
-        className="text-text-link underline-offset-2 hover:underline"
-      >
+      <Link to={v3BillingPath(organization)} className={textLinkClassName()}>
         Upgrade
       </Link>
     </div>

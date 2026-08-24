@@ -30,8 +30,9 @@ const style = {
       "bg-transparent focus-custom hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
   },
   secondary: {
+    // Matches the secondary button's hover.
     button:
-      "bg-secondary focus-custom border border-border-bright/50 shadow-xs hover:text-text-bright text-text-bright hover:bg-background-raised",
+      "bg-secondary focus-custom border border-border-bright/50 shadow-xs text-text-bright hover:bg-background-raised dark:hover:bg-surface-control",
   },
 };
 
@@ -355,8 +356,9 @@ export function SelectTrigger({
         </div>
         {dropdownIcon === true ? (
           <ChevronDown
+            // No transition: the trigger's hover is instant
             className={cn(
-              "size-4 flex-none text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright"
+              "size-4 flex-none text-text-dimmed group-hover:text-text-bright group-focus:text-text-bright"
             )}
           />
         ) : !dropdownIcon ? null : (

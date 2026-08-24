@@ -19,6 +19,8 @@ import {
   SeverityBadge,
   VerdictBadge,
 } from "./agent-badges";
+import { textLinkClassName } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
 import { AgentCard, AgentCardBody, AgentCardHeader } from "./agent-card";
 import { ChatActionsRow } from "./chat-layout";
 import type { ResolvedUri } from "./ReportView";
@@ -65,7 +67,7 @@ function EvidenceItem({
         {resolved ? (
           <a
             href={resolved.url}
-            className="block break-all font-mono text-[10px] text-text-link transition hover:underline"
+            className={cn(textLinkClassName(), "block break-all font-mono text-[10px]")}
           >
             {resolved.label}
           </a>

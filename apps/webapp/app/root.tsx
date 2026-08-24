@@ -20,11 +20,15 @@ import { TimezoneSetter } from "./components/TimezoneSetter";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
-import { useSystemThemeSync } from "./hooks/useSystemThemeSync";
+import { resolveThemePreference, useSystemThemeSync } from "./hooks/useSystemThemeSync";
 import { getImpersonationState } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import {
+  normalizeIconContrast,
+  normalizeSystemDarkTheme,
+  normalizeSystemLightTheme,
   normalizeThemeContrast,
+  normalizeUnderlineLinks,
   normalizeThemePreference,
   type ThemePreference,
 } from "~/utils/themePreference";
@@ -81,20 +85,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   const user = await getUser(request);
-  // Theme switching is feature-flagged; while off, everyone stays on the
-  // classic theme even if a preference was saved earlier. Admins always get
-  // the switcher so the team can dogfood before the flag flips. Cached: the
-  // root loader runs on every document request and client navigation.
+  // Feature-flagged; while off everyone stays on Dark at contrast 0. Admins
+  // always get it. Cached: this loader runs on every request and navigation.
   const showThemeSwitcher = user
     ? user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }))
     : false;
-  // Logged-out pages (login, invites) always render the branded Classic look.
+  // Logged-out pages always render the branded dark look.
   const themePreference: ThemePreference = showThemeSwitcher
     ? normalizeThemePreference(user?.dashboardPreferences.theme)
-    : "classic";
+    : "dark";
   const themeContrast = showThemeSwitcher
     ? normalizeThemeContrast(user?.dashboardPreferences.contrast)
     : 0;
+  // Forced off with the switcher hidden, so unflagged pages render the base set.
+  const iconContrast = showThemeSwitcher
+    ? normalizeIconContrast(user?.dashboardPreferences.iconContrast)
+    : false;
+  const underlineLinks = showThemeSwitcher
+    ? normalizeUnderlineLinks(user?.dashboardPreferences.underlineLinks)
+    : false;
+  const systemThemes = {
+    light: normalizeSystemLightTheme(user?.dashboardPreferences.systemLightTheme),
+    dark: normalizeSystemDarkTheme(user?.dashboardPreferences.systemDarkTheme),
+  };
   // Display-only: while impersonating, an admin can ask to see the dashboard
   // the way the impersonated user sees it. Exposed from root so every route can
   // read it.
@@ -125,7 +138,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       kapa,
       timezone,
       showThemeSwitcher,
+      iconContrast,
+      underlineLinks,
       themePreference,
+      systemThemes,
       themeContrast,
       // Consumed by ResizablePanel: the browser check must match between SSR
       // and hydration, so it is derived from the request user-agent.
@@ -147,7 +163,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 
 export function ErrorBoundary() {
   return (
-    <html lang="en" className="h-full" data-theme="classic">
+    <html lang="en" className="h-full" data-theme="dark">
       <head>
         <meta charSet="utf-8" />
 
@@ -170,29 +186,42 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, posthogUiHost, themePreference, themeContrast } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    posthogProjectKey,
+    posthogUiHost,
+    themePreference,
+    themeContrast,
+    iconContrast,
+    underlineLinks,
+    systemThemes,
+  } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
-  useSystemThemeSync(themePreference);
-  // SSR falls back to dark for `system`; the inline script below corrects it
-  // before paint, and useSystemThemeSync keeps it live afterwards.
-  const resolvedTheme = themePreference === "system" ? "dark" : themePreference;
+  useSystemThemeSync(themePreference, systemThemes);
+  // SSR falls back to the dark end for `system`; the script below fixes it
+  // before paint, and useSystemThemeSync keeps it live after.
+  const resolvedTheme = resolveThemePreference(themePreference, true, systemThemes);
 
   return (
     <html
       lang="en"
       className="h-full"
-      // The pre-paint script below may flip data-theme before hydration
+      // The script below may flip data-theme before hydration
       suppressHydrationWarning
       data-theme={resolvedTheme}
       data-theme-preference={themePreference}
-      // Contrast overlay input for the System themes; Classic never reads it
-      style={{ "--theme-contrast": themeContrast / 100 } as CSSProperties}
+      // Read by the script below, before loader data reaches JS
+      data-system-light={systemThemes.light}
+      data-system-dark={systemThemes.dark}
+      // The `system:` variant keys off this
+      data-icon-contrast={iconContrast ? "true" : "false"}
+      data-underline-links={underlineLinks ? "true" : "false"}
+      // Each theme maps the percent onto its own range in CSS
+      style={{ "--theme-contrast-percent": themeContrast / 100 } as CSSProperties}
     >
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(document.documentElement.getAttribute("data-theme-preference")==="system"){document.documentElement.setAttribute("data-theme",matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}}catch(e){}`,
+            __html: `try{var h=document.documentElement;if(h.getAttribute("data-theme-preference")==="system"){var d=matchMedia("(prefers-color-scheme: dark)").matches;h.setAttribute("data-theme",d?(h.getAttribute("data-system-dark")||"dark"):(h.getAttribute("data-system-light")||"light"))}}catch(e){}`,
           }}
         />
         <StaleAssetRecovery isProduction={isProduction} />

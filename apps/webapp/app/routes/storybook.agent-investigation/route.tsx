@@ -83,5 +83,7 @@ const STATES: Record<string, React.ReactNode> = {
 };
 
 export default function Story() {
-  return <GalleryPage page="investigation" states={STATES} />;
+  return (
+    <GalleryPage page="investigation" states={STATES} componentNames={["InvestigationCard.tsx"]} />
+  );
 }

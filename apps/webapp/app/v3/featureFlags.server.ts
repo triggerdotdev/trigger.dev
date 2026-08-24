@@ -5,8 +5,11 @@ import {
   type FeatureFlagCatalogSchema,
   type FeatureFlagKey,
   FeatureFlagCatalog,
+  GLOBAL_LOCKED_FLAGS,
   GRACED_FLAG_GROUPS,
+  validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
+import { env } from "~/env.server";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { stampMintShardSetFlip } from "~/v3/runOpsMigration/mintShardGrace";
 import { $transaction, boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
@@ -304,13 +307,20 @@ export async function applyGlobalGracedFlips(
 export async function replaceGlobalFeatureFlags(
   client: PrismaClient,
   params: {
-    requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>;
+    requestedFlags: Record<string, unknown>;
     catalogKeys: FeatureFlagKey[];
-    isProtected: (key: FeatureFlagKey) => boolean;
+    isManagedCloud: boolean;
+    unlockLockedFlags: boolean;
     graceMs: number;
   }
 ): Promise<void> {
   const requestedFlags = withoutDerivedKeys(params.requestedFlags);
+
+  // A locked flag absent from the payload means the page never offered it, not that the admin
+  // unset it, so it survives. Only a self-hosted page that says it unlocked them may delete one.
+  const canDeleteLocked = params.unlockLockedFlags && !params.isManagedCloud;
+  const isProtected = (key: FeatureFlagKey) =>
+    !canDeleteLocked && GLOBAL_LOCKED_FLAGS.includes(key);
 
   const applied = await $transaction(client, "replaceGlobalFeatureFlags", async (tx) => {
     await lockGracedGroups(tx);
@@ -327,7 +337,7 @@ export async function replaceGlobalFeatureFlags(
           if (stamped[key] !== undefined) {
             toWrite[key] = stamped[key];
           }
-        } else if (!params.isProtected(group.primary)) {
+        } else if (!isProtected(group.primary)) {
           keysToDelete.push(key);
         }
         continue;
@@ -335,7 +345,7 @@ export async function replaceGlobalFeatureFlags(
 
       if (key in requestedFlags) {
         toWrite[key] = requestedFlags[key];
-      } else if (!params.isProtected(key)) {
+      } else if (!isProtected(key)) {
         keysToDelete.push(key);
       }
     }
@@ -370,4 +380,35 @@ export async function replaceGlobalFeatureFlags(
   if (!applied) {
     throw new Error("replaceGlobalFeatureFlags: transaction did not complete");
   }
+}
+
+/** The global flag set, with the env-var defaults this app applies. */
+export async function globalFeatureFlags() {
+  return flags({
+    defaultValues: {
+      hasAiAccess: env.AI_FEATURES_ENABLED === "1",
+      hasDashboardAgentAccess: env.DASHBOARD_AGENT_ENABLED === "1",
+      hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+    },
+  });
+}
+
+/** The global set with one org's overrides on top. */
+export function mergeOrgFeatureFlags(
+  globalFlags: Partial<FeatureFlagCatalog>,
+  orgFeatureFlags: unknown
+) {
+  const parsed = orgFeatureFlags
+    ? validatePartialFeatureFlags(orgFeatureFlags as Record<string, unknown>)
+    : ({ success: false } as const);
+  return { ...globalFlags, ...(parsed.success ? parsed.data : {}) };
+}
+
+/**
+ * The flags that apply to one organization. Server-side callers that need the
+ * same set the side menu sees should use this rather than assembling their own,
+ * so a partial set can't silently disagree with it.
+ */
+export async function resolveOrganizationFeatureFlags(orgFeatureFlags: unknown) {
+  return mergeOrgFeatureFlags(await globalFeatureFlags(), orgFeatureFlags);
 }

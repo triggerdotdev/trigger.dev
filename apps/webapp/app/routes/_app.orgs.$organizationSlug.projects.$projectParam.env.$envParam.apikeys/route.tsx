@@ -1114,7 +1114,10 @@ function ApiKeyScopePanel({
                           ? "bg-blue-500"
                           : tone === "write"
                             ? "bg-amber-500"
-                            : "bg-charcoal-600"
+                            : // A dot has to stay visible, so this tracks the
+                              // dimmed text color rather than a surface color
+                              // that would all but vanish on a light card.
+                              "bg-text-dimmed"
                       )}
                     />
                     <span

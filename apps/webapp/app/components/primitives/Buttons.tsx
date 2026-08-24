@@ -61,7 +61,8 @@ const theme = {
   primary: {
     textColor: "text-white transition group-disabled/button:text-white/60",
     button:
-      "bg-indigo-600 border border-indigo-500 group-hover/button:bg-indigo-500 group-hover/button:border-indigo-400 group-disabled/button:opacity-50 group-disabled/button:bg-indigo-600 group-disabled/button:border-indigo-500 group-disabled/button:pointer-events-none",
+      // Shares --color-accent-fill with the switch's checked track.
+      "bg-accent-fill border border-lavender-500 group-hover/button:bg-lavender-500 group-hover/button:border-lavender-400 group-disabled/button:opacity-50 group-disabled/button:bg-accent-fill group-disabled/button:border-lavender-500 group-disabled/button:pointer-events-none",
     shortcut:
       "border-white/40 text-white group-hover/button:border-white/60 group-hover/button:text-white",
     icon: "text-white",
@@ -69,7 +70,8 @@ const theme = {
   secondary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      // Hover steps up the scale; background-raised would be darker.
+      "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised dark:group-hover/button:bg-surface-control group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
@@ -296,6 +298,9 @@ export function ButtonContent(props: ButtonContentPropsType) {
           className={cn(
             textAlignLeft ? "text-left" : "justify-center",
             "flex w-full items-center",
+            // Set here, not on the string branch below, so element children
+            // inherit the variant's colour rather than the page's.
+            textColorClassName,
             iconSpacingClassName,
             iconSpacing,
             showSpinner && "invisible"
@@ -315,9 +320,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
           {text &&
             (typeof text === "string" ? (
-              <span className={cn("mx-auto grow self-center truncate", textColorClassName)}>
-                {text}
-              </span>
+              <span className="mx-auto grow self-center truncate">{text}</span>
             ) : (
               text
             ))}
@@ -345,8 +348,11 @@ export function ButtonContent(props: ButtonContentPropsType) {
             renderShortcutKey()}
         </div>
         {showSpinner && (
-          <span className="absolute inset-0 flex items-center justify-center">
-            <Spinner className="size-3.5" color="white" />
+          // Inherits the variant's colour so the spinner tracks its button.
+          <span
+            className={cn("absolute inset-0 flex items-center justify-center", textColorClassName)}
+          >
+            <Spinner className="size-3.5" color="inherit" />
           </span>
         )}
       </div>

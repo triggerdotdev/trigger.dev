@@ -5,9 +5,9 @@ import { AnimatedNumber } from "../AnimatedNumber";
 import TooltipPortal from "../TooltipPortal";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
-// dark covers Classic too; :is() keeps it one scoped selector when the prefix is
-// interpolated as `${prefix} [data-chart=...]` below (a comma would break scoping).
-const THEMES = { light: "", dark: ':is([data-theme="dark"], [data-theme="classic"])' } as const;
+// :is() keeps this one selector once interpolated below; a comma would break
+// scoping. `light` is unscoped on purpose: it's the base the dark rule overrides.
+const THEMES = { light: "", dark: ':is([data-theme="dark"], [data-theme="black"])' } as const;
 
 export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
 

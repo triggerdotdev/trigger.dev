@@ -118,14 +118,31 @@ function styleFromSize(size: number) {
   };
 }
 
-// Bright tiles (Yellow, Orange) need dark letters for contrast; the rest read
-// best with white.
+const AVATAR_LETTER_DARK = "#272a2e";
+const AVATAR_LETTER_LIGHT = "#ffffff";
+
+/** WCAG relative luminance, so the pair below compares the way a checker would. */
+function relativeLuminance(r: number, g: number, b: number): number {
+  const channel = (value: number) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrastRatio(a: number, b: number): number {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/** Dark or white initials, whichever holds more contrast against the tile. */
 function letterColorForBackground(hex: string): string {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!match) return "#fff";
+  if (!match) return AVATAR_LETTER_LIGHT;
   const n = parseInt(match[1], 16);
-  const luminance = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
-  return luminance > 140 ? "#272A2E" : "#fff";
+  const tile = relativeLuminance((n >> 16) & 255, (n >> 8) & 255, n & 255);
+  const onDark = contrastRatio(tile, relativeLuminance(39, 42, 46));
+  const onLight = contrastRatio(tile, 1);
+  return onDark >= onLight ? AVATAR_LETTER_DARK : AVATAR_LETTER_LIGHT;
 }
 
 function AvatarLetters({

@@ -32,7 +32,8 @@ const CATALOG_KEYS: FeatureFlagKey[] = [
   FEATURE_FLAG.mollifierEnabled,
 ];
 
-const NEVER_PROTECTED = () => false;
+// Self-hosted with the lock left on: locked flags survive omission, everything else sweeps.
+const SELF_HOSTED = { isManagedCloud: false, unlockLockedFlags: false } as const;
 
 async function readFlags(
   prisma: PrismaClient,
@@ -135,7 +136,7 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     await replaceGlobalFeatureFlags(prisma, {
       requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a,b" },
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
 
@@ -154,7 +155,7 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
         [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: "1999-01-01T00:00:00.000Z",
       },
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
 
@@ -167,7 +168,7 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     await replaceGlobalFeatureFlags(prisma, {
       requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a,b" },
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
     const first = await readFlags(prisma, SET_KEYS);
@@ -178,7 +179,7 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
         [FEATURE_FLAG.mollifierEnabled]: true,
       },
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
 
@@ -198,14 +199,14 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
       await replaceGlobalFeatureFlags(prisma, {
         requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a,b" },
         catalogKeys: CATALOG_KEYS,
-        isProtected: NEVER_PROTECTED,
+        ...SELF_HOSTED,
         graceMs: 60_000,
       });
 
       await replaceGlobalFeatureFlags(prisma, {
         requestedFlags: {},
         catalogKeys: CATALOG_KEYS,
-        isProtected: NEVER_PROTECTED,
+        ...SELF_HOSTED,
         graceMs: 60_000,
       });
 
@@ -221,14 +222,14 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     await replaceGlobalFeatureFlags(prisma, {
       requestedFlags: { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" },
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
 
     await replaceGlobalFeatureFlags(prisma, {
       requestedFlags: {},
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
 
@@ -238,25 +239,26 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     expect(m[FEATURE_FLAG.runOpsMintKindFlippedAt]).toBeUndefined();
   });
 
-  postgresTest("a protected list is not deleted when omitted", async ({ prisma }) => {
+  postgresTest("unlocking does not orphan a stamp from its list", async ({ prisma }) => {
+    // With the lock off, a locked key may be swept. The stamps are locked, so this is the case
+    // where they could be deleted while the list survives, which would keep serving prevSet.
     await replaceGlobalFeatureFlags(prisma, {
-      requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a" },
+      requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a,b" },
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
 
     await replaceGlobalFeatureFlags(prisma, {
-      requestedFlags: {},
+      requestedFlags: { [FEATURE_FLAG.runOpsMintShardSet]: "a,b" },
       catalogKeys: CATALOG_KEYS,
-      isProtected: (key) => key === FEATURE_FLAG.runOpsMintShardSet,
+      isManagedCloud: false,
+      unlockLockedFlags: true,
       graceMs: 60_000,
     });
 
     const m = await readFlags(prisma, SET_KEYS);
-    // Kept WHOLE. Protection is keyed off the primary, so the stamps must survive with it;
-    // asserting only the primary leaves the group-level property unpinned.
-    expect(m[FEATURE_FLAG.runOpsMintShardSet]).toBe("a");
+    expect(m[FEATURE_FLAG.runOpsMintShardSet]).toBe("a,b");
     expect(m[FEATURE_FLAG.runOpsMintShardSetPrev]).toBeDefined();
     expect(m[FEATURE_FLAG.runOpsMintShardSetFlippedAt]).toBeDefined();
   });
@@ -267,7 +269,7 @@ describe("replaceGlobalFeatureFlags — the admin page cannot bypass the stamp",
     await replaceGlobalFeatureFlags(prisma, {
       requestedFlags: {},
       catalogKeys: CATALOG_KEYS,
-      isProtected: NEVER_PROTECTED,
+      ...SELF_HOSTED,
       graceMs: 60_000,
     });
 

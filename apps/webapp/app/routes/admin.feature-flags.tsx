@@ -41,6 +41,12 @@ import {
   type WorkerGroup,
 } from "~/components/admin/FlagControls";
 
+/** What the page posts to the action. See the note on payloadSchema. */
+type SaveFlagsBody = {
+  flags: Record<string, unknown>;
+  unlockLockedFlags: boolean;
+};
+
 export const loader = dashboardLoader(
   { authorization: { requireSuper: true } },
   async ({ request }) => {
@@ -90,7 +96,16 @@ export const action = dashboardAction(
       return json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const payloadSchema = z.object({ flags: z.record(z.unknown()) });
+    // The zod schema leaves unlockLockedFlags optional so a tab opened before this shipped still
+    // saves, defaulting to the safe answer. SaveFlagsBody keeps it required for our own client, so
+    // dropping it from the page is a compile error rather than a silently disabled unlock.
+    const payloadSchema = z.object({
+      flags: z.record(z.unknown()),
+      // The page only submits the flags it is managing, so an omitted key is ambiguous for the
+      // locked flags: this says whether the admin unlocked them and is therefore authoritative
+      // over them too.
+      unlockLockedFlags: z.boolean().optional(),
+    });
     const parsed = payloadSchema.safeParse(body);
     if (!parsed.success) {
       return json({ error: "Invalid payload" }, { status: 400 });
@@ -114,13 +129,11 @@ export const action = dashboardAction(
       );
     }
 
-    const catalogKeys = Object.keys(getAllFlagControlTypes()) as FeatureFlagKey[];
-
     await replaceGlobalFeatureFlags(prisma, {
-      requestedFlags: validationResult.data,
-      catalogKeys,
-      // On cloud, never delete locked flags (the UI omits them). Locally, full control.
-      isProtected: (key) => isManagedCloud && GLOBAL_LOCKED_FLAGS.includes(key),
+      requestedFlags: validationResult.data as Record<string, unknown>,
+      catalogKeys: Object.keys(getAllFlagControlTypes()) as FeatureFlagKey[],
+      isManagedCloud,
+      unlockLockedFlags: parsed.data.unlockLockedFlags ?? false,
       graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
     });
 
@@ -187,7 +200,8 @@ export default function AdminFeatureFlagsRoute() {
   };
 
   const handleSave = () => {
-    saveFetcher.submit(JSON.stringify({ flags: values }), {
+    const body: SaveFlagsBody = { flags: values, unlockLockedFlags: unlocked };
+    saveFetcher.submit(JSON.stringify(body), {
       method: "POST",
       encType: "application/json",
     });
@@ -493,7 +507,7 @@ function ConfirmDialog({
               >
                 <div className="font-sans text-sm text-text-bright">{change.key}</div>
                 {change.type === "added" && (
-                  <div className="mt-1 text-green-400">+ {change.newVal}</div>
+                  <div className="mt-1 text-green-400 system:text-green-700">+ {change.newVal}</div>
                 )}
                 {change.type === "removed" && (
                   <div className="mt-1 text-red-400">- {change.oldVal} (unset)</div>
@@ -501,7 +515,7 @@ function ConfirmDialog({
                 {change.type === "changed" && (
                   <>
                     <div className="mt-1 text-red-400">- {change.oldVal}</div>
-                    <div className="text-green-400">+ {change.newVal}</div>
+                    <div className="text-green-400 system:text-green-700">+ {change.newVal}</div>
                   </>
                 )}
               </div>

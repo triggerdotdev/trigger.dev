@@ -1,9 +1,13 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Header2 } from "~/components/primitives/Headers";
 
 export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-8 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["CodeBlock.tsx"]} />
+      </div>
       <div>
         <Header2>Inline field</Header2>
         <CodeBlock code={`{ id: "my-first-job" }`} />
