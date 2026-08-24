@@ -8,7 +8,6 @@ import {
   effectiveMintShardSet,
   GEN_1_PIN_VALUE,
   isValidPinValue,
-  parseShardCsv,
   readMintShardSetResolution,
   type MintShardSetResolution,
 } from "./mintShardGrace";
@@ -16,8 +15,6 @@ import {
 export type MintShardDeps = {
   // The live list, from the control-plane database.
   resolution: MintShardSetResolution;
-  // The keys this deployment can route, from the environment. Bounds the live list.
-  ceiling: string[];
   // Fleet-wide pin that beats every per-org and per-env pin. The complete-cutover lever.
   globalOverride?: unknown;
   nowMs: number;
@@ -89,20 +86,15 @@ function hrwSelect(environmentId: string, activeSet: string[]): string {
 // PURE CORE — no env, no clock, no I/O; tests drive this directly. Deterministic for fixed
 // deps, which is what lets run minting and token minting agree on one answer.
 //
-// The ceiling gate runs BEFORE the grace, so an unconfigured deployment is an unconditional
-// kill switch that no stored value can reopen. The live list is then intersected with the
-// ceiling, so a stored key this deployment cannot route is never minted into.
+// An empty list is the off state, and it is the state of every deployment that has not set the
+// flag. Bounding the list against the shard keys this deployment can actually route belongs with
+// the shard descriptors, which own that information; nothing here mints, so nothing can misroute.
 //
 // A pin outside the active set falls through to the hash rather than throwing: honouring it
 // would leak the drain the active list performs, and throwing would fail customer triggers
 // whenever a pinned shard drains.
 export function computeMintShard(environment: { id: string }, deps: MintShardDeps): ShardKey {
-  if (deps.ceiling.length === 0) {
-    return "new";
-  }
-
-  const live = effectiveMintShardSet(deps.resolution, deps.nowMs, deps.graceMs);
-  const activeSet = live.filter((key) => deps.ceiling.includes(key));
+  const activeSet = effectiveMintShardSet(deps.resolution, deps.nowMs, deps.graceMs);
   if (activeSet.length === 0) {
     return "new";
   }
@@ -134,13 +126,6 @@ export function computeMintShard(environment: { id: string }, deps: MintShardDep
   return hrwSelect(environment.id, activeSet);
 }
 
-// ENV-BOUND wrapper — the only place env is read. The ceiling is parsed once at boot; it is a
-// deploy-time value, so re-parsing per mint would burn CPU on the hottest path in the system.
-//
-// SEAM: this is the one place the ceiling is sourced. Once shard descriptors are configured, the
-// ceiling becomes their keys and RUN_OPS_MINT_SHARDS is deleted. Two hand-kept lists would drift.
-const ceiling: string[] = parseShardCsv(env.RUN_OPS_MINT_SHARDS);
-
 // Read together so the override costs no extra query beyond the list it is bounded by.
 const GLOBAL_SHARD_KEYS = [
   FEATURE_FLAG.runOpsMintShardSet,
@@ -154,8 +139,7 @@ type GlobalShardConfig = { resolution: MintShardSetResolution; override: unknown
 export type MintShardCache = { value: GlobalShardConfig; expiresAt: number } | undefined;
 
 export type ResolveMintShardDeps = {
-  ceiling: string[];
-  // Reads the three list rows. Injected so the cache and the fail-safe are testable without a
+  // Reads the list rows. Injected so the cache and the fail-safe are testable without a
   // database, the same way computeRunIdMintKind takes its flag reader.
   readFlags: () => Promise<Record<string, unknown>>;
   cache: { current: MintShardCache };
@@ -177,11 +161,6 @@ export async function resolveMintShardWith(
   environment: { id: string; orgFeatureFlags?: unknown },
   deps: ResolveMintShardDeps
 ): Promise<ShardKey> {
-  // No ceiling means no gen-2 minting, so skip the read entirely.
-  if (deps.ceiling.length === 0) {
-    return "new";
-  }
-
   let config: GlobalShardConfig;
   const cached = deps.cache.current;
   if (cached && cached.expiresAt > deps.nowMs) {
@@ -202,7 +181,6 @@ export async function resolveMintShardWith(
 
   return computeMintShard(environment, {
     resolution: config.resolution,
-    ceiling: deps.ceiling,
     globalOverride: config.override,
     nowMs: deps.nowMs,
     graceMs: deps.graceMs,
@@ -251,7 +229,6 @@ export async function resolveMintShard(environment: {
   orgFeatureFlags?: unknown;
 }): Promise<ShardKey> {
   return resolveMintShardWith(environment, {
-    ceiling,
     readFlags: readSetFlags,
     cache: liveCache,
     nowMs: Date.now(),

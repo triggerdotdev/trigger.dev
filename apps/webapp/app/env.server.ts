@@ -4,7 +4,6 @@ import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
 import { isValidDuration } from "./services/realtime/duration.server";
-import { parseShardCsv } from "./v3/runOpsMigration/mintShardGrace";
 
 // `z.string()` constrained to a `parseDuration`-parseable string (e.g.
 // `7d`, `1h`). Validated at boot so a typo'd duration fails fast.
@@ -41,23 +40,6 @@ const parseMachinePresetCsv = (raw: string, ctx: z.RefinementCtx): MachinePreset
   }
   return out;
 };
-
-// A CSV of gen-2 mint shard keys, validated at boot by parseShardCsv. Kept as the raw string:
-// the resolution is built once in runOpsMintShard.server.ts, and this only has to fail fast.
-const shardCsvString = () =>
-  z
-    .string()
-    .default("")
-    .superRefine((raw, ctx) => {
-      try {
-        parseShardCsv(raw);
-      } catch (error) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: error instanceof Error ? error.message : "invalid shard key CSV",
-        });
-      }
-    });
 
 const GithubAppEnvSchema = z.preprocess(
   (val) => {
@@ -2015,13 +1997,6 @@ const EnvironmentSchema = z
     // of RUN_OPS_MINT_FLAG_CACHE_TTL_MS and the control-plane cache TTL so every process
     // (stale or fresh) resolves to the same kind for the whole window. See mintFlipGrace.ts.
     RUN_OPS_MINT_FLIP_GRACE_MS: z.coerce.number().int().default(90_000),
-
-    // Gen-2 mint shards — CSV of single-char [a-z0-9] keys this deployment can mint roots into.
-    // Unset or empty means no gen-2 minting, which is today's behaviour. Validated at boot: an
-    // invalid key would mint an id that cannot be routed. This is a CEILING, not the live list:
-    // it changes only by deploy, and the runOpsMintShardSet flag selects from it at runtime.
-    // A rolling deploy runs two values of this var at once, so it must never be the ramp lever.
-    RUN_OPS_MINT_SHARDS: shardCsvString(),
 
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
     // with the runs replicator for leader locking but has its own slot and
