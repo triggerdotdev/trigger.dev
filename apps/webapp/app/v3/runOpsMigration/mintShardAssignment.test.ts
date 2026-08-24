@@ -5,7 +5,7 @@ import {
   type MintShardCache,
   type MintShardDeps,
   type ResolveMintShardDeps,
-} from "./runOpsMintShard.server";
+} from "./mintShardAssignment";
 import { type MintShardSetResolution } from "./mintShardGrace";
 
 const GRACE_MS = 90_000;
