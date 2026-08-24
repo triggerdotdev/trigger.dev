@@ -1,6 +1,14 @@
 import { type z } from "zod";
 import type { PrismaClient } from "@trigger.dev/database";
-import { $transaction, boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
+import cuid from "cuid";
+import {
+  boundedIn,
+  Prisma,
+  prisma,
+  sqlDatabaseSchema,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
+import { startActiveSpan } from "~/v3/tracer.server";
 import {
   FEATURE_FLAG,
   type FeatureFlagCatalogSchema,
@@ -253,27 +261,42 @@ export async function replaceGlobalFeatureFlags(
     }
   }
 
-  const applied = await $transaction(client, "replaceGlobalFeatureFlags", async (tx) => {
-    for (const { key, value } of toUpsert) {
-      await tx.featureFlag.upsert({
-        where: { key },
-        create: { key, value: value as any },
-        update: { value: value as any },
-      });
-    }
+  // The upsert and the sweep touch disjoint keys, because the loop above sends each catalog key
+  // to exactly one of the two lists. That lets them combine into a single data-modifying
+  // statement, which is atomic on its own and costs one round trip whatever the catalog size.
+  const upsertSql =
+    toUpsert.length > 0
+      ? Prisma.sql`
+          INSERT INTO ${sqlDatabaseSchema}."FeatureFlag" (id, key, value, "createdAt", "updatedAt")
+          VALUES ${Prisma.join(
+            toUpsert.map(
+              ({ key, value }) =>
+                Prisma.sql`(${cuid()}, ${key}, ${JSON.stringify(
+                  value ?? null
+                )}::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+            )
+          )}
+          ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value, "updatedAt" = CURRENT_TIMESTAMP`
+      : undefined;
 
-    if (keysToDelete.length > 0) {
-      await tx.featureFlag.deleteMany({ where: { key: { in: boundedIn(keysToDelete) } } });
-    }
+  const deleteSql =
+    keysToDelete.length > 0
+      ? Prisma.sql`
+          DELETE FROM ${sqlDatabaseSchema}."FeatureFlag"
+          WHERE key IN (${Prisma.join(boundedIn(keysToDelete))})`
+      : undefined;
 
-    return true;
-  });
+  const statement =
+    upsertSql && deleteSql
+      ? Prisma.sql`WITH upserted AS (${upsertSql} RETURNING 1) ${deleteSql}`
+      : (upsertSql ?? deleteSql);
 
-  // The helper resolves undefined instead of throwing when Prisma errors are swallowed. This
-  // write deletes flags, so treat a transaction that did not run as a failure the caller sees.
-  if (!applied) {
-    throw new Error("replaceGlobalFeatureFlags: transaction did not complete");
+  if (!statement) {
+    return;
   }
+
+  await startActiveSpan("replaceGlobalFeatureFlags", () => client.$executeRaw(statement));
 }
 
 /** The global flag set, with the env-var defaults this app applies. */
