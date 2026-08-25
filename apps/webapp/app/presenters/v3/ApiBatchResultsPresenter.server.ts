@@ -14,6 +14,7 @@ import { BasePresenter } from "./basePresenter.server";
 
 import { boundedIn } from "@trigger.dev/database";
 import { runOpsShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
+import { logger } from "~/services/logger.server";
 /**
  * Run-ops read-through wiring. All optional; absent (or `splitEnabled` falsy) collapses `call` to
  * passthrough. `legacyReplica` is a READ REPLICA handle only — there is NO legacy-primary field.
@@ -191,11 +192,20 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     const idsByShard = new Map<ShardKey, string[]>();
     for (const id of taskRunIds) {
       const shardKey = resolveShard(id);
-      if (shardKey !== "new" && shardKey !== "legacy" && shardReplicas.has(shardKey)) {
+      if (shardKey === "new" || shardKey === "legacy") {
+        genOneIds.push(id);
+      } else if (shardReplicas.has(shardKey)) {
         const group = idsByShard.get(shardKey);
         group ? group.push(id) : idsByShard.set(shardKey, [id]);
       } else {
-        genOneIds.push(id);
+        // Not routable and not a gen-1 shape. A gen-1 store is the wrong database, and a
+        // dedicated-family id never reaches the legacy probe, so falling back there would
+        // drop the member silently. Drop it loudly instead.
+        logger.error("ApiBatchResultsPresenter: gen-2 member on an unconfigured shard key", {
+          runId: id,
+          shardKey,
+          configured: [...shardReplicas.keys()],
+        });
       }
     }
 

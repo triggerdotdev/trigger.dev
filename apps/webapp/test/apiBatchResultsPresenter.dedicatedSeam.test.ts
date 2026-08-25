@@ -3,7 +3,7 @@
 // RESULTS READ assembles correctly when one batch's members are genuinely split across the real
 // dedicated run-ops subset schema (prisma17 / RunOpsPrismaClient) and the full control-plane
 // schema (prisma14) — not a mirrored full schema on both sides. No mocks.
-import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
+import { heteroRunOpsPostgresTest, makeNShardRunOpsPostgresTest } from "@internal/testcontainers";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient } from "@trigger.dev/database";
 import { generateRunOpsId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
@@ -209,6 +209,10 @@ async function seedBatchOnNew(
   return batch;
 }
 
+// One real gen-2 shard on its OWN database, so a member seeded there is genuinely absent
+// from the gen-1 `new` store rather than merely routed away from it.
+const oneShardTest = makeNShardRunOpsPostgresTest(1);
+
 const env = (ctx: SeedCtx) =>
   ({
     id: ctx.environment.id,
@@ -338,19 +342,21 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
   // A gen-2 member is directly routable to its own shard. Before the shard arm existed it
   // joined the gen-1 `new` read, missed there, and — classifying dedicated-family — never
   // reached the legacy probe either, so it vanished from the batch results with no error.
-  heteroRunOpsPostgresTest(
-    "a gen-2 member is hydrated from its own shard alongside a legacy-resident member",
-    async ({ prisma14, prisma17 }: { prisma14: PrismaClient; prisma17: RunOpsPrismaClient }) => {
-      const ctx = await seedLegacyEnv(prisma14, "gen2-shard");
-      await relaxLegacyAttemptFk(prisma14);
-      await relaxNewBatchItemFk(prisma17);
+  oneShardTest(
+    "a gen-2 member is hydrated from its own shard database alongside a legacy-resident member",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardPrisma = shardPrismas[0]!;
+      const ctx = await seedLegacyEnv(legacyPrisma, "gen2-shard");
+      await relaxLegacyAttemptFk(legacyPrisma);
+      await relaxNewBatchItemFk(newPrisma);
 
       const shardMemberId = generateRunOpsIdV2("a");
-      expect(shardMemberId.length).toBe(26);
       const legacyMemberId = generateLegacyCuid();
 
+      // The gen-2 member exists ONLY on the shard database. The gen-1 `new` store below is a
+      // different database, so routing this id there would genuinely miss.
       await seedNewMember(
-        prisma17,
+        shardPrisma,
         { envId: ctx.environment.id, orgId: ctx.organization.id, projectId: ctx.project.id },
         {
           id: shardMemberId,
@@ -359,7 +365,7 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
           output: JSON.stringify({ from: "shard-a" }),
         }
       );
-      await seedLegacyMember(prisma14, ctx, {
+      await seedLegacyMember(legacyPrisma, ctx, {
         id: legacyMemberId,
         friendlyId: "run_legacy_member",
         status: "COMPLETED_WITH_ERRORS",
@@ -367,36 +373,16 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
       });
 
       const batchFriendlyId = "batch_gen2_shard";
-      await seedBatchOnNew(prisma17, ctx.environment.id, batchFriendlyId, [
+      await seedBatchOnNew(newPrisma, ctx.environment.id, batchFriendlyId, [
         shardMemberId,
         legacyMemberId,
       ]);
 
-      // Both handles point at prisma17 (there is no third container), so the discriminator
-      // cannot be WHICH database answers — it has to be WHICH HANDLE is asked. The gen-1 new
-      // handle serves the batch row but REFUSES a taskRun read that includes the gen-2 id;
-      // only routing that id to the shard handle avoids the refusal.
-      const genOneNew = new Proxy(prisma17 as unknown as PrismaReplicaClient, {
-        get(target, prop, receiver) {
-          if (prop === "taskRun") {
-            return {
-              findMany: (args: { where?: { id?: { in?: string[] } } }) => {
-                if (args.where?.id?.in?.includes(shardMemberId)) {
-                  throw new Error("a gen-2 id must not be read on the gen-1 new handle");
-                }
-                return (target as unknown as RunOpsPrismaClient).taskRun.findMany(args as never);
-              },
-            };
-          }
-          return Reflect.get(target, prop, receiver);
-        },
-      });
-
       const presenter = new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
         splitEnabled: true,
-        newClient: genOneNew,
-        legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-        shardReplicas: new Map([["a", prisma17 as unknown as PrismaReplicaClient]]),
+        newClient: newPrisma as unknown as PrismaReplicaClient,
+        legacyReplica: legacyPrisma as unknown as PrismaReplicaClient,
+        shardReplicas: new Map([["a", shardPrisma as unknown as PrismaReplicaClient]]),
       });
 
       const result = await presenter.call(batchFriendlyId, env(ctx));
@@ -412,6 +398,81 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
         outputType: "application/json",
       });
       expect(second).toMatchObject({ ok: false, id: "run_legacy_member" });
-    }
+    },
+    180_000
+  );
+
+  // A gen-2 id naming a shard that is NOT configured must not fall back onto a gen-1 store:
+  // that reads the wrong database, misses, and (being dedicated-family) never reaches the
+  // legacy probe, so the member disappears with no error. Drop it, but loudly.
+  oneShardTest(
+    "a gen-2 member on an unconfigured shard is dropped without being read from a gen-1 store",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardPrisma = shardPrismas[0]!;
+      const ctx = await seedLegacyEnv(legacyPrisma, "gen2-unconfigured");
+      await relaxLegacyAttemptFk(legacyPrisma);
+      await relaxNewBatchItemFk(newPrisma);
+
+      // Shard "z" is not in the configured map; shard "a" is.
+      const unconfiguredId = generateRunOpsIdV2("z");
+      const legacyMemberId = generateLegacyCuid();
+
+      await seedNewMember(
+        shardPrisma,
+        { envId: ctx.environment.id, orgId: ctx.organization.id, projectId: ctx.project.id },
+        { id: unconfiguredId, friendlyId: "run_unconfigured", status: "COMPLETED_SUCCESSFULLY" }
+      );
+      await seedLegacyMember(legacyPrisma, ctx, {
+        id: legacyMemberId,
+        friendlyId: "run_legacy_member",
+        status: "COMPLETED_SUCCESSFULLY",
+      });
+
+      const batchFriendlyId = "batch_gen2_unconfigured";
+      await seedBatchOnNew(newPrisma, ctx.environment.id, batchFriendlyId, [
+        unconfiguredId,
+        legacyMemberId,
+      ]);
+
+      // A closure-based recorder, not a mock: it records the id sets each store is asked for,
+      // so the assertion is about real reads rather than about a test double's behaviour.
+      const askedOf = (label: string, target: RunOpsPrismaClient | PrismaClient) => {
+        const asked: string[][] = [];
+        const handle = {
+          ...target,
+          taskRun: {
+            findMany: (args: { where?: { id?: { in?: string[] } } }) => {
+              asked.push(args.where?.id?.in ?? []);
+              return (target as unknown as PrismaReplicaClient).taskRun.findMany(args as never);
+            },
+          },
+        } as unknown as PrismaReplicaClient;
+        return { label, asked, handle };
+      };
+      const genOneNew = askedOf("new", newPrisma);
+      const legacy = askedOf("legacy", legacyPrisma);
+
+      const presenter = new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
+        splitEnabled: true,
+        newClient: genOneNew.handle,
+        legacyReplica: legacy.handle,
+        shardReplicas: new Map([["a", shardPrisma as unknown as PrismaReplicaClient]]),
+      });
+
+      const result = await presenter.call(batchFriendlyId, env(ctx));
+
+      // The legacy member still resolves; the unconfigured gen-2 member is dropped.
+      expect(result).toBeDefined();
+      expect(result!.items).toHaveLength(1);
+      expect(result!.items[0]).toMatchObject({ ok: true, id: "run_legacy_member" });
+
+      // The unconfigured id was never asked of a gen-1 store.
+      for (const store of [genOneNew, legacy]) {
+        for (const ids of store.asked) {
+          expect(ids).not.toContain(unconfiguredId);
+        }
+      }
+    },
+    180_000
   );
 });
