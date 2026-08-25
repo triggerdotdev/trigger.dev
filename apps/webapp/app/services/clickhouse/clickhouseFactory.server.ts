@@ -1,4 +1,4 @@
-import { ClickHouse } from "@internal/clickhouse";
+import { ClickHouse, type ClickHouseSettings } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
@@ -37,6 +37,24 @@ const defaultLogsClickhouseClient = singleton(
   initializeLogsClickhouseClient
 );
 
+function initializeLogsSearchProjectorClickhouseClient() {
+  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "logs-search-projector",
+    keepAlive: {
+      enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.CLICKHOUSE_LOG_LEVEL,
+    compression: { request: true },
+    maxOpenConnections: Math.min(env.CLICKHOUSE_MAX_OPEN_CONNECTIONS, 2),
+    requestTimeoutMs: (env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS + 30) * 1000,
+  });
+}
+
 function getLogsListClickhouseSettings() {
   return {
     max_memory_usage: env.CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE.toString(),
@@ -62,11 +80,7 @@ function getLogsListClickhouseSettings() {
 }
 
 function initializeLogsClickhouseClient() {
-  if (!env.LOGS_CLICKHOUSE_URL) {
-    throw new Error("LOGS_CLICKHOUSE_URL is not set");
-  }
-
-  const url = new URL(env.LOGS_CLICKHOUSE_URL);
+  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_READER_URL ?? env.CLICKHOUSE_URL);
   url.searchParams.delete("secure");
 
   return new ClickHouse({
@@ -191,6 +205,33 @@ function initializeSessionsReplicationClickhouseClient(): ClickHouse {
   });
 }
 
+const defaultWebhookDeliveriesReplicationClickhouseClient = singleton(
+  "webhookDeliveriesReplicationClickhouseClient",
+  initializeWebhookDeliveriesReplicationClickhouseClient
+);
+
+function initializeWebhookDeliveriesReplicationClickhouseClient(): ClickHouse {
+  if (!env.WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL) {
+    // Webhook deliveries replication worker gates on this URL; factory may still resolve "webhook_deliveries_replication" for tests.
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "webhook-deliveries-replication",
+    keepAlive: {
+      enabled: env.SESSION_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL,
+    compression: { request: true },
+    maxOpenConnections: env.SESSION_REPLICATION_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 /** Run-engine PendingVersionSystem lookup (`RUN_ENGINE_CLICKHOUSE_URL`);
  *  falls back to the default client if unset. */
 const defaultRunEngineClickhouseClient = singleton(
@@ -251,6 +292,45 @@ function initializeRealtimeClickhouseClient(): ClickHouse {
   });
 }
 
+/**
+ * Server-side query protection for the runs-list read pool. Every setting here is PER-QUERY, so a
+ * pathological query only ever kills itself: a slow one hits `max_execution_time`, a memory-hungry
+ * one hits `max_memory_usage`, a thread-hungry one hits `max_threads`. Per-USER limits
+ * (`max_*_for_user`) are deliberately NOT used: everything connects as `default`, so a per-user cap
+ * would reject whichever query arrives once the shared budget is hit, punishing innocent tenants
+ * for a noisy one. The node itself is protected by the server-level `max_server_memory_usage`.
+ * Safe as client-level settings ONLY because this pool is read-only; on a mixed read+write pool a
+ * client-level `max_execution_time` would also kill slow inserts. `readonly=2` enforces read-only
+ * while still allowing these settings to apply (`readonly=1` rejects them).
+ */
+/**
+ * Client request timeout for the runs-list pool, forced above the server-side `max_execution_time`
+ * so the server cap is what stops a slow query and the client stays connected to receive that
+ * error. If the client timed out first, it would abort while ClickHouse kept executing, which is
+ * the abandoned-query behaviour this pool is trying to prevent.
+ */
+function getRunsListRequestTimeoutMs() {
+  return Math.max(
+    env.RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS,
+    (env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME + 5) * 1000
+  );
+}
+
+function getRunsListClickhouseSettings(): ClickHouseSettings {
+  const settings: ClickHouseSettings = {
+    max_execution_time: env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME,
+    timeout_before_checking_execution_speed: 0,
+    max_threads: env.RUNS_LIST_CLICKHOUSE_MAX_THREADS,
+    max_memory_usage: env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE.toString(),
+  };
+
+  if (env.RUNS_LIST_CLICKHOUSE_READONLY !== "0") {
+    settings.readonly = env.RUNS_LIST_CLICKHOUSE_READONLY;
+  }
+
+  return settings;
+}
+
 /** Runs list reads — dashboard + API (`RUNS_LIST_CLICKHOUSE_URL`);
  *  falls back to the default client if unset. */
 const defaultRunsListClickhouseClient = singleton(
@@ -278,6 +358,8 @@ function initializeRunsListClickhouseClient(): ClickHouse {
       request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
     },
     maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+    requestTimeoutMs: getRunsListRequestTimeoutMs(),
+    clickhouseSettings: getRunsListClickhouseSettings(),
   });
 }
 
@@ -398,6 +480,7 @@ export type ClientType =
   | "events"
   | "replication"
   | "sessions_replication"
+  | "webhook_deliveries_replication"
   | "logs"
   | "query"
   | "admin"
@@ -439,6 +522,9 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         maxOpenConnections: env.RUN_REPLICATION_MAX_OPEN_CONNECTIONS,
       });
     case "sessions_replication":
+    // Webhook deliveries replication shares the sessions replication ClickHouse
+    // client config (same infra, both replication writers).
+    case "webhook_deliveries_replication":
       return new ClickHouse({
         url: parsed.toString(),
         name,
@@ -505,10 +591,25 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         },
         maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
+    case "runsList":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.RUNS_LIST_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+        requestTimeoutMs: getRunsListRequestTimeoutMs(),
+        clickhouseSettings: getRunsListClickhouseSettings(),
+      });
     case "standard":
     case "query":
     case "admin":
-    case "runsList":
       return new ClickHouse({
         url: parsed.toString(),
         name,
@@ -566,6 +667,8 @@ export class ClickhouseFactory {
           return defaultRunsReplicationClickhouseClient;
         case "sessions_replication":
           return defaultSessionsReplicationClickhouseClient;
+        case "webhook_deliveries_replication":
+          return defaultWebhookDeliveriesReplicationClickhouseClient;
         case "logs":
           return defaultLogsClickhouseClient;
         case "query":
@@ -645,12 +748,11 @@ export function getAdminClickhouse(): ClickHouse {
   return defaultAdminClickhouseClient;
 }
 
-export function getDefaultClickhouseClient(): ClickHouse {
-  return defaultClickhouseClient;
-}
-
-export function getDefaultLogsClickhouseClient(): ClickHouse {
-  return defaultLogsClickhouseClient;
+export function getLogsSearchProjectorClickhouseClient(): ClickHouse {
+  return singleton(
+    "logsSearchProjectorClickhouseClient",
+    initializeLogsSearchProjectorClickhouseClient
+  );
 }
 
 /** Queue-metrics client for callers with no organization in scope (the ingestion consumer). */

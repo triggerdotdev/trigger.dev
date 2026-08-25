@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { column, type TableSchema } from "@internal/tsql";
@@ -150,6 +151,9 @@ export default function Story() {
 
   return (
     <div className="flex flex-col gap-y-8 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["TSQLEditor.tsx"]} />
+      </div>
       <div>
         <h1 className="mb-2 text-2xl font-bold text-text-bright">TSQL Editor</h1>
         <p className="text-text-dimmed">
@@ -164,6 +168,7 @@ export default function Story() {
         <div className="flex flex-wrap gap-2">
           {exampleQueries.map((example) => (
             <button
+              type="button"
               key={example.name}
               onClick={() => setQuery(example.query)}
               className="rounded bg-background-raised px-3 py-1.5 text-sm text-text-dimmed transition hover:bg-surface-control hover:text-text-bright"

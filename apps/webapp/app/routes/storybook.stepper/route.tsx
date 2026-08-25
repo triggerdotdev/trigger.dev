@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
@@ -11,13 +12,19 @@ export default function Story() {
 
   return (
     <div className="grid h-full w-full place-items-center">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["InputNumberStepper.tsx"]} />
+      </div>
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-2">
           <Header2>InputNumberStepper</Header2>
           <Header3>Size: base (default)</Header3>
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-text-dimmed">Step: 75</label>
+            <label htmlFor="stepper-1" className="text-sm text-text-dimmed">
+              Step: 75
+            </label>
             <InputNumberStepper
+              id="stepper-1"
               value={value1}
               onChange={(e) => setValue1(e.target.value === "" ? "" : Number(e.target.value))}
               step={75}
@@ -25,8 +32,11 @@ export default function Story() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-text-dimmed">Step: 50, Min: 0, Max: 1000</label>
+            <label htmlFor="stepper-2" className="text-sm text-text-dimmed">
+              Step: 50, Min: 0, Max: 1000
+            </label>
             <InputNumberStepper
+              id="stepper-2"
               value={value2}
               onChange={(e) => setValue2(e.target.value === "" ? "" : Number(e.target.value))}
               step={50}
@@ -36,8 +46,11 @@ export default function Story() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-text-dimmed">Disabled state</label>
+            <label htmlFor="stepper-3" className="text-sm text-text-dimmed">
+              Disabled state
+            </label>
             <InputNumberStepper
+              id="stepper-3"
               value={value3}
               onChange={(e) => setValue3(e.target.value === "" ? "" : Number(e.target.value))}
               step={50}
@@ -49,8 +62,11 @@ export default function Story() {
         <div className="flex flex-col gap-2">
           <Header3>Size: large</Header3>
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-text-dimmed">Step: 50</label>
+            <label htmlFor="stepper-4" className="text-sm text-text-dimmed">
+              Step: 50
+            </label>
             <InputNumberStepper
+              id="stepper-4"
               value={value4}
               onChange={(e) => setValue4(e.target.value === "" ? "" : Number(e.target.value))}
               step={50}
@@ -59,8 +75,11 @@ export default function Story() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm text-text-dimmed">Step: 50, Disabled</label>
+            <label htmlFor="stepper-5" className="text-sm text-text-dimmed">
+              Step: 50, Disabled
+            </label>
             <InputNumberStepper
+              id="stepper-5"
               value={value5}
               onChange={(e) => setValue5(e.target.value === "" ? "" : Number(e.target.value))}
               step={50}

@@ -1,6 +1,7 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -13,7 +14,6 @@ import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { BranchesNoBranchableEnvironment, BranchesNoBranches } from "~/components/BlankStatePanels";
 import { Feedback } from "~/components/Feedback";
 import { GitMetadata } from "~/components/GitMetadata";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -66,6 +66,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   branchesPath,
+  docsPath,
   EnvironmentParamSchema,
   ProjectParamSchema,
   v3BillingPath,
@@ -78,6 +79,7 @@ import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -228,7 +230,7 @@ export default function Page() {
     return (
       <PageContainer>
         <NavBar>
-          <PageTitle title={<V4Title>Preview branches</V4Title>} />
+          <PageTitle title="Preview branches" />
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-md">
@@ -242,7 +244,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Preview branches</V4Title>} />
+        <PageTitle title="Preview branches" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -256,6 +258,17 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
+
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("deployment/preview-branches")}
+            >
+              Branches docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+
           {limits.isAtLimit ? (
             <UpgradePanel
               limits={limits}
@@ -492,17 +505,20 @@ export function BranchFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { showArchived } = BranchesOptions.parse(Object.fromEntries(searchParams.entries()));
 
-  const handleArchivedChange = useCallback((checked: boolean) => {
-    setSearchParams((s) => {
-      if (checked) {
-        s.set("showArchived", "true");
-      } else {
-        s.delete("showArchived");
-      }
-      s.delete("page");
-      return s;
-    });
-  }, []);
+  const handleArchivedChange = useCallback(
+    (checked: boolean) => {
+      setSearchParams((s) => {
+        if (checked) {
+          s.set("showArchived", "true");
+        } else {
+          s.delete("showArchived");
+        }
+        s.delete("page");
+        return s;
+      });
+    },
+    [setSearchParams]
+  );
 
   return (
     <div className="flex w-full items-center justify-between gap-2">
@@ -636,6 +652,7 @@ function PurchaseBranchesModal({
 
   const [amountValue, setAmountValue] = useState(extraBranches);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- The authoritative branch count intentionally resets this modal draft.
     setAmountValue(extraBranches);
   }, [extraBranches]);
   const isLoading = fetcher.state !== "idle";
@@ -650,6 +667,7 @@ function PurchaseBranchesModal({
       "ok" in data &&
       data.ok
     ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);
@@ -798,7 +816,7 @@ function PurchaseBranchesModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                    <span className="tabular-nums">{`Send request for ${formatNumber(
                       amountValue
                     )}`}</span>
                   </Button>
@@ -812,7 +830,7 @@ function PurchaseBranchesModal({
                     disabled={isLoading || state === "need_to_archive"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                    <span className="tabular-nums">{`Remove ${formatNumber(
                       extraBranches - amountValue
                     )} ${extraBranches - amountValue === 1 ? "branch" : "branches"}`}</span>
                   </Button>
@@ -826,7 +844,7 @@ function PurchaseBranchesModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                    <span className="tabular-nums">{`Purchase ${formatNumber(
                       amountValue - extraBranches
                     )} ${amountValue - extraBranches === 1 ? "branch" : "branches"}`}</span>
                   </Button>

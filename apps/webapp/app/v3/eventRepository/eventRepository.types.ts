@@ -1,6 +1,5 @@
 import type { Attributes, Tracer } from "@opentelemetry/api";
 import type {
-  ExceptionEventProperties,
   SpanEvents,
   TaskEventEnvironment,
   TaskEventStyle,
@@ -8,7 +7,6 @@ import type {
 } from "@trigger.dev/core/v3";
 import type {
   Prisma,
-  TaskEvent,
   TaskEventKind,
   TaskEventLevel,
   TaskEventStatus,
@@ -16,7 +14,6 @@ import type {
 } from "@trigger.dev/database";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
-export type { ExceptionEventProperties };
 
 // ============================================================================
 // Event Creation Types
@@ -123,7 +120,7 @@ export type TraceAttributes = Partial<
   >
 >;
 
-export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
+type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
 
 export type TraceEventOptions = {
   kind?: CreatableEventKind;
@@ -146,13 +143,6 @@ export type EventBuilder = {
   failWithError: (error: TaskRunError) => void;
 };
 
-export type UpdateEventOptions = {
-  attributes: TraceAttributes;
-  endTime?: Date;
-  immediate?: boolean;
-  events?: SpanEvents;
-};
-
 // ============================================================================
 // Configuration Types
 // ============================================================================
@@ -170,14 +160,6 @@ export type EventRepoConfig = {
   loadSheddingThreshold?: number;
   loadSheddingEnabled?: boolean;
 };
-
-// ============================================================================
-// Query Types
-// ============================================================================
-
-export type QueryOptions = Prisma.TaskEventWhereInput;
-
-export type TaskEventRecord = TaskEvent;
 
 export type QueriedEvent = Prisma.TaskEventGetPayload<{
   select: {

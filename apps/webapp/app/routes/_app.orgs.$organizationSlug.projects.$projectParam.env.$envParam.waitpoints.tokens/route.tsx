@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet, useParams } from "@remix-run/react";
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -6,6 +7,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { NoWaitpointTokens } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -33,7 +35,6 @@ import {
   WaitpointSearchParamsSchema,
   WaitpointTokenFilters,
 } from "~/components/runs/v3/WaitpointTokenFilters";
-import { V4Title } from "~/components/V4Badge";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -47,8 +48,9 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
-import { EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -135,9 +137,14 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Waitpoint Tokens</V4Title>} />
+        <PageTitle title="Waitpoint Tokens" />
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/wait")}>
+              Waitpoints docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

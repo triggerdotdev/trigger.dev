@@ -64,9 +64,7 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
   }
 }
 
-export async function findOrCreateMagicLinkUser({
-  email,
-}: FindOrCreateMagicLink): Promise<LoggedInUser> {
+async function findOrCreateMagicLinkUser({ email }: FindOrCreateMagicLink): Promise<LoggedInUser> {
   assertEmailAllowed(email);
 
   const existingUser = await prisma.user.findFirst({
@@ -97,7 +95,7 @@ export async function findOrCreateMagicLinkUser({
   };
 }
 
-export async function findOrCreateGithubUser({
+async function findOrCreateGithubUser({
   email,
   authenticationProfile,
   authenticationExtraParams,
@@ -187,7 +185,7 @@ export async function findOrCreateGithubUser({
   };
 }
 
-export async function findOrCreateGoogleUser({
+async function findOrCreateGoogleUser({
   email,
   authenticationProfile,
   authenticationExtraParams,
@@ -375,10 +373,6 @@ export async function getUserById(id: User["id"]) {
   };
 }
 
-export async function getUserByEmail(email: User["email"]) {
-  return prisma.user.findUnique({ where: { email } });
-}
-
 export function updateUser({
   id,
   name,
@@ -404,15 +398,36 @@ export function updateUser({
   });
 }
 
-export async function grantUserCloudAccess({ id, inviteCode }: { id: string; inviteCode: string }) {
+/**
+ * One column each. `updateUser` above is the onboarding write and confirms basic
+ * details as a side effect, which is wrong for a profile edit.
+ */
+export function updateUserName({ id, name }: Pick<User, "id" | "name">) {
   return prisma.user.update({
     where: { id },
-    data: {
-      invitationCode: {
-        connect: {
-          code: inviteCode,
-        },
-      },
-    },
+    data: { name },
   });
+}
+
+export function updateUserEmail({ id, email }: Pick<User, "id" | "email">) {
+  return prisma.user.update({
+    where: { id },
+    data: { email },
+  });
+}
+
+/**
+ * `updateMany` so the WHERE does the comparing: a redundant request updates zero
+ * rows rather than churning the row and its updatedAt.
+ */
+export async function updateUserMarketingEmails({
+  id,
+  marketingEmails,
+}: Pick<User, "id" | "marketingEmails">) {
+  const { count } = await prisma.user.updateMany({
+    where: { id, marketingEmails: { not: marketingEmails } },
+    data: { marketingEmails },
+  });
+
+  return { changed: count > 0 };
 }

@@ -1,6 +1,7 @@
 import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
+  BookOpenIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -21,7 +22,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
 import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
@@ -106,10 +107,12 @@ import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
 import { lerp } from "~/utils/lerp";
 import {
+  docsPath,
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
@@ -520,6 +523,11 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+          <WhenAgentUnavailable>
+            <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/runs")}>
+              Run docs
+            </LinkButton>
+          </WhenAgentUnavailable>
           <Dialog key={`replay-${run.friendlyId}`}>
             <DialogTrigger asChild>
               <Button
@@ -594,12 +602,11 @@ function shouldLiveReload({
   return true;
 }
 
-function TraceView({
-  run,
-  trace,
-  maximumLiveReloadingSetting,
-  resizable,
-}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting" | "resizable">) {
+type TraceViewProps = Pick<LoaderData, "run" | "maximumLiveReloadingSetting" | "resizable"> & {
+  trace: NonNullable<LoaderData["trace"]>;
+};
+
+function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: TraceViewProps) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -607,10 +614,6 @@ function TraceView({
   const selectedSpanId = searchParams.get("span") ?? undefined;
   const frozenSpanId = useFrozenValue(selectedSpanId);
   const displaySpanId = selectedSpanId ?? frozenSpanId;
-
-  if (!trace) {
-    return <></>;
-  }
 
   const {
     events,
@@ -965,6 +968,11 @@ function TasksTreeView({
     },
   });
 
+  const getInteractiveNodeProps = (id: string) => ({
+    ...getNodeProps(id),
+    onClick: () => selectNode(id),
+  });
+
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-1.5">
@@ -1044,83 +1052,90 @@ function TasksTreeView({
               autoFocus
               tree={events}
               nodes={nodes}
-              getNodeProps={getNodeProps}
+              getNodeProps={getInteractiveNodeProps}
               getTreeProps={getTreeProps}
               parentClassName="pl-3"
               renderNode={({ node, state, index }) => (
-                <>
-                  <div
-                    className={cn(
-                      "group/spannode flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
-                      state.selected
-                        ? "bg-grid-dimmed hover:bg-grid-bright"
-                        : "bg-transparent hover:bg-grid-dimmed"
-                    )}
-                    onClick={() => {
-                      selectNode(node.id);
-                    }}
-                  >
-                    <div className="flex h-8 items-center">
-                      {Array.from({ length: node.level }).map((_, index) => (
-                        <TaskLine
-                          key={index}
-                          isError={node.data.isError}
-                          isSelected={state.selected}
-                        />
-                      ))}
-                      <div
-                        className={cn(
-                          "flex h-8 w-4 items-center",
-                          node.hasChildren && "hover:bg-surface-control"
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (e.altKey) {
-                            if (state.expanded) {
-                              collapseAllBelowDepth(node.level);
-                            } else {
-                              expandAllBelowDepth(node.level);
-                            }
+                <div
+                  className={cn(
+                    "group/spannode flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
+                    state.selected
+                      ? "bg-grid-dimmed hover:bg-grid-bright"
+                      : "bg-transparent hover:bg-grid-dimmed"
+                  )}
+                >
+                  <div className="flex h-8 items-center">
+                    {Array.from({ length: node.level }).map((_, index) => (
+                      <TaskLine
+                        key={index}
+                        isError={node.data.isError}
+                        isSelected={state.selected}
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label={
+                        node.hasChildren
+                          ? state.expanded
+                            ? "Collapse task"
+                            : "Expand task"
+                          : "Select task"
+                      }
+                      className={cn(
+                        "flex h-8 w-4 items-center focus-custom",
+                        node.hasChildren && "hover:bg-surface-control"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.altKey) {
+                          if (state.expanded) {
+                            collapseAllBelowDepth(node.level);
                           } else {
-                            toggleExpandNode(node.id);
+                            expandAllBelowDepth(node.level);
                           }
-                          scrollToNode(node.id);
-                        }}
-                      >
-                        {node.hasChildren ? (
-                          state.expanded ? (
-                            <ChevronDownIcon className="h-4 w-4 text-text-dimmed" />
-                          ) : (
-                            <ChevronRightIcon className="h-4 w-4 text-text-dimmed" />
-                          )
+                        } else if (node.hasChildren) {
+                          toggleExpandNode(node.id);
+                        } else {
+                          selectNode(node.id, false);
+                        }
+                        scrollToNode(node.id);
+                        parentRef.current?.focus({ preventScroll: true });
+                      }}
+                    >
+                      {node.hasChildren ? (
+                        state.expanded ? (
+                          <ChevronDownIcon className="h-4 w-4 text-text-dimmed" />
                         ) : (
-                          <div className="h-8 w-4" />
-                        )}
-                      </div>
-                    </div>
+                          <ChevronRightIcon className="h-4 w-4 text-text-dimmed" />
+                        )
+                      ) : (
+                        <div className="h-8 w-4" />
+                      )}
+                    </button>
+                  </div>
 
-                    <div className="flex w-full items-center justify-between gap-2 pl-1">
-                      <div className="flex items-center gap-1.5 overflow-x-hidden">
-                        <RunIcon
-                          name={
-                            node.data.isAgentRun &&
-                            (node.data.style?.icon === "task" ||
-                              node.data.style?.icon === "task-cached")
-                              ? "agent"
-                              : node.data.style?.icon
-                          }
-                          spanName={node.data.message}
-                          className="size-5 min-h-5 min-w-5"
-                        />
-                        <NodeText node={node} />
-                        {node.data.isRoot && !rootRun && <Badge variant="extra-small">Root</Badge>}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <NodeStatusIcon node={node} />
-                      </div>
+                  <div className="flex w-full items-center justify-between gap-2 pl-1">
+                    <div className="flex items-center gap-1.5 overflow-x-hidden">
+                      <RunIcon
+                        name={
+                          node.data.isAgentRun &&
+                          (node.data.style?.icon === "task" ||
+                            node.data.style?.icon === "task-cached")
+                            ? "agent"
+                            : node.data.style?.icon
+                        }
+                        spanName={node.data.message}
+                        className="size-5 min-h-5 min-w-5"
+                      />
+                      <NodeText node={node} />
+                      {node.data.isRoot && !rootRun && <Badge variant="extra-small">Root</Badge>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <NodeStatusIcon node={node} />
                     </div>
                   </div>
-                </>
+                </div>
               )}
               onScroll={(scrollTop) => {
                 //sync the scroll to the tree
@@ -1249,6 +1264,7 @@ function TimelineView({
   const [duration, setDuration] = useState(queueAdjustedNs(totalDuration, queuedDuration));
   useEffect(() => {
     if (rootSpanStatus !== "executing" || !rootStartedAt) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setDuration(queueAdjustedNs(totalDuration, queuedDuration));
       return;
     }
@@ -1695,29 +1711,25 @@ function LiveReloadingStatus({
 }) {
   if (rootSpanCompleted) return null;
 
-  return (
-    <>
-      {isLiveReloading ? (
+  return isLiveReloading ? (
+    <div className="flex items-center gap-1">
+      <PulsingDot />
+      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
+        Live reloading
+      </Paragraph>
+    </div>
+  ) : (
+    <SimpleTooltip
+      content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
+      button={
         <div className="flex items-center gap-1">
-          <PulsingDot />
-          <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
-            Live reloading
+          <BoltSlashIcon className="size-3.5 text-text-dimmed" />
+          <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
+            Live reloading disabled
           </Paragraph>
         </div>
-      ) : (
-        <SimpleTooltip
-          content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
-          button={
-            <div className="flex items-center gap-1">
-              <BoltSlashIcon className="size-3.5 text-text-dimmed" />
-              <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
-                Live reloading disabled
-              </Paragraph>
-            </div>
-          }
-        ></SimpleTooltip>
-      )}
-    </>
+      }
+    />
   );
 }
 
@@ -1812,7 +1824,7 @@ function CurrentTimeIndicator({
               rootStartedAt.getTime() + ms + nanosecondsToMilliseconds(queuedDurationNs ?? 0)
             )
           : undefined;
-        const currentTimeComponent = currentTime ? <DateTimeShort date={currentTime} /> : <></>;
+        const currentTimeComponent = currentTime ? <DateTimeShort date={currentTime} /> : null;
 
         return (
           <div className="relative z-50 flex h-full flex-col">
@@ -1955,10 +1967,10 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     onChange(text);
   }, 250);
 
-  const updateValue = useCallback((next: string) => {
+  const updateValue = (next: string) => {
     setValue(next);
     updateFilterText(next);
-  }, []);
+  };
 
   return <SearchInput placeholder="Search logs…" value={value} onValueChange={updateValue} />;
 }

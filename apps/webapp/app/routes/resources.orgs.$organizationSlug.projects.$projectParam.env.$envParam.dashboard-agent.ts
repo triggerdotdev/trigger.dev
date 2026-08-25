@@ -17,6 +17,7 @@ import {
   softDeleteChat,
 } from "@internal/dashboard-agent-db";
 import { watchDraftSchema, type WatchDraft } from "@internal/dashboard-agent-contracts";
+import { dashboardAgentProvider } from "@internal/dashboard-agent/model-provider";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
@@ -41,7 +42,7 @@ import {
   submitDashboardAgentWatch,
 } from "~/services/dashboardAgentWatches.server";
 import {
-  dashboardAgentApiOrigin,
+  dashboardAgentUserApiOrigin,
   dashboardAgentWakeFeedCounter,
   isDashboardAgentConfigured,
   mintDashboardAgentToken,
@@ -329,7 +330,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const chatId = generateFriendlyId("chat");
     try {
       const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
-      const headStarted = Boolean(env.ANTHROPIC_API_KEY);
+      const headStarted =
+        dashboardAgentProvider() === "bedrock"
+          ? Boolean(env.DASHBOARD_AGENT_AWS_REGION || env.AWS_REGION || env.AWS_DEFAULT_REGION)
+          : Boolean(env.ANTHROPIC_API_KEY);
 
       // The lookups and the mint all run before the chat row exists, so a failure here can't
       // leave an empty chat behind in the user's history.
@@ -341,7 +345,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv.id,
             }),
-            apiOrigin: dashboardAgentApiOrigin(),
+            apiOrigin: dashboardAgentUserApiOrigin(),
             projectRef: project.externalRef,
             // Server-owned, like the `in` proxy: the eval opt-out and every tenancy check
             // key on these, so the client can't set them at all.
@@ -596,8 +600,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       } catch {
         /* invalid JSON — start without metadata */
       }
+      const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+      if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+
       try {
-        const { publicAccessToken } = await startDashboardAgentSession({ chatId, clientData });
+        // Whitelisted like `create` and the `in` proxy: this object lands in the resumed
+        // run's `basePayload.metadata` verbatim, so without the pick a client could inject
+        // any server-owned field into the agent's first turn (a `repoSnapshot.tarballUrl`
+        // is fetched and extracted on the worker).
+        const { publicAccessToken } = await startDashboardAgentSession({
+          chatId,
+          clientData: {
+            ...pickAgentClientMetadata(clientData),
+            organizationId: project.organizationId,
+            userId,
+            projectId: project.id,
+            environmentId: runtimeEnv.id,
+            ...dashboardAgentEnvironmentAddress(runtimeEnv),
+          },
+        });
         return json({ publicAccessToken });
       } catch (error) {
         logger.error("Failed to start dashboard agent session", { chatId, error });

@@ -39,6 +39,24 @@ export type RepoSnapshot = {
 };
 
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100MB ceiling on the download
+
+// The snapshot fetch is a network primitive on an internal worker, so the URL must be one
+// the webapp would have minted: https to GitHub's own archive hosts (the signed redirect
+// target of the `tarball` API is codeload). A validation failure is thrown before any
+// request leaves the worker.
+const ALLOWED_TARBALL_HOSTS = new Set(["codeload.github.com"]);
+
+function assertAllowedTarballUrl(tarballUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(tarballUrl);
+  } catch {
+    throw new Error("repo snapshot URL is not a valid URL");
+  }
+  if (url.protocol !== "https:" || !ALLOWED_TARBALL_HOSTS.has(url.hostname)) {
+    throw new Error(`repo snapshot URL host is not allowed (${url.hostname || "unparseable"})`);
+  }
+}
 // A tool result the model has to pay for on every later turn of the conversation:
 // 48KB is ~12k tokens, where the old 256KB ceiling was ~65k.
 export const MAX_READ_BYTES = 48 * 1024;
@@ -49,7 +67,7 @@ const FETCH_TIMEOUT_MS = 30_000;
 
 // Points at the mechanism the prompt already teaches — the stack-trace line is
 // where a truncated read gets resumed.
-export const READ_TRUNCATION_NOTICE =
+const READ_TRUNCATION_NOTICE =
   `Truncated to the first ${MAX_READ_LINES} lines / ${MAX_READ_BYTES / 1024}KB. ` +
   "Read the part you need with startLine and endLine — the line from the stack trace or the search match is where to start.";
 
@@ -101,7 +119,13 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     let tarPath: string | undefined;
     try {
-      const res = await fetch(snapshot.tarballUrl, { signal: controller.signal });
+      assertAllowedTarballUrl(snapshot.tarballUrl);
+      // No redirects: the server resolves the one hop to a signed codeload URL itself, so
+      // following one here would just reopen the host check to a redirect target.
+      const res = await fetch(snapshot.tarballUrl, {
+        signal: controller.signal,
+        redirect: "error",
+      });
       if (!res.ok) throw new Error(`archive download failed (status ${res.status})`);
       const length = Number(res.headers.get("content-length") ?? 0);
       if (length > MAX_ARCHIVE_BYTES) throw new Error(`archive too large (${length} bytes)`);
@@ -112,6 +136,29 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
       const scratch = await mkdtemp(join(tmpdir(), "dashboard-agent-tar-"));
       tarPath = join(scratch, "repo.tar.gz");
       await writeFile(tarPath, bytes);
+
+      // List the archive's top-level entries before extracting: anything that resolves
+      // outside the root after `--strip-components=1` (`..` segments, absolute paths)
+      // rejects the archive. Both bsdtar and GNU tar refuse `..` members outright; this
+      // rejects rather than relying on the extractor, and the read tools' realpath checks
+      // keep any surviving symlink member from pointing a read outside the root.
+      const { stdout: listing } = await execFileAsync("tar", ["-tzf", tarPath], {
+        // The listing is a line per member; a 100MB archive can't hold more members
+        // than this fits at any plausible path length.
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      const roots = new Set<string>();
+      for (const entry of listing.split("\n")) {
+        const name = entry.replace(/\/+$/, "");
+        if (!name) continue;
+        if (isAbsolute(name) || name.split("/").includes("..")) {
+          throw new Error(`archive entry escapes the workspace (${name})`);
+        }
+        roots.add(name.split("/")[0]);
+        if (roots.size > 1) {
+          throw new Error("archive has more than one top-level entry; refusing to extract");
+        }
+      }
 
       await mkdir(workdir, { recursive: true });
       await execFileAsync("tar", ["-xzf", tarPath, "-C", workdir, "--strip-components=1"]);

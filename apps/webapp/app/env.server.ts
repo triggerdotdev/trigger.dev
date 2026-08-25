@@ -114,6 +114,26 @@ const OptionalIntEnv = z.preprocess(
   z.coerce.number().int().optional()
 );
 
+/** Optional boolean env var; blank/whitespace/unset normalises to undefined (so it falls back). */
+const OptionalBoolEnv = z.preprocess((v) => {
+  if (typeof v !== "string" || v.trim() === "") return undefined;
+  return ["true", "1"].includes(v.toLowerCase().trim());
+}, z.boolean().optional());
+
+/** Boolean env var with a default where blank/whitespace falls back to the default instead of parsing as false. */
+const BoolEnvWithDefault = (defaultValue: boolean) =>
+  z.preprocess((v) => {
+    if (typeof v !== "string" || v.trim() === "") return undefined;
+    return ["true", "1"].includes(v.toLowerCase().trim());
+  }, z.boolean().default(defaultValue));
+
+/** Int env var with a default where a blank/whitespace value falls back to the default instead of coercing to 0. */
+const IntEnvWithDefault = (defaultValue: number) =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().default(defaultValue)
+  );
+
 /**
  * Optional int env var for a limit that can be switched off. Blank, whitespace and `0` all mean
  * "no limit" and normalise to undefined; anything else that is set must be greater than zero.
@@ -142,6 +162,27 @@ const EnvironmentSchema = z
     DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
+    DATABASE_TRANSACTION_MAX_WAIT_MS: IntEnvWithDefault(10000),
+    DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnvWithDefault(true),
+    DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(3),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: IntEnvWithDefault(250),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: IntEnvWithDefault(50),
+    DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: IntEnvWithDefault(100),
+    RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: OptionalIntEnv,
+    RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: OptionalIntEnv,
+    RUN_OPS_LEGACY_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: OptionalIntEnv,
     // Dashboard-agent conversation store. Cloud points this at a dedicated
     // database; when unset it falls back to DATABASE_URL (OSS), where
     // the tables live in the isolated `trigger_dashboard_agent` schema.
@@ -151,6 +192,7 @@ const EnvironmentSchema = z
     // standard chat.agent SDK flow. When unset, the live agent is disabled — the
     // conversation store / History still work, no chat can start.
     DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
+    DASHBOARD_AGENT_BASE_URL: z.string().optional(),
     // Pins agent sessions to a specific deployed version (paired with
     // --skip-promotion deploys); unset => the project env's current version.
     DASHBOARD_AGENT_VERSION: z.string().optional(),
@@ -168,6 +210,28 @@ const EnvironmentSchema = z
     // uses its own key on the Trigger side. When unset, Head Start is disabled
     // and the first turn falls back to the normal cold-start path.
     ANTHROPIC_API_KEY: z.string().optional(),
+    // Selects the dashboard agent's LLM provider (default anthropic). The internal
+    // seam reads process.env directly; this entry validates the value webapp-side.
+    DASHBOARD_AGENT_MODEL_PROVIDER: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.enum(["anthropic", "bedrock"]).default("anthropic")
+    ),
+    // AWS credentials for the dashboard agent's Bedrock provider (only used when
+    // DASHBOARD_AGENT_MODEL_PROVIDER=bedrock; default path stays Anthropic). The
+    // provider resolves credentials itself, so only the region is read here.
+    AWS_REGION: z.string().optional(),
+    AWS_DEFAULT_REGION: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_SESSION_TOKEN: z.string().optional(),
+    AWS_BEARER_TOKEN_BEDROCK: z.string().optional(),
+    // Dedicated, non-global credentials for the dashboard agent's Bedrock calls (a
+    // Bedrock-invoke-only IAM user). Kept separate from AWS_ACCESS_KEY_ID/etc so
+    // injecting them can't hijack the default credential chain the ECR/STS deploy
+    // clients rely on.
+    DASHBOARD_AGENT_AWS_ACCESS_KEY_ID: z.string().optional(),
+    DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    DASHBOARD_AGENT_AWS_REGION: z.string().optional(),
     DIRECT_URL: z
       .string()
       .refine(
@@ -179,6 +243,7 @@ const EnvironmentSchema = z
     // Explicit positive opt-in. Split behavior is unreachable unless this is true
     // AND the distinct-DB sentinel confirms the two URLs are physically distinct DBs.
     RUN_OPS_SPLIT_ENABLED: BoolEnv.default(false),
+    RUN_OPS_WORKER_VERSION_FRESH_READ_ENABLED: BoolEnv.default(true),
     // Canonical connection URL for the dedicated NEW run-ops DB — drives the runtime pool, the split
     // decision, replication, and migrations. Optional so single-DB installs never set it.
     RUN_OPS_DATABASE_URL: z
@@ -248,6 +313,11 @@ const EnvironmentSchema = z
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
+    // Webhook feature data-plane DB (WebhookEndpoint + WebhookDelivery). Unset -> the webhook
+    // clients reuse the main prisma / $replica, so this is connection-neutral until you split.
+    WEBHOOK_DATABASE_URL: z.string().optional(),
+    WEBHOOK_DATABASE_READ_REPLICA_URL: z.string().optional(),
+    WEBHOOK_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().optional(),
     SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     MAGIC_LINK_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEY: z
@@ -262,6 +332,8 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
+    // Instance-level kill switch for the admin dashboard and user impersonation.
+    ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
@@ -418,6 +490,31 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     TASK_META_CACHE_CURRENT_ENV_TTL_SECONDS: z.coerce.number().default(86400),
+
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    EXTERNAL_DEPLOYMENT_CACHE_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    EXTERNAL_DEPLOYMENT_CACHE_TTL_SECONDS: z.coerce.number().default(2592000),
+    EXTERNAL_DEPLOYMENT_CACHE_MISSING_TTL_SECONDS: z.coerce.number().default(20),
+    EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS: z.coerce.number().default(3600000),
 
     // Runs-list empty-state check: how far back the ClickHouse "does this env have any run"
     // probe looks. Bounds the prove-absence partition scan. 0 = unbounded ("any run ever").
@@ -721,6 +818,19 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 15), // 15 minutes
+    DEPLOYMENT_CONTEXT_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUNDLE_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(128 * 1024), // 128KB
+    DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS: z.coerce.number().int().default(400),
 
     // When enabled, reject deploys made by v3 CLI versions (i.e. payloads that
     // omit the `type` field). v4 CLI versions always send `type` ("MANAGED" or "V1"),
@@ -900,7 +1010,8 @@ const EnvironmentSchema = z
 
     CENTS_PER_RUN: z.coerce.number().default(0),
 
-    EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
+    EVENT_LOOP_MONITOR_ENABLED: z.string().default("0"),
+    EVENT_LOOP_UTILIZATION_MONITOR_ENABLED: z.string().default("1"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
@@ -1724,6 +1835,65 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     SCHEDULE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    WEBHOOK_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
+    WEBHOOK_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    WEBHOOK_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
+    WEBHOOK_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+    WEBHOOK_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    WEBHOOK_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+    WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_ENABLED: z.string().default("0"),
+
+    WEBHOOK_WORKER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    WEBHOOK_WORKER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    WEBHOOK_WORKER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    WEBHOOK_WORKER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    WEBHOOK_WORKER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+    WEBHOOK_PARTITION_ENSURE_SCHEDULE: z.string().optional(),
+    WEBHOOK_PARTITION_ENSURE_JITTER_MS: z.coerce.number().int().optional(),
+    WEBHOOK_PARTITION_LOOKAHEAD_DAYS: z.coerce.number().int().default(10),
+    WEBHOOK_PARTITION_RETENTION_DAYS: z.coerce.number().int().default(60),
+
+    // Ingest hot-path cache for the endpoint + resolved signing secret (keyed by opaqueId). 0 disables.
+    WEBHOOK_ENDPOINT_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_ENDPOINT_CACHE_MAX_SIZE: z.coerce.number().int().default(10_000),
+
+    WEBHOOK_INGRESS_ENABLED: z.string().default("1"),
+
+    // Public origin for the webhook ingress URL shown to users / returned by the API. Defaults to the
+    // API origin; set to a dedicated host (e.g. https://webhook.trigger.dev) when one is fronted.
+    WEBHOOK_INGRESS_ORIGIN: z.string().optional(),
+    WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
+    WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
+    WEBHOOK_INGRESS_IP_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    WEBHOOK_INGRESS_IP_RATE_LIMIT_TOKENS: z.coerce.number().int().default(300),
+    WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .default(6 * 60 * 60),
+    WEBHOOK_FRONT_GATE_MAX_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .default(6 * 60 * 60),
+
     TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
@@ -1881,6 +2051,47 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
+    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v1).
+    // Shares Redis with the runs replicator for leader locking but has its own
+    // slot and publication so the two consume independently. The source table is
+    // a partitioned parent, so the publication is created with
+    // publish_via_partition_root.
+    WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+    WEBHOOK_DELIVERIES_REPLICATION_ENABLED: z.string().default("0"),
+    WEBHOOK_DELIVERIES_REPLICATION_SLOT_NAME: z
+      .string()
+      .default("webhook_deliveries_to_clickhouse_v1"),
+    WEBHOOK_DELIVERIES_REPLICATION_PUBLICATION_NAME: z
+      .string()
+      .default("webhook_deliveries_to_clickhouse_v1_publication"),
+    WEBHOOK_DELIVERIES_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
+    WEBHOOK_DELIVERIES_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    WEBHOOK_DELIVERIES_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(10_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce
+      .number()
+      .int()
+      .default(10_000),
+    WEBHOOK_DELIVERIES_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(500),
+    WEBHOOK_DELIVERIES_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+    WEBHOOK_DELIVERIES_REPLICATION_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    WEBHOOK_DELIVERIES_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_STRATEGY: z
+      .enum(["insert", "insert_async"])
+      .default("insert"),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+    WEBHOOK_DELIVERIES_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
+
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
     // Optional read replica endpoint. Read-only clients (logs, query, admin, runsList,
@@ -1925,20 +2136,28 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Logs list pagination tuning (page sizing + recent-first probe windows).
+    // Scheduled logs-search projection. Disabled by default. LOGS_CLICKHOUSE_URL, or the
+    // CLICKHOUSE_URL fallback, must reach both source and destination tables and allow writes.
+    LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
+    LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
+    LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(120),
+    LOGS_SEARCH_PROJECTOR_MAX_ROWS_TO_READ: z.coerce.number().int().positive().default(10_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_500_000_000),
+    LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
+
+    // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
     LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),
-    // Days back from the page ceiling to probe before widening to the full requested window,
-    // comma-separated. Empty disables narrowing (a single full-window query).
-    LOGS_LIST_RECENT_FIRST_PROBE_DAYS: z
-      .string()
-      .default("1,7")
-      .transform((s) =>
-        s
-          .split(",")
-          .map((v) => Number(v.trim()))
-          .filter((n) => Number.isFinite(n) && n > 0)
-      ),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
@@ -1947,10 +2166,7 @@ const EnvironmentSchema = z
     AI_FEATURES_ENABLED: z.string().default("0"),
 
     // Logs page ClickHouse URL (for logs queries)
-    LOGS_CLICKHOUSE_URL: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
+    LOGS_CLICKHOUSE_URL: z.string().optional(),
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z
@@ -2032,6 +2248,15 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(40_000),
+    RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().positive().default(35),
+    RUNS_LIST_CLICKHOUSE_MAX_THREADS: z.coerce.number().int().positive().default(4),
+    RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_073_741_824),
+    RUNS_LIST_CLICKHOUSE_READONLY: z.enum(["0", "1", "2"]).default("2"),
     /**
      * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every
      * queue-metrics read (dashboards, queue pages, run inspector, health report) go through it, so

@@ -10,10 +10,9 @@ import {
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
+import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { afterEach, describe, expect, vi } from "vitest";
 
 const ctx = vi.hoisted(() => ({
@@ -68,28 +67,13 @@ const { alertsWorker } = await import("~/v3/alertsWorker.server");
 
 const enqueue = alertsWorker.enqueue as unknown as ReturnType<typeof vi.fn>;
 
-/** Replays every migration in order, so a new migration can't leave this file on a stale schema. */
-async function applyAgentSchema(prisma: PrismaClient) {
-  const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-  const migrations = readdirSync(folder)
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
-  for (const name of migrations) {
-    const sql = readFileSync(path.join(folder, name), "utf8");
-    for (const statement of sql.split("--> statement-breakpoint")) {
-      const trimmed = statement.trim();
-      if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
-    }
-  }
-}
-
 let agentDbClient: DashboardAgentDbClient | undefined;
 
 async function boot(prisma: PrismaClient, connectionUri: string) {
   ctx.prisma = prisma;
   ctx.actor = undefined;
   enqueue.mockClear();
-  await applyAgentSchema(prisma);
+  await applyDashboardAgentMigrations((statement) => prisma.$executeRawUnsafe(statement));
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 4 });
   ctx.agentDb = agentDbClient.db;
 }

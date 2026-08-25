@@ -10,12 +10,12 @@ import { getMollifierBuffer } from "./mollifierBuffer.server";
 // Tunables. The TTL on the claim key is bounded by typical trigger-pipeline
 // dwell; long enough that a slow PG insert doesn't expire mid-flight,
 // short enough that a crashed claimant unblocks waiters quickly.
-export const DEFAULT_CLAIM_TTL_SECONDS = 30;
+const DEFAULT_CLAIM_TTL_SECONDS = 30;
 // safetyNetMs caps how long a waiter blocks before returning timed_out.
 // Matches the mutateWithFallback safety net so SDK retry policies don't
 // have to special-case this path.
-export const DEFAULT_CLAIM_WAIT_MS = 5_000;
-export const DEFAULT_CLAIM_POLL_MS = 25;
+const DEFAULT_CLAIM_WAIT_MS = 5_000;
+const DEFAULT_CLAIM_POLL_MS = 25;
 
 export type ClaimOrAwaitOutcome =
   // We own the claim. `token` MUST be passed to publishClaim/releaseClaim

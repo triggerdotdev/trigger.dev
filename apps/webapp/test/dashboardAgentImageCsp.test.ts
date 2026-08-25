@@ -24,6 +24,10 @@ describe("document image CSP", () => {
     expect(directive).not.toMatch(/(^|\s)https?:(\s|$)/);
   });
 
+  it("allows changelog images", () => {
+    expect(buildImgSrcDirective().split(" ")).toContain("https://trigger.dev/changelog/");
+  });
+
   it("sets the header on every document response, not only on /login", () => {
     // The set() call must sit outside the /login branch.
     const loginBranch = source.slice(

@@ -1,6 +1,6 @@
 import { BeakerIcon } from "@heroicons/react/24/outline";
 import { IconChartHistogram } from "@tabler/icons-react";
-import { useFetchers, useLocation } from "@remix-run/react";
+import { useFetcher, useFetchers, useLocation } from "@remix-run/react";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
@@ -40,9 +40,12 @@ import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
+import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
+import { RUN_COLUMN_SEARCH_PARAMS } from "../runs/v3/runColumns";
 import { type RenderIcon } from "../primitives/Icon";
 
 export const FAVORITES_ACTION_PATH = "/resources/preferences/favorites";
@@ -71,6 +74,7 @@ const FAVORITE_PAGE_ICONS: Record<
   "task-agent": { icon: CubeSparkleIcon, activeColor: "text-agents" },
   runs: { icon: RunsIcon, activeColor: "text-runs" },
   sessions: { icon: AIChatIcon, activeColor: "text-sessions" },
+  webhooks: { icon: WebhookIcon, activeColor: "text-webhooks" },
   prompts: { icon: AIPenIcon, activeColor: "text-aiPrompts" },
   models: { icon: Box3DIcon, activeColor: "text-models" },
   logs: { icon: LogsIcon, activeColor: "text-logs" },
@@ -142,7 +146,7 @@ const PAGINATION_PARAMS = ["cursor", "direction", "page"];
  * marker (presentation-only) and the pagination position (cursors go stale, and page N of a view
  * is not a different view). A favorite pins filters and tabs, never a transient page of them.
  */
-export function favoritePageUrl(pathname: string, search: string): string {
+function favoritePageUrl(pathname: string, search: string): string {
   const params = new URLSearchParams(search);
   params.delete(FAVORITE_SEARCH_PARAM);
   for (const param of PAGINATION_PARAMS) {
@@ -154,7 +158,7 @@ export function favoritePageUrl(pathname: string, search: string): string {
 
 /** favoritePageUrl for an already-joined URL, e.g. a favorite's stored one (which may predate
  * pagination stripping). */
-export function canonicalFavoriteUrl(url: string): string {
+function canonicalFavoriteUrl(url: string): string {
   const [pathname, search = ""] = url.split("?");
   return favoritePageUrl(pathname, search);
 }
@@ -213,6 +217,7 @@ const ENV_PAGE_META: Record<string, PageMeta> = {
   "": { icon: "tasks", name: "Tasks", singular: "Task" },
   runs: { icon: "runs", name: "Runs", singular: "Run" },
   sessions: { icon: "sessions", name: "Sessions", singular: "Session" },
+  webhooks: { icon: "webhooks", name: "Webhook deliveries" },
   prompts: { icon: "prompts", name: "Prompts", singular: "Prompt" },
   models: { icon: "models", name: "Models", singular: "Model" },
   logs: { icon: "logs", name: "Logs" },
@@ -257,7 +262,7 @@ const ACCOUNT_PAGE_META: Record<string, PageMeta> = {
 };
 
 /** Best-effort icon + name for any dashboard page, derived from its URL shape. */
-export function resolvePageMeta(pathname: string): PageMeta {
+function resolvePageMeta(pathname: string): PageMeta {
   const envMatch = pathname.match(/^\/orgs\/[^/]+\/projects\/[^/]+\/env\/[^/]+(?:\/([^?]*))?$/);
   if (envMatch) {
     const segments = (envMatch[1] ?? "").split("/").filter(Boolean);
@@ -362,7 +367,14 @@ function humanizeValue(value: string): string {
 }
 
 /** Pagination/UI-state params that never describe what the user filtered. */
-const NON_FILTER_PARAMS = [FAVORITE_SEARCH_PARAM, ...PAGINATION_PARAMS, "span"];
+const NON_FILTER_PARAMS = [
+  FAVORITE_SEARCH_PARAM,
+  ...PAGINATION_PARAMS,
+  "span",
+  // The runs list stores its column layout in the URL; that's presentation, not a filter,
+  // so it must not count toward the tally ("Runs: 3 filters" for an unfiltered view).
+  ...RUN_COLUMN_SEARCH_PARAMS,
+];
 
 /**
  * Summarize a filtered view's search params into a short, selective descriptor for the favorite
@@ -422,7 +434,7 @@ function describeFilters(search: string): string | undefined {
  * id for friendly-id pages: "Run: 05hrqq9n"); filtered views summarize their filters ("Runs:
  * Completed successfully, last 7d"). Users can always rename.
  */
-export function buildFavoriteLabel(
+function buildFavoriteLabel(
   pathname: string,
   search: string,
   pageTitle: string | undefined
@@ -508,4 +520,54 @@ export function useFavorites(): FavoritePage[] {
   }
 
   return favorites;
+}
+
+/**
+ * Shared favorite state + toggle for the current page (full URL, including filters and tabs).
+ * Backs both the page-header star and the runs list "Save to favorites" menu item, so the two
+ * always agree on what counts as favorited and produce identical favorites.
+ */
+export function useFavoritePageToggle(pageTitle?: string): {
+  isFavorited: boolean;
+  /** The favorite's custom name once saved, else the label saving would use. */
+  pageName: string;
+  /** False for logged-out and impersonating sessions, which must not mutate preferences. */
+  canFavorite: boolean;
+  toggle: () => void;
+} {
+  const user = useOptionalUser();
+  const isImpersonating = useIsImpersonating();
+  const location = useLocation();
+  const favorites = useFavorites();
+  const fetcher = useFetcher();
+
+  const url = favoritePageUrl(location.pathname, location.search);
+  const existing = favorites.find((favorite) => canonicalFavoriteUrl(favorite.url) === url);
+
+  const toggle = () => {
+    if (existing) {
+      fetcher.submit(
+        { intent: "remove", id: existing.id },
+        { method: "POST", action: FAVORITES_ACTION_PATH }
+      );
+    } else {
+      fetcher.submit(
+        {
+          intent: "add",
+          id: crypto.randomUUID(),
+          url,
+          label: buildFavoriteLabel(location.pathname, location.search, pageTitle),
+          icon: resolvePageMeta(location.pathname).icon,
+        },
+        { method: "POST", action: FAVORITES_ACTION_PATH }
+      );
+    }
+  };
+
+  return {
+    isFavorited: existing !== undefined,
+    pageName: existing?.label ?? buildFavoriteLabel(location.pathname, location.search, pageTitle),
+    canFavorite: user !== undefined && !isImpersonating,
+    toggle,
+  };
 }

@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -16,11 +17,16 @@ import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import {
+  RunsListErrorState,
+  RunsListErrorStateNoop,
+} from "~/components/runs/v3/RunsListErrorState";
+import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
@@ -37,17 +43,21 @@ import {
   type AgentDetail,
 } from "~/presenters/v3/AgentDetailPresenter.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUser } from "~/services/session.server";
 import {
+  docsPath,
   EnvironmentParamSchema,
   v3EnvironmentPath,
   v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -87,10 +97,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, runsListClickhouse] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
+  ]);
 
   const presenter = new AgentDetailPresenter($replica, clickhouse);
   const agent = await presenter.findAgent({
@@ -149,7 +159,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
-  const runList = new NextRunListPresenter($replica, clickhouse)
+  const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -159,8 +169,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      columns: getRunColumnsForSelect(request),
     })
-    .catch(() => null);
+    .catch((error) => {
+      if (error instanceof RunsListQueryError) {
+        throw error;
+      }
+      return null;
+    });
 
   const sessionList = new SessionListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
@@ -227,6 +243,17 @@ export default function Page() {
             </span>
           }
         />
+        <PageAccessories>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("ai-chat/overview")}
+            >
+              Agents docs
+            </LinkButton>
+          </WhenAgentUnavailable>
+        </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
         <MetricsLayout.Filters>
@@ -321,11 +348,14 @@ export default function Page() {
                     </TypedAwait>
                   </Suspense>
                 ) : (
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
+                  <>
+                    <RunsDisplayOptions sampleFilters={{ tasks: agent.slug, rootOnly: "false" }} />
+                    <Suspense fallback={null}>
+                      <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
+                        {(list) => (list ? <ListPagination list={list} /> : null)}
+                      </TypedAwait>
+                    </Suspense>
+                  </>
                 )}
               </div>
             </TabContainer>
@@ -375,7 +405,7 @@ function AgentContentArea({
     </Suspense>
   ) : (
     <Suspense fallback={<TableLoading />}>
-      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+      <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
         {(list) =>
           list ? (
             <TaskRunsTable

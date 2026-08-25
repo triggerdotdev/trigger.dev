@@ -1,5 +1,34 @@
 # trigger.dev
 
+## 4.5.12
+
+### Patch Changes
+
+- `trigger.dev deploy --external-id` tags a deployment with an id of your own — a commit SHA, a CI run id, a release tag — so runs triggered by that release of your app go to that deployment. Deploying an id that is already deployed builds nothing and reports the existing version instead of creating a duplicate; use `--force` to rebuild it. ([#4663](https://github.com/triggerdotdev/trigger.dev/pull/4663))
+- List the current Production runtime for every accessible project with `trigger projects list`. Add `--needs-update` to identify projects currently running Node.js 21. ([#4659](https://github.com/triggerdotdev/trigger.dev/pull/4659))
+- New projects created with `trigger init` use Node.js 24 by default. Deployments without explicit `runtime` now use their project's configured default runtime. ([#4649](https://github.com/triggerdotdev/trigger.dev/pull/4649))
+- Deployment builds now use custom base layer images and no longer install system packages during every build. This improves layer caching resulting in both faster deployments and faster image pulls on the worker cluster side. ([#4602](https://github.com/triggerdotdev/trigger.dev/pull/4602))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+  - `@trigger.dev/build@4.5.12`
+  - `@trigger.dev/schema-to-json@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- Allow `trigger deploy` to authenticate with an environment API key from `TRIGGER_ACCESS_TOKEN`. ([#4561](https://github.com/triggerdotdev/trigger.dev/pull/4561))
+- The dev environment onboarding now tracks real progress. After you run `init`, the setup checklist marks your project as initialized, and it updates live as your dev server connects and your tasks register. The blank state also adds a "Copy AI agent prompt" button that copies a ready-to-paste setup prompt (pre-filled with your project reference) for Claude Code, Cursor, or any coding agent. ([#4563](https://github.com/triggerdotdev/trigger.dev/pull/4563))
+
+  The `init` scaffold now imports from `@trigger.dev/sdk` instead of the deprecated `@trigger.dev/sdk/v3` subpath.
+
+- Deployed images now ship dependencies and bundled task code as separate layers. Repeat deploys with unchanged dependencies typically push and pull far less data, making deploys and worker image pulls faster. ([#4551](https://github.com/triggerdotdev/trigger.dev/pull/4551))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+  - `@trigger.dev/build@4.5.11`
+  - `@trigger.dev/schema-to-json@4.5.11`
+
 ## 4.5.10
 
 ### Patch Changes

@@ -23,7 +23,7 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { organizationPath, v3ProjectPath } from "~/utils/pathBuilder";
+import { organizationPath, v3ProjectSettingsGeneralPath } from "~/utils/pathBuilder";
 import { useState } from "react";
 
 function createSchema(
@@ -60,9 +60,21 @@ function createSchema(
   ]);
 }
 
+type FormAction = "rename" | "delete";
+
+export function submissionFor(lastSubmission: unknown, formAction: FormAction) {
+  return lastSubmission &&
+    typeof lastSubmission === "object" &&
+    "formAction" in lastSubmission &&
+    lastSubmission.formAction === formAction
+    ? lastSubmission
+    : undefined;
+}
+
 const Params = z.object({
   organizationSlug: z.string(),
   projectParam: z.string(),
+  envParam: z.string(),
 });
 
 export const action = dashboardAction(
@@ -75,9 +87,16 @@ export const action = dashboardAction(
   },
   async ({ user, ability, request, params }) => {
     const userId = user.id;
-    const { organizationSlug, projectParam } = params;
+    const { organizationSlug, projectParam, envParam } = params;
+
+    const settingsPath = v3ProjectSettingsGeneralPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam }
+    );
 
     const formData = await request.formData();
+    const formAction = formData.get("action") as FormAction;
 
     const schema = createSchema({
       getSlugMatch: (slug) => {
@@ -87,7 +106,7 @@ export const action = dashboardAction(
     const submission = parseWithZod(formData, { schema });
 
     if (submission.status !== "success") {
-      return json(submission.reply());
+      return json({ ...submission.reply(), formAction });
     }
 
     const projectSettingsService = new ProjectSettingsService();
@@ -98,7 +117,10 @@ export const action = dashboardAction(
     );
 
     if (membershipResultOrFail.isErr()) {
-      return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
+      return json(
+        { ...submission.reply({ formErrors: ["Project not found"] }), formAction },
+        { status: 404 }
+      );
     }
 
     const { projectId } = membershipResultOrFail.value;
@@ -107,7 +129,7 @@ export const action = dashboardAction(
       case "rename": {
         if (!ability.can("manage", { type: "project" })) {
           throw await redirectWithErrorMessage(
-            v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+            settingsPath,
             request,
             "You don't have permission to rename this project"
           );
@@ -126,13 +148,16 @@ export const action = dashboardAction(
               logger.error("Failed to rename project", {
                 error: resultOrFail.error,
               });
-              return json({ errors: { body: "Failed to rename project" } }, { status: 400 });
+              return json(
+                { ...submission.reply({ formErrors: ["Failed to rename project"] }), formAction },
+                { status: 400 }
+              );
             }
           }
         }
 
         return redirectWithSuccessMessage(
-          v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+          settingsPath,
           request,
           `Project renamed to ${submission.value.projectName}`
         );
@@ -140,7 +165,7 @@ export const action = dashboardAction(
       case "delete": {
         if (!ability.can("manage", { type: "project" })) {
           throw await redirectWithErrorMessage(
-            v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+            settingsPath,
             request,
             "You don't have permission to delete this project"
           );
@@ -157,7 +182,7 @@ export const action = dashboardAction(
                 error: resultOrFail.error,
               });
               return redirectWithErrorMessage(
-                v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+                settingsPath,
                 request,
                 `Project ${projectParam} could not be deleted`
               );
@@ -185,7 +210,7 @@ export default function GeneralSettingsPage() {
   const [renameForm, { projectName }] = useForm({
     id: "rename-project",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastResult: submissionFor(lastSubmission, "rename") as any,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parseWithZod(formData, {
@@ -201,7 +226,7 @@ export default function GeneralSettingsPage() {
   const [deleteForm, { projectSlug }] = useForm({
     id: "delete-project",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastResult: submissionFor(lastSubmission, "delete") as any,
     shouldValidate: "onInput",
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
@@ -250,6 +275,7 @@ export default function GeneralSettingsPage() {
                     }}
                   />
                   <FormError id={projectName.errorId}>{projectName.errors}</FormError>
+                  <FormError>{renameForm.errors}</FormError>
                 </InputGroup>
                 <FormButtons
                   confirmButton={

@@ -13,9 +13,7 @@ import {
 import { createTestSessionHandle, type TestSessionOutState } from "./test-session-handle.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
-export type SetupLocals = (locals: {
-  set<T>(key: LocalsKey<T>, value: T): void;
-}) => void | Promise<void>;
+type SetupLocals = (locals: { set<T>(key: LocalsKey<T>, value: T): void }) => void | Promise<void>;
 
 // The slim wire payload shape used by chat.agent tasks. Kept loose here so we
 // don't import from the backend-only ai.ts module. At most ONE message per

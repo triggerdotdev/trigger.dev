@@ -8,6 +8,7 @@ import { taskContext } from "./task-context-api.js";
 import type { IdempotencyKey } from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
 import type { ZodFetchOptions } from "./apiClient/core.js";
+import { NotFoundError } from "./apiClient/errors.js";
 
 // Re-export types from catalog for backwards compatibility
 export type {
@@ -234,19 +235,19 @@ export async function resetIdempotencyKey(
 ): Promise<{ id: string }> {
   const client = apiClientManager.clientOrThrow();
 
-  // If the key is already a 64-char hash, use it directly
-  if (typeof idempotencyKey === "string" && idempotencyKey.length === 64) {
-    return client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+  // A 64-char key is only assumed pre-hashed if the catalog knows it, or there's no scope to hash with
+  const is64CharKey = typeof idempotencyKey === "string" && idempotencyKey.length === 64;
+
+  if (is64CharKey) {
+    const isCreatedKey = getIdempotencyKeyOptions(idempotencyKey) !== undefined;
+
+    if (isCreatedKey || options?.scope === undefined) {
+      return client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+    }
   }
 
-  // Try to extract options from an IdempotencyKey created with idempotencyKeys.create()
-  const attachedOptions =
-    typeof idempotencyKey === "string" ? getIdempotencyKeyOptions(idempotencyKey) : undefined;
-
-  const scope = attachedOptions?.scope ?? options?.scope ?? "run";
-  const keyArray = Array.isArray(idempotencyKey)
-    ? idempotencyKey
-    : [attachedOptions?.key ?? String(idempotencyKey)];
+  const scope = options?.scope ?? "run";
+  const keyArray = Array.isArray(idempotencyKey) ? idempotencyKey : [idempotencyKey];
 
   // Build scope suffix based on scope type
   let scopeSuffix: string[] = [];
@@ -254,6 +255,10 @@ export async function resetIdempotencyKey(
     case "run": {
       const parentRunId = options?.parentRunId ?? taskContext?.ctx?.run.id;
       if (!parentRunId) {
+        // We can't derive a hash, but a 64-char key may already be one, so try it rather than fail
+        if (is64CharKey) {
+          return client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+        }
         throw new Error(
           "resetIdempotencyKey: parentRunId is required for 'run' scope when called outside a task context"
         );
@@ -265,6 +270,9 @@ export async function resetIdempotencyKey(
       const parentRunId = options?.parentRunId ?? taskContext?.ctx?.run.id;
       const attemptNumber = options?.attemptNumber ?? taskContext?.ctx?.attempt.number;
       if (!parentRunId || attemptNumber === undefined) {
+        if (is64CharKey) {
+          return client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+        }
         throw new Error(
           "resetIdempotencyKey: parentRunId and attemptNumber are required for 'attempt' scope when called outside a task context"
         );
@@ -277,5 +285,21 @@ export async function resetIdempotencyKey(
   // Generate the hash using the same algorithm as createIdempotencyKey
   const hash = await generateIdempotencyKey(keyArray.concat(scopeSuffix));
 
-  return client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
+  if (!is64CharKey) {
+    return client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
+  }
+
+  try {
+    return await client.resetIdempotencyKey(taskIdentifier, idempotencyKey, requestOptions);
+  } catch (error) {
+    if (!(error instanceof NotFoundError)) {
+      throw error;
+    }
+
+    try {
+      return await client.resetIdempotencyKey(taskIdentifier, hash, requestOptions);
+    } catch (fallbackError) {
+      throw fallbackError instanceof NotFoundError ? error : fallbackError;
+    }
+  }
 }

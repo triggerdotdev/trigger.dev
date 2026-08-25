@@ -15,14 +15,14 @@ import {
   zeroFillGroupedSeries,
 } from "./activitySeries.server";
 
-export type TaskDetailQueue = {
+type TaskDetailQueue = {
   friendlyId: string;
   name: string;
   concurrencyLimit: number | null;
   paused: boolean;
 };
 
-export type TaskDetailRetry = {
+type TaskDetailRetry = {
   maxAttempts?: number;
   factor?: number;
   minTimeoutInMs?: number;
@@ -47,7 +47,7 @@ export type TaskDetail = {
   hasPayloadSchema: boolean;
 };
 
-export type TaskActivityPoint = {
+type TaskActivityPoint = {
   bucket: number;
 } & Record<string, number>;
 

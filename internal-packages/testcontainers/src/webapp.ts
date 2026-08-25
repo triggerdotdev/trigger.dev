@@ -74,6 +74,17 @@ export interface StartWebappOptions {
    * session-stream e2e). `NODE_PATH` and the worker-disable vars still win.
    */
   extraEnv?: Record<string, string>;
+
+  /**
+   * Like `extraEnv`, but applied after the worker-disable defaults so it can
+   * turn a background worker back on. The CPU benchmarks need the run engine
+   * worker running (`RUN_ENGINE_WORKER_ENABLED=1`), because that is what drains
+   * the master queue into the worker queues a supervisor dequeues from.
+   *
+   * Use `extraEnv` for everything else: a test that silently leaves a worker
+   * running is a flaky test.
+   */
+  overrideEnv?: Record<string, string>;
 }
 
 export async function startWebapp(
@@ -144,6 +155,7 @@ export async function startWebapp(
       // to "0" so a local apps/webapp/.env that sets it to "1" doesn't
       // short-circuit the loader past the REQUIRE_PLUGINS check.
       ...(requirePlugins ? { REQUIRE_PLUGINS: "1", RBAC_FORCE_FALLBACK: "0" } : {}),
+      ...(options.overrideEnv ?? {}),
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],

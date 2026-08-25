@@ -41,7 +41,6 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export type SessionList = Awaited<ReturnType<SessionListPresenter["call"]>>;
 export type SessionListItem = SessionList["sessions"][0];
-export type SessionListAppliedFilters = SessionList["filters"];
 
 export class SessionListPresenter {
   constructor(

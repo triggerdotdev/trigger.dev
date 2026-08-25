@@ -67,6 +67,7 @@ export function AppliedFilter({
       </div>
       {removable && (
         <button
+          type="button"
           className={cn(
             "group flex size-6 items-center justify-center focus-custom",
             variantClassName.clear

@@ -7,7 +7,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { resolveImpersonationState, type ImpersonationState } from "~/utils/impersonationState";
 
-export const impersonationSessionStorage = createCookieSessionStorage({
+const impersonationSessionStorage = createCookieSessionStorage({
   cookie: {
     name: "__impersonate", // use any name you want here
     sameSite: "lax", // this helps with CSRF
@@ -28,7 +28,7 @@ const IMPERSONATED_USER_ID_KEY = "impersonatedUserId";
  */
 const VIEWING_AS_USER_KEY = "viewingAsUser";
 
-export function getImpersonationSession(request: Request) {
+function getImpersonationSession(request: Request) {
   return impersonationSessionStorage.getSession(request.headers.get("Cookie"));
 }
 
@@ -37,6 +37,14 @@ export function commitImpersonationSession(session: Session) {
 }
 
 export async function getImpersonationId(request: Request) {
+  if (!env.ADMIN_DASHBOARD_ENABLED) return undefined;
+
+  return getRawImpersonationId(request);
+}
+
+// Ignores ADMIN_DASHBOARD_ENABLED — only for terminating or auditing a session
+// the gated reader no longer resolves, never for authorizing anything.
+export async function getRawImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
   return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;
@@ -74,6 +82,14 @@ export async function getImpersonationState(
   request: Request,
   resolvedUserId: string | undefined
 ): Promise<ImpersonationState> {
+  if (!env.ADMIN_DASHBOARD_ENABLED) {
+    return resolveImpersonationState({
+      impersonatedUserId: undefined,
+      viewingAsUser: undefined,
+      resolvedUserId,
+    });
+  }
+
   const session = await getImpersonationSession(request);
 
   return resolveImpersonationState({

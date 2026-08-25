@@ -23,12 +23,14 @@ import {
   DevDisconnectResponseBody,
   EnvironmentVariableResponseBody,
   FailDeploymentResponseBody,
+  GetDeploymentBuildEnvVarsResponseBody,
   GetDeploymentResponseBody,
   GetEnvironmentVariablesResponseBody,
   GetLatestDeploymentResponseBody,
   GetPersonalAccessTokenResponseSchema,
   GetProjectEnvResponse,
   GetProjectResponseBody,
+  GetProjectRuntimesResponseBody,
   GetProjectsResponseBody,
   InitializeDeploymentResponseBody,
   PromoteDeploymentResponseBody,
@@ -208,6 +210,19 @@ export class CliApiClient {
     }
 
     return wrapZodFetch(GetProjectsResponseBody, `${this.apiURL}/api/v1/projects`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProjectRuntimes() {
+    if (!this.accessToken) {
+      throw new Error("getProjectRuntimes: No access token");
+    }
+
+    return wrapZodFetch(GetProjectRuntimesResponseBody, `${this.apiURL}/api/v1/projects/runtimes`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -669,6 +684,20 @@ export class CliApiClient {
     return wrapZodFetch(
       GetDeploymentResponseBody,
       `${this.apiURL}/api/v1/deployments/${deploymentId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async getDeploymentBuildEnvVars(deploymentId: string) {
+    if (!this.accessToken) {
+      throw new Error("getDeploymentBuildEnvVars: No access token");
+    }
+
+    return wrapZodFetch(
+      GetDeploymentBuildEnvVarsResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/build-env-vars`,
       {
         headers: this.getHeaders(),
       }

@@ -1,3 +1,4 @@
+import { readExternalDeploymentIdAnnotation } from "@internal/run-engine";
 import {
   type MachinePreset,
   prettyPrintPacket,
@@ -33,6 +34,7 @@ import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.se
 import { buildSyntheticSpanRun } from "~/v3/mollifier/syntheticSpanRun.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
+import { runTriggeredAt } from "~/v3/runTimestamps";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
@@ -387,7 +389,7 @@ export class SpanPresenter extends BasePresenter {
       friendlyId: run.friendlyId,
       status: run.status,
       statusReason: run.statusReason ?? undefined,
-      createdAt: run.createdAt,
+      createdAt: runTriggeredAt(run),
       startedAt: run.startedAt,
       executedAt: run.executedAt,
       updatedAt: run.updatedAt,
@@ -398,6 +400,7 @@ export class SpanPresenter extends BasePresenter {
       ttl: run.ttl,
       taskIdentifier: run.taskIdentifier,
       version: lockedWorker?.lockedToVersion?.version,
+      externalDeploymentId: readExternalDeploymentIdAnnotation(run.annotations),
       sdkVersion: lockedWorker?.lockedToVersion?.sdkVersion,
       runtime: lockedWorker?.lockedToVersion?.runtime,
       runtimeVersion: lockedWorker?.lockedToVersion?.runtimeVersion,
@@ -559,6 +562,7 @@ export class SpanPresenter extends BasePresenter {
           startedAt: true,
           executedAt: true,
           createdAt: true,
+          queueTimestamp: true,
           updatedAt: true,
           queuedAt: true,
           completedAt: true,

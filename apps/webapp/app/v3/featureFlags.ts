@@ -5,6 +5,7 @@ export const FEATURE_FLAG = {
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
+  hasWebhooksAccess: "hasWebhooksAccess",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
@@ -21,11 +22,20 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
-  devBranchesEnabled: "devBranchesEnabled",
   runOpsMintKind: "runOpsMintKind",
   // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
+  // Gen-2 mint shard pins, read from the org override blob only. See runOpsMintShard.server.ts.
+  runOpsMintShard: "runOpsMintShard",
+  runOpsMintShardEnvPins: "runOpsMintShardEnvPins",
+  // The active mint-shard list, global only. Lives here rather than in the environment because a
+  // rolling deploy runs two environment values at once for hours. See mintShardGrace.ts.
+  runOpsMintShardSet: "runOpsMintShardSet",
+  runOpsMintShardSetPrev: "runOpsMintShardSetPrev",
+  runOpsMintShardSetFlippedAt: "runOpsMintShardSetFlippedAt",
+  // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
+  runOpsMintShardOverride: "runOpsMintShardOverride",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Per-organization rollout for creating additional environment API keys.
   additionalApiKeysEnabled: "additionalApiKeysEnabled",
@@ -41,6 +51,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
+  [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
@@ -81,8 +92,6 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
-  // Per-org access to development branches. Off unless enabled for the org.
-  [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
   // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
   // RUN_OPS_MINT_ENABLED is on AND isSplitEnabled() is true.
   [FEATURE_FLAG.runOpsMintKind]: z.enum(["cuid", "runOpsId"]),
@@ -90,6 +99,52 @@ export const FeatureFlagCatalog = {
   // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
+  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is how
+  // a canary keeps the fleet's default while one org moves. Only honored while the key is in
+  // the active list; a drained key falls through to the hash.
+  [FEATURE_FLAG.runOpsMintShard]: z
+    .string()
+    .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
+  // Per-environment pins as JSON: {"<environmentId>": "<shard key>"}. A JSON string because
+  // this catalog is scalar-only. Rejected at write, so a typo cannot silently un-pin an env.
+  [FEATURE_FLAG.runOpsMintShardEnvPins]: z.string().superRefine((raw, ctx) => {
+    const fail = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return fail("must be valid JSON");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return fail("must be a JSON object mapping environment id to shard key");
+    }
+    for (const [environmentId, value] of Object.entries(parsed)) {
+      if (typeof value !== "string" || !(value === "new" || /^[a-z0-9]$/.test(value))) {
+        fail(`"${environmentId}" must map to a single [a-z0-9] char, or "new"`);
+      }
+    }
+  }),
+  // CSV of the shard keys eligible for root minting right now. Empty means no gen-2 minting.
+  // Reserved keys are rejected, because "new" already means gen-1.
+  [FEATURE_FLAG.runOpsMintShardSet]: z.string().refine(
+    (v) =>
+      v
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .every((k) => /^[a-z0-9]$/.test(k)),
+    "must be a CSV of single [a-z0-9] chars"
+  ),
+  // Grace stamp: the previously-effective list and the flip time, written by
+  // stampMintShardSetFlip on a genuine change. Display-only (see ORG_LOCKED_FLAGS).
+  [FEATURE_FLAG.runOpsMintShardSetPrev]: z.string(),
+  [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: z.string().datetime(),
+  // Sends every environment to one shard, outranking every pin, so a cutover needs no per-org
+  // visit. "new" holds the whole fleet on gen-1. Only honored while the key is in the active set.
+  [FEATURE_FLAG.runOpsMintShardOverride]: z
+    .string()
+    .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
@@ -102,11 +157,20 @@ export const FeatureFlagCatalog = {
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
 
-// Infrastructure flags that are read-only on the global flags page.
-// Shown with current/resolved value but no controls.
+// Infrastructure flags, plus org-scoped-only flags, that are read-only on the global flags
+// page. Shown with current/resolved value but no controls. An org-scoped-only flag belongs
+// here because its resolver never reads a global row, so an editable global control would
+// offer a setting that does nothing.
 export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
   FEATURE_FLAG.taskEventRepository,
+  FEATURE_FLAG.runOpsMintShard,
+  FEATURE_FLAG.runOpsMintShardEnvPins,
+  // Grace stamps are computed server-side. An editable control here would discard what it saves.
+  FEATURE_FLAG.runOpsMintKindPrev,
+  FEATURE_FLAG.runOpsMintKindFlippedAt,
+  FEATURE_FLAG.runOpsMintShardSetPrev,
+  FEATURE_FLAG.runOpsMintShardSetFlippedAt,
 ];
 
 // Flags that are read-only on the org-level dialog.
@@ -119,7 +183,52 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   // System-wide only — orgs must not be able to override these kill switches.
   FEATURE_FLAG.additionalApiKeyIssuanceEnabled,
   FEATURE_FLAG.additionalApiKeyLookupEnabled,
+  // The active mint-shard list is deployment-wide; only the pins are per-org.
+  FEATURE_FLAG.runOpsMintShardSet,
+  FEATURE_FLAG.runOpsMintShardSetPrev,
+  FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  FEATURE_FLAG.runOpsMintShardOverride,
 ];
+
+/**
+ * Flag groups where the operator sets a `primary` and the server computes the rest. The topology
+ * lives here, not in the server module, because the admin page needs it too: unsetting a primary
+ * clears its stamps, and the page has to disclose that.
+ */
+export const GRACED_FLAG_GROUPS: ReadonlyArray<{
+  primary: FeatureFlagKey;
+  derived: readonly FeatureFlagKey[];
+}> = [
+  {
+    primary: FEATURE_FLAG.runOpsMintKind,
+    derived: [FEATURE_FLAG.runOpsMintKindPrev, FEATURE_FLAG.runOpsMintKindFlippedAt],
+  },
+  {
+    primary: FEATURE_FLAG.runOpsMintShardSet,
+    derived: [FEATURE_FLAG.runOpsMintShardSetPrev, FEATURE_FLAG.runOpsMintShardSetFlippedAt],
+  },
+];
+
+/** The stamps deleted alongside `primary`. Empty unless `primary` is a graced primary. */
+export function derivedFlagsClearedWith(primary: string): FeatureFlagKey[] {
+  const group = GRACED_FLAG_GROUPS.find((g) => g.primary === primary);
+  return group ? [...group.derived] : [];
+}
+
+/**
+ * Locked flags present in a payload the global page must refuse. On managed cloud the page never
+ * offers them, so their presence means the request did not come from that page. Locally an admin
+ * may unlock and edit them, so nothing is refused.
+ */
+export function lockedFlagsInPayload(
+  payloadKeys: string[],
+  isManagedCloud: boolean
+): FeatureFlagKey[] {
+  if (!isManagedCloud) return [];
+  return payloadKeys.filter((key): key is FeatureFlagKey =>
+    GLOBAL_LOCKED_FLAGS.includes(key as FeatureFlagKey)
+  );
+}
 
 // Create a Zod schema from the existing catalog
 export const FeatureFlagCatalogSchema = z.object(FeatureFlagCatalog);
@@ -131,11 +240,6 @@ export function validateFeatureFlagValue<T extends FeatureFlagKey>(
   value: unknown
 ): z.SafeParseReturnType<unknown, z.infer<(typeof FeatureFlagCatalog)[T]>> {
   return FeatureFlagCatalog[key].safeParse(value);
-}
-
-// Utility function to validate all feature flags at once
-export function validateAllFeatureFlags(values: Record<string, unknown>) {
-  return FeatureFlagCatalogSchema.safeParse(values);
 }
 
 // Utility function to validate partial feature flags (all keys optional)
@@ -199,7 +303,7 @@ export type FlagControlType =
   | { type: "number"; min?: number; max?: number }
   | { type: "string" };
 
-export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
+function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
   const typeName = schema._def.typeName;
 
   if (typeName === "ZodBoolean") {

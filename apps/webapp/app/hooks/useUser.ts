@@ -27,7 +27,8 @@ export function useUser(matches?: UIMatch[]): User {
 }
 
 export function useUserChanged(callback: (user: User | undefined) => void) {
-  useChanged(useOptionalUser, callback);
+  const user = useOptionalUser();
+  useChanged(user, callback);
 }
 
 /**
@@ -47,6 +48,12 @@ export function useHasAdminAccess(matches?: UIMatch[]): boolean {
   const user = useOptionalUser(matches);
   const isImpersonating = useIsImpersonating(matches);
   const isViewingAsUser = useIsViewingAsUser(matches);
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+    matches,
+  });
+
+  if (routeMatch?.adminDashboardEnabled === false) return false;
 
   return (Boolean(user?.admin) || isImpersonating) && !isViewingAsUser;
 }

@@ -183,6 +183,6 @@ export function hasAdminDisplayAccess(user: {
   return (user.admin || user.isImpersonating) && !user.isViewingAsUser;
 }
 
-export async function logout(request: Request) {
+async function logout(request: Request) {
   return redirect("/logout");
 }

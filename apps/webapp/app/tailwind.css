@@ -141,10 +141,13 @@
 */
 @theme {
   /* Text colors */
-  --color-primary: var(--color-apple-500);
+  --color-primary: var(--color-text-link);
   --color-secondary: var(--color-charcoal-650);
   --color-tertiary: var(--color-charcoal-700);
   --color-text-link: var(--color-lavender-400);
+  --color-text-link-hover: var(--color-lavender-300);
+  /* One value for every theme: white content on this fill needs 4.5:1. */
+  --color-accent-fill: var(--color-lavender-600);
   --color-text-faint: var(--color-charcoal-500);
   --color-text-dimmed: var(--color-charcoal-400);
   --color-text-bright: var(--color-charcoal-200);
@@ -154,7 +157,12 @@
   --color-background-dimmed: var(--color-charcoal-850);
   --color-background-bright: var(--color-charcoal-800);
   --color-background-hover: var(--color-charcoal-750);
+  --color-surface-hover-subtle: var(--color-charcoal-750);
   --color-background-raised: var(--color-charcoal-700);
+
+  --color-segmented-track: color-mix(in srgb, var(--color-background-raised) 50%, transparent);
+  --color-surface-selected: var(--color-charcoal-650);
+  --color-surface-selected-hover: var(--color-charcoal-600);
   --color-surface-control: var(--color-charcoal-600);
   --color-surface-control-hover: var(--color-charcoal-550);
   --color-surface-control-active: var(--color-charcoal-500);
@@ -163,19 +171,22 @@
   /* Borders, from subtlest to most visible */
   --color-grid-dimmed: var(--color-charcoal-750);
   --color-grid-bright: var(--color-charcoal-700);
+  --color-border-selected: color-mix(in srgb, var(--color-border-bright) 50%, var(--color-surface-selected));
   --color-border-bright: var(--color-charcoal-600);
   --color-border-brighter: var(--color-charcoal-550);
   --color-border-brightest: var(--color-charcoal-500);
   --color-success: var(--color-mint-500);
   --color-pending: var(--color-blue-500);
   --color-warning: var(--color-amber-500);
+
+  --color-log-trace: var(--color-purple-500);
   --color-error: var(--color-rose-600);
 
   /* Environment colors */
   --color-dev: var(--color-pink-500);
   --color-staging: var(--color-orange-400);
   --color-prod: var(--color-mint-500);
-  --color-preview: var(--color-yellow-400);
+  --color-preview: var(--color-blue-500);
 
   /* Icon colors */
   --color-tasks: var(--color-blue-500);
@@ -203,10 +214,11 @@
   --color-aiMetrics: var(--color-green-500);
   --color-errors: var(--color-amber-500);
   --color-agents: var(--color-purple-500);
+  --color-webhooks: var(--color-teal-500);
   --color-sessions: var(--color-pink-500);
   --color-playgrounds: var(--color-fuchsia-500);
   --color-models: var(--color-violet-500);
-  --color-previewBranches: var(--color-yellow-500);
+  --color-previewBranches: var(--color-blue-500);
 }
 
 /* Callout variant accents (see components/primitives/Callout.tsx) */
@@ -231,28 +243,25 @@
 */
 
 /*
-  System preference unified accents (dark+light); Classic keeps the original
-  set. One shared value per accent token, >=3:1 against both dark cards and
-  white. Accents whose Classic default already clears both modes (blue-500,
-  indigo-500, pink-500, purple-500, red-500, violet-500, fuchsia-500,
-  rose-600) are not repeated here. Text-sized tokens (text-link, callout
-  text) stay per-mode: no color reaches 4.5:1 on both #1a1b1f and #ffffff.
-  Dark derives everything else (monochrome surfaces etc.) from Classic.
+  High-contrast accents, opt-in via the "Distinguish without color" preference
+  (data-icon-contrast on <html>), independent of the theme. One shared value
+  per accent token, >=3:1 against both dark cards and white. Accents whose
+  base value already clears both modes (blue-500, indigo-500, pink-500,
+  purple-500, red-500, violet-500, fuchsia-500, rose-600) are not repeated
+  here. Text-sized tokens (text-link, callout text) stay per-mode: no color
+  reaches 4.5:1 on both #1a1b1f and #ffffff.
+
+  With the preference off, every theme keeps the base accents from @theme; the
+  Light theme darkens them for white further down, holding those same hues.
 */
-:is([data-theme="dark"], [data-theme="light"]) {
+[data-icon-contrast="true"] {
   /* Status */
   --color-success: var(--color-mint-600);
   --color-warning: var(--color-amber-600);
-  /* Env set: pink dev and green prod as in Classic, preview moves to blue
-     (yellow's unified mid-tone reads muddy brown). Staging stays warm orange
-     and is the one per-mode env color - see the light block. */
   --color-prod: var(--color-mint-600);
-  --color-preview: var(--color-blue-500);
 
   /* Icons */
   --color-schedules: var(--color-yellow-700);
-  /* Matches the preview env color */
-  --color-previewBranches: var(--color-blue-500);
   --color-metrics: var(--color-green-600);
   --color-regions: var(--color-green-600);
   --color-aiMetrics: var(--color-green-600);
@@ -261,7 +270,6 @@
   --color-errors: var(--color-amber-600);
   --color-apiKeys: var(--color-amber-600);
 
-  /* Queue charts read blue here; Classic keeps the queues purple */
   --color-queues-chart: var(--color-blue-500);
   --color-queues-chart-ref: var(--color-charcoal-500);
 
@@ -270,8 +278,6 @@
   --color-callout-pending: var(--color-blue-500);
   --color-callout-pricing: var(--color-indigo-500);
 
-  /* Amber run statuses: three distinct steps, Classic's dark-to-light order
-     kept (waiting-for-deploy < pending-version < paused) */
   --color-run-waiting-for-deploy: var(--color-amber-700);
   --color-run-pending-version: #c76508;
   --color-run-paused: var(--color-amber-600);
@@ -279,28 +285,31 @@
   --color-run-timed-out: #ed5f74;
 }
 
-/* System themes drop decorative icon accents to monochrome; Classic keeps the
-   colored icons. side-menu-active-icon is set in SideMenuItem for the active
-   nav item; system-mono-icon marks section-header icons (e.g. the limits page). */
-:is([data-theme="dark"], [data-theme="light"]) :is(.side-menu-active-icon, .system-mono-icon) {
+/* Underlines body-text links only: the TextLink marker class plus markdown
+   prose links, which can't take a class. */
+[data-underline-links="true"] :is(.inline-text-link, .streamdown-container a) {
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+}
+
+[data-icon-contrast="true"] :is(.side-menu-active-icon, .system-mono-icon) {
   color: var(--color-text-bright);
 }
 
-/* System themes: status/env labels follow the surrounding text color, only the
-   icon keeps its tint. Classic colors both. Set in EnvironmentLabel and the
-   status combo components. */
-:is([data-theme="dark"], [data-theme="light"]) .system-mono-label {
+[data-icon-contrast="true"] .system-mono-label {
   color: inherit;
 }
 
 /* Tinted status chips respond to the contrast control: a ring in the chip's
    own text color fades in as contrast rises, so the soft tint keeps its
-   footprint but the chip gains definition. Transparent at contrast 0;
-   Classic never sets the variable. Marker set by the chip components. */
-:is([data-theme="dark"], [data-theme="light"]) .contrast-chip {
+   footprint but the chip gains definition. Transparent at contrast 0; only
+   set under icon contrast. Marker set by the chip components. */
+/* Tinted chips only - chips that fill solid under the preference omit it. */
+[data-icon-contrast="true"] .contrast-chip {
   box-shadow: inset 0 0 0 1px
     color-mix(in srgb, currentcolor calc(var(--theme-contrast, 0) * 70%), transparent);
 }
+
 
 /*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
@@ -369,9 +378,6 @@
   --color-editor-scrollbar-thumb-active: #3c4b62;
 }
 
-/* Queue chart series colors - queues purple in Classic, overridden to blue in
-   the System themes; the grey reference series lightens per mode there.
-   Consumed from JS via var(), so declared static. */
 @theme static {
   --color-queues-chart: var(--color-queues);
   --color-queues-chart-ref: #4d525b;
@@ -421,16 +427,12 @@
 @custom-variant md-height (@media (max-height: 600px));
 
 /* dark: follows the app theme (data-theme on <html>), not the OS preference.
-   Classic and Dark are both dark-mode themes, so the variant matches both. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="classic"], [data-theme="dark"] *, [data-theme="classic"] *));
+   Dark and Black are both dark-mode themes, so the variant matches both. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="black"], [data-theme="dark"] *, [data-theme="black"] *));
 
-/* system: matches the System preference themes (Dark and Light) but never
-   Classic - for restyles that must leave Classic untouched. */
-@custom-variant system (&:where([data-theme="dark"], [data-theme="light"], [data-theme="dark"] *, [data-theme="light"] *));
+@custom-variant system (&:where([data-icon-contrast="true"], [data-icon-contrast="true"] *));
 
-/* light: the Light theme only - for values that are fine on every dark theme
-   but illegible on white. Classic is never matched. */
-@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+@custom-variant light (&:where([data-theme="light"], [data-theme="white"], [data-theme="light"] *, [data-theme="white"] *));
 
 @utility focus-custom {
   &:focus-visible {
@@ -572,7 +574,7 @@
   :root {
     color-scheme: dark;
   }
-  [data-theme="light"] {
+  :is([data-theme="light"], [data-theme="white"]) {
     color-scheme: light;
   }
 
@@ -585,8 +587,7 @@
     --chart-5: 27 87% 67%;
   }
 
-  /* Classic and Dark share these HSL chart vars - they were the app-wide dark values. */
-  :is([data-theme="dark"], [data-theme="classic"]) {
+  :is([data-theme="dark"], [data-theme="black"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -594,14 +595,17 @@
     --chart-5: 340 75% 55%;
   }
 
-  /* System preference unified chart set (dark+light): Classic's hues, with
-     chart-2/3 darkened to clear 3:1 on white. Classic keeps the set above. */
-  :is([data-theme="dark"], [data-theme="light"]) {
+  :is([data-theme="light"], [data-theme="white"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 40%;
     --chart-3: 30 80% 47%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+  }
+
+  [data-icon-contrast="true"]:is([data-theme="dark"], [data-theme="black"]) {
+    --chart-2: 160 60% 40%;
+    --chart-3: 30 80% 47%;
   }
 
   /* Override react-grid-layout placeholder color (default is red) */
@@ -706,8 +710,10 @@
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
   }
+  /* `no-underline` is load-bearing: streamdown hard-codes `underline` on every
+   anchor, and a class plus type selector outspecifies it. */
   & a {
-    @apply text-text-link hover:underline;
+    @apply text-text-link no-underline transition hover:text-text-link-hover;
   }
   & strong {
     @apply font-semibold text-text-bright;
@@ -736,11 +742,19 @@
   }
 }
 
+/* The stored 0-100 is a position within the active theme's own range, mapped
+   here rather than in JS so `system` needs nothing resolved on the client.
+   Ramps read --theme-contrast (strengthen) and --theme-fade (Black only). */
+:root {
+  --theme-contrast: var(--theme-contrast-percent, 0);
+  --theme-fade: 0;
+}
+
 /*
   Light theme. Overrides the themable variables only; raw palettes stay put.
   Code/editor values come from the trigger.light VS Code theme.
 */
-[data-theme="light"] {
+:is([data-theme="light"], [data-theme="white"]) {
   --color-secondary: #ffffff;
   --color-input-bg: #ffffff;
 
@@ -754,9 +768,9 @@
   --primary-foreground: #ffffff;
 
   /* Text */
-  --color-primary: var(--color-apple-600);
   --color-tertiary: #eef0f3;
   --color-text-link: var(--color-lavender-600);
+  --color-text-link-hover: var(--color-lavender-800);
   --color-text-faint: var(--color-charcoal-400);
   --color-text-dimmed: var(--color-charcoal-500);
   --color-text-bright: var(--color-charcoal-800);
@@ -766,23 +780,25 @@
   --color-background-dimmed: #fbfbfc;
   --color-background-bright: #ffffff;
   --color-background-hover: #f2f3f5;
+  /* Cards on white need a gentler hover than the app-wide surfaces */
+  --color-surface-hover-subtle: #f7f8f9;
   --color-background-raised: #e9eaee;
   --color-surface-control: #dcdee3;
+  --color-segmented-track: var(--color-background-raised);
   --color-surface-control-hover: #cfd2d9;
   --color-surface-control-active: #b8bcc6;
+  --color-surface-selected: #eff0f2;
+  --color-surface-selected-hover: #e7e9ec;
 
   /* Borders */
   --color-grid-dimmed: #eceef1;
   --color-grid-bright: #e2e4e9;
+  --color-border-selected: #e0e2e6;
   --color-border-bright: #d2d5db;
   --color-border-brighter: #b9bdc7;
   --color-border-brightest: #9ba1ad;
 
-  /* Status/env/icon accents live in the unified dark+light block above;
-     dev keeps its Classic pink-500, which passes on white too. */
 
-  /* Staging is the one per-mode env color: warm orange has no clean unified
-     mid-tone, so dark keeps Classic's bright orange-400 and light deepens it */
   --color-staging: var(--color-orange-600);
 
   /* Grey chart reference series, light enough not to dominate on white */
@@ -798,8 +814,6 @@
   /* Monochrome icon gray - per-mode, not part of the unified accent set */
   --color-customDashboards: var(--color-charcoal-500);
 
-  /* Callout text/bg - deep tints instead of the dark theme's pastels; text
-     can't unify across modes (see the unified accents block) */
   --color-callout-warning-text: var(--color-yellow-800);
   --color-callout-error-text: var(--color-rose-700);
   --color-callout-success-text: var(--color-green-800);
@@ -866,107 +880,211 @@
   --color-editor-scrollbar-thumb-active: #aeb3be;
 }
 
+/*
+  Light themes with "Distinguish without color" off: the base accents were drawn
+  for dark cards and most sit under 3:1 on white (preview 1.57, warning 2.13,
+  metrics 2.22). This is the same palette read for a white page - each token
+  keeps its base hue and is only stepped down in lightness, so yellows stay
+  yellow and queues stay purple rather than moving to the blue the high-contrast
+  set uses. Every base accent that already clears white (dev, tasks, runs,
+  batches, logs, alerts...) is left alone.
+*/
+:is([data-theme="light"], [data-theme="white"]):not([data-icon-contrast="true"]) {
+  /* Status */
+  --color-success: var(--color-mint-600);
+  --color-warning: var(--color-amber-600);
+
+  /* Environments */
+  --color-prod: var(--color-mint-600);
+
+  /* Icons */
+  --color-schedules: var(--color-yellow-700);
+  --color-metrics: var(--color-green-600);
+  --color-regions: var(--color-green-600);
+  --color-aiMetrics: var(--color-green-600);
+  --color-bulkActions: var(--color-emerald-600);
+  --color-concurrency: var(--color-amber-600);
+  --color-errors: var(--color-amber-600);
+  --color-apiKeys: var(--color-amber-600);
+
+  --color-queues-chart: var(--color-purple-600);
+  --color-log-trace: var(--color-purple-600);
+
+  /* Callout accents */
+  --color-callout-docs: var(--color-blue-500);
+  --color-callout-pending: var(--color-blue-500);
+  --color-callout-pricing: var(--color-indigo-500);
+
+  --color-run-waiting-for-deploy: var(--color-amber-700);
+  --color-run-pending-version: #c76508;
+  --color-run-paused: var(--color-amber-600);
+  --color-run-timed-out: #ed5f74;
+}
+
+/* The five pale greys all sit under the 3:1 a chart series needs on white;
+   charcoal-400 is the first stop that clears it. Dark themes are untouched. */
+/* TRACE stays an outline on the light themes so it doesn't compete with
+   ERROR two chips along. The other four fill solid. */
+[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"])
+  .log-level-chip-trace {
+  background-color: transparent;
+  border-color: var(--color-charcoal-600);
+  color: var(--color-charcoal-600);
+}
+
+[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"]) {
+  --color-run-pending: var(--color-charcoal-400);
+  --color-run-delayed: var(--color-charcoal-400);
+  --color-run-waiting-to-resume: var(--color-charcoal-400);
+  --color-run-canceled: var(--color-charcoal-400);
+  --color-run-expired: var(--color-charcoal-400);
+}
+
 /* Streamdown's muted surface has no semantic token (charcoal-775); theme it here */
-[data-theme="light"] .streamdown-container {
+:is([data-theme="light"], [data-theme="white"]) .streamdown-container {
   --muted: #eceef1;
 }
 
-/* The timeline label shadow is a Classic legibility aid; the System themes
-   drop it entirely */
-:is([data-theme="dark"], [data-theme="light"]) .text-shadow-custom {
+[data-icon-contrast="true"] .text-shadow-custom {
   text-shadow: none;
 }
 
 /* Neutral timeline points: invert to a light dot with a gray ring */
-[data-theme="light"] .timeline-point.bg-surface-control-active {
+:is([data-theme="light"], [data-theme="white"]) .timeline-point.bg-surface-control-active {
   border-color: var(--color-surface-control-active);
   background-color: var(--color-background-bright);
 }
 
 /* Run timeline bars: no fade gradient on light */
-[data-theme="light"] .timeline-span {
+:is([data-theme="light"], [data-theme="white"]) .timeline-span {
   background-image: none;
 }
 /* On saturated bars the duration label keeps the dark-theme treatment,
    but only when the bar is wide enough to contain the label — on narrow
    bars the sticky label overflows onto the page background, where the
    default dark-on-light text is correct. */
-[data-theme="light"] .timeline-span.bg-success,
-[data-theme="light"] .timeline-span.bg-error,
-[data-theme="light"] .timeline-span.bg-blue-500 {
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-success,
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-error,
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-blue-500 {
   container-type: inline-size;
 }
 @container (min-width: 3.5rem) {
-  [data-theme="light"] .timeline-span.bg-success .text-shadow-custom,
-  [data-theme="light"] .timeline-span.bg-error .text-shadow-custom,
-  [data-theme="light"] .timeline-span.bg-blue-500 .text-shadow-custom {
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-success .text-shadow-custom,
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-error .text-shadow-custom,
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-blue-500 .text-shadow-custom {
     color: #ffffff;
   }
 }
 
-/* The table row-hover menu wraps the always-visible "Suggest a region" button
-   in a ring container; on light that ring doubles up with the button's own
-   border, so drop it here. */
-[data-theme="light"] .suggest-region-cell > div > div {
+:is([data-theme="light"], [data-theme="white"]) .suggest-region-cell > div > div {
   box-shadow: none;
 }
 
-/*
-  Interface contrast (System themes only). --theme-contrast is 0..1, set on
-  <html> from the dashboard preference. It pulls the whole monochrome scale
-  apart: text mixes toward the mode's foreground, backgrounds toward its
-  depth, borders step up. Accents are untouched. srgb mixing keeps contrast 0
-  byte-identical to the base values, and Classic never reads the variable.
-  These blocks must stay below the [data-theme="light"] theme block so they
-  win the cascade.
-*/
-[data-theme="dark"] {
-  /* Text brightens toward white */
-  --color-text-bright: color-mix(in srgb, var(--color-charcoal-200), #fff calc(var(--theme-contrast, 0) * 100%));
-  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-400), #fff calc(var(--theme-contrast, 0) * 60%));
-  --color-text-faint: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 45%));
+/* Interface contrast. Text and borders travel toward the light end of the
+   charcoal ramp, backgrounds toward the dark end; accents are untouched. Every
+   token moves between two ramp stops, never toward #fff/#000, so intermediate
+   values stay in the palette. Must stay below the theme blocks to win the
+   cascade. */
+:is([data-theme="dark"], [data-theme="black"]) {
+  --color-text-bright: color-mix(in srgb, var(--color-charcoal-200), var(--color-charcoal-100) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
 
-  /* Backgrounds deepen toward black, keeping their relative order */
-  --color-background-deep: color-mix(in srgb, var(--color-charcoal-900), #000 calc(var(--theme-contrast, 0) * 60%));
-  --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), #000 calc(var(--theme-contrast, 0) * 55%));
-  --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), #000 calc(var(--theme-contrast, 0) * 45%));
-  --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
-  --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), #000 calc(var(--theme-contrast, 0) * 25%));
-  --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
+  --color-background-deep: color-mix(in srgb, var(--color-charcoal-900), var(--color-charcoal-1000) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), var(--color-charcoal-950) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-hover-subtle: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), var(--color-charcoal-775) calc(var(--theme-contrast, 0) * 100%));
+  --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
 
-  /* Controls and borders step up toward white */
-  --color-surface-control: color-mix(in srgb, var(--color-charcoal-600), #fff calc(var(--theme-contrast, 0) * 12%));
-  --color-surface-control-hover: color-mix(in srgb, var(--color-charcoal-550), #fff calc(var(--theme-contrast, 0) * 14%));
-  --color-surface-control-active: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 16%));
-  --color-grid-dimmed: color-mix(in srgb, var(--color-charcoal-750), #fff calc(var(--theme-contrast, 0) * 18%));
-  --color-grid-bright: color-mix(in srgb, var(--color-charcoal-700), #fff calc(var(--theme-contrast, 0) * 20%));
-  --color-border-bright: color-mix(in srgb, var(--color-charcoal-600), #fff calc(var(--theme-contrast, 0) * 24%));
-  --color-border-brighter: color-mix(in srgb, var(--color-charcoal-550), #fff calc(var(--theme-contrast, 0) * 27%));
-  --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 30%));
+  --color-surface-control: color-mix(in srgb, var(--color-charcoal-600), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-hover: color-mix(in srgb, var(--color-charcoal-550), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-active: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-dimmed: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-650) calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-bright: color-mix(in srgb, var(--color-charcoal-700), var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-bright: color-mix(in srgb, var(--color-charcoal-600), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brighter: color-mix(in srgb, var(--color-charcoal-550), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
 }
 
-[data-theme="light"] {
-  /* Text deepens toward black */
-  --color-text-bright: color-mix(in srgb, #1a1b1f, #000 calc(var(--theme-contrast, 0) * 100%));
-  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), #000 calc(var(--theme-contrast, 0) * 85%));
-  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), #000 calc(var(--theme-contrast, 0) * 70%));
+/* Light's pale greys continue onto the same cool scale, but unevenly, so
+   destinations are picked per token by where it should land rather than by
+   counting stops. */
+:is([data-theme="light"], [data-theme="white"]) {
+  --color-text-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
 
-  /* On white the foregrounds carry the contrast: cards stay white while the
-     page-behind surfaces darken a touch so panels separate */
-  --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
-  --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
-  --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
+  /* Light has nowhere brighter to go, so the stack deepens. Destinations are
+     chosen by luminance: the scale is unevenly spaced here, and equal step
+     counts collapsed the bright/dimmed gap. White pins all six afterwards. */
+  --color-background-bright: color-mix(in srgb, #ffffff, #eef0f3 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-dimmed: color-mix(in srgb, #fbfbfc, #e9eaee calc(var(--theme-contrast, 0) * 100%));
+  --color-background-hover: color-mix(in srgb, #f2f3f5, #e2e4e9 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-deep: color-mix(in srgb, #f1f2f4, #dcdee3 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-raised: color-mix(in srgb, #e9eaee, var(--color-charcoal-200) calc(var(--theme-contrast, 0) * 100%));
+  --color-input-bg: color-mix(in srgb, #ffffff, #eef0f3 calc(var(--theme-contrast, 0) * 100%));
 
-  /* Controls and borders push hard toward black - this is where light-mode
-     contrast is actually visible */
-  --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
-  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
-  --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
-  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
-  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
-  --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
-  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
-  --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
+  /* Where light-mode contrast is actually visible. */
+  --color-surface-control: color-mix(in srgb, #dcdee3, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-active: color-mix(in srgb, #b8bcc6, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  /* A tier short of the controls: they divide rows rather than outline. */
+  --color-grid-dimmed: color-mix(in srgb, #eceef1, #cfd2d9 calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-bright: color-mix(in srgb, #e2e4e9, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  /* Steeper than border-bright so the selected card stays the loudest edge */
+  --color-border-selected: color-mix(in srgb, #e0e2e6, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-bright: color-mix(in srgb, #d2d5db, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brighter: color-mix(in srgb, #b9bdc7, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brightest: color-mix(in srgb, #9ba1ad, var(--color-charcoal-550) calc(var(--theme-contrast, 0) * 100%));
+}
+
+/* Black and White inherit Dark's and Light's token sets and only pin their
+   surfaces flat. Must stay below the contrast blocks so the pins win. */
+[data-theme="black"] {
+  --color-background-deep: #000000;
+  --color-background-dimmed: #000000;
+  --color-background-bright: #000000;
+  /* Black's range is -30..100: r = p * 1.3 - 0.3, split into two always-positive
+     halves because `color-mix` rejects a negative percentage. */
+  --theme-contrast: max(0, var(--theme-contrast-percent, 0) * 1.3 - 0.3);
+  --theme-fade: max(0, 0.3 - var(--theme-contrast-percent, 0) * 1.3);
+
+  /* Grid lines are the only structure on a flat black page, so they get the
+     extra travel below the base palette. */
+  --color-grid-dimmed: color-mix(
+    in srgb,
+    color-mix(
+      in srgb,
+      var(--color-charcoal-750),
+      var(--color-charcoal-650) calc(var(--theme-contrast, 0) * 100%)
+    ),
+    #000000 calc(var(--theme-fade, 0) * 100%)
+  );
+  --color-grid-bright: color-mix(
+    in srgb,
+    color-mix(
+      in srgb,
+      var(--color-charcoal-700),
+      var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%)
+    ),
+    #000000 calc(var(--theme-fade, 0) * 100%)
+  );
+
+  --color-background-hover: #171717;
+  --color-background-raised: #1f1f1f;
+  --color-segmented-track: var(--color-background-raised);
+  --color-input-bg: #0a0a0a;
+}
+
+[data-theme="white"] {
+  --color-background-deep: #ffffff;
+  --color-background-dimmed: #ffffff;
+  --color-background-bright: #ffffff;
+  --color-background-hover: #f5f5f5;
+  --color-background-raised: #ededed;
+  --color-input-bg: #ffffff;
 }
 
 form:has(.unlock-hint-staging-env:hover) [data-unlock-target="staging-env"],

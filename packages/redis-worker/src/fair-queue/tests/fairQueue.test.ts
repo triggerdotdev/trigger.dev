@@ -10,7 +10,7 @@ import {
   WorkerQueueManager,
 } from "../index.js";
 import type { FairQueueKeyProducer, FairQueueOptions } from "../types.js";
-import type { RedisOptions } from "@internal/redis";
+import { createRedisClient, type RedisOptions } from "@internal/redis";
 
 // Define a common payload schema for tests
 const TestPayloadSchema = z.object({ value: z.string() });
@@ -210,6 +210,33 @@ class TestFairQueueHelper {
 
 describe("FairQueue", () => {
   let keys: FairQueueKeyProducer;
+
+  describe("worker queue lifecycle", () => {
+    redisTest(
+      "aborts a blocking pop without reconnecting the disconnected client",
+      { timeout: 5000 },
+      async ({ redisOptions }) => {
+        const workerQueue = new WorkerQueueManager({
+          redis: redisOptions,
+          keys: new DefaultFairQueueKeyProducer({ prefix: "abort-test" }),
+        });
+        const abortController = new AbortController();
+
+        try {
+          const pop = workerQueue.blockingPop(TEST_WORKER_QUEUE_ID, 60, abortController.signal);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+
+          const startedAt = performance.now();
+          abortController.abort();
+
+          await expect(pop).resolves.toBeNull();
+          expect(performance.now() - startedAt).toBeLessThan(1000);
+        } finally {
+          await workerQueue.close();
+        }
+      }
+    );
+  });
 
   describe("basic enqueue and process", () => {
     redisTest(
@@ -1367,6 +1394,827 @@ describe("FairQueue", () => {
 
         await workerQueueManager.close();
         await queue.close();
+      }
+    );
+  });
+
+  describe("concurrency slot release", () => {
+    redisTest(
+      "should release the concurrency slot when the in-flight record is already gone",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+
+        try {
+          queue.onMessage(async (ctx) => {
+            if (ctx.message.payload.value === "msg-0") {
+              await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+            }
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
+          });
+
+          for (let i = 0; i < 2; i++) {
+            await queue.enqueue({
+              queueId: "tenant:t1:queue:q1",
+              tenantId: "t1",
+              payload: { value: `msg-${i}` },
+            });
+          }
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(processed).toHaveLength(2);
+            },
+            { timeout: 10000 }
+          );
+
+          const held = await redis.scard(keys.concurrencyKey("tenant", "t1"));
+          expect(held).toBe(0);
+        } finally {
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should release metadata-derived groups from the cached descriptor when the in-flight record is gone",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+            {
+              name: "organization",
+              extractGroupId: (q) => (q.metadata.orgId as string) ?? "default",
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+
+        try {
+          queue.onMessage(async (ctx) => {
+            if (ctx.message.payload.value === "msg-0") {
+              await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+            }
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
+          });
+
+          for (let i = 0; i < 2; i++) {
+            await queue.enqueue({
+              queueId: "tenant:t1:queue:q1",
+              tenantId: "t1",
+              metadata: { orgId: "org-1" },
+              payload: { value: `msg-${i}` },
+            });
+          }
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(processed).toHaveLength(2);
+            },
+            { timeout: 10000 }
+          );
+
+          expect(await redis.scard(keys.concurrencyKey("organization", "org-1"))).toBe(0);
+          expect(await redis.scard(keys.concurrencyKey("organization", "default"))).toBe(0);
+        } finally {
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should requeue a reclaimed message even when freeing its slot fails",
+      { timeout: 25000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 500,
+          reclaimIntervalMs: 100,
+          reconcileIntervalMs: 600_000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:release-fails";
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+        let starts = 0;
+
+        try {
+          queue.onMessage(async (ctx) => {
+            starts++;
+            if (starts === 1) {
+              await new Promise((resolve) => setTimeout(resolve, 3000));
+              return;
+            }
+            await ctx.complete();
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.zcard(keys.inflightKey(0))).toBe(1);
+            },
+            { timeout: 5000 }
+          );
+
+          await redis.del(concurrencyKey);
+          await redis.set(concurrencyKey, "not-a-set");
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.zcard(keys.queueKey(queueId))).toBe(1);
+              expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+            },
+            { timeout: 5000 }
+          );
+
+          await redis.del(concurrencyKey);
+
+          await vi.waitFor(
+            () => {
+              expect(starts).toBe(2);
+            },
+            { timeout: 10000 }
+          );
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+              expect(await redis.zcard(keys.queueKey(queueId))).toBe(0);
+              expect(await redis.scard(concurrencyKey)).toBe(0);
+            },
+            { timeout: 5000 }
+          );
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should complete a message even when freeing its slot fails, never re-delivering it",
+      { timeout: 20000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 500,
+          reclaimIntervalMs: 100,
+          reconcileIntervalMs: 600_000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:complete-release-fails";
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+        let executions = 0;
+
+        try {
+          queue.onMessage(async (ctx) => {
+            executions++;
+            await redis.del(concurrencyKey);
+            await redis.set(concurrencyKey, "not-a-set");
+            await ctx.complete();
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(executions).toBe(1);
+            },
+            { timeout: 5000 }
+          );
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+            },
+            { timeout: 5000 }
+          );
+
+          await redis.del(concurrencyKey);
+
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          expect(executions).toBe(1);
+          expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+          expect(await redis.zcard(keys.queueKey(queueId))).toBe(0);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should schedule a retry with an advanced attempt even when freeing its slot fails",
+      { timeout: 20000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+        const attempts: number[] = [];
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          reclaimIntervalMs: 100,
+          reconcileIntervalMs: 600_000,
+          retry: {
+            strategy: new FixedDelayRetry({ maxAttempts: 2, delayMs: 50 }),
+            deadLetterQueue: true,
+          },
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:retry-release-fails";
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+
+        try {
+          queue.onMessage(async (ctx) => {
+            attempts.push(ctx.message.attempt);
+            if (ctx.message.attempt === 1) {
+              await redis.del(concurrencyKey);
+              await redis.set(concurrencyKey, "not-a-set");
+            }
+            await ctx.fail(new Error("boom"));
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+            messageId: "retry-msg",
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(attempts).toEqual([1]);
+            },
+            { timeout: 5000 }
+          );
+
+          await vi.waitFor(
+            async () => {
+              const stored = await redis.hget(keys.queueItemsKey(queueId), "retry-msg");
+              expect(stored).not.toBeNull();
+              expect(JSON.parse(stored!).attempt).toBe(2);
+            },
+            { timeout: 5000 }
+          );
+
+          expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+
+          await redis.del(concurrencyKey);
+
+          await vi.waitFor(
+            () => {
+              expect(attempts).toEqual([1, 2]);
+            },
+            { timeout: 5000 }
+          );
+
+          await vi.waitFor(
+            async () => {
+              expect(await queue.getDeadLetterQueueLength("t1")).toBe(1);
+            },
+            { timeout: 5000 }
+          );
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should release the concurrency slot even when the reclaim requeue fails",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 30000,
+          reclaimIntervalMs: 100,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:reclaim-fail";
+        const inflightKey = keys.inflightKey(0);
+
+        let unblockHandler: (() => void) | undefined;
+        const handlerBlocked = new Promise<void>((resolve) => {
+          unblockHandler = resolve;
+        });
+
+        try {
+          queue.onMessage(async () => {
+            await handlerBlocked;
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.scard(keys.concurrencyKey("tenant", "t1"))).toBe(1);
+              expect(await redis.zcard(inflightKey)).toBe(1);
+            },
+            { timeout: 5000 }
+          );
+
+          await redis.del(keys.queueKey(queueId));
+          await redis.set(keys.queueKey(queueId), "not-a-zset");
+
+          const [member] = await redis.zrange(inflightKey, 0, 0);
+          expect(member).toBeDefined();
+          await redis.zadd(inflightKey, Date.now() - 60000, member!);
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.scard(keys.concurrencyKey("tenant", "t1"))).toBe(0);
+            },
+            { timeout: 8000 }
+          );
+
+          expect(await redis.zcard(inflightKey)).toBe(1);
+        } finally {
+          unblockHandler?.();
+          await redis.del(keys.queueKey(queueId));
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should release the concurrency slot when failMessage cannot read the message",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const started: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+
+        try {
+          queue.onMessage(async (ctx) => {
+            started.push(ctx.message.payload.value);
+            await redis.hdel(keys.inflightDataKey(0), ctx.message.id);
+            await ctx.fail(new Error("boom"));
+          });
+
+          await queue.enqueue({
+            queueId: "tenant:t1:queue:q1",
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(started).toHaveLength(1);
+            },
+            { timeout: 10000 }
+          );
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.scard(keys.concurrencyKey("tenant", "t1"))).toBe(0);
+            },
+            { timeout: 5000 }
+          );
+        } finally {
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+  });
+
+  describe("concurrency slot reconciliation", () => {
+    redisTest(
+      "should free slots held by messages that are no longer in flight",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          reclaimIntervalMs: 100,
+          reconcileIntervalMs: 200,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:orphaned-slot";
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+        const processed: string[] = [];
+
+        try {
+          await redis.sadd(concurrencyKey, "ghost-message");
+
+          queue.onMessage(async (ctx) => {
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(processed).toEqual(["msg-0"]);
+            },
+            { timeout: 8000 }
+          );
+
+          expect(await redis.sismember(concurrencyKey, "ghost-message")).toBe(0);
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.scard(concurrencyKey)).toBe(0);
+            },
+            { timeout: 5000 }
+          );
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should leave the slot of an in-flight message alone",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          reclaimIntervalMs: 100,
+          reconcileIntervalMs: 100,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1,
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:active-slot";
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+        let executions = 0;
+
+        try {
+          queue.onMessage(async (ctx) => {
+            executions++;
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            await ctx.complete();
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+            messageId: "active-msg",
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            async () => {
+              expect(await redis.zcard(keys.inflightKey(0))).toBe(1);
+            },
+            { timeout: 5000 }
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          expect(await redis.sismember(concurrencyKey, "active-msg")).toBe(1);
+          expect(await redis.zcard(keys.inflightKey(0))).toBe(1);
+
+          await vi.waitFor(
+            async () => {
+              expect(executions).toBe(1);
+              expect(await redis.scard(concurrencyKey)).toBe(0);
+              expect(await redis.zcard(keys.inflightKey(0))).toBe(0);
+            },
+            { timeout: 5000 }
+          );
+
+          expect(executions).toBe(1);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await queue.close();
+        }
+      }
+    );
+
+    redisTest(
+      "should not sweep when the reconcile interval is zero",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 60000,
+          reclaimIntervalMs: 100,
+          reconcileIntervalMs: 0,
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 5,
+              defaultLimit: 5,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:sweep-disabled";
+        const concurrencyKey = keys.concurrencyKey("tenant", "t1");
+        const processed: string[] = [];
+
+        try {
+          await redis.sadd(concurrencyKey, "ghost-message");
+
+          queue.onMessage(async (ctx) => {
+            processed.push(ctx.message.payload.value);
+            await ctx.complete();
+          });
+
+          await queue.enqueue({
+            queueId,
+            tenantId: "t1",
+            payload: { value: "msg-0" },
+          });
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(processed).toEqual(["msg-0"]);
+            },
+            { timeout: 5000 }
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          expect(await redis.sismember(concurrencyKey, "ghost-message")).toBe(1);
+        } finally {
+          await redis.del(concurrencyKey);
+          await redis.quit();
+          await queue.close();
+        }
       }
     );
   });

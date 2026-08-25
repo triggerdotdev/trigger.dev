@@ -1,54 +1,186 @@
 ---
 title: "API keys"
-description: "How to authenticate with Trigger.dev so you can trigger tasks."
+description: "Authenticate backend requests with environment-specific API keys."
 ---
 
-### Authentication and your secret keys
+**API keys authenticate backend requests to a specific Trigger.dev project and environment.** Each environment can have multiple keys, with optional scopes and restrictions attached.
 
-When you [trigger a task](/triggering) from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable.
+<Warning>
+  API keys grant access to your Trigger.dev environment. Store them in a secret manager or backend
+  environment variable, never commit them to source control, and never expose them in frontend code.
+</Warning>
 
-Each environment has its own secret key. You can find the value on the API keys page in the Trigger.dev dashboard:
+## Find your API keys
 
-![How to find your secret key](/images/api-keys.png)
+Open your project in the dashboard, select an environment, and open the [**API keys**](https://cloud.trigger.dev/_/apikeys) page.
+
+API keys belong to one environment. A Development key cannot access Production, and a Production key cannot access Staging.
 
 <Note>
-  For preview branches, you need to also set the `TRIGGER_PREVIEW_BRANCH` environment variable as
-  well. You can find the value on the API keys page when you're on the preview branch.
+  Every team member has their own Development environment and keys. Copy the Development key from
+  your own API keys page so local requests run against your machine.
 </Note>
 
-### Automatically Configuring the SDK
+## Configure the SDK
 
-To automatically configure the SDK with your secret key, you can set the `TRIGGER_SECRET_KEY` environment variable. The SDK will automatically use this value when calling API methods (like `trigger`).
-
-```bash .env
-TRIGGER_SECRET_KEY="tr_dev_…"
-TRIGGER_PREVIEW_BRANCH="my-branch" # Only needed for preview branches
-```
-
-You can do the same if you are self-hosting and need to change the default URL by using `TRIGGER_API_URL`.
+Set `TRIGGER_SECRET_KEY` in your backend environment. The SDK reads it automatically for operations such as triggering tasks and retrieving runs.
 
 ```bash .env
-TRIGGER_API_URL="https://trigger.example.com"
-TRIGGER_PREVIEW_BRANCH="my-branch" # Only needed for preview branches
+TRIGGER_SECRET_KEY="tr_prod_sk_…"
 ```
 
-The default URL is `https://api.trigger.dev`.
+To configure the SDK in code, pass the key to `configure`:
 
-### Manually Configuring the SDK
-
-If you prefer to manually configure the SDK, you can call the `configure` method:
-
-```ts
-import { configure } from "@trigger.dev/sdk";
-import { myTask } from "./trigger/myTasks";
+```ts Your backend code
+import { configure, tasks } from "@trigger.dev/sdk";
+import type { sendEmail } from "./trigger/send-email";
 
 configure({
-  secretKey: "tr_dev_1234", // WARNING: Never actually hardcode your secret key like this
+  secretKey: process.env.TRIGGER_SECRET_KEY,
   previewBranch: "my-branch", // Only needed for preview branches
   baseURL: "https://mytrigger.example.com", // Optional
 });
 
-async function triggerTask() {
-  await myTask.trigger({ userId: "1234" }); // This will use the secret key and base URL you configured
-}
+await tasks.trigger<typeof sendEmail>("send-email", {
+  to: "user@example.com",
+});
 ```
+
+If you self-host Trigger.dev, set `TRIGGER_API_URL` or pass `baseURL` to `configure`:
+
+```bash .env
+TRIGGER_SECRET_KEY="tr_prod_…"
+TRIGGER_API_URL="https://trigger.example.com"
+```
+
+The default API URL is `https://api.trigger.dev`.
+
+## Create a key
+
+Create a separate key for each service or integration that accesses Trigger.dev.
+
+<Note>
+  Creating and revoking keys requires permission to manage API keys for the selected environment.
+  The dashboard disables these actions when your role does not have permission.
+</Note>
+
+<Steps titleSize="h3">
+  <Step title="Open the API keys page">
+    Select the project and environment the integration needs to access, then open [**API keys**](https://cloud.trigger.dev/_/apikeys).
+  </Step>
+  <Step title="Create the key">
+    Click **New API key**, enter a descriptive name, and optionally set an expiration date. Names can
+    contain up to 64 characters.
+  </Step>
+  <Step title="Choose its access">
+    Select an access preset. For task-aware presets, choose all tasks or up to 10 task identifiers.
+  </Step>
+  <Step title="Copy and store the secret">
+    Copy the key into your secret manager or backend environment. Trigger.dev shows the complete
+    value only once.
+  </Step>
+</Steps>
+
+## Access presets
+
+Access presets define what a key can do. Some presets require a paid plan. The dashboard shows which presets your organization can use — see [pricing](https://trigger.dev/pricing).
+
+| Preset | Access |
+| --- | --- |
+| **Trigger only** | Trigger runs and batches for all or selected tasks. Trigger responses include scoped public access tokens for the runs and batches they create |
+| **Task operator** | Trigger all or selected tasks and inspect or operate on their runs |
+| **Observer** | Read runs, tasks, batches, logs, traces, and queues |
+| **Operator** | Observe and operate on runs and queues, and trigger tasks |
+| **Deploy only** | Deploy versions, sync environment variables, and manage Preview branches |
+| **Variables only** | Read and write environment variables in this environment |
+| **No restrictions** | Full access to the environment |
+
+**Trigger only** and **Task operator** can be restricted to selected tasks. Task restrictions use task identifiers, such as `send-email`. A request involving multiple tasks — such as a batch trigger — succeeds only when the key can access every task in the request, so a task-restricted key can batch-trigger only its selected tasks.
+
+## Deploy with an API key
+
+Set a key in `TRIGGER_ACCESS_TOKEN` to authenticate `trigger deploy` without logging in.
+
+<CodeGroup>
+
+```bash npm
+TRIGGER_ACCESS_TOKEN="tr_prod_sk_…" npx trigger.dev@latest deploy
+```
+</CodeGroup>
+
+The key must belong to the target environment. Use a Production key for the default deployment, a Staging key with `--env staging`, or a key from the Preview environment with `--env preview`. A Preview deployment key can create and archive Preview branches and sync their environment variables.
+
+<Note>
+  The deploy CLI reads environment API keys from `TRIGGER_ACCESS_TOKEN`, not
+  `TRIGGER_SECRET_KEY`. Setting an API key in `TRIGGER_ACCESS_TOKEN` takes precedence over a saved
+  CLI login.
+</Note>
+
+## Expire and revoke keys
+
+Set an expiration date when creating a key if the integration only needs temporary access. An expired key stops authenticating automatically.
+
+Revoking a key takes effect immediately and cannot be reversed. Requests using the key fail, and the key can no longer create public access tokens. Create a replacement before revoking a key when you need to rotate it without interrupting the integration.
+
+Removing a team member does not revoke keys they created. Review and revoke their keys separately when their access changes.
+
+## Root keys
+
+<Warning>
+  Root keys are legacy, and are likely to be deprecated in the future. We recommend against using them.
+</Warning>
+
+Each environment has a single legacy root key. It can be regenerated, which creates a new value immediately. The previous root key remains valid for 24 hours so you can update services without downtime, then stops authenticating.
+
+Public access tokens signed with the previous root key remain valid until the earlier of their own expiration and the end of the 24-hour grace period.
+
+## Create public access tokens
+
+API keys can be used to create scoped [Public Access Tokens](/realtime/auth) using `auth.createPublicToken()`.
+
+To do so with the newer non-root keys, you must use `@trigger.dev/sdk` version 4.5.8 or later. Creating public tokens with non-root keys has the following restrictions:
+
+- The token must request at least one scope.
+- Its scopes cannot exceed the key's access.
+- Its expiration cannot exceed 30 days.
+
+<Note>
+Revoking or expiring an API key does not revoke tokens it already created. Those tokens remain valid until their own expiration, unless the environment's root key is regenerated.
+</Note>
+
+## Target Preview and Development branches
+
+Preview and named Development branches use their parent environment's keys. Select the branch by setting `TRIGGER_PREVIEW_BRANCH` alongside the environment key:
+
+```bash .env
+TRIGGER_SECRET_KEY="tr_preview_sk_…"
+TRIGGER_PREVIEW_BRANCH="feature/new-checkout"
+```
+
+The SDK sends the branch automatically. When calling the API directly, send the same value in the `x-trigger-branch` header.
+
+## Self-hosting
+
+Self-hosted installations support multiple keys with **No restrictions**. The restricted access presets are available in Trigger.dev Cloud.
+
+Keep your instance and SDK current before creating keys. Calling a public-token API with a key on a server that does not support server-minted tokens returns an upgrade error; use the root key until the server is upgraded.
+
+## Security recommendations
+
+- Create one key per service or integration instead of sharing keys.
+- Choose the narrowest access preset and task selection that supports the integration.
+- Store keys in a secret manager and inject them as backend environment variables.
+- Set expiration dates for temporary integrations and deployment credentials.
+- Revoke keys when an integration or team member no longer needs access.
+- Never put an API key in frontend code. Use scoped [Public Access Tokens](/realtime/auth) for client-side access.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Trigger tasks" icon="bolt" href="/triggering">
+    Trigger tasks from your backend with an environment API key.
+  </Card>
+  <Card title="Realtime authentication" icon="key" href="/realtime/auth">
+    Create scoped public tokens for frontend and realtime access.
+  </Card>
+</CardGroup>

@@ -19,6 +19,7 @@ export default defineConfig({
       "app/runEngine/services/**/*.test.ts",
       "app/utils/**/*.test.ts",
       "app/components/code/**/*.test.ts",
+      "app/components/runs/**/*.test.ts",
       "app/components/dashboard-agent/**/*.test.ts",
       "app/components/queues/**/*.test.ts",
       "app/routes/storybook.agent-ui/*.test.ts",
@@ -27,7 +28,12 @@ export default defineConfig({
     // *.e2e.test.ts: smoke matrix, run via vitest.e2e.config.ts.
     // *.e2e.full.test.ts: full auth suite, runs via vitest.e2e.full.config.ts
     // (needs a globalSetup-spawned webapp + Postgres container).
-    exclude: ["test/**/*.e2e.test.ts", "test/**/*.e2e.full.test.ts"],
+    exclude: [
+      "test/**/*.e2e.test.ts",
+      "test/**/*.e2e.full.test.ts",
+      "test/**/*.perf.test.ts",
+      "test/bench/**",
+    ],
     globals: true,
     pool: "forks",
     setupFiles: ["./test/setup.ts"], // load apps/webapp/.env

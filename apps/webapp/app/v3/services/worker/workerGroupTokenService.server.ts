@@ -363,8 +363,8 @@ export class WorkerGroupTokenService extends WithRunEngine {
   }
 }
 
-export const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
-export type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
+const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
+type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 
 export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   type: WorkerInstanceGroupType;

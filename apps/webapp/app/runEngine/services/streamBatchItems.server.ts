@@ -41,7 +41,7 @@ import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
  * at the run level, so the trigger call must throw to give their retry/
  * error handling a chance to create a fresh batch.
  */
-export function isIdempotentRetrySuccess(
+function isIdempotentRetrySuccess(
   status: BatchTaskRunStatus | null | undefined,
   sealed: boolean | null | undefined,
   processingCompletedAt: Date | null | undefined

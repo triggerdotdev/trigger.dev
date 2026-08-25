@@ -1,8 +1,7 @@
-import { Link, useLocation } from "@remix-run/react";
+import { useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEffect, useState, useRef, useCallback } from "react";
-import { S2, S2Error } from "@s2-dev/streamstore";
 import {
   Clipboard,
   ClipboardCheck,
@@ -51,7 +50,8 @@ import { cn } from "~/utils/cn";
 import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathBuilder";
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
-import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { useDeploymentLogs } from "~/hooks/useDeploymentLogs";
+import { type DeploymentLogEntry } from "~/components/runs/v3/deploymentLogsCache";
 import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
@@ -59,6 +59,7 @@ export const handle: Handle = {
   agentPageContext: (data) => deploymentAgentPageContext(data),
 };
 import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta = pageMeta(({ params }) => [
   params.deploymentParam ?? "Deployment",
@@ -88,12 +89,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
-};
-
-type LogEntry = {
-  message: string;
-  timestamp: Date;
-  level: "info" | "error" | "warn" | "debug";
 };
 
 function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
@@ -180,6 +175,21 @@ function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
   }
 }
 
+const EXTERNAL_ID_DISPLAY_LENGTH = 24;
+
+function ExternalIdValue({ externalId }: { externalId: string | null }) {
+  if (!externalId) {
+    return <>–</>;
+  }
+
+  const display =
+    externalId.length > EXTERNAL_ID_DISPLAY_LENGTH
+      ? `${externalId.slice(0, EXTERNAL_ID_DISPLAY_LENGTH)}…`
+      : externalId;
+
+  return <CopyableText value={display} copyValue={externalId} className="font-mono text-sm" />;
+}
+
 export default function Page() {
   const { deployment, eventStream } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -189,103 +199,10 @@ export default function Page() {
   const page = new URLSearchParams(location.search).get("page");
 
   const logsDisabled = eventStream === undefined;
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isStreaming, setIsStreaming] = useState(true);
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const isPending = deployment.status === "PENDING";
-
-  useEffect(() => {
-    if (logsDisabled) return;
-
-    const abortController = new AbortController();
-
-    setLogs([]);
-    setStreamError(null);
-    setIsStreaming(true);
-
-    const streamLogs = async () => {
-      try {
-        const s2 = new S2({ accessToken: eventStream.s2.accessToken });
-        const basin = s2.basin(eventStream.s2.basin);
-        const stream = basin.stream(eventStream.s2.stream);
-
-        const readSession = await stream.readSession(
-          {
-            start: { from: { seqNum: 0 }, clamp: true },
-            stop: { waitSecs: 60 },
-          },
-          { signal: abortController.signal }
-        );
-
-        for await (const record of readSession) {
-          const decoded = record.body;
-          const result = DeploymentEventFromString.safeParse(decoded);
-
-          if (!result.success) {
-            // fallback to the previous format in s2 logs for compatibility
-            try {
-              const headers: Record<string, string> = {};
-
-              if (record.headers) {
-                for (const [name, value] of record.headers) {
-                  headers[name] = value;
-                }
-              }
-              const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
-
-              setLogs((prevLogs) => [
-                ...prevLogs,
-                {
-                  timestamp: new Date(record.timestamp),
-                  message: decoded,
-                  level,
-                },
-              ]);
-            } catch (err) {
-              console.error("Failed to parse log record:", err);
-            }
-
-            continue;
-          }
-
-          const event = result.data;
-          if (event.type !== "log") {
-            continue;
-          }
-
-          setLogs((prevLogs) => [
-            ...prevLogs,
-            {
-              timestamp: new Date(record.timestamp),
-              message: event.data.message,
-              level: event.data.level,
-            },
-          ]);
-        }
-      } catch (error) {
-        if (abortController.signal.aborted) return;
-
-        const isNotFoundError =
-          error instanceof S2Error &&
-          error.code &&
-          ["permission_denied", "stream_not_found"].includes(error.code);
-        if (isNotFoundError) return;
-
-        console.error("Failed to stream logs:", error);
-        setStreamError("Failed to stream logs");
-      } finally {
-        if (!abortController.signal.aborted) {
-          setIsStreaming(false);
-        }
-      }
-    };
-
-    streamLogs();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [eventStream?.s2?.basin, eventStream?.s2?.stream, eventStream?.s2?.accessToken, isPending]);
+  const { logs, isStreaming, streamError } = useDeploymentLogs({
+    eventStream,
+    status: deployment.status,
+  });
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -328,12 +245,12 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Build Server</Property.Label>
                 <Property.Value>
-                  <Link
+                  <TextLink
                     to={`/resources/${deployment.projectId}/deployments/${deployment.id}/logs`}
-                    className="extra-small/bright/mono underline"
+                    className="font-mono text-xs"
                   >
                     {deployment.externalBuildData.buildId}
-                  </Link>
+                  </TextLink>
                 </Property.Value>
               </Property.Item>
             )}
@@ -444,6 +361,12 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Worker type</Property.Label>
                 <Property.Value>{capitalizeWord(deployment.type)}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>External ID</Property.Label>
+                <Property.Value>
+                  <ExternalIdValue externalId={deployment.externalId} />
+                </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Started at</Property.Label>
@@ -593,7 +516,7 @@ function LogsDisplay({
   streamError,
   initialCollapsed = false,
 }: {
-  logs: LogEntry[];
+  logs: readonly DeploymentLogEntry[];
   isStreaming: boolean;
   streamError: string | null;
   initialCollapsed?: boolean;
@@ -604,6 +527,7 @@ function LogsDisplay({
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
 

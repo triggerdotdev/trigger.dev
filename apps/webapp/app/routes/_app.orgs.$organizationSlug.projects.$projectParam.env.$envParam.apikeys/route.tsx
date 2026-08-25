@@ -1,4 +1,5 @@
 import {
+  BookOpenIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   KeyIcon,
@@ -74,8 +75,9 @@ import {
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 
 export const handle: Handle = {
@@ -171,6 +173,7 @@ export const loader = dashboardLoader(
         additionalApiKeyIssuanceEnabled,
         isRbacPluginAvailable,
         showRevoked: searchParams.showRevoked ?? false,
+        loadedAt: Date.now(),
       });
     } catch (error) {
       console.error(error);
@@ -306,6 +309,7 @@ export default function Page() {
     hasVercelIntegration,
     availableTasks,
     presets,
+    loadedAt,
   } = useTypedLoaderData<typeof loader>();
 
   const apiKeyEnvironmentLabel = {
@@ -340,6 +344,16 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/v3/apikeys")}
+            >
+              API keys docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -386,15 +400,13 @@ export default function Page() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <ApiKeyStatus />
+                    <ApiKeyStatus now={loadedAt} />
                   </TableCell>
                   <TableCell>
                     <ApiKeyAccess label="No restrictions" />
                   </TableCell>
                   <TableCell>–</TableCell>
-                  <TableCell>
-                    <DateTime date={rootApiKey.createdAt} />
-                  </TableCell>
+                  <TableCell>–</TableCell>
                   <TableCell>–</TableCell>
                   <TableCellMenu
                     isSticky
@@ -414,7 +426,7 @@ export default function Page() {
 
                 {apiKeys.map((apiKey) => {
                   const isExpired = apiKey.expiresAt
-                    ? new Date(apiKey.expiresAt).getTime() <= Date.now()
+                    ? new Date(apiKey.expiresAt).getTime() <= loadedAt
                     : false;
                   const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
                   const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
@@ -435,7 +447,11 @@ export default function Page() {
                         <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
                       </TableCell>
                       <TableCell>
-                        <ApiKeyStatus revokedAt={apiKey.revokedAt} expiresAt={apiKey.expiresAt} />
+                        <ApiKeyStatus
+                          revokedAt={apiKey.revokedAt}
+                          expiresAt={apiKey.expiresAt}
+                          now={loadedAt}
+                        />
                       </TableCell>
                       <TableCell>
                         <ApiKeyAccess
@@ -601,6 +617,7 @@ function NewApiKeyDialog({
     }
 
     if (actionData?.ok && actionData.action === "create") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setCreatedApiKey(actionData.apiKey);
     } else if (actionData && !actionData.ok) {
       setShowError(true);
@@ -1016,7 +1033,7 @@ function PresetOptions({
             id={`api-key-access-${preset.id}`}
             value={preset.id}
             variant="description"
-            className="h-full min-h-[3.5rem] items-start border-grid-bright bg-background-bright p-3 shadow-none [&_p]:mt-0.5 [&_p]:text-xs [&_p]:leading-snug hover:border-border-bright hover:bg-background-hover data-[state=checked]:border-indigo-500/70 data-[state=checked]:bg-indigo-500/10"
+            className="h-full min-h-[3.5rem] items-start border-grid-bright bg-background-bright p-3 shadow-none [&_p]:mt-0.5 [&_p]:text-xs [&_p]:leading-snug hover:border-border-bright hover:bg-background-hover data-[state=checked]:border-indigo-500/70 data-[state=checked]:bg-indigo-500/10 hover:data-[state=checked]:bg-indigo-500/15"
             label={
               preset.id === "FULL_ACCESS" ? (
                 <span className="flex items-center gap-2">
@@ -1097,7 +1114,10 @@ function ApiKeyScopePanel({
                           ? "bg-blue-500"
                           : tone === "write"
                             ? "bg-amber-500"
-                            : "bg-charcoal-600"
+                            : // A dot has to stay visible, so this tracks the
+                              // dimmed text color rather than a surface color
+                              // that would all but vanish on a light card.
+                              "bg-text-dimmed"
                       )}
                     />
                     <span
@@ -1328,9 +1348,11 @@ function ApiKeyAccess({
 function ApiKeyStatus({
   revokedAt,
   expiresAt,
+  now,
 }: {
   revokedAt?: Date | string | null;
   expiresAt?: Date | string | null;
+  now: number;
 }) {
   if (revokedAt) {
     return (
@@ -1341,7 +1363,7 @@ function ApiKeyStatus({
     );
   }
 
-  if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+  if (expiresAt && new Date(expiresAt).getTime() <= now) {
     return (
       <div className="flex items-center gap-1 text-xs text-text-dimmed">
         <ExclamationTriangleIcon className="size-4" />

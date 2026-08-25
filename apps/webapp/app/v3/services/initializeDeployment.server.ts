@@ -6,6 +6,7 @@ import {
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { encryptSecret } from "~/services/secrets/secretStore.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
@@ -16,16 +17,53 @@ import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
 import { DeploymentService } from "./deployment.server";
 import { createDeploymentWithNextVersion } from "./initializeDeployment/createDeploymentWithNextVersion.server";
+import {
+  cancelSupersededDeployments,
+  type SupersededDeployment,
+} from "./initializeDeployment/cancelSupersededDeployments.server";
+import {
+  resolveExternalIdReuse,
+  type ExternalIdReuseDeployment,
+} from "./initializeDeployment/resolveExternalIdReuse.server";
+import { type WorkerDeployment } from "@trigger.dev/database";
 import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
+
+type DeploymentEventStream = {
+  s2: {
+    basin: string;
+    stream: string;
+    accessToken: string;
+  };
+};
+
+export type InitializeDeploymentResult =
+  | {
+      outcome: "created";
+      deployment: WorkerDeployment;
+      imageRef: string;
+      eventStream?: DeploymentEventStream;
+      canceledDeployments?: SupersededDeployment[];
+    }
+  | {
+      outcome: "existing";
+      deployment: ExternalIdReuseDeployment;
+      imageRef: string;
+      isPromoted: boolean;
+    };
 
 export class InitializeDeploymentService extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody
-  ) {
-    return this.traceWithEnv("call", environment, async () => {
+  ): Promise<InitializeDeploymentResult> {
+    return this.traceWithEnv("call", environment, async (span) => {
+      if (payload.externalId) {
+        span.setAttribute("externalId", payload.externalId);
+      }
+      span.setAttribute("force", payload.force ?? false);
+
       if (payload.gitMeta?.commitSha?.startsWith("deployment_")) {
         // When we introduced automatic deployments via the build server, we slightly changed the deployment flow
         // mainly in the initialization and starting step: now deployments are first initialized in the `PENDING` status
@@ -38,6 +76,13 @@ export class InitializeDeploymentService extends BaseService {
         // /start endpoint. It's a rather hacky solution, but it will do for now as it enables us to avoid degrading the
         // build server experience for users with older CLI versions. We'll eventually be able to remove this workaround
         // once we stop supporting 3.x CLI versions.
+
+        if (payload.externalId || payload.force) {
+          throw new ServiceValidationError(
+            "externalId and force are not supported when attaching to an existing deployment",
+            400
+          );
+        }
 
         const existingDeploymentId = payload.gitMeta.commitSha;
         const existingDeployment = await this._prisma.workerDeployment.findFirst({
@@ -53,7 +98,10 @@ export class InitializeDeploymentService extends BaseService {
           );
         }
 
+        span.setAttribute("outcome", "created");
+
         return {
+          outcome: "created",
           deployment: existingDeployment,
           imageRef: existingDeployment.imageReference ?? "",
         };
@@ -103,6 +151,56 @@ export class InitializeDeploymentService extends BaseService {
         );
       }
 
+      const deploymentService = new DeploymentService();
+
+      const reuse = await resolveExternalIdReuse({
+        prisma: this._prisma,
+        environmentId: environment.id,
+        externalId: payload.externalId,
+        force: payload.force,
+      });
+
+      if (reuse.action === "reject") {
+        span.setAttribute("outcome", "rejected");
+
+        throw new ServiceValidationError(
+          `A deployment for external id "${payload.externalId}" is already in progress (version ${reuse.deployment.version}). Wait for it to finish, or deploy again with --force to cancel it and start a new one.`,
+          409
+        );
+      }
+
+      if (reuse.action === "short-circuit") {
+        span.setAttribute("outcome", "existing");
+
+        logger.debug("Reusing deployed external id, skipping build", {
+          environmentId: environment.id,
+          projectId: environment.projectId,
+          externalId: payload.externalId,
+          version: reuse.deployment.version,
+        });
+
+        return {
+          outcome: "existing",
+          deployment: reuse.deployment,
+          imageRef: reuse.deployment.imageReference ?? "",
+          isPromoted: reuse.isPromoted,
+        };
+      }
+
+      span.setAttribute("outcome", "created");
+
+      const canceledDeployments =
+        reuse.action === "cancel-then-build"
+          ? await cancelSupersededDeployments({
+              deploymentService,
+              environmentId: environment.id,
+              externalId: reuse.externalId,
+              deployments: reuse.deployments,
+            })
+          : [];
+
+      span.setAttribute("canceledDeploymentCount", canceledDeployments.length);
+
       // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started to avoid token expiration issues.
       // For local and native builds we don't need to generate the Depot tokens. We still need to create an empty object sadly due to a bug in older CLI versions.
       const generateExternalBuildToken =
@@ -140,7 +238,6 @@ export class InitializeDeploymentService extends BaseService {
       const initialStatus =
         payload.initialStatus ?? (payload.isNativeBuild ? "PENDING" : "BUILDING");
 
-      const deploymentService = new DeploymentService();
       const s2StreamOrFail = await deploymentService
         .createEventStream(environment.project, { shortCode: deploymentShortCode })
         .andThen(({ basin, stream }) =>
@@ -172,6 +269,38 @@ export class InitializeDeploymentService extends BaseService {
           }
         : undefined;
 
+      let encryptedBuildEnvVars: Awaited<ReturnType<typeof encryptSecret>> | undefined;
+
+      if (
+        payload.isNativeBuild &&
+        payload.fromBundle &&
+        payload.buildEnvVars &&
+        Object.keys(payload.buildEnvVars).length > 0
+      ) {
+        const buildEnvVars = payload.buildEnvVars;
+
+        const keyCount = Object.keys(buildEnvVars).length;
+        if (keyCount > env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS) {
+          throw new ServiceValidationError(
+            `Build environment variable count (${keyCount}) exceeds the allowed limit of ${env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS}. Reach out to us if you are seeing this error consistently.`
+          );
+        }
+
+        const serialized = JSON.stringify(buildEnvVars);
+        const serializedBytes = Buffer.byteLength(serialized, "utf8");
+        if (serializedBytes > env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES) {
+          const sizeKB = parseFloat((serializedBytes / 1024).toFixed(1));
+          const limitKB = parseFloat(
+            (env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES / 1024).toFixed(1)
+          );
+          throw new ServiceValidationError(
+            `Build environment variables size (${sizeKB} KB) exceeds the allowed limit of ${limitKB} KB. Reach out to us if you are seeing this error consistently.`
+          );
+        }
+
+        encryptedBuildEnvVars = await encryptSecret(env.ENCRYPTION_KEY, serialized);
+      }
+
       const buildServerMetadata: BuildServerMetadata | undefined =
         payload.isNativeBuild || payload.buildId
           ? {
@@ -183,6 +312,7 @@ export class InitializeDeploymentService extends BaseService {
                     skipPromotion: payload.skipPromotion,
                     configFilePath: payload.configFilePath,
                     skipEnqueue: payload.skipEnqueue,
+                    fromBundle: payload.fromBundle,
                   }
                 : {}),
             }
@@ -247,13 +377,15 @@ export class InitializeDeploymentService extends BaseService {
             projectId: environment.projectId,
             externalBuildData,
             buildServerMetadata,
+            buildEnvVars: encryptedBuildEnvVars,
             triggeredById: triggeredBy?.id,
             type: payload.type,
             imageReference: imageRef,
             imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
             git: payload.gitMeta ?? undefined,
             commitSHA: payload.gitMeta?.commitSha ?? undefined,
-            runtime: payload.runtime ?? undefined,
+            externalId: payload.externalId,
+            runtime: payload.runtime ?? environment.project.defaultRuntime ?? undefined,
             triggeredVia: payload.triggeredVia ?? undefined,
             startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
           };
@@ -276,6 +408,7 @@ export class InitializeDeploymentService extends BaseService {
           .enqueueBuild(environment, deployment, payload.artifactKey, {
             skipPromotion: payload.skipPromotion,
             configFilePath: payload.configFilePath,
+            fromBundle: payload.fromBundle,
           })
           .orElse((error) => {
             logger.error("Failed to enqueue build", {
@@ -307,9 +440,11 @@ export class InitializeDeploymentService extends BaseService {
       }
 
       return {
+        outcome: "created",
         deployment,
         imageRef: deployment.imageReference ?? "",
         eventStream,
+        canceledDeployments,
       };
     });
   }

@@ -16,15 +16,12 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header3 } from "~/components/primitives/Headers";
@@ -77,6 +74,7 @@ import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
+  useIsMetricResponseFresh,
   useMetricResourceQuery,
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
@@ -94,6 +92,7 @@ import {
 } from "~/utils/pathBuilder";
 import type { Handle } from "~/utils/handle";
 import { queuesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { handleQueueMutationAction } from "~/models/queueMutation.server";
 import {
@@ -171,7 +170,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Per-org gate for the metrics UI. When off, this org gets the classic Queues page and
   // no metrics query fires.
-  const queueMetricsUiEnabled = await canAccessQueueMetricsUi({ userId, organizationSlug });
+  const queueMetricsUiEnabled = await canAccessQueueMetricsUi({
+    request,
+    userId,
+    organizationSlug,
+  });
 
   const maxPeriodDays = queueMetricsUiEnabled
     ? await queueMetricsMaxPeriodDays(environment.organizationId)
@@ -204,7 +207,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       byQueue: Record<string, QueueListMetric>;
     } | null = null;
 
-    if (queueMetricsUiEnabled && queues.success) {
+    if (queueMetricsUiEnabled) {
       // Metrics are additive observability; a ClickHouse hiccup must not take down queue
       // management. Fail open to metrics: null instead of bubbling to the page-level 400.
       try {
@@ -247,7 +250,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // Allocation summary (Environment limit + Allocated tiles) is additive; a presenter
     // failure must not 400 the page, so fail open to null like the metrics block above.
     let allocation: Awaited<ReturnType<QueueAllocationPresenter["call"]>> | null = null;
-    if (queueMetricsUiEnabled && queues.success) {
+    if (queueMetricsUiEnabled) {
       try {
         allocation = await new QueueAllocationPresenter().call({ environment });
       } catch (error) {
@@ -379,9 +382,7 @@ function QueuesWithMetricsView() {
   const {
     environment,
     queues,
-    success,
     pagination,
-    code,
     totalQueues,
     hasFilters,
     autoReloadPollIntervalMs,
@@ -424,27 +425,30 @@ function QueuesWithMetricsView() {
   // Empty rows (quiet env, or the very first fetch still in flight) fall back to the loader values,
   // so we never flash a stale 0. Fixed 15m window, env-wide (no queue filter), CH-only recurring
   // load; pauses while the tab is hidden (handled inside the hook).
-  const { rows: liveBlockRows } = useMetricResourceQuery(QUEUE_LIVE_BLOCKS_QUERY, {
-    organizationId: organization.id,
-    projectId: project.id,
-    environmentId: env.id,
-    timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
-    defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
-    fillGaps: false,
-    refreshIntervalMs: 15_000,
-  });
+  const { rows: liveBlockRows, responseReceivedAt } = useMetricResourceQuery(
+    QUEUE_LIVE_BLOCKS_QUERY,
+    {
+      organizationId: organization.id,
+      projectId: project.id,
+      environmentId: env.id,
+      timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
+      defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
+      fillGaps: false,
+      refreshIntervalMs: 15_000,
+    }
+  );
   const lastLiveBlockRow =
     liveBlockRows.length > 0 ? liveBlockRows[liveBlockRows.length - 1] : null;
   // Only trust the gauge while its newest bucket is fresh. A row painted from the hook's cache on
   // client-side nav-back (responseCache), or a quiet env whose latest bucket is minutes old, must
   // not override the loader's Redis-exact live values with a stale count.
   const lastLiveBucketMs = lastLiveBlockRow ? tileTimeToMs(lastLiveBlockRow.t) : NaN;
-  const freshLiveBlockRow =
-    lastLiveBlockRow &&
-    Number.isFinite(lastLiveBucketMs) &&
-    Date.now() - lastLiveBucketMs < LIVE_GAUGE_FRESH_MS
-      ? lastLiveBlockRow
-      : null;
+  const liveBlockIsFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    lastLiveBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
+  const freshLiveBlockRow = lastLiveBlockRow && liveBlockIsFresh ? lastLiveBlockRow : null;
   const envQueuedLive = freshLiveBlockRow
     ? tileNumber(freshLiveBlockRow.env_queued)
     : environment.queued;
@@ -477,158 +481,160 @@ function QueuesWithMetricsView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/queue-concurrency")}
+            >
+              Queues docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
         {/* Filters — pinned bar directly under the NavBar. Left cluster = search + period; right
             cluster = pagination. */}
-        {success ? (
-          <MetricsLayout.Filters className="px-2">
-            <div className="flex items-center gap-1.5">
-              <QueueFilters />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <TimeFilter
-                period={timeRange.period ?? undefined}
-                defaultPeriod={defaultPeriod}
-                labelName="Period"
-                maxPeriodDays={maxPeriodDays}
-                shortcut={{ key: "d" }}
-              />
-              {environment.runsEnabled &&
-              env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
-                <EnvironmentPauseResumeButton env={env} />
-              ) : null}
-              <PaginationControls
-                currentPage={pagination.currentPage}
-                totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
-                hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
-                showPageNumbers={false}
-              />
-            </div>
-          </MetricsLayout.Filters>
-        ) : null}
+        <MetricsLayout.Filters className="px-2">
+          <div className="flex items-center gap-1.5">
+            <QueueFilters />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <TimeFilter
+              period={timeRange.period ?? undefined}
+              defaultPeriod={defaultPeriod}
+              labelName="Period"
+              maxPeriodDays={maxPeriodDays}
+              shortcut={{ key: "d" }}
+            />
+            {environment.runsEnabled &&
+            env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
+              <EnvironmentPauseResumeButton env={env} />
+            ) : null}
+            <PaginationControls
+              currentPage={pagination.currentPage}
+              totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
+              hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
+              showPageNumbers={false}
+            />
+          </div>
+        </MetricsLayout.Filters>
 
         {/* Queued + Running + Allocated + Environment limit summary. Four stat tiles: the grid
             derives its columns from the tile count (two-up, four-up from lg). The allocation
             presenter fails open to null (a ClickHouse/PG hiccup mustn't take down the tiles), so
             only the Allocated tile depends on it — the other three + controls always render, and
             Allocated shows a "–" placeholder to keep the 4-tile grid shape stable. */}
-        {success ? (
-          <MetricsLayout.Grid>
-            <BigNumber
-              title="Queued"
-              value={envQueuedLive}
-              suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
-              animate
-              accessory={
-                <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                  <LinkButton
-                    variant="minimal/small"
-                    className="aspect-square px-1!"
-                    LeadingIcon={RunsIcon}
-                    leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
-                    to={v3RunsPath(organization, project, env, {
-                      statuses: ["PENDING"],
-                      period: "30d",
-                      rootOnly: false,
-                    })}
-                    tooltip="View queued runs"
-                  />
+        <MetricsLayout.Grid>
+          <BigNumber
+            title="Queued"
+            value={envQueuedLive}
+            suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
+            animate
+            accessory={
+              <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <LinkButton
+                  variant="minimal/small"
+                  className="aspect-square px-1!"
+                  LeadingIcon={RunsIcon}
+                  leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+                  to={v3RunsPath(organization, project, env, {
+                    statuses: ["PENDING"],
+                    period: "30d",
+                    rootOnly: false,
+                  })}
+                  tooltip="View queued runs"
+                />
+              </span>
+            }
+            valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
+            compactThreshold={1000000}
+          />
+          <BigNumber
+            title="Running"
+            value={envRunningLive}
+            animate
+            valueClassName={cn(limitClassName, "tabular-nums")}
+            suffix={
+              limitStatus === "burst" ? (
+                <span
+                  className={cn(limitClassName, "system:text-text-dimmed flex items-center gap-1")}
+                >
+                  Including {envRunningLive - environment.concurrencyLimit} burst runs{" "}
+                  <BurstFactorTooltip environment={environment} />
                 </span>
-              }
-              valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
-              compactThreshold={1000000}
-            />
-            <BigNumber
-              title="Running"
-              value={envRunningLive}
-              animate
-              valueClassName={cn(limitClassName, "tabular-nums")}
-              suffix={
-                limitStatus === "burst" ? (
-                  <span
-                    className={cn(
-                      limitClassName,
-                      "system:text-text-dimmed flex items-center gap-1"
-                    )}
+              ) : limitStatus === "limit" ? (
+                "At concurrency limit"
+              ) : undefined
+            }
+            accessory={
+              <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <LinkButton
+                  variant="minimal/small"
+                  className="aspect-square px-1!"
+                  LeadingIcon={RunsIcon}
+                  leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+                  to={v3RunsPath(organization, project, env, {
+                    statuses: ["DEQUEUED", "EXECUTING"],
+                    period: "30d",
+                    rootOnly: false,
+                  })}
+                  tooltip="View in-progress runs"
+                />
+              </span>
+            }
+            compactThreshold={1000000}
+          />
+          <BigNumber
+            title={
+              <span className="flex items-center gap-1">
+                Allocated
+                {allocation && overAllocated ? (
+                  <InfoIconTooltip
+                    content="The queue limits add up to more than the environment limit, so queues will compete for concurrency when the environment saturates."
+                    buttonClassName="text-warning"
+                  />
+                ) : null}
+              </span>
+            }
+            value={allocation ? allocated : undefined}
+            formattedValue={allocation ? undefined : "–"}
+            valueClassName={cn(allocation && overAllocated && "text-warning")}
+            suffix={allocation ? `${allocationPct}% of the environment limit` : undefined}
+            suffixClassName="text-text-dimmed"
+          />
+          <BigNumber
+            title="Environment limit"
+            value={envLimit}
+            suffix={environment.burstFactor > 1 ? `bursts up to ${burstLimit}` : undefined}
+            suffixClassName="text-text-dimmed"
+            accessory={
+              plan ? (
+                plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
+                  <LinkButton
+                    to={concurrencyPath(organization, project, env)}
+                    variant="secondary/small"
+                    LeadingIcon={ConcurrencyIcon}
+                    leadingIconClassName="text-amber-500"
                   >
-                    Including {envRunningLive - environment.concurrencyLimit} burst runs{" "}
-                    <BurstFactorTooltip environment={environment} />
-                  </span>
-                ) : limitStatus === "limit" ? (
-                  "At concurrency limit"
-                ) : undefined
-              }
-              accessory={
-                <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                    Increase limit
+                  </LinkButton>
+                ) : (
                   <LinkButton
-                    variant="minimal/small"
-                    className="aspect-square px-1!"
-                    LeadingIcon={RunsIcon}
-                    leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
-                    to={v3RunsPath(organization, project, env, {
-                      statuses: ["DEQUEUED", "EXECUTING"],
-                      period: "30d",
-                      rootOnly: false,
-                    })}
-                    tooltip="View in-progress runs"
-                  />
-                </span>
-              }
-              compactThreshold={1000000}
-            />
-            <BigNumber
-              title={
-                <span className="flex items-center gap-1">
-                  Allocated
-                  {allocation && overAllocated ? (
-                    <InfoIconTooltip
-                      content="The queue limits add up to more than the environment limit, so queues will compete for concurrency when the environment saturates."
-                      buttonClassName="text-warning"
-                    />
-                  ) : null}
-                </span>
-              }
-              value={allocation ? allocated : undefined}
-              formattedValue={allocation ? undefined : "–"}
-              valueClassName={cn(allocation && overAllocated && "text-warning")}
-              suffix={allocation ? `${allocationPct}% of the environment limit` : undefined}
-              suffixClassName="text-text-dimmed"
-            />
-            <BigNumber
-              title="Environment limit"
-              value={envLimit}
-              suffix={environment.burstFactor > 1 ? `bursts up to ${burstLimit}` : undefined}
-              suffixClassName="text-text-dimmed"
-              accessory={
-                plan ? (
-                  plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
-                    <LinkButton
-                      to={concurrencyPath(organization, project, env)}
-                      variant="secondary/small"
-                      LeadingIcon={ConcurrencyIcon}
-                      leadingIconClassName="text-amber-500"
-                    >
-                      Increase limit
-                    </LinkButton>
-                  ) : (
-                    <LinkButton
-                      to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
-                      variant="secondary/small"
-                      LeadingIcon={ArrowUpCircleIcon}
-                      leadingIconClassName="text-indigo-500"
-                    >
-                      Increase limit
-                    </LinkButton>
-                  )
-                ) : undefined
-              }
-            />
-          </MetricsLayout.Grid>
-        ) : null}
+                    to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
+                    variant="secondary/small"
+                    LeadingIcon={ArrowUpCircleIcon}
+                    leadingIconClassName="text-indigo-500"
+                  >
+                    Increase limit
+                  </LinkButton>
+                )
+              ) : undefined
+            }
+          />
+        </MetricsLayout.Grid>
 
-        {success && (hasFilters || totalQueues !== 0) ? (
+        {hasFilters || totalQueues !== 0 ? (
           <ChartSyncProvider onZoom={zoomToTimeFilter}>
             <MetricsLayout.Grid kind="charts">
               {QUEUE_HEADER_TILES.map((tile) => (
@@ -682,356 +688,342 @@ function QueuesWithMetricsView() {
           </ChartSyncProvider>
         ) : null}
 
-        {success ? (
-          <MetricsLayout.Content>
-            {/* Default overflow-x-auto container so wide tables still scroll horizontally on
+        <MetricsLayout.Content>
+          {/* Default overflow-x-auto container so wide tables still scroll horizontally on
                 narrow viewports; the page (not this region) owns vertical scrolling. */}
-            <Table containerClassName="border-t">
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell>Name</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Limit</TableHeaderCell>
-                  <TableHeaderCell
-                    alignment="right"
-                    tooltipContentClassName="max-w-max"
-                    disableTooltipHoverableContent
-                    tooltip={
-                      <div className="max-w-max space-y-1 p-1 text-left text-xs text-text-dimmed">
-                        <p>
-                          <span className="text-text-bright">Environment</span>: uses the
-                          environment limit of {environment.concurrencyLimit}.
-                        </p>
-                        <p>
-                          <span className="text-text-bright">User</span>: a limit you set in your
-                          code.
-                        </p>
-                        <p>
-                          <span className="text-text-bright">Override</span>: a limit you set here
-                          or via the API.
-                        </p>
-                      </div>
-                    }
-                  >
-                    Limited by
-                  </TableHeaderCell>
-                  <TableHeaderCell alignment="right">Health</TableHeaderCell>
-                  <TableHeaderCell
-                    alignment="right"
-                    disableTooltipHoverableContent
-                    tooltip="How long runs waited before starting (95% were faster), over the selected time."
-                  >
-                    Delay p95
-                  </TableHeaderCell>
-                  <TableHeaderCell
-                    alignment="right"
-                    disableTooltipHoverableContent
-                    tooltip={
-                      <>
-                        How many runs were waiting, over the selected time. <WarningSwatch /> marks
-                        where the queue was throttled.
-                      </>
-                    }
-                  >
-                    Backlog
-                  </TableHeaderCell>
-                  <TableHeaderCell className="w-[1%] pl-32">
-                    <span className="sr-only">Pause/resume</span>
-                  </TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {queueRows.length > 0 ? (
-                  queueRows.map((queue) => {
-                    const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                    const isAtConcurrencyLimit = queue.running >= limit;
-                    const isAtQueueLimit =
-                      environment.queueSizeLimit !== null &&
-                      queue.queued >= environment.queueSizeLimit;
-                    const queueFilterableName = queueMetricsKey(queue);
-                    const queueMetric = metricsByQueue[queueFilterableName];
-                    const queueDetailPath = v3QueuePath(organization, project, env, {
-                      friendlyId: queue.id,
-                    });
-                    return (
-                      <TableRow key={queue.name}>
-                        <TableCell
-                          to={queueDetailPath}
-                          isTabbableCell
-                          // The queue-type icon and the at-limit warning are real <button>s, so
-                          // they render beside the link (leading/trailing), never inside it —
-                          // otherwise the cell is invalid <a><button> nesting. The name stays the
-                          // link. (Override state is already explained by the "Limited by" column.)
-                          leadingContent={
-                            <SimpleTooltip
-                              button={
-                                queue.type === "task" ? (
-                                  <TasksIcon
-                                    className={cn(
-                                      "size-[1.125rem] text-blue-500",
-                                      queue.paused && "opacity-50"
-                                    )}
-                                  />
-                                ) : (
-                                  <QueuesIcon
-                                    className={cn(
-                                      "size-[1.125rem] text-purple-500",
-                                      queue.paused && "opacity-50"
-                                    )}
-                                  />
-                                )
-                              }
-                              content={
-                                queue.type === "task"
-                                  ? `This queue was automatically created from your "${queue.name}" task`
-                                  : "This is a custom queue you added in your code."
-                              }
-                            />
-                          }
-                          trailingContent={
-                            isAtConcurrencyLimit ? (
-                              <SimpleTooltip
-                                button={<ExclamationTriangleIcon className="size-4 text-warning" />}
-                                content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
-                                className="max-w-[230px]"
-                                disableHoverableContent
-                              />
-                            ) : null
-                          }
-                        >
-                          <span className="flex items-center gap-2">
-                            <span className={queue.paused ? "opacity-50" : undefined}>
-                              {queue.name}
-                            </span>
-                            {queue.paused ? (
-                              <Badge variant="extra-small" className="text-warning">
-                                Paused
-                              </Badge>
-                            ) : null}
-                            {isAtQueueLimit ? (
-                              <Badge variant="extra-small" className="text-error">
-                                At queue limit
-                              </Badge>
-                            ) : null}
-                          </span>
-                        </TableCell>
-                        <TableCell
-                          to={queueDetailPath}
-                          alignment="right"
-                          actionClassName="pl-16 tabular-nums"
-                          className={cn(
-                            "w-[1%]",
-                            queue.paused ? "opacity-50" : undefined,
-                            isAtQueueLimit && "text-error"
-                          )}
-                        >
-                          {queue.queued}
-                        </TableCell>
-                        <TableCell
-                          to={queueDetailPath}
-                          alignment="right"
-                          actionClassName="pl-16 tabular-nums"
-                          className={cn(
-                            "w-[1%]",
-                            queue.paused ? "opacity-50" : undefined,
-                            queue.running > 0 && "text-text-bright"
-                          )}
-                        >
-                          {queue.running}
-                        </TableCell>
-                        <TableCell
-                          to={queueDetailPath}
-                          alignment="right"
-                          actionClassName="pl-16 tabular-nums"
-                          className={cn(
-                            "w-[1%]",
-                            queue.paused ? "opacity-50" : undefined,
-                            queue.concurrency?.overriddenAt && "font-medium text-text-bright"
-                          )}
-                        >
-                          {queue.concurrencyLimitOverridePercent !== null ? (
-                            <>
-                              {limit}
-                              <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
-                                ({formatOverridePercent(queue.concurrencyLimitOverridePercent)}%)
-                              </span>
-                            </>
-                          ) : (
-                            limit
-                          )}
-                        </TableCell>
-                        <TableCell
-                          to={queueDetailPath}
-                          alignment="right"
-                          actionClassName="pl-16"
-                          className={cn("w-[1%]", queue.paused ? "opacity-50" : undefined)}
-                          // Keep the whole row navigable: the override explainer is a tooltip
-                          // button, so it renders beside the link (trailing) rather than nested
-                          // inside the <a>, and the label itself stays the link.
-                          trailingContent={
-                            queue.concurrency?.overriddenAt ? (
-                              <InfoIconTooltip
-                                content={
-                                  queue.concurrencyLimitOverridePercent !== null
-                                    ? `Overridden at ${formatOverridePercent(
-                                        queue.concurrencyLimitOverridePercent
-                                      )}% of the environment limit.`
-                                    : `This queue's concurrency limit has been manually overridden to ${limit}.`
-                                }
-                                contentClassName="max-w-[230px]"
-                                disableHoverableContent
-                                // Tighten the gap from the "Override" label to gap-1 (the cell's
-                                // trailing adornment gap is gap-2; -ml-1 pulls the icon in 4px).
-                                buttonClassName="-ml-1"
-                              />
-                            ) : undefined
-                          }
-                        >
-                          {queue.concurrency?.overriddenAt
-                            ? "Override"
-                            : queue.concurrencyLimit
-                              ? "User"
-                              : "Environment"}
-                        </TableCell>
-                        <TableCell
-                          to={queueDetailPath}
-                          alignment="right"
-                          className={cn(queue.paused ? "opacity-50" : undefined)}
-                        >
-                          <QueueHealthBadge
-                            paused={queue.paused}
-                            running={queue.running}
-                            queued={queue.queued}
-                            limit={limit}
-                          />
-                        </TableCell>
-                        <TableCell
-                          to={queueDetailPath}
-                          alignment="right"
-                          actionClassName="pl-16 tabular-nums"
-                          className="w-[1%]"
-                        >
-                          {queueMetric && queueMetric.p95WaitMs !== null ? (
-                            <span className="text-text-bright">
-                              {formatWaitMs(queueMetric.p95WaitMs)}
-                            </span>
-                          ) : (
-                            <span className="text-text-dimmed">–</span>
-                          )}
-                        </TableCell>
-                        <TableCell to={queueDetailPath} alignment="right">
-                          <MiniLineChart
-                            data={queueMetric?.depthSparkline}
-                            throttled={queueMetric?.throttledSparkline}
-                            peak={queueMetric?.peakQueued}
-                            bucketStartMs={metrics?.bucketStartMs}
-                            bucketIntervalMs={metrics?.bucketIntervalMs}
-                            width={134}
-                            color="var(--color-queues-chart)"
-                            unitLabel={{ singular: "queued", plural: "queued" }}
-                            showPeak={false}
-                            formatPeak={(v) => v.toLocaleString()}
-                            peakTooltip={
-                              queueMetric && queueMetric.throttledTotal > 0
-                                ? `Peak queued; this queue was throttled ${queueMetric.throttledTotal.toLocaleString()} ${
-                                    queueMetric.throttledTotal === 1 ? "time" : "times"
-                                  } in this period`
-                                : "Peak queued in this period"
-                            }
-                          />
-                        </TableCell>
-                        <TableCellMenu
-                          isSticky
-                          visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
-                          hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
-                          popoverContent={
-                            <>
-                              {queue.paused ? (
-                                <QueuePauseResumeButton
-                                  queue={queue}
-                                  variant="minimal/small"
-                                  fullWidth
-                                  showTooltip={false}
+          <Table containerClassName="border-t">
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Name</TableHeaderCell>
+                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+                <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                <TableHeaderCell alignment="right">Limit</TableHeaderCell>
+                <TableHeaderCell
+                  alignment="right"
+                  tooltipContentClassName="max-w-max"
+                  disableTooltipHoverableContent
+                  tooltip={
+                    <div className="max-w-max space-y-1 p-1 text-left text-xs text-text-dimmed">
+                      <p>
+                        <span className="text-text-bright">Environment</span>: uses the environment
+                        limit of {environment.concurrencyLimit}.
+                      </p>
+                      <p>
+                        <span className="text-text-bright">User</span>: a limit you set in your
+                        code.
+                      </p>
+                      <p>
+                        <span className="text-text-bright">Override</span>: a limit you set here or
+                        via the API.
+                      </p>
+                    </div>
+                  }
+                >
+                  Limited by
+                </TableHeaderCell>
+                <TableHeaderCell alignment="right">Health</TableHeaderCell>
+                <TableHeaderCell
+                  alignment="right"
+                  disableTooltipHoverableContent
+                  tooltip="How long runs waited before starting (95% were faster), over the selected time."
+                >
+                  Delay p95
+                </TableHeaderCell>
+                <TableHeaderCell
+                  alignment="right"
+                  disableTooltipHoverableContent
+                  tooltip={
+                    <>
+                      How many runs were waiting, over the selected time. <WarningSwatch /> marks
+                      where the queue was throttled.
+                    </>
+                  }
+                >
+                  Backlog
+                </TableHeaderCell>
+                <TableHeaderCell className="w-[1%] pl-32">
+                  <span className="sr-only">Pause/resume</span>
+                </TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {queueRows.length > 0 ? (
+                queueRows.map((queue) => {
+                  const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
+                  const isAtConcurrencyLimit = queue.running >= limit;
+                  const isAtQueueLimit =
+                    environment.queueSizeLimit !== null &&
+                    queue.queued >= environment.queueSizeLimit;
+                  const queueFilterableName = queueMetricsKey(queue);
+                  const queueMetric = metricsByQueue[queueFilterableName];
+                  const queueDetailPath = v3QueuePath(organization, project, env, {
+                    friendlyId: queue.id,
+                  });
+                  return (
+                    <TableRow key={queue.name}>
+                      <TableCell
+                        to={queueDetailPath}
+                        isTabbableCell
+                        // The queue-type icon and the at-limit warning are real <button>s, so
+                        // they render beside the link (leading/trailing), never inside it —
+                        // otherwise the cell is invalid <a><button> nesting. The name stays the
+                        // link. (Override state is already explained by the "Limited by" column.)
+                        leadingContent={
+                          <SimpleTooltip
+                            button={
+                              queue.type === "task" ? (
+                                <TasksIcon
+                                  className={cn(
+                                    "size-[1.125rem] text-blue-500",
+                                    queue.paused && "opacity-50"
+                                  )}
                                 />
                               ) : (
-                                <QueuePauseResumeButton
-                                  queue={queue}
-                                  variant="minimal/small"
-                                  fullWidth
-                                  showTooltip={false}
+                                <QueuesIcon
+                                  className={cn(
+                                    "size-[1.125rem] text-purple-500",
+                                    queue.paused && "opacity-50"
+                                  )}
                                 />
-                              )}
-
-                              <PopoverMenuItem
-                                icon={RunsIcon}
-                                leadingIconClassName="text-runs size-[1.125rem]"
-                                title="View all runs"
-                                to={v3RunsPath(organization, project, env, {
-                                  queues: [queueFilterableName],
-                                  period: "30d",
-                                  rootOnly: false,
-                                })}
-                              />
-                              <PopoverMenuItem
-                                icon={QueuesIcon}
-                                leadingIconClassName="text-queues size-[1.125rem]"
-                                title="View queued runs"
-                                to={v3RunsPath(organization, project, env, {
-                                  queues: [queueFilterableName],
-                                  statuses: ["PENDING"],
-                                  period: "30d",
-                                  rootOnly: false,
-                                })}
-                              />
-                              <PopoverMenuItem
-                                icon={Spinner}
-                                leadingIconClassName="text-queues animate-none"
-                                title="View in-progress runs"
-                                to={v3RunsPath(organization, project, env, {
-                                  queues: [queueFilterableName],
-                                  statuses: ["DEQUEUED", "EXECUTING"],
-                                  period: "30d",
-                                  rootOnly: false,
-                                })}
-                              />
-                              <QueueOverrideConcurrencyButton
-                                queue={queue}
-                                environmentConcurrencyLimit={environment.concurrencyLimit}
-                              />
-                            </>
+                              )
+                            }
+                            content={
+                              queue.type === "task"
+                                ? `This queue was automatically created from your "${queue.name}" task`
+                                : "This is a custom queue you added in your code."
+                            }
+                          />
+                        }
+                        trailingContent={
+                          isAtConcurrencyLimit ? (
+                            <SimpleTooltip
+                              button={<ExclamationTriangleIcon className="size-4 text-warning" />}
+                              content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
+                              className="max-w-[230px]"
+                              disableHoverableContent
+                            />
+                          ) : null
+                        }
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className={queue.paused ? "opacity-50" : undefined}>
+                            {queue.name}
+                          </span>
+                          {queue.paused ? (
+                            <Badge variant="extra-small" className="text-warning">
+                              Paused
+                            </Badge>
+                          ) : null}
+                          {isAtQueueLimit ? (
+                            <Badge variant="extra-small" className="text-error">
+                              At queue limit
+                            </Badge>
+                          ) : null}
+                        </span>
+                      </TableCell>
+                      <TableCell
+                        to={queueDetailPath}
+                        alignment="right"
+                        actionClassName="pl-16 tabular-nums"
+                        className={cn(
+                          "w-[1%]",
+                          queue.paused ? "opacity-50" : undefined,
+                          isAtQueueLimit && "text-error"
+                        )}
+                      >
+                        {queue.queued}
+                      </TableCell>
+                      <TableCell
+                        to={queueDetailPath}
+                        alignment="right"
+                        actionClassName="pl-16 tabular-nums"
+                        className={cn(
+                          "w-[1%]",
+                          queue.paused ? "opacity-50" : undefined,
+                          queue.running > 0 && "text-text-bright"
+                        )}
+                      >
+                        {queue.running}
+                      </TableCell>
+                      <TableCell
+                        to={queueDetailPath}
+                        alignment="right"
+                        actionClassName="pl-16 tabular-nums"
+                        className={cn(
+                          "w-[1%]",
+                          queue.paused ? "opacity-50" : undefined,
+                          queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                        )}
+                      >
+                        {queue.concurrencyLimitOverridePercent !== null ? (
+                          <>
+                            {limit}
+                            <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
+                              ({formatOverridePercent(queue.concurrencyLimitOverridePercent)}%)
+                            </span>
+                          </>
+                        ) : (
+                          limit
+                        )}
+                      </TableCell>
+                      <TableCell
+                        to={queueDetailPath}
+                        alignment="right"
+                        actionClassName="pl-16"
+                        className={cn("w-[1%]", queue.paused ? "opacity-50" : undefined)}
+                        // Keep the whole row navigable: the override explainer is a tooltip
+                        // button, so it renders beside the link (trailing) rather than nested
+                        // inside the <a>, and the label itself stays the link.
+                        trailingContent={
+                          queue.concurrency?.overriddenAt ? (
+                            <InfoIconTooltip
+                              content={
+                                queue.concurrencyLimitOverridePercent !== null
+                                  ? `Overridden at ${formatOverridePercent(
+                                      queue.concurrencyLimitOverridePercent
+                                    )}% of the environment limit.`
+                                  : `This queue's concurrency limit has been manually overridden to ${limit}.`
+                              }
+                              contentClassName="max-w-[230px]"
+                              disableHoverableContent
+                              // Tighten the gap from the "Override" label to gap-1 (the cell's
+                              // trailing adornment gap is gap-2; -ml-1 pulls the icon in 4px).
+                              buttonClassName="-ml-1"
+                            />
+                          ) : undefined
+                        }
+                      >
+                        {queue.concurrency?.overriddenAt
+                          ? "Override"
+                          : queue.concurrencyLimit
+                            ? "User"
+                            : "Environment"}
+                      </TableCell>
+                      <TableCell
+                        to={queueDetailPath}
+                        alignment="right"
+                        className={cn(queue.paused ? "opacity-50" : undefined)}
+                      >
+                        <QueueHealthBadge
+                          paused={queue.paused}
+                          running={queue.running}
+                          queued={queue.queued}
+                          limit={limit}
+                        />
+                      </TableCell>
+                      <TableCell
+                        to={queueDetailPath}
+                        alignment="right"
+                        actionClassName="pl-16 tabular-nums"
+                        className="w-[1%]"
+                      >
+                        {queueMetric && queueMetric.p95WaitMs !== null ? (
+                          <span className="text-text-bright">
+                            {formatWaitMs(queueMetric.p95WaitMs)}
+                          </span>
+                        ) : (
+                          <span className="text-text-dimmed">–</span>
+                        )}
+                      </TableCell>
+                      <TableCell to={queueDetailPath} alignment="right">
+                        <MiniLineChart
+                          data={queueMetric?.depthSparkline}
+                          throttled={queueMetric?.throttledSparkline}
+                          peak={queueMetric?.peakQueued}
+                          bucketStartMs={metrics?.bucketStartMs}
+                          bucketIntervalMs={metrics?.bucketIntervalMs}
+                          width={134}
+                          color="var(--color-queues-chart)"
+                          unitLabel={{ singular: "queued", plural: "queued" }}
+                          showPeak={false}
+                          formatPeak={(v) => v.toLocaleString()}
+                          peakTooltip={
+                            queueMetric && queueMetric.throttledTotal > 0
+                              ? `Peak queued; this queue was throttled ${queueMetric.throttledTotal.toLocaleString()} ${
+                                  queueMetric.throttledTotal === 1 ? "time" : "times"
+                                } in this period`
+                              : "Peak queued in this period"
                           }
                         />
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={9}>
-                      <div className="grid place-items-center py-6 text-text-dimmed">
-                        <Paragraph>
-                          {hasFilters ? "No queues found matching your filters" : "No queues found"}
-                        </Paragraph>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </MetricsLayout.Content>
-        ) : (
-          <div className="grid place-items-center py-6 text-text-dimmed">
-            {totalQueues === 0 ? (
-              <div className="pt-12">
-                <QueuesHasNoTasks />
-              </div>
-            ) : code === "engine-version" ? (
-              <EngineVersionUpgradeCallout />
-            ) : (
-              <Callout variant="error">Something went wrong</Callout>
-            )}
-          </div>
-        )}
+                      </TableCell>
+                      <TableCellMenu
+                        isSticky
+                        visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
+                        hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
+                        popoverContent={
+                          <>
+                            {queue.paused ? (
+                              <QueuePauseResumeButton
+                                queue={queue}
+                                variant="minimal/small"
+                                fullWidth
+                                showTooltip={false}
+                              />
+                            ) : (
+                              <QueuePauseResumeButton
+                                queue={queue}
+                                variant="minimal/small"
+                                fullWidth
+                                showTooltip={false}
+                              />
+                            )}
+
+                            <PopoverMenuItem
+                              icon={RunsIcon}
+                              leadingIconClassName="text-runs size-[1.125rem]"
+                              title="View all runs"
+                              to={v3RunsPath(organization, project, env, {
+                                queues: [queueFilterableName],
+                                period: "30d",
+                                rootOnly: false,
+                              })}
+                            />
+                            <PopoverMenuItem
+                              icon={QueuesIcon}
+                              leadingIconClassName="text-queues size-[1.125rem]"
+                              title="View queued runs"
+                              to={v3RunsPath(organization, project, env, {
+                                queues: [queueFilterableName],
+                                statuses: ["PENDING"],
+                                period: "30d",
+                                rootOnly: false,
+                              })}
+                            />
+                            <PopoverMenuItem
+                              icon={Spinner}
+                              leadingIconClassName="text-queues animate-none"
+                              title="View in-progress runs"
+                              to={v3RunsPath(organization, project, env, {
+                                queues: [queueFilterableName],
+                                statuses: ["DEQUEUED", "EXECUTING"],
+                                period: "30d",
+                                rootOnly: false,
+                              })}
+                            />
+                            <QueueOverrideConcurrencyButton
+                              queue={queue}
+                              environmentConcurrencyLimit={environment.concurrencyLimit}
+                            />
+                          </>
+                        }
+                      />
+                    </TableRow>
+                  );
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={9}>
+                    <div className="grid place-items-center py-6 text-text-dimmed">
+                      <Paragraph>
+                        {hasFilters ? "No queues found matching your filters" : "No queues found"}
+                      </Paragraph>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </MetricsLayout.Content>
       </MetricsLayout.Root>
     </PageContainer>
   );
@@ -1047,6 +1039,7 @@ function EnvironmentPauseResumeButton({
 
   useEffect(() => {
     if (navigation.state === "loading" || navigation.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);
@@ -1136,34 +1129,6 @@ function EnvironmentPauseResumeButton({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function EngineVersionUpgradeCallout() {
-  return (
-    <div className="mt-4 flex max-w-lg flex-col gap-4 rounded-sm border border-grid-bright bg-background-bright px-4">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed py-4">
-        <h4 className="text-base text-text-bright">New queues table</h4>
-        <LinkButton
-          LeadingIcon={BookOpenIcon}
-          to={docsPath("upgrade-to-v4")}
-          variant={"docs/small"}
-        >
-          Upgrade guide
-        </LinkButton>
-      </div>
-      <div className="space-y-4 pb-4">
-        <Paragraph variant="small">
-          Upgrade to SDK version 4+ to view the new queues table, and be able to pause and resume
-          individual queues.
-        </Paragraph>
-        <img
-          src={upgradeForQueuesPath}
-          alt="Upgrade for queues"
-          className="rounded-sm border border-grid-dimmed"
-        />
-      </div>
-    </div>
   );
 }
 
@@ -1470,10 +1435,7 @@ function QueueEnvMetricChart({
     [tile.id, tile.label, lineColor]
   );
 
-  const { tickFormatter, tooltipLabelFormatter } = useMemo(
-    () => buildActivityTimeAxis(data),
-    [data]
-  );
+  const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(data);
   const hasData = data.length > 0 && data.some((p) => Number(p[tile.id] ?? 0) > 0);
 
   // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty
@@ -1616,11 +1578,11 @@ function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): Queu
 
 // Tint + colored text, sized like the error status chips (see ErrorStatusBadge).
 const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
-  Paused: "bg-warning/10 text-warning",
-  "At capacity": "bg-warning/10 text-warning",
-  Backlogged: "bg-blue-500/10 text-blue-500",
-  Active: "bg-success/10 text-success",
-  Idle: "bg-charcoal-500/10 text-text-dimmed",
+  Paused: "bg-warning/10 text-warning system:bg-warning system:text-white",
+  "At capacity": "bg-warning/10 text-warning system:bg-warning system:text-white",
+  Backlogged: "bg-blue-500/10 text-blue-500 system:bg-blue-500 system:text-white",
+  Active: "bg-success/10 text-success system:bg-success system:text-white",
+  Idle: "bg-charcoal-500/10 text-text-dimmed system:bg-charcoal-500 system:text-white",
 };
 
 function QueueHealthBadge(health: QueueHealth) {
@@ -1628,7 +1590,7 @@ function QueueHealthBadge(health: QueueHealth) {
   return (
     <span
       className={cn(
-        "contrast-chip ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
+        "ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
         QUEUE_HEALTH_STYLES[label]
       )}
     >
@@ -1657,16 +1619,8 @@ function formatOverridePercent(percent: number): string {
 // Classic Queues page, restored verbatim from before the Queue Metrics feature. Rendered
 // when queueMetricsUiEnabled is off so a gated org sees exactly the pre-metrics UI.
 function ClassicQueuesView() {
-  const {
-    environment,
-    queues,
-    success,
-    pagination,
-    code,
-    totalQueues,
-    hasFilters,
-    autoReloadPollIntervalMs,
-  } = useTypedLoaderData<typeof loader>();
+  const { environment, queues, pagination, hasFilters, autoReloadPollIntervalMs } =
+    useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const project = useProject();
@@ -1683,6 +1637,15 @@ function ClassicQueuesView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/queue-concurrency")}
+            >
+              Queues docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -1796,260 +1759,240 @@ function ClassicQueuesView() {
             />
           </div>
 
-          {success ? (
-            <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
-              <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
-                <QueueFilters />
-                <PaginationControls
-                  currentPage={pagination.currentPage}
-                  totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
-                  hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
-                  showPageNumbers={false}
-                />
-              </div>
-              <Table containerClassName="border-t">
-                <TableHeader>
-                  <TableRow>
-                    <TableHeaderCell>Name</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Limit</TableHeaderCell>
-                    <TableHeaderCell
-                      alignment="right"
-                      tooltip={
-                        <div className="max-w-xs space-y-2 p-1 text-left">
-                          <div className="space-y-0.5">
-                            <Header3>Environment</Header3>
-                            <Paragraph
-                              variant="small"
-                              className="text-wrap! text-text-dimmed"
-                              spacing
-                            >
-                              This queue is limited by your environment's concurrency limit of{" "}
-                              {environment.concurrencyLimit}.
-                            </Paragraph>
-                          </div>
-                          <div className="space-y-0.5">
-                            <Header3>User</Header3>
-                            <Paragraph
-                              variant="small"
-                              className="text-wrap! text-text-dimmed"
-                              spacing
-                            >
-                              This queue is limited by a concurrency limit set in your code.
-                            </Paragraph>
-                          </div>
-                          <div className="space-y-0.5">
-                            <Header3>Override</Header3>
-                            <Paragraph
-                              variant="small"
-                              className="text-wrap! text-text-dimmed"
-                              spacing
-                            >
-                              This queue's concurrency limit has been manually overridden from the
-                              dashboard or API.
-                            </Paragraph>
-                          </div>
-                        </div>
-                      }
-                    >
-                      Limited by
-                    </TableHeaderCell>
-                    <TableHeaderCell className="w-[1%] pl-32">
-                      <span className="sr-only">Pause/resume</span>
-                    </TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {queues.length > 0 ? (
-                    queues.map((queue) => {
-                      const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                      const isAtConcurrencyLimit = queue.running >= limit;
-                      const isAtQueueLimit =
-                        environment.queueSizeLimit !== null &&
-                        queue.queued >= environment.queueSizeLimit;
-                      const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
-                        queue.name
-                      }`;
-                      return (
-                        <TableRow key={queue.name}>
-                          <TableCell>
-                            <span className="flex items-center gap-2">
-                              <QueueName {...queue} />
-                              {queue.concurrency?.overriddenAt ? (
-                                <SimpleTooltip
-                                  button={
-                                    <Badge variant="extra-small" className="text-text-bright">
-                                      Concurrency limit overridden
-                                    </Badge>
-                                  }
-                                  content="This queue's concurrency limit has been manually overridden from the dashboard or API."
-                                  className="max-w-[230px]"
-                                  disableHoverableContent
-                                />
-                              ) : null}
-                              {queue.paused ? (
-                                <Badge variant="extra-small" className="text-warning">
-                                  Paused
-                                </Badge>
-                              ) : null}
-                              {isAtQueueLimit ? (
-                                <Badge variant="extra-small" className="text-error">
-                                  At queue limit
-                                </Badge>
-                              ) : null}
-                              {isAtConcurrencyLimit ? (
-                                <Badge variant="extra-small" className="text-warning">
-                                  At concurrency limit
-                                </Badge>
-                              ) : null}
-                            </span>
-                          </TableCell>
-                          <TableCell
-                            alignment="right"
-                            className={cn(
-                              "w-[1%] pl-16 tabular-nums",
-                              queue.paused ? "opacity-50" : undefined,
-                              isAtQueueLimit && "text-error"
-                            )}
+          <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
+            <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
+              <QueueFilters />
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
+                hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
+                showPageNumbers={false}
+              />
+            </div>
+            <Table containerClassName="border-t">
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell>Name</TableHeaderCell>
+                  <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+                  <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                  <TableHeaderCell alignment="right">Limit</TableHeaderCell>
+                  <TableHeaderCell
+                    alignment="right"
+                    tooltip={
+                      <div className="max-w-xs space-y-2 p-1 text-left">
+                        <div className="space-y-0.5">
+                          <Header3>Environment</Header3>
+                          <Paragraph
+                            variant="small"
+                            className="text-wrap! text-text-dimmed"
+                            spacing
                           >
-                            {queue.queued}
-                          </TableCell>
-                          <TableCell
-                            alignment="right"
-                            className={cn(
-                              "w-[1%] pl-16 tabular-nums",
-                              queue.paused ? "opacity-50" : undefined,
-                              queue.running > 0 && "text-text-bright",
-                              isAtConcurrencyLimit && "text-warning"
-                            )}
-                          >
-                            {queue.running}
-                          </TableCell>
-                          <TableCell
-                            alignment="right"
-                            className={cn(
-                              "w-[1%] pl-16 tabular-nums",
-                              queue.paused ? "opacity-50" : undefined,
-                              queue.concurrency?.overriddenAt && "font-medium text-text-bright"
-                            )}
-                          >
-                            {limit}
-                          </TableCell>
-                          <TableCell
-                            alignment="right"
-                            className={cn(
-                              "w-[1%] pl-16",
-                              queue.paused ? "opacity-50" : undefined,
-                              isAtConcurrencyLimit && "text-warning",
-                              queue.concurrency?.overriddenAt && "font-medium text-text-bright"
-                            )}
-                          >
-                            {queue.concurrency?.overriddenAt ? (
-                              <span className="text-text-bright">Override</span>
-                            ) : queue.concurrencyLimit ? (
-                              "User"
-                            ) : (
-                              "Environment"
-                            )}
-                          </TableCell>
-                          <TableCellMenu
-                            isSticky
-                            visibleButtons={
-                              queue.paused && <QueuePauseResumeButton queue={queue} />
-                            }
-                            hiddenButtons={
-                              !queue.paused && <QueuePauseResumeButton queue={queue} />
-                            }
-                            popoverContent={
-                              <>
-                                {queue.paused ? (
-                                  <QueuePauseResumeButton
-                                    queue={queue}
-                                    variant="minimal/small"
-                                    fullWidth
-                                    showTooltip={false}
-                                  />
-                                ) : (
-                                  <QueuePauseResumeButton
-                                    queue={queue}
-                                    variant="minimal/small"
-                                    fullWidth
-                                    showTooltip={false}
-                                  />
-                                )}
-
-                                <PopoverMenuItem
-                                  icon={RunsIcon}
-                                  leadingIconClassName="text-runs"
-                                  title="View all runs"
-                                  to={v3RunsPath(organization, project, env, {
-                                    queues: [queueFilterableName],
-                                    period: "30d",
-                                    rootOnly: false,
-                                  })}
-                                />
-                                <PopoverMenuItem
-                                  icon={RectangleStackIcon}
-                                  leadingIconClassName="text-queues"
-                                  title="View queued runs"
-                                  to={v3RunsPath(organization, project, env, {
-                                    queues: [queueFilterableName],
-                                    statuses: ["PENDING"],
-                                    period: "30d",
-                                    rootOnly: false,
-                                  })}
-                                />
-                                <PopoverMenuItem
-                                  icon={Spinner}
-                                  leadingIconClassName="text-queues animate-none"
-                                  title="View running runs"
-                                  to={v3RunsPath(organization, project, env, {
-                                    queues: [queueFilterableName],
-                                    statuses: ["DEQUEUED", "EXECUTING"],
-                                    period: "30d",
-                                    rootOnly: false,
-                                  })}
-                                />
-                                <QueueOverrideConcurrencyButton
-                                  queue={queue}
-                                  environmentConcurrencyLimit={environment.concurrencyLimit}
-                                />
-                              </>
-                            }
-                          />
-                        </TableRow>
-                      );
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={7}>
-                        <div className="grid place-items-center py-6 text-text-dimmed">
-                          <Paragraph>
-                            {hasFilters
-                              ? "No queues found matching your filters"
-                              : "No queues found"}
+                            This queue is limited by your environment's concurrency limit of{" "}
+                            {environment.concurrencyLimit}.
                           </Paragraph>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="grid place-items-center py-6 text-text-dimmed">
-              {totalQueues === 0 ? (
-                <div className="pt-12">
-                  <QueuesHasNoTasks />
-                </div>
-              ) : code === "engine-version" ? (
-                <EngineVersionUpgradeCallout />
-              ) : (
-                <Callout variant="error">Something went wrong</Callout>
-              )}
-            </div>
-          )}
+                        <div className="space-y-0.5">
+                          <Header3>User</Header3>
+                          <Paragraph
+                            variant="small"
+                            className="text-wrap! text-text-dimmed"
+                            spacing
+                          >
+                            This queue is limited by a concurrency limit set in your code.
+                          </Paragraph>
+                        </div>
+                        <div className="space-y-0.5">
+                          <Header3>Override</Header3>
+                          <Paragraph
+                            variant="small"
+                            className="text-wrap! text-text-dimmed"
+                            spacing
+                          >
+                            This queue's concurrency limit has been manually overridden from the
+                            dashboard or API.
+                          </Paragraph>
+                        </div>
+                      </div>
+                    }
+                  >
+                    Limited by
+                  </TableHeaderCell>
+                  <TableHeaderCell className="w-[1%] pl-32">
+                    <span className="sr-only">Pause/resume</span>
+                  </TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {queues.length > 0 ? (
+                  queues.map((queue) => {
+                    const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
+                    const isAtConcurrencyLimit = queue.running >= limit;
+                    const isAtQueueLimit =
+                      environment.queueSizeLimit !== null &&
+                      queue.queued >= environment.queueSizeLimit;
+                    const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
+                      queue.name
+                    }`;
+                    return (
+                      <TableRow key={queue.name}>
+                        <TableCell>
+                          <span className="flex items-center gap-2">
+                            <QueueName {...queue} />
+                            {queue.concurrency?.overriddenAt ? (
+                              <SimpleTooltip
+                                button={
+                                  <Badge variant="extra-small" className="text-text-bright">
+                                    Concurrency limit overridden
+                                  </Badge>
+                                }
+                                content="This queue's concurrency limit has been manually overridden from the dashboard or API."
+                                className="max-w-[230px]"
+                                disableHoverableContent
+                              />
+                            ) : null}
+                            {queue.paused ? (
+                              <Badge variant="extra-small" className="text-warning">
+                                Paused
+                              </Badge>
+                            ) : null}
+                            {isAtQueueLimit ? (
+                              <Badge variant="extra-small" className="text-error">
+                                At queue limit
+                              </Badge>
+                            ) : null}
+                            {isAtConcurrencyLimit ? (
+                              <Badge variant="extra-small" className="text-warning">
+                                At concurrency limit
+                              </Badge>
+                            ) : null}
+                          </span>
+                        </TableCell>
+                        <TableCell
+                          alignment="right"
+                          className={cn(
+                            "w-[1%] pl-16 tabular-nums",
+                            queue.paused ? "opacity-50" : undefined,
+                            isAtQueueLimit && "text-error"
+                          )}
+                        >
+                          {queue.queued}
+                        </TableCell>
+                        <TableCell
+                          alignment="right"
+                          className={cn(
+                            "w-[1%] pl-16 tabular-nums",
+                            queue.paused ? "opacity-50" : undefined,
+                            queue.running > 0 && "text-text-bright",
+                            isAtConcurrencyLimit && "text-warning"
+                          )}
+                        >
+                          {queue.running}
+                        </TableCell>
+                        <TableCell
+                          alignment="right"
+                          className={cn(
+                            "w-[1%] pl-16 tabular-nums",
+                            queue.paused ? "opacity-50" : undefined,
+                            queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                          )}
+                        >
+                          {limit}
+                        </TableCell>
+                        <TableCell
+                          alignment="right"
+                          className={cn(
+                            "w-[1%] pl-16",
+                            queue.paused ? "opacity-50" : undefined,
+                            isAtConcurrencyLimit && "text-warning",
+                            queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                          )}
+                        >
+                          {queue.concurrency?.overriddenAt ? (
+                            <span className="text-text-bright">Override</span>
+                          ) : queue.concurrencyLimit ? (
+                            "User"
+                          ) : (
+                            "Environment"
+                          )}
+                        </TableCell>
+                        <TableCellMenu
+                          isSticky
+                          visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
+                          hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
+                          popoverContent={
+                            <>
+                              {queue.paused ? (
+                                <QueuePauseResumeButton
+                                  queue={queue}
+                                  variant="minimal/small"
+                                  fullWidth
+                                  showTooltip={false}
+                                />
+                              ) : (
+                                <QueuePauseResumeButton
+                                  queue={queue}
+                                  variant="minimal/small"
+                                  fullWidth
+                                  showTooltip={false}
+                                />
+                              )}
+
+                              <PopoverMenuItem
+                                icon={RunsIcon}
+                                leadingIconClassName="text-runs"
+                                title="View all runs"
+                                to={v3RunsPath(organization, project, env, {
+                                  queues: [queueFilterableName],
+                                  period: "30d",
+                                  rootOnly: false,
+                                })}
+                              />
+                              <PopoverMenuItem
+                                icon={RectangleStackIcon}
+                                leadingIconClassName="text-queues"
+                                title="View queued runs"
+                                to={v3RunsPath(organization, project, env, {
+                                  queues: [queueFilterableName],
+                                  statuses: ["PENDING"],
+                                  period: "30d",
+                                  rootOnly: false,
+                                })}
+                              />
+                              <PopoverMenuItem
+                                icon={Spinner}
+                                leadingIconClassName="text-queues animate-none"
+                                title="View running runs"
+                                to={v3RunsPath(organization, project, env, {
+                                  queues: [queueFilterableName],
+                                  statuses: ["DEQUEUED", "EXECUTING"],
+                                  period: "30d",
+                                  rootOnly: false,
+                                })}
+                              />
+                              <QueueOverrideConcurrencyButton
+                                queue={queue}
+                                environmentConcurrencyLimit={environment.concurrencyLimit}
+                              />
+                            </>
+                          }
+                        />
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={7}>
+                      <div className="grid place-items-center py-6 text-text-dimmed">
+                        <Paragraph>
+                          {hasFilters ? "No queues found matching your filters" : "No queues found"}
+                        </Paragraph>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </PageBody>
     </PageContainer>

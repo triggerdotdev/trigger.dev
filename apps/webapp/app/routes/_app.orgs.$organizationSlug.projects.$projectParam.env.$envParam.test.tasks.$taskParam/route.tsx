@@ -8,7 +8,12 @@ import {
 } from "@heroicons/react/20/solid";
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useParams, useSubmit } from "@remix-run/react";
-import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import {
+  type ActionFunction,
+  type LoaderFunctionArgs,
+  json,
+  redirect,
+} from "@remix-run/server-runtime";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -132,8 +137,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       }),
     ]);
 
+    if (result.foundTask && result.triggerSource === "WEBHOOK") {
+      throw redirect(
+        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/webhooks/${taskParam}?tab=console`
+      );
+    }
+
     return typedjson({ ...result, regions: regionsResult.regions });
   } catch (error) {
+    if (error instanceof Response) throw error;
+
     logger.error("Failed to load test page", {
       taskParam,
       error: error instanceof Error ? error.message : error,
@@ -282,28 +295,25 @@ export const handle: Handle = {
 export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
 
-  if (!result.foundTask) {
-    return <div></div>;
-  }
-
   const params = useParams();
   const queueFetcher = useFetcher<typeof queuesLoader>();
+  const { load: loadQueues } = queueFetcher;
 
   useEffect(() => {
-    if (params.organizationSlug && params.projectParam && params.envParam) {
+    if (result.foundTask && params.organizationSlug && params.projectParam && params.envParam) {
       const searchParams = new URLSearchParams();
       searchParams.set("type", "custom");
       searchParams.set("per_page", "100");
 
-      queueFetcher.load(
+      loadQueues(
         `/resources/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${
           params.envParam
         }/queues?${searchParams.toString()}`
       );
     }
-  }, [params.organizationSlug, params.projectParam, params.envParam]);
+  }, [result.foundTask, params.organizationSlug, params.projectParam, params.envParam, loadQueues]);
 
-  const defaultTaskQueue = result.queue;
+  const defaultTaskQueue = result.foundTask && "queue" in result ? result.queue : undefined;
   const queues = useMemo(() => {
     const customQueues = queueFetcher.data?.queues ?? [];
 
@@ -311,6 +321,10 @@ export default function Page() {
       ? [defaultTaskQueue, ...customQueues]
       : customQueues;
   }, [queueFetcher.data?.queues, defaultTaskQueue]);
+
+  if (!result.foundTask) {
+    return <div />;
+  }
 
   const { triggerSource } = result;
 
@@ -1571,6 +1585,7 @@ function RunTemplatesPopover({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsDeleteDialogOpen(false);
     }
   }, [lastSubmission]);
@@ -1745,6 +1760,7 @@ function CreateTemplateModal({
 }) {
   const submit = useSubmit();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const successMessageTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   const actionData = useActionData<typeof action>();
   const lastSubmission =
@@ -1757,13 +1773,22 @@ function CreateTemplateModal({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(false);
       setShowCreatedSuccessMessage(true);
-      setTimeout(() => {
+      clearTimeout(successMessageTimeoutRef.current);
+      successMessageTimeoutRef.current = setTimeout(() => {
         setShowCreatedSuccessMessage(false);
       }, 2000);
     }
-  }, [lastSubmission]);
+  }, [lastSubmission, setShowCreatedSuccessMessage]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(successMessageTimeoutRef.current);
+      setShowCreatedSuccessMessage(false);
+    };
+  }, [setShowCreatedSuccessMessage]);
 
   const [
     form,

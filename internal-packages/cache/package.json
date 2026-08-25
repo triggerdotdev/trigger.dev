@@ -7,7 +7,6 @@
   "type": "module",
   "dependencies": {
     "@internal/redis": "workspace:*",
-    "@trigger.dev/core": "workspace:*",
     "@unkey/cache": "^1.5.0",
     "@unkey/error": "^0.2.0",
     "lru-cache": "^11.2.4",

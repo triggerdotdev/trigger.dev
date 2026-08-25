@@ -117,8 +117,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
                 const [_key, entries] = messages[0];
                 let foundData = false;
 
-                for (let i = 0; i < entries.length; i++) {
-                  const [id, fields] = entries[i];
+                for (const [id, fields] of entries) {
                   lastId = id;
 
                   if (fields && fields.length >= 2) {

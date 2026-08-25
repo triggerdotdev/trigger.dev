@@ -37,14 +37,14 @@ export function configureAnalyzeCommand(program: Command) {
     });
 }
 
-export async function analyzeCommand(dir: string | undefined, options: unknown) {
+async function analyzeCommand(dir: string | undefined, options: unknown) {
   return await wrapCommandAction("analyze", AnalyzeOptions, options, async (opts) => {
     await printInitialBanner(false);
     return await analyze(dir, opts);
   });
 }
 
-export async function analyze(dir: string | undefined, options: AnalyzeOptions) {
+async function analyze(dir: string | undefined, options: AnalyzeOptions) {
   const cwd = process.cwd();
   const targetDir = dir ? path.resolve(cwd, dir) : cwd;
   const metafilePath = path.join(targetDir, "metafile.json");

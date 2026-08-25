@@ -27,7 +27,7 @@ export function DeploymentStatus({
   );
 }
 
-export function DeploymentStatusLabel({
+function DeploymentStatusLabel({
   status,
   isBuilt,
 }: {
@@ -42,7 +42,7 @@ export function DeploymentStatusLabel({
   );
 }
 
-export function DeploymentStatusIcon({
+function DeploymentStatusIcon({
   status,
   className,
 }: {
@@ -76,7 +76,7 @@ export function DeploymentStatusIcon({
   }
 }
 
-export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string {
+function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string {
   switch (status) {
     case "PENDING":
       return "text-text-faint";
@@ -97,7 +97,7 @@ export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): 
   }
 }
 
-export function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean): string {
+function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: boolean): string {
   switch (status) {
     case "PENDING":
       return "Queued…";

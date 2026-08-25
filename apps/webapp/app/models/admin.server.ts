@@ -5,15 +5,24 @@ import type { SearchParams } from "~/routes/admin._index";
 import {
   clearImpersonationId,
   commitImpersonationSession,
-  getImpersonationId,
+  getRawImpersonationId,
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { authenticator } from "~/services/auth.server";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { impersonationDestinationPath } from "~/utils/pathBuilder";
+import { env } from "~/env.server";
 
 const pageSize = 20;
+
+// 404, not 403, so a disabled instance doesn't advertise the feature.
+// Stopping an impersonation is deliberately never gated.
+export function requireAdminDashboardEnabled(): void {
+  if (!env.ADMIN_DASHBOARD_ENABLED) {
+    throw new Response("Not Found", { status: 404 });
+  }
+}
 
 export async function adminGetUsers(userId: string, { page, search }: SearchParams) {
   page = page || 1;
@@ -217,6 +226,8 @@ export async function redirectWithImpersonation(
   currentUser?: { id: string; admin: boolean },
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
+  requireAdminDashboardEnabled();
+
   const user = currentUser ?? (await requireUser(request));
   if (!user.admin) {
     throw new Error("Unauthorized");
@@ -332,7 +343,8 @@ export async function startImpersonation(
 
 export async function clearImpersonation(request: Request, path: string) {
   const authUser = await authenticator.isAuthenticated(request);
-  const targetId = await getImpersonationId(request);
+  // Raw read: stops must audit and clear even with ADMIN_DASHBOARD_ENABLED off.
+  const targetId = await getRawImpersonationId(request);
 
   if (targetId && authUser?.userId) {
     const xff = request.headers.get("x-forwarded-for");

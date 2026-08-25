@@ -1,12 +1,20 @@
 import { z } from "zod";
 import type { RequireKeys } from "../types/index.js";
 import {
+  WebhookVerifierArtifact,
+  WebhookRoutingTarget,
+  WebhookSecretProvisioning,
+} from "./webhookConfig.js";
+import {
   MachineConfig,
   MachinePreset,
   MachinePresetName,
   TaskRunExecution,
   V3TaskRunExecution,
 } from "./common.js";
+import { ScheduleWindow } from "./scheduleWindow.js";
+
+export * from "./scheduleWindow.js";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
@@ -174,15 +182,6 @@ export const QueueManifest = z.object({
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
 
-/**
- * A delay window after a nominal cron tick.
- *
- * The server's schedule timing domain validates and normalizes the public syntax.
- */
-export const ScheduleWindow = z.string().min(1);
-
-export type ScheduleWindow = z.infer<typeof ScheduleWindow>;
-
 export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
@@ -277,6 +276,28 @@ export const SkillManifest = z.object({
   ...taskFileMetadata,
 });
 export type SkillManifest = z.infer<typeof SkillManifest>;
+
+// ── Webhooks ────────────────────────────────────────────────────────────────
+
+const webhookMetadata = {
+  id: z.string(),
+  description: z.string().optional(),
+  source: z.string(),
+  verifierArtifact: WebhookVerifierArtifact,
+  routingTarget: WebhookRoutingTarget,
+  secretProvisioning: WebhookSecretProvisioning.optional(),
+  filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
+  metadata: z.record(z.unknown()).optional(),
+};
+
+export const WebhookMetadata = z.object(webhookMetadata);
+export type WebhookMetadata = z.infer<typeof WebhookMetadata>;
+
+export const WebhookManifest = z.object({
+  ...webhookMetadata,
+  ...taskFileMetadata, // filePath, exportName?, entryPoint
+});
+export type WebhookManifest = z.infer<typeof WebhookManifest>;
 
 export const PostStartCauses = z.enum(["index", "create", "restore"]);
 export type PostStartCauses = z.infer<typeof PostStartCauses>;

@@ -264,31 +264,30 @@ function TagsDropdown({
   };
 
   const fetcher = useFetcher<typeof tagsLoader>();
+  const { load } = fetcher;
 
   useEffect(() => {
     const searchParams = new URLSearchParams();
     if (searchValue) {
       searchParams.set("name", searchValue);
     }
-    fetcher.load(
+    load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/tags?${searchParams}`
     );
-  }, [searchValue]);
+  }, [environment.slug, load, organization.slug, project.slug, searchValue]);
 
-  const filtered = useMemo(() => {
-    let items: string[] = [];
-    if (searchValue === "") {
-      items = values("tags");
-    }
+  let items: string[] = [];
+  if (searchValue === "") {
+    items = values("tags");
+  }
 
-    if (fetcher.data === undefined) {
-      return matchSorter(items, searchValue);
-    }
-
+  let filtered: string[];
+  if (fetcher.data === undefined) {
+    filtered = matchSorter(items, searchValue);
+  } else {
     items.push(...fetcher.data.tags.map((t) => t.name));
-
-    return matchSorter(Array.from(new Set(items)), searchValue);
-  }, [searchValue, fetcher.data]);
+    filtered = matchSorter(Array.from(new Set(items)), searchValue);
+  }
 
   return (
     <SelectProvider value={values("tags")} setValue={handleChange} virtualFocus={true}>

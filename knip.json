@@ -1,4 +1,96 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreDependencies": ["non.geist"]
+  "tags": ["-knipignore"],
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/**/*.{js,mjs,cjs,ts,mts,cts}"],
+      "ignoreDependencies": ["agentcrumbs", "eslint", "lefthook"],
+      "ignoreBinaries": ["infisical", "prisma"]
+    },
+    "apps/supervisor": {
+      "ignoreUnresolved": ["dotenv/config"]
+    },
+    "apps/webapp": {
+      "entry": [
+        "evalite.config.ts",
+        "vitest.*.config.ts",
+        "evals/**/*.eval.ts",
+        "memory-leak-detector.js",
+        "prisma/populate.ts",
+        "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        "test/**/*.producer.ts",
+        "test/bench/analyzeProfile.ts",
+        "test/types/**/*.types.ts",
+        "test/setup/global-e2e-full-setup.ts",
+        "vite/node-globals-shim.js",
+        "app/v3/otlpTransformWorker.ts"
+      ],
+      "ignoreDependencies": ["@sentry/cli", "assert", "util"],
+      "ignore": ["app/v3/runOpsMigration/runOpsMintShard.server.ts"]
+    },
+    "internal-packages/dashboard-agent": {
+      "entry": ["trigger.config.ts", "src/investigation-sweep.ts", "src/maintenance.ts"],
+      "ignoreBinaries": ["rg"]
+    },
+    "internal-packages/emails": {
+      "ignoreDependencies": ["@react-email/ui"]
+    },
+    "internal-packages/observability-map": {
+      "entry": ["src/index.ts", "fixtures/**/*.{js,mjs,cjs,ts,mts,cts,tsx}"]
+    },
+    "internal-packages/otlp-importer": {
+      "ignoreDependencies": ["ts-proto"]
+    },
+    "internal-packages/run-ops-database": {
+      "ignoreDependencies": ["@prisma/client", "prisma"]
+    },
+    "internal-packages/sdk-compat-tests": {
+      "entry": ["src/fixtures/**/*.{js,mjs,cjs,ts,mts,cts,tsx}"]
+    },
+    "internal-packages/testcontainers": {
+      "entry": ["scripts/**/*.{js,mjs,cjs,ts,mts,cts}"]
+    },
+    "internal-packages/tsql": {
+      "ignoreBinaries": ["tail"]
+    },
+    "internal-packages/webhook-sources": {
+      "entry": ["catalog/**/*.{js,mjs,cjs,ts,mts,cts}"]
+    },
+    "packages/build": {
+      "ignoreFiles": ["src/**/*-cjs.cts"],
+      "ignoreDependencies": ["@typescript/typescript6"]
+    },
+    "packages/cli-v3": {
+      "entry": [
+        "src/index.ts",
+        "src/entryPoints/**/*.ts",
+        "src/**/*-cjs.cts",
+        "src/dev/devWatchdog.ts",
+        "src/shims/esm.ts"
+      ],
+      "ignoreDependencies": ["@epic-web/test-server", "execa", "find-up"],
+      "ignoreBinaries": ["xdg-open"]
+    },
+    "packages/core": {
+      "ignoreFiles": ["src/**/*-cjs.cts"],
+      "ignoreDependencies": ["ai-v7"]
+    },
+    "packages/react-hooks": {
+      "ignoreDependencies": ["@types/react-dom"]
+    },
+    "packages/rsc": {
+      "ignoreFiles": ["src/**/*-cjs.cts"],
+      "ignoreDependencies": ["react", "react-dom"]
+    },
+    "packages/schema-to-json": {
+      "ignoreDependencies": ["runtypes", "superstruct", "valibot"]
+    },
+    "packages/trigger-sdk": {
+      "ignoreFiles": ["src/**/*-cjs.cts", "src/v3/index-browser.mts"],
+      "ignoreDependencies": ["ai-v7", "react"]
+    },
+    "docs": {
+      "ignoreFiles": ["style.css"]
+    }
+  }
 }

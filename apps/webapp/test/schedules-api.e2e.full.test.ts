@@ -29,15 +29,26 @@ describe("Schedules API windows", () => {
       timezone: "UTC",
       window: "30%",
     });
+    expectAssignedTime(created, 18 * 60_000);
 
     const retrieveResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}`, {
       headers: authHeaders(apiKey),
     });
     expect(retrieveResponse.status).toBe(200);
-    await expect(retrieveResponse.json()).resolves.toMatchObject({
+    const retrieved = await retrieveResponse.json();
+    expect(retrieved).toMatchObject({
       id: created.id,
       window: "30%",
     });
+    expectAssignedTime(retrieved, 18 * 60_000);
+
+    const listResponse = await server.webapp.fetch("/api/v1/schedules", {
+      headers: authHeaders(apiKey),
+    });
+    expect(listResponse.status).toBe(200);
+    const listed = await listResponse.json();
+    expect(listed.data[0]).toMatchObject({ id: created.id });
+    expectAssignedTime(listed.data[0], 18 * 60_000);
 
     const updateResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}`, {
       method: "PUT",
@@ -49,10 +60,12 @@ describe("Schedules API windows", () => {
       }),
     });
     expect(updateResponse.status).toBe(200);
-    await expect(updateResponse.json()).resolves.toMatchObject({
+    const updated = await updateResponse.json();
+    expect(updated).toMatchObject({
       id: created.id,
       window: "2h",
     });
+    expectAssignedTime(updated, 2 * 60 * 60_000);
 
     const clearResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}`, {
       method: "PUT",
@@ -66,6 +79,26 @@ describe("Schedules API windows", () => {
     const cleared = await clearResponse.json();
     expect(cleared.id).toBe(created.id);
     expect(cleared).not.toHaveProperty("window");
+
+    const deactivateResponse = await server.webapp.fetch(
+      `/api/v1/schedules/${created.id}/deactivate`,
+      { method: "POST", headers: authHeaders(apiKey) }
+    );
+    expect(deactivateResponse.status).toBe(200);
+    await expect(deactivateResponse.json()).resolves.toMatchObject({
+      active: false,
+      nextRun: null,
+      nextRunEffectiveAt: null,
+    });
+
+    const activateResponse = await server.webapp.fetch(`/api/v1/schedules/${created.id}/activate`, {
+      method: "POST",
+      headers: authHeaders(apiKey),
+    });
+    expect(activateResponse.status).toBe(200);
+    const activated = await activateResponse.json();
+    expect(activated.active).toBe(true);
+    expectAssignedTime(activated, 60_000);
 
     const stored = await server.prisma.taskSchedule.findUniqueOrThrow({
       where: { friendlyId: created.id },
@@ -111,14 +144,9 @@ describe("Schedules API windows", () => {
     const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
     await seedScheduledTask(server.prisma, project.id, environment.id);
 
-    const invalidRequests = [
-      { window: 30, expectedStatus: 400 },
-      { window: "30.5%", expectedStatus: 422 },
-      { window: "1d", expectedStatus: 422 },
-      { window: "25h", expectedStatus: 422 },
-    ];
+    const invalidWindows = [30, "30.5%", "1d", "25h"];
 
-    for (const [index, { window, expectedStatus }] of invalidRequests.entries()) {
+    for (const [index, window] of invalidWindows.entries()) {
       const response = await server.webapp.fetch("/api/v1/schedules", {
         method: "POST",
         headers: authHeaders(apiKey),
@@ -130,11 +158,21 @@ describe("Schedules API windows", () => {
         }),
       });
 
-      expect(response.status).toBe(expectedStatus);
-      await expect(response.json()).resolves.toHaveProperty("error");
+      expect(response.status).toBe(400);
     }
   });
 });
+
+function expectAssignedTime(
+  schedule: { nextRun: string; nextRunEffectiveAt: string },
+  maximumDelayMs: number
+) {
+  const nominalAt = new Date(schedule.nextRun).getTime();
+  const effectiveAt = new Date(schedule.nextRunEffectiveAt).getTime();
+
+  expect(effectiveAt).toBeGreaterThanOrEqual(nominalAt);
+  expect(effectiveAt).toBeLessThan(nominalAt + maximumDelayMs);
+}
 
 function authHeaders(apiKey: string) {
   return {

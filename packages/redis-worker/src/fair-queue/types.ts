@@ -413,6 +413,8 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   heartbeatIntervalMs?: number;
   /** Interval for reclaiming timed-out messages (default: 5000) */
   reclaimIntervalMs?: number;
+  /** Interval for sweeping orphaned concurrency slots; 0 disables the sweep (default: 60000) */
+  reconcileIntervalMs?: number;
 
   // Consumers
   /** Number of consumer loops to run (default: 1) */

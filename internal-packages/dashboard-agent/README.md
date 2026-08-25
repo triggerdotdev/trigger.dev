@@ -32,7 +32,8 @@ TRIGGER_DASHBOARD_AGENT_PROJECT_REF=<your-project> pnpm run deploy   # trigger d
 ```
 
 Runtime env the deployed task needs: `DASHBOARD_AGENT_DATABASE_URL` (the agent
-datastore) and `OBJECT_STORE_*` (chat.agent's built-in conversation snapshot).
+datastore, falling back to `DATABASE_URL` when the store lives in the main
+database) and `OBJECT_STORE_*` (chat.agent's built-in conversation snapshot).
 
 ## Consumed by the webapp
 

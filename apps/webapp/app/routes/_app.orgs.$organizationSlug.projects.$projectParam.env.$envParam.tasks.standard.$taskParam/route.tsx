@@ -10,7 +10,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { TabButton } from "~/components/primitives/Tabs";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
@@ -30,6 +30,11 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
+import {
+  RunsListErrorState,
+  RunsListErrorStateNoop,
+} from "~/components/runs/v3/RunsListErrorState";
+import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import {
   QUEUE_METRIC_COLORS,
@@ -46,6 +51,8 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -101,10 +108,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
   const versions = url.searchParams.getAll("versions").filter((v) => v.length > 0);
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, runsListClickhouse] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
+  ]);
 
   const presenter = new TaskDetailPresenter($replica, clickhouse);
   const task = await presenter.findTask({
@@ -119,7 +126,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Live queue counts (two O(1) Redis reads) shown in the sidebar; history charts fetch
   // client-side through the metric resource. Flag off = no extra reads at all.
   let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
-  if (task.queue && (await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+  if (task.queue && (await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
     const queueName = task.queue.name;
     const [lengths, concurrency] = await Promise.all([
       engine.lengthOfQueues(environment, [queueName]),
@@ -151,7 +158,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] }) satisfies TaskActivity);
 
-  const runList = new NextRunListPresenter($replica, clickhouse)
+  const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -163,8 +170,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       cursor,
       direction,
       includeHasAnyRuns: true,
+      columns: getRunColumnsForSelect(request),
     })
-    .catch(() => null);
+    .catch((error) => {
+      if (error instanceof RunsListQueryError) {
+        throw error;
+      }
+      return null;
+    });
 
   return typeddefer({
     task,
@@ -266,15 +279,16 @@ export default function Page() {
                           onClick={() => showNewRunsRef.current()}
                         />
                       ) : null}
+                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
                       <Suspense fallback={null}>
-                        <TypedAwait resolve={runList} errorElement={null}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
                           {(list) => (list ? <ListPagination list={list} /> : null)}
                         </TypedAwait>
                       </Suspense>
                     </TitleBar>
                     <div className="min-h-0 overflow-hidden">
                       <Suspense fallback={<TableLoading />}>
-                        <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
                           {(list) =>
                             list ? (
                               <TaskRunsList
@@ -487,11 +501,14 @@ function TaskActivityCard({
   const [view, setView] = useState<"runs" | "queue">("runs");
   return (
     <ChartCard
+      headerVariant="tabs"
       title={
-        <TabContainer>
+        <>
           <TabButton
             isActive={view === "runs"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("runs")}
           >
             Runs by status
@@ -499,11 +516,13 @@ function TaskActivityCard({
           <TabButton
             isActive={view === "queue"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("queue")}
           >
             Queue backlog
           </TabButton>
-        </TabContainer>
+        </>
       }
     >
       {view === "queue" ? (

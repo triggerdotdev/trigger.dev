@@ -196,6 +196,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
 
   const settings: Omit<UseCodeMirror, "onBlur"> = {
     ...opts,
+    // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
     container: editor.current,
     extensions,
     editable: !readOnly,
@@ -264,6 +265,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
 
   const showButtons = showClearButton || showCopyButton || showFormatButton || additionalActions;
 
+  /* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The CodeMirror mount forwards pointer focus to CodeMirror's own keyboard-accessible editor. */
   return (
     <div
       className={cn("relative flex h-full flex-col", opts.className)}
@@ -284,7 +286,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
         }}
       />
       {showButtons && (
-        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-background-deep/80 light:bg-transparent p-1.5">
+        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-background-deep/80 light:bg-white/80 p-1.5">
           {additionalActions && additionalActions}
           {showFormatButton && (
             <Button
@@ -337,6 +339,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     </div>
   );
 }
+/* oxlint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 
 // SQL keywords that legitimately appear before parentheses with a space
 const SQL_KEYWORDS_BEFORE_PAREN = new Set([

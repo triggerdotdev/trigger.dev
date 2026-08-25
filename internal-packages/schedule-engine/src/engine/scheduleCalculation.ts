@@ -5,31 +5,12 @@ import {
   type NormalizedScheduleWindow,
 } from "./scheduleTiming.js";
 
-export function calculateNextScheduledTimestampFromNow(schedule: string, timezone: string | null) {
-  return calculateNextScheduledTimestamp(schedule, timezone, new Date());
-}
-
 export function calculateNextNominalTimestamp(
   schedule: string,
   timezone: string | null,
   nominalTimestamp: Date
 ) {
   return calculateNextStep(schedule, timezone, nominalTimestamp);
-}
-
-export function calculateNextScheduledTimestamp(
-  schedule: string,
-  timezone: string | null,
-  lastScheduledTimestamp: Date = new Date()
-) {
-  const nextStep = calculateNextStep(schedule, timezone, lastScheduledTimestamp);
-
-  if (nextStep.getTime() < Date.now()) {
-    // If the next step is in the past, we just need to calculate the next step from now
-    return calculateNextStep(schedule, timezone, new Date());
-  }
-
-  return nextStep;
 }
 
 function calculateNextStep(schedule: string, timezone: string | null, currentDate: Date) {

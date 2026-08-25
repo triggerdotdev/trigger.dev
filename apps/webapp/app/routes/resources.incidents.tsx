@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import { useFetcher, type ShouldRevalidateFunction } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { useLatest } from "react-use";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
@@ -41,26 +42,32 @@ const POLL_INTERVAL_MS = 60_000;
 export function useIncidentStatus() {
   const { isManagedCloud } = useFeatures();
   const fetcher = useFetcher<typeof loader>();
+  const { load, state } = fetcher;
+  const stateRef = useLatest(state);
   const hasInitiallyFetched = useRef(false);
 
   useEffect(() => {
     if (!isManagedCloud) return;
 
     // Initial fetch on mount
-    if (!hasInitiallyFetched.current && fetcher.state === "idle") {
+    if (!hasInitiallyFetched.current && state === "idle") {
       hasInitiallyFetched.current = true;
-      fetcher.load("/resources/incidents");
+      load("/resources/incidents");
     }
+  }, [isManagedCloud, load, state]);
+
+  useEffect(() => {
+    if (!isManagedCloud) return;
 
     // Poll every 60 seconds
     const interval = setInterval(() => {
-      if (fetcher.state === "idle") {
-        fetcher.load("/resources/incidents");
+      if (stateRef.current === "idle") {
+        load("/resources/incidents");
       }
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isManagedCloud]);
+  }, [isManagedCloud, load, stateRef]);
 
   return {
     status: fetcher.data?.status ?? "operational",

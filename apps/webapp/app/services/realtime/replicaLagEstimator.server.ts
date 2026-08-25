@@ -59,7 +59,7 @@ export class AuroraReplicaLagSource implements ReplicaLagSource {
  * low-traffic systems, which (measured locally) pins the estimate at the delay cap — so
  * mid-apply reports undefined and the tripwire's observed-staleness floor carries the
  * estimate instead. */
-export class VanillaPgReplicaLagSource implements ReplicaLagSource {
+class VanillaPgReplicaLagSource implements ReplicaLagSource {
   readonly name = "vanilla-pg";
 
   constructor(private readonly db: RawQueryable) {}

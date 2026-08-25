@@ -3,8 +3,13 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { Button } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import type { QueryScope } from "~/services/queryService.server";
+import { cn } from "~/utils/cn";
+
+/** Table-of-contents links: the shared text-link treatment, laid out as rows. */
+const TOC_LINK = cn(textLinkClassName(), "block");
 
 /** A code block with an integrated "Try it" button */
 export function TryableCodeBlock({
@@ -80,20 +85,21 @@ export function TRQLGuideContent({
         it with additional features.
       </Paragraph>
       {/* Table of contents */}
+      {/* `block` rather than TextLink's inline-flex, so each entry is its own row. */}
       <nav className="space-y-1 text-sm">
-        <a href="#basic" className="block text-text-link hover:underline">
+        <a href="#basic" className={TOC_LINK}>
           Basic queries
         </a>
-        <a href="#filtering" className="block text-text-link hover:underline">
+        <a href="#filtering" className={TOC_LINK}>
           Filtering with WHERE
         </a>
-        <a href="#sorting" className="block text-text-link hover:underline">
+        <a href="#sorting" className={TOC_LINK}>
           Sorting &amp; limiting
         </a>
-        <a href="#grouping" className="block text-text-link hover:underline">
+        <a href="#grouping" className={TOC_LINK}>
           Grouping &amp; aggregation
         </a>
-        <a href="#functions" className="block text-text-link hover:underline">
+        <a href="#functions" className={TOC_LINK}>
           Available functions
         </a>
       </nav>

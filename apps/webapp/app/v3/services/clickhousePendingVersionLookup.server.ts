@@ -76,9 +76,18 @@ export class ClickhousePendingVersionLookup implements PendingVersionRunIdLookup
         taskIdentifiers: options.taskIdentifiers,
       })
       .where("queue IN {queues: Array(String)}", { queues: options.queues })
-      .where("_is_deleted = 0")
-      .orderBy("created_at ASC")
-      .limit(options.limit);
+      .where("_is_deleted = 0");
+
+    if (options.externalDeploymentId) {
+      builder.where(
+        "(external_deployment_id = '' OR external_deployment_id = {externalDeploymentId: String})",
+        { externalDeploymentId: options.externalDeploymentId }
+      );
+    } else {
+      builder.where("external_deployment_id = ''");
+    }
+
+    builder.orderBy("created_at ASC").limit(options.limit);
 
     const [queryError, rows] = await builder.execute();
 

@@ -92,6 +92,7 @@ export function Callout({
         <a
           href={to}
           target="_blank"
+          rel="noreferrer"
           className={cn(
             `flex w-full items-start justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-xs`,
             variantDefinition.className,

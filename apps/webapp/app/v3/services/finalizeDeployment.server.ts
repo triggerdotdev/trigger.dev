@@ -1,4 +1,5 @@
 import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
+import { Prisma } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
@@ -12,6 +13,7 @@ import { DeploymentService } from "./deployment.server";
 import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
+import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
 
 export class FinalizeDeploymentService extends BaseService {
   public async call(
@@ -75,6 +77,7 @@ export class FinalizeDeploymentService extends BaseService {
         deployedAt: new Date(),
         // Only add the digest, if any
         imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
+        buildEnvVars: Prisma.DbNull,
       },
     });
 
@@ -123,9 +126,24 @@ export class FinalizeDeploymentService extends BaseService {
         }
       );
 
-      await updateEnvConcurrencyLimits(authenticatedEnv);
+      await updateEnvConcurrencyLimits(authenticatedEnv, undefined, this._prisma);
     } catch (err) {
       logger.error("Failed to publish WORKER_CREATED event", { err });
+    }
+
+    if (deployment.externalId) {
+      const [cacheError] = await tryCatch(
+        externalDeploymentCacheInstance.setIfNewer(authenticatedEnv.id, deployment.externalId, {
+          workerId: deployment.worker.id,
+          version: deployment.worker.version,
+          sdkVersion: deployment.worker.sdkVersion ?? "",
+          cliVersion: deployment.worker.cliVersion ?? "",
+        })
+      );
+
+      if (cacheError) {
+        logger.error("Error caching external deployment resolution", { error: cacheError });
+      }
     }
 
     if (deployment.worker.engine === "V2") {

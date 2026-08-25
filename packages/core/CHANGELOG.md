@@ -1,5 +1,23 @@
 # internal-platform
 
+## 4.5.12
+
+### Patch Changes
+
+- Unrelated runs are no longer merged into a single trace in your external observability tool when they happen to execute on the same warm worker process. ([#4534](https://github.com/triggerdotdev/trigger.dev/pull/4534))
+- List the current Production runtime for every accessible project with `trigger projects list`. Add `--needs-update` to identify projects currently running Node.js 21. ([#4659](https://github.com/triggerdotdev/trigger.dev/pull/4659))
+- Task metrics no longer go missing for projects that configure their own `metricExporters` or `metricReaders`, and the flush error that came with it is gone. ([#4613](https://github.com/triggerdotdev/trigger.dev/pull/4613))
+- `idempotencyKeys.reset()` now works when your idempotency key is itself 64 characters long (for example if you use a hash of your own as the key). Previously any 64-character key was assumed to be already hashed, so passing one along with a `scope` silently ignored the scope and the reset never found a matching run. Keys returned by `idempotencyKeys.create()` continue to be reset exactly as before. ([#4626](https://github.com/triggerdotdev/trigger.dev/pull/4626))
+- Define stable execution windows on declarative scheduled tasks. Schedule API responses now expose both the nominal CRON time and its assigned time, while the dashboard shows configured windows and upcoming assignments. ([#4572](https://github.com/triggerdotdev/trigger.dev/pull/4572))
+- Pin runs to the deployment your calling code came from, so an old release never triggers tasks from a new one: set `TRIGGER_EXTERNAL_DEPLOYMENT_ID` to the id you deployed with, or `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` to detect the commit automatically on Vercel and most CI systems. Runs triggered before that deployment finishes building wait for it, then start pinned. ([#4664](https://github.com/triggerdotdev/trigger.dev/pull/4664))
+
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- The current-worker API now reports each task's queue, so you can see which tasks write to a given queue. ([#4525](https://github.com/triggerdotdev/trigger.dev/pull/4525))
+
 ## 4.5.10
 
 ### Patch Changes

@@ -1,6 +1,8 @@
+import type { SpanEvent as OtelSpanEvent } from "@trigger.dev/core/v3";
 import { Header3 } from "~/components/primitives/Headers";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { formatDuration, tryPrettyJson } from "./aiHelpers";
 import { SpanMetricRow as MetricRow } from "./SpanMetricRow";
 
@@ -36,7 +38,13 @@ export function extractAIToolCallData(
   };
 }
 
-export function AIToolCallSpanDetails({ data }: { data: AIToolCallData }) {
+export function AIToolCallSpanDetails({
+  data,
+  spanEvents,
+}: {
+  data: AIToolCallData;
+  spanEvents?: OtelSpanEvent[];
+}) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
@@ -66,6 +74,12 @@ export function AIToolCallSpanDetails({ data }: { data: AIToolCallData }) {
                 showCopyButton
                 language="json"
               />
+            </div>
+          )}
+
+          {spanEvents && spanEvents.some((event) => !event.name.startsWith("trigger.dev/")) && (
+            <div className="py-2.5">
+              <SpanEvents spanEvents={spanEvents} />
             </div>
           )}
         </div>

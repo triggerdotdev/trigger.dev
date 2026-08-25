@@ -29,6 +29,7 @@ import {
   checkMagicLinkEmailDailyRateLimit,
   MagicLinkRateLimitError,
   checkMagicLinkIpRateLimit,
+  canonicalizeEmailForRateLimit,
 } from "~/services/magicLinkRateLimiter.server";
 import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
@@ -167,11 +168,16 @@ export async function action({ request }: ActionFunctionArgs) {
         const xff = request.headers.get("x-forwarded-for");
         const clientIp = extractClientIp(xff);
 
+        // Key the buckets on the canonical address so `+tag` aliases (and
+        // Gmail dot variants) of one inbox share it. Delivery still uses the
+        // raw submitted address below.
+        const rateLimitKey = canonicalizeEmailForRateLimit(email);
+
         const [error] = await tryCatch(
           Promise.all([
             clientIp ? checkMagicLinkIpRateLimit(clientIp) : Promise.resolve(),
-            checkMagicLinkEmailRateLimit(email),
-            checkMagicLinkEmailDailyRateLimit(email),
+            checkMagicLinkEmailRateLimit(rateLimitKey),
+            checkMagicLinkEmailDailyRateLimit(rateLimitKey),
           ])
         );
 

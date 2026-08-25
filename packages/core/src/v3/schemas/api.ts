@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
+import { EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH } from "../externalDeploymentId.js";
 import {
   FlushedRunMetadata,
   GitMeta,
@@ -11,6 +12,7 @@ import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
 import { QueueTypeName } from "./queues.js";
 import { ScheduleWindow } from "./schemas.js";
+import { BuildRuntime } from "./build.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -43,6 +45,7 @@ export const GetProjectResponseBody = z.object({
   // (the project falls back to the global platform default). Optional so a
   // newer client still parses responses from an older server that omits it.
   defaultRegion: z.string().nullable().optional(),
+  defaultRuntime: BuildRuntime.nullable().optional(),
   organization: z.object({
     id: z.string(),
     title: z.string(),
@@ -56,6 +59,53 @@ export type GetProjectResponseBody = z.infer<typeof GetProjectResponseBody>;
 export const GetProjectsResponseBody = z.array(GetProjectResponseBody);
 
 export type GetProjectsResponseBody = z.infer<typeof GetProjectsResponseBody>;
+
+/** The Node.js major version currently targeted by the runtime update report. */
+export const NODE_RUNTIME_UPDATE_MAJOR = 21;
+
+/**
+ * Returns the observed Node.js major version for a deployment.
+ *
+ * `runtime: "node"` is an alias whose underlying Node.js version has changed over time, so the
+ * recorded runtimeVersion is deliberately the source of truth here.
+ */
+export function nodeMajor(
+  runtime: string | null | undefined,
+  runtimeVersion: string | null | undefined
+) {
+  if (!runtime?.startsWith("node")) return undefined;
+
+  const match = runtimeVersion?.match(/^(\d+)(?:\.\d+){1,2}(?:[-+].*)?$/);
+  return match ? Number(match[1]) : undefined;
+}
+
+export const GetProjectRuntimesResponseBody = z.array(
+  z.object({
+    organization: z.object({
+      title: z.string(),
+      slug: z.string(),
+    }),
+    project: z.object({
+      name: z.string(),
+      slug: z.string(),
+      externalRef: z.string(),
+    }),
+    environment: z.object({
+      slug: z.string(),
+    }),
+    deployment: z
+      .object({
+        runtime: z.string().nullable(),
+        runtimeVersion: z.string().nullable(),
+        nodeMajor: z.number().int().positive().nullable(),
+        deployedAt: z.coerce.date().nullable(),
+        shortCode: z.string(),
+      })
+      .nullable(),
+  })
+);
+
+export type GetProjectRuntimesResponseBody = z.infer<typeof GetProjectRuntimesResponseBody>;
 
 export const GetOrgsResponseBody = z.array(
   z.object({
@@ -98,6 +148,7 @@ export const GetProjectEnvResponse = z.object({
   name: z.string(),
   apiUrl: z.string(),
   projectId: z.string(),
+  defaultRuntime: BuildRuntime.nullable().optional(),
 });
 
 export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
@@ -202,6 +253,15 @@ export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSc
 // with PrismaClientValidationError. Accept the intent and stringify here.
 const ConcurrencyKeySchema = z.union([z.string(), z.number()]).transform((value) => String(value));
 
+const ExternalDeploymentId = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}, z.string().max(EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH, `externalId must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters`).optional());
+
 export const TriggerTaskRequestBody = z
   .object({
     payload: z.any(),
@@ -233,6 +293,14 @@ export const TriggerTaskRequestBody = z
          * Automatically set when using `triggerAndWait` or `batchTriggerAndWait`
          */
         lockToVersion: z.string().optional(),
+        /**
+         * The external deployment id the calling application belongs to — a commit SHA, a
+         * CI run id, a release tag. Independent of `lockToVersion`: the SDK reports every
+         * pinning signal it can see and the server decides which one governs, so a trigger
+         * carrying both sends both. Resolution is environment-scoped, and an id naming a
+         * deployment that has not landed yet parks the run rather than failing it.
+         */
+        externalDeploymentId: ExternalDeploymentId,
 
         queue: z
           .object({
@@ -331,6 +399,8 @@ export const BatchTriggerTaskItem = z.object({
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       lockToVersion: z.string().optional(),
+      /** See `TriggerTaskRequestBody.options.externalDeploymentId`. */
+      externalDeploymentId: ExternalDeploymentId,
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
@@ -584,6 +654,7 @@ export const BuildServerMetadata = z.object({
   skipPromotion: z.boolean().optional(),
   configFilePath: z.string().optional(),
   skipEnqueue: z.boolean().optional(),
+  fromBundle: z.boolean().optional(),
 });
 
 export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
@@ -650,7 +721,7 @@ export const UpsertBranchResponseBody = z.object({
 export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
 
 export const CreateArtifactRequestBody = z.object({
-  type: z.enum(["deployment_context"]).default("deployment_context"),
+  type: z.enum(["deployment_context", "deployment_bundle"]).default("deployment_context"),
   contentType: z.string().default("application/gzip"),
   contentLength: z.number().optional(),
 });
@@ -673,7 +744,11 @@ export const InitializeDeploymentResponseBody = z.object({
   version: z.string(),
   imageTag: z.string(),
   imagePlatform: z.string(),
+  externalId: z.string().optional(),
+  outcome: z.enum(["created", "existing"]).optional(),
+  isPromoted: z.boolean().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  canceledDeployments: z.array(z.object({ version: z.string(), shortCode: z.string() })).optional(),
   eventStream: z
     .object({
       s2: z.object({
@@ -699,6 +774,8 @@ const InitializeDeploymentRequestBodyBase = z.object({
   isLocalBuild: z.boolean().optional(),
   triggeredVia: DeploymentTriggeredVia.optional(),
   buildId: z.string().optional(),
+  externalId: ExternalDeploymentId,
+  force: z.boolean().optional(),
 });
 type BaseOutput = z.output<typeof InitializeDeploymentRequestBodyBase>;
 
@@ -708,6 +785,8 @@ type NativeBuildOutput = BaseOutput & {
   artifactKey?: string;
   configFilePath?: string;
   skipEnqueue?: boolean;
+  fromBundle?: boolean;
+  buildEnvVars?: Record<string, string>;
 };
 
 type NonNativeBuildOutput = BaseOutput & {
@@ -716,6 +795,8 @@ type NonNativeBuildOutput = BaseOutput & {
   artifactKey?: never;
   configFilePath?: never;
   skipEnqueue?: never;
+  fromBundle?: never;
+  buildEnvVars?: never;
 };
 
 const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.extend({
@@ -724,6 +805,18 @@ const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.
   artifactKey: z.string().optional(),
   configFilePath: z.string().optional(),
   skipEnqueue: z.boolean().optional().default(false),
+  // The artifact is a pre-built bundle; the build server only runs the container build
+  fromBundle: z.boolean().optional(),
+  // Build-time env var values for fromBundle deploys, stored encrypted on the deployment
+  buildEnvVars: z.record(z.string()).optional(),
+}).superRefine((data, ctx) => {
+  if (data.force && !data.externalId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["force"],
+      message: "force requires externalId",
+    });
+  }
 });
 
 export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFull.transform(
@@ -731,7 +824,15 @@ export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFu
     if (data.isNativeBuild) {
       return { ...data, isNativeBuild: true as const };
     }
-    const { skipPromotion, artifactKey, configFilePath, skipEnqueue, ...rest } = data;
+    const {
+      skipPromotion,
+      artifactKey,
+      configFilePath,
+      skipEnqueue,
+      fromBundle,
+      buildEnvVars,
+      ...rest
+    } = data;
     return { ...rest, isNativeBuild: false as const };
   }
 );
@@ -807,6 +908,7 @@ export const GetDeploymentResponseBody = z.object({
   commitSHA: z.string().nullish(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
+  canceledReason: z.string().nullish(),
   worker: z
     .object({
       id: z.string(),
@@ -835,6 +937,15 @@ export const GetDeploymentResponseBody = z.object({
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
+
+// Secret material, deliberately kept off GetDeploymentResponseBody
+export const GetDeploymentBuildEnvVarsResponseBody = z.object({
+  variables: z.record(z.string()),
+});
+
+export type GetDeploymentBuildEnvVarsResponseBody = z.infer<
+  typeof GetDeploymentBuildEnvVarsResponseBody
+>;
 
 export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
   worker: true,
@@ -1079,7 +1190,10 @@ export const ScheduleObject = z.object({
   generator: ScheduleGenerator,
   timezone: z.string(),
   window: ScheduleWindow.optional(),
+  /** The next nominal CRON time. */
   nextRun: z.coerce.date().nullish(),
+  /** The stable assigned time for the next nominal CRON time. */
+  nextRunEffectiveAt: z.coerce.date().nullish(),
   environments: z.array(
     z.object({
       id: z.string(),

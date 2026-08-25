@@ -9,9 +9,11 @@
     ".": "./src/index.ts",
     "./tool-curation": "./src/tool-curation.ts",
     "./tool-schemas": "./src/tool-schemas.ts",
-    "./prompt-prefix": "./src/prompt-prefix.ts"
+    "./prompt-prefix": "./src/prompt-prefix.ts",
+    "./model-provider": "./src/model-provider.ts"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "4.0.117",
     "@ai-sdk/anthropic": "^3.0.0",
     "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider": "3.0.8",
+    "@internal/testcontainers": "workspace:*",
     "@trigger.dev/build": "workspace:*",
     "trigger.dev": "workspace:*",
     "vitest": "4.1.7"

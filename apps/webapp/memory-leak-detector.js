@@ -544,6 +544,8 @@ class MemoryLeakDetector {
     const snapshot3 = this.results.snapshots[2]; // after second load test
 
     let analysis = {};
+    let heapGrowth;
+    let heapGrowthPercent;
 
     // Handle different snapshot types
     if (
@@ -592,8 +594,8 @@ class MemoryLeakDetector {
       };
 
       // Use total growth for recommendations
-      var heapGrowth = totalGrowth;
-      var heapGrowthPercent = totalGrowthPercent;
+      heapGrowth = totalGrowth;
+      heapGrowthPercent = totalGrowthPercent;
     } else if (snapshot1.processMemory && snapshot2.processMemory && snapshot3.processMemory) {
       // Traditional process memory analysis with 3 snapshots
       const heap1 = snapshot1.processMemory.heapUsed;
@@ -632,8 +634,8 @@ class MemoryLeakDetector {
         snapshots: this.results.snapshots.length,
       };
 
-      var heapGrowth = totalHeapGrowth;
-      var heapGrowthPercent = (totalHeapGrowth / heap1) * 100;
+      heapGrowth = totalHeapGrowth;
+      heapGrowthPercent = (totalHeapGrowth / heap1) * 100;
     } else {
       this.log("Mixed or incompatible snapshot types - cannot analyze memory growth", "warn");
       analysis = {
