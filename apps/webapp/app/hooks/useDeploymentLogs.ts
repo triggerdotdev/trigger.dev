@@ -94,11 +94,10 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
 
     const streamLogs = async () => {
       try {
-        const s2 = new S2({ accessToken });
-        const readSession = await s2
-          .basin(basin)
-          .stream(stream)
-          .readSession(
+        const s2Stream = new S2({ accessToken }).basin(basin).stream(stream);
+
+        do {
+          const readSession = await s2Stream.readSession(
             {
               start: { from: { seqNum: nextSeqNum }, clamp: true },
               stop: { waitSecs: 60 },
@@ -106,37 +105,38 @@ export function useDeploymentLogs({ eventStream, status }: UseDeploymentLogsOpti
             { signal: abortController.signal }
           );
 
-        for await (const record of readSession) {
-          nextSeqNum = record.seqNum + 1;
+          for await (const record of readSession) {
+            nextSeqNum = record.seqNum + 1;
 
-          const decoded = record.body;
-          const result = DeploymentEventFromString.safeParse(decoded);
+            const decoded = record.body;
+            const result = DeploymentEventFromString.safeParse(decoded);
 
-          if (!result.success) {
-            // fallback to the previous format in s2 logs for compatibility
-            const headers: Record<string, string> = {};
-            if (record.headers) {
-              for (const [name, value] of record.headers) {
-                headers[name] = value;
+            if (!result.success) {
+              // fallback to the previous format in s2 logs for compatibility
+              const headers: Record<string, string> = {};
+              if (record.headers) {
+                for (const [name, value] of record.headers) {
+                  headers[name] = value;
+                }
               }
+              const level =
+                (headers["level"]?.toLowerCase() as DeploymentLogEntry["level"]) ?? "info";
+
+              push({ timestamp: new Date(record.timestamp), message: decoded, level });
+              continue;
             }
-            const level =
-              (headers["level"]?.toLowerCase() as DeploymentLogEntry["level"]) ?? "info";
 
-            push({ timestamp: new Date(record.timestamp), message: decoded, level });
-            continue;
+            const event = result.data;
+            if (event.type === "finalized") finalized = true;
+            if (event.type !== "log") continue;
+
+            push({
+              timestamp: new Date(record.timestamp),
+              message: event.data.message,
+              level: event.data.level,
+            });
           }
-
-          const event = result.data;
-          if (event.type === "finalized") finalized = true;
-          if (event.type !== "log") continue;
-
-          push({
-            timestamp: new Date(record.timestamp),
-            message: event.data.message,
-            level: event.data.level,
-          });
-        }
+        } while (!abortController.signal.aborted && !finalized && !isFinished);
       } catch (error) {
         if (abortController.signal.aborted) return;
 
