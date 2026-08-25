@@ -35,9 +35,34 @@ export const restrictModelUrls: UrlTransform = (url, key, node) => {
   return SAFE_LINK_SCHEMES.has(`${schemeMatch[1].toLowerCase()}:`) ? url : undefined;
 };
 
+const RETRY_DELAYS_MS = [250, 1000];
+
+/** Retries a lazy import a few times before giving up, so a flaky chunk load doesn't crash the chat. */
+export async function retryImport<T>(
+  importer: () => Promise<T>,
+  delaysMs: number[] = RETRY_DELAYS_MS
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await importer();
+    } catch (error) {
+      if (attempt >= delaysMs.length) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+    }
+  }
+}
+
+const PlainTextFallback = ({ children }: { children: string }) => (
+  <pre className="whitespace-pre-wrap break-words font-sans text-sm">{children}</pre>
+);
+
 export const StreamdownRenderer = lazy(() =>
-  Promise.all([import("streamdown"), import("@streamdown/code"), import("./shikiTheme")]).then(
-    ([{ Streamdown }, { createCodePlugin }, { triggerDarkTheme }]) => {
+  retryImport(() =>
+    Promise.all([import("streamdown"), import("@streamdown/code"), import("./shikiTheme")])
+  )
+    .then(([{ Streamdown }, { createCodePlugin }, { triggerDarkTheme }]) => {
       // Type assertion needed: @streamdown/code and streamdown resolve different shiki
       // versions under pnpm, causing structurally-identical CodeHighlighterPlugin types
       // to be considered incompatible (different BundledLanguage string unions).
@@ -64,6 +89,6 @@ export const StreamdownRenderer = lazy(() =>
           </Streamdown>
         ),
       };
-    }
-  )
+    })
+    .catch(() => ({ default: PlainTextFallback }))
 );

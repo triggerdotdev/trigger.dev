@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { restrictModelUrls, StreamdownRenderer } from "./StreamdownRenderer";
+import { describe, expect, it, vi } from "vitest";
+import { restrictModelUrls, retryImport, StreamdownRenderer } from "./StreamdownRenderer";
 
 // streamdown calls urlTransform(url, key, node) to compute each url attribute; a
 // returned undefined removes the attribute, so no request is ever issued.
@@ -86,5 +86,29 @@ describe("StreamdownRenderer (rendered markdown)", () => {
     expect(html).not.toContain("SECRET.evil.tld");
     // A same-origin relative image is untouched, so the policy does not over-block.
     expect(html).toContain('src="/local/pic.png"');
+  });
+});
+
+describe("retryImport", () => {
+  it("resolves on first success", async () => {
+    const importer = vi.fn().mockResolvedValue("ok");
+    await expect(retryImport(importer, [0, 0])).resolves.toBe("ok");
+    expect(importer).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries after failures then succeeds", async () => {
+    const importer = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail1"))
+      .mockRejectedValueOnce(new Error("fail2"))
+      .mockResolvedValue("ok");
+    await expect(retryImport(importer, [0, 0])).resolves.toBe("ok");
+    expect(importer).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws after exhausting retries", async () => {
+    const importer = vi.fn().mockRejectedValue(new Error("always fails"));
+    await expect(retryImport(importer, [0, 0])).rejects.toThrow("always fails");
+    expect(importer).toHaveBeenCalledTimes(3);
   });
 });
