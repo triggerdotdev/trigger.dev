@@ -61,3 +61,17 @@ describe("shardMigrationDsns", () => {
     expect(() => shardMigrationDsns('["postgres://h/a"]')).toThrow(/not an object/i);
   });
 });
+
+describe("shardMigrationDsns line protocol", () => {
+  // One DSN per line is the protocol with entrypoint.sh, so a line break would split one DSN into
+  // two bogus ones. The URL parser strips ASCII line breaks, so nothing upstream rejects this.
+  it("throws when a DSN holds a line break", () => {
+    const bad = { key: "a", region: "r", url: "postgres://h/a\npostgres://evil/db" };
+    expect(() => shardMigrationDsns(JSON.stringify([bad]))).toThrow(/line break/i);
+  });
+
+  it("throws when a directUrl holds a carriage return", () => {
+    const bad = { key: "a", region: "r", url: "postgres://h/a", directUrl: "postgres://h/a\rx" };
+    expect(() => shardMigrationDsns(JSON.stringify([bad]))).toThrow(/line break/i);
+  });
+});

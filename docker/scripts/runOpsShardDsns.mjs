@@ -39,6 +39,11 @@ export function shardMigrationDsns(raw) {
     if (typeof dsn !== "string" || dsn === "") {
       continue;
     }
+    // One DSN per line IS the protocol with the caller, so a DSN holding a line break would split
+    // into two bogus DSNs. The URL parser strips ASCII line breaks, so nothing upstream rejects it.
+    if (/[\r\n]/.test(dsn)) {
+      throw new Error("RUN_OPS_SHARDS holds a DSN containing a line break");
+    }
     dsns.push(dsn);
   }
   return dsns;

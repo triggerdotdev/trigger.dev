@@ -65,18 +65,18 @@ if [ -n "$RUN_OPS_SHARDS" ]; then
     shard_dsns=$(node scripts/runOpsShardDsns.mjs)
     # A `for` loop and NOT `... | while read`: a pipeline subshell would swallow a failed migration
     # on any iteration but the last. Here `set -e` stops the boot on the first shard that fails.
-    # IFS is newline-only so a DSN is never split on other whitespace, and `set -f` stops a DSN
-    # query string (it holds `?`) from being read as a glob pattern.
-    old_ifs=$IFS
-    IFS='
+    # The whole loop runs in a subshell, so the IFS and `set -f` changes need no restore and cannot
+    # leak into the rest of the entrypoint. IFS is newline-only so a DSN is never split on other
+    # whitespace, and `set -f` stops a DSN query string (it holds `?`) from acting as a glob.
+    (
+      IFS='
 '
-    set -f
-    for shard_dsn in $shard_dsns; do
-      # Subshell with tracing off so `set -x` does not print the DSN (with credentials) to the logs.
-      (set +x; RUN_OPS_DATABASE_URL="$shard_dsn" DIRECT_URL="$shard_dsn" pnpm --filter @internal/run-ops-database db:migrate:deploy)
-    done
-    set +f
-    IFS=$old_ifs
+      set -f
+      for shard_dsn in $shard_dsns; do
+        # Tracing stays off so `set -x` never prints the DSN (with credentials) to the logs.
+        RUN_OPS_DATABASE_URL="$shard_dsn" DIRECT_URL="$shard_dsn" pnpm --filter @internal/run-ops-database db:migrate:deploy
+      done
+    )
     set -x
     echo "Run-ops shard migrations done"
   else
