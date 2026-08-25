@@ -39,7 +39,7 @@ export async function getBillableEnvironmentsForBillingLimit(
 export async function createBillingLimitRunsRepository(organizationId: string) {
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     organizationId,
-    "standard"
+    "runsList"
   );
 
   return new RunsRepository({
@@ -95,7 +95,7 @@ export async function countBillableQueuedRunsForOrganization(
 ): Promise<number> {
   const client =
     clickhouse ??
-    (await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard"));
+    (await clickhouseFactory.getClickhouseForOrganization(organizationId, "runsList"));
 
   const queryBuilder = client.taskRuns.countQueryBuilder({
     settings: { max_execution_time: BILLING_LIMIT_QUEUED_COUNT_MAX_EXECUTION_S },

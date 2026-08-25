@@ -1,9 +1,10 @@
 import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
-import type {
-  BackgroundWorker,
-  PrismaClientOrTransaction,
-  WorkerDeployment,
+import {
+  Prisma,
+  type BackgroundWorker,
+  type PrismaClientOrTransaction,
+  type WorkerDeployment,
 } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
@@ -313,6 +314,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           name: error.name,
           message: error.message,
         },
+        buildEnvVars: Prisma.DbNull,
       },
     });
 
