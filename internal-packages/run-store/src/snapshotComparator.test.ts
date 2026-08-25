@@ -2,10 +2,12 @@ import { expect, it, describe } from "vitest";
 import {
   diffLatest,
   diffSince,
+  normalizeFromRedis,
   SnapshotComparator,
   type DivergenceClass,
   type NormalizedSnapshot,
 } from "./snapshotComparator.js";
+import type { SnapshotRead } from "./redisSnapshotStore.js";
 
 function norm(over: Partial<NormalizedSnapshot> = {}): NormalizedSnapshot {
   const base: NormalizedSnapshot = {
@@ -97,6 +99,37 @@ describe("diffLatest", () => {
   it("raises unknownField for a key on neither the compared nor excluded list", () => {
     const d = diffLatest(norm(), { ...norm(), somethingNew: 1 } as NormalizedSnapshot);
     expect(d).toEqual([expect.objectContaining({ field: "somethingNew", class: "unknownField" })]);
+  });
+
+  it("normalizeFromRedis carries an unrecognised entry field, so unknownField fires on real input", () => {
+    const read: SnapshotRead = {
+      id: "s1",
+      seq: 1,
+      isValid: true,
+      raw: "{}",
+      entry: {
+        engine: "V2",
+        executionStatus: "RUN_CREATED",
+        description: "d",
+        runId: "r1",
+        runStatus: "PENDING",
+        createdAt: "2026-08-24T00:00:00.000Z",
+        environmentId: "env",
+        environmentType: "DEVELOPMENT",
+        projectId: "p",
+        organizationId: "o",
+        mysteryField: "surprise",
+      },
+    };
+    const redis = normalizeFromRedis(read);
+    expect(redis.mysteryField).toBe("surprise"); // not dropped by normalization
+    const d = diffLatest(
+      norm({ id: "s1", createdAt: redis.createdAt, updatedAt: redis.updatedAt }),
+      redis
+    );
+    expect(d).toEqual([
+      expect.objectContaining({ field: "mysteryField", class: "unknownField", redis: "surprise" }),
+    ]);
   });
 });
 

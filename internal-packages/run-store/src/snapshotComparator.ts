@@ -25,6 +25,10 @@ export type SnapshotDivergence = {
   redis?: unknown;
 };
 
+// The read operations the comparator samples. Bounded so the `op` metric attribute cannot become a
+// high-cardinality label (a caller cannot pass a run id or other unbounded value).
+export type SnapshotReadOp = "getLatest" | "getById" | "getSince" | "getSnapshotWaitpointIds";
+
 export type NormalizedSnapshot = {
   [k: string]: unknown;
   id: string;
@@ -67,6 +71,21 @@ export const EXCLUDED_FIELDS = ["lastHeartbeatAt", "checkpoint", "completedWaitp
 
 const SCALAR_FIELDS = COMPARED_FIELDS.filter((f) => f !== "metadata");
 
+const KNOWN_KEYS = new Set<string>([
+  ...COMPARED_FIELDS,
+  ...EXCLUDED_FIELDS,
+  "completedWaitpointOrder",
+  "waitpointIdSet",
+]);
+
+// Carry a source key normalization does not recognise onto the normalized object, so the
+// unknownField check sees it instead of it being silently dropped (a false clean comparison).
+function carryUnknownKeys(target: NormalizedSnapshot, source: Record<string, unknown>): void {
+  for (const k of Object.keys(source)) {
+    if (!KNOWN_KEYS.has(k) && !(k in target)) target[k] = source[k];
+  }
+}
+
 function canonicalJson(v: unknown): string {
   if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
   if (Array.isArray(v)) return `[${v.map(canonicalJson).join(",")}]`;
@@ -79,7 +98,7 @@ export function normalizeFromPg(
   row: Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { completedWaitpoints: true } }>
 ): NormalizedSnapshot {
   const wps = (row.completedWaitpoints ?? []) as Array<{ id: string }>;
-  return {
+  const n: NormalizedSnapshot = {
     id: row.id,
     engine: row.engine,
     executionStatus: row.executionStatus,
@@ -104,6 +123,8 @@ export function normalizeFromPg(
     completedWaitpointOrder: [...(row.completedWaitpointOrder ?? [])],
     waitpointIdSet: [...wps.map((w) => w.id)].sort(),
   };
+  carryUnknownKeys(n, row as unknown as Record<string, unknown>);
+  return n;
 }
 
 export function normalizeFromRedis(read: SnapshotRead): NormalizedSnapshot {
@@ -111,7 +132,7 @@ export function normalizeFromRedis(read: SnapshotRead): NormalizedSnapshot {
   const createdAtMs = new Date(String(e.createdAt)).getTime();
   const order = read.completedWaitpointIds?.order ?? [];
   const idSet = [...(read.completedWaitpointIds?.distinctIds ?? [])].sort();
-  return {
+  const n: NormalizedSnapshot = {
     id: read.id,
     engine: (e.engine ?? "V2") as string,
     executionStatus: e.executionStatus as string,
@@ -136,6 +157,8 @@ export function normalizeFromRedis(read: SnapshotRead): NormalizedSnapshot {
     completedWaitpointOrder: [...order],
     waitpointIdSet: idSet,
   };
+  carryUnknownKeys(n, e);
+  return n;
 }
 
 function sameArray(a: string[], b: string[]): boolean {
@@ -144,12 +167,6 @@ function sameArray(a: string[], b: string[]): boolean {
 
 function fieldDivergences(pg: NormalizedSnapshot, redis: NormalizedSnapshot): SnapshotDivergence[] {
   const out: SnapshotDivergence[] = [];
-  const known = new Set<string>([
-    ...COMPARED_FIELDS,
-    ...EXCLUDED_FIELDS,
-    "completedWaitpointOrder",
-    "waitpointIdSet",
-  ]);
 
   for (const f of SCALAR_FIELDS) {
     if (pg[f] !== redis[f]) {
@@ -180,8 +197,11 @@ function fieldDivergences(pg: NormalizedSnapshot, redis: NormalizedSnapshot): Sn
       redis: redis.waitpointIdSet,
     });
   }
-  for (const k of Object.keys(redis)) {
-    if (!known.has(k)) out.push({ field: k, class: "unknownField", redis: redis[k] });
+  // Unknown keys on EITHER side, so a new field in either store fails loudly.
+  for (const k of new Set([...Object.keys(pg), ...Object.keys(redis)])) {
+    if (!KNOWN_KEYS.has(k)) {
+      out.push({ field: k, class: "unknownField", pg: pg[k], redis: redis[k] });
+    }
   }
   return out;
 }
@@ -197,8 +217,8 @@ export function diffLatest(
 }
 
 export type SnapshotComparatorMetrics = {
-  recordDivergence(op: string, cls: DivergenceClass): void;
-  recordSample(op: string): void;
+  recordDivergence(op: SnapshotReadOp, cls: DivergenceClass): void;
+  recordSample(op: SnapshotReadOp): void;
 };
 
 // Samples reads and records divergence metrics. Holds no store and returns nothing from record(), so
@@ -222,7 +242,7 @@ export class SnapshotComparator {
     return this.#rng() * 100 < this.#samplePercent;
   }
 
-  record(op: string, divergences: SnapshotDivergence[]): void {
+  record(op: SnapshotReadOp, divergences: SnapshotDivergence[]): void {
     this.#metrics?.recordSample(op);
     for (const d of divergences) this.#metrics?.recordDivergence(op, d.class);
   }

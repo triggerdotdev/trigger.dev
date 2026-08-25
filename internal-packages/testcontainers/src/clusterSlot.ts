@@ -1,10 +1,11 @@
 // CRC16/XMODEM over a key's hash tag, computed here because CLUSTER KEYSLOT is unavailable on a
-// standalone test container. Pinned against the cluster-key-slot package for our key shapes.
+// standalone test container. Pinned against the cluster-key-slot package for our key shapes. Hashes
+// UTF-8 BYTES (as Redis does), not UTF-16 code units, so a non-ASCII key still matches Redis's slot.
 
 function crc16(str: string): number {
   let crc = 0;
-  for (let i = 0; i < str.length; i++) {
-    crc ^= str.charCodeAt(i) << 8;
+  for (const byte of Buffer.from(str, "utf8")) {
+    crc ^= byte << 8;
     for (let j = 0; j < 8; j++) {
       crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
       crc &= 0xffff;

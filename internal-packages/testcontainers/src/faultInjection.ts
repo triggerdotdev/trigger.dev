@@ -20,7 +20,11 @@ export function createFaultInjector<TBoundary extends string>(opts: {
 
   return {
     arm(boundary, o) {
-      armed.set(boundary, { remaining: o?.times ?? Infinity, runId: o?.runId });
+      const times = o?.times ?? Infinity;
+      if (times !== Infinity && (!Number.isInteger(times) || times < 0)) {
+        throw new RangeError("times must be a non-negative integer or Infinity");
+      }
+      armed.set(boundary, { remaining: times, runId: o?.runId });
     },
     disarm(boundary) {
       if (boundary === undefined) armed.clear();

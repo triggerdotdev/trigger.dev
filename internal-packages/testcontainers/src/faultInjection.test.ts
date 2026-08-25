@@ -41,6 +41,14 @@ describe("createFaultInjector", () => {
     expect(f.fired("afterPgBeforeRedis")).toBe(1);
   });
 
+  it("rejects a non-integer or negative times, but allows the default (Infinity)", () => {
+    const f = make();
+    expect(() => f.arm("midFlushRetry", { times: Number.NaN })).toThrow(RangeError);
+    expect(() => f.arm("midFlushRetry", { times: 1.5 })).toThrow(RangeError);
+    expect(() => f.arm("midFlushRetry", { times: -1 })).toThrow(RangeError);
+    expect(() => f.arm("midFlushRetry")).not.toThrow(); // unlimited
+  });
+
   it("disarm clears a boundary", () => {
     const f = make();
     f.arm("afterPgBeforeRedis");

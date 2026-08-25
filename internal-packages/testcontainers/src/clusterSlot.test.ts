@@ -8,9 +8,23 @@ describe("slotOf", () => {
     expect(slotOf("engine:snap:{run_2}:e")).toBe(12239);
   });
 
-  it("hashes the whole key when the tag is empty or malformed", () => {
-    expect(slotOf("snap:{}:e")).toBe(slotOf("snap:{}:e"));
-    expect(slotOf("plain-key")).toBe(slotOf("plain-key"));
+  it("groups keys that share a non-empty tag into one slot", () => {
+    expect(slotOf("a{tag}b")).toBe(slotOf("c{tag}d"));
+  });
+
+  it("hashes the whole key when the tag is empty (not the empty tag)", () => {
+    // If the empty `{}` were used as the tag, these would collide; hashing the whole key keeps them apart.
+    expect(slotOf("a{}b")).not.toBe(slotOf("c{}d"));
+  });
+
+  it("hashes the whole key when a brace is unclosed (malformed tag)", () => {
+    // `b` is not a tag here (no closing brace), so these must not share a slot the way `{b}` would.
+    expect(slotOf("a{b")).not.toBe(slotOf("x{b"));
+  });
+
+  it("hashes UTF-8 bytes, matching Redis for a non-ASCII tag", () => {
+    // Redis (cluster-key-slot) hashes the UTF-8 bytes of `é` to slot 10180.
+    expect(slotOf("{é}")).toBe(10180);
   });
 });
 

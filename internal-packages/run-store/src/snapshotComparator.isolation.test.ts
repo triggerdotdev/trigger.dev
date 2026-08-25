@@ -13,7 +13,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 // Returns the module specifiers a file imports FOR VALUE (i.e. that survive to runtime). `import type`
 // declarations and named blocks whose specifiers are all inline `type` are erased and excluded.
 function valueImports(sourcePath: string): string[] {
-  const src = readFileSync(sourcePath, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  // Strip block AND line comments so a comment mentioning `import(` or `import ... from` cannot
+  // produce a false positive.
+  const src = readFileSync(sourcePath, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
   const out: string[] = [];
 
   if (/(^|[^.\w])import\s*\(/.test(src)) out.push("<dynamic import()>");
