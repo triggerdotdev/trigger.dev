@@ -1835,3 +1835,140 @@ describe("genuine concurrency", () => {
     }
   );
 });
+
+describe("readCompletionEnvelopes", () => {
+  redisTest("returns the completion and the immutable half together", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({
+        record: record("w_env", {
+          idempotencyKey: "user-key",
+          userProvidedIdempotencyKey: true,
+        }),
+        status: "PENDING",
+      });
+      await store.complete({ waitpointId: "w_env", completion: completion() });
+
+      const envelopes = await store.readCompletionEnvelopes({
+        runId: "run_env",
+        waitpointIds: ["w_env"],
+      });
+
+      expect(envelopes).toEqual([
+        {
+          id: "w_env",
+          friendlyId: "waitpoint_w_env",
+          type: "MANUAL",
+          completedAt: new Date(NOW),
+          outputType: "application/json",
+          outputIsError: false,
+          output: '{"ok":true}',
+          idempotencyKey: "user-key",
+        },
+      ]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("carries an offloaded value as a ref, not as an inline value", async ({
+    redisOptions,
+  }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({ record: record("w_ref"), status: "PENDING" });
+      await store.complete({
+        waitpointId: "w_ref",
+        completion: completion({
+          outputType: "application/store",
+          output: { ref: "store-key-1" },
+        }),
+      });
+
+      const [envelope] = await store.readCompletionEnvelopes({
+        runId: "run_env",
+        waitpointIds: ["w_ref"],
+      });
+
+      expect(envelope?.outputRef).toBe("store-key-1");
+      expect(envelope?.output).toBeUndefined();
+    } finally {
+      await store.quit();
+    }
+  });
+
+  // The omission is the contract. A pending waitpoint has no envelope, and defaulting one
+  // here would hand the resolver a record it must not have. The caller's coverage check is
+  // what turns the gap into a loud failure.
+  redisTest("omits a waitpoint that is not completed", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({ record: record("w_pending"), status: "PENDING" });
+
+      const envelopes = await store.readCompletionEnvelopes({
+        runId: "run_env",
+        waitpointIds: ["w_pending"],
+      });
+
+      expect(envelopes).toEqual([]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("omits an id that has no record at all", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const envelopes = await store.readCompletionEnvelopes({
+        runId: "run_env",
+        waitpointIds: ["w_absent"],
+      });
+
+      expect(envelopes).toEqual([]);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("suppresses an idempotency key the user did not provide", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      await store.createIfAbsent({
+        record: record("w_internal", {
+          idempotencyKey: "internal-key",
+          userProvidedIdempotencyKey: false,
+        }),
+        status: "PENDING",
+      });
+      await store.complete({ waitpointId: "w_internal", completion: completion() });
+
+      const [envelope] = await store.readCompletionEnvelopes({
+        runId: "run_env",
+        waitpointIds: ["w_internal"],
+      });
+
+      expect(envelope?.idempotencyKey).toBeUndefined();
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("reads many ids in one pass", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      for (const id of ["w_m1", "w_m2", "w_m3"]) {
+        await store.createIfAbsent({ record: record(id), status: "PENDING" });
+        await store.complete({ waitpointId: id, completion: completion() });
+      }
+
+      const envelopes = await store.readCompletionEnvelopes({
+        runId: "run_env",
+        waitpointIds: ["w_m1", "w_m2", "w_m3"],
+      });
+
+      expect(envelopes.map((e) => e.id).sort()).toEqual(["w_m1", "w_m2", "w_m3"]);
+    } finally {
+      await store.quit();
+    }
+  });
+});

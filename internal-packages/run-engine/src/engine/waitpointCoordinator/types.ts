@@ -16,6 +16,9 @@ import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database
 export type WaitpointCoordinator = {
   clearRunBlockState(params: ClearRunBlockStateParams): Promise<{ count: number }>;
   readRunBlockState(runId: string): Promise<RunBlockEdge[]>;
+  readCompletionEnvelopes(
+    params: ReadCompletionEnvelopesParams
+  ): Promise<CompletionEnvelopeSource[]>;
   registerBlocks(params: RegisterBlocksParams): Promise<{ pendingCount: number }>;
   registerBlocksLockless(params: RegisterBlocksLocklessParams): Promise<void>;
   complete(params: CompleteParams): Promise<CompleteResult>;
@@ -29,6 +32,38 @@ export type WaitpointCoordinator = {
     runId: string;
     data: AssociatedWaitpointData;
   }): Promise<Waitpoint>;
+};
+
+export type ReadCompletionEnvelopesParams = {
+  runId: string;
+  /** The DISTINCT completed waitpoint ids to source. Result order is not meaningful. */
+  waitpointIds: string[];
+};
+
+/**
+ * One completed waitpoint's fields, sourced from whichever arm owns it.
+ *
+ * Deliberately NOT the frozen record type. This is the raw material; the record build
+ * decides which output variant a record carries. Both arms return this same shape, so the
+ * record build never branches on residency, which is what makes a mixed wait work.
+ *
+ * `output` is the literal stored value. `outputRef` is set instead when the value was
+ * already offloaded to object storage. At most one of the two is set.
+ */
+export type CompletionEnvelopeSource = {
+  id: string;
+  friendlyId: string;
+  type: "RUN" | "BATCH" | "DATETIME" | "MANUAL";
+  completedAt: Date;
+  outputType: string;
+  outputIsError: boolean;
+  output?: string;
+  outputRef?: string;
+  completedByTaskRunId?: string;
+  completedByBatchId?: string;
+  completedAfter?: Date;
+  /** Already resolved by the arm: userProvidedIdempotencyKey && !inactiveIdempotencyKey. */
+  idempotencyKey?: string;
 };
 
 export type ClearRunBlockStateParams = {
