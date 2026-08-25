@@ -30,6 +30,7 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import {
   QUEUE_METRIC_COLORS,
@@ -278,7 +279,7 @@ export default function Page() {
                     </TitleBar>
                     <div className="min-h-0 overflow-hidden">
                       <Suspense fallback={<TableLoading />}>
-                        <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
                           {(list) =>
                             list ? (
                               <TaskRunsList

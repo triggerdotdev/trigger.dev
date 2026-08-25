@@ -55,6 +55,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { $replica } from "~/db.server";
@@ -393,16 +394,7 @@ export default function Page() {
             </div>
           }
         >
-          <TypedAwait
-            resolve={data}
-            errorElement={
-              <div className="flex items-center justify-center px-3 py-12">
-                <Callout variant="error" className="max-w-fit">
-                  Unable to load error details. Please refresh the page or try again in a moment.
-                </Callout>
-              </div>
-            }
-          >
+          <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
             {(result) => {
               if ("error" in result) {
                 return (

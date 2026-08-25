@@ -187,9 +187,11 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           recordClickhouseError(span, clickhouseError);
 
           return [
-            new QueryError(`Unable to query clickhouse: ${clickhouseError.message}`, {
-              query: req.query,
-            }),
+            new QueryError(
+              `Unable to query clickhouse: ${clickhouseError.message}`,
+              { query: req.query },
+              clickhouseError instanceof ClickHouseError ? clickhouseError.type : undefined
+            ),
             null,
           ];
         }
@@ -358,9 +360,11 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           recordClickhouseError(span, clickhouseError);
 
           return [
-            new QueryError(`Unable to query clickhouse: ${clickhouseError.message}`, {
-              query: req.query,
-            }),
+            new QueryError(
+              `Unable to query clickhouse: ${clickhouseError.message}`,
+              { query: req.query },
+              clickhouseError instanceof ClickHouseError ? clickhouseError.type : undefined
+            ),
             null,
           ];
         }
@@ -493,9 +497,11 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           recordClickhouseError(span, clickhouseError);
 
           return [
-            new QueryError(`Unable to query clickhouse: ${clickhouseError.message}`, {
-              query: req.query,
-            }),
+            new QueryError(
+              `Unable to query clickhouse: ${clickhouseError.message}`,
+              { query: req.query },
+              clickhouseError instanceof ClickHouseError ? clickhouseError.type : undefined
+            ),
             null,
           ];
         }

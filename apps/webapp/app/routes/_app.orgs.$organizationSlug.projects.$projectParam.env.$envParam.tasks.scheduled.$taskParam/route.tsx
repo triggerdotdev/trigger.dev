@@ -60,6 +60,7 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { useToast } from "~/components/primitives/Toast";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -382,7 +383,7 @@ export default function Page() {
                     </TitleBar>
                     <div className="min-h-0 overflow-hidden">
                       <Suspense fallback={<TableLoading />}>
-                        <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
                           {(list) =>
                             list ? (
                               <TaskRunsList

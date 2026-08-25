@@ -29,6 +29,7 @@ import {
 import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
@@ -329,7 +330,7 @@ export default function Page() {
                       </Suspense>
                     ) : (
                       <Suspense fallback={null}>
-                        <TypedAwait resolve={runList} errorElement={null}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
                           {(list) =>
                             list ? (
                               <ListPagination

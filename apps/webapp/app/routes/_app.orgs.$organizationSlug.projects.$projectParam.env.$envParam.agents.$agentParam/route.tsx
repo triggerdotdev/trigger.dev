@@ -22,6 +22,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
@@ -395,7 +396,7 @@ function AgentContentArea({
     </Suspense>
   ) : (
     <Suspense fallback={<TableLoading />}>
-      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+      <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
         {(list) =>
           list ? (
             <TaskRunsTable
