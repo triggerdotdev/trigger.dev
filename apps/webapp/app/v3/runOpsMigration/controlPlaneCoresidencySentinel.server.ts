@@ -47,8 +47,7 @@ export function resolveCoresidencyEnforcement(args: {
     const store = args.shardKey === undefined ? "legacy run-ops DB" : `shard ${args.shardKey}`;
     return {
       throw: true,
-      message:
-        `RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT is on but the ${store} is still co-resident with the control-plane DB; refusing to start.`,
+      message: `RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT is on but the ${store} is still co-resident with the control-plane DB; refusing to start.`,
     };
   }
   return { throw: false };

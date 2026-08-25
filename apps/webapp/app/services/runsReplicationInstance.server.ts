@@ -81,7 +81,7 @@ export function buildReplicationSources(args: {
 
 // The replication source id for a shard. It derives the client name and the leader-lock key, so it
 // must be stable and unique across sources.
-export function shardSourceId(key: string): string {
+function shardSourceId(key: string): string {
   return `shard-${key}`;
 }
 
@@ -111,7 +111,7 @@ export class SplitReplicationMisconfiguredError extends Error {
  * the boot catch site tests `instanceof SplitReplicationMisconfiguredError` to reach
  * process.exit(1), and a shard whose runs never reach ClickHouse must take that same exit.
  */
-export class ShardReplicationMisconfiguredError extends SplitReplicationMisconfiguredError {
+class ShardReplicationMisconfiguredError extends SplitReplicationMisconfiguredError {
   constructor(shardKey: string) {
     super(
       `run-ops shard ${shardKey} is configured but the runs-replication sources[] has no ` +
