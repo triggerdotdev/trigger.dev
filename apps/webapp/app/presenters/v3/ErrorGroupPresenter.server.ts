@@ -87,7 +87,8 @@ export class ErrorGroupPresenter extends BasePresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
     private readonly logsClickhouse: ClickHouse,
-    private readonly clickhouse: ClickHouse
+    private readonly clickhouse: ClickHouse,
+    private readonly runsListClickhouse: ClickHouse
   ) {
     super(undefined, replica);
   }
@@ -409,7 +410,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       columns?: RunColumnsSelect;
     }
   ): Promise<NextRunList | undefined> {
-    const runListPresenter = new NextRunListPresenter(this.replica, this.clickhouse);
+    const runListPresenter = new NextRunListPresenter(this.replica, this.runsListClickhouse);
 
     const result = await runListPresenter.call(organizationId, environmentId, {
       userId: options.userId,
