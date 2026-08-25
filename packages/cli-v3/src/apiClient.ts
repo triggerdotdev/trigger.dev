@@ -23,6 +23,7 @@ import {
   DevDisconnectResponseBody,
   EnvironmentVariableResponseBody,
   FailDeploymentResponseBody,
+  GetDeploymentBuildEnvVarsResponseBody,
   GetDeploymentResponseBody,
   GetEnvironmentVariablesResponseBody,
   GetLatestDeploymentResponseBody,
@@ -683,6 +684,20 @@ export class CliApiClient {
     return wrapZodFetch(
       GetDeploymentResponseBody,
       `${this.apiURL}/api/v1/deployments/${deploymentId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async getDeploymentBuildEnvVars(deploymentId: string) {
+    if (!this.accessToken) {
+      throw new Error("getDeploymentBuildEnvVars: No access token");
+    }
+
+    return wrapZodFetch(
+      GetDeploymentBuildEnvVarsResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/build-env-vars`,
       {
         headers: this.getHeaders(),
       }

@@ -75,6 +75,8 @@ export default defineConfig({
       clientFiles: ["./app/entry.client.tsx", "./app/root.tsx", "./app/components/**/*.tsx"],
       ssrFiles: ["./app/entry.server.tsx", "./app/root.tsx"],
     },
+    // In-build calls from local docker (e.g. the indexer) reach the dev webapp via this host
+    allowedHosts: ["host.docker.internal"],
   },
   build: {
     sourcemap: true,
