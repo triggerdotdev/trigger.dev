@@ -332,9 +332,7 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
-    // When disabled, user impersonation is fully off for this instance:
-    // existing impersonation cookies are ignored, the start endpoints 404,
-    // and the impersonation UI isn't rendered.
+    // Instance-level kill switch for user impersonation.
     IMPERSONATION_ENABLED: BoolEnv.default(true),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.

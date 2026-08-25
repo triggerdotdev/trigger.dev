@@ -118,9 +118,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the `user.isViewingAsUser` the server computes could disagree, and the
   // client-side admin UI would hide itself on a session that is not
   // impersonating.
-  // Flag off: actively terminate any lingering impersonation session (STOP
-  // audit row + cookie cleared + one self-redirect) instead of leaving an
-  // inert cookie that would resurrect if the flag were ever re-enabled.
+  // Flag off: terminate lingering impersonation sessions (audit + clear)
+  // rather than leaving a cookie that would resurrect on a later re-enable.
   if (!env.IMPERSONATION_ENABLED && (await getRawImpersonationId(request))) {
     const url = new URL(request.url);
     throw await clearImpersonation(request, `${url.pathname}${url.search}`);

@@ -16,14 +16,11 @@ function suffix() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-// IMPERSONATION_ENABLED=false must make impersonation fully inert: starting
-// one 404s, and an existing cookie resolves to nothing however it was
-// obtained. Stopping stays possible with the flag off — that's how lingering
-// sessions get terminated — and must still clear the cookie.
+// IMPERSONATION_ENABLED=false: starting 404s, cookies resolve to nothing,
+// stopping still works so lingering sessions can be terminated.
 describe("impersonation disabled", () => {
   postgresTest("the flag defaults to enabled", async () => {
-    // Flipping this default would kill impersonation on every existing
-    // deployment that never heard of the flag.
+    // Flipping the default would kill impersonation on every existing deployment.
     expect(env.IMPERSONATION_ENABLED).toBe(true);
   });
 
@@ -50,8 +47,8 @@ describe("impersonation disabled", () => {
       new Request("http://localhost:3030/", { headers: { Cookie: cookie } });
 
     expect(await getImpersonationId(requestWithCookie())).toBe(target.id);
-    // resolvedUserId must match the impersonated id for the state to count as
-    // impersonating — that's what getUserId resolves to while the cookie works.
+    // resolvedUserId must be the impersonated id or the state is false even
+    // with the flag on, making the disabled assertion below vacuous.
     const enabledState = await getImpersonationState(requestWithCookie(), target.id);
     expect(enabledState.isImpersonating).toBe(true);
 
@@ -76,8 +73,7 @@ describe("impersonation disabled", () => {
       const disabledState = await getImpersonationState(requestWithCookie(), target.id);
       expect(disabledState.isImpersonating).toBe(false);
 
-      // The ungated reader still sees the cookie — it's what stop/scrub paths
-      // use to terminate a session the gated reader no longer resolves.
+      // The ungated reader still sees the cookie (stop/scrub paths need it).
       expect(await getRawImpersonationId(requestWithCookie())).toBe(target.id);
 
       // Stopping works with the flag off and clears the cookie.

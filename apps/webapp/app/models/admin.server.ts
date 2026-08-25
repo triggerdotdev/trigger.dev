@@ -16,12 +16,8 @@ import { env } from "~/env.server";
 
 const pageSize = 20;
 
-/**
- * Guard for everything that starts an impersonation (the model function and
- * the routes that render or serve the flow). With IMPERSONATION_ENABLED off,
- * those surfaces don't exist: 404, not 403, so the instance doesn't advertise
- * the feature. Stopping an impersonation is deliberately never gated.
- */
+// 404, not 403, so a disabled instance doesn't advertise the feature.
+// Stopping an impersonation is deliberately never gated.
 export function requireImpersonationEnabled(): void {
   if (!env.IMPERSONATION_ENABLED) {
     throw new Response("Not Found", { status: 404 });
@@ -347,8 +343,7 @@ export async function startImpersonation(
 
 export async function clearImpersonation(request: Request, path: string) {
   const authUser = await authenticator.isAuthenticated(request);
-  // Raw read: stopping must clear and audit the session even when the gated
-  // reader no longer resolves it (IMPERSONATION_ENABLED off).
+  // Raw read: stops must audit and clear even with IMPERSONATION_ENABLED off.
   const targetId = await getRawImpersonationId(request);
 
   if (targetId && authUser?.userId) {
