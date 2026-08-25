@@ -1124,12 +1124,13 @@ function buildRunOpsClient({
 
   client.$on("query", (log) => queryPerformanceMonitor.onQuery(role, log));
 
-  const connectPromise = client.$connect();
-  if (env.NODE_ENV === "test") {
-    connectPromise.catch((error) => {
-      logger.warn(`Failed to eagerly connect run-ops prisma client (${role})`, { error });
-    });
-  }
+  // Eager connect is a warm-up only — Prisma reconnects lazily on first query. ALWAYS catch the
+  // rejection (not just under NODE_ENV=test), so a shard/run-ops DB that is unreachable at boot
+  // logs a warning instead of surfacing as an unhandled promise rejection. One unreachable shard
+  // must not take down webapp startup.
+  client.$connect().catch((error) => {
+    logger.warn(`Failed to eagerly connect run-ops prisma client (${role})`, { error });
+  });
 
   console.log(`🔌 ${connectedLabel}`);
 
