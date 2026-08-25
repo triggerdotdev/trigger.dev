@@ -20,7 +20,7 @@ import type {
   SnapshotEntryInput,
   SnapshotRead,
 } from "./redisSnapshotStore.js";
-import { deriveOrder } from "./redisSnapshotStore.js";
+import { deriveDistinctIds, deriveOrder } from "./redisSnapshotStore.js";
 import {
   entryFromCompletion,
   entryFromCreateExecutionSnapshot,
@@ -384,9 +384,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       "lockRunToWorker",
       entryFromLock(ctx, withStamp.snapshot),
       withStamp.snapshot.previousSnapshotId,
-      // The lock site already carries the resolved order, so the refs are rebuilt from it rather
-      // than re-derived: its index IS the position in that list.
-      withStamp.snapshot.completedWaitpointOrder.map((id, index) => ({ id, index }))
+      // Built from the COMPLETE id set, which is what the delegate connects in Postgres, with the
+      // index taken from the ordered list where the id appears in it. Building from the ordered list
+      // instead would drop every id with no batch index, exactly the ids Postgres still records.
+      lockCycleRefs(
+        withStamp.snapshot.completedWaitpointIds,
+        withStamp.snapshot.completedWaitpointOrder
+      )
     );
     return result;
   }
@@ -579,12 +583,21 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     const order = deriveOrder(completedWaitpoints);
+    const distinct = deriveDistinctIds(completedWaitpoints);
 
     try {
       const head = await this.redis.getLatest(runId);
-      const previous = head?.completedWaitpointIds?.order;
+      const previousIds = head?.completedWaitpointIds;
 
-      if (head?.cycle && previous && sameOrder(previous, order)) {
+      // Both halves must match. Comparing the order alone is not enough: it holds only indexed ids,
+      // so two DIFFERENT single waits both present an empty order and would compare equal, and the
+      // second would inherit the first's waitpoint set instead of minting its own.
+      if (
+        head?.cycle &&
+        previousIds &&
+        sameOrder(previousIds.order, order) &&
+        sameSet(previousIds.distinctIds, distinct)
+      ) {
         return { kind: "carryForward", cycleSeq: head.cycle.cycleSeq };
       }
     } catch (error) {
@@ -898,4 +911,32 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
 /** Position-sensitive: the same ids in a different order are a different wait cycle. */
 function sameOrder(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
+/**
+ * Turns the lock site's two lists into cycle refs. `completedWaitpointIds` is the complete set the
+ * delegate connects; `completedWaitpointOrder` gives a position only to the ids that have one, and a
+ * repeated id keeps each of its positions.
+ */
+function lockCycleRefs(ids: string[], order: string[]): { id: string; index?: number }[] {
+  const refs: { id: string; index?: number }[] = [];
+  const indexed = new Set<string>();
+
+  order.forEach((id, index) => {
+    refs.push({ id, index });
+    indexed.add(id);
+  });
+
+  for (const id of ids) {
+    if (!indexed.has(id)) refs.push({ id });
+  }
+
+  return refs;
+}
+
+/** Membership only, for the id set, which has no meaningful order. */
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const seen = new Set(a);
+  return b.every((id) => seen.has(id));
 }

@@ -457,11 +457,12 @@ export class RedisSnapshotStore {
       }
 
       const headOrder = reply[1] ?? "";
+      const headDistinct = reply[2] ?? "";
       const rows: SnapshotRead[] = [];
       // Tracks whether the Lua-chosen head row (always the first, i === 2) itself survives the
       // env filter below -- headOrder must never be attributed to a different, surviving row.
       let headSurvived = false;
-      for (let i = 2; i + 3 < reply.length; i += 4) {
+      for (let i = 3; i + 3 < reply.length; i += 4) {
         // orderKnown is false here: headOrder covers only the head row, resolved separately below.
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
@@ -471,13 +472,17 @@ export class RedisSnapshotStore {
         );
         if (decoded) {
           rows.push(decoded);
-          if (i === 2) headSurvived = true;
+          if (i === 3) headSurvived = true;
         }
       }
 
       rows.reverse();
       const head = headSurvived ? rows[rows.length - 1] : undefined;
-      const headWaitpointIds = decodeWaitpointIds(head !== undefined, head ? headOrder : "");
+      const headWaitpointIds = decodeWaitpointIds(
+        head !== undefined,
+        head ? headOrder : "",
+        head ? headDistinct : ""
+      );
       if (head) {
         head.completedWaitpointIds = headWaitpointIds;
         if (head.cycle) {
@@ -516,11 +521,12 @@ export class RedisSnapshotStore {
       if (reply === null) return { kind: "miss" };
 
       const headOrder = reply[1] ?? "";
+      const headDistinct = reply[2] ?? "";
       const rows: SnapshotRead[] = [];
       // Tracks whether the Lua-chosen head row (always the first, i === 2) survives the env filter,
       // so headOrder is never attributed to a different, surviving row.
       let headSurvived = false;
-      for (let i = 2; i + 3 < reply.length; i += 4) {
+      for (let i = 3; i + 3 < reply.length; i += 4) {
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
           opts?.environmentId,
@@ -529,13 +535,17 @@ export class RedisSnapshotStore {
         );
         if (decoded) {
           rows.push(decoded);
-          if (i === 2) headSurvived = true;
+          if (i === 3) headSurvived = true;
         }
       }
 
       rows.reverse();
       const head = headSurvived ? rows[rows.length - 1] : undefined;
-      const headWaitpointIds = decodeWaitpointIds(head !== undefined, head ? headOrder : "");
+      const headWaitpointIds = decodeWaitpointIds(
+        head !== undefined,
+        head ? headOrder : "",
+        head ? headDistinct : ""
+      );
       if (head) {
         head.completedWaitpointIds = headWaitpointIds;
         if (head.cycle) {
@@ -568,7 +578,7 @@ export class RedisSnapshotStore {
     orderKnown: boolean
   ): SnapshotRead | null {
     if (!reply || reply.length === 0) return null;
-    const [id, raw, seqStr, pointer, orderJson] = reply;
+    const [id, raw, seqStr, pointer, orderJson, distinctJson] = reply;
     const entry = JSON.parse(raw) as Record<string, unknown>;
     if (environmentId !== undefined && entry.environmentId !== environmentId) return null;
     const read: SnapshotRead = {
@@ -582,7 +592,7 @@ export class RedisSnapshotStore {
       const [cs, count] = pointer.split(":");
       read.cycle = { cycleSeq: Number(cs), count: Number(count) };
       if (orderKnown) {
-        const ids = decodeWaitpointIds(true, orderJson);
+        const ids = decodeWaitpointIds(true, orderJson, distinctJson ?? "");
         read.completedWaitpointIds = ids;
         this.#checkCycleMismatch(runId, Number(count), ids.order.length);
       }
@@ -737,7 +747,7 @@ export class RedisSnapshotStore {
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
         if not vals[1] then return nil end
         -- Coerce every element: a Lua false TRUNCATES the returned array at that position.
-        return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]) }
+        return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]) }
       `,
     });
 
@@ -749,7 +759,7 @@ export class RedisSnapshotStore {
         if not cur then return nil end
         local vals = redis.call('HMGET', eKey, cur, cur .. '#s', cur .. '#c')
         if not vals[1] then return nil end
-        return { cur, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]) }
+        return { cur, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]) }
       `,
     });
 
@@ -785,7 +795,7 @@ export class RedisSnapshotStore {
         -- compare is a chronological compare. Walking newest-first lets the scan stop at the first
         -- entry at or before the cursor, which makes its length the length of the ANSWER rather
         -- than the length of the run's history.
-        local out = { '', '' }
+        local out = { '', '', '' }
         local headId = nil
         local offset = 0
         local page = limit
@@ -820,7 +830,9 @@ export class RedisSnapshotStore {
         end
 
         if headId then
-          out[2] = orderFor(redis.call('HGET', eKey, headId .. '#c'))
+          local headPointer = redis.call('HGET', eKey, headId .. '#c')
+          out[2] = orderFor(headPointer)
+          out[3] = distinctFor(headPointer)
         end
         return out
       `,
@@ -852,7 +864,7 @@ export class RedisSnapshotStore {
         -- The head is the newest SURVIVING entry, and it is the only one whose cycle key is read.
         -- Deriving the order after the loop keeps it paired with the row it is attached to: a row
         -- dropped for a missing body must not donate its cycle data to the next one.
-        local out = { sinceRaw, '' }
+        local out = { sinceRaw, '', '' }
         local headId = nil
         for i = 1, #ids do
           local id = ids[i]
@@ -866,7 +878,9 @@ export class RedisSnapshotStore {
           end
         end
         if headId then
-          out[2] = orderFor(redis.call('HGET', eKey, headId .. '#c'))
+          local headPointer = redis.call('HGET', eKey, headId .. '#c')
+          out[2] = orderFor(headPointer)
+          out[3] = distinctFor(headPointer)
         end
         return out
       `,

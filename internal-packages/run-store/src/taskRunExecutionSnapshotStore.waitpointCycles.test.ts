@@ -306,6 +306,124 @@ describe("completed-waitpoint cycles", () => {
   );
 
   containerTest(
+    "two consecutive index-less waits do not share a cycle",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA, wpB] = await seedSnapshotWaitpoints(prisma, env, 2);
+
+        // Neither wait has a batch index, so both present an EMPTY order. Deciding carry-forward on
+        // the order alone makes them compare equal, and the second silently inherits the first's
+        // waitpoint set: its own result is never stored and a read returns the wrong id.
+        const first = await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: wpA }], "first single wait")
+        );
+        const second = await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: wpB }], "second single wait")
+        );
+
+        expect((await redis.getSnapshotWaitpointIds(runId, first.id)).distinctIds).toEqual([wpA]);
+        expect((await redis.getSnapshotWaitpointIds(runId, second.id)).distinctIds).toEqual([wpB]);
+        expect((await probe.keys(`snap:{${runId}}:wp:*`)).length).toBe(2);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  containerTest(
+    "the same index-less wait repeated does still carry forward",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+
+        // The copy-forward case must survive the stricter comparison: the same id set, still one key.
+        await decorated.createExecutionSnapshot(resumeInput(runId, env, [{ id: wpA }], "wait"));
+        const carried = await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: wpA }], "carry")
+        );
+
+        expect((await probe.keys(`snap:{${runId}}:wp:*`)).length).toBe(1);
+        expect((await redis.getSnapshotWaitpointIds(runId, carried.id)).distinctIds).toEqual([wpA]);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  containerTest(
+    "the dequeue snapshot keeps an index-less waitpoint",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA, wpB] = await seedSnapshotWaitpoints(prisma, env, 2);
+        const head = await redis.getLatest(runId);
+        const snapshotId = generateInternalId();
+
+        // Postgres connects completedWaitpointIds, the COMPLETE set. Building the Redis refs from
+        // completedWaitpointOrder instead drops every id that has no position in it.
+        await decorated.lockRunToWorker(runId, {
+          lockedAt: new Date(),
+          lockedById: undefined,
+          lockedToVersionId: undefined,
+          lockedQueueId: undefined,
+          startedAt: new Date(),
+          baseCostInCents: 0,
+          machinePreset: "small-1x",
+          taskVersion: "1.0.0",
+          snapshot: {
+            id: snapshotId,
+            previousSnapshotId: head!.id,
+            attemptNumber: 1,
+            environmentId: env.id,
+            environmentType: env.type,
+            projectId: env.projectId,
+            organizationId: env.organizationId,
+            completedWaitpointIds: [wpA, wpB],
+            completedWaitpointOrder: [wpA],
+          },
+        } as never);
+
+        const ids = await redis.getSnapshotWaitpointIds(runId, snapshotId);
+        expect([...ids.distinctIds].sort()).toEqual([wpA, wpB].sort());
+        expect(ids.order).toEqual([wpA]);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "findLatestExecutionSnapshot hydrates an index-less waitpoint row",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+
+        await decorated.createExecutionSnapshot(resumeInput(runId, env, [{ id: wpA }], "single"));
+
+        // The hot read hydrates the rows from the id set, so an incomplete set means the resume
+        // gets no waitpoint at all.
+        const latest = await decorated.findLatestExecutionSnapshot(runId);
+        expect(latest!.completedWaitpoints.map((w) => w.id)).toEqual([wpA]);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
     "findLatestExecutionSnapshot returns the index oracle",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
