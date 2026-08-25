@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { invalidateSnapshotStoreOrgMode } from "~/v3/snapshotStoreMode.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
@@ -124,6 +125,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     controlPlaneResolver.invalidateOrganization(organizationId);
+    invalidateSnapshotStoreOrgMode(organizationId);
     return json({ success: true });
   }
 
@@ -184,6 +186,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Org feature flags are embedded in every env of the org; drop all its cached env rows.
   controlPlaneResolver.invalidateOrganization(organizationId);
+  invalidateSnapshotStoreOrgMode(organizationId);
 
   return json({ success: true });
 }
