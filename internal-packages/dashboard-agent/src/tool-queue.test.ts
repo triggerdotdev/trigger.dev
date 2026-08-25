@@ -363,4 +363,11 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
     expect(answer).not.toHaveProperty("slotHolders");
     expect(answer).not.toHaveProperty("holderResolution");
   });
+
+  it("carries holderResolution without slotHolders when the API sends only one", async () => {
+    stubFetch({ holderResolution: "none" });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ holderResolution: "none" });
+    expect(answer).not.toHaveProperty("slotHolders");
+  });
 });
