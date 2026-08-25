@@ -97,10 +97,22 @@ export class RoutingRunStore implements RunStore {
   }) {
     const shards = options.shards ?? [];
     const configured = new Set<ShardKey>([NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)]);
+    const aliasedKeys = new Set(shards.filter((s) => s.aliasOf !== undefined).map((s) => s.key));
     for (const shard of shards) {
-      if (shard.aliasOf !== undefined && !configured.has(shard.aliasOf)) {
+      if (shard.aliasOf === undefined) {
+        continue;
+      }
+      // An alias must name a REAL root store, so #distinctStores keeps exactly one entry per
+      // database. A target that is itself aliased (a chain or a cycle) would drop every key in the
+      // cycle from #distinctStores, and that database would vanish from every read and write.
+      if (!configured.has(shard.aliasOf)) {
         throw new Error(
           `RoutingRunStore: shard "${shard.key}" declares aliasOf "${shard.aliasOf}", which is not configured`
+        );
+      }
+      if (shard.aliasOf === shard.key || aliasedKeys.has(shard.aliasOf)) {
+        throw new Error(
+          `RoutingRunStore: shard "${shard.key}" aliasOf "${shard.aliasOf}" must name a non-aliased store; chains and cycles are not allowed`
         );
       }
     }
@@ -127,9 +139,8 @@ export class RoutingRunStore implements RunStore {
     // it shares its target's database, and a second leg over one database double-counts a sum.
     // The discriminator is the DECLARATION, not object identity — the wiring layer may build a
     // second store object over a shared client.
-    const aliased = new Set(shards.filter((s) => s.aliasOf !== undefined).map((s) => s.key));
     this.#distinctStores = this.#precedence
-      .filter((key) => !aliased.has(key))
+      .filter((key) => !aliasedKeys.has(key))
       .map((key) => ({ key, store: this.#shardStore(key) }));
 
     this.#metrics = options.metrics ?? noopRoutingStoreMetrics;

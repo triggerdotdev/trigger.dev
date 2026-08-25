@@ -336,6 +336,48 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
         })
     ).toThrow('aliasOf "nope"');
   });
+
+  it("rejects a self-alias (a -> a), which would drop its database from every fan-out", () => {
+    const log: Call[] = [];
+    expect(
+      () =>
+        new RoutingRunStore({
+          new: fakeStore("new", log),
+          legacy: fakeStore("legacy", log),
+          shards: [{ key: "a", store: fakeStore("a" as Slot, log), aliasOf: "a" }],
+        })
+    ).toThrow("must name a non-aliased store");
+  });
+
+  it("rejects an alias chain (a -> b where b is itself aliased)", () => {
+    const log: Call[] = [];
+    expect(
+      () =>
+        new RoutingRunStore({
+          new: fakeStore("new", log),
+          legacy: fakeStore("legacy", log),
+          shards: [
+            { key: "a", store: fakeStore("a" as Slot, log), aliasOf: "b" },
+            { key: "b", store: fakeStore("b" as Slot, log), aliasOf: "new" },
+          ],
+        })
+    ).toThrow("must name a non-aliased store");
+  });
+
+  it("rejects an alias cycle (a -> b, b -> a), which would drop both databases", () => {
+    const log: Call[] = [];
+    expect(
+      () =>
+        new RoutingRunStore({
+          new: fakeStore("new", log),
+          legacy: fakeStore("legacy", log),
+          shards: [
+            { key: "a", store: fakeStore("a" as Slot, log), aliasOf: "b" },
+            { key: "b", store: fakeStore("b" as Slot, log), aliasOf: "a" },
+          ],
+        })
+    ).toThrow("must name a non-aliased store");
+  });
 });
 
 describe("RoutingRunStore probe at N", () => {
