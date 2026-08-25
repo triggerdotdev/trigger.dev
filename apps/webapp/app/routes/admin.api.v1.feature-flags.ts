@@ -10,6 +10,7 @@ import {
   withoutDerivedKeys,
 } from "~/v3/featureFlags.server";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
@@ -28,6 +29,13 @@ export async function action({ request }: ActionFunctionArgs) {
         },
         { status: 400 }
       );
+    }
+
+    const snapshotStoreError = snapshotStoreFlagSaveError(body as Record<string, unknown>, {
+      redisHostConfigured: !!env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST,
+    });
+    if (snapshotStoreError) {
+      return json({ error: snapshotStoreError }, { status: 400 });
     }
 
     // Both the strip and the branch derive from the graced-group table, so adding a group needs

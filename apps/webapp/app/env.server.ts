@@ -1298,6 +1298,40 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
+    // Execution-snapshot store. MODE here is only the FLOOR: the operational dial is the
+    // snapshotStoreMode feature flag, so it can move without a deploy.
+    RUN_ENGINE_SNAPSHOT_STORE_MODE: z
+      .enum(["off", "dual-write", "compare", "redis-read", "redis-only"])
+      .default("off"),
+    RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS: z.coerce
+      .number()
+      .int()
+      .default(72 * 60 * 60 * 1000),
+    RUN_ENGINE_SNAPSHOT_STORE_ORPHAN_AGE_MS: z.coerce
+      .number()
+      .int()
+      .default(24 * 60 * 60 * 1000),
+    RUN_ENGINE_SNAPSHOT_STORE_CONFIRM_ORPHAN_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .default(2 * 60 * 60 * 1000),
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_SCHEDULE: z.string().default("0 */6 * * *"),
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_JITTER_IN_MS: z.coerce.number().int().default(60_000),
+    // An existing run costs ~4 serial round trips and the orphan-marker clear cannot be batched
+    // (cross-slot pipelines are rejected), so a full pass is hours, not minutes. A budget that
+    // truncates every pass stops rule 2 converging, because it needs consecutive sightings.
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS: z.coerce.number().int().default(10_800_000),
+    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
+    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX: z.coerce.number().int().default(10_000),
+    // No fallback to REDIS_*: this is a distinct durable endpoint and must be set explicitly, or
+    // execution state silently lands on the general-purpose cache.
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST: z.string().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_PORT: z.coerce.number().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_USERNAME: z.string().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_PASSWORD: z.string().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_TLS_DISABLED: z.string().default("false"),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
     RUN_ENGINE_DEV_PRESENCE_REDIS_HOST: z
       .string()
       .optional()
