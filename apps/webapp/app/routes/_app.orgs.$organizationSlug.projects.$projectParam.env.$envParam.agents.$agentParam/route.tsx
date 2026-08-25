@@ -23,6 +23,7 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
+import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
@@ -93,10 +94,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, runsListClickhouse] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
+  ]);
 
   const presenter = new AgentDetailPresenter($replica, clickhouse);
   const agent = await presenter.findAgent({
@@ -155,7 +156,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
-  const runList = new NextRunListPresenter($replica, clickhouse)
+  const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -167,7 +168,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       direction,
       columns: getRunColumnsForSelect(request),
     })
-    .catch(() => null);
+    .catch((error) => {
+      if (error instanceof RunsListQueryError) {
+        throw error;
+      }
+      return null;
+    });
 
   const sessionList = new SessionListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
@@ -342,7 +348,7 @@ export default function Page() {
                   <>
                     <RunsDisplayOptions sampleFilters={{ tasks: agent.slug, rootOnly: "false" }} />
                     <Suspense fallback={null}>
-                      <TypedAwait resolve={runList} errorElement={null}>
+                      <TypedAwait resolve={runList} errorElement={<></>}>
                         {(list) => (list ? <ListPagination list={list} /> : null)}
                       </TypedAwait>
                     </Suspense>

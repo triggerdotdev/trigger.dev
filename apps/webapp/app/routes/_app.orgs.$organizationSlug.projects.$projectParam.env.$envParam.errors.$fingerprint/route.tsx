@@ -255,12 +255,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const [logsClickhouseClient, clickhouseClient] = await Promise.all([
+  const [logsClickhouseClient, clickhouseClient, runsListClickhouseClient] = await Promise.all([
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "logs"),
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "runsList"),
   ]);
 
-  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
+  const presenter = new ErrorGroupPresenter(
+    $replica,
+    logsClickhouseClient,
+    clickhouseClient,
+    runsListClickhouseClient
+  );
 
   const detailPromise = presenter
     .call(project.organizationId, environment.id, {
