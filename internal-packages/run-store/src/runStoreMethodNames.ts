@@ -25,6 +25,7 @@ export const RUN_STORE_METHOD_NAMES = [
   "lockRunToWorker",
   "parkPendingVersion",
   "promotePendingVersionRuns",
+  "expireParkedRun",
   "suspendForCheckpoint",
   "resumeFromCheckpoint",
   "rescheduleRun",
