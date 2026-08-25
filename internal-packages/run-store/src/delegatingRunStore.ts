@@ -298,3 +298,17 @@ export class DelegatingRunStore implements RunStore {
     return (this.delegate as any).findManyWaitpointTags(...args);
   }
 }
+
+// `implements` above fails when a member of the interface is MISSING here. It says nothing about a
+// member that should not exist, so the reverse direction is asserted too: a public member this class
+// declares and the interface does not is a build failure.
+//
+// `protected delegate` is correctly absent from `keyof`, so the constructor parameter does not
+// trip this.
+type _ClassDeclaresNoExtraMembers = [Exclude<keyof DelegatingRunStore, keyof RunStore>] extends [
+  never,
+]
+  ? true
+  : never;
+const _classParity: _ClassDeclaresNoExtraMembers = true;
+void _classParity;

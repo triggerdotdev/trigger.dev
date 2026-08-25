@@ -17,23 +17,29 @@ function explodingRedisStore(): RedisSnapshotStore {
   });
 }
 
-function recordingDelegate(): { store: RunStore; calls: string[] } {
+/**
+ * Records what the decorator forwarded, and answers with a per-member sentinel. No database is
+ * involved in whether mode off is a pass-through, so none is started; the behavioural suites for
+ * every other mode run against a real Postgres and a real Redis.
+ */
+function forwardingProbe(): { store: RunStore; calls: string[] } {
   const calls: string[] = [];
-  const store: Record<string, unknown> = {};
 
-  for (const name of RUN_STORE_METHOD_NAMES) {
-    store[name] = (...args: unknown[]) => {
-      calls.push(name);
-      return `result:${name}`;
-    };
-  }
+  const store = new Proxy({} as Record<string, unknown>, {
+    get(_target, prop: string) {
+      return (...args: unknown[]) => {
+        calls.push(prop);
+        return `result:${prop}`;
+      };
+    },
+  });
 
   return { store: store as unknown as RunStore, calls };
 }
 
 describe("TaskRunExecutionSnapshotStore at mode off", () => {
   it("defaults to mode off", () => {
-    const { store } = recordingDelegate();
+    const { store } = forwardingProbe();
 
     const decorated = new TaskRunExecutionSnapshotStore(store, { store: explodingRedisStore() });
 
@@ -41,7 +47,7 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
   });
 
   it("forwards every method to the delegate and never calls Redis", async () => {
-    const { store, calls } = recordingDelegate();
+    const { store, calls } = forwardingProbe();
     const decorated = new TaskRunExecutionSnapshotStore(store, {
       store: explodingRedisStore(),
       mode: "off",
@@ -56,7 +62,7 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
   });
 
   it("hands the delegate's own store to a transaction callback", async () => {
-    const inner = recordingDelegate().store;
+    const inner = forwardingProbe().store;
     let seen: unknown;
     const delegate = {
       runInTransaction: async (
@@ -80,7 +86,7 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
   });
 
   it("reports every other dial position as one that writes Redis", () => {
-    const { store } = recordingDelegate();
+    const { store } = forwardingProbe();
     const modes = ["dual-write", "compare", "redis-read", "redis-only"] as const;
 
     for (const mode of modes) {

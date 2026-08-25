@@ -2,8 +2,11 @@
 // Regenerate after any change to the RunStore interface:
 //   pnpm exec tsx scripts/generateDelegatingRunStore.ts
 
-// Every method the RunStore interface declares. The decorator suites enumerate this, so a method
-// added to the interface and not to the base fails a test instead of becoming a silent hole.
+import type { RunStore } from "./types.js";
+
+// Every method the RunStore interface declares. The forwarding probe enumerates this to drive one
+// call per member; member PRESENCE is proved by the compiler, in the assertions at the foot of this
+// file and by `implements RunStore` on the generated class.
 export const RUN_STORE_METHOD_NAMES = [
   "runInTransaction",
   "createRun",
@@ -22,7 +25,6 @@ export const RUN_STORE_METHOD_NAMES = [
   "lockRunToWorker",
   "parkPendingVersion",
   "promotePendingVersionRuns",
-  "expireParkedRun",
   "suspendForCheckpoint",
   "resumeFromCheckpoint",
   "rescheduleRun",
@@ -79,3 +81,32 @@ export const RUN_STORE_METHOD_NAMES = [
 
 // Data properties the base exposes as getters over the delegate, not as forwarders.
 export const RUN_STORE_PROPERTY_NAMES = ["primaryReadClient"] as const;
+
+// ---------------------------------------------------------------------------
+// Parity with the interface, checked by the compiler.
+//
+// The lists above are produced by parsing types.ts. These assertions compare them
+// against `keyof RunStore`, which the compiler derives from the interface itself,
+// so a name this generator failed to parse, or invented, is a build failure rather
+// than a silent gap. Both directions are checked: a missing name and an extra one.
+// ---------------------------------------------------------------------------
+
+type RunStoreMemberName =
+  | (typeof RUN_STORE_METHOD_NAMES)[number]
+  | (typeof RUN_STORE_PROPERTY_NAMES)[number];
+
+/** Fails when the interface declares a member the generator did not emit. */
+type _EveryInterfaceMemberIsListed = [Exclude<keyof RunStore, RunStoreMemberName>] extends [never]
+  ? true
+  : never;
+const _everyInterfaceMemberIsListed: _EveryInterfaceMemberIsListed = true;
+void _everyInterfaceMemberIsListed;
+
+/** Fails when the generator emitted a name the interface does not declare. */
+type _EveryListedNameIsOnTheInterface = [Exclude<RunStoreMemberName, keyof RunStore>] extends [
+  never,
+]
+  ? true
+  : never;
+const _everyListedNameIsOnTheInterface: _EveryListedNameIsOnTheInterface = true;
+void _everyListedNameIsOnTheInterface;
