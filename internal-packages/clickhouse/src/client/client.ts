@@ -317,7 +317,12 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           return [null, parsed.data];
         }
-      ).finally(() => this.queryInFlight.add(-1, { client: this.name }));
+      )
+        .catch((error) => {
+          this.recordQueryMetrics(req.name, startedAt, { errorType: "exception" });
+          throw error;
+        })
+        .finally(() => this.queryInFlight.add(-1, { client: this.name }));
 
       this.recordQueryMetrics(req.name, startedAt, {
         errorType:
@@ -537,7 +542,12 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           return [null, { rows: parsed.data, stats }];
         }
-      ).finally(() => this.queryInFlight.add(-1, { client: this.name }));
+      )
+        .catch((error) => {
+          this.recordQueryMetrics(req.name, startedAt, { errorType: "exception" });
+          throw error;
+        })
+        .finally(() => this.queryInFlight.add(-1, { client: this.name }));
 
       this.recordQueryMetrics(req.name, startedAt, {
         errorType:
@@ -663,7 +673,12 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           return [null, resultRows];
         }
-      ).finally(() => this.queryInFlight.add(-1, { client: this.name }));
+      )
+        .catch((error) => {
+          this.recordQueryMetrics(req.name, startedAt, { errorType: "exception" });
+          throw error;
+        })
+        .finally(() => this.queryInFlight.add(-1, { client: this.name }));
 
       this.recordQueryMetrics(req.name, startedAt, {
         errorType:
