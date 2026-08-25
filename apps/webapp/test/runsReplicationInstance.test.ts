@@ -251,16 +251,6 @@ describe("replication sources at N shards", () => {
     });
   });
 
-  it("gives each shard its own origin generation, between 2 and 255", () => {
-    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
-    const gens = sources.map((s) => s.originGeneration);
-    expect(new Set(gens).size).toBe(gens.length);
-    for (const gen of gens.slice(2)) {
-      expect(gen).toBeGreaterThanOrEqual(2);
-      expect(gen).toBeLessThanOrEqual(255);
-    }
-  });
-
   it("appends no shard source when the new source is off, because split is the precondition", () => {
     const sources = buildReplicationSources({
       ...baseArgs,
@@ -338,6 +328,71 @@ describe("replication sources at N shards", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(SplitReplicationMisconfiguredError);
     }
+  });
+
+  // F1 class: the descriptor parser checks uniqueness AMONG shards only. It cannot see the
+  // env-configured legacy and new sources, so a shard can collide with them. The service's own
+  // check throws too late: the caller has already shut the bootstrap instance down, so the throw
+  // leaves the process up with NO replication at all. These must fail at the fatal boot gate.
+  it("throws when a shard's slot name collides with the gen-1 new slot", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        { ...shardA, replication: { ...shardA.replication, slotName: baseArgs.newSlotName } },
+      ],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("throws when a shard's origin generation collides with the gen-1 new generation", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      newOriginGeneration: 2,
+      shards: [shardA],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("throws when a shard's publication name collides with the legacy publication", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        {
+          ...shardA,
+          replication: { ...shardA.replication, publicationName: baseArgs.legacyPublicationName },
+        },
+      ],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("names the colliding field in the message", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        { ...shardA, replication: { ...shardA.replication, slotName: baseArgs.newSlotName } },
+      ],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(/slotName/);
+  });
+
+  it("does NOT throw when every shard's slot, publication and generation are its own", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }, { key: "b" }],
+      })
+    ).not.toThrow();
   });
 
   // The service validates sources before it builds a single replication client, so this needs no

@@ -79,8 +79,9 @@ export function buildReplicationSources(args: {
   return [legacy, next, ...shardSources];
 }
 
-// The replication source id for a shard. It derives the client name and the leader-lock key, so it
-// must be stable and unique across sources.
+// The replication source id for a shard. It derives the per-source client name and the key the
+// status route probes, so it must be stable and unique across sources. The leader lock is keyed on
+// the slot name, not on this id.
 function shardSourceId(key: string): string {
   return `shard-${key}`;
 }
@@ -103,6 +104,25 @@ export class SplitReplicationMisconfiguredError extends Error {
           "(RUN_REPLICATION_NEW_ENABLED / RUN_REPLICATION_RUN_OPS_DATABASE_URL) or turn the split off."
     );
     this.name = "SplitReplicationMisconfiguredError";
+  }
+}
+
+/**
+ * Two sources that share an identity. The descriptor parser checks uniqueness AMONG shards only, so
+ * it cannot see the env-configured legacy and new sources: a shard can collide with either. The
+ * service has its own check, but it throws from the constructor, which the caller reaches only AFTER
+ * it has shut the bootstrap instance down — leaving the process up with NO replication at all, which
+ * is the exact silent under-count this family of errors exists to prevent. So the check runs here,
+ * at the fatal gate, before anything is torn down.
+ */
+class DuplicateReplicationIdentityError extends SplitReplicationMisconfiguredError {
+  constructor(field: string, value: unknown) {
+    super(
+      `the runs-replication sources[] has two sources with the same ${field} "${String(value)}": ` +
+        "two consumers on one WAL stream is a data race, and a shared origin generation defeats the " +
+        "ClickHouse dedup tiebreak. Give every source its own slot, publication and origin generation."
+    );
+    this.name = "DuplicateReplicationIdentityError";
   }
 }
 
@@ -140,6 +160,19 @@ export function assertReplicationCoversSplit(args: {
     if (shard.aliasOf !== undefined) continue;
     if (!args.sources.some((s) => s.id === shardSourceId(shard.key))) {
       throw new ShardReplicationMisconfiguredError(shard.key);
+    }
+  }
+
+  // Cross-source identity, over EVERY source and not only the shards. A correct two-source
+  // deployment already satisfies this, because two consumers on one WAL slot is a data race that
+  // cannot work. So this adds a loud failure for a configuration that was already broken silently.
+  for (const field of ["id", "slotName", "publicationName", "originGeneration"] as const) {
+    const seen = new Set<unknown>();
+    for (const source of args.sources) {
+      if (seen.has(source[field])) {
+        throw new DuplicateReplicationIdentityError(field, source[field]);
+      }
+      seen.add(source[field]);
     }
   }
 }
