@@ -337,6 +337,33 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
     ).toThrow('aliasOf "nope"');
   });
 
+  it("rejects a shard key that reuses a reserved key (new/legacy)", () => {
+    const log: Call[] = [];
+    expect(
+      () =>
+        new RoutingRunStore({
+          new: fakeStore("new", log),
+          legacy: fakeStore("legacy", log),
+          shards: [{ key: "new", store: fakeStore("shadow" as Slot, log) }],
+        })
+    ).toThrow("must be unique");
+  });
+
+  it("rejects a duplicate custom shard key", () => {
+    const log: Call[] = [];
+    expect(
+      () =>
+        new RoutingRunStore({
+          new: fakeStore("new", log),
+          legacy: fakeStore("legacy", log),
+          shards: [
+            { key: "a", store: fakeStore("a1" as Slot, log) },
+            { key: "a", store: fakeStore("a2" as Slot, log) },
+          ],
+        })
+    ).toThrow("must be unique");
+  });
+
   it("rejects a self-alias (a -> a), which would drop its database from every fan-out", () => {
     const log: Call[] = [];
     expect(

@@ -96,7 +96,16 @@ export class RoutingRunStore implements RunStore {
     logger?: Logger;
   }) {
     const shards = options.shards ?? [];
-    const configured = new Set<ShardKey>([NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)]);
+    // Keys must be unique across the reserved pair and every configured shard. A key of "new" or
+    // "legacy" would overwrite the reserved #shards entry; a repeated custom key would appear twice
+    // in #precedence and #distinctStores, so a fan-out would query one database twice.
+    const shardKeys = [NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)];
+    if (new Set(shardKeys).size !== shardKeys.length) {
+      throw new Error(
+        "RoutingRunStore: shard keys must be unique and cannot reuse the reserved 'new' or 'legacy' keys"
+      );
+    }
+    const configured = new Set<ShardKey>(shardKeys);
     const aliasedKeys = new Set(shards.filter((s) => s.aliasOf !== undefined).map((s) => s.key));
     for (const shard of shards) {
       if (shard.aliasOf === undefined) {
