@@ -576,7 +576,7 @@ function LogsDisplay({
     }
     if (container.scrollHeight - container.clientHeight <= AT_BOTTOM_TOLERANCE_PX) return;
     setIsAtBottom(false);
-    container.scrollTo({ top: 0, behavior: "smooth" });
+    container.scrollTop = 0;
   };
 
   const onCopyLogs = useCallback(
