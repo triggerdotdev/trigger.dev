@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { SnapshotStoreMode } from "@internal/run-store";
 import { buildSnapshotStoreModeResolver } from "~/v3/snapshotStoreMode.server";
 
-const noOverrides = { get: () => undefined, refresh: () => {} };
-
 function build(opts: {
   globalMode?: SnapshotStoreMode;
   perOrg?: Record<string, SnapshotStoreMode>;
