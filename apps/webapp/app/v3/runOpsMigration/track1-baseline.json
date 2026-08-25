@@ -80,7 +80,7 @@
   "violations": [
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 92,
+      "line": 93,
       "model": "BatchTaskRun",
       "delegate": "batchTaskRun",
       "callKind": "read",
@@ -89,7 +89,7 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 153,
+      "line": 154,
       "model": "BatchTaskRun",
       "delegate": "batchTaskRun",
       "callKind": "read",
@@ -98,7 +98,7 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 204,
+      "line": 214,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",
@@ -107,7 +107,7 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 214,
+      "line": 224,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",
@@ -116,7 +116,7 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 231,
+      "line": 241,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",

@@ -189,7 +189,7 @@ describe("hydrateRunsAcrossSeam (PG14 legacy replica + PG17 new)", () => {
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
           shardReplicas: new Map(),
-          logger: { warn: () => {}, error: (_m, meta) => errors.push(meta) },
+          logger: { error: (_m, meta) => errors.push(meta) },
         },
       });
 

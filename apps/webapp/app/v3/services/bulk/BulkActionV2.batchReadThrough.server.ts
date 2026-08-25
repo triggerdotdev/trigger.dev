@@ -33,10 +33,7 @@ type SeamReadDeps = {
   legacyReplica?: PrismaReplicaClient;
   /** Gen-2 shard replicas by shard char; empty (RUN_OPS_SHARDS unset) keeps today's behaviour. */
   shardReplicas?: ReadonlyMap<ShardKey, PrismaReplicaClient>;
-  logger?: {
-    warn: (m: string, meta?: Record<string, unknown>) => void;
-    error?: (m: string, meta?: Record<string, unknown>) => void;
-  };
+  logger?: { error: (m: string, meta?: Record<string, unknown>) => void };
 };
 
 type HydrateRunsAcrossSeamInput<T> = {
@@ -86,7 +83,7 @@ export async function hydrateRunsAcrossSeam<T>(input: HydrateRunsAcrossSeamInput
     } else {
       // Not routable and not a gen-1 shape. Reading a gen-1 store would query the wrong
       // database, so the id is dropped from the page — loudly, never silently.
-      deps.logger?.error?.("hydrateRunsAcrossSeam: gen-2 id on an unconfigured shard key", {
+      deps.logger?.error("hydrateRunsAcrossSeam: gen-2 id on an unconfigured shard key", {
         runId,
         shardKey,
         configured: [...shardReplicas.keys()],
