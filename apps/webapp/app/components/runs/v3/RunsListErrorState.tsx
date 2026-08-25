@@ -17,3 +17,12 @@ export function RunsListErrorState() {
     </div>
   );
 }
+
+/**
+ * Renders nothing. Used as the `errorElement` for secondary awaits of the same runs-list promise
+ * (e.g. the pagination controls), so a rejection is handled locally there and does not bubble to
+ * the route error boundary. The primary awaits render {@link RunsListErrorState}.
+ */
+export function RunsListErrorStateNoop() {
+  return null;
+}

@@ -60,7 +60,10 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { useToast } from "~/components/primitives/Toast";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
+import {
+  RunsListErrorState,
+  RunsListErrorStateNoop,
+} from "~/components/runs/v3/RunsListErrorState";
 import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
@@ -382,7 +385,7 @@ export default function Page() {
                       ) : null}
                       <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
                       <Suspense fallback={null}>
-                        <TypedAwait resolve={runList} errorElement={<></>}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
                           {(list) => (list ? <ListPagination list={list} /> : null)}
                         </TypedAwait>
                       </Suspense>
