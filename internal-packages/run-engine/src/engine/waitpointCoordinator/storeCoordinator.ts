@@ -10,6 +10,7 @@ import {
   watcherField,
 } from "./keys.js";
 import { registerWaitpointCommands } from "./scripts.js";
+import type { CompletionEnvelopeSource, ReadCompletionEnvelopesParams } from "./types.js";
 
 /** The values written into a record's `status` field. Uppercase, and never a token. */
 export type WaitpointStatus = "PENDING" | "COMPLETED";
@@ -506,6 +507,62 @@ export class WaitpointStoreCoordinator {
   }
 
   /**
+   * Source the envelope fields for a run's COMPLETED waitpoints.
+   *
+   * Reads `wp:{id}` and nothing else. Both halves live under that one key — `r` holds the
+   * immutable record, `c` holds the completion — so this needs no run-scoped key and no
+   * script. One HMGET per id, pipelined: each command touches a single key, so nothing can
+   * span two cluster slots and there is no #call guard to route through.
+   *
+   * The run's delivered hash carries the same envelope, but `wp:{id}` is the record of
+   * origin, and reading it keeps this independent of whether the run's edges were already
+   * reconciled.
+   *
+   * An id with no record, or a record with no completion, is OMITTED rather than defaulted.
+   * The omission is the contract: the caller's coverage check turns a gap into a loud
+   * failure, which a defaulted envelope would hide.
+   */
+  async readCompletionEnvelopes({
+    waitpointIds,
+  }: ReadCompletionEnvelopesParams): Promise<CompletionEnvelopeSource[]> {
+    if (waitpointIds.length === 0) {
+      return [];
+    }
+
+    const pipeline = this.redis.pipeline();
+    for (const id of waitpointIds) {
+      pipeline.hmget(waitpointKeys(id).record, "r", "c");
+    }
+    const replies = await pipeline.exec();
+
+    const out: CompletionEnvelopeSource[] = [];
+
+    for (let i = 0; i < waitpointIds.length; i++) {
+      const id = waitpointIds[i]!;
+      const reply = replies?.[i];
+
+      // A pipelined command reports its own error in slot 0. Surface it rather than reading
+      // slot 1, because an errored command's value is not a result.
+      const error = reply?.[0];
+      if (error) {
+        throw error;
+      }
+
+      const fields = reply?.[1] as (string | null)[] | undefined;
+      const record = parseJson<WaitpointRecordInput>(fields?.[0] ?? undefined);
+      const completion = parseJson<WaitpointCompletion>(fields?.[1] ?? undefined);
+
+      if (!record || !completion) {
+        continue;
+      }
+
+      out.push(toEnvelopeSource(id, record, completion));
+    }
+
+    return out;
+  }
+
+  /**
    * Drain one cycle's edges, or clear the run entirely when no edge ids are given.
    *
    * The selective form RECONCILES: any pending or delivered entry that no surviving edge
@@ -535,4 +592,38 @@ export class WaitpointStoreCoordinator {
 
     return { outcome: reply[0] as "cleared" | "drained" };
   }
+}
+
+/**
+ * Map the store's two halves onto the arm-independent source shape.
+ *
+ * The idempotency key is suppressed unless the user provided it, matching the rule the
+ * snapshot hydration applies today. The store never sets an inactive flag, so
+ * `userProvidedIdempotencyKey` alone decides it here.
+ */
+function toEnvelopeSource(
+  id: string,
+  record: WaitpointRecordInput,
+  completion: WaitpointCompletion
+): CompletionEnvelopeSource {
+  const output = completion.output;
+  const inline = output && "inline" in output ? output.inline : undefined;
+  const ref = output && "ref" in output ? output.ref : undefined;
+
+  return {
+    id,
+    friendlyId: record.friendlyId,
+    type: record.type,
+    completedAt: new Date(completion.completedAt),
+    outputType: completion.outputType,
+    outputIsError: completion.outputIsError,
+    ...(inline !== undefined && { output: inline }),
+    ...(ref !== undefined && { outputRef: ref }),
+    ...(record.completedByTaskRunId && { completedByTaskRunId: record.completedByTaskRunId }),
+    ...(record.completedByBatchId && { completedByBatchId: record.completedByBatchId }),
+    ...(record.completedAfter && { completedAfter: new Date(record.completedAfter) }),
+    ...(record.userProvidedIdempotencyKey && record.idempotencyKey
+      ? { idempotencyKey: record.idempotencyKey }
+      : {}),
+  };
 }

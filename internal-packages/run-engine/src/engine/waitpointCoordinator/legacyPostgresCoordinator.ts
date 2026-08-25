@@ -16,6 +16,8 @@ import type {
   CreateWaitpointResult,
   RegisterBlocksLocklessParams,
   RegisterBlocksParams,
+  CompletionEnvelopeSource,
+  ReadCompletionEnvelopesParams,
   RunBlockEdge,
   WaitpointCoordinator,
 } from "./types.js";
@@ -80,6 +82,73 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
       },
       this.prisma
     );
+  }
+
+  /**
+   * Source the envelope fields from the waitpoint rows.
+   *
+   * `runId` is unused here and that is correct: a routing store needs it to pick the owning
+   * database, a single store does not. It stays in the signature so both arms share one
+   * shape and the caller never branches.
+   *
+   * A row whose `outputType` is already a store reference carries `outputRef`, so the
+   * record build never re-offloads a value that object storage already holds.
+   */
+  async readCompletionEnvelopes({
+    waitpointIds,
+  }: ReadCompletionEnvelopesParams): Promise<CompletionEnvelopeSource[]> {
+    if (waitpointIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.runStore.findManyWaitpoints(
+      {
+        where: { id: { in: boundedIn(waitpointIds) } },
+        select: {
+          id: true,
+          friendlyId: true,
+          type: true,
+          completedAt: true,
+          output: true,
+          outputType: true,
+          outputIsError: true,
+          completedByTaskRunId: true,
+          completedByBatchId: true,
+          completedAfter: true,
+          idempotencyKey: true,
+          userProvidedIdempotencyKey: true,
+          inactiveIdempotencyKey: true,
+        },
+      },
+      this.prisma
+    );
+
+    return rows.map((row) => {
+      const isRef = row.outputType === "application/store";
+
+      return {
+        id: row.id,
+        friendlyId: row.friendlyId,
+        type: row.type,
+        // A completed waitpoint always has this set. The fallback keeps the shape total
+        // rather than emitting an invalid Date, and mirrors the same fallback the snapshot
+        // hydration already applies.
+        completedAt: row.completedAt ?? new Date(),
+        outputType: row.outputType,
+        outputIsError: row.outputIsError,
+        ...(row.output !== null && row.output !== undefined
+          ? isRef
+            ? { outputRef: row.output }
+            : { output: row.output }
+          : {}),
+        ...(row.completedByTaskRunId && { completedByTaskRunId: row.completedByTaskRunId }),
+        ...(row.completedByBatchId && { completedByBatchId: row.completedByBatchId }),
+        ...(row.completedAfter && { completedAfter: row.completedAfter }),
+        ...(row.userProvidedIdempotencyKey && !row.inactiveIdempotencyKey && row.idempotencyKey
+          ? { idempotencyKey: row.idempotencyKey }
+          : {}),
+      };
+    });
   }
 
   async registerBlocks({
