@@ -12,6 +12,7 @@ import {
 } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import { decorateWithSnapshotStore } from "./snapshotStoreInstance.server";
 import {
   resilienceForClient,
   type TransactionResilienceConfig,
@@ -116,7 +117,12 @@ function tryResolveRunOpsHandles() {
   }
 }
 
-export const runStore: RunStore = singleton("RunStore", () => {
+/**
+ * The router with no snapshot decorator. One intended consumer: the orphan sweeper's rule-2
+ * lookup, which must ask Postgres whether a run row exists and must never be able to ask Redis
+ * whether Redis is an orphan. Every other caller wants `runStore`.
+ */
+export const runStoreWithoutSnapshotDecorator: RunStore = singleton("RunStore.undecorated", () => {
   const handles = ROUTING_ENABLED ? tryResolveRunOpsHandles() : null;
   // Single-store passthrough: self-host (one DB), or a context without run-ops handles.
   if (!handles) {
@@ -137,3 +143,7 @@ export const runStore: RunStore = singleton("RunStore", () => {
     legacyResilience: resilienceForClient(handles.legacyWriter),
   });
 });
+
+export const runStore: RunStore = singleton("RunStore", () =>
+  decorateWithSnapshotStore(runStoreWithoutSnapshotDecorator)
+);
