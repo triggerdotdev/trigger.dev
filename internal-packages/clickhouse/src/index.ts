@@ -75,6 +75,7 @@ import {
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
+import type { Meter } from "@internal/tracing";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
@@ -133,6 +134,7 @@ export type ClickhouseCommonConfig = {
   httpAgent?: HttpAgent | HttpsAgent;
   clickhouseSettings?: ClickHouseSettings;
   logger?: Logger;
+  meter?: Meter;
   logLevel?: LogLevel;
   compression?: {
     request?: boolean;
@@ -178,6 +180,7 @@ export class ClickHouse {
         url: config.url,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
@@ -195,6 +198,7 @@ export class ClickHouse {
         url: config.readerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
@@ -207,6 +211,7 @@ export class ClickHouse {
         url: config.writerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
