@@ -29,6 +29,19 @@ export function deriveOrder(completedWaitpoints: CompletedWaitpointRef[]): strin
     .map((w) => w.id);
 }
 
+/**
+ * The COMPLETE distinct set of completed-waitpoint ids, including those with no batch index.
+ *
+ * This is deliberately not `deriveOrder` deduped. `order` is the index oracle and carries only
+ * batch-indexed ids, because its positions ARE the indexes. A wait with no batch index (every
+ * `wait.for`, every single `triggerAndWait`, every token) has no position and is absent from it,
+ * while Postgres records it in the completed-waitpoint join like any other. Reading the id set back
+ * from `order` therefore loses exactly those waits, and a run resumed from Redis loses their results.
+ */
+export function deriveDistinctIds(completedWaitpoints: CompletedWaitpointRef[]): string[] {
+  return [...new Set(completedWaitpoints.map((w) => w.id))];
+}
+
 // isValid is derived, never stored, so the entry JSON stays byte-identical to the caller's document.
 export function isValidFor(entry: { error?: unknown }): boolean {
   return !entry.error;
@@ -270,12 +283,14 @@ export class RedisSnapshotStore {
       let cycleMode = "none";
       let cycleSeqIn = "0";
       let orderJson = "";
+      let distinctJson = "";
       let records = "";
       let orderCount = "0";
       if (args.cycle?.kind === "new") {
         const order = deriveOrder(args.cycle.completedWaitpoints);
         cycleMode = "new";
         orderJson = JSON.stringify(order);
+        distinctJson = JSON.stringify(deriveDistinctIds(args.cycle.completedWaitpoints));
         records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
         orderCount = String(order.length);
       } else if (args.cycle?.kind === "carryForward") {
@@ -300,7 +315,8 @@ export class RedisSnapshotStore {
         records,
         orderCount,
         args.expectedCur ?? "",
-        args.expectedCur !== undefined ? "1" : "0"
+        args.expectedCur !== undefined ? "1" : "0",
+        distinctJson
       )) as string[];
 
       return this.#interpretAppend(reply, raw, orderJson, records, args.entry.runId);
@@ -407,7 +423,7 @@ export class RedisSnapshotStore {
     return this.#timed("getSnapshotWaitpointIds", async () => {
       const k = snapshotKeys(runId);
       const reply = await this.redis.readSnapshotWaitpointIds(k.e, k.idx, k.cur, k.seq, snapshotId);
-      return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "");
+      return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "", reply[2] ?? "");
     });
   }
 
@@ -588,6 +604,13 @@ export class RedisSnapshotStore {
         if not cs then return '' end
         return redis.call('HGET', wpKey(cs), 'order') or ''
       end
+      -- The complete id set, which is NOT the order deduped: order holds only batch-indexed ids.
+      local function distinctFor(pointer)
+        if not pointer then return '' end
+        local cs = string.match(pointer, '^(%d+):')
+        if not cs then return '' end
+        return redis.call('HGET', wpKey(cs), 'distinct') or ''
+      end
     `;
 
     this.redis.defineCommand("appendSnapshotEntry", {
@@ -607,6 +630,9 @@ export class RedisSnapshotStore {
         local orderCount  = ARGV[11]
         local expectedCur = ARGV[12]
         local casEnabled  = ARGV[13] == '1'
+        -- The COMPLETE distinct id set. Not the order deduped: order omits every id with no batch
+        -- index, and those ids still have to come back on a read.
+        local distinctJson = ARGV[14]
 
         -- Liveness is TWO anchors: e and seq. All keys get the same PEXPIRE but expire independently
         -- (or seq can vanish under maxmemory eviction while e survives), so checking e alone lets a
@@ -641,7 +667,7 @@ export class RedisSnapshotStore {
           -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
           -- PEXPIRE loop from 1..c is correct.
           cycleSeq = redis.call('HINCRBY', seqKey, 'c', 1)
-          redis.call('HSET', wpKey(cycleSeq), 'order', orderJson, 'count', orderCount)
+          redis.call('HSET', wpKey(cycleSeq), 'order', orderJson, 'count', orderCount, 'distinct', distinctJson)
           if records ~= '' then
             redis.call('HSET', wpKey(cycleSeq), 'records', records)
           else
@@ -736,7 +762,7 @@ export class RedisSnapshotStore {
           return { '0', '' }
         end
         local pointer = redis.call('HGET', eKey, id .. '#c')
-        return { '1', orderFor(pointer) }
+        return { '1', orderFor(pointer), distinctFor(pointer) }
       `,
     });
 
@@ -848,9 +874,16 @@ export class RedisSnapshotStore {
   }
 }
 
-export function decodeWaitpointIds(present: boolean, orderJson: string): WaitpointIds {
+export function decodeWaitpointIds(
+  present: boolean,
+  orderJson: string,
+  distinctJson = ""
+): WaitpointIds {
   const order: string[] = orderJson === "" ? [] : (JSON.parse(orderJson) as string[]);
-  return { present, distinctIds: [...new Set(order)], order };
+  // The complete set is stored separately, because `order` omits every id with no batch index.
+  const distinctIds: string[] =
+    distinctJson === "" ? [...new Set(order)] : (JSON.parse(distinctJson) as string[]);
+  return { present, distinctIds, order };
 }
 
 declare module "@internal/redis" {
@@ -873,6 +906,7 @@ declare module "@internal/redis" {
       orderCount: string,
       expectedCur: string,
       casEnabled: string,
+      distinctJson: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     readSnapshotById(

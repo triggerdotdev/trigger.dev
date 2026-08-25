@@ -243,6 +243,69 @@ describe("completed-waitpoint cycles", () => {
   });
 
   containerTest(
+    "keeps a completed waitpoint that has no batch index",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+
+        // Every wait.for, every single triggerAndWait and every token resumes with no batch index:
+        // the engine passes `index: b.batchIndex ?? undefined`. Postgres records the id in the
+        // completed-waitpoint join regardless. The ordered list cannot hold it, because its
+        // positions ARE the indexes, so the complete set has to be stored separately or the wait's
+        // result vanishes on a Redis read.
+        const created = await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: wpA }], "single wait")
+        );
+
+        const ids = await redis.getSnapshotWaitpointIds(runId, created.id);
+        expect(ids.present).toBe(true);
+        expect(ids.distinctIds).toEqual([wpA]);
+        // No position, so it is absent from the oracle. That part is correct.
+        expect(ids.order).toEqual([]);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "matches the Postgres join for a mix of indexed and index-less waits",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA, wpB, wpC] = await seedSnapshotWaitpoints(prisma, env, 3);
+
+        const created = await decorated.createExecutionSnapshot(
+          resumeInput(
+            runId,
+            env,
+            [{ id: wpA, index: 0 }, { id: wpB }, { id: wpC, index: 1 }],
+            "mixed wait"
+          )
+        );
+
+        // Parity with what Postgres holds is the actual requirement: the engine iterates the rows
+        // this set fetches, and uses the order only to assign each one its index.
+        const fromRedis = await redis.getSnapshotWaitpointIds(runId, created.id);
+        const fromPostgres = await new PostgresRunStore({
+          prisma,
+          readOnlyPrisma: prisma,
+        }).findSnapshotCompletedWaitpointIds(created.id, undefined, runId);
+
+        expect([...fromRedis.distinctIds].sort()).toEqual([...fromPostgres].sort());
+        expect(fromRedis.order).toEqual([wpA, wpC]);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
     "findLatestExecutionSnapshot returns the index oracle",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
