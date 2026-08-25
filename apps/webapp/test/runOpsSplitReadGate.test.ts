@@ -165,3 +165,90 @@ describe("computeRunOpsSplitReadEnabled", () => {
     });
   });
 });
+
+describe("computeRunOpsSplitReadEnabled shard handles", () => {
+  const shardA = { __tag: "shard-a" };
+  const shardB = { __tag: "shard-b" };
+  const base = {
+    newReplica: dedicatedNew,
+    controlPlaneWriter: cpWriter,
+    controlPlaneReplica: cpReplica,
+    hasNewUrl: true,
+    hasLegacyUrl: true,
+  };
+
+  it("does not warn when every shard handle is a distinct instance", () => {
+    const warn = vi.fn();
+    const enabled = computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [
+        { key: "a", replica: shardA },
+        { key: "b", replica: shardB },
+      ],
+      logger: { warn },
+    });
+    expect(enabled).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("warns, naming the shard, when a shard replica aliases a control-plane handle", () => {
+    const warn = vi.fn();
+    computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [{ key: "a", replica: cpReplica }],
+      logger: { warn },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/shard a/i);
+  });
+
+  it("warns when a shard replica aliases the gen-1 new replica", () => {
+    const warn = vi.fn();
+    computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [{ key: "a", replica: dedicatedNew }],
+      logger: { warn },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT warn for an aliased shard, because sharing is its purpose", () => {
+    const warn = vi.fn();
+    computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [{ key: "z", replica: dedicatedNew, aliasOf: "new" as const }],
+      logger: { warn },
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  // The distinctness sentinel already fail-closes the boot on this condition. A gen-2 fault must
+  // not disable the proven gen-1 read fan-out on top of that.
+  it("keeps the gen-1 verdict when a shard handle is not distinct", () => {
+    expect(
+      computeRunOpsSplitReadEnabled({
+        ...base,
+        shardHandles: [{ key: "a", replica: cpReplica }],
+      })
+    ).toBe(true);
+  });
+
+  it("warns once per offending shard", () => {
+    const warn = vi.fn();
+    computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [
+        { key: "a", replica: cpReplica },
+        { key: "b", replica: cpWriter },
+      ],
+      logger: { warn },
+    });
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("is unchanged when no shard handle is supplied", () => {
+    const warn = vi.fn();
+    expect(computeRunOpsSplitReadEnabled({ ...base, logger: { warn } })).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
