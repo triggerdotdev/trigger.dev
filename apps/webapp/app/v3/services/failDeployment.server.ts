@@ -1,7 +1,7 @@
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { type WorkerDeploymentStatus } from "@trigger.dev/database";
+import { Prisma, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DeploymentService } from "./deployment.server";
@@ -49,6 +49,7 @@ export class FailDeploymentService extends BaseService {
         status: "FAILED",
         failedAt: new Date(),
         errorData: params.error,
+        buildEnvVars: Prisma.DbNull,
       },
     });
 

@@ -1,3 +1,4 @@
+import { Prisma } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { commonWorker } from "../commonWorker.server";
@@ -45,6 +46,7 @@ export class TimeoutDeploymentService extends BaseService {
         status: "TIMED_OUT",
         failedAt: new Date(),
         errorData: { message: errorMessage, name: "TimeoutError" },
+        buildEnvVars: Prisma.DbNull,
       },
     });
 
