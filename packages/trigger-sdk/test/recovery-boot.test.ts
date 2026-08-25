@@ -295,6 +295,54 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     }
   });
 
+  it("smart default: a single in-flight user is re-dispatched, not swallowed by the splice", async () => {
+    // The plain OOM / crash-mid-answer shape: the run died while answering
+    // the only outstanding user message. Splicing that user into the chain
+    // would leave nothing to dispatch, so the run would boot and idle with
+    // the message unanswered. The default must re-dispatch it instead (and
+    // drop the orphan partial).
+    let observedChain: Array<{ role: string; idHead: string }> = [];
+    let turnCount = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        turnCount++;
+        return { stream: textStream("ok") };
+      },
+    });
+    const partial = assistantMessage("partial answer in progress", "a-partial");
+    const u1 = userMessage("the question that OOM'd", "u-1");
+    const agent = chat.agent({
+      id: "recovery-boot.single-inflight-user",
+      // NO onRecoveryBoot — exercise the default path
+      onTurnStart: async ({ uiMessages }) => {
+        if (turnCount === 0) {
+          observedChain = uiMessages.map((m) => ({
+            role: m.role,
+            idHead: m.id.slice(0, 10),
+          }));
+        }
+      },
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "single-inflight-user",
+      continuation: true,
+      previousRunId: "run_prior",
+    });
+    harness.seedSessionOutPartial(partial as never);
+    harness.seedSessionInTail([u1 as never]);
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      // One turn fires, for the interrupted user.
+      expect(turnCount).toBe(1);
+      // The orphan partial is dropped — the chain is just the re-dispatched user.
+      expect(observedChain.map((m) => m.role)).toEqual(["user"]);
+      expect(observedChain[0]!.idHead).toBe("u-1");
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("hook's recoveredTurns: [] suppresses re-dispatch of in-flight users", async () => {
     let turnCount = 0;
     const model = new MockLanguageModelV3({

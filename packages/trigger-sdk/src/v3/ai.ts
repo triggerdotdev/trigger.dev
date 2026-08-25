@@ -4239,8 +4239,11 @@ export type RecoveryBootEvent<TUIM extends UIMessage = UIMessage> = {
   /**
    * User messages that arrived on `session.in` past the cursor — i.e.
    * the message(s) the predecessor was processing or had queued when
-   * it died. The runtime's default is to re-dispatch each as a fresh
-   * turn after the chain is restored. Return a different list via
+   * it died. The runtime's default re-dispatches each as a fresh turn
+   * after the chain is restored, except when a `partialAssistant` is
+   * present AND there are two or more of them: the first is then
+   * spliced into the chain (as the question the partial was answering)
+   * rather than dispatched. Return a different list via
    * `recoveredTurns` to skip / reorder / collapse them.
    */
   inFlightUsers: TUIM[];
@@ -4285,8 +4288,12 @@ export type RecoveryBootResult<TUIM extends UIMessage = UIMessage> = {
   chain?: TUIM[];
   /**
    * The user messages to re-dispatch as fresh turns after the chain is
-   * restored. Default: `inFlightUsers` (re-process every in-flight
-   * user). Return `[]` to suppress all of them; return a filtered /
+   * restored. Default: `inFlightUsers.slice(1)` when a
+   * `partialAssistant` is present and there are two or more in-flight
+   * users (the first one is spliced into the chain instead), otherwise
+   * `inFlightUsers` — including the single-user case, where the
+   * interrupted user is re-dispatched and the orphan partial is
+   * dropped. Return `[]` to suppress all of them; return a filtered /
    * reordered subset to skip specific ones.
    */
   recoveredTurns?: TUIM[];
@@ -4853,8 +4860,13 @@ export type ChatAgentOptions<
    * customer's DB.
    *
    * Defaults (returned when the hook is omitted or returns no field):
-   *   - `chain` = `settledMessages` (drop the orphan partial)
-   *   - `recoveredTurns` = `inFlightUsers` (re-dispatch every user)
+   *   - With two or more in-flight users, the partial and the user it
+   *     was answering are spliced into the chain:
+   *     `chain` = `[...settledMessages, inFlightUsers[0], partialAssistant]`
+   *     and `recoveredTurns` = `inFlightUsers.slice(1)`.
+   *   - Otherwise `chain` = `settledMessages` (drop the orphan partial)
+   *     and `recoveredTurns` = `inFlightUsers` (re-dispatch every user)
+   *     — so a single interrupted user is answered on the new run.
    *
    * @example
    * ```ts
@@ -5840,20 +5852,29 @@ function chatAgent<
           }
         }
 
-        // Default: splice partial + the user it was answering into
-        // the chain so follow-ups like "keep going" still have context.
+        // Default: splice partial + the user it was answering into the chain
+        // so follow-ups like "keep going" still have context, and re-dispatch
+        // the users that arrived after it.
+        //
+        // The splice needs a follow-up user to answer — it consumes
+        // `inFlightUsers[0]` into the chain instead of dispatching it. With
+        // exactly ONE in-flight user (the plain OOM / crash-mid-answer case)
+        // there is nothing left to dispatch, so splicing would strand that
+        // user unanswered and idle the run. Require `length > 1` on both
+        // branches: at n=1 the orphan partial is dropped and the interrupted
+        // user is re-dispatched as a fresh turn instead.
         let seedChain: TUIMessage[];
         let recoveredTurns: TUIMessage[];
         if (hookChain !== undefined) {
           seedChain = hookChain;
-        } else if (partialAssistant !== undefined && inFlightUsers.length > 0) {
+        } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
           seedChain = [...settledMessages, inFlightUsers[0]!, partialAssistant];
         } else {
           seedChain = settledMessages;
         }
         if (hookRecoveredTurns !== undefined) {
           recoveredTurns = hookRecoveredTurns;
-        } else if (partialAssistant !== undefined && inFlightUsers.length > 0) {
+        } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
           recoveredTurns = inFlightUsers.slice(1);
         } else {
           recoveredTurns = inFlightUsers;
