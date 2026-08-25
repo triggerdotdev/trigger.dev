@@ -28,7 +28,10 @@ function valueImports(sourcePath: string): string[] {
     const spec = m[2];
     if (/^\s*type\b/.test(clause)) continue; // `import type ... from`
     const named = clause.match(/\{([\s\S]*?)\}/);
-    if (named && !/(^|,)\s*[A-Za-z_$]/.test(named[1].replace(/\btype\s+[A-Za-z_$][\w$]*/g, ""))) {
+    // Strip inline `type Foo` specifiers, including an `as Bar` alias, before checking whether any
+    // value specifier remains.
+    const inlineType = /\btype\s+[A-Za-z_$][\w$]*(?:\s+as\s+[A-Za-z_$][\w$]*)?/g;
+    if (named && !/(^|,)\s*[A-Za-z_$]/.test(named[1].replace(inlineType, ""))) {
       continue; // every named specifier is an inline `type` — nothing left for value
     }
     out.push(spec);
