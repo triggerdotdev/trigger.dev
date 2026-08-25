@@ -1,4 +1,10 @@
-import { Redis, type Cluster, type ClusterNode, type ClusterOptions, type RedisOptions } from "ioredis";
+import {
+  Redis,
+  type Cluster,
+  type ClusterNode,
+  type ClusterOptions,
+  type RedisOptions,
+} from "ioredis";
 import { Logger } from "@trigger.dev/core/logger";
 
 export {
