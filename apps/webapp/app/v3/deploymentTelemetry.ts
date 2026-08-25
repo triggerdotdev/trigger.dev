@@ -28,7 +28,7 @@ export const DeploymentTelemetryAttributes = {
   STATUS: "deployment.status",
   // status === DEPLOYED; CANCELED is excluded from failure rates
   SUCCESS: "deployment.success",
-  // depot / native / local_bundle (see deriveBuildPath)
+  // depot / native / native_local_bundle (see deriveBuildPath)
   BUILD_PATH: "deployment.build_path",
   // V1 / MANAGED (run engine)
   WORKER_TYPE: "deployment.worker_type",
@@ -55,7 +55,7 @@ export const DeploymentTelemetryAttributes = {
   DURATION_DEPLOYING_MS: "deployment.duration.deploying_ms",
 } as const;
 
-export type DeploymentBuildPath = "local_bundle" | "native" | "depot";
+export type DeploymentBuildPath = "native_local_bundle" | "native" | "depot";
 
 /**
  * Everything that is not a native-build-server deployment falls into the depot
@@ -67,7 +67,7 @@ export function deriveBuildPath(buildServerMetadata: unknown): DeploymentBuildPa
   const metadata = BuildServerMetadata.safeParse(buildServerMetadata);
 
   if (metadata.success && metadata.data.isNativeBuild) {
-    return metadata.data.fromBundle ? "local_bundle" : "native";
+    return metadata.data.fromBundle ? "native_local_bundle" : "native";
   }
 
   return "depot";

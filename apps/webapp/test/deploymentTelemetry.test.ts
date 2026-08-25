@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { deriveBuildPath, deriveDeploymentDurations } from "~/v3/deploymentTelemetry";
 
 describe("deriveBuildPath", () => {
-  it("classifies fromBundle native builds as local_bundle", () => {
-    expect(deriveBuildPath({ isNativeBuild: true, fromBundle: true })).toBe("local_bundle");
+  it("classifies fromBundle native builds as native_local_bundle", () => {
+    expect(deriveBuildPath({ isNativeBuild: true, fromBundle: true })).toBe("native_local_bundle");
   });
 
   it("classifies native builds without fromBundle as native", () => {
@@ -17,7 +17,7 @@ describe("deriveBuildPath", () => {
     expect(deriveBuildPath({})).toBe("depot");
     expect(deriveBuildPath({ buildId: "depot-build-id" })).toBe("depot");
     expect(deriveBuildPath({ isNativeBuild: false })).toBe("depot");
-    // fromBundle alone (skewed writer) must not count as local_bundle
+    // fromBundle alone (skewed writer) must not count as native_local_bundle
     expect(deriveBuildPath({ fromBundle: true })).toBe("depot");
     expect(deriveBuildPath("garbage")).toBe("depot");
   });
