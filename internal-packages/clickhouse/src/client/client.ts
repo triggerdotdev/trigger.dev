@@ -31,6 +31,7 @@ import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 
 export type ClickhouseConfig = {
   name: string;
@@ -50,21 +51,111 @@ export type ClickhouseConfig = {
     request?: boolean;
     response?: boolean;
   };
+  /**
+   * Retry behaviour for reads that fail with a transient connection error
+   * (e.g. a dead keep-alive socket surfacing as `ECONNRESET`). Only transient
+   * connection errors are retried — server-side errors (e.g. SQL errors) are
+   * never retried. Defaults to 3 attempts with a short jittered backoff.
+   */
+  connectionRetry?: {
+    /** Total number of attempts, including the first. @default 3 */
+    maxAttempts?: number;
+    /** Base delay in ms used for the first backoff. @default 100 */
+    minDelayMs?: number;
+    /** Maximum backoff delay in ms. @default 1000 */
+    maxDelayMs?: number;
+  };
 };
+
+type ResolvedConnectionRetry = {
+  maxAttempts: number;
+  minDelayMs: number;
+  maxDelayMs: number;
+};
+
+const DEFAULT_CONNECTION_RETRY: ResolvedConnectionRetry = {
+  maxAttempts: 3,
+  minDelayMs: 100,
+  maxDelayMs: 1000,
+};
+
+const RETRYABLE_ERROR_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT"]);
+const RETRYABLE_MESSAGE_SUBSTRINGS = ["socket hang up", "econnreset", "epipe", "etimedout"];
+
+/**
+ * Classifies an error as a transient connection error that is safe to retry.
+ *
+ * Server-side {@link ClickHouseError}s (e.g. SQL errors) are never retryable,
+ * even if their message happens to contain a matching substring. Transient
+ * errors are matched by their Node socket error `code` (`ECONNRESET`, `EPIPE`,
+ * `ETIMEDOUT`) or by a message substring, and the check unwraps a nested
+ * `cause` so it is robust to the transient error being wrapped.
+ */
+export function isRetryableConnectionError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  // Server-side errors are deterministic failures, not transient — never retry.
+  if (error instanceof ClickHouseError) {
+    return false;
+  }
+
+  const code = (error as NodeJS.ErrnoException).code;
+  if (typeof code === "string" && RETRYABLE_ERROR_CODES.has(code)) {
+    return true;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+  if (RETRYABLE_MESSAGE_SUBSTRINGS.some((substring) => message.includes(substring))) {
+    return true;
+  }
+
+  // The transient error is sometimes wrapped by a higher-level error.
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && cause !== error) {
+    return isRetryableConnectionError(cause);
+  }
+
+  return false;
+}
+
+/** Full-jitter exponential backoff, bounded by `maxDelayMs`. */
+function computeRetryBackoffMs(attempt: number, minDelayMs: number, maxDelayMs: number): number {
+  if (minDelayMs <= 0) {
+    return 0;
+  }
+  const exponential = minDelayMs * 2 ** (attempt - 1);
+  const capped = Math.min(exponential, maxDelayMs);
+  return Math.round(Math.random() * capped);
+}
 
 export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
   public readonly client: ClickHouseClient;
   private readonly tracer: Tracer;
   private readonly name: string;
   private readonly logger: Logger;
+  private readonly connectionRetry: ResolvedConnectionRetry;
 
   constructor(config: ClickhouseConfig) {
     this.name = config.name;
     this.logger = config.logger ?? new Logger("ClickhouseClient", config.logLevel ?? "info");
+    this.connectionRetry = {
+      maxAttempts: config.connectionRetry?.maxAttempts ?? DEFAULT_CONNECTION_RETRY.maxAttempts,
+      minDelayMs: config.connectionRetry?.minDelayMs ?? DEFAULT_CONNECTION_RETRY.minDelayMs,
+      maxDelayMs: config.connectionRetry?.maxDelayMs ?? DEFAULT_CONNECTION_RETRY.maxDelayMs,
+    };
 
     this.client = createClient({
       url: config.url,
-      keep_alive: config.keepAlive,
+      // `@clickhouse/client` expects snake_case `idle_socket_ttl`; map our
+      // camelCase config across so the idle-socket TTL is actually honored.
+      keep_alive: config.keepAlive
+        ? {
+            enabled: config.keepAlive.enabled,
+            idle_socket_ttl: config.keepAlive.idleSocketTtl,
+          }
+        : undefined,
       http_agent: config.httpAgent,
       compression: config.compression,
       max_open_connections: config.maxOpenConnections,
@@ -85,6 +176,47 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
   public async close() {
     await this.client.close();
+  }
+
+  /**
+   * Runs a read against the underlying client, retrying only on transient
+   * connection errors (see {@link isRetryableConnectionError}). This guards
+   * against dead keep-alive sockets surfacing as `ECONNRESET` on the first use
+   * of a pooled connection. Server-side errors are re-thrown immediately.
+   */
+  private async queryWithConnectionRetry<T>(
+    operationName: string,
+    fn: () => Promise<T>
+  ): Promise<T> {
+    const { maxAttempts, minDelayMs, maxDelayMs } = this.connectionRetry;
+
+    let attempt = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      attempt++;
+
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt >= maxAttempts || !isRetryableConnectionError(error)) {
+          throw error;
+        }
+
+        const backoffMs = computeRetryBackoffMs(attempt, minDelayMs, maxDelayMs);
+
+        this.logger.warn("Retrying clickhouse query after transient connection error", {
+          name: operationName,
+          attempt,
+          maxAttempts,
+          backoffMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        if (backoffMs > 0) {
+          await sleep(backoffMs);
+        }
+      }
+    }
   }
 
   public query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
@@ -160,17 +292,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         let unparsedRows: Array<TOut> = [];
 
         const [clickhouseError, res] = await tryCatch(
-          this.client.query({
-            query: req.query,
-            query_params: validParams?.data,
-            format: "JSONEachRow",
-            query_id: queryId,
-            ...options?.params,
-            clickhouse_settings: {
-              ...req.settings,
-              ...options?.params?.clickhouse_settings,
-            },
-          })
+          this.queryWithConnectionRetry(req.name, () =>
+            this.client.query({
+              query: req.query,
+              query_params: validParams?.data,
+              format: "JSONEachRow",
+              query_id: queryId,
+              ...options?.params,
+              clickhouse_settings: {
+                ...req.settings,
+                ...options?.params?.clickhouse_settings,
+              },
+            })
+          )
         );
 
         if (clickhouseError) {
@@ -321,17 +455,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         let unparsedRows: Array<TOut> = [];
 
         const [clickhouseError, res] = await tryCatch(
-          this.client.query({
-            query: req.query,
-            query_params: validParams?.data,
-            format: "JSONEachRow",
-            query_id: queryId,
-            ...options?.params,
-            clickhouse_settings: {
-              ...req.settings,
-              ...options?.params?.clickhouse_settings,
-            },
-          })
+          this.queryWithConnectionRetry(req.name, () =>
+            this.client.query({
+              query: req.query,
+              query_params: validParams?.data,
+              format: "JSONEachRow",
+              query_id: queryId,
+              ...options?.params,
+              clickhouse_settings: {
+                ...req.settings,
+                ...options?.params?.clickhouse_settings,
+              },
+            })
+          )
         );
 
         if (clickhouseError) {
@@ -466,17 +602,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         });
 
         const [clickhouseError, resultSet] = await tryCatch(
-          this.client.query({
-            query: req.query,
-            query_params: params,
-            format: "JSONCompactEachRow",
-            query_id: queryId,
-            ...options?.params,
-            clickhouse_settings: {
-              ...req.settings,
-              ...options?.params?.clickhouse_settings,
-            },
-          })
+          this.queryWithConnectionRetry(req.name, () =>
+            this.client.query({
+              query: req.query,
+              query_params: params,
+              format: "JSONCompactEachRow",
+              query_id: queryId,
+              ...options?.params,
+              clickhouse_settings: {
+                ...req.settings,
+                ...options?.params?.clickhouse_settings,
+              },
+            })
+          )
         );
 
         if (clickhouseError) {
