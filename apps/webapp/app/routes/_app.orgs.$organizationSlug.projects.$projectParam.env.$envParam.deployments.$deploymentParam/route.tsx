@@ -1,7 +1,7 @@
 import { useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   Clipboard,
   ClipboardCheck,
@@ -53,6 +53,7 @@ import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathB
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { useDeploymentLogs } from "~/hooks/useDeploymentLogs";
+import { useFollowScroll } from "~/hooks/useFollowScroll";
 import { type DeploymentLogEntry } from "~/components/runs/v3/deploymentLogsCache";
 import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
@@ -178,7 +179,6 @@ function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
 }
 
 const EXTERNAL_ID_DISPLAY_LENGTH = 24;
-const AT_BOTTOM_TOLERANCE_PX = 16;
 
 function ExternalIdValue({ externalId }: { externalId: string | null }) {
   if (!externalId) {
@@ -528,56 +528,13 @@ function LogsDisplay({
   const [copied, setCopied] = useState(false);
   const [mouseOver, setMouseOver] = useState(false);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
-  const [isAtBottom, setIsAtBottom] = useState(true);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const { isAtBottom, scrollToBottom, scrollToTop } = useFollowScroll(logsContainerRef, logs);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
-
-  useEffect(() => {
-    const container = logsContainerRef.current;
-    if (!container) return;
-
-    const updateIsAtBottom = () => {
-      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
-      setIsAtBottom(distance <= AT_BOTTOM_TOLERANCE_PX);
-    };
-
-    container.addEventListener("scroll", updateIsAtBottom, { passive: true });
-    return () => container.removeEventListener("scroll", updateIsAtBottom);
-  }, []);
-
-  useLayoutEffect(() => {
-    const container = logsContainerRef.current;
-    if (!isAtBottom || !container) return;
-    container.scrollTop = container.scrollHeight;
-  }, [logs, isAtBottom]);
-
-  useEffect(() => {
-    const container = logsContainerRef.current;
-    if (!isAtBottom || !container) return;
-
-    const observer = new ResizeObserver(() => {
-      container.scrollTop = container.scrollHeight;
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [isAtBottom]);
-
-  const onToggleScroll = () => {
-    const container = logsContainerRef.current;
-    if (!container) return;
-    if (!isAtBottom) {
-      setIsAtBottom(true);
-      container.scrollTop = container.scrollHeight;
-      return;
-    }
-    if (container.scrollHeight - container.clientHeight <= AT_BOTTOM_TOLERANCE_PX) return;
-    setIsAtBottom(false);
-    container.scrollTop = 0;
-  };
 
   const onCopyLogs = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -628,7 +585,7 @@ function LogsDisplay({
             <TooltipProvider>
               <Tooltip disableHoverableContent>
                 <TooltipTrigger
-                  onClick={onToggleScroll}
+                  onClick={isAtBottom ? scrollToTop : scrollToBottom}
                   className={cn(
                     "transition-colors duration-100 focus-custom hover:cursor-pointer",
                     "text-text-dimmed hover:text-text-bright"
