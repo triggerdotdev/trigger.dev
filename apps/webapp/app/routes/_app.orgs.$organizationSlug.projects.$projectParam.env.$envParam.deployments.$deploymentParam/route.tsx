@@ -13,6 +13,8 @@ import {
   ServerIcon,
 } from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
+import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
@@ -51,6 +53,7 @@ import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathB
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { useDeploymentLogs } from "~/hooks/useDeploymentLogs";
+import { useFollowScroll } from "~/hooks/useFollowScroll";
 import { type DeploymentLogEntry } from "~/components/runs/v3/deploymentLogsCache";
 import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
@@ -307,6 +310,7 @@ export default function Page() {
                 <Property.Item>
                   <Property.Label>Logs</Property.Label>
                   <LogsDisplay
+                    key={deployment.id}
                     logs={logs}
                     isStreaming={isStreaming}
                     streamError={streamError}
@@ -525,18 +529,12 @@ function LogsDisplay({
   const [mouseOver, setMouseOver] = useState(false);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const { isAtBottom, scrollToBottom, scrollToTop } = useFollowScroll(logsContainerRef, logs);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
-
-  // auto-scroll log container to bottom when new logs arrive
-  useEffect(() => {
-    if (logsContainerRef.current) {
-      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-    }
-  }, [logs]);
 
   const onCopyLogs = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -584,6 +582,27 @@ function LogsDisplay({
         </div>
         {logs.length > 0 && (
           <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger
+                  onClick={isAtBottom ? scrollToTop : scrollToBottom}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  {isAtBottom ? (
+                    <MoveToTopIcon className="size-4" />
+                  ) : (
+                    <MoveToBottomIcon className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <TooltipProvider>
               <Tooltip open={copied || mouseOver} disableHoverableContent>
                 <TooltipTrigger
