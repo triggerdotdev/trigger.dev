@@ -39,7 +39,7 @@ export const loader = dashboardLoader(
     }
     const result = await adminGetOrganizations(user.id, searchParams.params.getAll());
 
-    return typedjson({ ...result, impersonationEnabled: env.IMPERSONATION_ENABLED });
+    return typedjson({ ...result, impersonationEnabled: env.ADMIN_DASHBOARD_ENABLED });
   }
 );
 

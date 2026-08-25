@@ -16,12 +16,12 @@ function suffix() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-// IMPERSONATION_ENABLED=false: starting 404s, cookies resolve to nothing,
+// ADMIN_DASHBOARD_ENABLED=false: starting 404s, cookies resolve to nothing,
 // stopping still works so lingering sessions can be terminated.
 describe("impersonation disabled", () => {
   postgresTest("the flag defaults to enabled", async () => {
-    // Flipping the default would kill impersonation on every existing deployment.
-    expect(env.IMPERSONATION_ENABLED).toBe(true);
+    // Flipping the default would kill the admin dashboard on every existing deployment.
+    expect(env.ADMIN_DASHBOARD_ENABLED).toBe(true);
   });
 
   postgresTest("starting impersonation 404s and cookies are inert", async ({ prisma }) => {
@@ -52,9 +52,9 @@ describe("impersonation disabled", () => {
     const enabledState = await getImpersonationState(requestWithCookie(), target.id);
     expect(enabledState.isImpersonating).toBe(true);
 
-    const original = env.IMPERSONATION_ENABLED;
+    const original = env.ADMIN_DASHBOARD_ENABLED;
     // @ts-expect-error deliberately flipping the parsed env for the test
-    env.IMPERSONATION_ENABLED = false;
+    env.ADMIN_DASHBOARD_ENABLED = false;
     try {
       await expect(
         redirectWithImpersonation(
@@ -86,7 +86,7 @@ describe("impersonation disabled", () => {
       expect(await getRawImpersonationId(clearedRequest)).toBeUndefined();
     } finally {
       // @ts-expect-error restore the parsed env
-      env.IMPERSONATION_ENABLED = original;
+      env.ADMIN_DASHBOARD_ENABLED = original;
     }
   });
 });

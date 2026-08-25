@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { requireImpersonationEnabled } from "~/models/admin.server";
+import { requireAdminDashboardEnabled } from "~/models/admin.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { impersonate, rootPath, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
@@ -14,7 +14,7 @@ const ParamsSchema = z.object({
 });
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  requireImpersonationEnabled();
+  requireAdminDashboardEnabled();
 
   const user = await requireUser(request);
 

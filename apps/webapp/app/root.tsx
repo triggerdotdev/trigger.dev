@@ -120,7 +120,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // impersonating.
   // Flag off: terminate lingering impersonation sessions (audit + clear)
   // rather than leaving a cookie that would resurrect on a later re-enable.
-  if (!env.IMPERSONATION_ENABLED && (await getRawImpersonationId(request))) {
+  if (!env.ADMIN_DASHBOARD_ENABLED && (await getRawImpersonationId(request))) {
     const url = new URL(request.url);
     throw await clearImpersonation(request, `${url.pathname}${url.search}`);
   }
@@ -134,6 +134,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     {
       user,
       isViewingAsUser,
+      adminDashboardEnabled: env.ADMIN_DASHBOARD_ENABLED,
       toastMessage,
       posthogProjectKey,
       posthogUiHost,

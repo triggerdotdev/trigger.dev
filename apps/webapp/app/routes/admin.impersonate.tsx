@@ -4,7 +4,7 @@ import {
   type LoaderFunctionArgs,
 } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { redirectWithImpersonation, requireImpersonationEnabled } from "~/models/admin.server";
+import { redirectWithImpersonation, requireAdminDashboardEnabled } from "~/models/admin.server";
 import { requireUser } from "~/services/session.server";
 import { validateAndConsumeImpersonationToken } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
@@ -20,7 +20,7 @@ async function handleImpersonationRequest(request: Request, userId: string): Pro
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  requireImpersonationEnabled();
+  requireAdminDashboardEnabled();
 
   const url = new URL(request.url);
   const impersonateUserId = url.searchParams.get("impersonate");
@@ -52,7 +52,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export async function action({ request }: ActionFunctionArgs) {
-  requireImpersonationEnabled();
+  requireAdminDashboardEnabled();
 
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });

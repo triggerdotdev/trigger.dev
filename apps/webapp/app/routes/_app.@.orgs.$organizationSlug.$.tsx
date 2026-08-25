@@ -10,7 +10,7 @@ import { env } from "~/env.server";
 import {
   clearImpersonation,
   findImpersonationTarget,
-  requireImpersonationEnabled,
+  requireAdminDashboardEnabled,
   startImpersonation,
 } from "~/models/admin.server";
 import { logger } from "~/services/logger.server";
@@ -27,7 +27,7 @@ import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
 // here would drag server-only modules into the client build.
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  requireImpersonationEnabled();
+  requireAdminDashboardEnabled();
 
   const user = await requireUser(request);
 
@@ -104,7 +104,7 @@ function refererOrigin(request: Request): string | undefined {
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  requireImpersonationEnabled();
+  requireAdminDashboardEnabled();
 
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });

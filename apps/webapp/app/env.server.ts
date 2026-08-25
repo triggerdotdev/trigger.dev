@@ -332,8 +332,8 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
-    // Instance-level kill switch for user impersonation.
-    IMPERSONATION_ENABLED: BoolEnv.default(true),
+    // Instance-level kill switch for the admin dashboard and user impersonation.
+    ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.

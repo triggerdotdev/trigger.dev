@@ -18,8 +18,8 @@ const pageSize = 20;
 
 // 404, not 403, so a disabled instance doesn't advertise the feature.
 // Stopping an impersonation is deliberately never gated.
-export function requireImpersonationEnabled(): void {
-  if (!env.IMPERSONATION_ENABLED) {
+export function requireAdminDashboardEnabled(): void {
+  if (!env.ADMIN_DASHBOARD_ENABLED) {
     throw new Response("Not Found", { status: 404 });
   }
 }
@@ -226,7 +226,7 @@ export async function redirectWithImpersonation(
   currentUser?: { id: string; admin: boolean },
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
-  requireImpersonationEnabled();
+  requireAdminDashboardEnabled();
 
   const user = currentUser ?? (await requireUser(request));
   if (!user.admin) {
@@ -343,7 +343,7 @@ export async function startImpersonation(
 
 export async function clearImpersonation(request: Request, path: string) {
   const authUser = await authenticator.isAuthenticated(request);
-  // Raw read: stops must audit and clear even with IMPERSONATION_ENABLED off.
+  // Raw read: stops must audit and clear even with ADMIN_DASHBOARD_ENABLED off.
   const targetId = await getRawImpersonationId(request);
 
   if (targetId && authUser?.userId) {
