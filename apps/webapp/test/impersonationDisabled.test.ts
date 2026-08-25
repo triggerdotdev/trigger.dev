@@ -1,11 +1,12 @@
-import { containerTest } from "@internal/testcontainers";
+import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { env } from "~/env.server";
-import { redirectWithImpersonation } from "~/models/admin.server";
+import { clearImpersonation, redirectWithImpersonation } from "~/models/admin.server";
 import {
   commitImpersonationSession,
   getImpersonationId,
   getImpersonationState,
+  getRawImpersonationId,
   setImpersonationId,
 } from "~/services/impersonation.server";
 
@@ -17,9 +18,16 @@ function suffix() {
 
 // IMPERSONATION_ENABLED=false must make impersonation fully inert: starting
 // one 404s, and an existing cookie resolves to nothing however it was
-// obtained. Stopping is deliberately never gated, so no test pins it here.
+// obtained. Stopping stays possible with the flag off — that's how lingering
+// sessions get terminated — and must still clear the cookie.
 describe("impersonation disabled", () => {
-  containerTest("starting impersonation 404s and cookies are inert", async ({ prisma }) => {
+  postgresTest("the flag defaults to enabled", async () => {
+    // Flipping this default would kill impersonation on every existing
+    // deployment that never heard of the flag.
+    expect(env.IMPERSONATION_ENABLED).toBe(true);
+  });
+
+  postgresTest("starting impersonation 404s and cookies are inert", async ({ prisma }) => {
     const admin = await prisma.user.create({
       data: {
         email: `admin-${suffix()}@test.local`,
@@ -42,6 +50,10 @@ describe("impersonation disabled", () => {
       new Request("http://localhost:3030/", { headers: { Cookie: cookie } });
 
     expect(await getImpersonationId(requestWithCookie())).toBe(target.id);
+    // resolvedUserId must match the impersonated id for the state to count as
+    // impersonating — that's what getUserId resolves to while the cookie works.
+    const enabledState = await getImpersonationState(requestWithCookie(), target.id);
+    expect(enabledState.isImpersonating).toBe(true);
 
     const original = env.IMPERSONATION_ENABLED;
     // @ts-expect-error deliberately flipping the parsed env for the test
@@ -61,14 +73,24 @@ describe("impersonation disabled", () => {
       expect(await prisma.impersonationAuditLog.count()).toBe(0);
 
       expect(await getImpersonationId(requestWithCookie())).toBeUndefined();
-      const state = await getImpersonationState(requestWithCookie(), admin.id);
-      expect(state.isImpersonating).toBe(false);
+      const disabledState = await getImpersonationState(requestWithCookie(), target.id);
+      expect(disabledState.isImpersonating).toBe(false);
+
+      // The ungated reader still sees the cookie — it's what stop/scrub paths
+      // use to terminate a session the gated reader no longer resolves.
+      expect(await getRawImpersonationId(requestWithCookie())).toBe(target.id);
+
+      // Stopping works with the flag off and clears the cookie.
+      const response = await clearImpersonation(requestWithCookie(), "/");
+      const setCookie = response.headers.get("set-cookie");
+      expect(setCookie).toContain("__impersonate=");
+      const clearedRequest = new Request("http://localhost:3030/", {
+        headers: { Cookie: setCookie!.split(";")[0] },
+      });
+      expect(await getRawImpersonationId(clearedRequest)).toBeUndefined();
     } finally {
       // @ts-expect-error restore the parsed env
       env.IMPERSONATION_ENABLED = original;
     }
-
-    // Flag back on: the same cookie resolves again.
-    expect(await getImpersonationId(requestWithCookie())).toBe(target.id);
   });
 });

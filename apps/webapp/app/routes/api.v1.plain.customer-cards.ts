@@ -156,7 +156,7 @@ export async function action({ request }: ActionFunctionArgs) {
      * Derived from which lookup actually matched, not from whether an external id was *sent* — an
      * id that misses and falls through to email must not unlock impersonation.
      */
-    const canImpersonate = Boolean(byExternalId);
+    const canImpersonate = Boolean(byExternalId) && env.IMPERSONATION_ENABLED;
 
     // No matching user: still answer every requested key, with no data so Plain hides the cards.
     if (!user) {

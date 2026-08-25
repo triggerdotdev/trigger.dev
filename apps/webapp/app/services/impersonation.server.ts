@@ -40,6 +40,15 @@ export async function getImpersonationId(request: Request) {
   // Flag off: any impersonation cookie is inert, however it was obtained.
   if (!env.IMPERSONATION_ENABLED) return undefined;
 
+  return getRawImpersonationId(request);
+}
+
+/**
+ * The raw cookie value, ignoring IMPERSONATION_ENABLED. Only for terminating
+ * or auditing a session the gated reader no longer resolves — never for
+ * authorizing anything.
+ */
+export async function getRawImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
   return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;

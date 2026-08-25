@@ -5,7 +5,7 @@ import type { SearchParams } from "~/routes/admin._index";
 import {
   clearImpersonationId,
   commitImpersonationSession,
-  getImpersonationId,
+  getRawImpersonationId,
   setImpersonationId,
 } from "~/services/impersonation.server";
 import { authenticator } from "~/services/auth.server";
@@ -347,7 +347,9 @@ export async function startImpersonation(
 
 export async function clearImpersonation(request: Request, path: string) {
   const authUser = await authenticator.isAuthenticated(request);
-  const targetId = await getImpersonationId(request);
+  // Raw read: stopping must clear and audit the session even when the gated
+  // reader no longer resolves it (IMPERSONATION_ENABLED off).
+  const targetId = await getRawImpersonationId(request);
 
   if (targetId && authUser?.userId) {
     const xff = request.headers.get("x-forwarded-for");

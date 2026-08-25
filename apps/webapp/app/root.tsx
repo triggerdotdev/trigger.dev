@@ -21,7 +21,8 @@ import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { resolveThemePreference, useSystemThemeSync } from "./hooks/useSystemThemeSync";
-import { getImpersonationState } from "./services/impersonation.server";
+import { clearImpersonation } from "./models/admin.server";
+import { getImpersonationState, getRawImpersonationId } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import {
   normalizeIconContrast,
@@ -117,6 +118,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the `user.isViewingAsUser` the server computes could disagree, and the
   // client-side admin UI would hide itself on a session that is not
   // impersonating.
+  // Flag off: actively terminate any lingering impersonation session (STOP
+  // audit row + cookie cleared + one self-redirect) instead of leaving an
+  // inert cookie that would resurrect if the flag were ever re-enabled.
+  if (!env.IMPERSONATION_ENABLED && (await getRawImpersonationId(request))) {
+    const url = new URL(request.url);
+    throw await clearImpersonation(request, `${url.pathname}${url.search}`);
+  }
+
   const { isViewingAsUser } = await getImpersonationState(request, user?.id);
 
   const headers = new Headers();
