@@ -31,8 +31,23 @@ export function shardMigrationDsns(raw) {
     if (descriptor === null || typeof descriptor !== "object") {
       throw new Error("RUN_OPS_SHARDS holds an entry that is not an object");
     }
+    // The boot schema (runOpsShards.server.ts) validates the same variable. This script must not be
+    // laxer: a descriptor it accepts and the application rejects would migrate a database and then
+    // fail the boot, which breaks the fail-before-migration contract.
+    const hasAlias = descriptor.aliasOf !== undefined && descriptor.aliasOf !== null;
+    if (hasAlias && descriptor.aliasOf !== "new") {
+      throw new Error(`RUN_OPS_SHARDS: aliasOf must be "new", got "${descriptor.aliasOf}"`);
+    }
+    const hasUrl = typeof descriptor.url === "string" && descriptor.url !== "";
+    if (hasUrl === hasAlias) {
+      throw new Error("RUN_OPS_SHARDS: exactly one of url or aliasOf is required");
+    }
+    if (!hasAlias && (descriptor.replication === undefined || descriptor.replication === null)) {
+      throw new Error("RUN_OPS_SHARDS: replication is required unless aliasOf is set");
+    }
+
     // An aliased shard is the same database as its target, which is migrated by its own invocation.
-    if (descriptor.aliasOf !== undefined && descriptor.aliasOf !== null) {
+    if (hasAlias) {
       continue;
     }
     const dsn = descriptor.directUrl ?? descriptor.url;

@@ -44,9 +44,9 @@ describe("shardMigrationDsns", () => {
     expect(shardMigrationDsns(JSON.stringify([shardA, aliased]))).toEqual(["postgres://h/a"]);
   });
 
-  it("skips a descriptor with neither url nor directUrl", () => {
+  it("rejects a descriptor with neither url nor aliasOf", () => {
     const noUrl = { key: "b", region: "us-east-1" };
-    expect(shardMigrationDsns(JSON.stringify([shardA, noUrl]))).toEqual(["postgres://h/a"]);
+    expect(() => shardMigrationDsns(JSON.stringify([shardA, noUrl]))).toThrow(/exactly one/i);
   });
 
   it("keeps declaration order across several shards", () => {
@@ -66,12 +66,46 @@ describe("shardMigrationDsns line protocol", () => {
   // One DSN per line is the protocol with entrypoint.sh, so a line break would split one DSN into
   // two bogus ones. The URL parser strips ASCII line breaks, so nothing upstream rejects this.
   it("throws when a DSN holds a line break", () => {
-    const bad = { key: "a", region: "r", url: "postgres://h/a\npostgres://evil/db" };
+    const bad = { ...shardA, url: "postgres://h/a\npostgres://evil/db" };
     expect(() => shardMigrationDsns(JSON.stringify([bad]))).toThrow(/line break/i);
   });
 
   it("throws when a directUrl holds a carriage return", () => {
-    const bad = { key: "a", region: "r", url: "postgres://h/a", directUrl: "postgres://h/a\rx" };
+    const bad = { ...shardA, directUrl: "postgres://h/a\rx" };
     expect(() => shardMigrationDsns(JSON.stringify([bad]))).toThrow(/line break/i);
+  });
+});
+
+// The script and the boot schema validate the same variable, so they must agree. If the script is
+// laxer, the entrypoint migrates a database and the application then refuses to start, which breaks
+// the fail-before-migration contract the entrypoint exists to hold.
+describe("shardMigrationDsns matches the descriptor contract", () => {
+  it("rejects an aliasOf value the schema does not allow", () => {
+    const bad = [{ key: "a", region: "r", url: "postgres://h/a", aliasOf: "other" }];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/aliasOf/i);
+  });
+
+  it("rejects a shard that owns its database but declares no replication", () => {
+    const bad = [{ key: "b", region: "r", url: "postgres://h/b" }];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/replication/i);
+  });
+
+  it("rejects a descriptor that sets both url and aliasOf", () => {
+    const bad = [{ key: "c", region: "r", url: "postgres://h/c", aliasOf: "new" }];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/exactly one/i);
+  });
+
+  it("rejects a descriptor that sets neither url nor aliasOf", () => {
+    const bad = [{ key: "d", region: "r" }];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/exactly one/i);
+  });
+
+  it("still accepts a valid aliased descriptor and skips it", () => {
+    const ok = [{ key: "z", region: "r", aliasOf: "new" }];
+    expect(shardMigrationDsns(JSON.stringify(ok))).toEqual([]);
+  });
+
+  it("still accepts a valid owning descriptor", () => {
+    expect(shardMigrationDsns(JSON.stringify([shardA]))).toEqual(["postgres://h/a"]);
   });
 });
