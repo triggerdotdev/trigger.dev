@@ -3,6 +3,7 @@ import { Form } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useState } from "react";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { FeatureFlagsDialog } from "~/components/admin/FeatureFlagsDialog";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -38,12 +39,13 @@ export const loader = dashboardLoader(
     }
     const result = await adminGetOrganizations(user.id, searchParams.params.getAll());
 
-    return typedjson(result);
+    return typedjson({ ...result, impersonationEnabled: env.IMPERSONATION_ENABLED });
   }
 );
 
 export default function AdminDashboardRoute() {
-  const { organizations, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
+  const { organizations, filters, page, pageCount, impersonationEnabled } =
+    useTypedLoaderData<typeof loader>();
 
   const [flagsOrgId, setFlagsOrgId] = useState<string | null>(null);
   const [flagsOpen, setFlagsOpen] = useState(false);
@@ -127,17 +129,19 @@ export default function AdminDashboardRoute() {
                         <Button variant="tertiary/small" onClick={() => openFlagsDialog(org.id)}>
                           Flags
                         </Button>
-                        <LinkButton
-                          to={`/@/orgs/${org.slug}`}
-                          variant="tertiary/small"
-                          shortcut={
-                            organizations.length === 1
-                              ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
-                              : undefined
-                          }
-                        >
-                          Impersonate
-                        </LinkButton>
+                        {impersonationEnabled && (
+                          <LinkButton
+                            to={`/@/orgs/${org.slug}`}
+                            variant="tertiary/small"
+                            shortcut={
+                              organizations.length === 1
+                                ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
+                                : undefined
+                            }
+                          >
+                            Impersonate
+                          </LinkButton>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
