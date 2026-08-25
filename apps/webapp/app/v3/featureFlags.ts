@@ -44,6 +44,14 @@ export const FEATURE_FLAG = {
   // System-wide kill switch for additional (scoped) environment API-key lookup.
   // Defaults off; enable during rollout once the new lookup path is trusted.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
+  // The execution-snapshot store rollout dial. A flag rather than an environment variable because
+  // a sustained append failure burns a task attempt per transition, so dial-down is a correctness
+  // control and cannot wait for a deploy.
+  snapshotStoreMode: "snapshotStoreMode",
+  // Per-org override, read from the org blob only. Deliberately narrower than the global key:
+  // snapshot reads are global, so an org at a read position would read state its own writes never
+  // created. Stripped from org payloads by withoutOrgForbiddenSnapshotKeys.
+  snapshotStoreOrgMode: "snapshotStoreOrgMode",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -153,6 +161,14 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
+  [FEATURE_FLAG.snapshotStoreMode]: z.enum([
+    "off",
+    "dual-write",
+    "compare",
+    "redis-read",
+    "redis-only",
+  ]),
+  [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write", "compare"]),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -188,7 +204,19 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
+  // The dial is deployment-wide; only snapshotStoreOrgMode is per-org.
+  FEATURE_FLAG.snapshotStoreMode,
 ];
+
+/**
+ * Drops keys an organisation must never supply. ORG_LOCKED_FLAGS is a UI predicate and no save path
+ * consults it, so the line is held here — the same way the mint grace stamps are stripped.
+ */
+export function withoutOrgForbiddenSnapshotKeys<T extends Record<string, unknown>>(values: T): T {
+  if (!(FEATURE_FLAG.snapshotStoreMode in values)) return values;
+  const { [FEATURE_FLAG.snapshotStoreMode]: _dropped, ...rest } = values;
+  return rest as T;
+}
 
 /**
  * Flag groups where the operator sets a `primary` and the server computes the rest. The topology

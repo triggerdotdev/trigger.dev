@@ -11,6 +11,7 @@ import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
   validatePartialFeatureFlags,
+  withoutOrgForbiddenSnapshotKeys,
   getAllFlagControlTypes,
 } from "~/v3/featureFlags";
 import { featuresForRequest } from "~/features.server";
@@ -138,8 +139,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const {
     runOpsMintKindPrev: _ignoredPrev,
     runOpsMintKindFlippedAt: _ignoredFlippedAt,
-    ...requestedFlags
+    ...rawRequestedFlags
   } = validationResult.data;
+
+  const requestedFlags = withoutOrgForbiddenSnapshotKeys(rawRequestedFlags);
 
   // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
   // is graced from the currently-effective global kind, not the hardcoded default "cuid".
