@@ -15,6 +15,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { DelegatingRunStore } from "./delegatingRunStore.js";
 import type {
+  CompletedWaitpointRecord,
   CompletedWaitpointRef,
   RedisSnapshotStore,
   SnapshotEntryInput,
@@ -114,6 +115,7 @@ export type StagedAppend = {
    */
   expectedCur?: string;
   completedWaitpoints?: CompletedWaitpointRef[];
+  completedWaitpointRecords?: CompletedWaitpointRecord[];
 };
 
 export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
@@ -177,7 +179,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         "runInTransaction",
         item.entry,
         item.expectedCur,
-        item.completedWaitpoints
+        item.completedWaitpoints,
+        item.completedWaitpointRecords
       );
     }
 
@@ -420,7 +423,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       "createExecutionSnapshot",
       entryFromCreateExecutionSnapshot(ctx, input),
       input.previousSnapshotId,
-      input.completedWaitpoints
+      input.completedWaitpoints,
+      input.completedWaitpointRecords
     );
     return created;
   }
@@ -503,7 +507,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     site: string,
     entry: SnapshotEntryInput,
     expectedCur?: string,
-    completedWaitpoints?: CompletedWaitpointRef[]
+    completedWaitpoints?: CompletedWaitpointRef[],
+    completedWaitpointRecords?: CompletedWaitpointRecord[]
   ): Promise<void> {
     if (this.staging) {
       // Inside a transaction the append cannot run until the Postgres side commits, or a rollback
@@ -512,6 +517,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         entry,
         ...(expectedCur !== undefined && { expectedCur }),
         ...(completedWaitpoints && { completedWaitpoints }),
+        ...(completedWaitpointRecords && { completedWaitpointRecords }),
       });
       return;
     }
@@ -523,7 +529,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
           snapshotId: entry.id,
         });
 
-        const cycle = await this.#resolveCycle(entry.runId, completedWaitpoints);
+        const cycle = await this.#resolveCycle(
+          entry.runId,
+          completedWaitpoints,
+          completedWaitpointRecords
+        );
 
         const result = await this.redis.append({
           entry,
@@ -572,15 +582,28 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * The extra read only happens for an append that actually carries waitpoints, which is the resume
    * path rather than the hot path.
    *
-   * `records` is deliberately left unset. The record envelope belongs to the waitpoint lane and
-   * ships empty in this build, so dual-write never re-versions the entry when it arrives.
+   * `records` rides every arm that can mint. A carryForward normally writes no key, but the
+   * store may refuse the pointer and mint a replacement inside the same call, and that
+   * replacement needs the records or the resolver's coverage check rejects the cycle later.
+   * A legacy-only wait supplies none at all, which is what keeps a Postgres-resident resume
+   * byte-identical to before.
    */
   async #resolveCycle(
     runId: string,
-    completedWaitpoints?: CompletedWaitpointRef[]
+    completedWaitpoints?: CompletedWaitpointRef[],
+    records?: CompletedWaitpointRecord[]
   ): Promise<
-    | { kind: "new"; completedWaitpoints: CompletedWaitpointRef[] }
-    | { kind: "carryForward"; cycleSeq: number; completedWaitpoints: CompletedWaitpointRef[] }
+    | {
+        kind: "new";
+        completedWaitpoints: CompletedWaitpointRef[];
+        records?: CompletedWaitpointRecord[];
+      }
+    | {
+        kind: "carryForward";
+        cycleSeq: number;
+        completedWaitpoints: CompletedWaitpointRef[];
+        records?: CompletedWaitpointRecord[];
+      }
     | undefined
   > {
     if (!completedWaitpoints || completedWaitpoints.length === 0) {
@@ -607,6 +630,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
           kind: "carryForward",
           cycleSeq: head.cycle.cycleSeq,
           completedWaitpoints,
+          ...(records && { records }),
         };
       }
     } catch (error) {
@@ -616,7 +640,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.logger.warn("snapshot cycle probe failed, minting a new cycle", { runId, error });
     }
 
-    return { kind: "new", completedWaitpoints };
+    return { kind: "new", completedWaitpoints, ...(records && { records }) };
   }
 
   /**
