@@ -196,7 +196,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return store;
     }
 
-    return this.#wrap(store);
+    // Carry the staging buffer through. Without it, a handle taken inside a transaction appends
+    // immediately, which is the exact ordering the facade exists to prevent.
+    return this.#wrap(store, this.staging);
   }
 
   /**
@@ -805,8 +807,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     // row as the index oracle that gives each completed waitpoint its position in a batch, so it
     // must be populated even when the waitpoint ROWS are not fetched. Returning an empty order here
     // resumes every batched triggerAndWait with `index: undefined`.
+    // Three cases, and only the last needs a second Redis call. The read already carries the ids
+    // when the store decoded them. An entry with no wait cycle has no waitpoints by construction,
+    // which is the common case and used to cost a round trip to rediscover. Anything else asks.
     const ids =
-      read.completedWaitpointIds ?? (await this.redis.getSnapshotWaitpointIds(runId, read.id));
+      read.completedWaitpointIds ??
+      (read.cycle === undefined
+        ? { present: true, distinctIds: [], order: [] }
+        : await this.redis.getSnapshotWaitpointIds(runId, read.id));
     const completedWaitpointOrder = ids.order;
 
     // The rows themselves are head-only, mirroring the engine's own N x M avoidance.

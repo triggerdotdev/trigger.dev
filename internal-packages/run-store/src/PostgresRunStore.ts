@@ -666,7 +666,15 @@ export class PostgresRunStore implements RunStore {
    * key and `undefined` alike, so spreading an empty object drops the nested write entirely rather
    * than sending an empty one.
    */
-  #nestedSnapshot<T>(create: T): { executionSnapshots: { create: T } } | Record<string, never> {
+  #nestedSnapshot(
+    create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput
+  ):
+    | {
+        executionSnapshots: {
+          create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput;
+        };
+      }
+    | Record<string, never> {
     return this.snapshotWrites ? { executionSnapshots: { create } } : {};
   }
 

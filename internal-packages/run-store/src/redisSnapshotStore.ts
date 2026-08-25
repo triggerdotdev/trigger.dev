@@ -785,7 +785,11 @@ export class RedisSnapshotStore {
 
         -- A run with no keyspace is a MISS, so the caller falls back to Postgres. A run that has one
         -- and nothing newer is an empty HIT, so it does not fall back for a window it owns.
-        if redis.call('EXISTS', eKey) == 0 then return nil end
+        --
+        -- Both anchors, for the reason the append script gives: keys expire independently, and an
+        -- index lost to eviction while the entry hash survives would otherwise report an empty HIT
+        -- on every poll for the rest of the run's life, with Postgres holding the transitions.
+        if redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', idxKey) == 0 then return nil end
 
         -- STRICTLY greater than the cursor, and same-millisecond entries are dropped. Postgres
         -- serves this window with createdAt > cursor and drops them too; a Redis read that is more
@@ -894,9 +898,19 @@ export function decodeWaitpointIds(
   distinctJson = ""
 ): WaitpointIds {
   const order: string[] = orderJson === "" ? [] : (JSON.parse(orderJson) as string[]);
-  // The complete set is stored separately, because `order` omits every id with no batch index.
-  const distinctIds: string[] =
-    distinctJson === "" ? [...new Set(order)] : (JSON.parse(distinctJson) as string[]);
+
+  // The complete set is stored separately, because `order` omits every id with no batch index, so
+  // deduping the order to recover it silently drops every wait that has none.
+  //
+  // A cycle key always holds both fields, written by one command, so a missing `distinct` beside a
+  // NON-EMPTY `order` means the invariant is broken. Reconstructing from the order there would be
+  // the same lossy shortcut this field exists to remove, and the loss would be silent. Report the
+  // entry as not present instead, which sends the caller to Postgres.
+  if (distinctJson === "" && order.length > 0) {
+    return { present: false, distinctIds: [], order: [] };
+  }
+
+  const distinctIds: string[] = distinctJson === "" ? [] : (JSON.parse(distinctJson) as string[]);
   return { present, distinctIds, order };
 }
 
