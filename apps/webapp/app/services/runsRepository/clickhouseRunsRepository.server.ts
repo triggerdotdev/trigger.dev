@@ -416,17 +416,16 @@ export class ClickHouseRunsRepository implements IRunsRepository {
  *
  * A filter may go in PREWHERE only if its truth value can never flip true->false across a run's
  * versions, because PREWHERE is evaluated before FINAL reconciles versions and would otherwise keep
- * a stale matching version and drop the winning one. That holds for trigger-time identity columns
- * that never change (task_identifier, task_version, schedule_id, is_test, root_run_id, batch_id,
- * friendly_id, queue, task_kind) and for append-only arrays under `hasAny`/`hasAll` (tags,
- * bulk_action_group_ids), so those go in PREWHERE to filter (and, for tags, use the skip index)
- * before FINAL and before materialising the wide columns, which is what bounds memory on these
- * scans. Columns that reflect execution/outcome and change as a run runs stay in WHERE (post-FINAL):
- * `status`, `machine_preset` (can escalate on OOM retry), `error_fingerprint` (set/cleared with
- * status), and the `regions` expression (`if(region != '', region, worker_queue)` yields the
- * worker_queue before dequeue and the region after). The `(organization_id, project_id,
- * environment_id)` primary-key prefix and the `created_at` range also stay in WHERE so they keep
- * driving primary-key and partition pruning.
+ * a stale matching version and drop the winning one. That holds for columns that are only ever set
+ * once and never change: trigger-time identity columns (task_identifier, task_version, schedule_id,
+ * is_test, root_run_id, batch_id, friendly_id, queue, task_kind), append-only arrays under
+ * `hasAny`/`hasAll` (tags, bulk_action_group_ids), `region` (set once at dequeue, `''` -> value,
+ * never changes), and `error_fingerprint` (empty until a terminal error status, then fixed). Those
+ * go in PREWHERE to filter (and, for tags, use the skip index) before FINAL and before materialising
+ * the wide columns, which is what bounds memory on these scans. Columns that change as a run runs
+ * stay in WHERE (post-FINAL): `status` (lifecycle) and `machine_preset` (escalates on OOM retry).
+ * The `(organization_id, project_id, environment_id)` primary-key prefix and the `created_at` range
+ * also stay in WHERE so they keep driving primary-key and partition pruning.
  */
 function applyRunFiltersToQueryBuilder<T>(
   queryBuilder: ClickhouseQueryBuilder<T>,
@@ -447,21 +446,9 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("status IN {statuses: Array(String)}", { statuses: options.statuses });
   }
 
-  if (options.regions && options.regions.length > 0) {
-    queryBuilder.where("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
-      regions: options.regions,
-    });
-  }
-
   if (options.machines && options.machines.length > 0) {
     queryBuilder.where("machine_preset IN {machines: Array(String)}", {
       machines: options.machines,
-    });
-  }
-
-  if (options.errorId) {
-    queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
-      errorFingerprint: ErrorId.toId(options.errorId),
     });
   }
 
@@ -531,6 +518,16 @@ function applyRunFiltersToQueryBuilder<T>(
 
   if (options.queues && options.queues.length > 0) {
     queryBuilder.prewhere("queue IN {queues: Array(String)}", { queues: options.queues });
+  }
+
+  if (options.regions && options.regions.length > 0) {
+    queryBuilder.prewhere("region IN {regions: Array(String)}", { regions: options.regions });
+  }
+
+  if (options.errorId) {
+    queryBuilder.prewhere("error_fingerprint = {errorFingerprint: String}", {
+      errorFingerprint: ErrorId.toId(options.errorId),
+    });
   }
 
   if (options.taskKinds && options.taskKinds.length > 0) {

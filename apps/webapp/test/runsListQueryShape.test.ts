@@ -76,7 +76,7 @@ describe("runs list query shape (PREWHERE routing under FINAL)", () => {
   );
 
   containerTest(
-    "region filter uses the post-FINAL effective region, not a pre-dequeue worker_queue version",
+    "region filter matches a dequeued run by its region; a still-queued run is not matched",
     async ({ clickhouseContainer, prisma }) => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
@@ -84,17 +84,25 @@ describe("runs list query shape (PREWHERE routing under FINAL)", () => {
       });
 
       const ctx = await seedParents(prisma, "region");
-      const run = await createRun(prisma, ctx, { friendlyId: "run_region" });
+      const dequeued = await createRun(prisma, ctx, { friendlyId: "run_dequeued" });
+      const queued = await createRun(prisma, ctx, { friendlyId: "run_queued" });
 
       const shared = {
         taskIdentifier: "webhook.deliver",
-        workerQueue: "wq-legacy",
         createdAt: new Date(Date.now() - 1 * DAY_MS),
       };
 
       await insertTaskRunV2Rows(clickhouse, [
-        { ...run, ...shared, region: "", updatedAt: new Date(Date.now() - 2 * DAY_MS) },
-        { ...run, ...shared, region: "us-east-1", updatedAt: new Date(Date.now() - 1 * DAY_MS) },
+        { ...dequeued, ...shared, region: "", updatedAt: new Date(Date.now() - 2 * DAY_MS) },
+        {
+          ...dequeued,
+          ...shared,
+          region: "us-east-1",
+          updatedAt: new Date(Date.now() - 1 * DAY_MS),
+        },
+      ]);
+      await insertTaskRunV2Rows(clickhouse, [
+        { ...queued, ...shared, region: "", updatedAt: new Date(Date.now() - 1 * DAY_MS) },
       ]);
 
       const repository = new RunsRepository({ prisma, clickhouse });
@@ -107,10 +115,10 @@ describe("runs list query shape (PREWHERE routing under FINAL)", () => {
       };
 
       const byRegion = await repository.listRunIds({ ...listArgs, regions: ["us-east-1"] });
-      expect(byRegion.runIds).toEqual([run.id]);
+      expect(byRegion.runIds).toEqual([dequeued.id]);
 
-      const byWorkerQueue = await repository.listRunIds({ ...listArgs, regions: ["wq-legacy"] });
-      expect(byWorkerQueue.runIds).toEqual([]);
+      const otherRegion = await repository.listRunIds({ ...listArgs, regions: ["us-west-2"] });
+      expect(otherRegion.runIds).toEqual([]);
     }
   );
 });
