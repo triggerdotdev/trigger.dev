@@ -431,14 +431,19 @@ type HeteroRunOpsPostgresTestContext = {
 // control-plane schema on PG14 (legacy), prisma17 is a RunOpsPrismaClient over the dedicated SUBSET
 // schema on a SEPARATE PG17 container. Lets a test prove the two sides carry different schemas
 // without disturbing the existing heteroPostgresTest (which keeps the full schema on both sides).
-export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestContext>({
-  postgresContainer14: async ({}, use) => {
+// The six hetero run-ops fixtures, shared by heteroRunOpsPostgresTest and heteroRunOpsWithRedisTest
+// so the two cannot drift.
+const heteroRunOpsFixtures = {
+  postgresContainer14: async ({}, use: Use<StartedPostgreSqlContainer>) => {
     await use(await getWorkerPostgresContainer());
   },
-  postgresContainer17: async ({}, use) => {
+  postgresContainer17: async ({}, use: Use<StartedPostgreSqlContainer>) => {
     await use(await getRunOpsWorkerPostgresContainer17());
   },
-  uri14: async ({ postgresContainer14 }, use) => {
+  uri14: async (
+    { postgresContainer14 }: { postgresContainer14: StartedPostgreSqlContainer },
+    use: Use<string>
+  ) => {
     const baseUri = postgresContainer14.getConnectionUri();
     const cloneDb = `heteroRunOps14_${pgCloneCounter++}`;
     await createDatabaseFromTemplate(baseUri, cloneDb);
@@ -448,7 +453,10 @@ export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestCont
       await dropCloneDatabase(baseUri, cloneDb);
     }
   },
-  uri17: async ({ postgresContainer17 }, use) => {
+  uri17: async (
+    { postgresContainer17 }: { postgresContainer17: StartedPostgreSqlContainer },
+    use: Use<string>
+  ) => {
     const baseUri = postgresContainer17.getConnectionUri();
     const cloneDb = `heteroRunOps17_${pgCloneCounter++}`;
     await createDatabaseFromTemplate(baseUri, cloneDb);
@@ -458,7 +466,7 @@ export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestCont
       await dropCloneDatabase(baseUri, cloneDb);
     }
   },
-  prisma14: async ({ uri14 }, use) => {
+  prisma14: async ({ uri14 }: { uri14: string }, use: Use<PrismaClient>) => {
     const prisma = new PrismaClient({ datasources: { db: { url: uri14 } } });
     try {
       await use(prisma);
@@ -466,7 +474,7 @@ export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestCont
       await prisma.$disconnect();
     }
   },
-  prisma17: async ({ uri17 }, use) => {
+  prisma17: async ({ uri17 }: { uri17: string }, use: Use<RunOpsPrismaClient>) => {
     const prisma = new RunOpsPrismaClient({ datasources: { db: { url: uri17 } } });
     try {
       await use(prisma);
@@ -474,6 +482,10 @@ export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestCont
       await prisma.$disconnect();
     }
   },
+} as const;
+
+export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestContext>({
+  ...heteroRunOpsFixtures,
 });
 
 type ThreeDbRunOpsPostgresTestContext = {
@@ -721,6 +733,22 @@ const flushRedis = async (
   }
   await use();
 };
+
+type HeteroRunOpsWithRedisContext = HeteroRunOpsPostgresTestContext & {
+  redisContainer: StartedRedisContainer;
+  resetRedis: void;
+  redisOptions: RedisOptions;
+};
+
+// heteroRunOpsPostgresTest (PG14 + PG17, dedicated-schema run-ops) composed with the WORKER-SCOPED
+// Redis container — boots once per worker, FLUSHALL between tests, matching containerTest. Not
+// postgresAndRedisTest, which boots a container per test and times out under load.
+export const heteroRunOpsWithRedisTest = test.extend<HeteroRunOpsWithRedisContext>({
+  ...heteroRunOpsFixtures,
+  redisContainer: [bootWorkerRedis, { scope: "worker" }],
+  resetRedis: [flushRedis, { auto: true }],
+  redisOptions,
+});
 
 type RedisTestContext = {
   redisContainer: StartedRedisContainer;
@@ -1067,3 +1095,6 @@ export const postgresAndMinioTest = withWarmup(
     await getWorkerPostgresContainer();
   }
 );
+
+export { slotOf, expectOneSlot } from "./clusterSlot";
+export { createFaultInjector, type FaultInjector } from "./faultInjection";

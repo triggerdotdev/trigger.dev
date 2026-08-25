@@ -1,7 +1,7 @@
 // Unit suite for the raw Redis execution-snapshot store. Redis-only: the store holds no Prisma
 // reference, so no Postgres container is needed.
 import { expect, describe, vi } from "vitest";
-import { redisTest } from "@internal/testcontainers";
+import { redisTest, slotOf } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import {
@@ -1283,45 +1283,23 @@ describe("expectedCur compare-and-set", () => {
   );
 });
 
-// CRC16/XMODEM over a key's hash tag, per Redis's cluster hashing rule. CLUSTER KEYSLOT is
-// unavailable on this standalone container ("cluster support disabled"), so the slot is computed
-// here instead. Verified against the `cluster-key-slot` package's output for our key shapes.
-function crc16(str: string): number {
-  let crc = 0;
-  for (let i = 0; i < str.length; i++) {
-    crc ^= str.charCodeAt(i) << 8;
-    for (let j = 0; j < 8; j++) {
-      crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
-      crc &= 0xffff;
-    }
-  }
-  return crc;
-}
-
-function hashSlot(key: string): number {
-  const start = key.indexOf("{");
-  const end = start === -1 ? -1 : key.indexOf("}", start + 1);
-  const tag = start !== -1 && end !== -1 && end > start + 1 ? key.slice(start + 1, end) : key;
-  return crc16(tag) % 16384;
-}
-
 describe("hash tag and keyPrefix", () => {
   it("every key for one run lands in one cluster slot", () => {
     // Keys come from snapshotKeys() plus the wp:<n> suffix the Lua prelude derives the same way,
     // with a keyPrefix prepended by hand as ioredis would. A dropped hash tag would split the slots.
-    // Pin the helper itself before trusting it: the published XMODEM check value, and two known
+    // Pin the shared helper before trusting it: the published XMODEM check value, and two known
     // slots (one matching cluster-key-slot, one a different run's tag as a negative control --
     // otherwise a constant-valued crc16 would satisfy slots.size === 1 for the wrong reason).
-    expect(crc16("123456789")).toBe(0x31c3);
-    expect(hashSlot("engine:snap:{run_1}:e")).toBe(8108);
-    expect(hashSlot("engine:snap:{run_2}:e")).toBe(12239);
+    expect(slotOf("123456789")).toBe(0x31c3);
+    expect(slotOf("engine:snap:{run_1}:e")).toBe(8108);
+    expect(slotOf("engine:snap:{run_2}:e")).toBe(12239);
 
     const k = snapshotKeys("run_1");
     const base = k.e.slice(0, -2);
     const keys = [k.e, k.idx, k.cur, k.seq, `${base}:wp:1`, `${base}:wp:2`].map(
       (key) => `engine:${key}`
     );
-    const slots = new Set(keys.map(hashSlot));
+    const slots = new Set(keys.map(slotOf));
     expect(slots.size).toBe(1);
   });
 

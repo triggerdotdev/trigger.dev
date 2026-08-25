@@ -55,6 +55,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { $replica } from "~/db.server";
@@ -254,12 +255,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const [logsClickhouseClient, clickhouseClient] = await Promise.all([
+  const [logsClickhouseClient, clickhouseClient, runsListClickhouseClient] = await Promise.all([
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "logs"),
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "runsList"),
   ]);
 
-  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
+  const presenter = new ErrorGroupPresenter(
+    $replica,
+    logsClickhouseClient,
+    clickhouseClient,
+    runsListClickhouseClient
+  );
 
   const detailPromise = presenter
     .call(project.organizationId, environment.id, {
@@ -393,16 +400,7 @@ export default function Page() {
             </div>
           }
         >
-          <TypedAwait
-            resolve={data}
-            errorElement={
-              <div className="flex items-center justify-center px-3 py-12">
-                <Callout variant="error" className="max-w-fit">
-                  Unable to load error details. Please refresh the page or try again in a moment.
-                </Callout>
-              </div>
-            }
-          >
+          <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
             {(result) => {
               if ("error" in result) {
                 return (

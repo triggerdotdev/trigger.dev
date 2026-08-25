@@ -37,6 +37,14 @@ export function commitImpersonationSession(session: Session) {
 }
 
 export async function getImpersonationId(request: Request) {
+  if (!env.ADMIN_DASHBOARD_ENABLED) return undefined;
+
+  return getRawImpersonationId(request);
+}
+
+// Ignores ADMIN_DASHBOARD_ENABLED — only for terminating or auditing a session
+// the gated reader no longer resolves, never for authorizing anything.
+export async function getRawImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
   return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;
@@ -74,6 +82,14 @@ export async function getImpersonationState(
   request: Request,
   resolvedUserId: string | undefined
 ): Promise<ImpersonationState> {
+  if (!env.ADMIN_DASHBOARD_ENABLED) {
+    return resolveImpersonationState({
+      impersonatedUserId: undefined,
+      viewingAsUser: undefined,
+      resolvedUserId,
+    });
+  }
+
   const session = await getImpersonationSession(request);
 
   return resolveImpersonationState({
