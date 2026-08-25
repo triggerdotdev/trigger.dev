@@ -109,45 +109,42 @@ async function readRecords(
 }
 
 describe("the completed-waitpoint record set", () => {
-  containerTest("a mint writes the records the caller supplied", async ({
-    prisma,
-    redisOptions,
-  }) => {
-    const { decorated, redis } = build(prisma as never, redisOptions as never);
-    const probe = createRedisClient(redisOptions, { onError: () => {} });
-    try {
-      const env = await seedSnapshotEnvironment(prisma);
-      const runId = await seedRun(decorated, redis, env);
-      const [wpA, wpB] = await seedSnapshotWaitpoints(prisma, env, 2);
+  containerTest(
+    "a mint writes the records the caller supplied",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA, wpB] = await seedSnapshotWaitpoints(prisma, env, 2);
 
-      await decorated.createExecutionSnapshot(
-        resumeInput(
-          runId,
-          env,
-          [
-            { id: wpA!, index: 0 },
-            { id: wpB!, index: 1 },
-          ],
-          [record(wpA!), record(wpB!)]
-        )
-      );
+        await decorated.createExecutionSnapshot(
+          resumeInput(
+            runId,
+            env,
+            [
+              { id: wpA!, index: 0 },
+              { id: wpB!, index: 1 },
+            ],
+            [record(wpA!), record(wpB!)]
+          )
+        );
 
-      const records = await readRecords(probe, runId);
+        const records = await readRecords(probe, runId);
 
-      expect(records).toHaveLength(2);
-      expect(records?.map((r) => r.id).sort()).toEqual([wpA, wpB].sort());
-      expect(records?.[0]?.output).toEqual({ inline: '{"ok":true}' });
-    } finally {
-      await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+        expect(records).toHaveLength(2);
+        expect(records?.map((r) => r.id).sort()).toEqual([wpA, wpB].sort());
+        expect(records?.[0]?.output).toEqual({ inline: '{"ok":true}' });
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
     }
-  });
+  );
 
   // The inertness guarantee. A wait with no store-resident half supplies no records, and the
   // cycle key must then hold none — a Postgres-resident resume is unchanged.
-  containerTest("a mint with no records supplied writes none", async ({
-    prisma,
-    redisOptions,
-  }) => {
+  containerTest("a mint with no records supplied writes none", async ({ prisma, redisOptions }) => {
     const { decorated, redis } = build(prisma as never, redisOptions as never);
     const probe = createRedisClient(redisOptions, { onError: () => {} });
     try {
@@ -174,12 +171,8 @@ describe("the completed-waitpoint record set", () => {
       const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
 
       const waitpoints = [{ id: wpA!, index: 0 }];
-      await decorated.createExecutionSnapshot(
-        resumeInput(runId, env, waitpoints, [record(wpA!)])
-      );
-      await decorated.createExecutionSnapshot(
-        resumeInput(runId, env, waitpoints, [record(wpA!)])
-      );
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints, [record(wpA!)]));
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints, [record(wpA!)]));
 
       const cycleKeys = await probe.keys(`snap:{${runId}}:wp:*`);
 
@@ -190,37 +183,37 @@ describe("the completed-waitpoint record set", () => {
     }
   });
 
-  containerTest("a record set survives beside a repeat-preserving order", async ({
-    prisma,
-    redisOptions,
-  }) => {
-    const { decorated, redis } = build(prisma as never, redisOptions as never);
-    const probe = createRedisClient(redisOptions, { onError: () => {} });
-    try {
-      const env = await seedSnapshotEnvironment(prisma);
-      const runId = await seedRun(decorated, redis, env);
-      const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+  containerTest(
+    "a record set survives beside a repeat-preserving order",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
 
-      const created = await decorated.createExecutionSnapshot(
-        resumeInput(
-          runId,
-          env,
-          [
-            { id: wpA!, index: 0 },
-            { id: wpA!, index: 1 },
-          ],
-          [record(wpA!)]
-        )
-      );
+        const created = await decorated.createExecutionSnapshot(
+          resumeInput(
+            runId,
+            env,
+            [
+              { id: wpA!, index: 0 },
+              { id: wpA!, index: 1 },
+            ],
+            [record(wpA!)]
+          )
+        );
 
-      const ids = await redis.getSnapshotWaitpointIds(runId, created.id);
+        const ids = await redis.getSnapshotWaitpointIds(runId, created.id);
 
-      // One record, two positions. The record set carries membership, the order carries
-      // multiplicity.
-      expect(await readRecords(probe, runId)).toHaveLength(1);
-      expect(ids.order).toEqual([wpA, wpA]);
-    } finally {
-      await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+        // One record, two positions. The record set carries membership, the order carries
+        // multiplicity.
+        expect(await readRecords(probe, runId)).toHaveLength(1);
+        expect(ids.order).toEqual([wpA, wpA]);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
     }
-  });
+  );
 });
