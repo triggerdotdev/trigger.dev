@@ -74,7 +74,7 @@ import {
 import { throwNotFound } from "~/utils/httpErrors";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
-import { Callout } from "~/components/primitives/Callout";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import {
   isRunsListLoading,
   RUNS_BULK_INSPECTOR_OPEN_VALUE,
@@ -208,17 +208,7 @@ export default function Page() {
                 </div>
               }
             >
-              <TypedAwait
-                resolve={data}
-                errorElement={
-                  <div className="flex items-center justify-center px-3 py-12">
-                    <Callout variant="error" className="max-w-fit">
-                      Unable to load your task runs. Please refresh the page or try again in a
-                      moment.
-                    </Callout>
-                  </div>
-                }
-              >
+              <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
                 {(list) => {
                   return (
                     <RunsList
