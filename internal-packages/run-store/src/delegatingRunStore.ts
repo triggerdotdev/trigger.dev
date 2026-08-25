@@ -1,312 +1,746 @@
-// Maintained by hand. It was scaffolded once, and the scaffolding is gone.
+// A pass-through over another RunStore.
 //
-// When RunStore gains or loses a member, add or remove the forwarder here. You do not have to
-// remember: `implements RunStore` fails with TS2420 on a member that is missing, and the assertion
-// at the foot of this file fails on a public member the interface does not declare.
+// It exists so a decorator can override the handful of methods it cares about and inherit the rest.
+//
+// Every member restates the interface signature and forwards its arguments BY NAME, so the
+// forwarding is itself type-checked: a body that called the wrong delegate method, or dropped an
+// argument, does not compile. That is the whole point of the shape. An untyped forwarder would let
+// both mistakes through, because a pass-through has no other behaviour to catch them.
+//
+// Seven members are overloaded. Their overloads are declared so callers keep the full contract, and
+// their single implementation signature is the one place a cast appears: TypeScript cannot express
+// one body that satisfies an overload set without it.
+//
+// Keeping this in step with the interface is not a matter of memory. `implements RunStore` rejects a
+// member that is missing, and the assertion at the foot of the file rejects one the interface never
+// declared.
 
-// A pass-through over another RunStore. It exists so a decorator can override the handful of methods
-// it cares about and inherit the rest, instead of restating 80-odd forwarders alongside real logic.
-//
-// Arguments and return values are forwarded untouched. The `any` signatures carry each method's
-// whole overload set through one forwarder, which is the single thing a generated base cannot
-// preserve; a subclass that overrides a method restates the real signature there.
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type { RunStore } from "./types.js";
+import type {
+  BatchTaskRun,
+  BatchTaskRunItemStatus,
+  Prisma,
+  PrismaClientOrTransaction,
+  TaskRun,
+  TaskRunStatus,
+  WaitpointTag,
+} from "@trigger.dev/database";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import type { Residency } from "@trigger.dev/core/v3/isomorphic";
+import type {
+  ClearIdempotencyKeyInput,
+  CompletionSnapshotInput,
+  CreateBatchTaskRunData,
+  CreateCancelledRunInput,
+  CreateExecutionSnapshotInput,
+  CreateFailedRunInput,
+  CreateRunInput,
+  ExpireSnapshotInput,
+  FinalizeRunData,
+  ForWaitpointCompletionContext,
+  IdempotencyKeyRunMatch,
+  LockRunData,
+  PromotePendingVersionArgs,
+  ReadClient,
+  RescheduleSnapshotInput,
+  RewriteDebouncedRunData,
+  RunStore,
+  TaskRunWithWaitpoint,
+  WaitpointColocationOptions,
+} from "./types.js";
 
 export class DelegatingRunStore implements RunStore {
   constructor(protected readonly delegate: RunStore) {}
 
-  get primaryReadClient(): RunStore["primaryReadClient"] {
+  runInTransaction<R>(
+    runId: string | undefined,
+    fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R> {
+    return this.delegate.runInTransaction(runId, fn);
+  }
+
+  createRun(params: CreateRunInput, tx?: PrismaClientOrTransaction): Promise<TaskRunWithWaitpoint> {
+    return this.delegate.createRun(params, tx);
+  }
+
+  createCancelledRun(
+    params: CreateCancelledRunInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun> {
+    return this.delegate.createCancelledRun(params, tx);
+  }
+
+  createFailedRun(
+    params: CreateFailedRunInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRunWithWaitpoint> {
+    return this.delegate.createFailedRun(params, tx);
+  }
+
+  startAttempt<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.startAttempt(runId, data, args, tx);
+  }
+
+  completeAttemptSuccess<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      completedAt: Date;
+      output?: string;
+      outputType: string;
+      usageDurationMs: number;
+      costInCents: number;
+      snapshot: CompletionSnapshotInput;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.completeAttemptSuccess(runId, data, args, tx);
+  }
+
+  recordRetryOutcome<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: { machinePreset?: string; usageDurationMs: number; costInCents: number },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.recordRetryOutcome(runId, data, args, tx);
+  }
+
+  requeueRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.requeueRun(runId, args, tx);
+  }
+
+  recordBulkActionMembership(
+    runId: string,
+    bulkActionId: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<void> {
+    return this.delegate.recordBulkActionMembership(runId, bulkActionId, tx);
+  }
+
+  cancelRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      completedAt?: Date;
+      error: TaskRunError;
+      bulkActionId?: string;
+      usageDurationMs?: number;
+      costInCents?: number;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.cancelRun(runId, data, args, tx);
+  }
+
+  failRunPermanently<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      status: TaskRunStatus;
+      completedAt: Date;
+      error: TaskRunError;
+      usageDurationMs: number;
+      costInCents: number;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.failRunPermanently(runId, data, args, tx);
+  }
+
+  finalizeRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  finalizeRun<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  finalizeRun(...args: unknown[]): unknown {
+    return (this.delegate.finalizeRun as (...a: unknown[]) => unknown).apply(this.delegate, args);
+  }
+
+  expireRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      snapshot: ExpireSnapshotInput;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.expireRun(runId, data, args, tx);
+  }
+
+  expireRunsBatch(
+    runIds: string[],
+    data: { error: TaskRunError; now: Date },
+    tx?: PrismaClientOrTransaction
+  ): Promise<number> {
+    return this.delegate.expireRunsBatch(runIds, data, tx);
+  }
+
+  lockRunToWorker(
+    runId: string,
+    data: LockRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{}>> {
+    return this.delegate.lockRunToWorker(runId, data, tx);
+  }
+
+  parkPendingVersion<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: { statusReason: string },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.parkPendingVersion(runId, data, args, tx);
+  }
+
+  promotePendingVersionRuns(
+    runId: string,
+    args?: PromotePendingVersionArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }> {
+    return this.delegate.promotePendingVersionRuns(runId, args, tx);
+  }
+
+  expireParkedRun(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      statusReason: string;
+      snapshot: ExpireSnapshotInput;
+    },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }> {
+    return this.delegate.expireParkedRun(runId, data, tx);
+  }
+
+  suspendForCheckpoint<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>> {
+    return this.delegate.suspendForCheckpoint(runId, args, tx);
+  }
+
+  resumeFromCheckpoint<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
+    return this.delegate.resumeFromCheckpoint(runId, args, tx);
+  }
+
+  rescheduleRun(
+    runId: string,
+    data: { delayUntil: Date; queueTimestamp?: Date; snapshot?: RescheduleSnapshotInput },
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun> {
+    return this.delegate.rescheduleRun(runId, data, tx);
+  }
+
+  enqueueDelayedRun(
+    runId: string,
+    data: { queuedAt: Date },
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun> {
+    return this.delegate.enqueueDelayedRun(runId, data, tx);
+  }
+
+  rewriteDebouncedRun(
+    runId: string,
+    data: RewriteDebouncedRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRunWithWaitpoint> {
+    return this.delegate.rewriteDebouncedRun(runId, data, tx);
+  }
+
+  updateMetadata(
+    runId: string,
+    data: {
+      metadata: string | null;
+      metadataType?: string;
+      metadataVersion: { increment: number };
+      updatedAt: Date;
+    },
+    options: { expectedMetadataVersion?: number },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }> {
+    return this.delegate.updateMetadata(runId, data, options, tx);
+  }
+
+  clearIdempotencyKey(
+    params: ClearIdempotencyKeyInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }> {
+    return this.delegate.clearIdempotencyKey(params, tx);
+  }
+
+  pushTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ updatedAt: Date }> {
+    return this.delegate.pushTags(runId, tags, where, tx);
+  }
+
+  pushRealtimeStream(
+    runId: string,
+    streamId: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<void> {
+    return this.delegate.pushRealtimeStream(runId, streamId, tx);
+  }
+
+  get primaryReadClient(): ReadClient {
     return this.delegate.primaryReadClient;
   }
 
-  runInTransaction(...args: any[]): any {
-    return (this.delegate as any).runInTransaction(...args);
+  findRun<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRun<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRun(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun | null>;
+  findRun(...args: unknown[]): unknown {
+    return (this.delegate.findRun as (...a: unknown[]) => unknown).apply(this.delegate, args);
+  }
+
+  findRunOrThrow<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrow<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrow(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun>;
+  findRunOrThrow(...args: unknown[]): unknown {
+    return (this.delegate.findRunOrThrow as (...a: unknown[]) => unknown).apply(
+      this.delegate,
+      args
+    );
+  }
+
+  findRunOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRunOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRunOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun | null>;
+  findRunOnPrimary(...args: unknown[]): unknown {
+    return (this.delegate.findRunOnPrimary as (...a: unknown[]) => unknown).apply(
+      this.delegate,
+      args
+    );
+  }
+
+  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
+  findRunOrThrowOnPrimary(...args: unknown[]): unknown {
+    return (this.delegate.findRunOrThrowOnPrimary as (...a: unknown[]) => unknown).apply(
+      this.delegate,
+      args
+    );
+  }
+
+  findRuns<S extends Prisma.TaskRunSelect>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select: S;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
+  findRuns<I extends Prisma.TaskRunInclude>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      include: I;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
+  findRuns(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<TaskRun[]>;
+  findRuns(...args: unknown[]): unknown {
+    return (this.delegate.findRuns as (...a: unknown[]) => unknown).apply(this.delegate, args);
+  }
+
+  findRunsByIds<S extends Prisma.TaskRunSelect>(
+    ids: string[],
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ select: S }>>>;
+  findRunsByIds<I extends Prisma.TaskRunInclude>(
+    ids: string[],
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
+  findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
+  findRunsByIds(...args: unknown[]): unknown {
+    return (this.delegate.findRunsByIds as (...a: unknown[]) => unknown).apply(this.delegate, args);
   }
 
-  createRun(...args: any[]): any {
-    return (this.delegate as any).createRun(...args);
-  }
-
-  createCancelledRun(...args: any[]): any {
-    return (this.delegate as any).createCancelledRun(...args);
-  }
-
-  createFailedRun(...args: any[]): any {
-    return (this.delegate as any).createFailedRun(...args);
-  }
-
-  startAttempt(...args: any[]): any {
-    return (this.delegate as any).startAttempt(...args);
-  }
-
-  completeAttemptSuccess(...args: any[]): any {
-    return (this.delegate as any).completeAttemptSuccess(...args);
-  }
-
-  recordRetryOutcome(...args: any[]): any {
-    return (this.delegate as any).recordRetryOutcome(...args);
-  }
-
-  requeueRun(...args: any[]): any {
-    return (this.delegate as any).requeueRun(...args);
-  }
-
-  recordBulkActionMembership(...args: any[]): any {
-    return (this.delegate as any).recordBulkActionMembership(...args);
-  }
-
-  cancelRun(...args: any[]): any {
-    return (this.delegate as any).cancelRun(...args);
-  }
-
-  failRunPermanently(...args: any[]): any {
-    return (this.delegate as any).failRunPermanently(...args);
-  }
-
-  finalizeRun(...args: any[]): any {
-    return (this.delegate as any).finalizeRun(...args);
-  }
-
-  expireRun(...args: any[]): any {
-    return (this.delegate as any).expireRun(...args);
-  }
-
-  expireRunsBatch(...args: any[]): any {
-    return (this.delegate as any).expireRunsBatch(...args);
-  }
-
-  lockRunToWorker(...args: any[]): any {
-    return (this.delegate as any).lockRunToWorker(...args);
-  }
-
-  parkPendingVersion(...args: any[]): any {
-    return (this.delegate as any).parkPendingVersion(...args);
-  }
-
-  promotePendingVersionRuns(...args: any[]): any {
-    return (this.delegate as any).promotePendingVersionRuns(...args);
-  }
-
-  expireParkedRun(...args: any[]): any {
-    return (this.delegate as any).expireParkedRun(...args);
-  }
-
-  suspendForCheckpoint(...args: any[]): any {
-    return (this.delegate as any).suspendForCheckpoint(...args);
-  }
-
-  resumeFromCheckpoint(...args: any[]): any {
-    return (this.delegate as any).resumeFromCheckpoint(...args);
-  }
-
-  rescheduleRun(...args: any[]): any {
-    return (this.delegate as any).rescheduleRun(...args);
-  }
-
-  enqueueDelayedRun(...args: any[]): any {
-    return (this.delegate as any).enqueueDelayedRun(...args);
-  }
-
-  rewriteDebouncedRun(...args: any[]): any {
-    return (this.delegate as any).rewriteDebouncedRun(...args);
-  }
-
-  updateMetadata(...args: any[]): any {
-    return (this.delegate as any).updateMetadata(...args);
-  }
-
-  clearIdempotencyKey(...args: any[]): any {
-    return (this.delegate as any).clearIdempotencyKey(...args);
-  }
-
-  pushTags(...args: any[]): any {
-    return (this.delegate as any).pushTags(...args);
-  }
-
-  pushRealtimeStream(...args: any[]): any {
-    return (this.delegate as any).pushRealtimeStream(...args);
-  }
-
-  findRun(...args: any[]): any {
-    return (this.delegate as any).findRun(...args);
-  }
-
-  findRunOrThrow(...args: any[]): any {
-    return (this.delegate as any).findRunOrThrow(...args);
-  }
-
-  findRunOnPrimary(...args: any[]): any {
-    return (this.delegate as any).findRunOnPrimary(...args);
-  }
-
-  findRunOrThrowOnPrimary(...args: any[]): any {
-    return (this.delegate as any).findRunOrThrowOnPrimary(...args);
-  }
-
-  findRuns(...args: any[]): any {
-    return (this.delegate as any).findRuns(...args);
-  }
-
-  findRunsByIds(...args: any[]): any {
-    return (this.delegate as any).findRunsByIds(...args);
-  }
-
-  findRunsByIdempotencyKeys(...args: any[]): any {
-    return (this.delegate as any).findRunsByIdempotencyKeys(...args);
-  }
-
-  createBatchTaskRunItem(...args: any[]): any {
-    return (this.delegate as any).createBatchTaskRunItem(...args);
-  }
-
-  findLatestExecutionSnapshot(...args: any[]): any {
-    return (this.delegate as any).findLatestExecutionSnapshot(...args);
-  }
-
-  findExecutionSnapshot(...args: any[]): any {
-    return (this.delegate as any).findExecutionSnapshot(...args);
-  }
-
-  findManyExecutionSnapshots(...args: any[]): any {
-    return (this.delegate as any).findManyExecutionSnapshots(...args);
-  }
-
-  createExecutionSnapshot(...args: any[]): any {
-    return (this.delegate as any).createExecutionSnapshot(...args);
-  }
+  findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]> {
+    return this.delegate.findRunsByIdempotencyKeys(args, client);
+  }
 
-  findSnapshotCompletedWaitpointIds(...args: any[]): any {
-    return (this.delegate as any).findSnapshotCompletedWaitpointIds(...args);
+  createBatchTaskRunItem(
+    data: { batchTaskRunId: string; taskRunId: string; status: BatchTaskRunItemStatus },
+    tx?: PrismaClientOrTransaction
+  ): Promise<void> {
+    return this.delegate.createBatchTaskRunItem(data, tx);
+  }
+
+  findLatestExecutionSnapshot(
+    runId: string,
+    client?: ReadClient,
+    // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
+    // not-found. Omit to read regardless of environment (internal callers).
+    environmentId?: string
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
+    include: { completedWaitpoints: true; checkpoint: true };
+  }> | null> {
+    return this.delegate.findLatestExecutionSnapshot(runId, client);
   }
-
-  findSnapshotCompletedWaitpointIdsWithPresence(...args: any[]): any {
-    return (this.delegate as any).findSnapshotCompletedWaitpointIdsWithPresence(...args);
-  }
-
-  findWaitpointConnectedRunIds(...args: any[]): any {
-    return (this.delegate as any).findWaitpointConnectedRunIds(...args);
-  }
-
-  findWaitpointCompletedSnapshotIds(...args: any[]): any {
-    return (this.delegate as any).findWaitpointCompletedSnapshotIds(...args);
-  }
-
-  blockRunWithWaitpointEdges(...args: any[]): any {
-    return (this.delegate as any).blockRunWithWaitpointEdges(...args);
-  }
-
-  countPendingWaitpoints(...args: any[]): any {
-    return (this.delegate as any).countPendingWaitpoints(...args);
-  }
-
-  countPendingWaitpointsWithPresence(...args: any[]): any {
-    return (this.delegate as any).countPendingWaitpointsWithPresence(...args);
-  }
-
-  createWaitpoint(...args: any[]): any {
-    return (this.delegate as any).createWaitpoint(...args);
+
+  findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null> {
+    return this.delegate.findExecutionSnapshot(args, client);
   }
 
-  upsertWaitpoint(...args: any[]): any {
-    return (this.delegate as any).upsertWaitpoint(...args);
+  findManyExecutionSnapshots<T extends Prisma.TaskRunExecutionSnapshotFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
+    return this.delegate.findManyExecutionSnapshots(args, client);
   }
 
-  findWaitpoint(...args: any[]): any {
-    return (this.delegate as any).findWaitpoint(...args);
+  createExecutionSnapshot(
+    input: CreateExecutionSnapshotInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
+    return this.delegate.createExecutionSnapshot(input, tx);
   }
 
-  findWaitpointOnPrimary(...args: any[]): any {
-    return (this.delegate as any).findWaitpointOnPrimary(...args);
+  findSnapshotCompletedWaitpointIds(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<string[]> {
+    return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
   }
 
-  findManyWaitpoints(...args: any[]): any {
-    return (this.delegate as any).findManyWaitpoints(...args);
+  findSnapshotCompletedWaitpointIdsWithPresence(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<{ present: boolean; ids: string[] }> {
+    return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
   }
 
-  updateWaitpoint(...args: any[]): any {
-    return (this.delegate as any).updateWaitpoint(...args);
+  findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
+    return this.delegate.findWaitpointConnectedRunIds(waitpointId, client);
   }
 
-  updateManyWaitpoints(...args: any[]): any {
-    return (this.delegate as any).updateManyWaitpoints(...args);
+  findWaitpointCompletedSnapshotIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
+    return this.delegate.findWaitpointCompletedSnapshotIds(waitpointId, client);
   }
 
-  forWaitpointCompletion(...args: any[]): any {
-    return (this.delegate as any).forWaitpointCompletion(...args);
+  blockRunWithWaitpointEdges(params: {
+    runId: string;
+    waitpointIds: string[];
+    projectId: string;
+    spanIdToComplete?: string;
+    batchId?: string;
+    batchIndex?: number;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<void> {
+    return this.delegate.blockRunWithWaitpointEdges(params);
   }
 
-  findManyTaskRunWaitpoints(...args: any[]): any {
-    return (this.delegate as any).findManyTaskRunWaitpoints(...args);
+  countPendingWaitpoints(
+    waitpointIds: string[],
+    client?: ReadClient,
+    runId?: string
+  ): Promise<number> {
+    return this.delegate.countPendingWaitpoints(waitpointIds, client, runId);
   }
 
-  deleteManyTaskRunWaitpoints(...args: any[]): any {
-    return (this.delegate as any).deleteManyTaskRunWaitpoints(...args);
+  countPendingWaitpointsWithPresence(
+    waitpointIds: string[],
+    client?: ReadClient
+  ): Promise<{ pendingIds: string[]; presentIds: string[] }> {
+    return this.delegate.countPendingWaitpointsWithPresence(waitpointIds, client);
   }
 
-  findTaskRunAttempt(...args: any[]): any {
-    return (this.delegate as any).findTaskRunAttempt(...args);
+  createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointCreateArgs>,
+    tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>> {
+    return this.delegate.createWaitpoint(args, tx, opts);
   }
 
-  createTaskRunCheckpoint(...args: any[]): any {
-    return (this.delegate as any).createTaskRunCheckpoint(...args);
+  upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpsertArgs>,
+    tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>> {
+    return this.delegate.upsertWaitpoint(args, tx, opts);
   }
 
-  createBatchTaskRun(...args: any[]): any {
-    return (this.delegate as any).createBatchTaskRun(...args);
+  findWaitpoint<T extends Prisma.WaitpointFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>,
+    client?: ReadClient,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T> | null> {
+    return this.delegate.findWaitpoint(args, client, opts);
   }
 
-  updateBatchTaskRun(...args: any[]): any {
-    return (this.delegate as any).updateBatchTaskRun(...args);
+  findWaitpointOnPrimary<T extends Prisma.WaitpointFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
+  ): Promise<Prisma.WaitpointGetPayload<T> | null> {
+    return this.delegate.findWaitpointOnPrimary(args);
   }
 
-  findBatchTaskRunById(...args: any[]): any {
-    return (this.delegate as any).findBatchTaskRunById(...args);
-  }
-
-  findBatchTaskRunByFriendlyId(...args: any[]): any {
-    return (this.delegate as any).findBatchTaskRunByFriendlyId(...args);
-  }
-
-  findBatchTaskRunByIdempotencyKey(...args: any[]): any {
-    return (this.delegate as any).findBatchTaskRunByIdempotencyKey(...args);
-  }
-
-  updateManyBatchTaskRun(...args: any[]): any {
-    return (this.delegate as any).updateManyBatchTaskRun(...args);
-  }
-
-  countBatchTaskRunItems(...args: any[]): any {
-    return (this.delegate as any).countBatchTaskRunItems(...args);
-  }
+  findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<Prisma.WaitpointGetPayload<T>[]> {
+    return this.delegate.findManyWaitpoints(args, client, runId);
+  }
+
+  updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpdateArgs>,
+    tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>> {
+    return this.delegate.updateWaitpoint(args, tx, opts);
+  }
 
-  updateManyBatchTaskRunItems(...args: any[]): any {
-    return (this.delegate as any).updateManyBatchTaskRunItems(...args);
-  }
-
-  findManyBatchTaskRunItems(...args: any[]): any {
-    return (this.delegate as any).findManyBatchTaskRunItems(...args);
-  }
+  updateManyWaitpoints(
+    args: Prisma.WaitpointUpdateManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload> {
+    return this.delegate.updateManyWaitpoints(args, tx);
+  }
 
-  findBatchTaskRunItem(...args: any[]): any {
-    return (this.delegate as any).findBatchTaskRunItem(...args);
+  forWaitpointCompletion(
+    waitpointId: string,
+    context: ForWaitpointCompletionContext
+  ): Promise<RunStore> {
+    return this.delegate.forWaitpointCompletion(waitpointId, context);
   }
 
-  upsertWaitpointTag(...args: any[]): any {
-    return (this.delegate as any).upsertWaitpointTag(...args);
-  }
+  findManyTaskRunWaitpoints<T extends Prisma.TaskRunWaitpointFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]> {
+    return this.delegate.findManyTaskRunWaitpoints(args, client);
+  }
 
-  findManyWaitpointTags(...args: any[]): any {
-    return (this.delegate as any).findManyWaitpointTags(...args);
+  deleteManyTaskRunWaitpoints(
+    args: Prisma.TaskRunWaitpointDeleteManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload> {
+    return this.delegate.deleteManyTaskRunWaitpoints(args, tx);
+  }
+
+  findTaskRunAttempt<T extends Prisma.TaskRunAttemptFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunAttemptFindFirstArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunAttemptGetPayload<T> | null> {
+    return this.delegate.findTaskRunAttempt(args, client);
+  }
+
+  createTaskRunCheckpoint<T extends Prisma.TaskRunCheckpointCreateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunCheckpointCreateArgs>,
+    ownerRunId?: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<T>> {
+    return this.delegate.createTaskRunCheckpoint(args, ownerRunId, tx);
+  }
+
+  createBatchTaskRun(
+    data: CreateBatchTaskRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<BatchTaskRun> {
+    return this.delegate.createBatchTaskRun(data, tx);
+  }
+
+  updateBatchTaskRun<S extends Prisma.BatchTaskRunSelect>(
+    args: {
+      where: Prisma.BatchTaskRunWhereUniqueInput;
+      data: Prisma.BatchTaskRunUpdateInput;
+      select: S;
+    },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ select: S }>> {
+    return this.delegate.updateBatchTaskRun(args, tx);
+  }
+
+  findBatchTaskRunById<T extends Prisma.BatchTaskRunInclude = {}>(
+    id: string,
+    args?: { include?: T },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
+    return this.delegate.findBatchTaskRunById(id, args, client);
+  }
+
+  findBatchTaskRunByFriendlyId<T extends Prisma.BatchTaskRunInclude = {}>(
+    friendlyId: string,
+    environmentId: string,
+    args?: { include?: T },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
+    return this.delegate.findBatchTaskRunByFriendlyId(friendlyId, environmentId, args, client);
+  }
+
+  findBatchTaskRunByIdempotencyKey<T extends Prisma.BatchTaskRunInclude = {}>(
+    environmentId: string,
+    idempotencyKey: string,
+    args?: { include?: T },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
+    return this.delegate.findBatchTaskRunByIdempotencyKey(
+      environmentId,
+      idempotencyKey,
+      args,
+      client
+    );
+  }
+
+  updateManyBatchTaskRun(
+    args: Prisma.BatchTaskRunUpdateManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload> {
+    return this.delegate.updateManyBatchTaskRun(args, tx);
+  }
+
+  countBatchTaskRunItems(
+    where: { batchTaskRunId: string; status?: BatchTaskRunItemStatus },
+    client?: ReadClient
+  ): Promise<number> {
+    return this.delegate.countBatchTaskRunItems(where, client);
+  }
+
+  updateManyBatchTaskRunItems(
+    args: Prisma.BatchTaskRunItemUpdateManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload> {
+    return this.delegate.updateManyBatchTaskRunItems(args, tx);
+  }
+
+  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { taskRunId?: string; batchTaskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]> {
+    return this.delegate.findManyBatchTaskRunItems(where, args, client);
+  }
+
+  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { batchTaskRunId: string; taskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null> {
+    return this.delegate.findBatchTaskRunItem(where, args, client);
+  }
+
+  upsertWaitpointTag(
+    data: { environmentId: string; name: string; projectId: string; id?: string },
+    tx?: PrismaClientOrTransaction,
+    // A tag has no owning run to co-locate with; when no minted `id` pins it by id-shape, a
+    // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
+    // instead of defaulting to LEGACY. Single-store impls ignore it.
+    residency?: Residency
+  ): Promise<WaitpointTag> {
+    return this.delegate.upsertWaitpointTag(data, tx);
+  }
+
+  findManyWaitpointTags(
+    args: {
+      where: Prisma.WaitpointTagWhereInput;
+      orderBy?:
+        | Prisma.WaitpointTagOrderByWithRelationInput
+        | Prisma.WaitpointTagOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+    },
+    client?: ReadClient
+  ): Promise<WaitpointTag[]> {
+    return this.delegate.findManyWaitpointTags(args, client);
   }
 }
 
-// `implements` above fails when a member of the interface is MISSING here. It says nothing about a
+// `implements` above rejects a member of the interface that is missing here. It says nothing about a
 // member that should not exist, so the reverse direction is asserted too: a public member this class
 // declares and the interface does not is a build failure.
 //
-// `protected delegate` is correctly absent from `keyof`, so the constructor parameter does not
-// trip this.
+// `protected delegate` is correctly absent from `keyof`, so the constructor parameter does not trip
+// this.
 type _ClassDeclaresNoExtraMembers = [Exclude<keyof DelegatingRunStore, keyof RunStore>] extends [
   never,
 ]

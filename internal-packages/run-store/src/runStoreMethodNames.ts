@@ -1,10 +1,9 @@
-// Maintained by hand, alongside delegatingRunStore.ts. It was scaffolded once, and the scaffolding
-// is gone.
+// The member names of RunStore, as data.
 //
-// When RunStore gains or loses a member, update the matching list here. You do not have to remember:
-// the assertions at the foot of this file tie both lists to `keyof RunStore` in both directions, so
-// a missing or invented name is a build failure that names the member.
-
+// The decorator suites enumerate this to drive one call per member. Member PRESENCE is not proved
+// here: that is the compiler's job, through `implements RunStore` on the pass-through base and the
+// assertions at the foot of this file.
+//
 import type { RunStore } from "./types.js";
 
 // Every method the RunStore interface declares. The forwarding probe enumerates this to drive one
