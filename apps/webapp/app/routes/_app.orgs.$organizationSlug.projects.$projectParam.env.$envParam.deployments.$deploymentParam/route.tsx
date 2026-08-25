@@ -566,16 +566,18 @@ function LogsDisplay({
     return () => observer.disconnect();
   }, [isAtBottom]);
 
-  const onToggleScroll = useCallback(() => {
+  const onToggleScroll = () => {
     const container = logsContainerRef.current;
     if (!container) return;
-    if (isAtBottom) {
-      setIsAtBottom(false);
-      container.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
+    if (!isAtBottom) {
+      setIsAtBottom(true);
       container.scrollTop = container.scrollHeight;
+      return;
     }
-  }, [isAtBottom]);
+    if (container.scrollHeight - container.clientHeight <= AT_BOTTOM_TOLERANCE_PX) return;
+    setIsAtBottom(false);
+    container.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const onCopyLogs = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
