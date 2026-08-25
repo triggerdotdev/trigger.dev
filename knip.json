@@ -38,9 +38,6 @@
     "internal-packages/observability-map": {
       "entry": ["src/index.ts", "fixtures/**/*.{js,mjs,cjs,ts,mts,cts,tsx}"]
     },
-    "internal-packages/run-store": {
-      "entry": ["scripts/**/*.{js,mjs,cjs,ts,mts,cts}"]
-    },
     "internal-packages/otlp-importer": {
       "ignoreDependencies": ["ts-proto"]
     },
