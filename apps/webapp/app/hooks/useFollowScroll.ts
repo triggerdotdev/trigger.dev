@@ -14,7 +14,7 @@ export function useFollowScroll(containerRef: RefObject<HTMLElement | null>, con
     const onScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distance = scrollHeight - scrollTop - clientHeight;
-      const movedUp = scrollTop < lastScrollTop && distance > 1;
+      const movedUp = scrollTop < lastScrollTop && distance >= 1;
       lastScrollTop = scrollTop;
       setIsAtBottom(!movedUp && distance <= AT_BOTTOM_TOLERANCE_PX);
     };
