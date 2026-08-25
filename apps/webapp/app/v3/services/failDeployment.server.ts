@@ -1,7 +1,7 @@
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { Prisma, type WorkerDeploymentStatus } from "@trigger.dev/database";
+import { boundedIn, Prisma, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DeploymentService } from "./deployment.server";
@@ -49,7 +49,7 @@ export class FailDeploymentService extends BaseService {
     const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
-        status: { notIn: FINAL_DEPLOYMENT_STATUSES },
+        status: { notIn: boundedIn(FINAL_DEPLOYMENT_STATUSES) },
       },
       data: {
         status: "FAILED",
