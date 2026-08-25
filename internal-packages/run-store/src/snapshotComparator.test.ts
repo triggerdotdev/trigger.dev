@@ -131,6 +131,29 @@ describe("diffLatest", () => {
       expect.objectContaining({ field: "mysteryField", class: "unknownField", redis: "surprise" }),
     ]);
   });
+
+  it("surfaces an inherited-name key and does not pollute the prototype", () => {
+    // JSON.parse produces OWN keys for `toString` and `__proto__` (unlike an object literal).
+    const entry = JSON.parse(
+      '{"engine":"V2","executionStatus":"RUN_CREATED","description":"d","runId":"r1",' +
+        '"runStatus":"PENDING","createdAt":"2026-08-24T00:00:00.000Z","environmentId":"env",' +
+        '"environmentType":"DEVELOPMENT","projectId":"p","organizationId":"o",' +
+        '"toString":"surprise","__proto__":{"polluted":true}}'
+    ) as Record<string, unknown>;
+    const read: SnapshotRead = { id: "s1", seq: 1, isValid: true, raw: "{}", entry };
+    const n = normalizeFromRedis(read) as Record<string, unknown>;
+
+    expect(Object.prototype.hasOwnProperty.call(n, "toString")).toBe(true); // carried despite inherited name
+    expect(n["toString"]).toBe("surprise");
+    expect(Object.getPrototypeOf(n)).toBe(Object.prototype); // __proto__ skipped, no pollution
+    expect("polluted" in {}).toBe(false);
+
+    const d = diffLatest(
+      norm({ id: "s1", createdAt: n.createdAt as number, updatedAt: n.updatedAt as number }),
+      n as NormalizedSnapshot
+    );
+    expect(d.some((x) => x.field === "toString" && x.class === "unknownField")).toBe(true);
+  });
 });
 
 describe("diffSince", () => {

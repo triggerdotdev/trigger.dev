@@ -13,17 +13,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 // Returns the module specifiers a file imports FOR VALUE (i.e. that survive to runtime). `import type`
 // declarations and named blocks whose specifiers are all inline `type` are erased and excluded.
 function valueImports(sourcePath: string): string[] {
-  // Strip block AND line comments so a comment mentioning `import(` or `import ... from` cannot
-  // produce a false positive.
-  const src = readFileSync(sourcePath, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
+  const raw = readFileSync(sourcePath, "utf8");
   const out: string[] = [];
 
-  if (/(^|[^.\w])import\s*\(/.test(src)) out.push("<dynamic import()>");
+  // Statements are scanned on RAW source, anchored to line start (`^\s*import`), so a `//` comment
+  // line never matches and no stripping can hide a real import. Only the mid-line dynamic `import(`
+  // check runs on comment-stripped source. The pin test below guarantees the scan catches a real import.
+  const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  if (/(^|[^.\w])import\s*\(/.test(stripped)) out.push("<dynamic import()>");
 
   const importRe = /^\s*import\b([\s\S]*?)\bfrom\s*["']([^"']+)["']/gm;
-  for (let m = importRe.exec(src); m !== null; m = importRe.exec(src)) {
+  for (let m = importRe.exec(raw); m !== null; m = importRe.exec(raw)) {
     const clause = m[1];
     const spec = m[2];
     if (/^\s*type\b/.test(clause)) continue; // `import type ... from`
@@ -36,7 +36,7 @@ function valueImports(sourcePath: string): string[] {
 
   // Bare side-effect imports (`import "x"`) run the module.
   const bareRe = /^\s*import\s*["']([^"']+)["']/gm;
-  for (let m = bareRe.exec(src); m !== null; m = bareRe.exec(src)) out.push(m[1]);
+  for (let m = bareRe.exec(raw); m !== null; m = bareRe.exec(raw)) out.push(m[1]);
 
   return out;
 }
