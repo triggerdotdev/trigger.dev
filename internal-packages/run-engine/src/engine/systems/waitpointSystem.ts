@@ -1,4 +1,6 @@
 import { timeoutError } from "@trigger.dev/core/v3";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import type { CompletedWaitpointRecord } from "@internal/run-store";
 import type {
   PrismaClientOrTransaction,
   TaskRun,
@@ -10,7 +12,8 @@ import { assertNever } from "assert-never";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
-import type { WaitpointCoordinator } from "../waitpointCoordinator/types.js";
+import { buildCompletedWaitpointRecords } from "../waitpointCoordinator/completedWaitpointRecords.js";
+import type { RunBlockEdge, WaitpointCoordinator } from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
@@ -484,6 +487,15 @@ export class WaitpointSystem {
         };
       }
 
+      // The record set rides the wait cycle's key once per resume, so build it here rather
+      // than at each append site. Nothing mints a store-format waitpoint yet, so
+      // #completedWaitpointRecordsFor returns undefined on every live path today.
+      const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
+        runId,
+        blockingWaitpoints
+      );
+
+
       // 3. Get the run (run-ops scalars) + resolve its environment via the control-plane resolver,
       // so the run-ops DB can split without a cross-provider join.
       const run = await this.$.runStore.findRun(
@@ -623,6 +635,7 @@ export class WaitpointSystem {
                 id: b.waitpoint.id,
                 index: b.batchIndex ?? undefined,
               })),
+              ...(completedWaitpointRecords && { completedWaitpointRecords }),
             }
           );
 
@@ -682,6 +695,7 @@ export class WaitpointSystem {
               id: b.waitpoint.id,
               index: b.batchIndex ?? undefined,
             })),
+            ...(completedWaitpointRecords && { completedWaitpointRecords }),
             checkpointId: snapshot.checkpointId ?? undefined,
           });
 
@@ -726,6 +740,37 @@ export class WaitpointSystem {
     environmentId: string;
   }) {
     return this.coordinator.mintAssociatedWaitpointData({ projectId, environmentId });
+  }
+
+  /**
+   * The record set for one resume, or undefined when this wait has no store-resident half.
+   *
+   * The classification gate is what keeps this inert. `parseWaitpointId` reports legacy for
+   * every id minted today, so no live resume reads an envelope or writes a record until a
+   * waitpoint mints in store format.
+   */
+  async #completedWaitpointRecordsFor(
+    runId: string,
+    blockingWaitpoints: RunBlockEdge[]
+  ): Promise<CompletedWaitpointRecord[] | undefined> {
+    const storeResidentIds = [
+      ...new Set(
+        blockingWaitpoints
+          .map((b) => b.waitpoint.id)
+          .filter((id) => parseWaitpointId(id).format === "b32hexW")
+      ),
+    ];
+
+    if (storeResidentIds.length === 0) {
+      return undefined;
+    }
+
+    const sources = await this.coordinator.readCompletionEnvelopes({
+      runId,
+      waitpointIds: storeResidentIds,
+    });
+
+    return buildCompletedWaitpointRecords(sources);
   }
 
   /**

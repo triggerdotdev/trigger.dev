@@ -13,6 +13,7 @@ import type {
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency } from "@trigger.dev/core/v3/isomorphic";
+import type { CompletedWaitpointRecord } from "./redisSnapshotStore.js";
 
 /**
  * Client accepted by the read methods. Reads route through the replica by
@@ -352,6 +353,10 @@ export type CreateExecutionSnapshotInput = {
   workerId?: string;
   runnerId?: string;
   completedWaitpoints?: { id: string; index?: number }[];
+  /** One envelope per DISTINCT completed waitpoint id. Owned by the waitpoint lane; the
+   *  snapshot store only carries it into the wait cycle's key. Absent for a legacy-only
+   *  wait, which is what keeps a Postgres-resident resume unchanged. */
+  completedWaitpointRecords?: CompletedWaitpointRecord[];
   error?: string;
 };
 

@@ -10,7 +10,7 @@ import type {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
-import type { RunStore } from "@internal/run-store";
+import type { CompletedWaitpointRecord, RunStore } from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
@@ -449,6 +449,7 @@ export class ExecutionSnapshotSystem {
       workerId,
       runnerId,
       completedWaitpoints,
+      completedWaitpointRecords,
       error,
     }: {
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
@@ -470,6 +471,7 @@ export class ExecutionSnapshotSystem {
         id: string;
         index?: number;
       }[];
+      completedWaitpointRecords?: CompletedWaitpointRecord[];
       error?: string;
     },
     // When set (inside runStore.runInTransaction), the snapshot write goes through the owning store
@@ -492,6 +494,7 @@ export class ExecutionSnapshotSystem {
         workerId,
         runnerId,
         completedWaitpoints,
+        completedWaitpointRecords,
         error,
       },
       prisma
