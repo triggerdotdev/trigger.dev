@@ -655,6 +655,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    */
   protected readsFromRedis(runId: string): boolean {
     if (this.mode !== "redis-read" && this.mode !== "redis-only") return false;
+
+    // At `redis-only` the cohort dial has no meaning. Postgres holds no snapshot rows at that
+    // position, so a run routed away from Redis reads nothing at all. Ignoring the percentage here
+    // makes that misconfiguration unreachable rather than merely documented.
+    if (this.mode === "redis-only") return true;
+
     if (this.readPercent >= 100) return true;
     if (this.readPercent <= 0) return false;
 

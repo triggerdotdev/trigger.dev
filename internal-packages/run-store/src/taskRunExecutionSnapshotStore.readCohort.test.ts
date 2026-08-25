@@ -46,6 +46,15 @@ describe("the read cohort", () => {
     expect(ids.every((id) => !store.readsFromRedis(id))).toBe(true);
   });
 
+  it("ignores the dial at redis-only, whatever it is set to", () => {
+    // Postgres holds no snapshot rows at that position, so a run routed away from Redis reads
+    // nothing at all. The percentage is meaningful only while both stores hold the data.
+    for (const percent of [0, 1, 50, 99]) {
+      const store = probe("redis-only", percent);
+      expect(ids.every((id) => store.readsFromRedis(id))).toBe(true);
+    }
+  });
+
   it("gives one run the same answer every time", () => {
     // A run that changed store between two reads of one poll could show the log going backwards.
     const store = probe("redis-read", 50);
