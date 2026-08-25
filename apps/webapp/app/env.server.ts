@@ -935,6 +935,12 @@ const EnvironmentSchema = z
     DISABLE_HTTP_INSTRUMENTATION: BoolEnv.default(false),
 
     INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+
+    // Optional second OTLP trace exporter that receives only `deployment.*`
+    // spans (deployment lifecycle analytics), e.g. a dedicated long-retention
+    // Axiom dataset. The spans also still flow to the main trace exporter.
+    INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_URL: z.string().optional(),
+    INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_AUTH_HEADERS: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_ENABLED: z.string().default("0"),

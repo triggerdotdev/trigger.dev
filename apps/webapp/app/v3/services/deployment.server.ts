@@ -9,6 +9,7 @@ import {
   type DeploymentEvent,
 } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
@@ -238,6 +239,8 @@ export class DeploymentService extends BaseService {
         if (result.count === 0) {
           return errAsync({ type: "deployment_cannot_be_cancelled" as const });
         }
+        // Fire-and-forget: telemetry must never affect the cancel result.
+        void this.#recordCanceledLifecycle(deployment.id);
         return okAsync({ deployment });
       });
 
@@ -472,6 +475,41 @@ export class DeploymentService extends BaseService {
           })
       )
     );
+  }
+
+  // The cancel path only carries a narrow row selection, so re-fetch the full
+  // row (post-update, status already CANCELED) for the lifecycle event.
+  async #recordCanceledLifecycle(deploymentId: string) {
+    try {
+      const canceled = await this._prisma.workerDeployment.findFirst({
+        where: { id: deploymentId },
+        include: {
+          environment: {
+            include: {
+              project: {
+                select: { id: true, organizationId: true, externalRef: true },
+              },
+            },
+          },
+        },
+      });
+
+      if (!canceled || canceled.status !== "CANCELED") return;
+
+      recordDeploymentLifecycle({
+        status: "CANCELED",
+        deployment: canceled,
+        environment: {
+          organizationId: canceled.environment.project.organizationId,
+          projectId: canceled.environment.project.id,
+          projectRef: canceled.environment.project.externalRef,
+          environmentId: canceled.environmentId,
+          environmentType: canceled.environment.type,
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to record canceled deployment lifecycle", { deploymentId, error });
+    }
   }
 
   private getDeployment(environmentId: string, friendlyId: string) {

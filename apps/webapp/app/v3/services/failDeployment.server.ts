@@ -5,7 +5,7 @@ import { Prisma, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
+import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
 
 export const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",
@@ -41,25 +41,50 @@ export class FailDeploymentService extends BaseService {
       return;
     }
 
-    const failedDeployment = await this._prisma.workerDeployment.update({
+    const failedAt = new Date();
+
+    // Guarded transition: a concurrent finalize/timeout/cancel can win between
+    // the check above and this write; the predicate makes exactly one caller
+    // commit the terminal status (and emit the lifecycle event).
+    const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
+        status: { notIn: FINAL_DEPLOYMENT_STATUSES },
       },
       data: {
         status: "FAILED",
-        failedAt: new Date(),
+        failedAt,
         errorData: params.error,
         buildEnvVars: Prisma.DbNull,
       },
     });
 
-    recordDeploymentOutcome({
+    if (updatedCount === 0) {
+      logger.warn("Worker deployment reached a final state concurrently, skipping fail", {
+        id: deployment.id,
+        friendlyId,
+      });
+      return;
+    }
+
+    const failedDeployment = {
+      ...deployment,
+      status: "FAILED" as const,
+      failedAt,
+      errorData: params.error,
+      buildEnvVars: null,
+    };
+
+    recordDeploymentLifecycle({
       status: "FAILED",
-      deploymentFriendlyId: friendlyId,
-      organizationId: authenticatedEnv.organizationId,
-      projectId: authenticatedEnv.projectId,
-      environmentId: authenticatedEnv.id,
-      environmentType: authenticatedEnv.type,
+      deployment: failedDeployment,
+      environment: {
+        organizationId: authenticatedEnv.organizationId,
+        projectId: authenticatedEnv.projectId,
+        projectRef: authenticatedEnv.project.externalRef,
+        environmentId: authenticatedEnv.id,
+        environmentType: authenticatedEnv.type,
+      },
       reason: params.error.message,
     });
 

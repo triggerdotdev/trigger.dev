@@ -42,7 +42,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new InitializeDeploymentService();
 
   try {
-    const result = await service.call(authenticatedEnv, body.data);
+    const result = await service.call(authenticatedEnv, body.data, {
+      cliVersion: request.headers.get("x-trigger-cli-version") ?? undefined,
+    });
     const { deployment, imageRef } = result;
 
     const responseBody: InitializeDeploymentResponseBody = {

@@ -36,7 +36,9 @@ import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
 import {
   BatchSpanProcessor,
   ParentBasedSampler,
+  type ReadableSpan,
   type Sampler,
+  type Span as SdkTraceSpan,
   SamplingDecision,
   type SamplingResult,
   SimpleSpanProcessor,
@@ -69,7 +71,7 @@ import { metricsRegister } from "~/metrics.server";
 import { collectDatabaseClientMetrics } from "~/utils/databaseMetrics.server";
 import { performance } from "node:perf_hooks";
 
-const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
 
 export const DATASOURCE_CONTEXT_KEY = createContextKey("trigger.db.datasource");
 
@@ -86,6 +88,31 @@ class DatasourceAttributeSpanProcessor implements SpanProcessor {
   }
   forceFlush(): Promise<void> {
     return Promise.resolve();
+  }
+}
+
+// Mirrors spans whose name matches a prefix into a second exporter (e.g. the
+// dedicated deployment-events dataset) without removing them from the main
+// exporter's stream.
+class SpanNamePrefixMirrorProcessor implements SpanProcessor {
+  constructor(
+    private readonly _inner: SpanProcessor,
+    private readonly _prefix: string
+  ) {}
+
+  onStart(span: SdkTraceSpan, parentContext: Context): void {
+    this._inner.onStart(span, parentContext);
+  }
+  onEnd(span: ReadableSpan): void {
+    if (span.name.startsWith(this._prefix)) {
+      this._inner.onEnd(span);
+    }
+  }
+  shutdown(): Promise<void> {
+    return this._inner.shutdown();
+  }
+  forceFlush(): Promise<void> {
+    return this._inner.forceFlush();
   }
 }
 
@@ -270,6 +297,30 @@ function setupTelemetry() {
     }
   }
 
+  if (env.INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_URL) {
+    const deploymentEventExporter = new OTLPTraceExporter({
+      url: env.INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_URL,
+      timeoutMillis: 15_000,
+      headers: parseInternalDeploymentEventHeaders() ?? {},
+    });
+
+    spanProcessors.push(
+      new SpanNamePrefixMirrorProcessor(
+        new BatchSpanProcessor(deploymentEventExporter, {
+          maxExportBatchSize: 64,
+          scheduledDelayMillis: 1000,
+          exportTimeoutMillis: 30000,
+          maxQueueSize: 2048,
+        }),
+        "deployment."
+      )
+    );
+
+    console.log(
+      `🔦 Tracer: deployment-event exporter enabled to ${env.INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_URL}`
+    );
+  }
+
   const ratioSampler = new TraceIdRatioBasedSampler(samplingRate);
 
   const provider = new NodeTracerProvider({
@@ -340,6 +391,15 @@ function setupTelemetry() {
     loggerProvider: logs.getLoggerProvider(),
     instrumentations,
   });
+
+  // closeServer only closes express and lets the process drain, so a flush
+  // here has time to run — without it every webapp shutdown drops the last
+  // batch of spans (up to 1s of scheduledDelayMillis backlog).
+  const flushOnShutdown = () => {
+    provider.forceFlush().catch(() => {});
+  };
+  process.once("SIGTERM", flushOnShutdown);
+  process.once("SIGINT", flushOnShutdown);
 
   return {
     tracer: provider.getTracer("trigger.dev", "3.3.12"),
@@ -868,6 +928,19 @@ function parseInternalTraceHeaders(): Record<string, string> | undefined {
   try {
     return env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
       ? (JSON.parse(env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS) as Record<string, string>)
+      : undefined;
+  } catch {
+    return;
+  }
+}
+
+function parseInternalDeploymentEventHeaders(): Record<string, string> | undefined {
+  try {
+    return env.INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_AUTH_HEADERS
+      ? (JSON.parse(env.INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_AUTH_HEADERS) as Record<
+          string,
+          string
+        >)
       : undefined;
   } catch {
     return;

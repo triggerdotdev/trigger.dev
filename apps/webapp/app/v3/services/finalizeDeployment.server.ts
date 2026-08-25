@@ -10,7 +10,7 @@ import { projectPubSub } from "./projectPubSub.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
+import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
 import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
@@ -66,28 +66,54 @@ export class FinalizeDeploymentService extends BaseService {
     }
 
     const imageDigest = validatedImageDigest(body.imageDigest);
+    const deployedAt = new Date();
+    const imageReference = imageDigest
+      ? `${deployment.imageReference}@${imageDigest}`
+      : deployment.imageReference;
 
-    // Link the deployment with the background worker
-    const finalizedDeployment = await this._prisma.workerDeployment.update({
+    // Guarded transition: a concurrent timeout/fail/cancel can win between the
+    // status check above and this write; the predicate makes exactly one caller
+    // commit the terminal status (and emit the lifecycle event). It also stops
+    // a late timeout from overwriting DEPLOYED.
+    const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
+        status: "DEPLOYING",
       },
       data: {
         status: "DEPLOYED",
-        deployedAt: new Date(),
+        deployedAt,
         // Only add the digest, if any
-        imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
+        imageReference: imageDigest ? imageReference : undefined,
         buildEnvVars: Prisma.DbNull,
       },
     });
 
-    recordDeploymentOutcome({
+    if (updatedCount === 0) {
+      logger.warn("Worker deployment left DEPLOYING concurrently, skipping finalize", {
+        id: deployment.id,
+      });
+      throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
+    }
+
+    const finalizedDeployment = {
+      ...deployment,
+      status: "DEPLOYED" as const,
+      deployedAt,
+      imageReference,
+      buildEnvVars: null,
+    };
+
+    recordDeploymentLifecycle({
       status: "DEPLOYED",
-      deploymentFriendlyId: deployment.friendlyId,
-      organizationId: authenticatedEnv.organizationId,
-      projectId: authenticatedEnv.projectId,
-      environmentId: authenticatedEnv.id,
-      environmentType: authenticatedEnv.type,
+      deployment: finalizedDeployment,
+      environment: {
+        organizationId: authenticatedEnv.organizationId,
+        projectId: authenticatedEnv.projectId,
+        projectRef: authenticatedEnv.project.externalRef,
+        environmentId: authenticatedEnv.id,
+        environmentType: authenticatedEnv.type,
+      },
     });
 
     const deploymentService = new DeploymentService();
