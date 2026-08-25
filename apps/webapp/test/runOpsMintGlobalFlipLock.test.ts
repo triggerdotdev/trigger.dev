@@ -5,7 +5,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { applyGlobalMintKindFlip, makeSetMultipleFlags } from "~/v3/featureFlags.server";
+import { applyGlobalGracedFlips, makeSetMultipleFlags } from "~/v3/featureFlags.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -25,11 +25,11 @@ async function readGlobalMint(prisma: PrismaClient): Promise<Record<string, unkn
   return m;
 }
 
-describe("applyGlobalMintKindFlip — transactional stamp + serialized flips", () => {
+describe("applyGlobalGracedFlips — transactional stamp + serialized flips", () => {
   postgresTest("a genuine global flip stamps prev + flippedAt", async ({ prisma }) => {
     await makeSetMultipleFlags(prisma)({ [FEATURE_FLAG.runOpsMintKind]: "cuid" });
 
-    await applyGlobalMintKindFlip(prisma, { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" }, 60_000);
+    await applyGlobalGracedFlips(prisma, { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" }, 60_000);
 
     const m = await readGlobalMint(prisma);
     expect(m[FEATURE_FLAG.runOpsMintKind]).toBe("runOpsId");
@@ -44,7 +44,7 @@ describe("applyGlobalMintKindFlip — transactional stamp + serialized flips", (
 
       await Promise.all(
         Array.from({ length: 8 }, () =>
-          applyGlobalMintKindFlip(prisma, { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" }, 60_000)
+          applyGlobalGracedFlips(prisma, { [FEATURE_FLAG.runOpsMintKind]: "runOpsId" }, 60_000)
         )
       );
 
