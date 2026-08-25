@@ -672,7 +672,17 @@ describe("RoutingRunStore gen-2 shard refuses a co-located cuid waitpoint", () =
       router.createWaitpoint({ data: { id: "cuid_w1" } } as never, undefined, {
         coLocateWithRunId: "a:run_1",
       })
-    ).toThrow("cuid-shaped waitpoint");
+    ).toThrow('onto gen-2 shard "a"');
+    expect(trace(log)).toEqual([]);
+  });
+
+  it("throws when an id-less waitpoint is co-located onto a gen-2 shard", () => {
+    // Prisma's @default(cuid()) would otherwise mint a cuid on the gen-2 shard AFTER the write,
+    // leaving it unroutable for its own completion (CodeRabbit finding). Reject it up front.
+    const { router, log } = coLocateRouter();
+    expect(() =>
+      router.createWaitpoint({ data: {} } as never, undefined, { coLocateWithRunId: "a:run_1" })
+    ).toThrow('onto gen-2 shard "a"');
     expect(trace(log)).toEqual([]);
   });
 
