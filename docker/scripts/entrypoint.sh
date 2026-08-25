@@ -49,6 +49,44 @@ else
   echo "RUN_OPS_LEGACY_DIRECT_URL not set, skipping legacy run-ops migrations."
 fi
 
+# Run-ops shards: migrate every gen-2 shard that owns its own database. Each shard runs the
+# identical schema, so this is the existing run-ops migrations against a new DSN. An aliased shard is
+# skipped by the DSN script: it IS its target's database. Installs that never set RUN_OPS_SHARDS
+# skip this entirely.
+{ set +x; } 2>/dev/null
+if [ -n "$RUN_OPS_SHARDS" ]; then
+  set -x
+  if [ "$SKIP_RUN_OPS_SHARD_MIGRATIONS" != "1" ]; then
+    echo "Running run-ops shard migrations"
+    # Tracing stays OFF from here to the end of the loop: `set -x` prints an assignment, so
+    # capturing a DSN under tracing would put the credentials in the logs.
+    { set +x; } 2>/dev/null
+    # A malformed descriptor exits 1 here, so the container stops before it migrates anything.
+    shard_dsns=$(node scripts/runOpsShardDsns.mjs)
+    # A `for` loop and NOT `... | while read`: a pipeline subshell would swallow a failed migration
+    # on any iteration but the last. Here `set -e` stops the boot on the first shard that fails.
+    # IFS is newline-only so a DSN is never split on other whitespace, and `set -f` stops a DSN
+    # query string (it holds `?`) from being read as a glob pattern.
+    old_ifs=$IFS
+    IFS='
+'
+    set -f
+    for shard_dsn in $shard_dsns; do
+      # Subshell with tracing off so `set -x` does not print the DSN (with credentials) to the logs.
+      (set +x; RUN_OPS_DATABASE_URL="$shard_dsn" DIRECT_URL="$shard_dsn" pnpm --filter @internal/run-ops-database db:migrate:deploy)
+    done
+    set +f
+    IFS=$old_ifs
+    set -x
+    echo "Run-ops shard migrations done"
+  else
+    echo "SKIP_RUN_OPS_SHARD_MIGRATIONS=1, skipping run-ops shard migrations."
+  fi
+else
+  set -x
+  echo "RUN_OPS_SHARDS not set, skipping run-ops shard migrations."
+fi
+
 if [ "$SKIP_DASHBOARD_AGENT_MIGRATIONS" != "1" ]; then
   echo "Running dashboard agent migrations"
   pnpm --filter @internal/dashboard-agent-db db:migrate:deploy
