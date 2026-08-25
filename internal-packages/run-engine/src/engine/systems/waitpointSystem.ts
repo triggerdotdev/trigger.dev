@@ -499,7 +499,6 @@ export class WaitpointSystem {
         blockingWaitpoints
       );
 
-
       // 3. Get the run (run-ops scalars) + resolve its environment via the control-plane resolver,
       // so the run-ops DB can split without a cross-provider join.
       const run = await this.$.runStore.findRun(

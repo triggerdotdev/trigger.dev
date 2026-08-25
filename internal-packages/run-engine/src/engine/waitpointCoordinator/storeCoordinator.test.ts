@@ -1871,31 +1871,32 @@ describe("readCompletionEnvelopes", () => {
     }
   });
 
-  redisTest("carries an offloaded value as a ref, not as an inline value", async ({
-    redisOptions,
-  }) => {
-    const store = coordinator(redisOptions);
-    try {
-      await store.createIfAbsent({ record: record("w_ref"), status: "PENDING" });
-      await store.complete({
-        waitpointId: "w_ref",
-        completion: completion({
-          outputType: "application/store",
-          output: { ref: "store-key-1" },
-        }),
-      });
+  redisTest(
+    "carries an offloaded value as a ref, not as an inline value",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        await store.createIfAbsent({ record: record("w_ref"), status: "PENDING" });
+        await store.complete({
+          waitpointId: "w_ref",
+          completion: completion({
+            outputType: "application/store",
+            output: { ref: "store-key-1" },
+          }),
+        });
 
-      const [envelope] = await store.readCompletionEnvelopes({
-        runId: "run_env",
-        waitpointIds: ["w_ref"],
-      });
+        const [envelope] = await store.readCompletionEnvelopes({
+          runId: "run_env",
+          waitpointIds: ["w_ref"],
+        });
 
-      expect(envelope?.outputRef).toBe("store-key-1");
-      expect(envelope?.output).toBeUndefined();
-    } finally {
-      await store.quit();
+        expect(envelope?.outputRef).toBe("store-key-1");
+        expect(envelope?.output).toBeUndefined();
+      } finally {
+        await store.quit();
+      }
     }
-  });
+  );
 
   // The omission is the contract. A pending waitpoint has no envelope, and defaulting one
   // here would hand the resolver a record it must not have. The caller's coverage check is
