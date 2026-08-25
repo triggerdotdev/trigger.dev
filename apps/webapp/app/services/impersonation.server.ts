@@ -37,6 +37,9 @@ export function commitImpersonationSession(session: Session) {
 }
 
 export async function getImpersonationId(request: Request) {
+  // Flag off: any impersonation cookie is inert, however it was obtained.
+  if (!env.IMPERSONATION_ENABLED) return undefined;
+
   const session = await getImpersonationSession(request);
 
   return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;
@@ -74,6 +77,14 @@ export async function getImpersonationState(
   request: Request,
   resolvedUserId: string | undefined
 ): Promise<ImpersonationState> {
+  if (!env.IMPERSONATION_ENABLED) {
+    return resolveImpersonationState({
+      impersonatedUserId: undefined,
+      viewingAsUser: undefined,
+      resolvedUserId,
+    });
+  }
+
   const session = await getImpersonationSession(request);
 
   return resolveImpersonationState({

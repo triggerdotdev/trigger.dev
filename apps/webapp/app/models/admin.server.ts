@@ -12,8 +12,21 @@ import { authenticator } from "~/services/auth.server";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { impersonationDestinationPath } from "~/utils/pathBuilder";
+import { env } from "~/env.server";
 
 const pageSize = 20;
+
+/**
+ * Guard for everything that starts an impersonation (the model function and
+ * the routes that render or serve the flow). With IMPERSONATION_ENABLED off,
+ * those surfaces don't exist: 404, not 403, so the instance doesn't advertise
+ * the feature. Stopping an impersonation is deliberately never gated.
+ */
+export function requireImpersonationEnabled(): void {
+  if (!env.IMPERSONATION_ENABLED) {
+    throw new Response("Not Found", { status: 404 });
+  }
+}
 
 export async function adminGetUsers(userId: string, { page, search }: SearchParams) {
   page = page || 1;
@@ -217,6 +230,8 @@ export async function redirectWithImpersonation(
   currentUser?: { id: string; admin: boolean },
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
+  requireImpersonationEnabled();
+
   const user = currentUser ?? (await requireUser(request));
   if (!user.admin) {
     throw new Error("Unauthorized");
