@@ -61,7 +61,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // the consent page below instead, whose "Impersonate" button posts back from
   // our own page and so satisfies the same check.
   if (isSameOriginNavigation(request, env.LOGIN_ORIGIN)) {
-    throw await startImpersonation(request, organizationSlug, path, user);
+    throw await startImpersonation(request, organizationSlug, path);
   }
 
   // Expected for any link opened outside the app (address bar, bookmark, a link
@@ -148,7 +148,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // The consent form posts to an explicit absolute path (see
   // `impersonationConsentPostBackPath`), so the organization slug, the splat
   // path and the query string all arrive here intact.
-  return startImpersonation(request, organizationSlug, params["*"] ?? "", user);
+  return startImpersonation(request, organizationSlug, params["*"] ?? "");
 }
 
 export default function Page() {
