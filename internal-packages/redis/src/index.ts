@@ -1,7 +1,19 @@
-import { Redis, type RedisOptions } from "ioredis";
+import { Cluster, Redis, type ClusterNode, type ClusterOptions, type RedisOptions } from "ioredis";
 import { Logger } from "@trigger.dev/core/logger";
 
-export { Redis, type Callback, type RedisOptions, type Result, type RedisCommander } from "ioredis";
+export {
+  Redis,
+  Cluster,
+  type Callback,
+  type RedisOptions,
+  type ClusterNode,
+  type ClusterOptions,
+  type Result,
+  type RedisCommander,
+} from "ioredis";
+
+/** Single-node or cluster-mode. Interchangeable for callers whose keys share one hash tag. */
+export type RedisClient = Redis | Cluster;
 
 /**
  * Reply-error -> reconnect mapping. Without this hook, an ElastiCache
@@ -63,6 +75,47 @@ export function createRedisClient(
       handlers.onError(error);
     } else {
       logger.error(`Redis client error:`, { error, keyPrefix: options.keyPrefix });
+    }
+  });
+
+  return client;
+}
+
+export type RedisClusterClientOptions = {
+  nodes: ClusterNode[];
+  clusterOptions?: Omit<ClusterOptions, "redisOptions">;
+  redisOptions?: RedisOptions;
+};
+
+/**
+ * Cluster-mode client. `defaultOptions` go on the INNER per-node options, so a role swap gets the
+ * same reconnect-and-retry treatment a single-node client already gets.
+ */
+export function createRedisClusterClient(
+  options: RedisClusterClientOptions,
+  handlers?: { onError?: (err: Error) => void }
+): Cluster {
+  const client = new Redis.Cluster(options.nodes, {
+    ...options.clusterOptions,
+    redisOptions: {
+      ...defaultOptions,
+      ...options.redisOptions,
+    },
+  });
+
+  if (process.env.VITEST) {
+    client.on("error", () => {});
+    return client;
+  }
+
+  client.on("error", (error) => {
+    if (handlers?.onError) {
+      handlers.onError(error);
+    } else {
+      logger.error(`Redis cluster client error:`, {
+        error,
+        keyPrefix: options.redisOptions?.keyPrefix,
+      });
     }
   });
 
