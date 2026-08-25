@@ -94,7 +94,7 @@ export function recordDeploymentLifecycle(params: {
           [ATTRS.TRIGGERED_VIA]: deployment.triggeredVia ?? undefined,
           [ATTRS.COMMIT_SHA]: deployment.commitSHA ?? undefined,
           [ATTRS.ERROR_NAME]: isFailure ? errorData?.name : undefined,
-          [ATTRS.ERROR_MESSAGE]: isFailure ? reason ?? errorData?.message : undefined,
+          [ATTRS.ERROR_MESSAGE]: isFailure ? (reason ?? errorData?.message) : undefined,
           [ATTRS.CANCELED_REASON]: deployment.canceledReason ?? undefined,
           [ATTRS.DURATION_TOTAL_MS]: durations.totalMs,
           [ATTRS.DURATION_QUEUE_MS]: durations.queueMs,
