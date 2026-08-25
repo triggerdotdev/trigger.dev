@@ -66,6 +66,15 @@ const WAITPOINT_CHUNK_SIZE = 100;
 export type SnapshotStoreMode = "off" | "dual-write" | "compare" | "redis-read" | "redis-only";
 
 /**
+ * Resolves the dial for one write. MUST be synchronous and MUST NOT query: seven methods here take
+ * a caller-supplied `tx`, so this class cannot see a caller's transaction boundary, and a read
+ * issued here could land inside someone else's open interactive transaction.
+ */
+export type SnapshotStoreModeResolver = {
+  resolve(organizationId?: string): SnapshotStoreMode;
+};
+
+/**
  * Enqueues the existing `repairSnapshot` job for a run whose append was lost. The decorator lives in
  * run-store and cannot reach the engine's worker, so the binding is injected. That binding must
  * reuse the stall watchdog's job id for the run, or the watchdog and this path can start two
@@ -87,6 +96,8 @@ export type TaskRunExecutionSnapshotStoreOptions = {
   store: RedisSnapshotStore;
   /** Defaults to `off`, which is a pure pass-through that never touches Redis. */
   mode?: SnapshotStoreMode;
+  /** Takes precedence over `mode`, and is re-read on every write so the dial can move at runtime. */
+  modeResolver?: SnapshotStoreModeResolver;
   /** Percentage of runs whose reads come from Redis at `redis-read` and `redis-only`. Defaults to 0. */
   readPercent?: number;
   onAppendFailure?: SnapshotRepairEnqueuer;
@@ -114,7 +125,8 @@ export type StagedAppend = {
 };
 
 export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
-  readonly mode: SnapshotStoreMode;
+  readonly #staticMode: SnapshotStoreMode;
+  protected readonly modeResolver?: SnapshotStoreModeResolver;
   protected readonly redis: RedisSnapshotStore;
   protected readonly readPercent: number;
   protected readonly onAppendFailure?: SnapshotRepairEnqueuer;
@@ -126,7 +138,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   constructor(delegate: RunStore, options: TaskRunExecutionSnapshotStoreOptions) {
     super(delegate);
     this.redis = options.store;
-    this.mode = options.mode ?? "off";
+    this.#staticMode = options.mode ?? "off";
+    this.modeResolver = options.modeResolver;
     this.readPercent = options.readPercent ?? 0;
     this.onAppendFailure = options.onAppendFailure;
     this.faults = options.faults;
@@ -135,9 +148,18 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     this.staging = options.staging;
   }
 
-  /** True in every position that appends to Redis. */
-  protected get writesRedis(): boolean {
-    return this.mode !== "off";
+  get mode(): SnapshotStoreMode {
+    return this.modeResolver?.resolve() ?? this.#staticMode;
+  }
+
+  /** True in every position that appends to Redis, for this entry's organisation. */
+  protected writesRedisFor(organizationId?: string): boolean {
+    return (this.modeResolver?.resolve(organizationId) ?? this.#staticMode) !== "off";
+  }
+
+  /** Test seam for the per-organisation predicate. Not for production callers. */
+  writesRedisForTest(organizationId?: string): boolean {
+    return this.writesRedisFor(organizationId);
   }
 
   /**
@@ -156,12 +178,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     runId: string | undefined,
     fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
   ): Promise<R> {
-    if (!this.writesRedis) {
-      // At `off` the callback must receive the delegate's own store, untouched, so a transaction
-      // behaves exactly as it does without the decorator in the chain.
-      return this.delegate.runInTransaction(runId, fn);
-    }
-
+    // Always stage. This method holds only a runId, and a per-organisation dial lives in that
+    // organisation's blob, so "can any write in here reach Redis" cannot be answered here. Each
+    // entry resolves its own mode as it is staged, and an organisation at `off` stages nothing.
     const staged: StagedAppend[] = [];
 
     const result = await this.delegate.runInTransaction(runId, (store, tx) =>
@@ -192,10 +211,6 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<RunStore> {
     const store = await this.delegate.forWaitpointCompletion(waitpointId, context);
 
-    if (!this.writesRedis) {
-      return store;
-    }
-
     // Carry the staging buffer through. Without it, a handle taken inside a transaction appends
     // immediately, which is the exact ordering the facade exists to prevent.
     return this.#wrap(store, this.staging);
@@ -209,8 +224,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   #wrap(store: RunStore, staging?: StagedAppend[]): TaskRunExecutionSnapshotStore {
     return new TaskRunExecutionSnapshotStore(store, {
       store: this.redis,
-      mode: this.mode,
+      mode: this.#staticMode,
       readPercent: this.readPercent,
+      ...(this.modeResolver && { modeResolver: this.modeResolver }),
       logger: this.logger,
       ...(this.onAppendFailure && { onAppendFailure: this.onAppendFailure }),
       ...(this.faults && { faults: this.faults }),
@@ -227,7 +243,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
-    if (!this.writesRedis) {
+    if (!this.writesRedisFor(params.snapshot?.organizationId)) {
       return this.delegate.createRun(params, tx);
     }
 
@@ -243,7 +259,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateCancelledRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
-    if (!this.writesRedis) {
+    if (!this.writesRedisFor(params.snapshot?.organizationId)) {
       return this.delegate.createCancelledRun(params, tx);
     }
 
@@ -272,7 +288,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    if (!this.writesRedis) {
+    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
       return this.delegate.completeAttemptSuccess(runId, data, args, tx);
     }
 
@@ -297,7 +313,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    if (!this.writesRedis) {
+    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
       return this.delegate.expireRun(runId, data as never, args, tx);
     }
 
@@ -324,7 +340,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     },
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
-    if (!this.writesRedis) {
+    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
       return this.delegate.expireParkedRun(runId, data as never, tx);
     }
 
@@ -350,7 +366,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<TaskRun> {
     // The delegate writes a snapshot only when one is supplied, so an absent snapshot is a plain run
     // update with nothing for Redis to mirror.
-    if (!this.writesRedis || !data.snapshot) {
+    if (!data.snapshot || !this.writesRedisFor(data.snapshot?.organizationId)) {
       return this.delegate.rescheduleRun(runId, data, tx);
     }
 
@@ -371,7 +387,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     data: LockRunData,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<Record<string, never>>> {
-    if (!this.writesRedis) {
+    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
       return this.delegate.lockRunToWorker(runId, data, tx);
     }
 
@@ -401,7 +417,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
-    if (!this.writesRedis) {
+    if (!this.writesRedisFor(input?.organizationId)) {
       return this.delegate.createExecutionSnapshot(input, tx);
     }
 

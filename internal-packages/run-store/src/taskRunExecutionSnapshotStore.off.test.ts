@@ -53,15 +53,31 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
       mode: "off",
     }) as unknown as Record<string, (...args: unknown[]) => unknown>;
 
+    // Both exceptions return a wrapped handle rather than the delegate's value verbatim, because
+    // the dial can move at runtime and an unwrapped handle would let a later write bypass the
+    // decorator with no signal. Every other method is still a pass-through, and the exploding
+    // Redis store is what proves none of them reaches Redis.
+    const WRAPPED = ["runInTransaction", "forWaitpointCompletion"];
+
     for (const name of RUN_STORE_METHOD_NAMES) {
-      if (name === "runInTransaction") continue;
+      if (WRAPPED.includes(name)) continue;
       expect(await decorated[name]("arg-one", "arg-two")).toBe(`result:${name}`);
     }
 
-    expect(calls).toEqual(RUN_STORE_METHOD_NAMES.filter((n) => n !== "runInTransaction"));
+    const handle = await decorated.forWaitpointCompletion("waitpoint", {});
+    expect(handle).toBeInstanceOf(TaskRunExecutionSnapshotStore);
+    expect((handle as unknown as { delegate: unknown }).delegate).toBe(
+      "result:forWaitpointCompletion"
+    );
+
+    // forWaitpointCompletion is called after the loop, so it lands last rather than in place.
+    expect(calls).toEqual([
+      ...RUN_STORE_METHOD_NAMES.filter((n) => !WRAPPED.includes(n)),
+      "forWaitpointCompletion",
+    ]);
   });
 
-  it("hands the delegate's own store to a transaction callback", async () => {
+  it("wraps the transaction callback's store but never reaches Redis", async () => {
     const inner = forwardingProbe().store;
     let seen: unknown;
     const delegate = {
@@ -82,7 +98,11 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
       seen = store;
     });
 
-    expect(seen).toBe(inner);
+    // The facade is always installed: this method holds only a runId, so it cannot know whether a
+    // per-organisation dial would put any write inside on Redis. The exploding Redis store is what
+    // proves the position still costs nothing at `off`.
+    expect(seen).toBeInstanceOf(TaskRunExecutionSnapshotStore);
+    expect(seen).not.toBe(inner);
   });
 
   it("reports every other dial position as one that writes Redis", () => {
