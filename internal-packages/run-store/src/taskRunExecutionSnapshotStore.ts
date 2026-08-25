@@ -104,6 +104,12 @@ export type TaskRunExecutionSnapshotStoreOptions = {
 /** One deferred append: the entry, plus the wait cycle it carries, if any. */
 export type StagedAppend = {
   entry: SnapshotEntryInput;
+  /**
+   * The head this append expects, carried through staging so the compare-and-set survives the
+   * deferral. Dropping it would silently disable the fork guard for every snapshot written inside a
+   * transaction, and a stale append that should be rejected would instead become the head.
+   */
+  expectedCur?: string;
   completedWaitpoints?: CompletedWaitpointRef[];
 };
 
@@ -167,7 +173,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       await this.#appendTransition(
         "runInTransaction",
         item.entry,
-        undefined,
+        item.expectedCur,
         item.completedWaitpoints
       );
     }
@@ -493,7 +499,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (this.staging) {
       // Inside a transaction the append cannot run until the Postgres side commits, or a rollback
       // leaves Redis holding a transition that never happened.
-      this.staging.push({ entry, ...(completedWaitpoints && { completedWaitpoints }) });
+      this.staging.push({
+        entry,
+        ...(expectedCur !== undefined && { expectedCur }),
+        ...(completedWaitpoints && { completedWaitpoints }),
+      });
       return;
     }
 

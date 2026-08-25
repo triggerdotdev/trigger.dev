@@ -139,6 +139,61 @@ describe("the staging facade", () => {
   });
 
   containerTest(
+    "keeps the fork guard on an append staged inside a transaction",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        await seedBirth(decorated, redis, runId, env);
+        const id = generateInternalId();
+
+        // A stale expectation: this names a head that was never current. Outside a transaction the
+        // append is rejected as forked and never written. Staging must not weaken that, or a write
+        // the store would have refused becomes the head purely because it ran inside a transaction.
+        await decorated.runInTransaction(runId, async (store, tx) => {
+          await store.createExecutionSnapshot(
+            { ...snapshotInput(runId, env, id, "stale"), previousSnapshotId: generateInternalId() },
+            tx
+          );
+        });
+
+        expect(await redis.getById(runId, id)).toBeNull();
+
+        const head = await redis.getLatest(runId);
+        expect(head?.id).not.toBe(id);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "honours a correct expectation on an append staged inside a transaction",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        await seedBirth(decorated, redis, runId, env);
+        const head = await redis.getLatest(runId);
+        const id = generateInternalId();
+
+        await decorated.runInTransaction(runId, async (store, tx) => {
+          await store.createExecutionSnapshot(
+            { ...snapshotInput(runId, env, id, "expected"), previousSnapshotId: head!.id },
+            tx
+          );
+        });
+
+        expect((await redis.getById(runId, id))?.entry.description).toBe("expected");
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
     "hands the transaction callback a decorated store",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);

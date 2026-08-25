@@ -351,6 +351,50 @@ describe("SnapshotOrphanSweeper", () => {
     }
   );
 
+  containerTest(
+    "still finds keyspaces when the client carries a key prefix",
+    async ({ prisma, redisOptions }) => {
+      // ioredis prepends its keyPrefix to keys for ordinary commands, but NOT to a SCAN MATCH
+      // pattern, and it returns matched keys with the prefix still on them. The engine sets a
+      // prefix on every other Redis client it builds, so a sweep that ignored this would match
+      // nothing and report a clean pass: a safety net that silently protects nothing.
+      const prefixed = { ...(redisOptions as object), keyPrefix: "engine:" } as never;
+      const store = new RedisSnapshotStore({
+        redisOptions: prefixed,
+        completedTtlMs: COMPLETED_TTL_MS,
+      });
+      const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const sweeper = new SnapshotOrphanSweeper({
+        redisOptions: prefixed,
+        runStore: runStore as unknown as RunStore,
+        completedTtlMs: COMPLETED_TTL_MS,
+        orphanAgeMs: ORPHAN_AGE_MS,
+      });
+      const probe = createRedisClient(prefixed, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        const old = new Date(Date.now() - 2 * ORPHAN_AGE_MS);
+
+        await store.append({
+          entry: birthEntry(runId, env, old),
+          kind: "birth",
+          isTerminal: false,
+          cycle: { kind: "new", completedWaitpoints: [{ id: "w_1", index: 0 }] },
+        });
+
+        const result = await sweeper.sweep();
+
+        expect(result.scanned).toBe(1);
+        expect(result.deleted).toBe(1);
+        expect(await probe.exists(snapshotKeys(runId).e)).toBe(0);
+        expect(await probe.exists(`snap:{${runId}}:wp:1`)).toBe(0);
+      } finally {
+        await Promise.all([store.quit(), sweeper.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
   containerTest("processes every keyspace across batches", async ({ prisma, redisOptions }) => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
     const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });

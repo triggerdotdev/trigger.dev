@@ -37,6 +37,13 @@ const FINAL = new Set<string>(FINAL_RUN_STATUSES);
 
 /** Comfortably above run-creation latency, so a birth in flight is never mistaken for an orphan. */
 const DEFAULT_ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The keyspace prefix, owned by `snapshotKeys` in the store rather than configurable here. A sweep
+ * that could be pointed at a different prefix would be a fiction: the store writes `snap:` keys
+ * unconditionally, so there is no other keyspace to point it at.
+ */
+const SNAPSHOT_KEYSPACE_PREFIX = "snap:";
 const DEFAULT_BATCH_SIZE = 1000;
 
 export type SweepResult = {
@@ -64,7 +71,6 @@ export type SnapshotOrphanSweeperOptions = {
   runStore: RunStore;
   completedTtlMs: number;
   orphanAgeMs?: number;
-  keyPrefix?: string;
   logger?: Logger;
 };
 
@@ -73,7 +79,13 @@ export class SnapshotOrphanSweeper {
   readonly #runStore: RunStore;
   readonly #completedTtlMs: number;
   readonly #orphanAgeMs: number;
-  readonly #prefix: string;
+  /**
+   * The ioredis client-level prefix, which is NOT the keyspace prefix. ioredis prepends it to keys
+   * for ordinary commands, but it does not prepend it to a SCAN MATCH pattern, and it does return
+   * matched keys with it still attached. Unhandled, a prefixed client makes the sweep match nothing
+   * and report a clean pass, which is the worst outcome for a safety net.
+   */
+  readonly #clientPrefix: string;
   readonly #logger: Logger;
   #quit?: Promise<void>;
 
@@ -82,7 +94,7 @@ export class SnapshotOrphanSweeper {
     this.#runStore = options.runStore;
     this.#completedTtlMs = options.completedTtlMs;
     this.#orphanAgeMs = options.orphanAgeMs ?? DEFAULT_ORPHAN_AGE_MS;
-    this.#prefix = options.keyPrefix ?? "snap:";
+    this.#clientPrefix = (options.redisOptions.keyPrefix as string | undefined) ?? "";
     this.#redis = createRedisClient(options.redisOptions, {
       onError: (error) => this.#logger.error("SnapshotOrphanSweeper redis client error", { error }),
     });
@@ -115,7 +127,7 @@ export class SnapshotOrphanSweeper {
       const [next, keys] = await this.#redis.scan(
         cursor,
         "MATCH",
-        `${this.#prefix}{*}:e`,
+        `${this.#clientPrefix}${SNAPSHOT_KEYSPACE_PREFIX}{*}:e`,
         "COUNT",
         batchSize
       );
@@ -238,7 +250,7 @@ export class SnapshotOrphanSweeper {
     const high = Number((await this.#redis.hget(core.seq, "c")) ?? "0");
     const cycles: string[] = [];
     for (let n = 1; n <= high; n++) {
-      cycles.push(`${this.#prefix}{${runId}}:wp:${n}`);
+      cycles.push(`${SNAPSHOT_KEYSPACE_PREFIX}{${runId}}:wp:${n}`);
     }
 
     const candidates = [core.e, core.idx, core.cur, core.seq, ...cycles];
@@ -309,6 +321,10 @@ export class SnapshotOrphanSweeper {
     return newestRaw;
   }
 
+  /**
+   * The run id is whatever sits inside the hash tag, so a client prefix on the returned key does not
+   * need stripping: `engine:snap:{run_x}:e` and `snap:{run_x}:e` both yield `run_x`.
+   */
   #runIdFrom(key: string): string | undefined {
     const open = key.indexOf("{");
     const close = key.indexOf("}", open + 1);
