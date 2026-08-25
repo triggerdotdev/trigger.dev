@@ -6,7 +6,7 @@
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient } from "@trigger.dev/database";
-import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 import type { PrismaReplicaClient } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -332,6 +332,86 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
       // must not throw despite the item referencing a run absent from both physical DBs.
       expect(result!.items).toHaveLength(1);
       expect(result!.items[0]).toMatchObject({ ok: true, id: "run_present" });
+    }
+  );
+
+  // A gen-2 member is directly routable to its own shard. Before the shard arm existed it
+  // joined the gen-1 `new` read, missed there, and — classifying dedicated-family — never
+  // reached the legacy probe either, so it vanished from the batch results with no error.
+  heteroRunOpsPostgresTest(
+    "a gen-2 member is hydrated from its own shard alongside a legacy-resident member",
+    async ({ prisma14, prisma17 }: { prisma14: PrismaClient; prisma17: RunOpsPrismaClient }) => {
+      const ctx = await seedLegacyEnv(prisma14, "gen2-shard");
+      await relaxLegacyAttemptFk(prisma14);
+      await relaxNewBatchItemFk(prisma17);
+
+      const shardMemberId = generateRunOpsIdV2("a");
+      expect(shardMemberId.length).toBe(26);
+      const legacyMemberId = generateLegacyCuid();
+
+      await seedNewMember(
+        prisma17,
+        { envId: ctx.environment.id, orgId: ctx.organization.id, projectId: ctx.project.id },
+        {
+          id: shardMemberId,
+          friendlyId: "run_shard_member",
+          status: "COMPLETED_SUCCESSFULLY",
+          output: JSON.stringify({ from: "shard-a" }),
+        }
+      );
+      await seedLegacyMember(prisma14, ctx, {
+        id: legacyMemberId,
+        friendlyId: "run_legacy_member",
+        status: "COMPLETED_WITH_ERRORS",
+        error: { type: "BUILT_IN_ERROR", name: "Err", message: "boom", stackTrace: "" },
+      });
+
+      const batchFriendlyId = "batch_gen2_shard";
+      await seedBatchOnNew(prisma17, ctx.environment.id, batchFriendlyId, [
+        shardMemberId,
+        legacyMemberId,
+      ]);
+
+      // Both handles point at prisma17 (there is no third container), so the discriminator
+      // cannot be WHICH database answers — it has to be WHICH HANDLE is asked. The gen-1 new
+      // handle serves the batch row but REFUSES a taskRun read that includes the gen-2 id;
+      // only routing that id to the shard handle avoids the refusal.
+      const genOneNew = new Proxy(prisma17 as unknown as PrismaReplicaClient, {
+        get(target, prop, receiver) {
+          if (prop === "taskRun") {
+            return {
+              findMany: (args: { where?: { id?: { in?: string[] } } }) => {
+                if (args.where?.id?.in?.includes(shardMemberId)) {
+                  throw new Error("a gen-2 id must not be read on the gen-1 new handle");
+                }
+                return (target as unknown as RunOpsPrismaClient).taskRun.findMany(args as never);
+              },
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+
+      const presenter = new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
+        splitEnabled: true,
+        newClient: genOneNew,
+        legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+        shardReplicas: new Map([["a", prisma17 as unknown as PrismaReplicaClient]]),
+      });
+
+      const result = await presenter.call(batchFriendlyId, env(ctx));
+
+      expect(result).toBeDefined();
+      expect(result!.items).toHaveLength(2);
+      const [first, second] = result!.items;
+      expect(first).toEqual({
+        ok: true,
+        id: "run_shard_member",
+        taskIdentifier: "my-task",
+        output: JSON.stringify({ from: "shard-a" }),
+        outputType: "application/json",
+      });
+      expect(second).toMatchObject({ ok: false, id: "run_legacy_member" });
     }
   );
 });

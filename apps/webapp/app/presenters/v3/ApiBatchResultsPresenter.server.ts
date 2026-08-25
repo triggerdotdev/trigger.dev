@@ -1,5 +1,5 @@
 import type { BatchTaskRunExecutionResult } from "@trigger.dev/core/v3";
-import { ownerEngine } from "@trigger.dev/core/v3/isomorphic";
+import { resolveShard, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import {
   $replica,
   type PrismaClientOrTransaction,
@@ -13,6 +13,7 @@ import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 
 import { boundedIn } from "@trigger.dev/database";
+import { runOpsShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
 /**
  * Run-ops read-through wiring. All optional; absent (or `splitEnabled` falsy) collapses `call` to
  * passthrough. `legacyReplica` is a READ REPLICA handle only — there is NO legacy-primary field.
@@ -21,6 +22,8 @@ type ApiBatchResultsReadThroughDeps = {
   splitEnabled?: boolean;
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
+  /** Gen-2 shard replicas by shard char; empty (RUN_OPS_SHARDS unset) keeps today's behaviour. */
+  shardReplicas?: ReadonlyMap<ShardKey, PrismaReplicaClient>;
   isPastRetention?: (runId: string) => boolean;
 };
 
@@ -181,16 +184,48 @@ export class ApiBatchResultsPresenter extends BasePresenter {
 
     const taskRunIds = batchRun.items.map((item) => item.taskRunId);
 
-    const newRows = (await newClient.taskRun.findMany({
-      where: { id: { in: boundedIn(taskRunIds) } },
-      select: memberRunSelect,
-    })) as TaskRunWithAttempts[];
+    // A gen-2 id is directly routable to its own shard, so it must not join the gen-1 read:
+    // it would miss there, and (being dedicated-family) never reach the legacy probe either.
+    const shardReplicas = this.readThrough?.shardReplicas ?? runOpsShardReplicas;
+    const genOneIds: string[] = [];
+    const idsByShard = new Map<ShardKey, string[]>();
+    for (const id of taskRunIds) {
+      const shardKey = resolveShard(id);
+      if (shardKey !== "new" && shardKey !== "legacy" && shardReplicas.has(shardKey)) {
+        const group = idsByShard.get(shardKey);
+        group ? group.push(id) : idsByShard.set(shardKey, [id]);
+      } else {
+        genOneIds.push(id);
+      }
+    }
+
+    const newRows = (
+      genOneIds.length > 0
+        ? ((await newClient.taskRun.findMany({
+            where: { id: { in: boundedIn(genOneIds) } },
+            select: memberRunSelect,
+          })) as TaskRunWithAttempts[])
+        : []
+    ).concat(
+      (
+        await Promise.all(
+          [...idsByShard.entries()].map(
+            async ([shardKey, ids]) =>
+              (await shardReplicas.get(shardKey)!.taskRun.findMany({
+                where: { id: { in: boundedIn(ids) } },
+                select: memberRunSelect,
+              })) as TaskRunWithAttempts[]
+          )
+        )
+      ).flat()
+    );
     const runsById = new Map(newRows.map((run) => [run.id, run]));
 
-    // A run-ops id can only live on NEW, so only misses that AREN'T run-ops-shaped are candidates
-    // for the legacy probe — mirrors readThroughRun's per-id "NEW residency skips legacy" rule.
-    const legacyCandidateIds = taskRunIds.filter(
-      (id) => !runsById.has(id) && ownerEngine(id) !== "NEW"
+    // A dedicated-family id (gen-1 v1 or gen-2) can only live on its own store, so only
+    // misses that AREN'T dedicated-shaped are candidates for the legacy probe — mirrors
+    // readThroughRun's per-id "dedicated residency skips legacy" rule.
+    const legacyCandidateIds = genOneIds.filter(
+      (id) => !runsById.has(id) && resolveShard(id) === "legacy"
     );
     if (legacyCandidateIds.length > 0) {
       const legacyRows = (await legacyReplica.taskRun.findMany({

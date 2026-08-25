@@ -88,7 +88,9 @@ describe("readThroughRun (legacy replica + new DB)", () => {
         },
       });
 
-      expect(pastRetentionResult.found === false && pastRetentionResult.reason).toBe("past-retention");
+      expect(pastRetentionResult.found === false && pastRetentionResult.reason).toBe(
+        "past-retention"
+      );
 
       // A run that is simply absent (not past retention) yields not-found.
       const notFoundResult = await readThroughRun({

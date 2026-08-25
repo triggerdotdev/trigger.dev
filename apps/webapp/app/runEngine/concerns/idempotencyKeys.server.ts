@@ -1,4 +1,4 @@
-import { ownerEngine, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { resolveShard, RunId, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction, TaskRun, Waitpoint } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -13,9 +13,10 @@ import { computeClaimTtlSeconds } from "~/v3/mollifier/claimTtl";
 import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
 import { runStore } from "~/v3/runStore.server";
 import { runOpsLegacyPrisma, runOpsNewPrisma } from "~/db.server";
+import { runOpsShardWriters } from "~/v3/runOpsMigration/shardHandles.server";
 import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
-import { resolveIdempotencyDedupClient } from "./idempotencyResidency.server";
+import { clientForShardKey, resolveIdempotencyDedupClient } from "./idempotencyResidency.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 // In-memory per-org mollifier-enabled check, shared with `evaluateGate`
@@ -31,6 +32,19 @@ const resolveOrgMollifierFlag = makeResolveMollifierFlag();
 // winners can't spin forever. On exhaustion we fall open to the create with
 // PG's unique index as the backstop.
 const MAX_CLEARED_WINNER_REACQUIRES = 5;
+
+// Every run-ops store keyed by shard key. Both idempotency call sites resolve through this
+// one map, so they cannot disagree about which store owns an id.
+const idempotencyShardClients: ReadonlyMap<ShardKey, PrismaClientOrTransaction> = new Map<
+  ShardKey,
+  PrismaClientOrTransaction
+>([
+  ["legacy", runOpsLegacyPrisma],
+  ["new", runOpsNewPrisma],
+  ...[...runOpsShardWriters.entries()].map(
+    ([key, writer]) => [key, writer as PrismaClientOrTransaction] as const
+  ),
+]);
 
 // Claim ownership context returned to the caller when the
 // IdempotencyKeyConcern won a pre-gate claim. Caller MUST publish the
@@ -172,12 +186,9 @@ export class IdempotencyKeyConcern {
       {
         isSplitEnabled,
         fallbackClient: this.prisma,
-        newClient: runOpsNewPrisma,
-        legacyClient: runOpsLegacyPrisma,
+        clients: idempotencyShardClients,
         resolveMintKind: resolveRunIdMintKind,
-        // `isMigrated` is intentionally omitted: until a child of a swept
-        // legacy-id parent can be born on the new DB, the swept-marker override
-        // would never change the answer, so a child routes by parent id-shape.
+        logger,
       }
     );
 
@@ -640,12 +651,15 @@ export class IdempotencyKeyConcern {
     } catch {
       return null;
     }
-    let client: PrismaClientOrTransaction;
-    try {
-      client = ownerEngine(internalId) === "NEW" ? runOpsNewPrisma : runOpsLegacyPrisma;
-    } catch {
-      client = this.prisma;
-    }
+    // The routing store routes by id and never forwards this object, so its identity only
+    // signals read-your-writes. Resolving it through the shard map keeps the two idempotency
+    // call sites in agreement and stops this reading as gen-2-unaware.
+    const client = clientForShardKey(
+      resolveShard(internalId),
+      idempotencyShardClients,
+      this.prisma,
+      logger
+    );
     return runStore.findRun(
       { id: internalId, runtimeEnvironmentId: environmentId },
       { include: { associatedWaitpoint: true } },

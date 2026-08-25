@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
+  clientForShardKey,
   resolveIdempotencyDedupClient,
   type ResolveIdempotencyClientDeps,
 } from "./idempotencyResidency.server";
@@ -9,20 +10,30 @@ import {
 const FALLBACK = { __tag: "fallback" } as never;
 const NEW_CLIENT = { __tag: "new" } as never;
 const LEGACY_CLIENT = { __tag: "legacy" } as never;
+const SHARD_A_CLIENT = { __tag: "shard-a" } as never;
+
+function clientMap() {
+  return new Map([
+    ["new", NEW_CLIENT],
+    ["legacy", LEGACY_CLIENT],
+    ["a", SHARD_A_CLIENT],
+  ]);
+}
 
 function makeDeps(over: Partial<ResolveIdempotencyClientDeps>): ResolveIdempotencyClientDeps {
   return {
     isSplitEnabled: async () => true,
     fallbackClient: FALLBACK,
-    newClient: NEW_CLIENT,
-    legacyClient: LEGACY_CLIENT,
+    clients: clientMap(),
     resolveMintKind: async () => "runOpsId",
+    // Kept as an injected seam: the real resolveShard is total, so only an injected
+    // classifier can exercise the throw-to-fallback arm below.
     classify: (id) => {
-      if (id.length === 26 && id[25] === "1") return "NEW";
-      if (id.length === 25) return "LEGACY";
+      if (id.length === 26 && id[25] === "2") return id[24]!;
+      if (id.length === 26 && id[25] === "1") return "new";
+      if (id.length === 25) return "legacy";
       throw new Error(`unclassifiable: ${id.length}`);
     },
-    isMigrated: undefined,
     ...over,
   };
 }
@@ -72,29 +83,49 @@ describe("resolveIdempotencyDedupClient", () => {
     expect(client).toBe(LEGACY_CLIENT);
   });
 
-  it("routes a swept (migrated) cuid-parent child to the NEW client", async () => {
-    const cuidParent = RunId.toFriendlyId("c".repeat(25));
-    const client = await resolveIdempotencyDedupClient(
-      { environmentForMint: env, parentRunFriendlyId: cuidParent },
-      makeDeps({ isMigrated: async () => true })
-    );
-    expect(client).toBe(NEW_CLIENT);
-  });
-
-  it("routes a non-migrated cuid-parent child to the LEGACY client even when isMigrated is provided", async () => {
-    const cuidParent = RunId.toFriendlyId("d".repeat(25));
-    const client = await resolveIdempotencyDedupClient(
-      { environmentForMint: env, parentRunFriendlyId: cuidParent },
-      makeDeps({ isMigrated: async () => false })
-    );
-    expect(client).toBe(LEGACY_CLIENT);
-  });
-
   it("falls back to the fallback client when a present parent id is unclassifiable", async () => {
     const client = await resolveIdempotencyDedupClient(
       { environmentForMint: env, parentRunFriendlyId: "run_not-a-valid-length" },
       makeDeps({})
     );
     expect(client).toBe(FALLBACK);
+  });
+
+  it("routes a child to its OWN SHARD client when the parent is a gen-2 id", async () => {
+    const genTwoParent = RunId.toFriendlyId("e".repeat(24) + "a2");
+    const client = await resolveIdempotencyDedupClient(
+      { environmentForMint: env, parentRunFriendlyId: genTwoParent },
+      makeDeps({ resolveMintKind: async () => "cuid" }) // mint flag must NOT win for a child
+    );
+    expect(client).toBe(SHARD_A_CLIENT);
+  });
+
+  it("falls back and logs when a gen-2 parent names an unconfigured shard key", async () => {
+    const errors: unknown[] = [];
+    const genTwoParent = RunId.toFriendlyId("f".repeat(24) + "z2");
+    const client = await resolveIdempotencyDedupClient(
+      { environmentForMint: env, parentRunFriendlyId: genTwoParent },
+      makeDeps({ logger: { error: (_m, meta) => errors.push(meta) } })
+    );
+    expect(client).toBe(FALLBACK);
+    expect(errors).toHaveLength(1);
+  });
+});
+
+describe("clientForShardKey", () => {
+  it("selects the same client the map holds for each reserved key and shard key", () => {
+    const clients = clientMap();
+    expect(clientForShardKey("new", clients, FALLBACK)).toBe(NEW_CLIENT);
+    expect(clientForShardKey("legacy", clients, FALLBACK)).toBe(LEGACY_CLIENT);
+    expect(clientForShardKey("a", clients, FALLBACK)).toBe(SHARD_A_CLIENT);
+  });
+
+  it("returns the fallback and logs for a key the map does not hold", () => {
+    const errors: unknown[] = [];
+    const client = clientForShardKey("z", clientMap(), FALLBACK, {
+      error: (_m, meta) => errors.push(meta),
+    });
+    expect(client).toBe(FALLBACK);
+    expect(errors).toHaveLength(1);
   });
 });

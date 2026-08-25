@@ -30,6 +30,7 @@ import type {
   TaskRunWithWaitpoint,
 } from "./types.js";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 
 // Loose delegate method shape: each generated client types delegate methods as
 // `<T>(args: PackageLocalArgs<T>) => PrismaPromise<…>` against its own nominal
@@ -2669,7 +2670,7 @@ export class PostgresRunStore implements RunStore {
     data: { environmentId: string; name: string; projectId: string; id?: string },
     tx?: PrismaClientOrTransaction,
     // `residency` selects the store at the router; a single store has one client and ignores it.
-    _residency?: "NEW" | "LEGACY"
+    _residency?: ShardKey
   ): Promise<WaitpointTag> {
     const prisma = tx ?? this.prisma;
 

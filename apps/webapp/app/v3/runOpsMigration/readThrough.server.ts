@@ -53,7 +53,7 @@ type ReadThroughDeps = {
   /** Resolved boot constant; never `await`ed per-request when supplied. */
   splitEnabled?: boolean;
   isPastRetention?: (id: string) => boolean;
-  logger?: { error: (m: string, meta?: unknown) => void };
+  logger?: { error: (m: string, meta?: Record<string, unknown>) => void };
   /** Saturation-signal emit hook: called on each legacy-replica hit. */
   onLegacyReplicaRead?: (id: string) => void;
 };

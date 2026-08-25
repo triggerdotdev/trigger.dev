@@ -30,7 +30,17 @@ export function buildShardHandleMaps(handles: ShardHandle[]): {
 
 // A gen-2 shard is the same dedicated subset schema as the gen-1 new store, so these casts
 // carry exactly the precedent (and the same residual risk) as `runOpsNewPrisma`'s.
-const maps = buildShardHandleMaps(runOpsShardHandles ?? []);
+// The try/catch mirrors `runStore.server.ts`'s handle resolution: a minimal `db.server` mock
+// does not define this export at all, and accessing an undefined mock export throws.
+function resolveShardHandles(): ShardHandle[] {
+  try {
+    return runOpsShardHandles ?? [];
+  } catch {
+    return [];
+  }
+}
+
+const maps = buildShardHandleMaps(resolveShardHandles());
 
 export const runOpsShardReplicas = maps.replicas;
 export const runOpsShardWriters = maps.writers;
