@@ -1,6 +1,0 @@
-# TEMP - DO NOT MERGE: preview-only override to demo the disabled state.
-# Revert this commit before merging.
-web_app:
-  ADMIN_DASHBOARD_ENABLED: "0"
-api:
-  ADMIN_DASHBOARD_ENABLED: "0"
