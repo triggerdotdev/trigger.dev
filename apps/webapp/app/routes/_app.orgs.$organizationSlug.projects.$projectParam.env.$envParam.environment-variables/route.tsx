@@ -865,6 +865,7 @@ function EditEnvironmentVariablePanel({
                 placeholder={variable.isSecret ? "Set new secret value" : "Not set"}
                 defaultValue={variable.value}
                 type={"text"}
+                autoComplete="off"
               />
               <FormError id={value.errorId}>{value.errors}</FormError>
             </InputGroup>
