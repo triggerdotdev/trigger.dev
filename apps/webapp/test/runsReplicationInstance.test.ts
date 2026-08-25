@@ -202,6 +202,170 @@ describe("assertReplicationCoversSplit (boot gate-coupling)", () => {
   });
 });
 
+describe("replication sources at N shards", () => {
+  const baseArgs = {
+    legacyUrl: "postgres://legacy",
+    legacySlotName: "task_runs_to_clickhouse_v1",
+    legacyPublicationName: "task_runs_to_clickhouse_v1_publication",
+    legacyOriginGeneration: 0,
+    newSlotName: "task_runs_to_clickhouse_v2",
+    newPublicationName: "task_runs_to_clickhouse_v2_publication",
+    newOriginGeneration: 1,
+    splitEnabled: true,
+    newUrl: "postgres://new",
+  };
+
+  const shardA = {
+    key: "a",
+    url: "postgres://shard-a",
+    replication: {
+      slotName: "task_runs_to_clickhouse_shard_a",
+      publicationName: "task_runs_to_clickhouse_shard_a_publication",
+      originGeneration: 2,
+    },
+  };
+  const shardB = {
+    key: "b",
+    url: "postgres://shard-b",
+    replication: {
+      slotName: "task_runs_to_clickhouse_shard_b",
+      publicationName: "task_runs_to_clickhouse_shard_b_publication",
+      originGeneration: 3,
+    },
+  };
+
+  it("appends nothing when no shard is configured", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [] });
+    expect(sources.map((s) => s.id)).toEqual(["legacy", "new"]);
+  });
+
+  it("appends one source per shard, after legacy and new", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
+    expect(sources.map((s) => s.id)).toEqual(["legacy", "new", "shard-a", "shard-b"]);
+    expect(sources[2]).toEqual({
+      id: "shard-a",
+      pgConnectionUrl: "postgres://shard-a",
+      slotName: "task_runs_to_clickhouse_shard_a",
+      publicationName: "task_runs_to_clickhouse_shard_a_publication",
+      originGeneration: 2,
+    });
+  });
+
+  it("gives each shard its own origin generation, between 2 and 255", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
+    const gens = sources.map((s) => s.originGeneration);
+    expect(new Set(gens).size).toBe(gens.length);
+    for (const gen of gens.slice(2)) {
+      expect(gen).toBeGreaterThanOrEqual(2);
+      expect(gen).toBeLessThanOrEqual(255);
+    }
+  });
+
+  it("appends no shard source when the new source is off, because split is the precondition", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      splitEnabled: false,
+      shards: [shardA],
+    });
+    expect(sources.map((s) => s.id)).toEqual(["legacy"]);
+  });
+
+  it("throws when a shard that owns its database has no source", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }],
+      })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("names the uncovered shard in the message", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }, { key: "b" }],
+      })
+    ).toThrow(/shard b/i);
+  });
+
+  it("does NOT throw when every shard has its own source", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }, { key: "b" }],
+      })
+    ).not.toThrow();
+  });
+
+  it("does NOT require a source for an aliased shard, because its target's slot covers it", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "z", aliasOf: "new" }],
+      })
+    ).not.toThrow();
+  });
+
+  it("does NOT check shard coverage when split is off", () => {
+    const sources = buildReplicationSources({ ...baseArgs, splitEnabled: false, shards: [] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: false,
+        sources,
+        shards: [{ key: "a" }],
+      })
+    ).not.toThrow();
+  });
+
+  // The catch site keys on `instanceof SplitReplicationMisconfiguredError` to reach
+  // process.exit(1). A shard with no replication must reach the same exit.
+  it("raises an error the existing exit path recognizes", () => {
+    try {
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({ ...baseArgs, shards: [] }),
+        shards: [{ key: "a" }],
+      });
+      expect.unreachable("expected a throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SplitReplicationMisconfiguredError);
+    }
+  });
+
+  // The service validates sources before it builds a single replication client, so this needs no
+  // container. RunsReplicationService itself is untouched by this change: the check already exists.
+  it("rejects two shards that share an origin generation, via the service's own check", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [shardA, { ...shardB, replication: { ...shardB.replication, originGeneration: 2 } }],
+    });
+
+    expect(
+      () =>
+        new RunsReplicationService({
+          clickhouseFactory: new TestReplicationClickhouseFactory(
+            new ClickHouse({ url: "http://127.0.0.1:1", name: "unused", logLevel: "warn" })
+          ),
+          serviceName: "runs-replication",
+          pgConnectionUrl: "postgres://legacy",
+          slotName: "unused",
+          publicationName: "unused",
+          redisOptions: { host: "127.0.0.1", port: 1 },
+          sources,
+          logLevel: "warn",
+        })
+    ).toThrow(/duplicate originGeneration/i);
+  });
+});
+
 describe("RunsReplication new-source backfill origin generation (integration)", () => {
   replicationContainerTest(
     "backfill via the new source tags the ClickHouse row with the new origin generation (gen=1), not gen=0",
