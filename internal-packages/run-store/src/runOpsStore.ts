@@ -247,8 +247,8 @@ export class RoutingRunStore implements RunStore {
   }
 
   // Every shard other than `key`, in probe order. With the compat constructor this yields exactly
-  // one entry, which is why each caller may take the first. At more than two shards a caller MUST
-  // fan out over all of them instead.
+  // one entry; with three+ stores it yields several, so callers fan out over all of them (a waitpoint
+  // absent from its home/run store can live on any one of the others).
   #shardsExcept(key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
     return this.#probeOrder
       .filter((k) => k !== key)
@@ -333,16 +333,14 @@ export class RoutingRunStore implements RunStore {
     ) {
       return home;
     }
-    const [other] = this.#shardsExcept(homeKey);
-    if (other === undefined) {
-      return home;
+    for (const { store } of this.#shardsExcept(homeKey)) {
+      if (
+        await store.findWaitpoint({ where: { id } }, onPrimary ? store.primaryReadClient : undefined)
+      ) {
+        return store;
+      }
     }
-    return (await other.store.findWaitpoint(
-      { where: { id } },
-      onPrimary ? other.store.primaryReadClient : undefined
-    ))
-      ? other.store
-      : home;
+    return home;
   }
 
   static #waitpointId(clause: unknown): string | undefined {
@@ -1231,15 +1229,16 @@ export class RoutingRunStore implements RunStore {
     if (missing.length === 0) {
       return pendingIds.length;
     }
-    const [other] = this.#shardsExcept(runKey);
-    if (other === undefined) {
+    const others = this.#shardsExcept(runKey);
+    if (others.length === 0) {
       return pendingIds.length;
     }
-    const otherPending = await other.store.countPendingWaitpoints(
-      missing,
-      RoutingRunStore.#ownPrimary(other.store, client)
+    const otherPending = await Promise.all(
+      others.map(({ store }) =>
+        store.countPendingWaitpoints(missing, RoutingRunStore.#ownPrimary(store, client))
+      )
     );
-    return pendingIds.length + otherPending;
+    return pendingIds.length + otherPending.reduce((sum, n) => sum + n, 0);
   }
 
   // Fan out and union: an id lives on exactly one store in steady state (a drain-mirror can put it on
@@ -1433,15 +1432,20 @@ export class RoutingRunStore implements RunStore {
         if (missing.length === 0) {
           return fromRun;
         }
-        const [other] = this.#shardsExcept(runKey);
-        if (other === undefined) {
+        const others = this.#shardsExcept(runKey);
+        if (others.length === 0) {
           return fromRun;
         }
-        const fromOther = (await other.store.findManyWaitpoints(
-          narrowArgsToIds(scalarArgs, missing) as Prisma.WaitpointFindManyArgs,
-          RoutingRunStore.#ownPrimary(other.store, client)
-        )) as Record<string, unknown>[];
-        return [...fromRun, ...fromOther];
+        const fromOthers = await Promise.all(
+          others.map(
+            ({ store }) =>
+              store.findManyWaitpoints(
+                narrowArgsToIds(scalarArgs, missing) as Prisma.WaitpointFindManyArgs,
+                RoutingRunStore.#ownPrimary(store, client)
+              ) as Promise<Record<string, unknown>[]>
+          )
+        );
+        return [...fromRun, ...fromOthers.flat()];
       }
       // No bounded id set to partition on → fall through to the fan-out path.
     }
