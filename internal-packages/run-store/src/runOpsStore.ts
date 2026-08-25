@@ -7,7 +7,11 @@ import type {
   TaskRunStatus,
   WaitpointTag,
 } from "@trigger.dev/database";
-import { ownerEngine, type Residency, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import {
+  resolveShard as coreResolveShard,
+  type Residency,
+  type ShardKey,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type {
   ClearIdempotencyKeyInput,
@@ -30,8 +34,10 @@ import type {
   TaskRunWithWaitpoint,
   WaitpointColocationOptions,
 } from "./types.js";
+import { Logger } from "@trigger.dev/core/logger";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
+import { noopRoutingStoreMetrics, type RoutingStoreMetrics } from "./routingStoreMetrics.js";
 
 import { boundedIn } from "@trigger.dev/database";
 
@@ -41,104 +47,113 @@ const NEW_SHARD: ShardKey = "new";
 const LEGACY_SHARD: ShardKey = "legacy";
 
 /**
- * Raised when an id resolves to a shard key that is not configured. NEVER falls back to another
- * store — a misconfiguration must fail loud, not misroute silently. Alarmed by ops.
- */
-export class UnknownShardKey extends Error {
-  readonly key: string;
-  readonly configuredKeys: readonly string[];
-  constructor(key: string, configuredKeys: readonly string[]) {
-    super(
-      `Unknown run-ops shard key ${JSON.stringify(key)}; configured: [${configuredKeys.join(", ")}]`
-    );
-    this.name = "UnknownShardKey";
-    this.key = key;
-    this.configuredKeys = configuredKeys;
-  }
-}
-
-type ShardTopology = {
-  shards: ReadonlyMap<ShardKey, RunStore>;
-  probeOrder: readonly ShardKey[];
-  precedence: readonly ShardKey[];
-  idlessRouteShard: ShardKey;
-  idlessWaitpointShard: ShardKey;
-  resolveShardKey: (id: string) => ShardKey;
-  classify?: (id: string) => Residency;
-};
-
-/**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore} over a
- * map from shard key to store, selecting one by the residency classifier (`ownerEngine`: run-ops
- * id→NEW, cuid→LEGACY). The compat constructor holds the two gen-1 shards — a NEW store (the
+ * map from shard key to store, selecting one by `resolveShard` (gen-2 id→its shard char, gen-1
+ * run-ops id→NEW, cuid→LEGACY). The compat constructor holds the two gen-1 shards — a NEW store (the
  * dedicated run-ops DB, where new runs are born) and a LEGACY store (the control-plane DB).
  * Inert until the injecting seam wires it in under `isSplitEnabled()`; reads no flag here.
  *
- * Every shard MUST be a distinct database. Single-DB does not construct this class at all — the
- * injecting seam returns a bare PostgresRunStore — and split mode requires two configured run-ops
- * URLs whose distinctness the boot sentinel enforces fail-closed. Two shard keys that resolve to
- * ONE store would make the sum sites (#sumCounts, the counting fan-outs) count that store twice.
+ * Two shard keys MAY resolve to one store only through a declared `aliasOf`. #distinctStores then
+ * holds one entry per database, so a sum never counts a database twice. An undeclared duplicate
+ * store is still a configuration error.
  *
- * Three policies are held as data rather than implied by statement order: {@link #probeOrder} for a
- * lookup with no routable id, {@link #precedence} for a merge, and the two id-less fallbacks. A
- * merge MUST iterate #precedence and a probe MUST iterate #probeOrder — the two are the reverse of
- * each other, so swapping them changes behaviour.
+ * #probeOrder and #precedence each list one key per distinct store. At two shards they are exact
+ * reverses. At N they are not: both put gen-2 shards last, so a probe finds the gen-1 pair first
+ * and a merge lets a gen-2 shard win. A probe MUST iterate #probeOrder and a merge MUST iterate
+ * #precedence.
  */
 export class RoutingRunStore implements RunStore {
-  // Not readonly: the compat constructor sets gen-1 defaults, and fromShards() overwrites these
-  // once (before the instance escapes) via #applyShardTopology.
-  #shards: ReadonlyMap<ShardKey, RunStore>;
+  readonly #shards: ReadonlyMap<ShardKey, RunStore>;
   // Sequential probe for a lookup with no routable id. The first non-null result wins, and the LAST
   // entry owns the canonical not-found throw.
-  #probeOrder: readonly ShardKey[];
+  readonly #probeOrder: readonly ShardKey[];
   // Ascending authority for a merge. The last write wins, so the highest-authority shard wins a
   // duplicate id. Every merge in this class MUST use this order.
-  #precedence: readonly ShardKey[];
+  readonly #precedence: readonly ShardKey[];
+  // One entry per distinct database, in precedence order. A fan-out sum iterates this, never #shards.
+  readonly #distinctStores: ReadonlyArray<{ key: ShardKey; store: RunStore }>;
   // The two id-less defaults. They differ by role on purpose: a route with no id lands on the
   // steady-state home, a waitpoint read with no id lands on the legacy store.
-  #idlessRouteShard: ShardKey;
-  #idlessWaitpointShard: ShardKey;
-  readonly #classify: (id: string) => Residency;
-  // The shard that owns an id. Compat: binary over #classify. fromShards: resolveShard, which names
-  // a gen-2 id's own shard. NEVER throws (resolveShard is total) — an unconfigured key is caught at
-  // #shardStore, so #routeKeyOrDefault's catch cannot swallow it into a silent legacy read.
-  #resolveShardKey: (id: string) => ShardKey;
+  readonly #idlessRouteShard: ShardKey;
+  readonly #idlessWaitpointShard: ShardKey;
+  // Id to shard key. `resolveShard` is the gen-2 seam. `classify` is the gen-1 seam, kept because
+  // five sites inject it and three of those are the regression corpus. A gen-1 classifier can
+  // only ever name the two reserved keys, so it can never reach a gen-2 shard.
+  readonly #resolveShardKey: (id: string) => ShardKey;
+  readonly #metrics: RoutingStoreMetrics;
+  readonly #logger: Logger;
 
   // Compat constructor: the two gen-1 stores, keyed by their reserved shard keys. The options type
   // MUST stay closed — a union arm loosens the excess-property check and retires the
   // `@ts-expect-error onLegacyRead` lock in the test corpus.
-  constructor(options: { new: RunStore; legacy: RunStore; classify?: (id: string) => Residency }) {
+  constructor(options: {
+    new: RunStore;
+    legacy: RunStore;
+    classify?: (id: string) => Residency;
+    resolveShard?: (id: string) => ShardKey;
+    shards?: ReadonlyArray<{ key: ShardKey; store: RunStore; aliasOf?: ShardKey }>;
+    metrics?: RoutingStoreMetrics;
+    logger?: Logger;
+  }) {
+    const shards = options.shards ?? [];
+    // Keys must be unique across the reserved pair and every configured shard. A key of "new" or
+    // "legacy" would overwrite the reserved #shards entry; a repeated custom key would appear twice
+    // in #precedence and #distinctStores, so a fan-out would query one database twice.
+    const shardKeys = [NEW_SHARD, LEGACY_SHARD, ...shards.map((s) => s.key)];
+    if (new Set(shardKeys).size !== shardKeys.length) {
+      throw new Error(
+        "RoutingRunStore: shard keys must be unique and cannot reuse the reserved 'new' or 'legacy' keys"
+      );
+    }
+    const configured = new Set<ShardKey>(shardKeys);
+    const aliasedKeys = new Set(shards.filter((s) => s.aliasOf !== undefined).map((s) => s.key));
+    for (const shard of shards) {
+      if (shard.aliasOf === undefined) {
+        continue;
+      }
+      // An alias must name a REAL root store, so #distinctStores keeps exactly one entry per
+      // database. A target that is itself aliased (a chain or a cycle) would drop every key in the
+      // cycle from #distinctStores, and that database would vanish from every read and write.
+      if (!configured.has(shard.aliasOf)) {
+        throw new Error(
+          `RoutingRunStore: shard "${shard.key}" declares aliasOf "${shard.aliasOf}", which is not configured`
+        );
+      }
+      if (shard.aliasOf === shard.key || aliasedKeys.has(shard.aliasOf)) {
+        throw new Error(
+          `RoutingRunStore: shard "${shard.key}" aliasOf "${shard.aliasOf}" must name a non-aliased store; chains and cycles are not allowed`
+        );
+      }
+    }
+
     this.#shards = new Map<ShardKey, RunStore>([
       [NEW_SHARD, options.new],
       [LEGACY_SHARD, options.legacy],
+      ...shards.map((s) => [s.key, s.store] as const),
     ]);
-    this.#probeOrder = [NEW_SHARD, LEGACY_SHARD];
-    this.#precedence = [LEGACY_SHARD, NEW_SHARD];
+
+    const gen2Keys = shards.map((s) => s.key);
+    this.#probeOrder = [NEW_SHARD, LEGACY_SHARD, ...gen2Keys];
+    this.#precedence = [LEGACY_SHARD, NEW_SHARD, ...gen2Keys];
     this.#idlessRouteShard = NEW_SHARD;
     this.#idlessWaitpointShard = LEGACY_SHARD;
-    this.#classify = options.classify ?? ownerEngine;
-    this.#resolveShardKey = (id) => (this.#classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD);
-  }
+    const classify = options.classify;
+    this.#resolveShardKey =
+      options.resolveShard ??
+      (classify !== undefined
+        ? (id: string) => (classify(id) === "NEW" ? NEW_SHARD : LEGACY_SHARD)
+        : coreResolveShard);
 
-  // The N-way factory. Builds via the compat constructor (so the closed options type and its
-  // test-corpus lock are untouched), then installs the shard topology over the gen-1 defaults.
-  static fromShards(topology: ShardTopology): RoutingRunStore {
-    const store = new RoutingRunStore({
-      new: topology.shards.get(NEW_SHARD)!,
-      legacy: topology.shards.get(LEGACY_SHARD)!,
-      classify: topology.classify,
-    });
-    store.#applyShardTopology(topology);
-    return store;
-  }
+    // One entry per physical database, in precedence order. A declared alias contributes none:
+    // it shares its target's database, and a second leg over one database double-counts a sum.
+    // The discriminator is the DECLARATION, not object identity — the wiring layer may build a
+    // second store object over a shared client.
+    this.#distinctStores = this.#precedence
+      .filter((key) => !aliasedKeys.has(key))
+      .map((key) => ({ key, store: this.#shardStore(key) }));
 
-  #applyShardTopology(topology: ShardTopology): void {
-    this.#shards = topology.shards;
-    this.#probeOrder = topology.probeOrder;
-    this.#precedence = topology.precedence;
-    this.#idlessRouteShard = topology.idlessRouteShard;
-    this.#idlessWaitpointShard = topology.idlessWaitpointShard;
-    this.#resolveShardKey = topology.resolveShardKey;
+    this.#metrics = options.metrics ?? noopRoutingStoreMetrics;
+    this.#logger = options.logger ?? new Logger("RoutingRunStore", "warn");
   }
 
   // A routing store spans two databases and has no single primary — routed reads resolve the
@@ -163,15 +178,102 @@ export class RoutingRunStore implements RunStore {
   #shardStore(key: ShardKey): RunStore {
     const store = this.#shards.get(key);
     if (store === undefined) {
-      // The ONLY place an unconfigured key fails. Keep it here, never in #resolveShardKey:
-      // #routeKeyOrDefault catches resolver throws and downgrades to legacy, which would turn a
-      // misconfiguration into a silent legacy read. This throw is outside that catch.
-      throw new UnknownShardKey(key, [...this.#shards.keys()]);
+      throw new Error(`RoutingRunStore: no store is configured for shard key "${key}"`);
     }
     return store;
   }
 
-  // The shard that owns an existing id. Delegates to the installed resolver (see #resolveShardKey).
+  // A duplicate id is EXPECTED across the gen-1 pair (drain mirrors a token onto both). Any other
+  // combination breaks id-determinism: alarm, but keep the deterministic pick.
+  #reportDuplicateId(id: string, shardKeys: ShardKey[]): void {
+    if (shardKeys.every((key) => key === NEW_SHARD || key === LEGACY_SHARD)) {
+      return;
+    }
+    this.#metrics.recordDuplicateId(shardKeys);
+    this.#logger.error("RoutingRunStore: one id returned by two shards", { id, shardKeys });
+  }
+
+  // Merge key-tagged legs, keeping one row per id. Legs MUST arrive in #precedence order, so the
+  // highest-authority copy is written last and wins. A winner keeps the POSITION of its first
+  // sighting: callers observe row order whenever `orderBy` is absent. Rows whose projection omits
+  // `id` cannot be deduped and pass through unchanged. A duplicate whose reporting keys leave the
+  // gen-1 pair alarms via #reportDuplicateId.
+  #mergeById<R extends Record<string, unknown>>(legs: Array<{ key: ShardKey; rows: R[] }>): R[] {
+    const byId = new Map<string, R>();
+    const keysById = new Map<string, ShardKey[]>();
+    const passthrough: R[] = [];
+    for (const { key, rows } of legs) {
+      for (const row of rows) {
+        const id = row.id;
+        if (typeof id !== "string") {
+          passthrough.push(row);
+          continue;
+        }
+        byId.set(id, row);
+        const keys = keysById.get(id);
+        if (keys) keys.push(key);
+        else keysById.set(id, [key]);
+      }
+    }
+    for (const [id, keys] of keysById) {
+      if (keys.length > 1) this.#reportDuplicateId(id, keys);
+    }
+    return [...byId.values(), ...passthrough];
+  }
+
+  // Where to look for waitpoint ids the run's own shard did not return. A gen-2 id names exactly
+  // one shard, so it goes there and nowhere else — that is what keeps the legs disjoint and the sum
+  // sound. A cuid names no shard: drain can mirror it onto NEW while it keeps its id, and a gen-2
+  // run can block on a pre-gen-2 cuid token, so there is no single gen-1 partner. Both gen-1 stores
+  // are probed and the results are de-duped by id. A target equal to `runKey` is skipped (already
+  // probed); an id resolving to an unconfigured shard fails loud rather than being dropped.
+  #partitionAbsentIds(runKey: ShardKey, ids: string[]): Array<{ key: ShardKey; ids: string[] }> {
+    const byKey = new Map<ShardKey, string[]>();
+    const push = (key: ShardKey, id: string) => {
+      // The run's own shard was already probed, so skip it. But an id resolving to a shard nobody
+      // configured is UnknownShardKey: silently dropping it here would UNDER-count a pending
+      // waitpoint and prematurely unblock the run — the exact failure this method guards against.
+      // Fail loud instead (§7 append-only rule).
+      if (key === runKey) return;
+      if (!this.#shards.has(key)) {
+        throw new Error(
+          `RoutingRunStore: waitpoint "${id}" resolves to unconfigured shard key "${key}"`
+        );
+      }
+      const bucket = byKey.get(key);
+      if (bucket) bucket.push(id);
+      else byKey.set(key, [id]);
+    };
+    for (const id of ids) {
+      const home = this.#shardKeyOfSafe(id);
+      if (home === LEGACY_SHARD) {
+        push(LEGACY_SHARD, id);
+        push(NEW_SHARD, id);
+      } else {
+        push(home, id);
+      }
+    }
+    return this.#precedence
+      .filter((key) => byKey.has(key))
+      .map((key) => ({ key, ids: byKey.get(key)! }));
+  }
+
+  // A cuid is deliberately probed on BOTH gen-1 stores, so the same id from both is the expected
+  // drain mirror, not a violation. Any other id maps to one shard, so a two-leg return is a bug.
+  #isGen1MirrorProbe(id: string): boolean {
+    return this.#shardKeyOfSafe(id) === LEGACY_SHARD;
+  }
+
+  // The gen-1 pair members other than `key`. A cuid waitpoint can only ever be drain-relocated
+  // BETWEEN the two gen-1 stores, so its "where does it really live" probe stays confined here and
+  // never touches a gen-2 shard.
+  #gen1PairExcept(key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
+    return [NEW_SHARD, LEGACY_SHARD]
+      .filter((k) => k !== key)
+      .map((k) => ({ key: k, store: this.#shardStore(k) }));
+  }
+
+  // The shard that owns an existing id. Throws only when an injected resolver throws.
   #shardKeyOf(id: string): ShardKey {
     return this.#resolveShardKey(id);
   }
@@ -186,32 +288,88 @@ export class RoutingRunStore implements RunStore {
     }
   }
 
-  // Sequential probe over #probeOrder, returning the first non-null result. `isLast` marks the leg
-  // that owns the canonical not-found throw, so a caller can swap in its throwing variant there.
-  async #probeFirst<R>(
-    fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>
-  ): Promise<R> {
-    const last = this.#probeOrder.length - 1;
-    for (let i = 0; i < last; i++) {
-      const key = this.#probeOrder[i]!;
-      const found = await fn(this.#shardStore(key), key, false);
-      if (found != null) {
-        return found;
-      }
-    }
-    const key = this.#probeOrder[last]!;
-    return fn(this.#shardStore(key), key, true);
+  // #distinctStores sorted by `order`. Shared by #probeFirst and #fanOut so every ordered walk
+  // over the distinct-store set goes through one sort.
+  #orderedLegs(order: readonly ShardKey[]): ReadonlyArray<{ key: ShardKey; store: RunStore }> {
+    const rank = new Map(order.map((key, i) => [key, i]));
+    return [...this.#distinctStores].sort(
+      (a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0)
+    );
   }
 
-  // Run `fn` on every shard in parallel, returning the results in `order`. Pass #probeOrder where
-  // the result-array order is observable; pass #precedence where a duplicate id's winner decides
-  // the value. The two orders are the reverse of each other, so passing the wrong one is a
-  // behaviour change.
+  // A lookup with no routable id. At two distinct stores this is the sequential short circuit,
+  // byte-identical to before: the second leg is never queried when the first answers. Above two,
+  // a sequential walk would cost N round trips, so every leg is issued in parallel and the winner
+  // comes from #precedence. `isLast` marks the leg that owns the canonical not-found throw.
+  async #probeFirst<R>(
+    fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>,
+    opts?: { alarmOnDuplicate?: boolean }
+  ): Promise<R> {
+    const legs = this.#orderedLegs(this.#probeOrder);
+    const lastIndex = legs.length - 1;
+
+    if (legs.length <= 2) {
+      for (let i = 0; i < lastIndex; i++) {
+        const { store, key } = legs[i]!;
+        const found = await fn(store, key, false);
+        if (found != null) {
+          return found;
+        }
+      }
+      const { store, key } = legs[lastIndex]!;
+      return fn(store, key, true);
+    }
+
+    // Parallel. Every leg takes the NON-throwing arm, so one leg cannot reject a lookup another
+    // leg answers. A rejection is held and only surfaces when nothing was found.
+    const settled = await Promise.allSettled(legs.map(({ store, key }) => fn(store, key, false)));
+
+    const hits: Array<{ key: ShardKey; value: Awaited<R> }> = [];
+    let firstRejection: unknown;
+    settled.forEach((outcome, i) => {
+      if (outcome.status === "rejected") {
+        firstRejection ??= outcome.reason;
+        return;
+      }
+      if (outcome.value != null) {
+        hits.push({ key: legs[i]!.key, value: outcome.value });
+      }
+    });
+
+    // A row on two stores is a routing-invariant violation for entities that live on exactly one
+    // store (runs, waitpoints, attempts, snapshots). Batches are the exception: `batchTriggerV3`
+    // writes raw to the control plane while runEngine routes by id, so a batch is legitimately
+    // dual-resident. Those callers pass `alarmOnDuplicate: false` so a batch on legacy + a gen-2
+    // shard is not mistaken for a violation.
+    if (hits.length > 1 && opts?.alarmOnDuplicate !== false) {
+      this.#reportDuplicateId(
+        String((hits[0]!.value as { id?: unknown })?.id ?? "unknown"),
+        hits.map((h) => h.key)
+      );
+    }
+    if (hits.length > 0) {
+      // Highest authority wins: #precedence ascends, so take the last hit in that order.
+      const rank = new Map(this.#precedence.map((key, i) => [key, i]));
+      hits.sort((a, b) => (rank.get(a.key) ?? 0) - (rank.get(b.key) ?? 0));
+      return hits[hits.length - 1]!.value;
+    }
+    if (firstRejection !== undefined) {
+      throw firstRejection;
+    }
+    // Nothing found anywhere. The LEGACY leg owns the canonical not-found throw, so give it the
+    // throwing arm. One extra query, on the miss path only.
+    const legacy = this.#shardStore(LEGACY_SHARD);
+    return fn(legacy, LEGACY_SHARD, true);
+  }
+
+  // Run `fn` on every DISTINCT store in parallel. `order` selects the ordering; membership is
+  // always one entry per database, so an aliased key never contributes a second leg.
   #fanOut<R>(
     order: readonly ShardKey[],
     fn: (store: RunStore, key: ShardKey) => Promise<R>
   ): Promise<R[]> {
-    return Promise.all(order.map((key) => fn(this.#shardStore(key), key)));
+    const legs = this.#orderedLegs(order);
+    return Promise.all(legs.map(({ store, key }) => fn(store, key)));
   }
 
   // Apply `fn` to every shard and sum the counts. A sum is order-independent, so this takes no order.
@@ -232,6 +390,11 @@ export class RoutingRunStore implements RunStore {
     const byShard = new Map<ShardKey, string[]>();
     for (const id of ids) {
       const key = this.#shardKeyOfSafe(id);
+      // An id resolving to a shard nobody configured is UnknownShardKey. Dropping it would silently
+      // omit a row from the hydrated set, so fail loud (§7 append-only rule).
+      if (!this.#shards.has(key)) {
+        throw new Error(`RoutingRunStore: id "${id}" resolves to unconfigured shard key "${key}"`);
+      }
       const bucket = byShard.get(key);
       if (bucket) bucket.push(id);
       else byShard.set(key, [id]);
@@ -246,13 +409,11 @@ export class RoutingRunStore implements RunStore {
     return Promise.all(legs);
   }
 
-  // Every shard other than `key`, in probe order. With the compat constructor this yields exactly
-  // one entry; with three+ stores it yields several, so callers fan out over all of them (a waitpoint
-  // absent from its home/run store can live on any one of the others).
+  // Every distinct store other than `key`'s, in precedence order. With the compat constructor this
+  // yields exactly one entry, which is why each caller may take the first. At more than two shards
+  // a caller MUST fan out over all of them instead.
   #shardsExcept(key: ShardKey): Array<{ key: ShardKey; store: RunStore }> {
-    return this.#probeOrder
-      .filter((k) => k !== key)
-      .map((k) => ({ key: k, store: this.#shardStore(k) }));
+    return this.#distinctStores.filter((s) => s.key !== key);
   }
 
   // A `findRuns` caller bound to the given store (preserves `this`; the overload set isn't
@@ -328,15 +489,23 @@ export class RoutingRunStore implements RunStore {
     if (typeof id !== "string") {
       return home;
     }
+    // A gen-2 waitpoint carries its shard in its id and its row lives there. No probe.
+    if (homeKey !== NEW_SHARD && homeKey !== LEGACY_SHARD) {
+      return home;
+    }
     if (
       await home.findWaitpoint({ where: { id } }, onPrimary ? home.primaryReadClient : undefined)
     ) {
       return home;
     }
-    for (const { store } of this.#shardsExcept(homeKey)) {
+    for (const { key, store } of this.#gen1PairExcept(homeKey)) {
       if (
-        await store.findWaitpoint({ where: { id } }, onPrimary ? store.primaryReadClient : undefined)
+        await store.findWaitpoint(
+          { where: { id } },
+          onPrimary ? store.primaryReadClient : undefined
+        )
       ) {
+        this.#metrics.recordWaitpointProbeFallback(homeKey, key);
         return store;
       }
     }
@@ -524,12 +693,11 @@ export class RoutingRunStore implements RunStore {
   async #findRunsOpen(args: FindRunsArgs, client?: ReadClient): Promise<unknown[]> {
     const { args: selArgs, addedFields } = ensureProjected(args);
     const fan = widenForMerge(selArgs);
-    const legs = await this.#fanOut(this.#precedence, (store) =>
-      this.#findManyOn(store, client)(fan)
-    );
-    const byId = new Map<string, Record<string, unknown>>();
-    for (const r of legs.flat()) byId.set(r.id as string, r);
-    return finalizeRows([...byId.values()], args, addedFields);
+    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+      key,
+      rows: (await this.#findManyOn(store, client)(fan)) as Record<string, unknown>[],
+    }));
+    return finalizeRows(this.#mergeById(legs), args, addedFields);
   }
 
   // Canonical grouped replacement for `Promise.all(ids.map(id => readThroughRun(id)))`: reuses
@@ -595,14 +763,45 @@ export class RoutingRunStore implements RunStore {
     if (args.idempotencyKeys.length === 0) {
       return [];
     }
-    const legs = await this.#fanOut(this.#precedence, (store) =>
-      store.findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(store, client))
+    const legs = await this.#fanOut(this.#precedence, (store, key) =>
+      store
+        .findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(store, client))
+        .then((rows) => ({ key, rows }))
     );
-    const byKey = new Map<string, IdempotencyKeyRunMatch>();
-    for (const row of legs.flat()) {
-      if (row.idempotencyKey != null) byKey.set(row.idempotencyKey, row);
+    // Dedupe by KEY, not id: two runs on two shards can legitimately share a global key. Across the
+    // gen-1 pair the winner stays today's precedence result (NEW wins), which the duplicate-guard
+    // contract depends on. Once a gen-2 shard supplies a candidate, order by creation instead, so
+    // the winner does not depend on configured shard order.
+    const byKey = new Map<string, Array<{ key: ShardKey; row: IdempotencyKeyRunMatch }>>();
+    for (const { key, rows } of legs) {
+      for (const row of rows) {
+        if (row.idempotencyKey == null) continue;
+        const bucket = byKey.get(row.idempotencyKey);
+        if (bucket) bucket.push({ key, row });
+        else byKey.set(row.idempotencyKey, [{ key, row }]);
+      }
     }
-    return [...byKey.values()];
+    const out: IdempotencyKeyRunMatch[] = [];
+    for (const candidates of byKey.values()) {
+      const gen1Only = candidates.every(({ key }) => key === NEW_SHARD || key === LEGACY_SHARD);
+      if (gen1Only) {
+        out.push(candidates[candidates.length - 1]!.row);
+        continue;
+      }
+      out.push(
+        [...candidates].sort((a, b) => {
+          const byCreated = a.row.createdAt.getTime() - b.row.createdAt.getTime();
+          return byCreated !== 0
+            ? byCreated
+            : a.row.id < b.row.id
+              ? -1
+              : a.row.id > b.row.id
+                ? 1
+                : 0;
+        })[0]!.row
+      );
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -1209,10 +1408,20 @@ export class RoutingRunStore implements RunStore {
     runId?: string
   ): Promise<number> {
     if (runId === undefined) {
+      // No run id to partition on: query every distinct store and UNION by id, matching the routed
+      // path below. A drain-mirrored cuid pending on both gen-1 stores must count once, not twice —
+      // summing raw counts here would reintroduce the double count this method exists to remove.
       const legs = await this.#fanOut(this.#probeOrder, (store) =>
-        store.countPendingWaitpoints(waitpointIds, RoutingRunStore.#ownPrimary(store, client))
+        store.countPendingWaitpointsWithPresence(
+          waitpointIds,
+          RoutingRunStore.#ownPrimary(store, client)
+        )
       );
-      return legs.reduce((sum, leg) => sum + leg, 0);
+      const union = new Set<string>();
+      for (const leg of legs) {
+        for (const id of leg.pendingIds) union.add(id);
+      }
+      return union.size;
     }
 
     if (waitpointIds.length === 0) {
@@ -1229,16 +1438,41 @@ export class RoutingRunStore implements RunStore {
     if (missing.length === 0) {
       return pendingIds.length;
     }
-    const others = this.#shardsExcept(runKey);
-    if (others.length === 0) {
+    const plan = this.#partitionAbsentIds(runKey, missing);
+    if (plan.length === 0) {
       return pendingIds.length;
     }
-    const otherPending = await Promise.all(
-      others.map(({ store }) =>
-        store.countPendingWaitpoints(missing, RoutingRunStore.#ownPrimary(store, client))
-      )
+    const legs = await Promise.all(
+      plan.map(async ({ key, ids }) => {
+        const store = this.#shardStore(key);
+        const { pendingIds: found } = await store.countPendingWaitpointsWithPresence(
+          ids,
+          RoutingRunStore.#ownPrimary(store, client)
+        );
+        return { key, found };
+      })
     );
-    return pendingIds.length + otherPending.reduce((sum, n) => sum + n, 0);
+    // UNION by id, never a sum of counts. A cuid mirrored onto both gen-1 stores appears twice;
+    // summing it is exactly the double count that leaves pendingCount above zero forever and never
+    // unblocks the run. The run store's pending set seeds the union; missing ids are disjoint from
+    // it by construction. #reportDuplicateId is the tripwire for a NON-mirror two-leg return, which
+    // a consistent resolveShard makes unreachable — it guards a future partition bug.
+    const union = new Set(pendingIds);
+    const seenFrom = new Map<string, ShardKey[]>();
+    for (const { key, found } of legs) {
+      for (const id of found) {
+        const keys = seenFrom.get(id);
+        if (keys) keys.push(key);
+        else seenFrom.set(id, [key]);
+        union.add(id);
+      }
+    }
+    for (const [id, keys] of seenFrom) {
+      if (keys.length > 1 && !this.#isGen1MirrorProbe(id)) {
+        this.#reportDuplicateId(id, keys);
+      }
+    }
+    return union.size;
   }
 
   // Fan out and union: an id lives on exactly one store in steady state (a drain-mirror can put it on
@@ -1295,7 +1529,19 @@ export class RoutingRunStore implements RunStore {
     waitpointId: string | undefined
   ): RunStore {
     if (ownerId !== undefined) {
-      return this.#shardStore(this.#shardKeyOfSafe(ownerId));
+      const key = this.#shardKeyOfSafe(ownerId);
+      // A gen-2 shard holds only ids stamped for that shard, because a waitpoint completes on the
+      // shard its own id names. Anything else stranded the blocked run: a cuid (routes to the gen-1
+      // pair on completion), an id for a DIFFERENT gen-2 shard, or NO id at all — Prisma's
+      // @default(cuid()) then mints a cuid on the gen-2 shard after the write. The mint layer must
+      // stamp the owner's shard onto the waitpoint id, so fail loud rather than write an orphan.
+      const isGen2 = key !== NEW_SHARD && key !== LEGACY_SHARD;
+      if (isGen2 && (waitpointId === undefined || this.#shardKeyOfSafe(waitpointId) !== key)) {
+        throw new Error(
+          `RoutingRunStore: refusing to co-locate waitpoint "${waitpointId ?? "<no id>"}" onto gen-2 shard "${key}"; its id must be stamped for that shard`
+        );
+      }
+      return this.#shardStore(key);
     }
     if (residency !== undefined) {
       return this.#shardStore(residency === "NEW" ? NEW_SHARD : LEGACY_SHARD);
@@ -1407,10 +1653,11 @@ export class RoutingRunStore implements RunStore {
     return rows;
   }
 
-  // Collect the scalar waitpoint rows (relation re-resolution happens in the caller). With a run id in
-  // scope and a bounded id set to partition on, route to the run's store and fall back to the other DB
-  // for ONLY the ids missing there (a rare cross-tree token) — the two legs are disjoint by
-  // construction, so no dedup is needed. Otherwise fan out to BOTH and dedup by id NEW-wins.
+  // Collect the scalar waitpoint rows (relation re-resolution happens in the caller). With a run id
+  // in scope and a bounded id set, route to the run's store and fall back for ONLY the ids missing
+  // there. The fallback targets come from #partitionAbsentIds: a gen-2 id to its own shard, a cuid
+  // to BOTH gen-1 stores. The cuid legs are not disjoint, so the fallback rows are merged by id.
+  // Otherwise (no bounded id set) fan out to every store and dedup by id NEW-wins.
   async #collectManyWaitpoints(
     scalarArgs: Record<string, unknown>,
     client: ReadClient | undefined,
@@ -1432,43 +1679,41 @@ export class RoutingRunStore implements RunStore {
         if (missing.length === 0) {
           return fromRun;
         }
-        const others = this.#shardsExcept(runKey);
-        if (others.length === 0) {
+        // Same partition as countPendingWaitpoints: a gen-2 missing id goes to its own shard, a
+        // cuid to both gen-1 stores. The cuid legs are NOT disjoint, so merge by id (a drain mirror
+        // appears once) rather than concatenate.
+        const plan = this.#partitionAbsentIds(runKey, missing);
+        if (plan.length === 0) {
           return fromRun;
         }
-        const fromOthers = await Promise.all(
-          others.map(
-            ({ store }) =>
-              store.findManyWaitpoints(
-                narrowArgsToIds(scalarArgs, missing) as Prisma.WaitpointFindManyArgs,
+        const legs = await Promise.all(
+          plan.map(async ({ key, ids }) => {
+            const store = this.#shardStore(key);
+            return {
+              key,
+              rows: (await store.findManyWaitpoints(
+                narrowArgsToIds(scalarArgs, ids) as Prisma.WaitpointFindManyArgs,
                 RoutingRunStore.#ownPrimary(store, client)
-              ) as Promise<Record<string, unknown>[]>
-          )
+              )) as Record<string, unknown>[],
+            };
+          })
         );
-        return [...fromRun, ...fromOthers.flat()];
+        return [...fromRun, ...this.#mergeById(legs)];
       }
       // No bounded id set to partition on → fall through to the fan-out path.
     }
 
-    const legs = await this.#fanOut(
-      this.#precedence,
-      (store) =>
-        store.findManyWaitpoints(
-          scalarArgs as Prisma.WaitpointFindManyArgs,
-          RoutingRunStore.#ownPrimary(store, client)
-        ) as Promise<Record<string, unknown>[]>
-    );
-    // A token mirrored onto both DBs during drain appears in BOTH legs; dedup by id in #precedence
-    // order, so the highest-authority copy wins. Without this, edge-waitpoint hydration could read a
-    // stale LEGACY status and strand the run. Rows whose projection omits `id` pass through.
-    const byId = new Map<string, Record<string, unknown>>();
-    const passthrough: Record<string, unknown>[] = [];
-    for (const w of legs.flat()) {
-      const id = w.id;
-      if (typeof id === "string") byId.set(id, w);
-      else passthrough.push(w);
-    }
-    return [...byId.values(), ...passthrough];
+    // A token mirrored onto both DBs during drain appears in BOTH legs; #mergeById dedups by id in
+    // #precedence order, so the highest-authority copy wins. Without this, edge-waitpoint hydration
+    // could read a stale LEGACY status and strand the run.
+    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+      key,
+      rows: (await store.findManyWaitpoints(
+        scalarArgs as Prisma.WaitpointFindManyArgs,
+        RoutingRunStore.#ownPrimary(store, client)
+      )) as Record<string, unknown>[],
+    }));
+    return this.#mergeById(legs);
   }
 
   // Re-resolve a waitpoint's group-A relations across BOTH DBs and attach them to `row`. Each target
@@ -1599,27 +1844,36 @@ export class RoutingRunStore implements RunStore {
     waitpointId: string,
     context: ForWaitpointCompletionContext
   ): Promise<RunStore> {
-    // Preferred store: explicit legacy-authority pins first, else the waitpoint's id-shape.
+    // A gen-2 waitpoint's row lives on the shard its id names. The three legacy pins encode "the one
+    // non-NEW store", a gen-1 idea, so a gen-2 id OVERRIDES them: honouring the pin would send the
+    // completion write to legacy, match zero rows, and strand the blocked run. A gen-2 id is also
+    // directly routable, so it takes no probe.
+    const idKey = this.#shardKeyOfSafe(waitpointId);
+    const isGen2 = idKey !== NEW_SHARD && idKey !== LEGACY_SHARD;
+    if (isGen2) {
+      return this.#shardStore(idKey);
+    }
     const preferredKey =
       context.treeOwnerResidency === "LEGACY" ||
       context.isCrossTreeIdempotency === true ||
       context.hasLegacyParent === true
         ? LEGACY_SHARD
-        : this.#shardKeyOfSafe(waitpointId);
+        : idKey;
     const preferred = this.#shardStore(preferredKey);
-    // Resolve to where the waitpoint ACTUALLY lives: a migrated run's waitpoint can be on NEW
-    // with a LEGACY-classified id (or vice versa), so verify and fall back rather than route
-    // by id-shape alone and miss it (which leaves the blocked run stuck forever). This guard
-    // selects the store a WRITE (updateManyWaitpoints) then lands on, so it must probe each
-    // store's PRIMARY (mirroring #resolveWaitpointStore's onPrimary): a just-created waitpoint the
-    // replica hasn't caught up on would otherwise mis-resolve the owner and strand the run.
+    // Resolve to where a CUID waitpoint ACTUALLY lives: a migrated run's waitpoint can be on NEW
+    // with a LEGACY-classified id (or vice versa), so verify and fall back across the gen-1 pair
+    // rather than route by id-shape alone and miss it (which leaves the blocked run stuck forever).
+    // This guard selects the store a WRITE (updateManyWaitpoints) then lands on, so it must probe
+    // each store's PRIMARY: a just-created waitpoint the replica has not caught up on would
+    // otherwise mis-resolve the owner and strand the run.
     if (
       await preferred.findWaitpoint({ where: { id: waitpointId } }, preferred.primaryReadClient)
     ) {
       return preferred;
     }
-    for (const { store } of this.#shardsExcept(preferredKey)) {
+    for (const { key, store } of this.#gen1PairExcept(preferredKey)) {
       if (await store.findWaitpoint({ where: { id: waitpointId } }, store.primaryReadClient)) {
+        this.#metrics.recordWaitpointProbeFallback(preferredKey, key);
         return store;
       }
     }
@@ -1658,13 +1912,14 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       )) as Record<string, unknown>[];
     } else {
-      const legs = await this.#fanOut(this.#precedence, (store) =>
-        store.findManyTaskRunWaitpoints(
+      const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+        key,
+        rows: (await store.findManyTaskRunWaitpoints(
           scalarArgs as typeof args,
           RoutingRunStore.#ownPrimary(store, client)
-        )
-      );
-      edges = dedupeEdgesById(legs.flat()) as Record<string, unknown>[];
+        )) as Record<string, unknown>[],
+      }));
+      edges = this.#mergeById(legs);
     }
 
     if (waitpoint) {
@@ -1779,7 +2034,13 @@ export class RoutingRunStore implements RunStore {
     ownerRunId?: string,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunCheckpointGetPayload<T>> {
-    const store = this.#routeOrNew(ownerRunId);
+    // A create is a mint decision the mint layer owns. Defaulting to NEW was harmless with one
+    // dedicated store; at N it is a silent write to the wrong shard, and the run-routed snapshot's
+    // checkpointId FK then resolves on a different database. Fail loud instead.
+    if (ownerRunId === undefined) {
+      throw new Error("createTaskRunCheckpoint requires ownerRunId to route");
+    }
+    const store = this.#route(ownerRunId);
     return store.createTaskRunCheckpoint(args, ownerRunId, undefined);
   }
 
@@ -1793,9 +2054,12 @@ export class RoutingRunStore implements RunStore {
   ): Promise<BatchTaskRun> {
     // Route by the batch's classifiable internal id: run-ops id→NEW, cuid→LEGACY. The caller's
     // `tx` is never forwarded — the create runs on the owning store's own client so the batch and
-    // its co-resident child runs/items land on the same DB. Mirrors the by-id waitpoint-write routing /
-    // updateBatchTaskRun.
-    const store = await this.#routeOrNewForWrite(data.id);
+    // its co-resident child runs/items land on the same DB. A create with no id is a mint decision
+    // the mint layer must have made; at N a silent NEW default is a wrong-shard write, so fail loud.
+    if (data.id === undefined) {
+      throw new Error("createBatchTaskRun requires data.id to route");
+    }
+    const store = await this.#routeForWrite(data.id);
     return store.createBatchTaskRun(data, undefined);
   }
 
@@ -1825,8 +2089,9 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim (a cross-DB probe with one shared client can
     // only reach one DB); its presence resolves each leg to that store's OWN primary.
-    return this.#probeFirst((store) =>
-      store.findBatchTaskRunById(id, args, RoutingRunStore.#ownPrimary(store, client))
+    return this.#probeFirst(
+      (store) => store.findBatchTaskRunById(id, args, RoutingRunStore.#ownPrimary(store, client)),
+      { alarmOnDuplicate: false }
     );
   }
 
@@ -1839,13 +2104,15 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
-    return this.#probeFirst((store) =>
-      store.findBatchTaskRunByFriendlyId(
-        friendlyId,
-        environmentId,
-        args,
-        RoutingRunStore.#ownPrimary(store, client)
-      )
+    return this.#probeFirst(
+      (store) =>
+        store.findBatchTaskRunByFriendlyId(
+          friendlyId,
+          environmentId,
+          args,
+          RoutingRunStore.#ownPrimary(store, client)
+        ),
+      { alarmOnDuplicate: false }
     );
   }
 
@@ -1864,13 +2131,15 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
-    return this.#probeFirst((store) =>
-      store.findBatchTaskRunByIdempotencyKey(
-        environmentId,
-        idempotencyKey,
-        args,
-        RoutingRunStore.#ownPrimary(store, client)
-      )
+    return this.#probeFirst(
+      (store) =>
+        store.findBatchTaskRunByIdempotencyKey(
+          environmentId,
+          idempotencyKey,
+          args,
+          RoutingRunStore.#ownPrimary(store, client)
+        ),
+      { alarmOnDuplicate: false }
     );
   }
 
@@ -1983,17 +2252,20 @@ export class RoutingRunStore implements RunStore {
       skip: 0,
       ...(args.take != null ? { take: skip + args.take } : {}),
     };
-    const legs = await this.#fanOut(this.#precedence, (store) =>
-      store.findManyWaitpointTags(perLeg, RoutingRunStore.#ownPrimary(store, client))
-    );
-    const byId = new Map<string, WaitpointTag>();
-    for (const tag of legs.flat()) byId.set(tag.id, tag);
+    const legs = await this.#fanOut(this.#precedence, async (store, key) => ({
+      key,
+      rows: (await store.findManyWaitpointTags(
+        perLeg,
+        RoutingRunStore.#ownPrimary(store, client)
+      )) as unknown as Array<Record<string, unknown>>,
+    }));
+    const deduped = this.#mergeById(legs) as unknown as WaitpointTag[];
     const merged = args.orderBy
       ? (sortByOrderBy(
-          [...byId.values()] as unknown as Array<Record<string, unknown>>,
+          deduped as unknown as Array<Record<string, unknown>>,
           args.orderBy as unknown as NonNullable<FindRunsArgs["orderBy"]>
         ) as unknown as WaitpointTag[])
-      : [...byId.values()];
+      : deduped;
     return merged.slice(skip, args.take != null ? skip + args.take : undefined);
   }
 
@@ -2115,20 +2387,6 @@ function narrowArgsToIds(args: Record<string, unknown>, ids: string[]): Record<s
     ...args,
     where: { ...((args.where as Record<string, unknown>) ?? {}), id: { in: boundedIn(ids) } },
   };
-}
-
-// Merge edge rows from every store, keeping one per edge `id`. The caller MUST supply the rows in
-// #precedence order, so the highest-authority shard is seen last and wins. Rows whose projection
-// omits `id` can't be deduped, so they pass through unchanged.
-function dedupeEdgesById<R>(rows: R[]): R[] {
-  const byId = new Map<string, R>();
-  const passthrough: R[] = [];
-  for (const row of rows) {
-    const id = (row as { id?: unknown }).id;
-    if (typeof id === "string") byId.set(id, row);
-    else passthrough.push(row);
-  }
-  return [...byId.values(), ...passthrough];
 }
 
 // A caller sub-select for an edge relation: `{ select?, include? }`, `true` for a bare `key: true`,

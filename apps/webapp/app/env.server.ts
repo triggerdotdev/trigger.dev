@@ -335,6 +335,8 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
+    // Instance-level kill switch for the admin dashboard and user impersonation.
+    ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
@@ -819,6 +821,19 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 15), // 15 minutes
+    DEPLOYMENT_CONTEXT_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUNDLE_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(128 * 1024), // 128KB
+    DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS: z.coerce.number().int().default(400),
 
     // When enabled, reject deploys made by v3 CLI versions (i.e. payloads that
     // omit the `type` field). v4 CLI versions always send `type` ("MANAGED" or "V1"),
@@ -2236,6 +2251,15 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(40_000),
+    RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().positive().default(35),
+    RUNS_LIST_CLICKHOUSE_MAX_THREADS: z.coerce.number().int().positive().default(4),
+    RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_073_741_824),
+    RUNS_LIST_CLICKHOUSE_READONLY: z.enum(["0", "1", "2"]).default("2"),
     /**
      * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every
      * queue-metrics read (dashboards, queue pages, run inspector, health report) go through it, so

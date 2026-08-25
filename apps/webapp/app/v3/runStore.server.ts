@@ -1,10 +1,12 @@
-import { PostgresRunStore, RoutingRunStore, type RunStore } from "@internal/run-store";
 import {
-  ownerEngine,
-  resolveShard,
-  type Residency,
-  type ShardKey,
-} from "@trigger.dev/core/v3/isomorphic";
+  PostgresRunStore,
+  RoutingRunStore,
+  type RoutingStoreMetrics,
+  type RunStore,
+} from "@internal/run-store";
+import { resolveShard, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import { Counter } from "prom-client";
+import { metricsRegister } from "~/metrics.server";
 import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
@@ -35,18 +37,18 @@ type BuildRunStoreDeps = {
   /** Single-DB store handles (control-plane pair). Used verbatim when split is OFF. */
   singleWriter: PrismaClient;
   singleReplica: PrismaReplicaClient;
-  /** Residency classifier; defaults to ownerEngine inside RoutingRunStore. */
-  classify?: (id: string) => Residency;
-  /** Gen-2 shard handles. When non-empty, buildRunStore produces N dedicated stores + the keyed
-   * router (fromShards). Empty/absent keeps today's two-store compat router. */
+  /** Id-to-shard-key resolver; defaults to the core resolveShard inside RoutingRunStore. */
+  resolveShard?: (id: string) => ShardKey;
+  /** Gen-2 shard handles. When non-empty, buildRunStore builds one dedicated store per descriptor and
+   * hands them to the N-way router; an aliased shard shares its target's database. Empty/absent keeps
+   * the two-store compat router. */
   shards?: Array<{
     key: ShardKey;
     writer: RunOpsPrismaClient;
     replica: RunOpsPrismaClient;
+    aliasOf?: ShardKey;
     resilience?: TransactionResilienceConfig;
   }>;
-  /** Shard-key resolver for the fromShards path; defaults to resolveShard. */
-  resolveShardKey?: (id: string) => ShardKey;
   /** Per-pool transaction-resilience configs threaded into the store(s) this builds (IoC). */
   singleResilience?: TransactionResilienceConfig;
   newResilience?: TransactionResilienceConfig;
@@ -95,51 +97,49 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     transactionStartRetry: deps.legacyResilience?.startRetry,
   });
 
-  // No gen-2 shards: today's two-store compat router, byte-identical.
-  if (!deps.shards || deps.shards.length === 0) {
-    return new RoutingRunStore({
-      new: newStore,
-      legacy: legacyStore,
-      classify: deps.classify ?? ownerEngine,
-    });
-  }
-
-  // Gen-2 shards: one dedicated store per descriptor, then the keyed N-way router. Every shard is a
-  // schemaVariant:"dedicated" instance, exactly like the gen-1 new store.
-  const shardStores = deps.shards.map((shard) => ({
+  // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
+  // builds a store over its target's (shared) client and carries aliasOf, so the router dedups it out
+  // of fan-out sums by declaration. No shards -> the two-store compat router (byte-identical).
+  const shardStores = (deps.shards ?? []).map((shard) => ({
     key: shard.key,
     store: new PostgresRunStore({
       prisma: shard.writer,
       readOnlyPrisma: shard.replica,
-      schemaVariant: "dedicated",
+      schemaVariant: "dedicated" as const,
       maxWait: shard.resilience?.maxWait,
       transactionStartRetry: shard.resilience?.startRetry,
     }),
+    aliasOf: shard.aliasOf,
   }));
 
-  const shardKeys = shardStores.map((s) => s.key);
-  const shardMap = new Map<ShardKey, RunStore>([
-    ["legacy", legacyStore],
-    ["new", newStore],
-    ...shardStores.map(({ key, store }) => [key, store] as const),
-  ]);
-
-  // Ascending authority for a merge: legacy -> new -> shards in configured order. The router
-  // requires probeOrder to be the exact reverse (see the class invariant in runOpsStore.ts), so a
-  // duplicate id resolves the same way on the merge path and the probe path.
-  const precedence: ShardKey[] = ["legacy", "new", ...shardKeys];
-  const probeOrder = [...precedence].reverse();
-
-  return RoutingRunStore.fromShards({
-    shards: shardMap,
-    precedence,
-    probeOrder,
-    idlessRouteShard: "new",
-    idlessWaitpointShard: "legacy",
-    resolveShardKey: deps.resolveShardKey ?? resolveShard,
-    classify: deps.classify,
+  return new RoutingRunStore({
+    new: newStore,
+    legacy: legacyStore,
+    shards: shardStores.length > 0 ? shardStores : undefined,
+    resolveShard: deps.resolveShard ?? resolveShard,
+    metrics: routingStoreMetrics,
   });
 }
+
+// singleton: module-scope Counter registration double-registers under dev HMR.
+const routingStoreMetrics: RoutingStoreMetrics = singleton("routingStoreMetrics", () => {
+  const duplicateId = new Counter({
+    name: "runops_shard_duplicate_id_total",
+    help: "One id was returned by two run-ops shards that must be disjoint (a routing-invariant violation).",
+    labelNames: ["shard_keys"],
+    registers: [metricsRegister],
+  });
+  const probeFallback = new Counter({
+    name: "runops_waitpoint_probe_fallback_total",
+    help: "A waitpoint was not on the run-ops store its id named and was found by a fallback probe.",
+    labelNames: ["from", "to"],
+    registers: [metricsRegister],
+  });
+  return {
+    recordDuplicateId: (shardKeys) => duplicateId.inc({ shard_keys: shardKeys.join(",") }),
+    recordWaitpointProbeFallback: (from, to) => probeFallback.inc({ from, to }),
+  };
+});
 
 // Build the routing store whenever BOTH run-ops DBs are configured, independent of
 // RUN_OPS_SPLIT_ENABLED. Reads must fan out across both DBs so a run that lives on the new
@@ -192,6 +192,7 @@ export const runStore: RunStore = singleton("RunStore", () => {
       key: shard.key,
       writer: shard.writer,
       replica: shard.replica,
+      aliasOf: shard.aliasOf,
       resilience: resilienceForClient(shard.writer),
     })),
     singleWriter: prisma,

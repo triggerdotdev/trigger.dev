@@ -578,14 +578,19 @@ export const runOpsLegacyReplicaClient: RunOpsPrismaClient = runOpsTopology.lega
   .replica as unknown as RunOpsPrismaClient;
 
 // Gen-2 shard handles for the run-store boundary. Empty unless RUN_OPS_SHARDS is configured.
+// `aliasOf` carries the descriptor's declared alias so the router can dedup an aliased shard (which
+// shares its target's database) out of every fan-out sum — the DECLARATION, not client identity.
+const runOpsShardAliasByKey = new Map(env.RUN_OPS_SHARDS.map((d) => [d.key, d.aliasOf]));
 export const runOpsShardHandles: Array<{
   key: string;
   writer: RunOpsPrismaClient;
   replica: RunOpsPrismaClient;
+  aliasOf?: string;
 }> = [...runOpsTopology.shards.entries()].map(([key, clients]) => ({
   key,
   writer: clients.writer,
   replica: clients.replica,
+  aliasOf: runOpsShardAliasByKey.get(key),
 }));
 
 export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
