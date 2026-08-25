@@ -35,16 +35,21 @@ const MAX_CLEARED_WINNER_REACQUIRES = 5;
 
 // Every run-ops store keyed by shard key. Both idempotency call sites resolve through this
 // one map, so they cannot disagree about which store owns an id.
-const idempotencyShardClients: ReadonlyMap<ShardKey, PrismaClientOrTransaction> = new Map<
-  ShardKey,
-  PrismaClientOrTransaction
->([
-  ["legacy", runOpsLegacyPrisma],
-  ["new", runOpsNewPrisma],
-  ...[...runOpsShardWriters.entries()].map(
-    ([key, writer]) => [key, writer as PrismaClientOrTransaction] as const
-  ),
-]);
+//
+// Built on first use, not at import: dereferencing the db.server handles at module scope
+// breaks any test that mocks `~/db.server` without them, and this module is imported by
+// triggerTask. Memoised because the trigger path is the hottest in the system.
+let cachedShardClients: ReadonlyMap<ShardKey, PrismaClientOrTransaction> | undefined;
+
+function idempotencyShardClients(): ReadonlyMap<ShardKey, PrismaClientOrTransaction> {
+  return (cachedShardClients ??= new Map<ShardKey, PrismaClientOrTransaction>([
+    ["legacy", runOpsLegacyPrisma],
+    ["new", runOpsNewPrisma],
+    ...[...runOpsShardWriters.entries()].map(
+      ([key, writer]) => [key, writer as PrismaClientOrTransaction] as const
+    ),
+  ]));
+}
 
 // Claim ownership context returned to the caller when the
 // IdempotencyKeyConcern won a pre-gate claim. Caller MUST publish the
@@ -186,7 +191,7 @@ export class IdempotencyKeyConcern {
       {
         isSplitEnabled,
         fallbackClient: this.prisma,
-        clients: idempotencyShardClients,
+        clients: idempotencyShardClients(),
         resolveMintKind: resolveRunIdMintKind,
         logger,
       }
@@ -656,7 +661,7 @@ export class IdempotencyKeyConcern {
     // call sites in agreement and stops this reading as gen-2-unaware.
     const client = clientForShardKey(
       resolveShard(internalId),
-      idempotencyShardClients,
+      idempotencyShardClients(),
       this.prisma,
       logger
     );
