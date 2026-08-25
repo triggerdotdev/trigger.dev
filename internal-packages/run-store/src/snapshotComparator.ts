@@ -78,16 +78,15 @@ const KNOWN_KEYS = new Set<string>([
   "waitpointIdSet",
 ]);
 
-// Carry a source key normalization does not recognise onto the normalized object, so the
-// unknownField check sees it instead of it being silently dropped (a false clean comparison).
-// Uses an own-property check (not `in`, which sees the prototype chain and would hide keys like
-// `constructor`), and skips prototype-pollution keys.
+// Carry a source key normalization does not recognise onto the normalized object, so the unknownField
+// check sees it instead of it being silently dropped (a false clean comparison). Skips the
+// prototype-pollution keys. No own-property guard is needed: the normalizer only ever sets KNOWN_KEYS,
+// so a non-known source key is never already present and cannot overwrite a normalized value.
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 function carryUnknownKeys(target: NormalizedSnapshot, source: Record<string, unknown>): void {
   for (const k of Object.keys(source)) {
     if (DANGEROUS_KEYS.has(k)) continue;
-    if (!KNOWN_KEYS.has(k) && !hasOwn(target, k)) target[k] = source[k];
+    if (!KNOWN_KEYS.has(k)) target[k] = source[k];
   }
 }
 

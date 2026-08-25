@@ -143,7 +143,7 @@ describe("diffLatest", () => {
     const read: SnapshotRead = { id: "s1", seq: 1, isValid: true, raw: "{}", entry };
     const n = normalizeFromRedis(read) as Record<string, unknown>;
 
-    expect(Object.prototype.hasOwnProperty.call(n, "toString")).toBe(true); // carried despite inherited name
+    expect(Object.keys(n)).toContain("toString"); // carried as an own key despite the inherited name
     expect(n["toString"]).toBe("surprise");
     expect(Object.getPrototypeOf(n)).toBe(Object.prototype); // __proto__ skipped, no pollution
     expect("polluted" in {}).toBe(false);
