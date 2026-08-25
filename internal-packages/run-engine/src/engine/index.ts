@@ -3,6 +3,7 @@ import {
   type Meter,
   type Tracer,
   type Counter,
+  type Histogram,
   getMeter,
   startSpan,
   trace,
@@ -100,6 +101,7 @@ import type {
   TriggerParams,
 } from "./types.js";
 import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
+import { resolveSnapshotSweepCron } from "./snapshotSweepSchedule.js";
 import { workerCatalog } from "./workerCatalog.js";
 import pMap from "p-map";
 
@@ -111,6 +113,8 @@ export class RunEngine {
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
+  private snapshotSweepPassCounter: Counter;
+  private snapshotSweepCountsHistogram: Histogram;
   private snapshotsSinceReplicaMissCounter: Counter;
   private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
@@ -251,7 +255,19 @@ export class RunEngine {
         ...options.worker.redis,
         keyPrefix: `${options.worker.redis.keyPrefix}worker:`,
       },
-      catalog: workerCatalog,
+      catalog: {
+        ...workerCatalog,
+        sweepSnapshotOrphans: {
+          ...workerCatalog.sweepSnapshotOrphans,
+          cron: resolveSnapshotSweepCron({
+            hasRunner: !!options.snapshotStore?.runSweep,
+            schedule: options.snapshotStore?.sweepSchedule,
+            fallback: workerCatalog.sweepSnapshotOrphans.cron,
+          }),
+          jitterInMs:
+            options.snapshotStore?.sweepJitterInMs ?? workerCatalog.sweepSnapshotOrphans.jitterInMs,
+        },
+      },
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
@@ -274,6 +290,9 @@ export class RunEngine {
         },
         repairSnapshot: async ({ payload }) => {
           await this.#handleRepairSnapshot(payload);
+        },
+        sweepSnapshotOrphans: async () => {
+          await this.#handleSweepSnapshotOrphans();
         },
         expireRun: async ({ payload }) => {
           await this.ttlSystem.expireRun({ runId: payload.runId });
@@ -322,6 +341,19 @@ export class RunEngine {
 
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
+
+    this.snapshotSweepPassCounter = this.meter.createCounter(
+      "run_engine.snapshot_store.sweep_pass_total",
+      {
+        description:
+          "Orphan-sweep passes by outcome. A pass that throws emits outcome=failed, so silence is distinguishable from success",
+      }
+    );
+
+    this.snapshotSweepCountsHistogram = this.meter.createHistogram(
+      "run_engine.snapshot_store.sweep_counts",
+      { description: "Per-field counts from one orphan-sweep pass" }
+    );
 
     this.snapshotsSinceReplicaMissCounter = this.meter.createCounter(
       "run_engine.snapshots_since.replica_miss",
@@ -2889,6 +2921,45 @@ export class RunEngine {
         }
       }
     });
+  }
+
+  /**
+   * One emitter per pass, in a finally, so a throw is reported rather than silent. The deploy step
+   * gates dual-write on an observed pass, so an absent metric would read as a clean sweep.
+   */
+  async #handleSweepSnapshotOrphans() {
+    const runSweep = this.options.snapshotStore?.runSweep;
+
+    if (!runSweep) {
+      // The cron entry is registered when the engine is constructed, which happens before the
+      // webapp sets the binding, so an occurrence already queued at boot can arrive unbound.
+      this.snapshotSweepPassCounter.add(1, { outcome: "unbound" });
+      this.logger.error("sweepSnapshotOrphans ran with no sweep runner bound");
+      return;
+    }
+
+    const budgetMs = this.options.snapshotStore?.sweepBudgetMs ?? 10_800_000;
+    const controller = new AbortController();
+    let outcome = "failed";
+    let counts: Record<string, number | boolean> | undefined;
+
+    try {
+      const result = await runSweep({
+        deadline: Date.now() + budgetMs,
+        signal: controller.signal,
+      });
+      outcome = result.outcome;
+      counts = result.counts;
+    } catch (error) {
+      this.logger.error("sweepSnapshotOrphans threw", { error });
+    } finally {
+      this.snapshotSweepPassCounter.add(1, { outcome });
+      for (const [field, value] of Object.entries(counts ?? {})) {
+        if (typeof value === "number") {
+          this.snapshotSweepCountsHistogram.record(value, { field });
+        }
+      }
+    }
   }
 
   async #handleRepairSnapshot({

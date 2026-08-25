@@ -83,4 +83,19 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  sweepSnapshotOrphans: {
+    schema: z.object({
+      timestamp: z.number(),
+      lastTimestamp: z.number().optional(),
+      cron: z.string(),
+    }),
+    // The default budget plus an hour. A pass that outlives this is redelivered and runs beside
+    // itself; the runner's fenced lock is what actually prevents that, this is headroom.
+    visibilityTimeoutMs: 14_400_000,
+    cron: "0 */6 * * *",
+    jitterInMs: 60_000,
+    // Load-bearing. A throw takes the dead-letter path, which also reschedules, so the cron chain
+    // survives a failed pass. With retries it would not behave that way.
+    retry: { maxAttempts: 1 },
+  },
 };

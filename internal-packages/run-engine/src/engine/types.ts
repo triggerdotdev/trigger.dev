@@ -166,6 +166,21 @@ export type RunEngineOptions = {
       randomize?: boolean;
     };
   };
+  /**
+   * The execution-snapshot orphan sweep. The engine owns scheduling only: the webapp owns what
+   * runs, because a pass needs a run store and its own Redis client and the engine opens neither.
+   */
+  snapshotStore?: {
+    runSweep?: (opts: { deadline: number; signal: AbortSignal }) => Promise<{
+      outcome: string;
+      counts?: Record<string, number | boolean>;
+    }>;
+    /** Cron. Absent or empty falls back to the catalog default. */
+    sweepSchedule?: string;
+    sweepJitterInMs?: number;
+    /** Ceiling on one pass. Must stay below the job's visibility timeout. */
+    sweepBudgetMs?: number;
+  };
   debounce?: {
     redis?: RedisOptions;
     /**
