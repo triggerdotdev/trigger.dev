@@ -459,7 +459,7 @@ export class DelegatingRunStore implements RunStore {
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
-    return this.delegate.findLatestExecutionSnapshot(runId, client);
+    return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
   }
 
   findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
@@ -717,7 +717,7 @@ export class DelegatingRunStore implements RunStore {
     // instead of defaulting to LEGACY. Single-store impls ignore it.
     residency?: Residency
   ): Promise<WaitpointTag> {
-    return this.delegate.upsertWaitpointTag(data, tx);
+    return this.delegate.upsertWaitpointTag(data, tx, residency);
   }
 
   findManyWaitpointTags(
