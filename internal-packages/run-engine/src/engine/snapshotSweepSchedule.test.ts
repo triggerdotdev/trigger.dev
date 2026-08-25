@@ -30,3 +30,13 @@ describe("resolveSnapshotSweepCron", () => {
     );
   });
 });
+
+describe("the unconfigured deployment", () => {
+  // The webapp must omit the whole options block, not pass a runner that reports unbound: a
+  // registered cron would log an unbound pass every interval on every install not using the store.
+  it("schedules nothing when the options block is absent", () => {
+    expect(
+      resolveSnapshotSweepCron({ hasRunner: false, schedule: "0 */6 * * *", fallback: FALLBACK })
+    ).toBeUndefined();
+  });
+});

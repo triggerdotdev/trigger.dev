@@ -13,6 +13,7 @@ import { pickRunOpsStoreForCompletion } from "./runOpsMigration/crossSeamGuard.s
 import { runEngineControlPlaneResolver } from "./runOpsMigration/runEngineControlPlaneResolver.server";
 import { runStore } from "./runStore.server";
 import { getSnapshotSweepRunner } from "./snapshotStoreBindings.server";
+import { getSnapshotStoreConfig } from "./snapshotStoreInstance.server";
 import { meter, tracer } from "./tracer.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
@@ -242,18 +243,22 @@ function createRunEngine() {
         randomize: true,
       },
     },
-    snapshotStore: {
-      runSweep: async (opts) => {
-        const run = getSnapshotSweepRunner();
-        if (!run) {
-          return { outcome: "unbound" };
+    // Omitted entirely when the snapshot store is unconfigured: passing a runner would register the
+    // cron job and log an unbound pass every interval on every install that does not use the store.
+    snapshotStore: getSnapshotStoreConfig().configured
+      ? {
+          runSweep: async (opts) => {
+            const run = getSnapshotSweepRunner();
+            if (!run) {
+              return { outcome: "unbound" };
+            }
+            return run(opts);
+          },
+          sweepSchedule: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_SCHEDULE,
+          sweepJitterInMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_JITTER_IN_MS,
+          sweepBudgetMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS,
         }
-        return run(opts);
-      },
-      sweepSchedule: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_SCHEDULE,
-      sweepJitterInMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_JITTER_IN_MS,
-      sweepBudgetMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS,
-    },
+      : undefined,
     // Debounce configuration
     debounce: {
       maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
