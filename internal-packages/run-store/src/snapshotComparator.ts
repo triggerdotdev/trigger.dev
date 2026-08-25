@@ -101,7 +101,6 @@ function canonicalJson(v: unknown): string {
 export function normalizeFromPg(
   row: Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { completedWaitpoints: true } }>
 ): NormalizedSnapshot {
-  const wps = (row.completedWaitpoints ?? []) as Array<{ id: string }>;
   const n: NormalizedSnapshot = {
     id: row.id,
     engine: row.engine,
@@ -125,7 +124,10 @@ export function normalizeFromPg(
     updatedAt: row.updatedAt.getTime(),
     metadata: row.metadata ?? null,
     completedWaitpointOrder: [...(row.completedWaitpointOrder ?? [])],
-    waitpointIdSet: [...wps.map((w) => w.id)].sort(),
+    // Index-bearing distinct set, from completedWaitpointOrder, to match the Redis read surface
+    // (distinctIds = dedupe of `order`). The full relation holds non-indexed ids Redis does not
+    // expose here (payload-layer, out of scope), so comparing it would fire a spurious divergence.
+    waitpointIdSet: [...new Set(row.completedWaitpointOrder ?? [])].sort(),
   };
   carryUnknownKeys(n, row as unknown as Record<string, unknown>);
   return n;

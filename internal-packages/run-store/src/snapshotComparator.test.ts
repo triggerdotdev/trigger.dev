@@ -3,6 +3,7 @@ import {
   diffLatest,
   diffSince,
   normalizeFromRedis,
+  normalizeFromPg,
   SnapshotComparator,
   type DivergenceClass,
   type NormalizedSnapshot,
@@ -153,6 +154,39 @@ describe("diffLatest", () => {
       n as NormalizedSnapshot
     );
     expect(d.some((x) => x.field === "toString" && x.class === "unknownField")).toBe(true);
+  });
+
+  it("normalizeFromPg's waitpointIdSet is index-bearing only, matching the Redis read surface", () => {
+    // A non-indexed completed waitpoint is in the relation but not in completedWaitpointOrder; Redis's
+    // distinctIds (dedupe of order) does not expose it, so the PG side must not either.
+    const row = {
+      id: "s1",
+      engine: "V2",
+      executionStatus: "EXECUTING",
+      description: "d",
+      isValid: true,
+      error: null,
+      previousSnapshotId: null,
+      runId: "r1",
+      runStatus: "EXECUTING",
+      batchId: null,
+      attemptNumber: null,
+      environmentId: "env",
+      environmentType: "DEVELOPMENT",
+      projectId: "p",
+      organizationId: "o",
+      checkpointId: null,
+      workerId: null,
+      runnerId: null,
+      createdAt: new Date(1000),
+      updatedAt: new Date(1000),
+      metadata: null,
+      completedWaitpointOrder: ["w_indexed"],
+      completedWaitpoints: [{ id: "w_indexed" }, { id: "w_nonindexed" }],
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const n = normalizeFromPg(row as any);
+    expect(n.waitpointIdSet).toEqual(["w_indexed"]);
   });
 });
 
