@@ -9,7 +9,7 @@ import {
   type DeploymentEvent,
 } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
@@ -252,9 +252,9 @@ export class DeploymentService extends BaseService {
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
       .andThen(({ deployment }) =>
-        this.#recordCanceledLifecycle(deployment.id)
+        this.#recordCanceledTelemetry(deployment.id)
           .orElse((error) => {
-            logger.error("Failed to record canceled deployment lifecycle", { error });
+            logger.error("Failed to record canceled deployment telemetry", { error });
             return okAsync(undefined);
           })
           .map(() => ({ deployment }))
@@ -484,7 +484,7 @@ export class DeploymentService extends BaseService {
   }
 
   // The cancel chain only carries a narrow row selection, so re-fetch the full row
-  #recordCanceledLifecycle(deploymentId: string) {
+  #recordCanceledTelemetry(deploymentId: string) {
     return fromPromise(
       this._prisma.workerDeployment.findFirst({
         where: { id: deploymentId },
@@ -505,7 +505,7 @@ export class DeploymentService extends BaseService {
     ).map((canceled) => {
       if (!canceled || canceled.status !== "CANCELED") return;
 
-      recordDeploymentLifecycle({
+      recordDeploymentFinished({
         status: "CANCELED",
         deployment: canceled,
         environment: {

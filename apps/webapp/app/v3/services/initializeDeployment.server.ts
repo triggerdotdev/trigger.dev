@@ -16,7 +16,7 @@ import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentInitialized } from "./recordDeploymentLifecycle.server";
+import { recordDeploymentInitialized } from "./recordDeploymentFinished.server";
 import { createDeploymentWithNextVersion } from "./initializeDeployment/createDeploymentWithNextVersion.server";
 import {
   cancelSupersededDeployments,

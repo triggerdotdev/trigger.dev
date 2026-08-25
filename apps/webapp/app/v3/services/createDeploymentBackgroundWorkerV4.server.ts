@@ -18,7 +18,7 @@ import {
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { webhookPrisma } from "~/db.server";
 
@@ -335,7 +335,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // BUILDING → DEPLOYING transition.
       await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
-      recordDeploymentLifecycle({
+      recordDeploymentFinished({
         status: "FAILED",
         deployment: { ...deployment, status: "FAILED", failedAt, errorData },
         environment: {

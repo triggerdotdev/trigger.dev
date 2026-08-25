@@ -5,7 +5,7 @@ import { commonWorker } from "../commonWorker.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {
@@ -71,7 +71,7 @@ export class TimeoutDeploymentService extends BaseService {
       buildEnvVars: null,
     };
 
-    recordDeploymentLifecycle({
+    recordDeploymentFinished({
       status: "TIMED_OUT",
       deployment: timedOutDeployment,
       environment: {

@@ -1,8 +1,8 @@
 import { BuildServerMetadata } from "@trigger.dev/core/v3";
 
 /**
- * Attribute names for the `deployment.lifecycle` and `deployment.initialized`
- * telemetry events (emitted by services/recordDeploymentLifecycle.server.ts).
+ * Attribute names for the `deployment.finished` and `deployment.initialized`
+ * telemetry events (emitted by services/recordDeploymentFinished.server.ts).
  * This module is the single owner of these names — external queries,
  * dashboards, and monitors reference them, so treat renames as breaking.
  *
@@ -24,7 +24,7 @@ export const DeploymentTelemetryAttributes = {
   // Deployment friendly id — the dedup key
   DEPLOYMENT_ID: "deployment.id",
   VERSION: "deployment.version",
-  // lifecycle: terminal status; initialized: initial status (PENDING/BUILDING)
+  // finished: terminal status; initialized: initial status (PENDING/BUILDING)
   STATUS: "deployment.status",
   // status === DEPLOYED; CANCELED is excluded from failure rates
   SUCCESS: "deployment.success",

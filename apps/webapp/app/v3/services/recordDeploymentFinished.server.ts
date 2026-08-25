@@ -13,7 +13,7 @@ type TerminalDeploymentStatus = Extract<
   "DEPLOYED" | "FAILED" | "TIMED_OUT" | "CANCELED"
 >;
 
-type LifecycleDeployment = Pick<
+type FinishedDeployment = Pick<
   WorkerDeployment,
   | "friendlyId"
   | "version"
@@ -46,15 +46,15 @@ type EnvironmentInfo = {
 
 /**
  * Records a deployment's terminal transition as a single wide
- * `deployment.lifecycle` span, backdated createdAt → terminal (attribute
+ * `deployment.finished` span, backdated createdAt → terminal (attribute
  * contract in ../deploymentTelemetry.ts). Call exactly once, only after a
  * guarded status write confirmed this caller won the transition. Emitted on
  * ROOT_CONTEXT with forceRecording so the sampler can never drop it; never
  * throws.
  */
-export function recordDeploymentLifecycle(params: {
+export function recordDeploymentFinished(params: {
   status: TerminalDeploymentStatus;
-  deployment: LifecycleDeployment;
+  deployment: FinishedDeployment;
   environment: EnvironmentInfo;
   reason?: string;
 }): void {
@@ -68,7 +68,7 @@ export function recordDeploymentLifecycle(params: {
     const errorData = parseErrorData(deployment.errorData);
 
     const span = tracer.startSpan(
-      "deployment.lifecycle",
+      "deployment.finished",
       {
         startTime: deployment.createdAt,
         attributes: {
@@ -112,7 +112,7 @@ export function recordDeploymentLifecycle(params: {
 
     span.end(terminalAt);
   } catch (error) {
-    logger.debug("recordDeploymentLifecycle failed", {
+    logger.debug("recordDeploymentFinished failed", {
       deploymentFriendlyId: params.deployment.friendlyId,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -121,7 +121,7 @@ export function recordDeploymentLifecycle(params: {
 
 /**
  * Records a deployment's creation as a zero-duration `deployment.initialized`
- * event — the funnel counterpart to `deployment.lifecycle` for detecting
+ * event — the funnel counterpart to `deployment.finished` for detecting
  * stuck deployments. Never throws.
  */
 export function recordDeploymentInitialized(params: {

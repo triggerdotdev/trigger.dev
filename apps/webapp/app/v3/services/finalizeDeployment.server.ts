@@ -10,7 +10,7 @@ import { projectPubSub } from "./projectPubSub.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
 import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
@@ -101,7 +101,7 @@ export class FinalizeDeploymentService extends BaseService {
       buildEnvVars: null,
     };
 
-    recordDeploymentLifecycle({
+    recordDeploymentFinished({
       status: "DEPLOYED",
       deployment: finalizedDeployment,
       environment: {

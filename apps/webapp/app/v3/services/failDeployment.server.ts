@@ -5,7 +5,7 @@ import { boundedIn, Prisma, type WorkerDeploymentStatus } from "@trigger.dev/dat
 import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentLifecycle } from "./recordDeploymentLifecycle.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 
 export const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",
@@ -78,7 +78,7 @@ export class FailDeploymentService extends BaseService {
       return;
     }
 
-    recordDeploymentLifecycle({
+    recordDeploymentFinished({
       status: "FAILED",
       deployment: failedDeployment,
       environment: {
