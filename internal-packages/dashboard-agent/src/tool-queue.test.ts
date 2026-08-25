@@ -277,3 +277,90 @@ describe("get_queue reports the live read it actually got", () => {
     expect(answer.liveStateError).toContain("503");
   });
 });
+
+/**
+ * slotHolders / holderResolution are additive fields on the live row: the tool must carry
+ * them through verbatim when the API sends them, and omit rather than fabricate them when
+ * it doesn't (an older API).
+ */
+describe("get_queue carries slot-holder facts through, and omits them when absent", () => {
+  const ORIGIN = "https://api.example.com";
+
+  function stubFetch(liveRow: Record<string, unknown>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: any) => {
+        const url = typeof input === "string" ? input : input.url;
+        if (url.endsWith("/jwt")) {
+          return new Response(JSON.stringify({ token: "env-jwt" }), { status: 200 });
+        }
+        if (url.includes("/metrics")) {
+          return new Response(JSON.stringify({ peakQueued: 4800, startedCount: 12 }), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify({ type: "custom", paused: false, ...liveRow }), {
+          status: 200,
+        });
+      })
+    );
+  }
+
+  function getQueue() {
+    const ctx = {
+      userActorToken: "uat",
+      apiOrigin: ORIGIN,
+      projectRef: "proj_ref",
+      environmentName: "dev",
+    };
+    const tools = buildApiTools({
+      ctx,
+      client: createApiClient(ctx),
+      renderInvestigations: (() => []) as any,
+    });
+    return (input: any) => (tools.get_queue as any).execute(input, {} as any);
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("complete + consistent: carries the holder facts verbatim", async () => {
+    const slotHolders = [
+      {
+        runId: "run_abc",
+        status: "EXECUTING",
+        uri: "trigger://runs/run_abc",
+        consistency: "consistent",
+      },
+    ];
+    stubFetch({ holderResolution: "complete", slotHolders });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ holderResolution: "complete", slotHolders });
+  });
+
+  it("complete + mismatch: carries the mismatch verbatim", async () => {
+    const slotHolders = [
+      {
+        runId: "run_abc",
+        status: "COMPLETED",
+        uri: "trigger://runs/run_abc",
+        consistency: "mismatch",
+      },
+    ];
+    stubFetch({ holderResolution: "complete", slotHolders });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ holderResolution: "complete", slotHolders });
+  });
+
+  it("none: carries the resolution with an empty holder list", async () => {
+    stubFetch({ holderResolution: "none", slotHolders: [] });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ holderResolution: "none", slotHolders: [] });
+  });
+
+  it("omits both fields rather than fabricating them when the API doesn't send them", async () => {
+    stubFetch({ queued: 3 });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).not.toHaveProperty("slotHolders");
+    expect(answer).not.toHaveProperty("holderResolution");
+  });
+});
