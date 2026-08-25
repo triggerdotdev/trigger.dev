@@ -832,6 +832,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       workerId: entry.workerId ?? null,
       runnerId: entry.runnerId ?? null,
       metadata: entry.metadata ?? null,
+      // A column no code writes, so Postgres returns null for it on every row. The entry does not
+      // carry it, and omitting it here would hand back undefined where Postgres hands back null,
+      // on every single read served from Redis.
+      lastHeartbeatAt: null,
       completedWaitpointOrder,
       isValid: read.isValid,
       error: entry.error ?? null,

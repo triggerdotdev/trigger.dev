@@ -126,6 +126,29 @@ describe("snapshot reads", () => {
   });
 
   containerTest(
+    "returns the same field set Postgres does, key for key",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const postgresOnly = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, env);
+        await decorated.createExecutionSnapshot(snapshotInput(runId, env, "Run started"));
+
+        const fromRedis = await decorated.findLatestExecutionSnapshot(runId);
+        const fromPostgres = await postgresOnly.findLatestExecutionSnapshot(runId);
+
+        // Not a value comparison: a column the hydrator forgets is absent rather than wrong, so it
+        // shows up as a missing KEY. lastHeartbeatAt was omitted this way and read back undefined
+        // where Postgres returns null, on every Redis-served read.
+        expect(Object.keys(fromRedis!).sort()).toEqual(Object.keys(fromPostgres!).sort());
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
     "reads a foreign environment as not found, so the caller's 404 still fires",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
