@@ -12,6 +12,7 @@ import { runEnginePendingVersionLookup } from "./runEnginePendingVersionLookup.s
 import { pickRunOpsStoreForCompletion } from "./runOpsMigration/crossSeamGuard.server";
 import { runEngineControlPlaneResolver } from "./runOpsMigration/runEngineControlPlaneResolver.server";
 import { runStore } from "./runStore.server";
+import { getSnapshotSweepRunner } from "./snapshotStoreBindings.server";
 import { meter, tracer } from "./tracer.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
@@ -240,6 +241,18 @@ function createRunEngine() {
         factor: 2,
         randomize: true,
       },
+    },
+    snapshotStore: {
+      runSweep: async (opts) => {
+        const run = getSnapshotSweepRunner();
+        if (!run) {
+          return { outcome: "unbound" };
+        }
+        return run(opts);
+      },
+      sweepSchedule: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_SCHEDULE,
+      sweepJitterInMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_JITTER_IN_MS,
+      sweepBudgetMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS,
     },
     // Debounce configuration
     debounce: {

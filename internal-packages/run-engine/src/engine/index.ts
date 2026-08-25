@@ -2497,6 +2497,23 @@ export class RunEngine {
     };
   }
 
+  /**
+   * The append-failure compensator. Shares the stall watchdog's job id AND its availableAt, so the
+   * two cannot enqueue two repairs for one run and neither can win a race that changes the delay.
+   */
+  async enqueueSnapshotRepair(payload: {
+    runId: string;
+    snapshotId: string;
+    executionStatus: string;
+  }): Promise<boolean> {
+    return this.worker.enqueueOnce({
+      id: `repair-in-progress-run:${payload.runId}`,
+      job: "repairSnapshot",
+      payload,
+      availableAt: new Date(Date.now() + this.repairSnapshotTimeoutMs),
+    });
+  }
+
   async #repairRun(runId: string, dryRun: boolean) {
     const snapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
 
