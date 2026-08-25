@@ -2265,8 +2265,7 @@ model WorkerDeployment {
 
   runtime        String?
   runtimeVersion String?
-  /// CLI version that initiated the deploy (x-trigger-cli-version), stamped at
-  /// initialization so pre-index failures are attributable to a CLI version.
+  /// CLI version that initiated the deploy, stamped at initialization
   cliVersion     String?
 
   imageReference String?

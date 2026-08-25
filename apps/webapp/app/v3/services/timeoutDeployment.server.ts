@@ -41,9 +41,7 @@ export class TimeoutDeploymentService extends BaseService {
     const failedAt = new Date();
     const errorData = { message: errorMessage, name: "TimeoutError" };
 
-    // Guarded transition: keeps the fromStatus check atomic with the write, so
-    // a concurrent finalize/fail/cancel can't be overwritten by a late timeout
-    // (and exactly one caller emits the lifecycle event).
+    // Guarded: keeps the fromStatus check atomic with the write
     const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,

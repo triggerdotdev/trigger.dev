@@ -483,8 +483,7 @@ export class DeploymentService extends BaseService {
     );
   }
 
-  // The cancel path only carries a narrow row selection, so re-fetch the full
-  // row (post-update, status already CANCELED) for the lifecycle event.
+  // The cancel chain only carries a narrow row selection, so re-fetch the full row
   #recordCanceledLifecycle(deploymentId: string) {
     return fromPromise(
       this._prisma.workerDeployment.findFirst({

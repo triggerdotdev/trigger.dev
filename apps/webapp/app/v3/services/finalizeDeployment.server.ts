@@ -71,10 +71,7 @@ export class FinalizeDeploymentService extends BaseService {
       ? `${deployment.imageReference}@${imageDigest}`
       : deployment.imageReference;
 
-    // Guarded transition: a concurrent timeout/fail/cancel can win between the
-    // status check above and this write; the predicate makes exactly one caller
-    // commit the terminal status (and emit the lifecycle event). It also stops
-    // a late timeout from overwriting DEPLOYED.
+    // Guarded: stops a concurrent transition (e.g. a late timeout) from double-committing
     const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,

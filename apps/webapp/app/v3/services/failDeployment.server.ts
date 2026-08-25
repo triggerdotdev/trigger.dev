@@ -43,9 +43,7 @@ export class FailDeploymentService extends BaseService {
 
     const failedAt = new Date();
 
-    // Guarded transition: a concurrent finalize/timeout/cancel can win between
-    // the check above and this write; the predicate makes exactly one caller
-    // commit the terminal status (and emit the lifecycle event).
+    // Guarded: a concurrent terminal transition can win after the check above
     const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
@@ -67,9 +65,7 @@ export class FailDeploymentService extends BaseService {
       return;
     }
 
-    // Re-read after the guarded write: the row can gain phase timestamps
-    // between the initial read and the update, and callers expect the
-    // post-update row.
+    // Re-read: the row can gain phase timestamps between the read and the guarded write
     const failedDeployment = await this._prisma.workerDeployment.findFirst({
       where: { id: deployment.id },
     });

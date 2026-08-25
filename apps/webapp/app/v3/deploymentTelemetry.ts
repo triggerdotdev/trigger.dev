@@ -58,11 +58,10 @@ export const DeploymentTelemetryAttributes = {
 export type DeploymentBuildPath = "local_bundle" | "native" | "depot";
 
 /**
- * Classifies which build path produced a deployment, from its persisted
- * metadata. Everything that is not a native-build-server deployment falls into
- * the depot bucket — including rare `--local-build` deploys, whose flag is not
- * persisted. `externalBuildData` is NOT usable as a depot signal: init writes a
- * placeholder (`"-"` fields) for every path.
+ * Everything that is not a native-build-server deployment falls into the depot
+ * bucket, including rare `--local-build` deploys (their flag is not persisted).
+ * `externalBuildData` is NOT a usable depot signal: init writes a placeholder
+ * for every path.
  */
 export function deriveBuildPath(buildServerMetadata: unknown): DeploymentBuildPath {
   const metadata = BuildServerMetadata.safeParse(buildServerMetadata);
@@ -90,11 +89,9 @@ export type DeploymentDurations = {
 };
 
 /**
- * Derives per-phase durations from the persisted timestamp chain
- * (createdAt → startedAt → installedAt → builtAt → terminal). Chains are
- * path-shaped: depot never sets installedAt (the /progress route is
- * build-server-only) and PENDING-skipping deploys have queue ≈ 0 — each phase
- * is emitted only when both of its boundary timestamps exist and are ordered.
+ * Timestamp chains are path-shaped (e.g. depot never sets installedAt), so
+ * each phase is derived only when both of its boundary timestamps exist and
+ * are ordered.
  */
 export function deriveDeploymentDurations(
   timestamps: DeploymentTimestamps,

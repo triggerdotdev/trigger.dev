@@ -91,9 +91,7 @@ class DatasourceAttributeSpanProcessor implements SpanProcessor {
   }
 }
 
-// Mirrors spans whose name matches a prefix into a second exporter (e.g. the
-// dedicated deployment-events dataset) without removing them from the main
-// exporter's stream.
+// Mirrors name-prefixed spans into a second exporter; they still flow to the main one
 class SpanNamePrefixMirrorProcessor implements SpanProcessor {
   constructor(
     private readonly _inner: SpanProcessor,
@@ -392,9 +390,7 @@ function setupTelemetry() {
     instrumentations,
   });
 
-  // closeServer only closes express and lets the process drain, so a flush
-  // here has time to run — without it every webapp shutdown drops the last
-  // batch of spans (up to 1s of scheduledDelayMillis backlog).
+  // Without this flush every shutdown drops the last batch of spans
   const flushOnShutdown = () => {
     provider.forceFlush().catch(() => {});
   };

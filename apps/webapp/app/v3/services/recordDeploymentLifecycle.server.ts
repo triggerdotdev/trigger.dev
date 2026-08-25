@@ -46,15 +46,11 @@ type EnvironmentInfo = {
 
 /**
  * Records a deployment's terminal transition as a single wide
- * `deployment.lifecycle` span, backdated to span the deployment's real
- * lifetime (createdAt → terminal) and carrying per-phase durations as
- * attributes. This is THE per-deployment analytics event: build-path
- * comparison dashboards and monitors are built on it (the attribute contract
- * lives in ../deploymentTelemetry.ts).
- *
- * Call exactly once per terminal transition, only after a guarded status
- * write confirmed this caller won the transition. Emitted on ROOT_CONTEXT
- * with forceRecording so the trace sampler can never drop it. Never throws.
+ * `deployment.lifecycle` span, backdated createdAt → terminal (attribute
+ * contract in ../deploymentTelemetry.ts). Call exactly once, only after a
+ * guarded status write confirmed this caller won the transition. Emitted on
+ * ROOT_CONTEXT with forceRecording so the sampler can never drop it; never
+ * throws.
  */
 export function recordDeploymentLifecycle(params: {
   status: TerminalDeploymentStatus;
@@ -106,8 +102,7 @@ export function recordDeploymentLifecycle(params: {
       ROOT_CONTEXT
     );
 
-    // CANCELED is deliberately not an error: it is excluded from failure
-    // rates and tracked as its own volume.
+    // CANCELED is deliberately not an error: it stays out of failure rates
     if (isFailure) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
@@ -126,9 +121,8 @@ export function recordDeploymentLifecycle(params: {
 
 /**
  * Records a deployment's creation as a zero-duration `deployment.initialized`
- * event, the funnel counterpart to `deployment.lifecycle`: an initialized
- * deployment with no lifecycle event after a few hours is either stuck
- * non-terminal or hit an emission bug. Never throws.
+ * event — the funnel counterpart to `deployment.lifecycle` for detecting
+ * stuck deployments. Never throws.
  */
 export function recordDeploymentInitialized(params: {
   deployment: Pick<
