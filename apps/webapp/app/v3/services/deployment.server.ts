@@ -239,8 +239,6 @@ export class DeploymentService extends BaseService {
         if (result.count === 0) {
           return errAsync({ type: "deployment_cannot_be_cancelled" as const });
         }
-        // Fire-and-forget: telemetry must never affect the cancel result.
-        void this.#recordCanceledLifecycle(deployment.id);
         return okAsync({ deployment });
       });
 
@@ -253,6 +251,14 @@ export class DeploymentService extends BaseService {
     return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
+      .andThen(({ deployment }) =>
+        this.#recordCanceledLifecycle(deployment.id)
+          .orElse((error) => {
+            logger.error("Failed to record canceled deployment lifecycle", { error });
+            return okAsync(undefined);
+          })
+          .map(() => ({ deployment }))
+      )
       .andThen(({ deployment }) =>
         this.appendToEventLog(deployment.environment.project, deployment, [
           {
@@ -479,9 +485,9 @@ export class DeploymentService extends BaseService {
 
   // The cancel path only carries a narrow row selection, so re-fetch the full
   // row (post-update, status already CANCELED) for the lifecycle event.
-  async #recordCanceledLifecycle(deploymentId: string) {
-    try {
-      const canceled = await this._prisma.workerDeployment.findFirst({
+  #recordCanceledLifecycle(deploymentId: string) {
+    return fromPromise(
+      this._prisma.workerDeployment.findFirst({
         where: { id: deploymentId },
         include: {
           environment: {
@@ -492,8 +498,12 @@ export class DeploymentService extends BaseService {
             },
           },
         },
-      });
-
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    ).map((canceled) => {
       if (!canceled || canceled.status !== "CANCELED") return;
 
       recordDeploymentLifecycle({
@@ -507,9 +517,7 @@ export class DeploymentService extends BaseService {
           environmentType: canceled.environment.type,
         },
       });
-    } catch (error) {
-      logger.error("Failed to record canceled deployment lifecycle", { deploymentId, error });
-    }
+    });
   }
 
   private getDeployment(environmentId: string, friendlyId: string) {

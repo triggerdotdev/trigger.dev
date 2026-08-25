@@ -49,8 +49,8 @@ type EnvironmentInfo = {
  * `deployment.lifecycle` span, backdated to span the deployment's real
  * lifetime (createdAt → terminal) and carrying per-phase durations as
  * attributes. This is THE per-deployment analytics event: build-path
- * comparison dashboards and monitors are built on it (see
- * ../deploymentTelemetry.ts and DEPLOYMENT_TELEMETRY_ATTRIBUTES.md for the attribute contract).
+ * comparison dashboards and monitors are built on it (the attribute contract
+ * lives in ../deploymentTelemetry.ts).
  *
  * Call exactly once per terminal transition, only after a guarded status
  * write confirmed this caller won the transition. Emitted on ROOT_CONTEXT
