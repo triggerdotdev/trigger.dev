@@ -44,6 +44,10 @@ describe("SnapshotOrphanSweeper", () => {
         runStore: runStore as unknown as RunStore,
         completedTtlMs: COMPLETED_TTL_MS,
         orphanAgeMs: ORPHAN_AGE_MS,
+        // Rule 2 needs two sightings. These cases are about WHICH keyspaces it picks, not about
+        // the confirm window, so the window is zero and they sweep twice. The window itself has
+        // its own tests below.
+        confirmOrphanAfterMs: 0,
       });
       const probe = createRedisClient(redisOptions, { onError: () => {} });
       try {
@@ -87,6 +91,10 @@ describe("SnapshotOrphanSweeper", () => {
         runStore: runStore as unknown as RunStore,
         completedTtlMs: COMPLETED_TTL_MS,
         orphanAgeMs: ORPHAN_AGE_MS,
+        // Rule 2 needs two sightings. These cases are about WHICH keyspaces it picks, not about
+        // the confirm window, so the window is zero and they sweep twice. The window itself has
+        // its own tests below.
+        confirmOrphanAfterMs: 0,
       });
       const probe = createRedisClient(redisOptions, { onError: () => {} });
       try {
@@ -126,6 +134,10 @@ describe("SnapshotOrphanSweeper", () => {
         runStore: runStore as unknown as RunStore,
         completedTtlMs: COMPLETED_TTL_MS,
         orphanAgeMs: ORPHAN_AGE_MS,
+        // Rule 2 needs two sightings. These cases are about WHICH keyspaces it picks, not about
+        // the confirm window, so the window is zero and they sweep twice. The window itself has
+        // its own tests below.
+        confirmOrphanAfterMs: 0,
       });
       const probe = createRedisClient(redisOptions, { onError: () => {} });
       try {
@@ -149,6 +161,7 @@ describe("SnapshotOrphanSweeper", () => {
         const cyclesBefore = await probe.keys(`snap:{${runId}}:wp:*`);
         expect(cyclesBefore.length).toBeGreaterThan(0);
 
+        await sweeper.sweep();
         const result = await sweeper.sweep();
 
         expect(result.deleted).toBe(1);
@@ -171,6 +184,7 @@ describe("SnapshotOrphanSweeper", () => {
       runStore: runStore as unknown as RunStore,
       completedTtlMs: COMPLETED_TTL_MS,
       orphanAgeMs: ORPHAN_AGE_MS,
+      confirmOrphanAfterMs: 0,
     });
     const probe = createRedisClient(redisOptions, { onError: () => {} });
     try {
@@ -203,6 +217,10 @@ describe("SnapshotOrphanSweeper", () => {
         runStore: runStore as unknown as RunStore,
         completedTtlMs: COMPLETED_TTL_MS,
         orphanAgeMs: ORPHAN_AGE_MS,
+        // Rule 2 needs two sightings. These cases are about WHICH keyspaces it picks, not about
+        // the confirm window, so the window is zero and they sweep twice. The window itself has
+        // its own tests below.
+        confirmOrphanAfterMs: 0,
       });
       const probe = createRedisClient(redisOptions, { onError: () => {} });
       try {
@@ -242,6 +260,7 @@ describe("SnapshotOrphanSweeper", () => {
       runStore: runStore as unknown as RunStore,
       completedTtlMs: COMPLETED_TTL_MS,
       orphanAgeMs: ORPHAN_AGE_MS,
+      confirmOrphanAfterMs: 0,
     });
     const probe = createRedisClient(redisOptions, { onError: () => {} });
     try {
@@ -262,7 +281,11 @@ describe("SnapshotOrphanSweeper", () => {
 
       const result = await sweeper.sweep({ dryRun: true });
 
-      expect(result.deleted).toBe(1);
+      // A dry pass writes no marker, so an unconfirmed rule 2 candidate reports as pending rather
+      // than as a deletion. That is what a real pass would do at this instant, which is the honest
+      // answer for a preview: nothing is confirmed yet, so nothing would be deleted yet.
+      expect(result.deleted).toBe(0);
+      expect(result.pendingDeletion).toBe(1);
       expect(result.expired).toBe(1);
       expect(await probe.exists(snapshotKeys(orphan).e)).toBe(1);
       expect(await probe.pttl(snapshotKeys(terminal).e)).toBe(-1);
@@ -285,6 +308,10 @@ describe("SnapshotOrphanSweeper", () => {
         runStore: failing,
         completedTtlMs: COMPLETED_TTL_MS,
         orphanAgeMs: ORPHAN_AGE_MS,
+        // Rule 2 needs two sightings. These cases are about WHICH keyspaces it picks, not about
+        // the confirm window, so the window is zero and they sweep twice. The window itself has
+        // its own tests below.
+        confirmOrphanAfterMs: 0,
       });
       const probe = createRedisClient(redisOptions, { onError: () => {} });
       try {
@@ -320,6 +347,10 @@ describe("SnapshotOrphanSweeper", () => {
         runStore: runStore as unknown as RunStore,
         completedTtlMs: COMPLETED_TTL_MS,
         orphanAgeMs: ORPHAN_AGE_MS,
+        // Rule 2 needs two sightings. These cases are about WHICH keyspaces it picks, not about
+        // the confirm window, so the window is zero and they sweep twice. The window itself has
+        // its own tests below.
+        confirmOrphanAfterMs: 0,
       });
       const probe = createRedisClient(redisOptions, { onError: () => {} });
       try {
@@ -340,6 +371,7 @@ describe("SnapshotOrphanSweeper", () => {
         expect(await probe.exists(keys.e)).toBe(1);
         expect(await probe.exists(keys.cur)).toBe(0);
 
+        await sweeper.sweep();
         const result = await sweeper.sweep();
 
         expect(result.deleted).toBe(1);
@@ -369,6 +401,10 @@ describe("SnapshotOrphanSweeper", () => {
         runStore: runStore as unknown as RunStore,
         completedTtlMs: COMPLETED_TTL_MS,
         orphanAgeMs: ORPHAN_AGE_MS,
+        // Rule 2 needs two sightings. These cases are about WHICH keyspaces it picks, not about
+        // the confirm window, so the window is zero and they sweep twice. The window itself has
+        // its own tests below.
+        confirmOrphanAfterMs: 0,
       });
       const probe = createRedisClient(prefixed, { onError: () => {} });
       try {
@@ -383,6 +419,7 @@ describe("SnapshotOrphanSweeper", () => {
           cycle: { kind: "new", completedWaitpoints: [{ id: "w_1", index: 0 }] },
         });
 
+        await sweeper.sweep();
         const result = await sweeper.sweep();
 
         expect(result.scanned).toBe(1);
@@ -403,6 +440,7 @@ describe("SnapshotOrphanSweeper", () => {
       runStore: runStore as unknown as RunStore,
       completedTtlMs: COMPLETED_TTL_MS,
       orphanAgeMs: ORPHAN_AGE_MS,
+      confirmOrphanAfterMs: 0,
     });
     const probe = createRedisClient(redisOptions, { onError: () => {} });
     try {
@@ -417,6 +455,7 @@ describe("SnapshotOrphanSweeper", () => {
         });
       }
 
+      await sweeper.sweep({ batchSize: 2 });
       const result = await sweeper.sweep({ batchSize: 2 });
 
       expect(result.deleted).toBe(5);
