@@ -233,6 +233,52 @@ describe("computeRunOpsSplitReadEnabled shard handles", () => {
     ).toBe(true);
   });
 
+  // The reachable case. A shard with no replicaUrl gets its own WRITER as its replica handle, so its
+  // reads go to its primary. selectRunOpsTopology does exactly that (db.server.ts), which makes this
+  // the per-shard analogue of the existing legacy "reads will hit the legacy primary" warning.
+  it("warns when a shard has no distinct replica handle, so its reads hit its primary", () => {
+    const warn = vi.fn();
+    computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [{ key: "a", writer: shardA, replica: shardA }],
+      logger: { warn },
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/shard a/i);
+    expect(warn.mock.calls[0][0]).toMatch(/primary/i);
+  });
+
+  it("does not warn when a shard has its own distinct replica handle", () => {
+    const warn = vi.fn();
+    computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [{ key: "a", writer: shardA, replica: shardB }],
+      logger: { warn },
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("does NOT warn about primary reads for an aliased shard", () => {
+    const warn = vi.fn();
+    computeRunOpsSplitReadEnabled({
+      ...base,
+      shardHandles: [
+        { key: "z", writer: dedicatedNew, replica: dedicatedNew, aliasOf: "new" as const },
+      ],
+      logger: { warn },
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps the gen-1 verdict when a shard reads from its primary", () => {
+    expect(
+      computeRunOpsSplitReadEnabled({
+        ...base,
+        shardHandles: [{ key: "a", writer: shardA, replica: shardA }],
+      })
+    ).toBe(true);
+  });
+
   it("warns once per offending shard", () => {
     const warn = vi.fn();
     computeRunOpsSplitReadEnabled({
