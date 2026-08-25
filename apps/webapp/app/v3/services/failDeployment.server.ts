@@ -67,13 +67,20 @@ export class FailDeploymentService extends BaseService {
       return;
     }
 
-    const failedDeployment = {
-      ...deployment,
-      status: "FAILED" as const,
-      failedAt,
-      errorData: params.error,
-      buildEnvVars: null,
-    };
+    // Re-read after the guarded write: the row can gain phase timestamps
+    // between the initial read and the update, and callers expect the
+    // post-update row.
+    const failedDeployment = await this._prisma.workerDeployment.findFirst({
+      where: { id: deployment.id },
+    });
+
+    if (!failedDeployment) {
+      logger.error("Worker deployment disappeared after fail transition", {
+        id: deployment.id,
+        friendlyId,
+      });
+      return;
+    }
 
     recordDeploymentLifecycle({
       status: "FAILED",
