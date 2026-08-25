@@ -9,13 +9,29 @@ import {
 
 function norm(over: Partial<NormalizedSnapshot> = {}): NormalizedSnapshot {
   const base: NormalizedSnapshot = {
-    id: "s1", engine: "V2", executionStatus: "RUN_CREATED", description: "d",
-    isValid: true, error: null, previousSnapshotId: null, runId: "r1",
-    runStatus: "PENDING", batchId: null, attemptNumber: null,
-    environmentId: "env", environmentType: "DEVELOPMENT", projectId: "p",
-    organizationId: "o", checkpointId: null, workerId: null, runnerId: null,
-    createdAt: 1000, updatedAt: 1000, metadata: null,
-    completedWaitpointOrder: [], waitpointIdSet: [],
+    id: "s1",
+    engine: "V2",
+    executionStatus: "RUN_CREATED",
+    description: "d",
+    isValid: true,
+    error: null,
+    previousSnapshotId: null,
+    runId: "r1",
+    runStatus: "PENDING",
+    batchId: null,
+    attemptNumber: null,
+    environmentId: "env",
+    environmentType: "DEVELOPMENT",
+    projectId: "p",
+    organizationId: "o",
+    checkpointId: null,
+    workerId: null,
+    runnerId: null,
+    createdAt: 1000,
+    updatedAt: 1000,
+    metadata: null,
+    completedWaitpointOrder: [],
+    waitpointIdSet: [],
   };
   return { ...base, ...over };
 }
@@ -55,17 +71,23 @@ describe("diffLatest", () => {
   });
 
   it("classifies waitpoint id set differences, order-insensitive", () => {
-    expect(diffLatest(norm({ waitpointIdSet: ["a", "b"] }), norm({ waitpointIdSet: ["a", "b"] }))).toEqual([]);
+    expect(
+      diffLatest(norm({ waitpointIdSet: ["a", "b"] }), norm({ waitpointIdSet: ["a", "b"] }))
+    ).toEqual([]);
     const d2 = diffLatest(norm({ waitpointIdSet: ["a", "b"] }), norm({ waitpointIdSet: ["a"] }));
     expect(d2[0]).toMatchObject({ field: "waitpointIdSet", class: "waitpointIdSet" });
   });
 
   it("does NOT emit a divergence for a rotated idempotency key — invisible at id-set granularity", () => {
-    expect(diffLatest(norm({ waitpointIdSet: ["w1"] }), norm({ waitpointIdSet: ["w1"] }))).toEqual([]);
+    expect(diffLatest(norm({ waitpointIdSet: ["w1"] }), norm({ waitpointIdSet: ["w1"] }))).toEqual(
+      []
+    );
   });
 
   it("missingInRedis when the row exists only in Postgres", () => {
-    expect(diffLatest(norm(), null)).toEqual([expect.objectContaining({ class: "missingInRedis" })]);
+    expect(diffLatest(norm(), null)).toEqual([
+      expect.objectContaining({ class: "missingInRedis" }),
+    ]);
   });
 
   it("missingInPg when the row exists only in Redis", () => {
@@ -112,8 +134,12 @@ describe("diffSince", () => {
 
 describe("SnapshotComparator", () => {
   it("shouldSample honours the injected rng and percent", () => {
-    expect(new SnapshotComparator({ samplePercent: 10, rng: () => 0.05 }).shouldSample()).toBe(true);
-    expect(new SnapshotComparator({ samplePercent: 10, rng: () => 0.5 }).shouldSample()).toBe(false);
+    expect(new SnapshotComparator({ samplePercent: 10, rng: () => 0.05 }).shouldSample()).toBe(
+      true
+    );
+    expect(new SnapshotComparator({ samplePercent: 10, rng: () => 0.5 }).shouldSample()).toBe(
+      false
+    );
   });
 
   it("record emits one metric per divergence, tagged by class and op, and returns void", () => {

@@ -38,10 +38,27 @@ export type NormalizedSnapshot = {
 // The 22 compared entry columns. EXCLUDED_FIELDS names the columns deliberately not compared; any key
 // on a normalized entry that is on neither list raises `unknownField`, so a new column fails loudly.
 export const COMPARED_FIELDS = [
-  "id", "engine", "executionStatus", "description", "isValid", "error", "previousSnapshotId",
-  "runId", "runStatus", "batchId", "attemptNumber", "environmentId", "environmentType",
-  "projectId", "organizationId", "checkpointId", "workerId", "runnerId", "createdAt",
-  "updatedAt", "metadata",
+  "id",
+  "engine",
+  "executionStatus",
+  "description",
+  "isValid",
+  "error",
+  "previousSnapshotId",
+  "runId",
+  "runStatus",
+  "batchId",
+  "attemptNumber",
+  "environmentId",
+  "environmentType",
+  "projectId",
+  "organizationId",
+  "checkpointId",
+  "workerId",
+  "runnerId",
+  "createdAt",
+  "updatedAt",
+  "metadata",
 ] as const;
 
 // lastHeartbeatAt: Postgres-only, never written by the current engine. Waitpoint/checkpoint payloads:
