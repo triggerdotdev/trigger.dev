@@ -10,6 +10,7 @@ import { env } from "~/env.server";
 import {
   clearImpersonation,
   findImpersonationTarget,
+  requireImpersonationEnabled,
   startImpersonation,
 } from "~/models/admin.server";
 import { logger } from "~/services/logger.server";
@@ -26,6 +27,8 @@ import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
 // here would drag server-only modules into the client build.
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
+  requireImpersonationEnabled();
+
   const user = await requireUser(request);
 
   // If already impersonating, we need to clear the impersonation. Redirects are
@@ -101,6 +104,8 @@ function refererOrigin(request: Request): string | undefined {
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
+  requireImpersonationEnabled();
+
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });
   }
