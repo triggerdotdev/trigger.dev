@@ -1,7 +1,7 @@
 import { useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
 import {
   Clipboard,
   ClipboardCheck,
@@ -13,6 +13,8 @@ import {
   ServerIcon,
 } from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
+import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
@@ -176,6 +178,7 @@ function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
 }
 
 const EXTERNAL_ID_DISPLAY_LENGTH = 24;
+const AT_BOTTOM_TOLERANCE_PX = 16;
 
 function ExternalIdValue({ externalId }: { externalId: string | null }) {
   if (!externalId) {
@@ -307,6 +310,7 @@ export default function Page() {
                 <Property.Item>
                   <Property.Label>Logs</Property.Label>
                   <LogsDisplay
+                    key={deployment.id}
                     logs={logs}
                     isStreaming={isStreaming}
                     streamError={streamError}
@@ -524,6 +528,7 @@ function LogsDisplay({
   const [copied, setCopied] = useState(false);
   const [mouseOver, setMouseOver] = useState(false);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -531,12 +536,46 @@ function LogsDisplay({
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
 
-  // auto-scroll log container to bottom when new logs arrive
   useEffect(() => {
-    if (logsContainerRef.current) {
-      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    const container = logsContainerRef.current;
+    if (!container) return;
+
+    const updateIsAtBottom = () => {
+      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+      setIsAtBottom(distance <= AT_BOTTOM_TOLERANCE_PX);
+    };
+
+    container.addEventListener("scroll", updateIsAtBottom, { passive: true });
+    return () => container.removeEventListener("scroll", updateIsAtBottom);
+  }, []);
+
+  useLayoutEffect(() => {
+    const container = logsContainerRef.current;
+    if (!isAtBottom || !container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [logs, isAtBottom]);
+
+  useEffect(() => {
+    const container = logsContainerRef.current;
+    if (!isAtBottom || !container) return;
+
+    const observer = new ResizeObserver(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [isAtBottom]);
+
+  const onToggleScroll = useCallback(() => {
+    const container = logsContainerRef.current;
+    if (!container) return;
+    if (isAtBottom) {
+      setIsAtBottom(false);
+      container.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      container.scrollTop = container.scrollHeight;
     }
-  }, [logs]);
+  }, [isAtBottom]);
 
   const onCopyLogs = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -584,6 +623,27 @@ function LogsDisplay({
         </div>
         {logs.length > 0 && (
           <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger
+                  onClick={onToggleScroll}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  {isAtBottom ? (
+                    <MoveToTopIcon className="size-4" />
+                  ) : (
+                    <MoveToBottomIcon className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <TooltipProvider>
               <Tooltip open={copied || mouseOver} disableHoverableContent>
                 <TooltipTrigger
