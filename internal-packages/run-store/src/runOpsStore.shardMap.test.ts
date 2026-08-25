@@ -647,6 +647,12 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
     expect(await router.countPendingWaitpoints(["b:w9"], undefined, "a:run")).toBe(0);
   });
 
+  it("id-less count unions a drain-mirrored cuid to one, never sums it to two", async () => {
+    // No runId: fans over distinct stores. A cuid pending on BOTH gen-1 stores is one waitpoint.
+    const { router } = partitionRouter({ new: ["cuid_w1"], legacy: ["cuid_w1"] });
+    expect(await router.countPendingWaitpoints(["cuid_w1"])).toBe(1);
+  });
+
   it("returns the true total for a mixed gen-2 and cuid set with no double count", async () => {
     const { router } = partitionRouter({
       b: ["b:w1"],

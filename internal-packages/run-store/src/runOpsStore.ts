@@ -1402,10 +1402,20 @@ export class RoutingRunStore implements RunStore {
     runId?: string
   ): Promise<number> {
     if (runId === undefined) {
+      // No run id to partition on: query every distinct store and UNION by id, matching the routed
+      // path below. A drain-mirrored cuid pending on both gen-1 stores must count once, not twice —
+      // summing raw counts here would reintroduce the double count this method exists to remove.
       const legs = await this.#fanOut(this.#probeOrder, (store) =>
-        store.countPendingWaitpoints(waitpointIds, RoutingRunStore.#ownPrimary(store, client))
+        store.countPendingWaitpointsWithPresence(
+          waitpointIds,
+          RoutingRunStore.#ownPrimary(store, client)
+        )
       );
-      return legs.reduce((sum, leg) => sum + leg, 0);
+      const union = new Set<string>();
+      for (const leg of legs) {
+        for (const id of leg.pendingIds) union.add(id);
+      }
+      return union.size;
     }
 
     if (waitpointIds.length === 0) {
