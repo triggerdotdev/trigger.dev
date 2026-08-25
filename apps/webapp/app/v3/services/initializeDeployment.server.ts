@@ -6,6 +6,7 @@ import {
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { encryptSecret } from "~/services/secrets/secretStore.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
@@ -268,6 +269,38 @@ export class InitializeDeploymentService extends BaseService {
           }
         : undefined;
 
+      let encryptedBuildEnvVars: Awaited<ReturnType<typeof encryptSecret>> | undefined;
+
+      if (
+        payload.isNativeBuild &&
+        payload.fromBundle &&
+        payload.buildEnvVars &&
+        Object.keys(payload.buildEnvVars).length > 0
+      ) {
+        const buildEnvVars = payload.buildEnvVars;
+
+        const keyCount = Object.keys(buildEnvVars).length;
+        if (keyCount > env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS) {
+          throw new ServiceValidationError(
+            `Build environment variable count (${keyCount}) exceeds the allowed limit of ${env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS}. Reach out to us if you are seeing this error consistently.`
+          );
+        }
+
+        const serialized = JSON.stringify(buildEnvVars);
+        const serializedBytes = Buffer.byteLength(serialized, "utf8");
+        if (serializedBytes > env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES) {
+          const sizeKB = parseFloat((serializedBytes / 1024).toFixed(1));
+          const limitKB = parseFloat(
+            (env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES / 1024).toFixed(1)
+          );
+          throw new ServiceValidationError(
+            `Build environment variables size (${sizeKB} KB) exceeds the allowed limit of ${limitKB} KB. Reach out to us if you are seeing this error consistently.`
+          );
+        }
+
+        encryptedBuildEnvVars = await encryptSecret(env.ENCRYPTION_KEY, serialized);
+      }
+
       const buildServerMetadata: BuildServerMetadata | undefined =
         payload.isNativeBuild || payload.buildId
           ? {
@@ -279,6 +312,7 @@ export class InitializeDeploymentService extends BaseService {
                     skipPromotion: payload.skipPromotion,
                     configFilePath: payload.configFilePath,
                     skipEnqueue: payload.skipEnqueue,
+                    fromBundle: payload.fromBundle,
                   }
                 : {}),
             }
@@ -343,6 +377,7 @@ export class InitializeDeploymentService extends BaseService {
             projectId: environment.projectId,
             externalBuildData,
             buildServerMetadata,
+            buildEnvVars: encryptedBuildEnvVars,
             triggeredById: triggeredBy?.id,
             type: payload.type,
             imageReference: imageRef,
@@ -373,6 +408,7 @@ export class InitializeDeploymentService extends BaseService {
           .enqueueBuild(environment, deployment, payload.artifactKey, {
             skipPromotion: payload.skipPromotion,
             configFilePath: payload.configFilePath,
+            fromBundle: payload.fromBundle,
           })
           .orElse((error) => {
             logger.error("Failed to enqueue build", {
