@@ -577,7 +577,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     completedWaitpoints?: CompletedWaitpointRef[]
   ): Promise<
     | { kind: "new"; completedWaitpoints: CompletedWaitpointRef[] }
-    | { kind: "carryForward"; cycleSeq: number }
+    | { kind: "carryForward"; cycleSeq: number; completedWaitpoints: CompletedWaitpointRef[] }
     | undefined
   > {
     if (!completedWaitpoints || completedWaitpoints.length === 0) {
@@ -600,7 +600,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         sameOrder(previousIds.order, order) &&
         sameSet(previousIds.distinctIds, distinct)
       ) {
-        return { kind: "carryForward", cycleSeq: head.cycle.cycleSeq };
+        return {
+          kind: "carryForward",
+          cycleSeq: head.cycle.cycleSeq,
+          completedWaitpoints,
+        };
       }
     } catch (error) {
       // A failed probe must not lose the waitpoints. Minting a fresh cycle is the safe direction:
@@ -679,6 +683,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
 
+    if (read.danglingCycle) {
+      // The entry says it has waitpoints and the cycle key holding them is gone. Serving it would
+      // hand back an empty set that looks authoritative, and the run would resume with no waits.
+      // Postgres still has the join rows.
+      this.metrics?.recordRead("findLatestExecutionSnapshot", "postgres");
+      return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
+    }
+
     this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
     return this.#hydrate(read, runId, client, { hydrateWaitpointRows: true });
   }
@@ -723,6 +735,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     });
 
     if (result.kind === "miss") {
+      this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
+      return this.delegate.findManyExecutionSnapshots(args, client);
+    }
+
+    if (result.entries.some((entry) => entry.danglingCycle)) {
       this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
       return this.delegate.findManyExecutionSnapshots(args, client);
     }

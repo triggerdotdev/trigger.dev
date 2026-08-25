@@ -424,6 +424,125 @@ describe("completed-waitpoint cycles", () => {
   );
 
   containerTest(
+    "a refused carry mints a fresh cycle rather than writing a pointerless head",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+        const snapshotId = generateInternalId();
+
+        // Driven at the store, because the decorator cannot reach this state deliberately: its
+        // probe reads the head first, sees the id set no longer matches, and mints a new cycle.
+        // The refusal is only reachable when the key vanishes BETWEEN that probe and the append,
+        // which is a race. Naming a cycle this incarnation never minted reproduces the same
+        // refusal deterministically.
+        const result = await redis.append({
+          entry: {
+            id: snapshotId,
+            engine: "V2",
+            executionStatus: "EXECUTING",
+            description: "carry a cycle that was never minted",
+            runId,
+            runStatus: "EXECUTING",
+            createdAt: new Date().toISOString(),
+            environmentId: env.id,
+            environmentType: env.type,
+            projectId: env.projectId,
+            organizationId: env.organizationId,
+          },
+          kind: "transition",
+          isTerminal: false,
+          cycle: {
+            kind: "carryForward",
+            cycleSeq: 9999,
+            completedWaitpoints: [{ id: wpA, index: 0 }],
+          },
+        });
+
+        expect(result.outcome).toBe("written");
+        if (result.outcome !== "written") return;
+
+        // Refusing the pointer is right. Writing the entry with NO pointer is not: it becomes the
+        // head, and a read of it answers present-with-nothing, which is the one answer that stops
+        // the engine's read-repair from looking.
+        expect(result.cycleMismatch).toBe(true);
+        expect(result.cycleSeq).toBeGreaterThan(0);
+
+        const ids = await redis.getSnapshotWaitpointIds(runId, snapshotId);
+        expect(ids.present).toBe(true);
+        expect(ids.distinctIds).toEqual([wpA]);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a dangling pointer reads as not present, not as an empty set",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+
+        const created = await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: wpA, index: 0 }], "resume")
+        );
+
+        // The entry keeps its pointer and the cycle key goes. Reachable by eviction, and by the
+        // completion TTL, which is set on every key for a run at once but expires them separately.
+        for (const key of await probe.keys(`snap:{${runId}}:wp:*`)) await probe.del(key);
+
+        const ids = await redis.getSnapshotWaitpointIds(runId, created.id);
+        // present:false is what sends the caller to Postgres, which still holds the join rows.
+        // present:true with an empty set would suppress the engine's read-repair.
+        expect(ids.present).toBe(false);
+        expect(ids.distinctIds).toEqual([]);
+
+        // And the projections the engine actually calls fall back rather than answering empty.
+        const withPresence = await decorated.findSnapshotCompletedWaitpointIdsWithPresence(
+          created.id,
+          undefined,
+          runId
+        );
+        expect(withPresence.ids).toEqual([wpA]);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  containerTest(
+    "the hot read falls back to Postgres when the cycle key is gone",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+
+        await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: wpA, index: 0 }], "resume")
+        );
+        for (const key of await probe.keys(`snap:{${runId}}:wp:*`)) await probe.del(key);
+
+        const latest = await decorated.findLatestExecutionSnapshot(runId);
+
+        // Served from Postgres, so the waitpoint is still there and the resume is not silently
+        // stripped of it.
+        expect(latest!.completedWaitpoints.map((w) => w.id)).toEqual([wpA]);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  containerTest(
     "findLatestExecutionSnapshot returns the index oracle",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);

@@ -175,6 +175,12 @@ export type SnapshotRead = {
   raw: string;
   cycle?: CompletedWaitpointsPointer;
   completedWaitpointIds?: WaitpointIds;
+  /**
+   * The entry points at a cycle key that no longer exists, so its waitpoints are unreachable rather
+   * than absent. A caller must not treat this as an empty set: it has to fall back to Postgres,
+   * which still holds the join rows.
+   */
+  danglingCycle?: boolean;
 };
 
 export type AppendResult =
@@ -266,7 +272,19 @@ export class RedisSnapshotStore {
           completedWaitpoints: CompletedWaitpointRef[];
           records?: CompletedWaitpointRecord[];
         }
-      | { kind: "carryForward"; cycleSeq: number };
+      | {
+          kind: "carryForward";
+          cycleSeq: number;
+          /**
+           * The same refs a `new` cycle would carry. A carry the store refuses falls back to
+           * minting inside the same call, and it cannot do that without them: with no refs there is
+           * nothing to mint from, so the entry is written with no pointer, as before.
+           *
+           * Every production caller supplies them. Omitting them gives up the fallback.
+           */
+          completedWaitpoints?: CompletedWaitpointRef[];
+          records?: CompletedWaitpointRecord[];
+        };
   }): Promise<AppendResult> {
     if (args.entry.completedWaitpoints !== undefined) {
       throw new Error(
@@ -296,6 +314,16 @@ export class RedisSnapshotStore {
       } else if (args.cycle?.kind === "carryForward") {
         cycleMode = "carry";
         cycleSeqIn = String(args.cycle.cycleSeq);
+
+        // Carried for the refusal path only. The script uses these solely when it declines the
+        // pointer and mints a replacement, and can only do that when the caller supplied them.
+        if (args.cycle.completedWaitpoints) {
+          const order = deriveOrder(args.cycle.completedWaitpoints);
+          orderJson = JSON.stringify(order);
+          records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
+          orderCount = String(order.length);
+          distinctJson = JSON.stringify(deriveDistinctIds(args.cycle.completedWaitpoints));
+        }
       }
 
       const reply = (await this.redis.appendSnapshotEntry(
@@ -423,6 +451,16 @@ export class RedisSnapshotStore {
     return this.#timed("getSnapshotWaitpointIds", async () => {
       const k = snapshotKeys(runId);
       const reply = await this.redis.readSnapshotWaitpointIds(k.e, k.idx, k.cur, k.seq, snapshotId);
+      // A dangling pointer means this entry's waitpoints are unreachable, not absent. Reporting
+      // `present: false` is what sends the caller to Postgres, which still holds the join rows.
+      if (reply[3] === "1") {
+        this.metrics?.recordCycleMismatch();
+        this.logger.warn("RedisSnapshotStore snapshot points at a cycle key that is gone", {
+          runId,
+          snapshotId,
+        });
+        return { present: false, distinctIds: [], order: [] };
+      }
       return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "", reply[2] ?? "");
     });
   }
@@ -578,7 +616,7 @@ export class RedisSnapshotStore {
     orderKnown: boolean
   ): SnapshotRead | null {
     if (!reply || reply.length === 0) return null;
-    const [id, raw, seqStr, pointer, orderJson, distinctJson] = reply;
+    const [id, raw, seqStr, pointer, orderJson, distinctJson, dangling] = reply;
     const entry = JSON.parse(raw) as Record<string, unknown>;
     if (environmentId !== undefined && entry.environmentId !== environmentId) return null;
     const read: SnapshotRead = {
@@ -591,6 +629,14 @@ export class RedisSnapshotStore {
     if (pointer) {
       const [cs, count] = pointer.split(":");
       read.cycle = { cycleSeq: Number(cs), count: Number(count) };
+      if (dangling === "1") {
+        read.danglingCycle = true;
+        this.metrics?.recordCycleMismatch();
+        this.logger.warn("RedisSnapshotStore entry points at a cycle key that is gone", {
+          runId,
+          snapshotId: id,
+        });
+      }
       if (orderKnown) {
         const ids = decodeWaitpointIds(true, orderJson, distinctJson ?? "");
         read.completedWaitpointIds = ids;
@@ -613,6 +659,17 @@ export class RedisSnapshotStore {
         local cs = string.match(pointer, '^(%d+):')
         if not cs then return '' end
         return redis.call('HGET', wpKey(cs), 'order') or ''
+      end
+      -- A pointer whose cycle key is GONE. Not the same as having no pointer: this entry should
+      -- have waitpoints and cannot produce them, so a read must refuse rather than answer empty.
+      -- Reachable by eviction, and by the completion TTL, which is applied to every key for a run
+      -- at the same moment but lets them expire independently.
+      local function danglingFor(pointer)
+        if not pointer then return '0' end
+        local cs = string.match(pointer, '^(%d+):')
+        if not cs then return '0' end
+        if redis.call('EXISTS', wpKey(cs)) == 0 then return '1' end
+        return '0'
       end
       -- The complete id set, which is NOT the order deduped: order holds only batch-indexed ids.
       local function distinctFor(pointer)
@@ -673,27 +730,43 @@ export class RedisSnapshotStore {
 
         local cycleSeq = 0
         local mismatch = 0
-        if cycleMode == 'new' then
-          -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
-          -- PEXPIRE loop from 1..c is correct.
-          cycleSeq = redis.call('HINCRBY', seqKey, 'c', 1)
-          redis.call('HSET', wpKey(cycleSeq), 'order', orderJson, 'count', orderCount, 'distinct', distinctJson)
+
+        -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
+        -- PEXPIRE loop from 1..c is correct.
+        local function mintCycle()
+          local minted = redis.call('HINCRBY', seqKey, 'c', 1)
+          redis.call('HSET', wpKey(minted), 'order', orderJson, 'count', orderCount, 'distinct', distinctJson)
           if records ~= '' then
-            redis.call('HSET', wpKey(cycleSeq), 'records', records)
+            redis.call('HSET', wpKey(minted), 'records', records)
           else
             -- A new cycle owns the whole key: a lost seq counter can re-mint a cycleSeq whose key
             -- still holds another cycle's records, and order/count stay mutually consistent so the
             -- mismatch check cannot see it. No-op on a fresh key.
-            redis.call('HDEL', wpKey(cycleSeq), 'records')
+            redis.call('HDEL', wpKey(minted), 'records')
           end
+          return minted
+        end
+
+        if cycleMode == 'new' then
+          cycleSeq = mintCycle()
         elseif cycleMode == 'carry' then
-          -- Attach a pointer only if this incarnation actually minted the cycle. seq can be
-          -- evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
+          -- Attach the CARRIED pointer only if this incarnation actually minted that cycle. seq can
+          -- be evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
           -- incarnation's order and records under a consistent count, invisibly.
           local minted = tonumber(redis.call('HGET', seqKey, 'c') or '0')
           local c = redis.call('HGET', wpKey(cycleSeqIn), 'count')
           if not c or minted < cycleSeqIn then
+            -- Refusing the pointer is right. Writing the entry WITHOUT one is not: it becomes the
+            -- head with no waitpoints, and a read of it answers present-with-nothing, which is the
+            -- one answer that tells the engine's repair it need not look. Mint a fresh cycle from
+            -- the refs the caller carried, in this same atomic call, so the entry always has a
+            -- pointer that can be trusted. The mismatch is still reported, for the metric.
             mismatch = 1
+            -- Only possible when the caller carried the refs. With none there is nothing to mint
+            -- from, and the entry is written with no pointer, which is the older behaviour.
+            if distinctJson ~= '' then
+              cycleSeq = mintCycle()
+            end
           else
             cycleSeq = cycleSeqIn
             orderCount = c
@@ -747,7 +820,7 @@ export class RedisSnapshotStore {
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
         if not vals[1] then return nil end
         -- Coerce every element: a Lua false TRUNCATES the returned array at that position.
-        return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]) }
+        return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]), danglingFor(vals[3]) }
       `,
     });
 
@@ -759,7 +832,7 @@ export class RedisSnapshotStore {
         if not cur then return nil end
         local vals = redis.call('HMGET', eKey, cur, cur .. '#s', cur .. '#c')
         if not vals[1] then return nil end
-        return { cur, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]) }
+        return { cur, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]), danglingFor(vals[3]) }
       `,
     });
 
@@ -772,7 +845,7 @@ export class RedisSnapshotStore {
           return { '0', '' }
         end
         local pointer = redis.call('HGET', eKey, id .. '#c')
-        return { '1', orderFor(pointer), distinctFor(pointer) }
+        return { '1', orderFor(pointer), distinctFor(pointer), danglingFor(pointer) }
       `,
     });
 
