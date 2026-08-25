@@ -1,0 +1,6 @@
+# TEMP - DO NOT MERGE: preview-only override to demo the disabled state.
+# Revert this commit before merging.
+web_app:
+  IMPERSONATION_ENABLED: "0"
+api:
+  IMPERSONATION_ENABLED: "0"
