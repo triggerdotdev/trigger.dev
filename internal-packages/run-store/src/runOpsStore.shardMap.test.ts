@@ -19,6 +19,8 @@ type FakeConfig = {
   runs?: Array<Record<string, unknown>>;
   // Edge rows this store returns from findManyTaskRunWaitpoints, regardless of filter.
   edges?: Array<Record<string, unknown>>;
+  // Batch row this store returns from findBatchTaskRunById, regardless of filter.
+  batch?: Record<string, unknown> | null;
   // Waitpoint rows this store returns from findWaitpoint, regardless of filter.
   waitpoint?: Record<string, unknown> | null;
   // Rows this store returns from findRunsByIdempotencyKeys, regardless of filter.
@@ -107,6 +109,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       record("findRunsByIdempotencyKeys");
       return Promise.resolve((config.idempotencyMatches ?? []) as never);
     }) as FakeStore["findRunsByIdempotencyKeys"],
+
+    findBatchTaskRunById: ((_id: unknown, _args?: unknown, _client?: ReadClient) => {
+      record("findBatchTaskRunById");
+      return Promise.resolve((config.batch ?? null) as never);
+    }) as FakeStore["findBatchTaskRunById"],
 
     countPendingWaitpointsWithPresence: ((waitpointIds: string[], _client?: ReadClient) => {
       record("countPendingWaitpointsWithPresence");
@@ -803,5 +810,39 @@ describe("RoutingRunStore id-less read/route defaults hold at N (never a gen-2 s
     const { router, log } = buildNShardRouter(["a", "b"]);
     await router.createWaitpoint({ data: {} } as never);
     expect(trace(log)).toEqual(["legacy:createWaitpoint"]);
+  });
+});
+
+describe("RoutingRunStore batch probe tolerates legitimate dual-residency", () => {
+  it("does NOT alarm when a batch is found on a gen-2 shard AND legacy", async () => {
+    const seen: string[][] = [];
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log, { batch: { id: "batch_dup", from: "legacy" } }),
+      shards: [{ key: "a", store: fakeStore("a", log, { batch: { id: "batch_dup", from: "a" } }) }],
+      resolveShard: (id: string) => id.split(":")[0]!,
+      metrics: { recordDuplicateId: (k) => seen.push(k), recordWaitpointProbeFallback() {} },
+    });
+    const batch = (await router.findBatchTaskRunById("batch_dup")) as { from: string } | null;
+    // batchTriggerV3 writes raw to the control plane while runEngine routes by id, so this is a
+    // legitimate dual-residency, not a routing-invariant violation — no alarm.
+    expect(seen).toEqual([]);
+    // Precedence still picks deterministically (gen-2 shard 'a' outranks legacy).
+    expect(batch?.from).toBe("a");
+  });
+
+  it("still alarms when a RUN is found on a gen-2 shard AND legacy (real violation)", async () => {
+    const seen: string[][] = [];
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log, { runs: [{ id: "dup", from: "legacy" }] }),
+      shards: [{ key: "a", store: fakeStore("a", log, { runs: [{ id: "dup", from: "a" }] }) }],
+      resolveShard: (id: string) => id.split(":")[0]!,
+      metrics: { recordDuplicateId: (k) => seen.push(k), recordWaitpointProbeFallback() {} },
+    });
+    await router.findRun({ spanId: "span_x" });
+    expect(seen).toEqual([["legacy", "a"]]);
   });
 });

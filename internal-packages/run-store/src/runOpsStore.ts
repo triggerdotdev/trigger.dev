@@ -302,7 +302,8 @@ export class RoutingRunStore implements RunStore {
   // a sequential walk would cost N round trips, so every leg is issued in parallel and the winner
   // comes from #precedence. `isLast` marks the leg that owns the canonical not-found throw.
   async #probeFirst<R>(
-    fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>
+    fn: (store: RunStore, key: ShardKey, isLast: boolean) => Promise<R>,
+    opts?: { alarmOnDuplicate?: boolean }
   ): Promise<R> {
     const legs = this.#orderedLegs(this.#probeOrder);
     const lastIndex = legs.length - 1;
@@ -335,7 +336,12 @@ export class RoutingRunStore implements RunStore {
       }
     });
 
-    if (hits.length > 1) {
+    // A row on two stores is a routing-invariant violation for entities that live on exactly one
+    // store (runs, waitpoints, attempts, snapshots). Batches are the exception: `batchTriggerV3`
+    // writes raw to the control plane while runEngine routes by id, so a batch is legitimately
+    // dual-resident. Those callers pass `alarmOnDuplicate: false` so a batch on legacy + a gen-2
+    // shard is not mistaken for a violation.
+    if (hits.length > 1 && opts?.alarmOnDuplicate !== false) {
       this.#reportDuplicateId(
         String((hits[0]!.value as { id?: unknown })?.id ?? "unknown"),
         hits.map((h) => h.key)
@@ -2083,8 +2089,9 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim (a cross-DB probe with one shared client can
     // only reach one DB); its presence resolves each leg to that store's OWN primary.
-    return this.#probeFirst((store) =>
-      store.findBatchTaskRunById(id, args, RoutingRunStore.#ownPrimary(store, client))
+    return this.#probeFirst(
+      (store) => store.findBatchTaskRunById(id, args, RoutingRunStore.#ownPrimary(store, client)),
+      { alarmOnDuplicate: false }
     );
   }
 
@@ -2097,13 +2104,15 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
-    return this.#probeFirst((store) =>
-      store.findBatchTaskRunByFriendlyId(
-        friendlyId,
-        environmentId,
-        args,
-        RoutingRunStore.#ownPrimary(store, client)
-      )
+    return this.#probeFirst(
+      (store) =>
+        store.findBatchTaskRunByFriendlyId(
+          friendlyId,
+          environmentId,
+          args,
+          RoutingRunStore.#ownPrimary(store, client)
+        ),
+      { alarmOnDuplicate: false }
     );
   }
 
@@ -2122,13 +2131,15 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null> {
     // Never forward the caller's client verbatim; its presence resolves each leg to that
     // store's OWN primary.
-    return this.#probeFirst((store) =>
-      store.findBatchTaskRunByIdempotencyKey(
-        environmentId,
-        idempotencyKey,
-        args,
-        RoutingRunStore.#ownPrimary(store, client)
-      )
+    return this.#probeFirst(
+      (store) =>
+        store.findBatchTaskRunByIdempotencyKey(
+          environmentId,
+          idempotencyKey,
+          args,
+          RoutingRunStore.#ownPrimary(store, client)
+        ),
+      { alarmOnDuplicate: false }
     );
   }
 
