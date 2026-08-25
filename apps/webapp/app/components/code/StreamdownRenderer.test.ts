@@ -1,7 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { restrictModelUrls, retryImport, StreamdownRenderer } from "./StreamdownRenderer";
+import {
+  loadStreamdownRenderer,
+  restrictModelUrls,
+  retryImport,
+  StreamdownRenderer,
+} from "./StreamdownRenderer";
 
 // streamdown calls urlTransform(url, key, node) to compute each url attribute; a
 // returned undefined removes the attribute, so no request is ever issued.
@@ -110,5 +115,29 @@ describe("retryImport", () => {
     const importer = vi.fn().mockRejectedValue(new Error("always fails"));
     await expect(retryImport(importer, [0, 0])).rejects.toThrow("always fails");
     expect(importer).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("loadStreamdownRenderer", () => {
+  it("resolves to a plain-text fallback when the chunk load keeps failing", async () => {
+    // The fallback path deliberately re-raises the original error as a process-level
+    // unhandled rejection (for StaleAssetRecovery). Swap in our own listener so that
+    // expected rejection is asserted on, not reported as a test-runner failure.
+    const priorListeners = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    const caught = new Promise<Error>((resolve) => {
+      process.once("unhandledRejection", (err) => resolve(err as Error));
+    });
+
+    const mod = await loadStreamdownRenderer(() => Promise.reject(new Error("boom")), [0, 0]);
+    const html = renderToStaticMarkup(createElement(mod.default, null, "hello **world**"));
+    expect(html).toContain("hello");
+
+    const dispatched = await caught;
+    expect(dispatched.message).toMatch(/boom/);
+
+    for (const listener of priorListeners) {
+      process.on("unhandledRejection", listener as NodeJS.UnhandledRejectionListener);
+    }
   });
 });

@@ -58,10 +58,17 @@ const PlainTextFallback = ({ children }: { children: string }) => (
   <pre className="whitespace-pre-wrap break-words font-sans text-sm">{children}</pre>
 );
 
-export const StreamdownRenderer = lazy(() =>
-  retryImport(() =>
-    Promise.all([import("streamdown"), import("@streamdown/code"), import("./shikiTheme")])
-  )
+type StreamdownRendererModule = {
+  default: (props: { children: string; isAnimating?: boolean }) => JSX.Element;
+};
+
+export function loadStreamdownRenderer(
+  load: () => Promise<
+    [typeof import("streamdown"), typeof import("@streamdown/code"), typeof import("./shikiTheme")]
+  > = () => Promise.all([import("streamdown"), import("@streamdown/code"), import("./shikiTheme")]),
+  delaysMs?: number[]
+): Promise<StreamdownRendererModule> {
+  return retryImport(load, delaysMs)
     .then(([{ Streamdown }, { createCodePlugin }, { triggerDarkTheme }]) => {
       // Type assertion needed: @streamdown/code and streamdown resolve different shiki
       // versions under pnpm, causing structurally-identical CodeHighlighterPlugin types
@@ -90,5 +97,11 @@ export const StreamdownRenderer = lazy(() =>
         ),
       };
     })
-    .catch(() => ({ default: PlainTextFallback }))
-);
+    .catch((error) => {
+      // Re-raise as an unhandled rejection so StaleAssetRecovery can reload on deploy skew.
+      queueMicrotask(() => void Promise.reject(error));
+      return { default: PlainTextFallback };
+    });
+}
+
+export const StreamdownRenderer = lazy(() => loadStreamdownRenderer());
