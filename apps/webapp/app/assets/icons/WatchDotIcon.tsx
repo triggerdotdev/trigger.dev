@@ -1,17 +1,19 @@
 import { DotMatrixIcon } from "./dotMatrixIcon";
 
 // Dot-matrix ("LED"/flip-dot) variant of the Watch action's eye icon (heroicons
-// `EyeIcon`), for comparison in storybook.ai-agent. 8x8 grid: an almond outline with a
-// 2x2 pupil block. Not used anywhere in the app.
+// `EyeIcon`), for comparison in storybook.ai-agent's shape library. 9x9, generated from
+// an elliptical band (not hand-drawn corners) so the almond outline reads round; "s"
+// softens the band's inner/outer edge. Not used anywhere in the app.
 const BITMAP = [
-  "........",
-  "..oooo..",
-  ".o....o.",
-  "o..oo..o",
-  "o..oo..o",
-  ".o....o.",
-  "..oooo..",
-  "........",
+  ".........",
+  ".........",
+  "..sooos..",
+  ".o..o..o.",
+  ".o.ooo.o.",
+  ".o..o..o.",
+  "..sooos..",
+  ".........",
+  ".........",
 ];
 
 export function WatchDotIcon({

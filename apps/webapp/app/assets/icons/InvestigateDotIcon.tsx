@@ -1,17 +1,21 @@
 import { DotMatrixIcon } from "./dotMatrixIcon";
 
 // Dot-matrix ("LED"/flip-dot) variant of the Investigate action's magnifying-glass icon
-// (heroicons `MagnifyingGlassIcon`), for comparison in storybook.ai-agent. 8x8 grid: a
-// coarse ring for the lens, a 3-dot diagonal for the handle. Not used anywhere in the app.
+// (heroicons `MagnifyingGlassIcon`), for comparison in storybook.ai-agent's shape
+// library. 10x10, generated from a true circular annulus (not hand-drawn corners) so
+// the ring reads round rather than stair-stepped; "s" softens the band's inner/outer
+// edge. Not used anywhere in the app.
 const BITMAP = [
-  ".oooo...",
-  "o....o..",
-  "o....o..",
-  "o....o..",
-  ".oooo...",
-  ".....o..",
-  "......o.",
-  ".......o",
+  "...s......",
+  ".sosso....",
+  ".o....o...",
+  "ss....o...",
+  ".s....o...",
+  ".o...ss...",
+  "..ooos....",
+  ".......o..",
+  "........o.",
+  ".........o",
 ];
 
 export function InvestigateDotIcon({
