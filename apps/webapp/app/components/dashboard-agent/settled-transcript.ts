@@ -16,15 +16,16 @@ import {
 
 type Identified = { id: string };
 
-/** A message whose stream died mid-tool: a `tool-*` part still reads as running. */
+/** A message whose stream died mid-tool or mid-text: a part still reads as running. */
 function stillRunning(message: unknown): boolean {
   const parts = (message as { parts?: ReadonlyArray<{ type?: string; state?: string }> })?.parts;
   if (!Array.isArray(parts)) return false;
   return parts.some(
     (part) =>
-      typeof part?.type === "string" &&
-      part.type.startsWith("tool-") &&
-      IN_FLIGHT_TOOL_STATES.has(part.state ?? "")
+      (typeof part?.type === "string" &&
+        part.type.startsWith("tool-") &&
+        IN_FLIGHT_TOOL_STATES.has(part.state ?? "")) ||
+      (part?.type === "text" && part.state === "streaming")
   );
 }
 

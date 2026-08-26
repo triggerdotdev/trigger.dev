@@ -116,6 +116,27 @@ describe("replacing a stale running step from the re-read", () => {
     expect(merged.map((message) => message.id)).toEqual([RUNNING_STEP.id, SETTLED.id]);
     expect(merged[0]).toBe(RUNNING_STEP);
   });
+
+  // A prose-only turn: no tool part, just a `text` part the stream never marked done.
+  const RUNNING_TEXT = {
+    id: "msg_text",
+    role: "assistant",
+    parts: [{ type: "text", text: "Concurrency on the ", state: "streaming" }],
+  };
+
+  const FINISHED_TEXT = {
+    id: "msg_text",
+    role: "assistant",
+    parts: [
+      { type: "text", text: "Concurrency on the `emails` queue hit its limit.", state: "done" },
+    ],
+  };
+
+  it("swaps a still-streaming text part for its settled version too", () => {
+    const merged = mergeSettledMessages([RUNNING_TEXT], [FINISHED_TEXT]);
+    expect(merged).toEqual([FINISHED_TEXT]);
+    expect(transcriptLooksUnfinished(merged)).toBe(false);
+  });
 });
 
 describe("reading the transcript endpoint", () => {

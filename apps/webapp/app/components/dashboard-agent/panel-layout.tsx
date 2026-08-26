@@ -91,64 +91,67 @@ export function FloatingAgentWindow({
   const gestureClassified = useRef(false);
   const ignoringGesture = useRef(false);
 
-  if (fullscreen) {
-    return (
-      <div className={agentTakeoverClassName(true)}>
-        {children({ dragHandleProps: {}, dragHandleClassName: "" })}
-      </div>
-    );
-  }
-
   const classifyGesture = (event: PointerEvent) => {
     if (gestureClassified.current) return;
     gestureClassified.current = true;
     ignoringGesture.current = !!(event.target as HTMLElement | null)?.closest(NO_DRAG_SELECTOR);
   };
 
-  const filteredDragHandleProps: Partial<PanHandlerProps> = {
-    onPanStart: (event: PointerEvent, info: PanInfo) => {
-      classifyGesture(event);
-      if (ignoringGesture.current) return;
-      setDragging(true);
-      dragHandleProps.onPanStart?.(event, info);
-    },
-    onPan: (event: PointerEvent, info: PanInfo) => {
-      classifyGesture(event);
-      if (ignoringGesture.current) return;
-      dragHandleProps.onPan?.(event, info);
-    },
-    onPanEnd: (event: PointerEvent, info: PanInfo) => {
-      gestureClassified.current = false;
-      ignoringGesture.current = false;
-      setDragging(false);
-      dragHandleProps.onPanEnd?.(event, info);
-    },
-  };
+  // Same shape as `dragHandleProps` below empty, so fullscreen (no drag) doesn't change types.
+  const filteredDragHandleProps: Partial<PanHandlerProps> = fullscreen
+    ? {}
+    : {
+        onPanStart: (event: PointerEvent, info: PanInfo) => {
+          classifyGesture(event);
+          if (ignoringGesture.current) return;
+          setDragging(true);
+          dragHandleProps.onPanStart?.(event, info);
+        },
+        onPan: (event: PointerEvent, info: PanInfo) => {
+          classifyGesture(event);
+          if (ignoringGesture.current) return;
+          dragHandleProps.onPan?.(event, info);
+        },
+        onPanEnd: (event: PointerEvent, info: PanInfo) => {
+          gestureClassified.current = false;
+          ignoringGesture.current = false;
+          setDragging(false);
+          dragHandleProps.onPanEnd?.(event, info);
+        },
+      };
 
+  // Same two-`div` shape in both modes — only classes/style change — so toggling `fullscreen`
+  // never unmounts `children`; only className/style differ.
   return (
     <div
-      style={style}
-      className="z-20 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
+      style={fullscreen ? undefined : style}
+      className={
+        fullscreen
+          ? agentTakeoverClassName(true)
+          : "z-20 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
+      }
     >
       {/* Clips content to the rounded corners without clipping the resize handles below,
           which sit half outside this box's edges. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg">
+      <div
+        className={cn("flex min-h-0 flex-1 flex-col", !fullscreen && "overflow-hidden rounded-lg")}
+      >
         {/* oxlint-disable-next-line react/refs -- the ref is only read inside event handlers, not during render. */}
         {children({
           dragHandleProps: filteredDragHandleProps,
-          dragHandleClassName: cn(
-            "select-none touch-none",
-            dragging ? "cursor-grabbing" : "cursor-grab"
-          ),
+          dragHandleClassName: fullscreen
+            ? ""
+            : cn("select-none touch-none", dragging ? "cursor-grabbing" : "cursor-grab"),
         })}
       </div>
-      {RESIZE_EDGES.map((edge) => (
-        <motion.div
-          key={edge}
-          {...resizeHandleProps(edge)}
-          className={draggableResizeHandleClassName(edge)}
-        />
-      ))}
+      {!fullscreen &&
+        RESIZE_EDGES.map((edge) => (
+          <motion.div
+            key={edge}
+            {...resizeHandleProps(edge)}
+            className={draggableResizeHandleClassName(edge)}
+          />
+        ))}
     </div>
   );
 }
