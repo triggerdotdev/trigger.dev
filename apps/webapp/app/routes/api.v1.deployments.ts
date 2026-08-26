@@ -77,12 +77,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 }
 
-// Client-controlled and persisted, so only accept version-shaped values
-const CLI_VERSION_REGEX = /^[0-9A-Za-z.+-]{1,64}$/;
+// Client-controlled and persisted, so cap what we accept
+const CLI_VERSION_MAX_LENGTH = 64;
 
 function parseCliVersionHeader(request: Request): string | undefined {
   const value = request.headers.get("x-trigger-cli-version");
-  return value && CLI_VERSION_REGEX.test(value) ? value : undefined;
+  return value && value.length <= CLI_VERSION_MAX_LENGTH ? value : undefined;
 }
 
 export const loader = createLoaderApiRoute(
