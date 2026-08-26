@@ -64,7 +64,11 @@ import { logger } from "~/services/logger.server";
 import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { withTimeout } from "~/utils/withTimeout.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+
+// Bounded so a stuck head-start/session trigger fails the request instead of hanging it.
+const CHAT_CREATE_TIMEOUT_MS = 20_000;
 // The client-metadata whitelist lives with the `in` proxy, the other mint site, so the two cannot
 // drift apart.
 import { pickAgentClientMetadata } from "./resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
@@ -370,28 +374,36 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       try {
         if (headStartMetadata) {
           // Injects the delegated token and context into the run's payload server-side.
-          await startDashboardAgentHeadStart({
-            chatId,
-            messages: [firstMessage],
-            mode: repoSnapshot ? "code" : "assistant",
-            metadata: headStartMetadata,
-          });
+          await withTimeout(
+            startDashboardAgentHeadStart({
+              chatId,
+              messages: [firstMessage],
+              mode: repoSnapshot ? "code" : "assistant",
+              metadata: headStartMetadata,
+            }),
+            CHAT_CREATE_TIMEOUT_MS,
+            "Dashboard agent head start"
+          );
         } else {
           // Cold start: the client sends the first message through the `in` proxy, which
           // injects the token.
           // Same server-owned identity the head-start path injects; the `in` proxy adds the
           // delegated token on the first turn.
-          await startDashboardAgentSession({
-            chatId,
-            clientData: {
-              ...clientContext,
-              organizationId: project.organizationId,
-              userId,
-              projectId: project.id,
-              environmentId: runtimeEnv.id,
-              ...environmentAddress,
-            },
-          });
+          await withTimeout(
+            startDashboardAgentSession({
+              chatId,
+              clientData: {
+                ...clientContext,
+                organizationId: project.organizationId,
+                userId,
+                projectId: project.id,
+                environmentId: runtimeEnv.id,
+                ...environmentAddress,
+              },
+            }),
+            CHAT_CREATE_TIMEOUT_MS,
+            "Dashboard agent session start"
+          );
         }
       } catch (error) {
         // Both starts are one create-session-and-trigger round trip, so a rejection means no

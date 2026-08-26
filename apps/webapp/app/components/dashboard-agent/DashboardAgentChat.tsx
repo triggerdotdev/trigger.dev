@@ -9,7 +9,7 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "~/components/primitives/Toast";
 import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
@@ -27,15 +27,24 @@ import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
+import { inFlightToolName } from "./progress-line";
 import { retryAction } from "./retry-action";
 import {
   fetchChatTranscript,
   pollSettledTranscript,
   transcriptLooksUnfinished,
 } from "./settled-transcript";
+import { toolPendingLabel } from "./tool-labels";
 import { takeNavigateIntent } from "./turn-navigation";
 import { sendRequestOutcome } from "./send-request";
 import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
+import {
+  createKeyedDeadline,
+  FIRST_EVENT_DEADLINE_MS,
+  TOOL_PENDING_DEADLINE_MS,
+  turnDeadlineErrorMessage,
+  type TurnDeadlineError,
+} from "./turn-deadlines";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
 import { WatchChips, type WatchChip } from "./WatchChips";
@@ -80,6 +89,8 @@ export function DashboardAgentChat({
   onTurnSettled,
   onActivityChange,
   onQuotaChange,
+  firstEventDeadlineMs = FIRST_EVENT_DEADLINE_MS,
+  toolPendingDeadlineMs = TOOL_PENDING_DEADLINE_MS,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -109,6 +120,10 @@ export function DashboardAgentChat({
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
   /** The poll lives here, so this is where the panel learns the cap has lifted. */
   onQuotaChange?: (quota: MessageQuota) => void;
+  /** How long to wait for the first stream event before showing a bounded-wait error. */
+  firstEventDeadlineMs?: number;
+  /** How long a single pending tool call can run before showing a bounded-wait error. */
+  toolPendingDeadlineMs?: number;
 }) {
   const [input, setInput] = useState("");
   // Set when the server refuses a send over the cap, so the block shows at once rather than
@@ -213,6 +228,49 @@ export function DashboardAgentChat({
 
   const messages = orderTranscript(rawMessages, orderRef.current);
 
+  // Bounded waits so a stalled turn says so instead of leaving the panel on a progress
+  // line forever. Independent of the SDK's own `error`: both drive the same live-error
+  // callout, but a deadline firing never touches the server turn or `status`.
+  const [deadlineError, setDeadlineError] = useState<TurnDeadlineError | null>(null);
+  const firstEventDeadline = useRef(
+    createKeyedDeadline<"submitted">({
+      deadlineMs: firstEventDeadlineMs,
+      onTimeout: () => setDeadlineError({ kind: "first-event" }),
+      onClear: () =>
+        setDeadlineError((current) => (current?.kind === "first-event" ? null : current)),
+    })
+  ).current;
+  const toolPendingDeadline = useRef(
+    createKeyedDeadline<string>({
+      deadlineMs: toolPendingDeadlineMs,
+      onTimeout: (tool) => setDeadlineError({ kind: "tool-pending", tool }),
+      onClear: () =>
+        setDeadlineError((current) => (current?.kind === "tool-pending" ? null : current)),
+    })
+  ).current;
+  useEffect(() => {
+    firstEventDeadline.sync(status === "submitted" ? "submitted" : null);
+  }, [status, firstEventDeadline]);
+  useEffect(() => {
+    toolPendingDeadline.sync(inFlightToolName(messages));
+  }, [messages, toolPendingDeadline]);
+  useEffect(
+    () => () => {
+      firstEventDeadline.dispose();
+      toolPendingDeadline.dispose();
+    },
+    [firstEventDeadline, toolPendingDeadline]
+  );
+  // The SDK's own error wins when both are present — it's the more specific failure.
+  const effectiveError = useMemo(
+    () =>
+      error ??
+      (deadlineError
+        ? new Error(turnDeadlineErrorMessage(deadlineError, toolPendingLabel))
+        : undefined),
+    [error, deadlineError]
+  );
+
   // Read here, not in the panel, so it re-reads as each turn settles.
   const quota = useAgentMessageQuota({ actionPath, chatId, status });
   useEffect(() => {
@@ -299,6 +357,7 @@ export function DashboardAgentChat({
     );
     if (!action) return;
     clearError();
+    setDeadlineError(null);
     turnStartedPathRef.current = renderedPathRef.current;
     if (action.kind === "regenerate") {
       void regenerate();
@@ -306,6 +365,11 @@ export function DashboardAgentChat({
     }
     void sendMessage({ text: action.text, messageId: action.messageId });
   }, [messages, sendMessage, regenerate, clearError, atMessageCap]);
+
+  const dismissError = useCallback(() => {
+    clearError();
+    setDeadlineError(null);
+  }, [clearError]);
 
   const resolveUri = useTriggerUriResolver(actionPath);
 
@@ -450,10 +514,10 @@ export function DashboardAgentChat({
         <DashboardAgentMessages
           messages={messages}
           activity={activity}
-          error={error}
+          error={effectiveError}
           onRetry={retry}
           retryDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
-          onDismissError={clearError}
+          onDismissError={dismissError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
           watches={watches}
