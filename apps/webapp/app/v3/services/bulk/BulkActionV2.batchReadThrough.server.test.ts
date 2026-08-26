@@ -13,6 +13,8 @@ vi.setConfig({ testTimeout: 60_000 });
 // 25-char cuid body → LEGACY residency. 26-char v1 body (version "1" at index 25) → NEW residency.
 const LEGACY_RUN_ID = "run_" + "a".repeat(25);
 const NEW_RUN_ID = "run_" + "b".repeat(24) + "01";
+// 26-char gen-2 body: shard char at index 24, version "2" at index 25.
+const SHARD_A_RUN_ID = "run_" + "c".repeat(24) + "a2";
 
 type Row = { id: string };
 
@@ -88,6 +90,111 @@ describe("hydrateRunsAcrossSeam (PG14 legacy replica + PG17 new)", () => {
       expect(ids).toEqual([LEGACY_RUN_ID, NEW_RUN_ID].sort());
       expect(readNew).toHaveBeenCalledTimes(1);
       expect(throwingLegacy).not.toHaveBeenCalled();
+    }
+  );
+
+  heteroPostgresTest(
+    "(c) a gen-2 id hydrates from its OWN shard and is never read from the gen-1 stores",
+    async ({ prisma14, prisma17 }) => {
+      // Before the shard arm existed a gen-2 id joined the `new` group, missed, and was
+      // never legacy-probed either — so it vanished from the page with no error.
+      const onShardA = new Set([SHARD_A_RUN_ID]);
+
+      const readNew = vi.fn(async (client: PrismaReplicaClient, ids: string[]): Promise<Row[]> => {
+        if (
+          ids.includes(SHARD_A_RUN_ID) &&
+          client !== (prisma17 as unknown as PrismaReplicaClient)
+        ) {
+          throw new Error("a gen-2 id must only be read on its own shard");
+        }
+        return realReadFiltered(client, ids, onShardA);
+      });
+      const readLegacyReplica = vi.fn(
+        async (_replica: PrismaReplicaClient, ids: string[]): Promise<Row[]> => {
+          if (ids.includes(SHARD_A_RUN_ID)) {
+            throw new Error("a gen-2 id must never reach the legacy probe");
+          }
+          return [];
+        }
+      );
+
+      const rows = await hydrateRunsAcrossSeam<Row>({
+        runIds: [SHARD_A_RUN_ID],
+        readNew,
+        readLegacyReplica,
+        deps: {
+          splitEnabled: true,
+          newClient: prisma14 as unknown as PrismaReplicaClient,
+          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+          shardReplicas: new Map([["a", prisma17 as unknown as PrismaReplicaClient]]),
+        },
+      });
+
+      expect(rows.map((r) => r.id)).toEqual([SHARD_A_RUN_ID]);
+      expect(readLegacyReplica).not.toHaveBeenCalled();
+    }
+  );
+
+  heteroPostgresTest(
+    "(d) a mixed gen-1 and gen-2 page hydrates every member",
+    async ({ prisma14, prisma17 }) => {
+      const onGenOneNew = new Set([NEW_RUN_ID]);
+      const onLegacy = new Set([LEGACY_RUN_ID]);
+      const onShardA = new Set([SHARD_A_RUN_ID]);
+
+      const readNew = vi.fn(async (client: PrismaReplicaClient, ids: string[]): Promise<Row[]> => {
+        const present = ids.includes(SHARD_A_RUN_ID) ? onShardA : onGenOneNew;
+        return realReadFiltered(client, ids, present);
+      });
+      const readLegacyReplica = vi.fn(
+        async (replica: PrismaReplicaClient, ids: string[]): Promise<Row[]> =>
+          realReadFiltered(replica, ids, onLegacy)
+      );
+
+      const rows = await hydrateRunsAcrossSeam<Row>({
+        runIds: [NEW_RUN_ID, LEGACY_RUN_ID, SHARD_A_RUN_ID],
+        readNew,
+        readLegacyReplica,
+        deps: {
+          splitEnabled: true,
+          newClient: prisma17 as unknown as PrismaReplicaClient,
+          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+          shardReplicas: new Map([["a", prisma17 as unknown as PrismaReplicaClient]]),
+        },
+      });
+
+      expect(rows.map((r) => r.id).sort()).toEqual(
+        [NEW_RUN_ID, LEGACY_RUN_ID, SHARD_A_RUN_ID].sort()
+      );
+    }
+  );
+
+  heteroPostgresTest(
+    "(e) a gen-2 id on an unconfigured shard is dropped with a logged error, not read elsewhere",
+    async ({ prisma14, prisma17 }) => {
+      const errors: unknown[] = [];
+      const readNew = vi.fn(async (client: PrismaReplicaClient, ids: string[]): Promise<Row[]> => {
+        if (ids.includes(SHARD_A_RUN_ID)) {
+          throw new Error("an unconfigured gen-2 id must not fall back to a gen-1 store");
+        }
+        return realReadFiltered(client, ids, new Set([NEW_RUN_ID]));
+      });
+
+      const rows = await hydrateRunsAcrossSeam<Row>({
+        runIds: [NEW_RUN_ID, SHARD_A_RUN_ID],
+        readNew,
+        readLegacyReplica: async () => [],
+        deps: {
+          splitEnabled: true,
+          newClient: prisma17 as unknown as PrismaReplicaClient,
+          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+          shardReplicas: new Map(),
+          logger: { error: (_m, meta) => errors.push(meta) },
+        },
+      });
+
+      expect(rows.map((r) => r.id)).toEqual([NEW_RUN_ID]);
+      expect(errors).toHaveLength(1);
     }
   );
 });
