@@ -1182,9 +1182,9 @@ function RunBody({
               )}
               <RunTimeline run={run} />
 
-              {run.error && (
+              {run.error || isFailedRunStatus(run.status) ? (
                 <div className="flex flex-col gap-2">
-                  <RunError error={run.error} />
+                  {run.error && <RunError error={run.error} />}
                   {isFailedRunStatus(run.status) ? (
                     <InvestigateButton
                       prompt={failedRunPrompt(run.friendlyId)}
@@ -1192,7 +1192,7 @@ function RunBody({
                     />
                   ) : null}
                 </div>
-              )}
+              ) : null}
 
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
