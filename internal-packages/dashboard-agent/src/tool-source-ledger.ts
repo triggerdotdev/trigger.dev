@@ -73,14 +73,17 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
   const filesReadBySha = new Map<string, Set<string>>();
   // A commit's dirty stamp, keyed by sha — code-provided, never re-derived from the prompt.
   const dirtyBySha = new Map<string, boolean>();
-  if (ctx.repoSnapshot) dirtyBySha.set(ctx.repoSnapshot.sha, ctx.repoSnapshot.dirty ?? false);
+  if (ctx.repoSnapshot?.dirty) dirtyBySha.set(ctx.repoSnapshot.sha, true);
 
   function recordFileRead(path: string, sha: string, dirty: boolean) {
     const key = path.replace(/^\/+/, "");
     const shas = filesReadBySha.get(key) ?? new Set<string>();
     shas.add(sha);
     filesReadBySha.set(key, shas);
-    dirtyBySha.set(sha, dirty);
+    // Sticky true: two snapshots can share a sha (a dirty run-pinned deploy off the
+    // same commit as the clean tracked branch) — a later clean read must never erase
+    // the caveat a dirty read already earned.
+    dirtyBySha.set(sha, dirty || (dirtyBySha.get(sha) ?? false));
   }
 
   function wasReadThisTurn(path: string, sha: string): boolean {
