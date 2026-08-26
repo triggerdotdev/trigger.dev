@@ -32,11 +32,7 @@ export type PanHandlerProps = {
 };
 
 export type UseDraggableResizableResult = {
-  /**
-   * position:fixed with left/top/width/height set from state. `x`/`y` are the
-   * top-left corner in viewport coordinates — if the window docks bottom-right,
-   * derive the initial x/y from `window.innerWidth/innerHeight - w/h - padding`.
-   */
+  /** position:fixed from state; `x`/`y` are the top-left corner in viewport coordinates. */
   style: CSSProperties;
   dragHandleProps: PanHandlerProps;
   resizeHandleProps: (edge: ResizeEdge) => PanHandlerProps;
@@ -75,10 +71,8 @@ export function useDraggableResizable({
     return () => window.removeEventListener("resize", onResize);
   }, [viewportPadding]);
 
-  // Each onPan step folds `info.delta` onto the latest committed rect via functional
-  // setState, with no gesture-start baseline kept: framer-motion can deliver onPan before
-  // onPanStart (its scheduler defers onPanStart by a frame), which would make a ref-based
-  // baseline stale.
+  // Folds `info.delta` via functional setState, no gesture-start baseline: onPan can
+  // arrive before onPanStart, which would make a ref-based baseline stale.
   const dragHandleProps: PanHandlerProps = {
     onPanStart: () => {},
     onPan: (_event, info: PanInfo) => {

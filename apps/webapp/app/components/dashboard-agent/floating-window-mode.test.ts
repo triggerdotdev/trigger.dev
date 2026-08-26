@@ -1,6 +1,4 @@
-// Source-level guard: the floating window is the default and only mode. A regression to
-// the old slide-in-from-the-right column would reintroduce `ResizablePanelGroup` here —
-// this fails red the moment it comes back, instead of waiting for a visual regression.
+// Guards against reintroducing the old right-column ResizablePanelGroup.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

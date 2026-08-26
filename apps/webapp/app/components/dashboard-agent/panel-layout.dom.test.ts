@@ -44,7 +44,6 @@ describe("initialFloatingRect", () => {
   });
 });
 
-// Same render-hook pattern as DraggableResizable.dom.test.ts.
 function renderDraggableResizable() {
   let latest!: ReturnType<typeof useDraggableResizable>;
   function Harness() {

@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
-//
-// Framer-motion can deliver onPan before onPanStart for the same gesture (its scheduler
-// defers onPanStart by a frame); a start-rect-ref implementation would corrupt its
-// baseline when the late onPanStart lands. This drives the hook's real handlers to prove
-// it survives that ordering, unlike the pure-math tests in draggableResizableMath.test.ts.
+// Framer-motion can deliver onPan before onPanStart; drives the real handlers to prove
+// the hook survives that ordering (draggableResizableMath.test.ts only covers the math).
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
@@ -47,9 +44,8 @@ function renderHook(options: UseDraggableResizableOptions) {
   };
 }
 
-// `offset` is populated alongside `delta` (framer-motion always sends both) so a reverted
-// offset+baseline implementation runs its real math instead of crashing on `undefined` —
-// it must fail on the *value*, not on a missing field.
+// `offset` is set too (framer always sends both), so a reverted implementation fails on
+// the value, not on a missing field.
 function fakePanInfo(deltaX: number, offsetX: number): PanInfo {
   return {
     delta: { x: deltaX, y: 0 },

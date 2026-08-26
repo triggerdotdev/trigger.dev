@@ -223,10 +223,8 @@ describe("resizeRect — minSize wins over a viewport-derived cap smaller than i
   });
 });
 
-// These reproduce the live-testing symptoms: framer-motion can deliver a gesture's first
-// onPan before its onPanStart, so a baseline captured in onPanStart can be stale.
-// applyDragDelta/applyResizeDelta avoid that by folding framer's per-event `delta` onto
-// whatever rect is passed in, with no baseline to go stale.
+// onPan can arrive before onPanStart, so these prove the delta-folding approach has no
+// baseline to go stale across back-to-back gestures.
 describe("applyResizeDelta / applyDragDelta — gesture sequencing", () => {
   const start: Rect = { x: 100, y: 100, w: 300, h: 200 };
   const minSize = { w: 100, h: 80 };

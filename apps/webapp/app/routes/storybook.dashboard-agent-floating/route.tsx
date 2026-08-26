@@ -29,9 +29,7 @@ export default function Story() {
     setMounted(true);
   }, []);
 
-  // Storybook only: the demo window must not follow you to another story. The real
-  // dashboard's chat intentionally persists across navigation — this effect is scoped to
-  // this story route and has no equivalent in DashboardAgent.tsx.
+  // Storybook only: closes the demo on route change. The real chat intentionally persists.
   const { pathname } = useLocation();
   const previousPathname = useRef(pathname);
   useEffect(() => {

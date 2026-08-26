@@ -69,12 +69,7 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
   return cn("h-full overflow-hidden", fullscreen && "invisible");
 }
 
-/**
- * Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`; the caller
- * (`DashboardAgent`) supplies it. Owns the drag-vs-click filter so every consumer (the real
- * panel, the standalone story) gets identical behavior: a pan starting on a
- * `data-agent-no-drag` element (or a descendant of one) never moves the window.
- */
+/** Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`, supplied by the caller. */
 export function FloatingAgentWindow({
   fullscreen,
   children,
@@ -89,9 +84,7 @@ export function FloatingAgentWindow({
     viewportPadding: FLOATING_MARGIN,
   });
   const [dragging, setDragging] = useState(false);
-  // Framer-motion can deliver onPan before onPanStart, so the no-drag check runs on
-  // whichever event lands first; `gestureClassified` makes sure it only runs once per
-  // gesture (a late onPanStart must not re-decide after onPan already classified it).
+  // onPan can arrive before onPanStart, so the no-drag check runs once, on whichever fires first.
   const gestureClassified = useRef(false);
   const ignoringGesture = useRef(false);
 
@@ -137,7 +130,7 @@ export function FloatingAgentWindow({
       {/* Clips content to the rounded corners without clipping the resize handles below,
           which sit half outside this box's edges. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg">
-        {/* oxlint-disable-next-line react/refs -- filteredDragHandleProps' closures only touch the ref inside their own event handlers, not during this render. */}
+        {/* oxlint-disable-next-line react/refs -- the ref is only read inside event handlers, not during render. */}
         {children({
           dragHandleProps: filteredDragHandleProps,
           dragHandleClassName: cn(

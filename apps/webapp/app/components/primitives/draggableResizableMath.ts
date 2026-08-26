@@ -42,12 +42,8 @@ export function clampRectToViewport(rect: Rect, viewport: Viewport, padding: num
   return { ...position, w: rect.w, h: rect.h };
 }
 
-/**
- * Applies a pointer delta to `start` for the given resize edge, respecting min/max size
- * and the viewport bounds. North/west edges move the opposite corner too so the far edge
- * stays put — the per-edge cap is derived from the *fixed* far edge, so growth can never
- * push it past the viewport padding.
- */
+// North/west edges move the opposite corner too, so the cap is derived from the fixed far
+// edge and growth can't push it past the viewport padding.
 export function resizeRect(
   edge: ResizeEdge,
   start: Rect,
@@ -90,12 +86,8 @@ export function resizeRect(
   return { x, y, w, h };
 }
 
-/**
- * Applies one incremental pan step (framer's per-event `delta`, not cumulative `offset`)
- * to `current` and re-clamps. Incremental rather than start-snapshot-based because
- * framer-motion can deliver a gesture's first `onPan` before its `onPanStart`, which
- * would leave a snapshot baseline stale.
- */
+// Incremental (framer's per-event `delta`), not start-snapshot-based, since onPan can
+// arrive before onPanStart and leave a snapshot baseline stale.
 export function applyDragDelta(
   current: Rect,
   delta: Point,
