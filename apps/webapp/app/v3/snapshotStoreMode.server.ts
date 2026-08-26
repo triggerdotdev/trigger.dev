@@ -62,10 +62,15 @@ export function buildSnapshotStoreModeResolver(deps: {
   };
 }
 
+const DEFAULT_CACHE_MAX = 10_000;
+const DEFAULT_CACHE_TTL_MS = 30_000;
+
 function createOrgModeSource(): OrgModeSource {
+  // Defaults inline as well as in the schema: this must not throw when a caller supplies a partial
+  // env, and an LRU with neither bound set is a constructor error.
   const cache = new LRUCache<string, CachedOrgMode>({
-    max: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX,
-    ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS,
+    max: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX ?? DEFAULT_CACHE_MAX,
+    ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS ?? DEFAULT_CACHE_TTL_MS,
   });
   const inFlight = new Set<string>();
 
@@ -100,15 +105,21 @@ function createOrgModeSource(): OrgModeSource {
   };
 }
 
-const orgModeSource = singleton("snapshotStoreOrgModeSource", createOrgModeSource);
+/** Built on first use, never at import: importing this module must have no side effect. */
+function orgModeSource(): OrgModeSource {
+  return singleton("snapshotStoreOrgModeSource", createOrgModeSource);
+}
 
 export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapshotStoreModeResolver({
   globalMode: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreMode],
-  orgMode: orgModeSource,
-  envFloor: env.RUN_ENGINE_SNAPSHOT_STORE_MODE,
+  orgMode: {
+    get: (organizationId) => orgModeSource().get(organizationId),
+    refresh: (organizationId) => orgModeSource().refresh(organizationId),
+  },
+  envFloor: env.RUN_ENGINE_SNAPSHOT_STORE_MODE ?? "off",
 });
 
 /** Called by the organisation flag save path so the writing process sees a dial change at once. */
 export function invalidateSnapshotStoreOrgMode(organizationId: string): void {
-  orgModeSource.refresh(organizationId);
+  orgModeSource().refresh(organizationId);
 }
