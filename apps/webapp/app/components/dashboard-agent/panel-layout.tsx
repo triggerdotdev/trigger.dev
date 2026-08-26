@@ -89,8 +89,10 @@ export function FloatingAgentWindow({
     viewportPadding: FLOATING_MARGIN,
   });
   const [dragging, setDragging] = useState(false);
-  // Set for the rest of a gesture that started on a no-drag element, since framer-motion
-  // can deliver onPan before onPanStart and the target is only known at start.
+  // Framer-motion can deliver onPan before onPanStart, so the no-drag check runs on
+  // whichever event lands first; `gestureClassified` makes sure it only runs once per
+  // gesture (a late onPanStart must not re-decide after onPan already classified it).
+  const gestureClassified = useRef(false);
   const ignoringGesture = useRef(false);
 
   if (fullscreen) {
@@ -101,21 +103,26 @@ export function FloatingAgentWindow({
     );
   }
 
+  const classifyGesture = (event: PointerEvent) => {
+    if (gestureClassified.current) return;
+    gestureClassified.current = true;
+    ignoringGesture.current = !!(event.target as HTMLElement | null)?.closest(NO_DRAG_SELECTOR);
+  };
+
   const filteredDragHandleProps: Partial<PanHandlerProps> = {
     onPanStart: (event: PointerEvent, info: PanInfo) => {
-      if ((event.target as HTMLElement | null)?.closest(NO_DRAG_SELECTOR)) {
-        ignoringGesture.current = true;
-        return;
-      }
-      ignoringGesture.current = false;
+      classifyGesture(event);
+      if (ignoringGesture.current) return;
       setDragging(true);
       dragHandleProps.onPanStart?.(event, info);
     },
     onPan: (event: PointerEvent, info: PanInfo) => {
+      classifyGesture(event);
       if (ignoringGesture.current) return;
       dragHandleProps.onPan?.(event, info);
     },
     onPanEnd: (event: PointerEvent, info: PanInfo) => {
+      gestureClassified.current = false;
       ignoringGesture.current = false;
       setDragging(false);
       dragHandleProps.onPanEnd?.(event, info);

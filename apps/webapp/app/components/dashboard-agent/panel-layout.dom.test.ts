@@ -158,4 +158,20 @@ describe("FloatingAgentWindow's drag-vs-click filter", () => {
 
     expect(view.outerLeft()).toBe(startLeft);
   });
+
+  it("does not leak a delta when onPan for a no-drag target lands before its onPanStart", () => {
+    stubViewport(1200, 900);
+    const view = renderFloatingAgentWindow();
+    const startLeft = view.outerLeft();
+
+    act(() => {
+      const target = view.actionEl() as unknown as PointerEvent["target"];
+      // Framer-motion's real ordering: onPan can arrive first.
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfo(-20, 0));
+      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfo(-20, 0));
+    });
+
+    expect(view.outerLeft()).toBe(startLeft);
+  });
 });

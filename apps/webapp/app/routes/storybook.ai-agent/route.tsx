@@ -255,12 +255,8 @@ function DotGridEditor() {
     setLit((current) => current.map((value, i) => (i === index ? !value : value)));
   };
 
-  const rows = useMemo(
-    () =>
-      Array.from({ length: MATRIX }, (_, r) =>
-        Array.from({ length: MATRIX }, (_, c) => (lit[r * MATRIX + c] ? "#" : ".")).join("")
-      ),
-    [lit]
+  const rows = Array.from({ length: MATRIX }, (_, r) =>
+    Array.from({ length: MATRIX }, (_, c) => (lit[r * MATRIX + c] ? "#" : ".")).join("")
   );
 
   return (
