@@ -69,7 +69,10 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
   return cn("h-full overflow-hidden", fullscreen && "invisible");
 }
 
-/** Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`, supplied by the caller. */
+/**
+ * Owns the drag-vs-click filter, so the panel and the standalone story behave identically.
+ * Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`, supplied by the caller.
+ */
 export function FloatingAgentWindow({
   fullscreen,
   children,

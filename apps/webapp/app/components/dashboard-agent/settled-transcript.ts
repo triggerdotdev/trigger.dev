@@ -1,4 +1,9 @@
-import { IN_FLIGHT_TOOL_STATES, inFlightToolName, liveInvestigation } from "./progress-line";
+import {
+  hasUnfinishedTextPart,
+  IN_FLIGHT_TOOL_STATES,
+  inFlightToolName,
+  liveInvestigation,
+} from "./progress-line";
 
 /**
  * Re-reading the stored transcript once a turn settles.
@@ -65,7 +70,11 @@ export function hasOpenInvestigation(messages: ReadonlyArray<unknown>): boolean 
  * not the only shape a re-read has to recover from.
  */
 export function transcriptLooksUnfinished(messages: ReadonlyArray<unknown>): boolean {
-  return hasOpenInvestigation(messages) || inFlightToolName(messages as never) !== null;
+  return (
+    hasOpenInvestigation(messages) ||
+    inFlightToolName(messages as never) !== null ||
+    hasUnfinishedTextPart(messages as never)
+  );
 }
 
 /**

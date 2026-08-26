@@ -106,6 +106,13 @@ export function inFlightToolName(messages: ReadonlyArray<ProgressMessage>): stri
   return null;
 }
 
+/** A prose-only turn has no tool part to catch; a `text` part mid-stream has `state: "streaming"`. */
+export function hasUnfinishedTextPart(messages: ReadonlyArray<ProgressMessage>): boolean {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "assistant") return false;
+  return partsOf(last).some((part) => part?.type === "text" && part.state === "streaming");
+}
+
 /** Must stay non-null for the whole in-flight period: null unmounts, and a gap blinks. */
 export function liveProgress(
   messages: ReadonlyArray<ProgressMessage>,

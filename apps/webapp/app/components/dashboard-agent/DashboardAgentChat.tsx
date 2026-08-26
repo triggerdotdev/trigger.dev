@@ -46,6 +46,23 @@ export type DashboardAgentSession = {
   lastEventId?: string;
 };
 
+/** The transport's `sessions` option for one chat. Extracted so the resume wiring is testable. */
+export function chatSessionsOption(
+  chatId: string,
+  session: DashboardAgentSession | null,
+  streaming: boolean | undefined
+) {
+  if (!session) return undefined;
+  return {
+    [chatId]: {
+      publicAccessToken: session.publicAccessToken,
+      lastEventId: session.lastEventId,
+      // Mid-turn chats must be marked streaming or the transport won't resume `session.out`.
+      isStreaming: streaming ?? false,
+    },
+  };
+}
+
 // Matches the agent's clientDataSchema input.
 export type DashboardAgentClientData = {
   userId: string;
@@ -158,16 +175,7 @@ export function DashboardAgentChat({
       return res;
     },
     clientData,
-    sessions: session
-      ? {
-          [chatId]: {
-            publicAccessToken: session.publicAccessToken,
-            lastEventId: session.lastEventId,
-            // Mid-turn chats must be marked streaming or the transport won't resume `session.out`.
-            isStreaming: streaming ?? false,
-          },
-        }
-      : undefined,
+    sessions: chatSessionsOption(chatId, session, streaming),
     startSession: async ({ chatId }) => {
       const body = new FormData();
       body.set("intent", "start");

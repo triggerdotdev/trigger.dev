@@ -171,8 +171,24 @@ describe("deciding whether a settled turn is worth re-reading", () => {
     parts: [{ type: "tool-get_report", toolCallId: "call_1", state: "input-available" }],
   };
 
+  // A prose-only reply: no tool part to catch, just a `text` part still streaming.
+  const DANGLING_TEXT = {
+    id: "msg_dangling_text",
+    role: "assistant",
+    parts: [{ type: "text", text: "Concurrency on the ", state: "streaming" }],
+  };
+
   it("re-reads when the stream died mid-tool, not only when a card is open", () => {
     expect(transcriptLooksUnfinished([DANGLING_TOOL])).toBe(true);
+  });
+
+  it("re-reads when the stream died mid-text, with no tool part at all", () => {
+    expect(transcriptLooksUnfinished([DANGLING_TEXT])).toBe(true);
+  });
+
+  it("leaves a finished text part alone", () => {
+    const finished = { ...DANGLING_TEXT, parts: [{ type: "text", text: "Done.", state: "done" }] };
+    expect(transcriptLooksUnfinished([finished])).toBe(false);
   });
 
   it("re-reads while a card is still open", () => {
