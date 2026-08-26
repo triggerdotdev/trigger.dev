@@ -136,13 +136,13 @@ export type CreateManualWaitpointParams = {
    * full rationale. Only a Postgres implementation reads this.
    */
   standaloneResidency?: "NEW" | "LEGACY";
-    /**
-     * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
-     * shard the token's id is stamped for. When it names a gen-2 shard the caller must NOT also
-     * set `standaloneResidency`: a residency hint outranks the id shape in the router and can
-     * only name a gen-1 store, so the row would land there while its completion routes to the
-     * shard. Only a Postgres implementation reads this.
-     */
+  /**
+   * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
+   * shard the token's id is stamped for. When it names a gen-2 shard the caller must NOT also
+   * set `standaloneResidency`: a residency hint outranks the id shape in the router and can
+   * only name a gen-1 store, so the row would land there while its completion routes to the
+   * shard. Only a Postgres implementation reads this.
+   */
   standaloneShardKey?: ShardKey;
 };
 
