@@ -62,36 +62,66 @@ export async function probeControlPlaneCoresidency(
   }
 }
 
-export async function probeDistinctDatabases(
-  legacyUrl: string,
-  newUrl: string,
+export type DistinctTarget = { id: string; url: string };
+
+/**
+ * Set uniqueness over every store that owns its own database. Fail-closed: a probe that cannot
+ * answer returns NOT distinct, because "distinct" is a positive claim a failed probe cannot support.
+ *
+ * Same-cluster-different-database policy (unchanged from the pairwise probe): two databases inside
+ * the SAME cluster (same system identifier, different current_database()) are reported distinct.
+ * They are genuinely separate Postgres databases with separate WAL-visible state for our purposes.
+ *
+ * An ALIASED shard never appears in `targets`. It shares its target's client by reference, so it is
+ * not its own database and inclusion would guarantee a duplicate. See nonAliasedShards.
+ */
+export async function probeDistinctStores(
+  targets: DistinctTarget[],
   opts?: { logger?: { warn: (msg: string, meta?: Record<string, unknown>) => void } }
 ): Promise<{ distinct: true } | { distinct: false; reason: string }> {
+  if (targets.length < 2) {
+    return { distinct: true };
+  }
+
   try {
-    const [legacy, next] = await Promise.all([
-      readDatabaseFingerprint(legacyUrl),
-      readDatabaseFingerprint(newUrl),
-    ]);
-    const sameCluster = legacy.systemIdentifier === next.systemIdentifier;
-    const sameDb = sameCluster && legacy.databaseName === next.databaseName;
-    // Same-cluster-different-database policy: two databases inside the SAME cluster
-    // (same system identifier, different current_database()) are reported distinct: true.
-    // That is acceptable — they are genuinely separate Postgres databases with separate
-    // WAL-visible state for our purposes, and the Cloud topology always uses separate
-    // clusters anyway. A stricter "must be a different cluster" policy would gate on
-    // sameCluster alone; that is flagged as an open question, not decided here.
-    if (sameDb) {
-      const reason =
-        "run-ops legacy and new URLs resolve to the SAME physical database " +
-        `(systemIdentifier=${legacy.systemIdentifier}, database=${legacy.databaseName}); ` +
-        "refusing to enable split — pooler/replica likely.";
-      opts?.logger?.warn(reason);
-      return { distinct: false, reason };
+    const fingerprints = await Promise.all(targets.map((t) => readDatabaseFingerprint(t.url)));
+
+    const seen = new Map<string, string>();
+    for (const [index, target] of targets.entries()) {
+      const fingerprint = fingerprints[index];
+      const key = `${fingerprint.systemIdentifier}/${fingerprint.databaseName}`;
+      const first = seen.get(key);
+      if (first !== undefined) {
+        const reason =
+          `run-ops stores "${first}" and "${target.id}" resolve to the SAME physical database ` +
+          `(systemIdentifier=${fingerprint.systemIdentifier}, database=${fingerprint.databaseName}); ` +
+          "refusing to enable split — pooler/replica likely.";
+        opts?.logger?.warn(reason);
+        return { distinct: false, reason };
+      }
+      seen.set(key, target.id);
     }
+
     return { distinct: true };
   } catch (error) {
     const reason = `distinct-db sentinel probe failed; failing closed (single-DB). ${String(error)}`;
     opts?.logger?.warn(reason, { error });
     return { distinct: false, reason };
   }
+}
+
+// The gen-1 pairwise entry point, kept as a thin delegate over a 2-element target list. Set
+// uniqueness over one pair IS the pairwise compare, and this function's tests are the proof.
+export async function probeDistinctDatabases(
+  legacyUrl: string,
+  newUrl: string,
+  opts?: { logger?: { warn: (msg: string, meta?: Record<string, unknown>) => void } }
+): Promise<{ distinct: true } | { distinct: false; reason: string }> {
+  return probeDistinctStores(
+    [
+      { id: "legacy", url: legacyUrl },
+      { id: "new", url: newUrl },
+    ],
+    opts
+  );
 }

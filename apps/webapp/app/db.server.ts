@@ -599,6 +599,16 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   controlPlaneReplica: $replica,
   hasNewUrl: !!env.RUN_OPS_DATABASE_URL,
   hasLegacyUrl: !!env.RUN_OPS_LEGACY_DATABASE_URL,
+  // Observability only: a non-distinct shard handle warns and never changes the gen-1 verdict.
+  // Empty unless RUN_OPS_SHARDS is configured.
+  shardHandles: runOpsShardHandles.map((handle) => ({
+    key: handle.key,
+    writer: handle.writer,
+    replica: handle.replica,
+    // The DECLARED field, not client identity: an aliased shard shares its target's client by
+    // reference, so identity comparison cannot tell the two apart.
+    aliasOf: env.RUN_OPS_SHARDS.find((d) => d.key === handle.key)?.aliasOf,
+  })),
   logger,
 });
 
