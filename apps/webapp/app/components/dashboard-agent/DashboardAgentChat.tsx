@@ -235,7 +235,8 @@ export function DashboardAgentChat({
   const [deadlineError, setDeadlineError] = useState<TurnDeadlineError | null>(null);
   // A retry can resend under `status: "submitted"` again — the same status the previous
   // turn was already in when it fired, so the first-event effect wouldn't otherwise re-run.
-  // Bumped in `retry`/`dismissError` to force it to.
+  // Bumped in `retry` to force it to. `dismissError` never bumps it: dismiss means "stop
+  // telling me", not "start a new wait".
   const [attempt, setAttempt] = useState(0);
   const firstEventDeadline = useRef(
     createKeyedDeadline<"submitted">({
@@ -255,8 +256,8 @@ export function DashboardAgentChat({
   ).current;
   useEffect(() => {
     firstEventDeadline.sync(status === "submitted" ? "submitted" : null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `attempt` forces a re-sync when
-    // `status` is unchanged across a retry (see its declaration above).
+    // `attempt` forces a re-sync when `status` is unchanged across a retry (see its
+    // declaration above).
   }, [status, firstEventDeadline, attempt]);
   useEffect(() => {
     toolPendingDeadline.sync(activeToolPendingKey(status, inFlightToolName(messages)));
@@ -393,7 +394,6 @@ export function DashboardAgentChat({
     setDeadlineError(null);
     firstEventDeadline.sync(null);
     toolPendingDeadline.sync(null);
-    setAttempt((current) => current + 1);
   }, [clearError, firstEventDeadline, toolPendingDeadline]);
 
   const resolveUri = useTriggerUriResolver(actionPath);
