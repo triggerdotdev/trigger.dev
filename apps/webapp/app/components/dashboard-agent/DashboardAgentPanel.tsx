@@ -1,7 +1,9 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { useLocation } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { PanHandlerProps } from "~/components/primitives/DraggableResizable";
 import { AgentSpinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
@@ -84,10 +86,13 @@ export function DashboardAgentPanel({
   onTurnActivityChange,
   isFullscreen = false,
   onToggleFullscreen,
+  dragHandleProps,
 }: {
   onClose: () => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Spread onto the header, which is the floating window's drag handle. */
+  dragHandleProps?: Partial<PanHandlerProps>;
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
@@ -589,7 +594,7 @@ export function DashboardAgentPanel({
   return (
     <div
       ref={panelRef}
-      className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150"
+      className="flex h-full flex-col bg-background-bright animate-in fade-in zoom-in-95 duration-150"
       // A React handler, not a global hotkey, so Esc stays scoped to the panel.
       onKeyDown={(event) => {
         if (
@@ -604,20 +609,22 @@ export function DashboardAgentPanel({
         onClose();
       }}
     >
-      <DashboardAgentHeader
-        title={headerTitle}
-        chats={chats}
-        currentChatId={active?.chatId ?? ""}
-        thinkingChatId={thinkingChatId}
-        onNewChat={newChat}
-        showNewChat={active !== null}
-        onOpenHistory={loadHistory}
-        onSelectChat={switchChat}
-        onDeleteChat={deleteChat}
-        onToggleFullscreen={onToggleFullscreen ?? (() => {})}
-        isFullscreen={isFullscreen}
-        onClose={onClose}
-      />
+      <motion.div {...dragHandleProps}>
+        <DashboardAgentHeader
+          title={headerTitle}
+          chats={chats}
+          currentChatId={active?.chatId ?? ""}
+          thinkingChatId={thinkingChatId}
+          onNewChat={newChat}
+          showNewChat={active !== null}
+          onOpenHistory={loadHistory}
+          onSelectChat={switchChat}
+          onDeleteChat={deleteChat}
+          onToggleFullscreen={onToggleFullscreen ?? (() => {})}
+          isFullscreen={isFullscreen}
+          onClose={onClose}
+        />
+      </motion.div>
 
       {/* Always mounted, so the chat keeps its transport, session and transcript. */}
       <AgentPanelColumn fullscreen={isFullscreen}>

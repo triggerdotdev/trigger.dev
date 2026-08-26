@@ -1,11 +1,6 @@
 import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { useLocation } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -17,7 +12,7 @@ import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentL
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
-  agentTakeoverClassName,
+  FloatingAgentWindow,
   readAgentFullscreen,
   writeAgentFullscreen,
 } from "./panel-layout";
@@ -346,39 +341,29 @@ export function DashboardAgent({
   return (
     <DashboardAgentProvider value={context}>
       {open ? (
-        // `relative` is the takeover's containing block.
+        // `relative` is the fullscreen takeover's containing block; the non-fullscreen
+        // window is a page-wide floating overlay and doesn't need it.
         <div className="relative h-full min-h-0">
-          <ResizablePanelGroup
-            orientation="horizontal"
-            autosaveId="dashboard-agent-split"
-            className="h-full min-h-0"
-          >
-            <ResizablePanel id="dashboard-content" min="320px">
-              <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
-            </ResizablePanel>
-            <ResizableHandle
-              id="dashboard-agent-handle"
-              className={fullscreen ? "invisible" : undefined}
-            />
-            <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
-              <div className={agentTakeoverClassName(fullscreen)}>
-                <DashboardAgentPanel
-                  onClose={() => setPanelOpen(false)}
-                  requestedMessage={requestedMessage}
-                  openChatRequest={openChatRequest}
-                  watchRequest={watchRequest}
-                  newChatSeq={newChatSeq}
-                  promotedPrompt={promotedPrompt}
-                  onChatRead={markChatRead}
-                  // The panel's own count, off the chat list it has already marked read.
-                  onUnreadWorkChange={setUnreadWork}
-                  onTurnActivityChange={handleTurnActivityChange}
-                  isFullscreen={fullscreen}
-                  onToggleFullscreen={toggleFullscreen}
-                />
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+          <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
+          <FloatingAgentWindow fullscreen={fullscreen}>
+            {(dragHandleProps) => (
+              <DashboardAgentPanel
+                onClose={() => setPanelOpen(false)}
+                requestedMessage={requestedMessage}
+                openChatRequest={openChatRequest}
+                watchRequest={watchRequest}
+                newChatSeq={newChatSeq}
+                promotedPrompt={promotedPrompt}
+                onChatRead={markChatRead}
+                // The panel's own count, off the chat list it has already marked read.
+                onUnreadWorkChange={setUnreadWork}
+                onTurnActivityChange={handleTurnActivityChange}
+                isFullscreen={fullscreen}
+                onToggleFullscreen={toggleFullscreen}
+                dragHandleProps={dragHandleProps}
+              />
+            )}
+          </FloatingAgentWindow>
         </div>
       ) : (
         <div className="h-full min-h-0 overflow-hidden">{children}</div>
