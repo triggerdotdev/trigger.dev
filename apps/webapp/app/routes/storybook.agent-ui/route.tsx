@@ -1,7 +1,8 @@
 import type { UIMessage } from "@ai-sdk/react";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import { useLocation } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { demoFixtures, DemoIntentBubble } from "~/components/dashboard-agent/demo";
 import {
   ChatProgress,
@@ -35,6 +36,17 @@ const NO_CHATS: DashboardAgentChat[] = [];
 function FloatingWindowHarness() {
   const [open, setOpen] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+
+  // Storybook only: the demo window must not follow you to another story. The real
+  // dashboard's chat intentionally persists across navigation — this effect is scoped to
+  // this story route and has no equivalent in DashboardAgent.tsx.
+  const { pathname } = useLocation();
+  const previousPathname = useRef(pathname);
+  useEffect(() => {
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    setOpen(false);
+  }, [pathname]);
 
   return (
     <>
