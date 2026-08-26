@@ -279,9 +279,11 @@ describe("get_queue reports the live read it actually got", () => {
 });
 
 /**
- * slotHolders / holderResolution are additive fields on the live row: the tool must carry
+ * slotHolders / slotHolderFacts are additive fields on the live row: the tool must carry
  * them through verbatim when the API sends them, and omit rather than fabricate them when
- * it doesn't (an older API).
+ * it doesn't (an older API). Completeness is structurally unknowable for per-key concurrency
+ * queues, so neither field claims it — that's what slotHolderFacts.truncated/unlistedRunning
+ * are for.
  */
 describe("get_queue carries slot-holder facts through, and omits them when absent", () => {
   const ORIGIN = "https://api.example.com";
@@ -323,7 +325,7 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("complete + consistent: carries the holder facts verbatim", async () => {
+  it("consistent holder: carries the holder facts verbatim", async () => {
     const slotHolders = [
       {
         runId: "run_abc",
@@ -334,57 +336,67 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
         concurrencyKey: "customer_123",
       },
     ];
-    stubFetch({ holderResolution: "complete", slotHolders });
+    stubFetch({ slotHolders });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
-    expect(answer).toMatchObject({ holderResolution: "complete", slotHolders });
+    expect(answer).toMatchObject({ slotHolders });
+    expect(answer).not.toHaveProperty("holderResolution");
   });
 
-  it("complete + mismatch: carries the mismatch verbatim", async () => {
+  it("mismatched holder: carries the mismatch verbatim", async () => {
     const slotHolders = [
       {
         runId: "run_abc",
         status: "COMPLETED",
         uri: "trigger://runs/run_abc",
         consistency: "mismatch",
+        phase: "dequeued",
+        concurrencyKey: null,
       },
     ];
-    stubFetch({ holderResolution: "complete", slotHolders });
+    stubFetch({ slotHolders });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
-    expect(answer).toMatchObject({ holderResolution: "complete", slotHolders });
+    expect(answer).toMatchObject({ slotHolders });
   });
 
-  it("none: carries the resolution with an empty holder list", async () => {
-    stubFetch({ holderResolution: "none", slotHolders: [] });
+  it("carries an empty holder list as-is", async () => {
+    stubFetch({ slotHolders: [] });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
-    expect(answer).toMatchObject({ holderResolution: "none", slotHolders: [] });
+    expect(answer).toMatchObject({ slotHolders: [] });
+  });
+
+  it("truncated + unlistedRunning: carries the incompleteness signal verbatim", async () => {
+    const slotHolderFacts = {
+      admittedCount: 5,
+      dequeuedCount: 2,
+      runningReported: 4,
+      truncated: true,
+      unlistedRunning: 2,
+      consistency: "mismatch",
+    };
+    stubFetch({ slotHolders: [], slotHolderFacts });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ slotHolderFacts });
   });
 
   it("omits both fields rather than fabricating them when the API doesn't send them", async () => {
     stubFetch({ queued: 3 });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
     expect(answer).not.toHaveProperty("slotHolders");
-    expect(answer).not.toHaveProperty("holderResolution");
+    expect(answer).not.toHaveProperty("slotHolderFacts");
   });
 
-  it("carries holderResolution without slotHolders when the API sends only one", async () => {
-    stubFetch({ holderResolution: "none" });
-    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
-    expect(answer).toMatchObject({ holderResolution: "none" });
-    expect(answer).not.toHaveProperty("slotHolders");
-  });
-
-  it("carries slotHolderFacts verbatim, gated independently of slotHolders/holderResolution", async () => {
+  it("carries slotHolderFacts verbatim, gated independently of slotHolders", async () => {
     const slotHolderFacts = {
       admittedCount: 3,
       dequeuedCount: 2,
       runningReported: 2,
+      truncated: false,
+      unlistedRunning: 0,
       consistency: "consistent",
-      holderResolution: "complete",
     };
     stubFetch({ slotHolderFacts });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
     expect(answer).toMatchObject({ slotHolderFacts });
     expect(answer).not.toHaveProperty("slotHolders");
-    expect(answer).not.toHaveProperty("holderResolution");
   });
 });

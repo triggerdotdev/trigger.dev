@@ -185,7 +185,6 @@ export function withLiveState(metrics: unknown, queueType: "task" | "custom", li
     concurrencyLimit: row.concurrencyLimit ?? null,
     // Older API rows carry neither field; omit rather than fabricate an empty answer.
     ...(row.slotHolders !== undefined ? { slotHolders: row.slotHolders } : {}),
-    ...(row.holderResolution !== undefined ? { holderResolution: row.holderResolution } : {}),
     ...(row.slotHolderFacts !== undefined ? { slotHolderFacts: row.slotHolderFacts } : {}),
   };
 }
