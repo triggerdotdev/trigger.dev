@@ -103,7 +103,11 @@ import type {
   TriggerParams,
 } from "./types.js";
 import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
-import { resolveSnapshotSweepCron } from "./snapshotSweepSchedule.js";
+import {
+  DEFAULT_SNAPSHOT_SWEEP_BUDGET_MS,
+  resolveSnapshotSweepCron,
+  snapshotSweepVisibilityTimeoutMs,
+} from "./snapshotSweepSchedule.js";
 import { workerCatalog } from "./workerCatalog.js";
 import pMap from "p-map";
 
@@ -261,6 +265,12 @@ export class RunEngine {
         ...workerCatalog,
         sweepSnapshotOrphans: {
           ...workerCatalog.sweepSnapshotOrphans,
+          // Derived, not fixed. The runner's lock TTL is the budget plus an hour, so a hardcoded
+          // timeout would sit below the lock once the budget is raised, inverting the ordering the
+          // fence depends on.
+          visibilityTimeoutMs: snapshotSweepVisibilityTimeoutMs(
+            options.snapshotStore?.sweepBudgetMs
+          ),
           cron: resolveSnapshotSweepCron({
             hasRunner: !!options.snapshotStore?.runSweep,
             schedule: options.snapshotStore?.sweepSchedule,
@@ -2961,7 +2971,7 @@ export class RunEngine {
       return;
     }
 
-    const budgetMs = this.options.snapshotStore?.sweepBudgetMs ?? 10_800_000;
+    const budgetMs = this.options.snapshotStore?.sweepBudgetMs ?? DEFAULT_SNAPSHOT_SWEEP_BUDGET_MS;
     const controller = new AbortController();
     // The deadline is the sweep's own stopping rule; this is the backstop for a pass that has
     // stopped reaching a batch boundary, so the signal is not merely decorative.

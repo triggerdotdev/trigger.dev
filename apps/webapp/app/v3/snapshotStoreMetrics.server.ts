@@ -63,7 +63,11 @@ function bounded(value: string, allowed: readonly string[]): string {
  * boot, including deployments with no snapshot-store Redis configured.
  */
 export function createSnapshotStoreMetrics(meter: Meter) {
+  // Two layers, two counters. Sharing one would count a single logical write twice and mix
+  // {outcome, ttl} points with {site, outcome} points under one name, so no sum or grouping over it
+  // would mean anything.
   const appendTotal = meter.createCounter("run_engine.snapshot_store.append_total");
+  const writeTotal = meter.createCounter("run_engine.snapshot_store.write_total");
   const appendFailed = meter.createCounter("run_engine.snapshot_store.append_failed");
   const flushStaged = meter.createCounter("run_engine.snapshot_store.flush_staged");
   const readSource = meter.createCounter("run_engine.snapshot_store.read_source");
@@ -93,7 +97,7 @@ export function createSnapshotStoreMetrics(meter: Meter) {
 
   const decorator: DecoratorMetrics = {
     recordWrite: (site, outcome) => {
-      appendTotal.add(1, {
+      writeTotal.add(1, {
         site: bounded(site, WRITE_SITES),
         outcome: bounded(outcome, WRITE_OUTCOMES),
       });

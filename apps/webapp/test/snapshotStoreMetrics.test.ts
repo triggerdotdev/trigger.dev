@@ -33,4 +33,18 @@ describe("snapshotStoreMetrics module shape", () => {
     expect(source).not.toMatch(/compare_divergence/);
     expect(source).not.toMatch(/\btrimmed\b/);
   });
+
+  it("gives the two layers separate counters", () => {
+    // Sharing one would count a single logical write twice and mix {outcome, ttl} points with
+    // {site, outcome} points under one name.
+    const appendBlock = source.slice(
+      source.indexOf("recordAppend:"),
+      source.indexOf("recordWrite:")
+    );
+    const writeBlock = source.slice(source.indexOf("recordWrite:"));
+    expect(appendBlock).toMatch(/appendTotal\.add/);
+    expect(appendBlock).not.toMatch(/writeTotal\.add/);
+    expect(writeBlock).toMatch(/writeTotal\.add/);
+    expect(writeBlock).not.toMatch(/appendTotal\.add/);
+  });
 });
