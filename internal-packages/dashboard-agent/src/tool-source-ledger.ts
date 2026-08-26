@@ -3,8 +3,9 @@ import { apiGet } from "./tool-api-client";
 import type { RepoSnapshot } from "./repo-tools";
 
 /**
- * Which files a turn read and at which commit. The ledger is the only proof a source
- * citation can canonicalize against: a snapshot sha is not proof of reading.
+ * Which files and spans a turn read. The ledger is the only proof a source or span
+ * citation can canonicalize against: a snapshot sha or a remembered id from an earlier
+ * turn is not proof of reading.
  */
 
 /** The part of the ledger evidence canonicalisation reads. */
@@ -12,6 +13,8 @@ export type SourceReadLookup = {
   wasReadThisTurn(path: string, sha: string): boolean;
   /** The commit a read was served from: the run-pinned snapshot, else the default. */
   shaForReadPath(path: string): string | undefined;
+  /** Whether this turn's trace reads for `runId` returned `spanId`. */
+  wasSpanReadThisTurn(runId: string, spanId: string): boolean;
   /** True if the deployment pinned to `sha` was built from an uncommitted-changes tree. */
   dirtyForSha(sha: string): boolean;
 };
@@ -20,6 +23,8 @@ export type SourceReadLedger = SourceReadLookup & {
   resolveRunSnapshot(runId: string): Promise<RepoSnapshot | null>;
   /** Records a successful read against its commit, keeping repo-tools unaware of it. */
   withReadTracking(repoTools: ToolSet): ToolSet;
+  /** Records the span ids a trace read for `runId` returned this turn. */
+  recordTraceSpans(runId: string, spanIds: readonly string[]): void;
 };
 
 export type SourceLedgerContext = {
@@ -103,6 +108,20 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     return dirtyBySha.get(sha) ?? false;
   }
 
+  // Which span ids this turn's trace reads returned, per run. A span citation
+  // canonicalizes only against an id recorded here.
+  const spanIdsByRun = new Map<string, Set<string>>();
+
+  function recordTraceSpans(runId: string, spanIds: readonly string[]) {
+    const set = spanIdsByRun.get(runId) ?? new Set<string>();
+    for (const spanId of spanIds) set.add(spanId);
+    spanIdsByRun.set(runId, set);
+  }
+
+  function wasSpanReadThisTurn(runId: string, spanId: string): boolean {
+    return spanIdsByRun.get(runId)?.has(spanId) ?? false;
+  }
+
   function withReadTracking(repoTools: ToolSet): ToolSet {
     const readFile = repoTools.read_file;
     if (!readFile?.execute) return repoTools;
@@ -128,7 +147,9 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     resolveRunSnapshot,
     wasReadThisTurn,
     shaForReadPath,
-    dirtyForSha,
     withReadTracking,
+    recordTraceSpans,
+    wasSpanReadThisTurn,
+    dirtyForSha,
   };
 }

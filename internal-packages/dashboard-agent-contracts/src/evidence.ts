@@ -8,6 +8,8 @@ export const evidenceSchema = z
     uri: triggerUriSchema,
     label: z.string(),
     excerpt: z.string().optional(),
+    /** Source evidence only: true when the read commit's tree carried uncommitted changes. */
+    dirty: z.boolean().optional(),
   })
   // `kind` must match the URI's kind: the renderer keys its icon off `kind`.
   .superRefine((evidence, ctx) => {

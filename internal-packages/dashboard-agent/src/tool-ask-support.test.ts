@@ -15,6 +15,7 @@ function askSupport() {
     ctx,
     client: createApiClient(ctx),
     renderInvestigations: (() => []) as any,
+    spanLedger: { recordTraceSpans: () => {} },
   });
   return (tools.ask_support as any).execute({ question: "why is my run failing?" }, {} as any);
 }

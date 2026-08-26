@@ -4,6 +4,7 @@ import {
   curateError,
   curateErrors,
   curateRun,
+  curateRuns,
   curateTrace,
   fenceUntrusted,
 } from "./tool-curation";
@@ -132,5 +133,94 @@ describe("curation fences untrusted free-text", () => {
     const out = curateDeploy({ git: { commitMessage: long } });
     expect(out.commitMessage).toContain("…[truncated 904 chars]");
     expect(out.commitMessage).not.toContain("a".repeat(5000));
+  });
+});
+
+describe("computed run wait", () => {
+  it("measures from queuedAt when the source marks it reliable", () => {
+    const now = Date.now();
+    const run = curateRun({
+      id: "run_1",
+      createdAt: new Date(now - 10 * 60_000).toISOString(),
+      queuedAt: new Date(now - 5 * 60_000).toISOString(),
+      startedAt: new Date(now).toISOString(),
+      queueWaitReliable: true,
+    });
+    expect(run.wait?.measuredFrom).toBe("queued");
+    expect(run.wait?.reliable).toBe(true);
+    expect(run.wait?.ms).toBe(5 * 60_000);
+    expect(run.wait?.label).toContain("queued for");
+  });
+
+  it("falls back to createdAt when queuedAt is stale (resume/retry/pause)", () => {
+    const now = Date.now();
+    const run = curateRun({
+      id: "run_1",
+      status: "REATTEMPTING",
+      createdAt: new Date(now - 10 * 60_000).toISOString(),
+      queuedAt: new Date(now - 1 * 60_000).toISOString(),
+      queueWaitReliable: false,
+    });
+    expect(run.wait?.measuredFrom).toBe("created");
+    expect(run.wait?.reliable).toBe(false);
+    expect(run.wait?.ms).toBe(10 * 60_000);
+  });
+
+  it("falls back to createdAt when the payload never carried queuedAt", () => {
+    const now = Date.now();
+    const runs = curateRuns({
+      data: [{ id: "run_1", createdAt: new Date(now - 3 * 60_000).toISOString() }],
+    });
+    expect(runs.runs[0]!.wait?.measuredFrom).toBe("created");
+    expect(runs.runs[0]!.wait?.reliable).toBe(false);
+    expect(runs.runs[0]!.wait?.ms).toBe(3 * 60_000);
+  });
+
+  it("is undefined when there's no createdAt to measure from", () => {
+    const run = curateRun({ id: "run_1" });
+    expect(run.wait).toBeUndefined();
+  });
+});
+
+describe("curateTrace emits spanId", () => {
+  it("carries each span's id, required to cite it as evidence", () => {
+    const out = curateTrace({
+      trace: {
+        traceId: "trace_1",
+        rootSpan: {
+          id: "span_root",
+          data: { message: "root" },
+          children: [{ id: "span_child", data: { message: "child" } }],
+        },
+      },
+    });
+    expect(out.spans.map((s) => s.spanId)).toEqual(["span_root", "span_child"]);
+  });
+});
+
+describe("curateError computes recurredSinceResolve", () => {
+  it("is true when the last occurrence lands after the resolution", () => {
+    const out = curateError({
+      id: "err_1",
+      errorType: "TypeError",
+      resolvedAt: "2024-01-01T00:00:00.000Z",
+      lastSeen: "2024-01-02T00:00:00.000Z",
+    });
+    expect(out.recurredSinceResolve).toBe(true);
+  });
+
+  it("is false at the boundary — lastSeen equal to resolvedAt is not a recurrence", () => {
+    const out = curateError({
+      id: "err_1",
+      errorType: "TypeError",
+      resolvedAt: "2024-01-01T00:00:00.000Z",
+      lastSeen: "2024-01-01T00:00:00.000Z",
+    });
+    expect(out.recurredSinceResolve).toBe(false);
+  });
+
+  it("is undefined when the error was never resolved", () => {
+    const out = curateError({ id: "err_1", errorType: "TypeError", lastSeen: "2024-01-02" });
+    expect(out.recurredSinceResolve).toBeUndefined();
   });
 });

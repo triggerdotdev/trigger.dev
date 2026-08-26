@@ -21,6 +21,7 @@ function queryTool(postQuery: DashboardAgentApiClient["postQuery"]) {
     ctx: { userActorToken: "uat", apiOrigin: client.origin },
     client,
     renderInvestigations: (() => []) as any,
+    spanLedger: { recordTraceSpans: () => {} },
   });
   return (query: string) => (tools.run_query as any).execute({ query }, {} as any);
 }

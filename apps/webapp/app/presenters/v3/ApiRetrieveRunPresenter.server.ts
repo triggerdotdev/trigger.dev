@@ -26,6 +26,7 @@ import {
 } from "~/v3/mollifier/readFallback.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
+import { STALE_QUEUED_AT_STATUSES } from "~/services/dashboardAgentWatchRunChecks";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
@@ -37,6 +38,7 @@ const commonRunSelect = {
   taskIdentifier: true,
   createdAt: true,
   startedAt: true,
+  queuedAt: true,
   updatedAt: true,
   completedAt: true,
   expiredAt: true,
@@ -564,6 +566,10 @@ async function createCommonRunStructure(
     status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion),
     createdAt: run.createdAt,
     startedAt: run.startedAt ?? undefined,
+    queuedAt: run.queuedAt ?? undefined,
+    // Mirrors dashboardAgentWatchRunChecks.describeRunWait: a resumed/retried/paused run's
+    // queuedAt is a leftover from an earlier enqueue, not this attempt's wait.
+    queueWaitReliable: run.queuedAt !== null && !STALE_QUEUED_AT_STATUSES.has(run.status),
     updatedAt: run.updatedAt,
     finishedAt: run.completedAt ?? undefined,
     expiredAt: run.expiredAt ?? undefined,
@@ -688,6 +694,8 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     taskIdentifier: buffered.taskIdentifier ?? "",
     createdAt: buffered.createdAt,
     startedAt: null,
+    // Buffered runs live in Redis until the drainer replays them into Postgres — never queued there yet.
+    queuedAt: null,
     updatedAt: buffered.cancelledAt ?? buffered.createdAt,
     // PG-resident SYSTEM_FAILURE rows always have `completedAt` set by
     // the engine; the buffer-synth path must match so SDK consumers

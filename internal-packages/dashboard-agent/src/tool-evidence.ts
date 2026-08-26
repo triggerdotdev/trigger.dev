@@ -15,7 +15,7 @@ export type EvidenceScope = { projectRef: string; environmentId: string };
  * Builds the canonical `trigger://` URI for a cited ref. A ref that can't be
  * canonicalized is returned as a named error, never dropped.
  */
-function canonicalizeEvidence(
+export function canonicalizeEvidence(
   items: EvidenceRef[],
   scope: EvidenceScope,
   reads: SourceReadLookup
@@ -26,6 +26,16 @@ function canonicalizeEvidence(
 
   for (const item of items) {
     if (item.kind === "span") {
+      const runId = item.runId.trim();
+      const spanId = item.spanId.trim();
+      // The span must come from this turn's trace reads and nowhere else: a span id
+      // remembered from an earlier turn or invented is not proof of reading.
+      if (!reads.wasSpanReadThisTurn(runId, spanId)) {
+        errors.push(
+          `span "${spanId}" wasn't returned by a trace read of ${runId} this turn — call get_run_trace first, then cite a span id it returned`
+        );
+        continue;
+      }
       evidence.push({
         kind: "span",
         label: item.label,
@@ -33,8 +43,8 @@ function canonicalizeEvidence(
         uri: formatTriggerUri({
           ...base,
           kind: "span",
-          runId: item.runId.trim(),
-          spanId: item.spanId.trim(),
+          runId,
+          spanId,
         }),
       });
       continue;
@@ -65,6 +75,8 @@ function canonicalizeEvidence(
         kind: "source",
         label: item.label,
         ...(item.excerpt === undefined ? {} : { excerpt: item.excerpt }),
+        // Stamped, never asked of the model: a dirty read isn't provably the deployed code.
+        ...(reads.dirtyForSha(sha) ? { dirty: true } : {}),
         uri: formatTriggerUri({
           ...base,
           kind: "source",

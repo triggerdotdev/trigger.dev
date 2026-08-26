@@ -31,9 +31,15 @@ const FINAL_STATUSES = new Set([
 
 /**
  * Statuses whose `queuedAt` is a leftover from the first enqueue, since resume/retry
- * re-enqueues don't restamp it, so a wait computed from it isn't this attempt's.
+ * re-enqueues don't restamp it, so a wait computed from it isn't this attempt's. Exported
+ * so other run-facing readers can derive the same reliability signal from the raw status
+ * instead of re-deriving it.
  */
-const STALE_QUEUED_AT_STATUSES = new Set(["WAITING_TO_RESUME", "RETRYING_AFTER_FAILURE", "PAUSED"]);
+export const STALE_QUEUED_AT_STATUSES = new Set([
+  "WAITING_TO_RESUME",
+  "RETRYING_AFTER_FAILURE",
+  "PAUSED",
+]);
 
 function isTerminalRunStatus(status: string): boolean {
   return FINAL_STATUSES.has(status);

@@ -22,6 +22,7 @@ function tools() {
     ctx: CTX,
     client: createApiClient(CTX),
     renderInvestigations: (() => []) as any,
+    spanLedger: { recordTraceSpans: () => {} },
   });
 }
 

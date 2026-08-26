@@ -26,6 +26,50 @@ export function fenceUntrusted(label: string, text: unknown): string | undefined
   return `«untrusted:${label}» ${capped} «/untrusted:${label}»`;
 }
 
+/**
+ * Mirrors dashboardAgentWatchRunChecks.describeRunWait: `queuedAt` only measures this
+ * attempt's wait when the source marked it reliable (a resume/retry/pause re-enqueue
+ * doesn't restamp it). Absent `queuedAt` or reliability falls back to the run's age.
+ */
+function computeRunWait(run: {
+  createdAt?: unknown;
+  startedAt?: unknown;
+  queuedAt?: unknown;
+  queueWaitReliable?: unknown;
+}):
+  | { ms: number; measuredFrom: "queued" | "created"; reliable: boolean; label: string }
+  | undefined {
+  if (!run.createdAt) return undefined;
+  const now = Date.now();
+  const created = new Date(run.createdAt as string).getTime();
+  const started = run.startedAt ? new Date(run.startedAt as string).getTime() : undefined;
+  const end = started ?? now;
+  const queuedAt = run.queuedAt ? new Date(run.queuedAt as string).getTime() : null;
+
+  if (queuedAt !== null && run.queueWaitReliable === true) {
+    const ms = Math.max(0, end - queuedAt);
+    return { ms, measuredFrom: "queued", reliable: true, label: `queued for ${formatWaitMs(ms)}` };
+  }
+
+  const ms = Math.max(0, end - created);
+  return {
+    ms,
+    measuredFrom: "created",
+    reliable: false,
+    label: `time from creation: ${formatWaitMs(ms)}`,
+  };
+}
+
+function formatWaitMs(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const totalHours = Math.round(totalMinutes / 60);
+  if (totalHours < 24) return `${totalHours}h`;
+  return `${Math.round(totalHours / 24)}d`;
+}
+
 export function curateProjects(data: unknown) {
   const projects = Array.isArray(data) ? data : [];
   return {
@@ -64,6 +108,7 @@ export function curateRun(run: any) {
     createdAt: run.createdAt,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
+    wait: computeRunWait(run),
     durationMs: run.durationMs,
     costInCents: run.costInCents,
     attemptCount: run.attemptCount,
@@ -100,6 +145,7 @@ export function curateRuns(data: unknown) {
       createdAt: r.createdAt,
       startedAt: r.startedAt,
       finishedAt: r.finishedAt,
+      wait: computeRunWait(r),
       durationMs: r.durationMs,
       tags: r.tags,
     })),
@@ -116,6 +162,7 @@ export function curateTrace(data: unknown) {
     const d = span.data ?? {};
     // The two flags are emitted only when true; absent means false.
     spans.push({
+      spanId: span.id,
       depth,
       message: fenceUntrusted("spanMessage", d.message),
       task: d.taskSlug,
@@ -165,6 +212,11 @@ export function curateError(group: any) {
     resolvedAt: group.resolvedAt,
     resolvedInVersion: group.resolvedInVersion,
     resolvedBy: group.resolvedBy,
+    // True when an occurrence landed after the resolution, so the model never has to
+    // compare resolvedAt/lastSeen dates itself.
+    recurredSinceResolve: group.resolvedAt
+      ? new Date(group.lastSeen).getTime() > new Date(group.resolvedAt).getTime()
+      : undefined,
     ignoredAt: group.ignoredAt,
     ignoredUntil: group.ignoredUntil,
     ignoredReason: fenceUntrusted("ignoredReason", group.ignoredReason),

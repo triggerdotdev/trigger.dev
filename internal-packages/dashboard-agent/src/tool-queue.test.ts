@@ -179,6 +179,7 @@ describe("get_queue asks for a custom queue under its stored name", () => {
       ctx,
       client: createApiClient(ctx),
       renderInvestigations: (() => []) as any,
+      spanLedger: { recordTraceSpans: () => {} },
     });
     return (input: any) => (tools.get_queue as any).execute(input, {} as any);
   }
@@ -244,6 +245,7 @@ describe("get_queue reports the live read it actually got", () => {
       ctx,
       client: createApiClient(ctx),
       renderInvestigations: (() => []) as any,
+      spanLedger: { recordTraceSpans: () => {} },
     });
     return (input: any) => (tools.get_queue as any).execute(input, {} as any);
   }
@@ -319,6 +321,7 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
       ctx,
       client: createApiClient(ctx),
       renderInvestigations: (() => []) as any,
+      spanLedger: { recordTraceSpans: () => {} },
     });
     return (input: any) => (tools.get_queue as any).execute(input, {} as any);
   }

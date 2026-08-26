@@ -50,7 +50,7 @@ export const listTasksSchema = tool({
 
 export const listRunsSchema = tool({
   description:
-    "List recent runs in the current environment, newest first. Optionally filter by status, task, time period, or the error group they belong to. Use this for 'what's been running', 'recent failures', or 'show me the runs behind this error'.",
+    "List recent runs in the current environment, newest first. Optionally filter by status, task, time period, or the error group they belong to. Use this for 'what's been running', 'recent failures', or 'show me the runs behind this error'. Each run's `wait` is the already-computed queue wait (or, when unreliable, time since creation) — never recompute it from createdAt/startedAt.",
   inputSchema: z.object({
     status: z
       .string()
@@ -79,7 +79,7 @@ export const listRunsSchema = tool({
 
 export const getRunSchema = tool({
   description:
-    "Get the status, timing, cost, and error details for a single run in the current environment, by its run id (run_...).",
+    "Get the status, timing, cost, and error details for a single run in the current environment, by its run id (run_...). The `wait` field is the already-computed queue wait (or, when unreliable, time since creation) — never recompute it from createdAt/startedAt.",
   inputSchema: z.object({
     runId: z.string().describe("The run id, e.g. run_abc123."),
   }),
@@ -87,7 +87,7 @@ export const getRunSchema = tool({
 
 export const getRunTraceSchema = tool({
   description:
-    "Get a run's execution trace: the timeline of spans (tasks, waits, attempts) with durations and error flags. Use this to explain why a run failed, retried, or was slow.",
+    "Get a run's execution trace: the timeline of spans (tasks, waits, attempts) with durations and error flags. Use this to explain why a run failed, retried, or was slow. Each span's `spanId` is required to cite it as span evidence — only ids returned by this call are citable.",
   inputSchema: z.object({
     runId: z.string().describe("The run id, e.g. run_abc123."),
   }),
@@ -124,7 +124,7 @@ export const listErrorsSchema = tool({
 
 export const getErrorSchema = tool({
   description:
-    "Get the full detail for a single error group by its id (error_...): type, message, occurrence count, first/last seen, affected task versions, and lifecycle state (who resolved/ignored it and when). Pair with list_runs(errorId) to see the runs behind it.",
+    "Get the full detail for a single error group by its id (error_...): type, message, occurrence count, first/last seen, affected task versions, and lifecycle state (who resolved/ignored it and when). `recurredSinceResolve` is already computed — true when an occurrence landed after resolvedAt, so never compare those dates yourself. Pair with list_runs(errorId) to see the runs behind it.",
   inputSchema: z.object({
     errorId: z.string().describe("The error group id, e.g. error_abc123, from list_errors."),
   }),

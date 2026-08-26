@@ -47,6 +47,7 @@ import {
 } from "./tool-curation";
 import { searchTriggerDocs } from "./tool-docs";
 import type { InvestigationRenderer } from "./tool-investigations";
+import type { SourceReadLedger } from "./tool-source-ledger";
 
 /**
  * What to tell the model when a read never reached an environment. Only a missing
@@ -196,8 +197,9 @@ export function buildApiTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
   renderInvestigations: InvestigationRenderer;
+  spanLedger: Pick<SourceReadLedger, "recordTraceSpans">;
 }): ToolSet {
-  const { ctx, client, renderInvestigations } = args;
+  const { ctx, client, renderInvestigations, spanLedger } = args;
   const { userActorToken, projectRef, environmentName, environmentBranch } = ctx;
   const { origin, hasAuth, envApiGet, postQuery, validateChartQuery } = client;
 
@@ -290,7 +292,12 @@ export function buildApiTools(args: {
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok)
           return { error: `Couldn't get the trace for ${runId}${fetchReason(result)}.` };
-        return curateTrace(result.data);
+        const curated = curateTrace(result.data);
+        spanLedger.recordTraceSpans(
+          runId,
+          curated.spans.map((s) => s.spanId).filter((id): id is string => typeof id === "string")
+        );
+        return curated;
       },
     }),
 
