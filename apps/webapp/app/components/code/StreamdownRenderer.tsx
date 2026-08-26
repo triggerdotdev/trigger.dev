@@ -1,5 +1,8 @@
 import { lazy } from "react";
 import type { CodeHighlighterPlugin, UrlTransform } from "streamdown";
+import type * as StreamdownModule from "streamdown";
+import type * as StreamdownCodeModule from "@streamdown/code";
+import type * as ShikiThemeModule from "./shikiTheme";
 
 const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
@@ -64,7 +67,7 @@ type StreamdownRendererModule = {
 
 export function loadStreamdownRenderer(
   load: () => Promise<
-    [typeof import("streamdown"), typeof import("@streamdown/code"), typeof import("./shikiTheme")]
+    [typeof StreamdownModule, typeof StreamdownCodeModule, typeof ShikiThemeModule]
   > = () => Promise.all([import("streamdown"), import("@streamdown/code"), import("./shikiTheme")]),
   delaysMs?: number[]
 ): Promise<StreamdownRendererModule> {
