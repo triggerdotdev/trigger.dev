@@ -1,4 +1,4 @@
-import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { Button } from "~/components/primitives/Buttons";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
 
@@ -30,8 +30,7 @@ export function InvestigateButton({
     <Button
       type="button"
       variant={`${variant}/${size}`}
-      LeadingIcon={MagnifyingGlassIcon}
-      leadingIconClassName={variant === "primary" ? undefined : "text-text-dimmed"}
+      LeadingIcon={<AgentMonoLogo size={16} decorative />}
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}

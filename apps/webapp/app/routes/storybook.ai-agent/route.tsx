@@ -183,27 +183,15 @@ function DotMatrixTab() {
           </div>
         ))}
       </div>
-      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
-        Icon editor — same grid as the shapes above (`dotMatrixGeometry`, `MATRIX`x`MATRIX`), at
-        1.5x the size the candidates were shown at. Click a dot to toggle it; the bitmap below reads
-        back as a `MATRIX`-line string, ready to paste into a shape definition.
-      </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         <DotGridEditor />
       </div>
-      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
-        Owner-drawn candidates, exactly as given — editor size and {CANDIDATE_SMALL_SIZE}px, so
-        legibility at icon size is judgeable. #2 and #5 are identical (an A/B pair).
-      </Paragraph>
-      <OwnerBitmapsRow />
     </div>
   );
 }
 
 // 1.5x the 32px candidate icons this replaced.
 const EDITOR_SIZE = 48;
-// Within the 16-24px range action icons render at.
-const CANDIDATE_SMALL_SIZE = 20;
 
 /**
  * Renders a flat `MATRIX * MATRIX` lit/unlit array on the shared grid geometry —
@@ -273,42 +261,6 @@ function DotGridEditor() {
       <pre className="rounded border border-grid-bright bg-charcoal-900 px-2 py-1 font-mono text-[10px] leading-tight text-text-dimmed">
         {rows.join("\n")}
       </pre>
-    </div>
-  );
-}
-
-function bitmapToLit(bitmap: string[]): boolean[] {
-  return bitmap.flatMap((row) => [...row].map((cell) => cell === "#"));
-}
-
-// Owner-drawn in the editor above, 5-line `MATRIX` bitmaps, exactly as given.
-const OWNER_BITMAPS: { id: number; bitmap: string[] }[] = [
-  { id: 1, bitmap: ["#.#.#", ".#.#.", "#...#", ".#.#.", "#.#.#"] },
-  { id: 2, bitmap: [".###.", "#####", "#.#.#", ".###.", "....."] },
-  { id: 3, bitmap: [".....", ".###.", "#.#.#", ".###.", "....."] },
-  { id: 4, bitmap: ["..#..", ".###.", "##.##", ".###.", "..#.."] },
-  // Same as #2 — the owner may be A/B-ing it; rendered anyway.
-  { id: 5, bitmap: [".###.", "#####", "#.#.#", ".###.", "....."] },
-  { id: 6, bitmap: [".###.", "#.#.#", "#####", "#.#.#", ".###."] },
-  { id: 7, bitmap: ["..#..", "..#..", "##.##", "..#..", "..#.."] },
-  { id: 8, bitmap: [".###.", "#...#", "#...#", "#####", "..#.."] },
-  { id: 9, bitmap: [".###.", "#####", "#.#.#", "#####", "..#.."] },
-  { id: 10, bitmap: [".###.", "#####", "#####", "..#..", "..#.."] },
-];
-
-function OwnerBitmapsRow() {
-  return (
-    <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
-      {OWNER_BITMAPS.map(({ id, bitmap }) => {
-        const lit = bitmapToLit(bitmap);
-        return (
-          <div key={id} className="flex flex-col items-end gap-2">
-            <DotGrid lit={lit} size={EDITOR_SIZE} litClassName="text-text-bright" />
-            <DotGrid lit={lit} size={CANDIDATE_SMALL_SIZE} litClassName="text-text-bright" />
-            <div className="text-[10px] uppercase tracking-wide text-text-dimmed">#{id}</div>
-          </div>
-        );
-      })}
     </div>
   );
 }

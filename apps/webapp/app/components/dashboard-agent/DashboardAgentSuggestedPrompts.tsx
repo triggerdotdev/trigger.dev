@@ -1,13 +1,12 @@
 import {
   BookOpenIcon,
   ChartBarIcon,
-  EyeIcon,
-  MagnifyingGlassIcon,
   QuestionMarkCircleIcon,
   SparklesIcon,
 } from "@heroicons/react/20/solid";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useMemo, useState } from "react";
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import type { RenderIcon } from "~/components/primitives/Icon";
 import {
@@ -20,8 +19,8 @@ import {
 const PROMPT_SLOT_BUTTON: Record<ResolvedPromptSlot, { variant: ButtonVariant; icon: RenderIcon }> =
   {
     promoted: { variant: "primary/small", icon: SparklesIcon },
-    investigate: { variant: "primary/small", icon: MagnifyingGlassIcon },
-    watch: { variant: "secondary/small", icon: EyeIcon },
+    investigate: { variant: "primary/small", icon: <AgentMonoLogo size={16} decorative /> },
+    watch: { variant: "secondary/small", icon: <AgentMonoLogo size={16} decorative /> },
     status: { variant: "secondary/small", icon: ChartBarIcon },
     explain: { variant: "tertiary/small", icon: QuestionMarkCircleIcon },
     docs: { variant: "docs/small", icon: BookOpenIcon },

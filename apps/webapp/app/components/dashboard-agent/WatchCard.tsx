@@ -10,7 +10,6 @@
  * Pure component: draft in, markup and callbacks out. Draft rules live in
  * `watch-card.ts` and wording in `app/presenters/v3/dashboardAgent`.
  */
-import { EyeIcon } from "@heroicons/react/20/solid";
 import {
   WATCH_WINDOW_HOURS_OPTIONS,
   watchCadenceOptions,
@@ -18,6 +17,7 @@ import {
   type WatchKind,
 } from "@internal/dashboard-agent-contracts";
 import { useId, useState } from "react";
+import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Input } from "~/components/primitives/Input";
@@ -167,7 +167,7 @@ export function WatchCard({
   return (
     <ChatSystemBlock
       label="Watch"
-      icon={<EyeIcon className="size-3.5 shrink-0 text-text-dimmed" />}
+      icon={<AgentMonoLogo size={14} decorative />}
       actions={
         <>
           {/* One confirm, expanded or not: an expanded card is submitted as shown. */}
