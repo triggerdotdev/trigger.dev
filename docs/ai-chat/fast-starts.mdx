@@ -735,10 +735,12 @@ chat.startHeadStart<TTools>({
   triggerConfig?: Partial<SessionTriggerConfig>, // tags, queue, machine, …
   apiClient?: ApiClientConfiguration,            // when the agent lives in another project/env
   metadata?: Record<string, unknown>,            // merged into the run payload; never sent to the browser
-}): Promise<{ chatId: string; completion: Promise<void> }>
+}): Promise<{ chatId: string; pendingVersion: boolean; completion: Promise<void> }>
 ```
 
 `completion` resolves once the head start finishes; `await` it or hand it to `waitUntil`. It rejects if the warm step or the dispatch fails.
+
+`pendingVersion` is `true` when the agent run is parked waiting for the deployment carrying the session's [external deployment id](/deployment/version-skew-protection#chat-sessions). Step 1 still runs in your process and still reaches the browser, so pass the flag to the destination page if you want it to say a deploy is in progress rather than appear to stall on step 2.
 
 ### Limitations
 

@@ -237,8 +237,8 @@ export type ChatTransportEvent =
       type: "run-pending-version";
       chatId: string;
       timestamp: number;
-      /** Whether we learned this from starting the session or from sending a message. */
-      source: "start" | "send";
+      /** Whether we learned this from starting the session, a send, or the `headStart` POST. */
+      source: "start" | "send" | "head-start";
     }
   | {
       type: "message-sent";
@@ -995,6 +995,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
+
+    // Step 1 streams from the warm server either way; this says the agent run that owes step 2
+    // is parked on an undeployed external deployment id.
+    if (response.headers.get("X-Trigger-Chat-Pending-Version") === "1") {
+      this.emitEvent({
+        type: "run-pending-version",
+        chatId,
+        timestamp: Date.now(),
+        source: "head-start",
+      });
+    }
 
     // Filter the parsed UIMessage stream:
     //   - Drop control chunks (`trigger:turn-complete`,

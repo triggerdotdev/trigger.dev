@@ -314,6 +314,8 @@ const transport = useTriggerChatTransport({
 
 The event repeats on every message sent while the chat is parked, so a notice driven off it stays accurate.
 
+[Head Start](/ai-chat/fast-starts#head-start) softens this considerably: turn 1 runs in your own warm process, so a parked deployment costs nothing until step 2. The handover signal is durable, so the agent picks the turn up where it left off once the deployment lands. The transport emits `run-pending-version` with `source: "head-start"` for that case, and `chat.startHeadStart` returns `pendingVersion` for the detached flow.
+
 ### Opting a chat out
 
 Pass `null` and that chat is never pinned, whatever the environment says:
