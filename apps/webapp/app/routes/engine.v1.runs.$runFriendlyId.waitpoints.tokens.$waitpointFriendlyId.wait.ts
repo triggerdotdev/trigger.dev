@@ -55,6 +55,13 @@ const { action } = createActionApiRoute(
         { status: 200 }
       );
     } catch (error) {
+      // The 404 above is thrown from inside this try, and json() returns a Response, so
+      // without this it is swallowed into a 500 that logs as `error: {}`. A caller then
+      // cannot tell a bad token from a broken server.
+      if (error instanceof Response) {
+        throw error;
+      }
+
       logger.error("Failed to wait for waitpoint", { runId, waitpointId, error });
       throw json({ error: "Failed to wait for waitpoint token" }, { status: 500 });
     }
