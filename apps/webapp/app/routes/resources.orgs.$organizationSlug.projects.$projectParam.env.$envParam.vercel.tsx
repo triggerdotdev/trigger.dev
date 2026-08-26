@@ -1,6 +1,6 @@
 import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -1207,42 +1207,15 @@ function VercelSettingsPanel({
   const { load } = fetcher;
   const _location = useLocation();
   const data = fetcher.data;
-  const [hasError, _setHasError] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
-    if (!data?.authInvalid && !hasError && !data && !hasFetched) {
+    if (!data && !hasFetched) {
       load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHasFetched(true);
     }
-  }, [
-    organizationSlug,
-    projectSlug,
-    environmentSlug,
-    data?.authInvalid,
-    hasError,
-    data,
-    hasFetched,
-    load,
-  ]);
-
-  if (hasError) {
-    return (
-      <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-4">
-        <div className="flex items-start gap-3">
-          <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-rose-500" />
-          <div>
-            <p className="font-medium text-rose-400">Failed to load Vercel settings</p>
-            <p className="mt-1 text-sm text-rose-300">
-              There was an error loading the Vercel integration settings. Please refresh the page to
-              try again.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  }, [organizationSlug, projectSlug, environmentSlug, data, hasFetched, load]);
 
   if (fetcher.state === "loading" && !data) {
     return (
@@ -1258,40 +1231,32 @@ function VercelSettingsPanel({
   }
 
   const showGitHubWarning = data.connectedProject && !data.isGitHubConnected;
-  const showAuthInvalid = data.authInvalid || data.onboardingData?.authInvalid;
 
   if (data.connectedProject) {
     return (
       <>
-        {showAuthInvalid && (
-          <VercelAuthInvalidBanner
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            canManageVercel={data.canManageVercel}
-          />
-        )}
         {showGitHubWarning && <VercelGitHubWarning />}
-        {!showAuthInvalid && <VercelAppInstalledRow />}
-        {!showAuthInvalid && (
-          <ConnectedVercelProjectForm
-            connectedProject={data.connectedProject}
-            hasStagingEnvironment={data.hasStagingEnvironment}
-            hasPreviewEnvironment={data.hasPreviewEnvironment}
-            customEnvironments={data.customEnvironments}
-            autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
-            currentTriggerVersion={data.currentTriggerVersion ?? null}
-            currentTriggerVersionFetchFailed={data.currentTriggerVersionFetchFailed ?? false}
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            environmentSlug={environmentSlug}
-            canManageVercel={data.canManageVercel}
-          />
-        )}
+        <VercelAppInstalledRow />
+        <ConnectedVercelProjectForm
+          connectedProject={data.connectedProject}
+          hasStagingEnvironment={data.hasStagingEnvironment}
+          hasPreviewEnvironment={data.hasPreviewEnvironment}
+          customEnvironments={data.customEnvironments}
+          autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
+          currentTriggerVersion={data.currentTriggerVersion ?? null}
+          currentTriggerVersionFetchFailed={data.currentTriggerVersionFetchFailed ?? false}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          canManageVercel={data.canManageVercel}
+        />
       </>
     );
   }
 
-  if (showAuthInvalid) {
+  // A connected project always comes from the presenter's success exit, which hardcodes
+  // `authInvalid: false`, so an expired token can only ever land here.
+  if (data.authInvalid) {
     return (
       <VercelAuthInvalidBanner
         organizationSlug={organizationSlug}
