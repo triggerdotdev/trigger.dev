@@ -72,8 +72,12 @@ export class UnknownShardKey extends Error {
   readonly shardKey: string;
   readonly configured: string[];
 
-  constructor(shardKey: string, configured: string[]) {
-    super(`RoutingRunStore: no store is configured for shard key "${shardKey}"`);
+  constructor(shardKey: string, configured: string[], subject?: string) {
+    super(
+      subject === undefined
+        ? `RoutingRunStore: no store is configured for shard key "${shardKey}"`
+        : `RoutingRunStore: ${subject} resolves to unconfigured shard key "${shardKey}"`
+    );
     this.name = "UnknownShardKey";
     this.shardKey = shardKey;
     this.configured = configured;
@@ -256,9 +260,7 @@ export class RoutingRunStore implements RunStore {
       // Fail loud instead (§7 append-only rule).
       if (key === runKey) return;
       if (!this.#shards.has(key)) {
-        throw new Error(
-          `RoutingRunStore: waitpoint "${id}" resolves to unconfigured shard key "${key}"`
-        );
+        throw new UnknownShardKey(key, [...this.#shards.keys()], `waitpoint "${id}"`);
       }
       const bucket = byKey.get(key);
       if (bucket) bucket.push(id);
@@ -413,7 +415,7 @@ export class RoutingRunStore implements RunStore {
       // An id resolving to a shard nobody configured is UnknownShardKey. Dropping it would silently
       // omit a row from the hydrated set, so fail loud (§7 append-only rule).
       if (!this.#shards.has(key)) {
-        throw new Error(`RoutingRunStore: id "${id}" resolves to unconfigured shard key "${key}"`);
+        throw new UnknownShardKey(key, [...this.#shards.keys()], `id "${id}"`);
       }
       const bucket = byShard.get(key);
       if (bucket) bucket.push(id);

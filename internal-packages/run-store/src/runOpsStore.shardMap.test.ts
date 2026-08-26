@@ -360,6 +360,14 @@ function buildNShardRouter(shardKeys: string[], opts: { aliasOf?: Record<string,
 }
 
 describe("RoutingRunStore #distinctStores — one entry per database", () => {
+  // findRunsByIds reaches #fanOutPartitioned, the third unconfigured-shard guard. It must throw
+  // the typed error too, or this read path answers 500 where the boundary would give a 404.
+  it("throws a typed UnknownShardKey from the partitioned id fan-out", async () => {
+    const { router } = buildNShardRouter(["a"]);
+
+    await expect(router.findRunsByIds(["a:r1", "z:r2"])).rejects.toBeInstanceOf(UnknownShardKey);
+  });
+
   it("routes an id to its gen-2 shard", async () => {
     const { router, log } = buildNShardRouter(["a", "b"]);
     await router.findRun({ id: "a:run_1" });
@@ -706,6 +714,17 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
     await expect(router.countPendingWaitpoints(["c:w1"], undefined, "a:run")).rejects.toThrow(
       'unconfigured shard key "c"'
     );
+  });
+
+  // The API boundary answers a non-retryable 404 by matching on the TYPE, so every
+  // unconfigured-shard guard has to throw the typed error and not a bare Error. Two other guards
+  // besides #shardStore reach an unconfigured key: this partition, and #fanOutPartitioned below.
+  it("throws a typed UnknownShardKey from the absent-id partition", async () => {
+    const { router } = partitionRouter({});
+
+    await expect(
+      router.countPendingWaitpoints(["c:w1"], undefined, "a:run")
+    ).rejects.toBeInstanceOf(UnknownShardKey);
   });
 
   it("returns zero for an id absent everywhere", async () => {
