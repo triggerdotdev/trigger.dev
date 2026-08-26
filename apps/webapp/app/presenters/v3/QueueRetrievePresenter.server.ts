@@ -1,14 +1,65 @@
+import { formatTriggerUri } from "@internal/dashboard-agent-contracts";
 import { assertExhaustive } from "@trigger.dev/core";
 import { type Prettify, type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
 import {
+  boundedIn,
   type PrismaClientOrTransaction,
   type TaskQueue,
+  type TaskRunStatus,
   type User,
   type TaskQueueType,
 } from "@trigger.dev/database";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
+
+export type SlotHolderPhase = "admitted" | "dequeued";
+export type SlotHolderConsistency = "consistent" | "mismatch" | "unresolved";
+export type SlotHolderResolution = "complete" | "partial" | "none";
+/** "not_found": a Redis slot holder with no matching TaskRun row. */
+export type SlotHolderStatus = TaskRunStatus | "not_found";
+
+export type SlotHolder = {
+  runId: string;
+  status: SlotHolderStatus;
+  uri: string;
+  concurrencyKey: string | null;
+  phase: SlotHolderPhase;
+  consistency: SlotHolderConsistency;
+};
+
+export type SlotHolderFacts = {
+  admittedCount: number;
+  dequeuedCount: number;
+  runningReported: number;
+  consistency: SlotHolderConsistency;
+  holderResolution: SlotHolderResolution;
+};
+
+// A run can only hold a slot before it reaches a final status. PENDING counts: Redis
+// membership is written at admission, before the Postgres status moves on. DELAYED runs
+// are not queued at all, so holding a slot is drift.
+const NON_HOLDING_STATUSES = new Set<TaskRunStatus>([
+  "DELAYED",
+  "CANCELED",
+  "INTERRUPTED",
+  "COMPLETED_SUCCESSFULLY",
+  "COMPLETED_WITH_ERRORS",
+  "SYSTEM_FAILURE",
+  "CRASHED",
+  "EXPIRED",
+  "TIMED_OUT",
+]);
+
+/** Redis membership vs Postgres run state. `lookupFailed` means we couldn't check at all. */
+export function slotHolderConsistency(
+  run: { status: TaskRunStatus } | undefined,
+  lookupFailed: boolean
+): SlotHolderConsistency {
+  if (lookupFailed) return "unresolved";
+  if (!run) return "mismatch";
+  return NON_HOLDING_STATUSES.has(run.status) ? "mismatch" : "consistent";
+}
 
 export type FoundQueue = Prettify<
   Omit<TaskQueue, "concurrencyLimitOverriddenBy"> & {
@@ -92,6 +143,8 @@ export class QueueRetrievePresenter extends BasePresenter {
       engine.currentConcurrencyOfQueues(environment, [queue.name]),
     ]);
 
+    const { slotHolders, slotHolderFacts } = await this.#slotHolders(environment, queue.name);
+
     // Transform queues to include running and queued counts
     return {
       success: true as const,
@@ -116,6 +169,83 @@ export class QueueRetrievePresenter extends BasePresenter {
           queue.concurrencyLimitOverridePercent !== null
             ? Number(queue.concurrencyLimitOverridePercent)
             : null,
+        slotHolders,
+        slotHolderFacts,
+      },
+    };
+  }
+
+  /**
+   * Names the runs holding the queue's concurrency slots. Both reads are guarded: a
+   * failing Redis or Postgres read degrades the extra fields, it never fails the request.
+   */
+  async #slotHolders(
+    environment: AuthenticatedEnvironment,
+    queueName: string
+  ): Promise<{ slotHolders: SlotHolder[]; slotHolderFacts: SlotHolderFacts }> {
+    const unresolved = {
+      slotHolders: [],
+      slotHolderFacts: {
+        admittedCount: 0,
+        dequeuedCount: 0,
+        runningReported: 0,
+        consistency: "unresolved" as const,
+        holderResolution: "none" as const,
+      },
+    };
+
+    let snapshot: Awaited<ReturnType<typeof engine.slotHoldersOfQueue>>;
+    try {
+      snapshot = await engine.slotHoldersOfQueue(environment, queueName);
+    } catch {
+      return unresolved;
+    }
+
+    let runs: { id: string; friendlyId: string; status: TaskRunStatus }[] | undefined;
+    if (snapshot.holders.length > 0) {
+      try {
+        runs = await this._replica.taskRun.findMany({
+          where: { id: { in: boundedIn(snapshot.holders.map((holder) => holder.runId)) } },
+          select: { id: true, friendlyId: true, status: true },
+        });
+      } catch {
+        runs = undefined;
+      }
+    } else {
+      runs = [];
+    }
+
+    const runsById = runs ? new Map(runs.map((run) => [run.id, run])) : undefined;
+
+    // An empty member id can't be formatted into a URI, so it can't be reported.
+    const slotHolders = snapshot.holders
+      .filter((holder) => holder.runId.length > 0)
+      .map((holder) => {
+        const run = runsById?.get(holder.runId);
+
+        return {
+          runId: run?.friendlyId ?? holder.runId,
+          status: run?.status ?? ("not_found" as const),
+          uri: formatTriggerUri({
+            kind: "run",
+            projectRef: environment.project.externalRef,
+            environmentId: environment.id,
+            runId: run?.friendlyId ?? holder.runId,
+          }),
+          concurrencyKey: holder.concurrencyKey,
+          phase: holder.phase,
+          consistency: slotHolderConsistency(run, runsById === undefined),
+        };
+      });
+
+    return {
+      slotHolders,
+      slotHolderFacts: {
+        admittedCount: snapshot.admittedCount,
+        dequeuedCount: snapshot.dequeuedCount,
+        runningReported: snapshot.runningReported,
+        consistency: snapshot.consistency,
+        holderResolution: runsById === undefined ? "none" : snapshot.holderResolution,
       },
     };
   }
