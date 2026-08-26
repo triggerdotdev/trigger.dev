@@ -13,6 +13,9 @@ describe("unroutableIdResponse", () => {
 
     expect(response).toBeDefined();
     expect(response!.status).toBe(404);
+    // Not retryable: no number of retries makes a topology grow a store. Contrast the
+    // waitpoint wait route, whose 404 IS retryable because a miss there can be replica lag.
+    expect(response!.headers.get("x-should-retry")).toBe("false");
     await expect(response!.json()).resolves.toEqual({ error: "Not Found" });
   });
 

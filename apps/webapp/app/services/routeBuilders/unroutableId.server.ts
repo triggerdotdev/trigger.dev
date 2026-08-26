@@ -11,7 +11,9 @@ import { UnknownShardKey } from "@internal/run-store";
  * a shard key dropped from a config that is meant to be append-only — still alarms.
  */
 export function unroutableIdResponse(error: unknown): Response | undefined {
+  // Explicitly NOT retryable: an id naming an unconfigured shard is not a transient miss, and
+  // no number of retries makes a topology grow a store.
   return error instanceof UnknownShardKey
-    ? json({ error: "Not Found" }, { status: 404 })
+    ? json({ error: "Not Found" }, { status: 404, headers: { "x-should-retry": "false" } })
     : undefined;
 }

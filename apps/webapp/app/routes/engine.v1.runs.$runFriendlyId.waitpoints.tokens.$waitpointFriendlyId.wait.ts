@@ -38,7 +38,14 @@ const { action } = createActionApiRoute(
       });
 
       if (!waitpoint) {
-        throw json({ error: "Waitpoint not found" }, { status: 404 });
+        // Retryable: a miss here can be replica lag. resolveWaitpointThroughReadThrough
+        // deliberately does not read the legacy primary, so it relies on the caller retrying.
+        // A plain 404 is not retried by the SDK, which would turn a transient miss into a
+        // permanent failure.
+        throw json(
+          { error: "Waitpoint not found" },
+          { status: 404, headers: { "x-should-retry": "true" } }
+        );
       }
 
       const _result = await engine.blockRunWithWaitpoint({
