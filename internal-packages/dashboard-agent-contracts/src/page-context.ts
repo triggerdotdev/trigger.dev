@@ -140,7 +140,15 @@ export const agentPageSignalSchema = z.discriminatedUnion("kind", [
     durationMs: z.number().nonnegative(),
     baselineP95Ms: z.number().nonnegative(),
   }),
-  z.object({ kind: z.literal("concurrency_saturation"), severity: z.enum(["warn", "crit"]) }),
+  z.object({
+    kind: z.literal("concurrency_saturation"),
+    severity: z.enum(["warn", "crit"]),
+    /** What's saturated: a single queue, or the whole environment. */
+    scope: z.enum(["queue", "env"]).optional(),
+    queueName: z.string().optional(),
+    limit: z.number().optional(),
+    current: z.number().optional(),
+  }),
 ]);
 
 export type AgentPageSignal = z.infer<typeof agentPageSignalSchema>;

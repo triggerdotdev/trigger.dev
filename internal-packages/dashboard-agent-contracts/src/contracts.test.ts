@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { evidenceSchema } from "./evidence.js";
 import { agentIntentSchema, isExecutableIntent } from "./intent.js";
-import { agentPageSchema, dashboardAgentClientDataSchema } from "./page-context.js";
+import {
+  agentPageSchema,
+  agentPageSignalSchema,
+  dashboardAgentClientDataSchema,
+} from "./page-context.js";
 import { SUGGESTED_PROMPT_CAP, suggestedPromptSchema } from "./suggested-prompts.js";
 import { formatTriggerUri } from "./trigger-uri.js";
 
@@ -101,6 +105,23 @@ describe("client data", () => {
       },
     });
     expect(parsed.pageContext?.signals).toHaveLength(2);
+  });
+
+  it("round-trips concurrency_saturation without its identity fields", () => {
+    const signal = { kind: "concurrency_saturation" as const, severity: "warn" as const };
+    expect(agentPageSignalSchema.parse(signal)).toEqual(signal);
+  });
+
+  it("round-trips concurrency_saturation with its identity fields", () => {
+    const signal = {
+      kind: "concurrency_saturation" as const,
+      severity: "crit" as const,
+      scope: "queue" as const,
+      queueName: "black-friday",
+      limit: 10,
+      current: 12,
+    };
+    expect(agentPageSignalSchema.parse(signal)).toEqual(signal);
   });
 
   it("parses the list page kinds, which carry no identity of their own", () => {

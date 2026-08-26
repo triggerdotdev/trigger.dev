@@ -234,13 +234,31 @@ describe("queueAgentPageContext", () => {
     const context = queueAgentPageContext(queueLoaderData({ running: 10, queued: 3 }));
 
     expect(context?.page).toMatchObject({ health: "crit" });
-    expect(context?.signals).toEqual([{ kind: "concurrency_saturation", severity: "warn" }]);
+    expect(context?.signals).toEqual([
+      {
+        kind: "concurrency_saturation",
+        severity: "warn",
+        scope: "queue",
+        queueName: "black-friday",
+        limit: 10,
+        current: 10,
+      },
+    ]);
   });
 
   it("escalates to crit severity when the backlog is deeper than the limit", () => {
     const context = queueAgentPageContext(queueLoaderData({ running: 10, queued: 40 }));
 
-    expect(context?.signals).toEqual([{ kind: "concurrency_saturation", severity: "crit" }]);
+    expect(context?.signals).toEqual([
+      {
+        kind: "concurrency_saturation",
+        severity: "crit",
+        scope: "queue",
+        queueName: "black-friday",
+        limit: 10,
+        current: 10,
+      },
+    ]);
   });
 
   it("treats a paused queue as a warning with no saturation signal", () => {
@@ -290,7 +308,16 @@ describe("queueAgentPageContext", () => {
     });
 
     expect(context?.page).toMatchObject({ health: "crit" });
-    expect(context?.signals).toEqual([{ kind: "concurrency_saturation", severity: "warn" }]);
+    expect(context?.signals).toEqual([
+      {
+        kind: "concurrency_saturation",
+        severity: "warn",
+        scope: "queue",
+        queueName: "black-friday",
+        limit: 10,
+        current: 10,
+      },
+    ]);
   });
 });
 
@@ -388,13 +415,13 @@ describe("queuesAgentPageContext", () => {
 
   it("emits concurrency_saturation at the limit with work waiting", () => {
     expect(queuesAgentPageContext(queuesLoaderData({ running: 10, queued: 3 }))?.signals).toEqual([
-      { kind: "concurrency_saturation", severity: "warn" },
+      { kind: "concurrency_saturation", severity: "warn", scope: "env", limit: 10, current: 10 },
     ]);
   });
 
   it("escalates to crit when the environment backlog is deeper than the limit", () => {
     expect(queuesAgentPageContext(queuesLoaderData({ running: 10, queued: 20 }))?.signals).toEqual([
-      { kind: "concurrency_saturation", severity: "crit" },
+      { kind: "concurrency_saturation", severity: "crit", scope: "env", limit: 10, current: 10 },
     ]);
   });
 
@@ -404,7 +431,7 @@ describe("queuesAgentPageContext", () => {
 
     const atBurst = queuesLoaderData({ burstFactor: 2, running: 20, queued: 5 });
     expect(queuesAgentPageContext(atBurst)?.signals).toEqual([
-      { kind: "concurrency_saturation", severity: "warn" },
+      { kind: "concurrency_saturation", severity: "warn", scope: "env", limit: 20, current: 20 },
     ]);
   });
 

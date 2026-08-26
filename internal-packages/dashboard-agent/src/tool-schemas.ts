@@ -268,7 +268,7 @@ export const searchDocsSchema = tool({
 
 export const getCurrentPageSchema = tool({
   description:
-    "Get the page the user is looking at right now — its kind plus whatever identity that page has (a run, an error, a queue, a deployment, a task, a schedule, a batch, a session, the runs list with its filters, or one of the environment's other sections) — plus anything notable the dashboard already spotted on it, like a fresh failure, a saturated concurrency limit, a disabled schedule or a paused queue. The result is always the CURRENT page and changes between turns as the user navigates, so call it again on every turn that asks about 'this page' or 'this run' rather than reusing an earlier answer.",
+    "Get the page the user is looking at right now — its kind plus whatever identity that page has (a run, an error, a queue, a deployment, a task, a schedule, a batch, a session, the runs list with its filters, or one of the environment's other sections) — plus anything notable the dashboard already spotted on it, like a fresh failure, a saturated concurrency limit (with which queue or the env, and its current/limit numbers), a disabled schedule or a paused queue. The result is always the CURRENT page and changes between turns as the user navigates, so call it again on every turn that asks about 'this page' or 'this run' rather than reusing an earlier answer.",
   inputSchema: z.object({}),
 });
 

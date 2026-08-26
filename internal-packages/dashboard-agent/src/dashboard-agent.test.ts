@@ -2170,6 +2170,14 @@ describe("buildDashboardAgentTools", () => {
       page: { kind: "run" as const, runId: "run_1", status: "FAILED", taskId: "send-receipt" },
       signals: [
         { kind: "fresh_failure" as const, runId: "run_1", failedAt: "2026-01-01T00:00:00Z" },
+        {
+          kind: "concurrency_saturation" as const,
+          severity: "crit" as const,
+          scope: "queue" as const,
+          queueName: "black-friday",
+          limit: 10,
+          current: 12,
+        },
       ],
     };
     await expect(

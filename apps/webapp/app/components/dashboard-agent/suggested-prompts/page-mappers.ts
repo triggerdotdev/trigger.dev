@@ -152,7 +152,13 @@ export function queuesAgentPageContext(data: unknown): AgentPageContext | undefi
   const signals: AgentPageSignal[] = [];
 
   if (isQueueAtCapacity({ running, queued, limit })) {
-    signals.push({ kind: "concurrency_saturation", severity: queued >= limit ? "crit" : "warn" });
+    signals.push({
+      kind: "concurrency_saturation",
+      severity: queued >= limit ? "crit" : "warn",
+      scope: "env",
+      limit,
+      current: running,
+    });
   }
 
   return { page: { kind: "queues" }, signals };
@@ -214,14 +220,23 @@ export function queueAgentPageContext(data: unknown): AgentPageContext | undefin
 
   const signals: AgentPageSignal[] = [];
   // Nothing to watch on a paused queue: it can neither drain nor grow until it is resumed.
+  // The stored name, not the display one: a watch the agent proposes has to validate against it.
+  const storedName = storedQueueName({ type, name });
+
   if (atCapacity && !paused) {
     // A backlog at least as deep as the limit won't clear this cycle.
-    signals.push({ kind: "concurrency_saturation", severity: queued >= limit! ? "crit" : "warn" });
+    signals.push({
+      kind: "concurrency_saturation",
+      severity: queued >= limit! ? "crit" : "warn",
+      scope: "queue",
+      queueName: storedName,
+      limit: limit!,
+      current: running,
+    });
   }
 
-  // The stored name, not the display one: a watch the agent proposes has to validate against it.
   return {
-    page: { kind: "queue", name: storedQueueName({ type, name }), health, paused: Boolean(paused) },
+    page: { kind: "queue", name: storedName, health, paused: Boolean(paused) },
     signals,
   };
 }
