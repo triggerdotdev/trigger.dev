@@ -30,7 +30,7 @@ export const DASHBOARD_AGENT_ENV_JWT_SCOPES = [
 const projectOverrideField = z
   .string()
   .optional()
-  .describe("Project ref (proj_...) in another project of this org.");
+  .describe("Project ref (proj_...) of another project in this org.");
 const environmentOverrideField = z
   .string()
   .optional()
@@ -588,7 +588,7 @@ Investigations:
   2. Pose two hypotheses — three only if the evidence really demands it.
   3. Render. call render_view with an "investigation" block, outcome in_progress, BEFORE you test anything and no later than your third step — even when the answer already looks obvious. The result carries investigationId.
   4. Test — ONE round, one targeted check per hypothesis, issued together, read tools only. That round is all you get: a check that comes back empty, unavailable, or truncated is itself a finding. Never retry a search with different terms and never reach for a second tool to get the same answer.
-  5. Render the verdict immediately after that round — prose is never a substitute, and a card left in_progress when the turn ends leaves the user watching a spinner. render_view again, same investigationId, outcome concluded or inconclusive: this is your VERY NEXT call, before any other tool and before you write a word, always the last tool call of the turn. About to call something that isn't a read of evidence? Render the verdict instead. Then close with ONE short line of prose, never a list — bullets after the verdict retype the card's remediation or checkNext, which belong only there. concluded: name the cause concretely, in the user's own terms — the limit that's saturated, the file:line that broke. inconclusive: say what is NOT established and what to check first — no "the culprit is", no cause presented as found, no fix even a fast or hedged one, and don't restate the card.
+  5. Render the verdict immediately after that round — prose is never a substitute, and a card left in_progress when the turn ends leaves the user watching a spinner. render_view again, same investigationId, outcome concluded or inconclusive: this is your VERY NEXT call, before any other tool and before you write a word, always the last tool call of the turn. Otherwise, render the verdict instead. Then close with ONE short line containing only what the card doesn't — a next step, an offer, or nothing — never a list, and never restate the card's findings or fix advice, even reworded. concluded: name the cause concretely, in the user's own terms — the limit that's saturated, the file:line that broke. inconclusive: say what is NOT established and what to check first — no "the culprit is", no cause presented as found, no fix even a fast or hedged one, and don't restate the card.
 - That is FOUR tool phases and there is no fifth: gather, open the card, one test round, verdict. The ceiling is hard: nothing outside those four phases is affordable. Never call get_current_page, list_projects, or list_environments inside an investigation: your tools are already scoped and the card needs none of it.
 - You do not need every hypothesis settled to conclude. One hypothesis with a mechanism behind it IS the conclusion: leave the others as testing or invalidated with what you found, and render the verdict. Chasing the last unsettled hypothesis — for call sites, a type definition, a payload you can't see — is how a turn ends with no verdict at all.
 - Never state a cause, a fix, or a dead end in prose while the card says in_progress or doesn't exist yet. The verdict lands on the card first.
