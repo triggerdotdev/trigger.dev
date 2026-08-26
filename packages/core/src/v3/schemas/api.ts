@@ -654,6 +654,7 @@ export const BuildServerMetadata = z.object({
   skipPromotion: z.boolean().optional(),
   configFilePath: z.string().optional(),
   skipEnqueue: z.boolean().optional(),
+  fromBundle: z.boolean().optional(),
 });
 
 export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
@@ -720,7 +721,7 @@ export const UpsertBranchResponseBody = z.object({
 export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
 
 export const CreateArtifactRequestBody = z.object({
-  type: z.enum(["deployment_context"]).default("deployment_context"),
+  type: z.enum(["deployment_context", "deployment_bundle"]).default("deployment_context"),
   contentType: z.string().default("application/gzip"),
   contentLength: z.number().optional(),
 });
@@ -784,6 +785,8 @@ type NativeBuildOutput = BaseOutput & {
   artifactKey?: string;
   configFilePath?: string;
   skipEnqueue?: boolean;
+  fromBundle?: boolean;
+  buildEnvVars?: Record<string, string>;
 };
 
 type NonNativeBuildOutput = BaseOutput & {
@@ -792,6 +795,8 @@ type NonNativeBuildOutput = BaseOutput & {
   artifactKey?: never;
   configFilePath?: never;
   skipEnqueue?: never;
+  fromBundle?: never;
+  buildEnvVars?: never;
 };
 
 const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.extend({
@@ -800,6 +805,10 @@ const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.
   artifactKey: z.string().optional(),
   configFilePath: z.string().optional(),
   skipEnqueue: z.boolean().optional().default(false),
+  // The artifact is a pre-built bundle; the build server only runs the container build
+  fromBundle: z.boolean().optional(),
+  // Build-time env var values for fromBundle deploys, stored encrypted on the deployment
+  buildEnvVars: z.record(z.string()).optional(),
 }).superRefine((data, ctx) => {
   if (data.force && !data.externalId) {
     ctx.addIssue({
@@ -815,7 +824,15 @@ export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFu
     if (data.isNativeBuild) {
       return { ...data, isNativeBuild: true as const };
     }
-    const { skipPromotion, artifactKey, configFilePath, skipEnqueue, ...rest } = data;
+    const {
+      skipPromotion,
+      artifactKey,
+      configFilePath,
+      skipEnqueue,
+      fromBundle,
+      buildEnvVars,
+      ...rest
+    } = data;
     return { ...rest, isNativeBuild: false as const };
   }
 );
@@ -920,6 +937,15 @@ export const GetDeploymentResponseBody = z.object({
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
+
+// Secret material, deliberately kept off GetDeploymentResponseBody
+export const GetDeploymentBuildEnvVarsResponseBody = z.object({
+  variables: z.record(z.string()),
+});
+
+export type GetDeploymentBuildEnvVarsResponseBody = z.infer<
+  typeof GetDeploymentBuildEnvVarsResponseBody
+>;
 
 export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
   worker: true,

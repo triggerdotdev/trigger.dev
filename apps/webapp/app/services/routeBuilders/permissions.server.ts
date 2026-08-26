@@ -1,4 +1,5 @@
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
+import { env } from "~/env.server";
 
 /**
  * A single permission check, mirroring the `authorization` option the
@@ -32,7 +33,9 @@ export function checkPermissions<K extends string>(
     if (!Object.hasOwn(checks, key)) continue;
     const check = checks[key];
     result[key] =
-      "requireSuper" in check ? ability.canSuper() : ability.can(check.action, check.resource);
+      "requireSuper" in check
+        ? env.ADMIN_DASHBOARD_ENABLED && ability.canSuper()
+        : ability.can(check.action, check.resource);
   }
   return result;
 }

@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { requireUser } from "~/services/session.server";
 import { ClickhouseConnectionSchema } from "~/services/clickhouse/clickhouseSecretSchemas.server";
 import { organizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistryInstance.server";
@@ -36,7 +37,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
-  if (!user.admin) throw redirect("/");
+  if (!user.admin || !env.ADMIN_DASHBOARD_ENABLED) throw redirect("/");
 
   const dataStores = await prisma.organizationDataStore.findMany({
     orderBy: { createdAt: "desc" },
@@ -72,7 +73,7 @@ const FormSchema = z.discriminatedUnion("_action", [AddSchema, UpdateSchema, Del
 
 export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
-  if (!user.admin) throw redirect("/");
+  if (!user.admin || !env.ADMIN_DASHBOARD_ENABLED) throw redirect("/");
 
   const formData = await request.formData();
 

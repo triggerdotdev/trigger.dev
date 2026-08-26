@@ -1095,6 +1095,7 @@ export async function enqueueBuild(
   options: {
     skipPromotion?: boolean;
     configFilePath?: string;
+    fromBundle?: boolean;
   }
 ) {
   if (!client) return undefined;
@@ -1232,6 +1233,10 @@ export function isCloud(): boolean {
   ];
 
   if (acceptableHosts.includes(env.LOGIN_ORIGIN)) {
+    return true;
+  }
+
+  if (env.LOGIN_ORIGIN?.endsWith(".triggerlabs.dev")) {
     return true;
   }
 

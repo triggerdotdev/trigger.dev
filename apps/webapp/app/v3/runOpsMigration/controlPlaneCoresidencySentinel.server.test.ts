@@ -34,6 +34,7 @@ describe("assertControlPlaneCoresidencyAdvisory", () => {
     const emit = vi.fn();
     await assertControlPlaneCoresidencyAdvisory({
       ...urls,
+      shards: [],
       expectSplit: false,
       probe: async () => ({ coresident: "true" }),
       emit,
@@ -46,6 +47,7 @@ describe("assertControlPlaneCoresidencyAdvisory", () => {
     await expect(
       assertControlPlaneCoresidencyAdvisory({
         ...urls,
+        shards: [],
         expectSplit: true,
         probe: async () => ({ coresident: "true" }),
         emit: vi.fn(),
@@ -58,6 +60,7 @@ describe("assertControlPlaneCoresidencyAdvisory", () => {
     const emit = vi.fn();
     await assertControlPlaneCoresidencyAdvisory({
       ...urls,
+      shards: [],
       expectSplit: true,
       probe: async () => ({ coresident: "unknown", reason: "denied" }),
       emit,
@@ -71,6 +74,7 @@ describe("assertControlPlaneCoresidencyAdvisory", () => {
     const warn = vi.fn();
     await assertControlPlaneCoresidencyAdvisory({
       ...urls,
+      shards: [],
       expectSplit: true,
       probe: async () => {
         throw new Error("probe blew up");
@@ -86,14 +90,134 @@ describe("assertControlPlaneCoresidencyAdvisory", () => {
     const emit = vi.fn();
     const probe = vi.fn();
     await assertControlPlaneCoresidencyAdvisory({
-      legacyUrl: undefined,
+      // "" and not undefined: ?? only guards nullish, so undefined would read the ambient
+      // RUN_OPS_LEGACY_DATABASE_URL and this test would depend on the developer's .env.
+      legacyUrl: "",
       controlPlaneUrl: "postgres://cp",
       expectSplit: true,
+      shards: [],
       probe,
       emit,
       log: noopLog,
     });
     expect(probe).not.toHaveBeenCalled();
     expect(emit).not.toHaveBeenCalled();
+  });
+});
+
+describe("assertControlPlaneCoresidencyAdvisory at N shards", () => {
+  const urls = { legacyUrl: "postgres://legacy", controlPlaneUrl: "postgres://cp" };
+  const shardA = { key: "a", url: "postgres://shard-a" };
+  const shardB = { key: "b", url: "postgres://shard-b" };
+
+  it("emits the legacy verdict with NO shard key, so today's series is unchanged", async () => {
+    const emit = vi.fn();
+    await assertControlPlaneCoresidencyAdvisory({
+      ...urls,
+      expectSplit: false,
+      shards: [],
+      probe: async () => ({ coresident: "false" }),
+      emit,
+      log: noopLog,
+    });
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith("false");
+  });
+
+  it("emits one tagged verdict per shard, plus the untagged legacy verdict", async () => {
+    const emit = vi.fn();
+    await assertControlPlaneCoresidencyAdvisory({
+      ...urls,
+      expectSplit: false,
+      shards: [shardA, shardB],
+      probe: async () => ({ coresident: "false" }),
+      emit,
+      log: noopLog,
+    });
+    expect(emit).toHaveBeenCalledTimes(3);
+    expect(emit).toHaveBeenCalledWith("false");
+    expect(emit).toHaveBeenCalledWith("false", "a");
+    expect(emit).toHaveBeenCalledWith("false", "b");
+  });
+
+  it("probes each shard against the control plane", async () => {
+    const probe = vi.fn().mockResolvedValue({ coresident: "false" });
+    await assertControlPlaneCoresidencyAdvisory({
+      ...urls,
+      expectSplit: false,
+      shards: [shardA],
+      probe,
+      emit: vi.fn(),
+      log: noopLog,
+    });
+    expect(probe).toHaveBeenCalledWith("postgres://legacy", "postgres://cp", expect.anything());
+    expect(probe).toHaveBeenCalledWith("postgres://shard-a", "postgres://cp", expect.anything());
+  });
+
+  it("names the offending shard when enforcement is opted in and a shard is co-resident", async () => {
+    await expect(
+      assertControlPlaneCoresidencyAdvisory({
+        ...urls,
+        expectSplit: true,
+        shards: [shardA],
+        probe: async (url: string) =>
+          url === "postgres://shard-a"
+            ? ({ coresident: "true", reason: "same db" } as const)
+            : ({ coresident: "false" } as const),
+        emit: vi.fn(),
+        log: noopLog,
+      })
+    ).rejects.toThrow(/shard a/i);
+  });
+
+  it("emits every store before it throws, so no store loses its metric", async () => {
+    const emit = vi.fn();
+    await expect(
+      assertControlPlaneCoresidencyAdvisory({
+        ...urls,
+        expectSplit: true,
+        shards: [shardA, shardB],
+        probe: async (url: string) =>
+          url === "postgres://shard-a"
+            ? ({ coresident: "true", reason: "same db" } as const)
+            : ({ coresident: "false" } as const),
+        emit,
+        log: noopLog,
+      })
+    ).rejects.toThrow();
+    expect(emit).toHaveBeenCalledTimes(3);
+    expect(emit).toHaveBeenCalledWith("false", "b");
+  });
+
+  it("degrades one shard's throwing probe to unknown and still reports the others", async () => {
+    const emit = vi.fn();
+    await assertControlPlaneCoresidencyAdvisory({
+      ...urls,
+      expectSplit: true,
+      shards: [shardA, shardB],
+      probe: async (url: string) => {
+        if (url === "postgres://shard-a") throw new Error("probe blew up");
+        return { coresident: "false" } as const;
+      },
+      emit,
+      log: { info: () => {}, warn: () => {} },
+    });
+    expect(emit).toHaveBeenCalledWith("unknown", "a");
+    expect(emit).toHaveBeenCalledWith("false", "b");
+  });
+
+  it("still probes the shards when there is no legacy DSN", async () => {
+    const emit = vi.fn();
+    await assertControlPlaneCoresidencyAdvisory({
+      legacyUrl: "",
+      controlPlaneUrl: "postgres://cp",
+      expectSplit: false,
+      shards: [shardA],
+      probe: async () => ({ coresident: "false" }),
+      emit,
+      log: noopLog,
+    });
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith("false", "a");
   });
 });

@@ -2265,12 +2265,17 @@ model WorkerDeployment {
 
   runtime        String?
   runtimeVersion String?
+  /// CLI version that initiated the deploy, stamped at initialization
+  cliVersion     String?
 
   imageReference String?
   imagePlatform  String  @default("linux/amd64")
 
   externalBuildData   Json?
   buildServerMetadata Json?
+  /// Encrypted build-time env vars for pre-bundled (fromBundle) deploys, as an
+  /// EncryptedSecretValue envelope. Cleared when the deployment reaches a terminal status.
+  buildEnvVars        Json?
 
   status WorkerDeploymentStatus @default(PENDING)
   type   WorkerDeploymentType   @default(V1)

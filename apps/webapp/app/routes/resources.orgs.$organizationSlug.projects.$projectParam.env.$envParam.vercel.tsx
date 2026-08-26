@@ -1,8 +1,8 @@
 import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { Result, fromPromise } from "neverthrow";
 import { useEffect, useRef, useState } from "react";
@@ -62,7 +62,6 @@ import {
   type SyncEnvVarsMapping,
   type VercelProjectIntegrationData,
   envSlugArrayField,
-  getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
@@ -596,7 +595,6 @@ function VercelLoadingIcon() {
 function VercelSettingsRows({
   organizationSlug,
   projectSlug,
-  environmentSlug: _environmentSlug,
   hasOrgIntegration,
   isGitHubConnected,
   onOpenModal,
@@ -605,7 +603,6 @@ function VercelSettingsRows({
 }: {
   organizationSlug: string;
   projectSlug: string;
-  environmentSlug: string;
   hasOrgIntegration: boolean;
   isGitHubConnected: boolean;
   onOpenModal?: () => void;
@@ -698,19 +695,6 @@ function VercelGitHubWarning() {
   );
 }
 
-function envSlugLabel(slug: EnvSlug): string {
-  switch (slug) {
-    case "prod":
-      return "Production";
-    case "stg":
-      return "Staging";
-    case "preview":
-      return "Preview";
-    case "dev":
-      return "Development";
-  }
-}
-
 function ConnectedVercelProjectForm({
   connectedProject,
   hasStagingEnvironment,
@@ -774,7 +758,7 @@ function ConnectedVercelProjectForm({
     stagingEnvChanged ||
     autoPromoteChanged;
 
-  const [configForm, _fields] = useForm({
+  const [configForm] = useForm({
     id: "update-vercel-config",
     lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
@@ -833,25 +817,21 @@ function ConnectedVercelProjectForm({
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
-  const availableEnvSlugs = getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment);
   const availableEnvSlugsForBuildSettings = getAvailableEnvSlugsForBuildSettings(
     hasStagingEnvironment,
     hasPreviewEnvironment
   );
 
+  const hasVercelCustomEnvironments = customEnvironments.length > 0;
+
   const disabledEnvSlugsForBuildSettings: Partial<Record<EnvSlug, string>> | undefined =
     hasStagingEnvironment && !configValues.vercelStagingEnvironment
-      ? { stg: "Set a Vercel environment for Staging first." }
+      ? {
+          stg: hasVercelCustomEnvironments
+            ? "Set a Vercel environment for Staging first."
+            : "Add a custom environment to this project in Vercel to use Staging.",
+        }
       : undefined;
-
-  const _formatSelectedEnvs = (
-    selected: EnvSlug[],
-    availableSlugs: EnvSlug[] = availableEnvSlugs
-  ): string => {
-    if (selected.length === 0) return "None selected";
-    if (selected.length === availableSlugs.length) return "All environments";
-    return selected.map(envSlugLabel).join(", ");
-  };
 
   return (
     <>
@@ -961,60 +941,68 @@ function ConnectedVercelProjectForm({
           ref={clearTriggerVersionInputRef}
         />
 
-        {/* Staging environment mapping */}
-        {hasStagingEnvironment && customEnvironments && customEnvironments.length > 0 && (
+        {hasStagingEnvironment && (
           <SettingsRow
             title="Vercel environment for Staging"
             description="Required to enable the Staging options below."
             action={
-              <div data-unlock-target="staging-env">
-                <Select
-                  value={configValues.vercelStagingEnvironment?.environmentId || ""}
-                  setValue={(value) => {
-                    if (!Array.isArray(value)) {
-                      const env = customEnvironments?.find((e) => e.id === value);
-                      setConfigValues((prev) => {
-                        const next = {
-                          ...prev,
-                          vercelStagingEnvironment: env
-                            ? { environmentId: env.id, displayName: env.slug }
-                            : null,
-                        };
-                        // When clearing the staging mapping, strip "stg" from build settings
-                        if (!env) {
-                          next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
-                            (s) => s !== "stg"
-                          );
-                          next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
-                        }
-                        return next;
-                      });
+              !hasVercelCustomEnvironments ? (
+                <Paragraph variant="extra-small" className="w-64">
+                  This Vercel project has no custom environments. Add one in Vercel under Settings{" "}
+                  &rarr; Environments, then reload this page.
+                </Paragraph>
+              ) : (
+                <div data-unlock-target="staging-env">
+                  <Select
+                    value={configValues.vercelStagingEnvironment?.environmentId || ""}
+                    setValue={(value) => {
+                      if (!Array.isArray(value)) {
+                        const env = customEnvironments?.find((e) => e.id === value);
+                        setConfigValues((prev) => {
+                          const next = {
+                            ...prev,
+                            vercelStagingEnvironment: env
+                              ? { environmentId: env.id, displayName: env.slug }
+                              : null,
+                          };
+                          // When clearing the staging mapping, strip "stg" from build settings
+                          if (!env) {
+                            next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
+                              (s) => s !== "stg"
+                            );
+                            next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
+                          }
+                          return next;
+                        });
+                      }
+                    }}
+                    items={[{ id: "", slug: "None" }, ...customEnvironments]}
+                    variant="secondary/small"
+                    placeholder="Select environment"
+                    dropdownIcon
+                    text={
+                      configValues.vercelStagingEnvironment ? (
+                        <StagingEnvOption
+                          name={configValues.vercelStagingEnvironment.displayName}
+                        />
+                      ) : (
+                        "None"
+                      )
                     }
-                  }}
-                  items={[{ id: "", slug: "None" }, ...customEnvironments]}
-                  variant="secondary/small"
-                  placeholder="Select environment"
-                  dropdownIcon
-                  text={
-                    configValues.vercelStagingEnvironment ? (
-                      <StagingEnvOption name={configValues.vercelStagingEnvironment.displayName} />
-                    ) : (
-                      "None"
-                    )
-                  }
-                >
-                  {[
-                    <SelectItem key="" value="">
-                      <span className="text-text-bright">None</span>
-                    </SelectItem>,
-                    ...customEnvironments.map((env) => (
-                      <SelectItem key={env.id} value={env.id}>
-                        <StagingEnvOption name={env.slug} />
-                      </SelectItem>
-                    )),
-                  ]}
-                </Select>
-              </div>
+                  >
+                    {[
+                      <SelectItem key="" value="">
+                        <span className="text-text-bright">None</span>
+                      </SelectItem>,
+                      ...customEnvironments.map((env) => (
+                        <SelectItem key={env.id} value={env.id}>
+                          <StagingEnvOption name={env.slug} />
+                        </SelectItem>
+                      )),
+                    ]}
+                  </Select>
+                </div>
+              )
             }
           />
         )}
@@ -1041,7 +1029,6 @@ function ConnectedVercelProjectForm({
           }
           currentTriggerVersion={currentTriggerVersion}
           currentTriggerVersionFetchFailed={currentTriggerVersionFetchFailed}
-          hideSectionToggles
           layout="settings"
         />
 
@@ -1205,44 +1192,16 @@ function VercelSettingsPanel({
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const { load } = fetcher;
-  const _location = useLocation();
   const data = fetcher.data;
-  const [hasError, _setHasError] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
-    if (!data?.authInvalid && !hasError && !data && !hasFetched) {
+    if (!data && !hasFetched) {
       load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHasFetched(true);
     }
-  }, [
-    organizationSlug,
-    projectSlug,
-    environmentSlug,
-    data?.authInvalid,
-    hasError,
-    data,
-    hasFetched,
-    load,
-  ]);
-
-  if (hasError) {
-    return (
-      <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-4">
-        <div className="flex items-start gap-3">
-          <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-rose-500" />
-          <div>
-            <p className="font-medium text-rose-400">Failed to load Vercel settings</p>
-            <p className="mt-1 text-sm text-rose-300">
-              There was an error loading the Vercel integration settings. Please refresh the page to
-              try again.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  }, [organizationSlug, projectSlug, environmentSlug, data, hasFetched, load]);
 
   if (fetcher.state === "loading" && !data) {
     return (
@@ -1258,40 +1217,30 @@ function VercelSettingsPanel({
   }
 
   const showGitHubWarning = data.connectedProject && !data.isGitHubConnected;
-  const showAuthInvalid = data.authInvalid || data.onboardingData?.authInvalid;
 
   if (data.connectedProject) {
     return (
       <>
-        {showAuthInvalid && (
-          <VercelAuthInvalidBanner
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            canManageVercel={data.canManageVercel}
-          />
-        )}
         {showGitHubWarning && <VercelGitHubWarning />}
-        {!showAuthInvalid && <VercelAppInstalledRow />}
-        {!showAuthInvalid && (
-          <ConnectedVercelProjectForm
-            connectedProject={data.connectedProject}
-            hasStagingEnvironment={data.hasStagingEnvironment}
-            hasPreviewEnvironment={data.hasPreviewEnvironment}
-            customEnvironments={data.customEnvironments}
-            autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
-            currentTriggerVersion={data.currentTriggerVersion ?? null}
-            currentTriggerVersionFetchFailed={data.currentTriggerVersionFetchFailed ?? false}
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            environmentSlug={environmentSlug}
-            canManageVercel={data.canManageVercel}
-          />
-        )}
+        <VercelAppInstalledRow />
+        <ConnectedVercelProjectForm
+          connectedProject={data.connectedProject}
+          hasStagingEnvironment={data.hasStagingEnvironment}
+          hasPreviewEnvironment={data.hasPreviewEnvironment}
+          customEnvironments={data.customEnvironments}
+          autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
+          currentTriggerVersion={data.currentTriggerVersion ?? null}
+          currentTriggerVersionFetchFailed={data.currentTriggerVersionFetchFailed ?? false}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          canManageVercel={data.canManageVercel}
+        />
       </>
     );
   }
 
-  if (showAuthInvalid) {
+  if (data.authInvalid) {
     return (
       <VercelAuthInvalidBanner
         organizationSlug={organizationSlug}
@@ -1305,7 +1254,6 @@ function VercelSettingsPanel({
     <VercelSettingsRows
       organizationSlug={organizationSlug}
       projectSlug={projectSlug}
-      environmentSlug={environmentSlug}
       hasOrgIntegration={data.hasOrgIntegration}
       isGitHubConnected={data.isGitHubConnected}
       onOpenModal={onOpenVercelModal}
