@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { ComponentNames } from "../storybook/StoryKit";
 import {
-  DraggableResizeHandleClassName,
+  draggableResizeHandleClassName,
   useDraggableResizable,
   type ResizeEdge,
 } from "~/components/primitives/DraggableResizable";
@@ -37,7 +37,7 @@ export default function Story() {
           <motion.div
             key={edge}
             {...resizeHandleProps(edge)}
-            className={DraggableResizeHandleClassName(edge)}
+            className={draggableResizeHandleClassName(edge)}
           />
         ))}
       </div>

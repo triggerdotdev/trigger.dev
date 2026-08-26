@@ -75,31 +75,54 @@ describe("clampRectToViewport", () => {
 describe("resizeRect", () => {
   const start = { x: 100, y: 100, w: 300, h: 200 };
   const minSize = { w: 100, h: 80 };
+  // Generous viewport so it never becomes the binding constraint for `start`-based cases.
+  const viewport = { width: 1000, height: 800 };
+  const padding = 10;
 
   it("east edge grows width, keeps x/y", () => {
-    expect(resizeRect("e", start, 50, 0, minSize)).toEqual({ x: 100, y: 100, w: 350, h: 200 });
+    expect(resizeRect("e", start, 50, 0, minSize, undefined, viewport, padding)).toEqual({
+      x: 100,
+      y: 100,
+      w: 350,
+      h: 200,
+    });
   });
 
   it("south edge grows height, keeps x/y", () => {
-    expect(resizeRect("s", start, 0, 40, minSize)).toEqual({ x: 100, y: 100, w: 300, h: 240 });
+    expect(resizeRect("s", start, 0, 40, minSize, undefined, viewport, padding)).toEqual({
+      x: 100,
+      y: 100,
+      w: 300,
+      h: 240,
+    });
   });
 
   it("west edge shrinks width and moves x to keep the right edge fixed", () => {
-    expect(resizeRect("w", start, 50, 0, minSize)).toEqual({ x: 150, y: 100, w: 250, h: 200 });
+    expect(resizeRect("w", start, 50, 0, minSize, undefined, viewport, padding)).toEqual({
+      x: 150,
+      y: 100,
+      w: 250,
+      h: 200,
+    });
   });
 
   it("north edge shrinks height and moves y to keep the bottom edge fixed", () => {
-    expect(resizeRect("n", start, 0, 30, minSize)).toEqual({ x: 100, y: 130, w: 300, h: 170 });
+    expect(resizeRect("n", start, 0, 30, minSize, undefined, viewport, padding)).toEqual({
+      x: 100,
+      y: 130,
+      w: 300,
+      h: 170,
+    });
   });
 
   it("corner edges combine both axes", () => {
-    expect(resizeRect("nw", start, 20, 20, minSize)).toEqual({
+    expect(resizeRect("nw", start, 20, 20, minSize, undefined, viewport, padding)).toEqual({
       x: 120,
       y: 120,
       w: 280,
       h: 180,
     });
-    expect(resizeRect("se", start, -20, -20, minSize)).toEqual({
+    expect(resizeRect("se", start, -20, -20, minSize, undefined, viewport, padding)).toEqual({
       x: 100,
       y: 100,
       w: 280,
@@ -108,18 +131,63 @@ describe("resizeRect", () => {
   });
 
   it("respects min size when shrinking past it", () => {
-    expect(resizeRect("e", start, -1000, 0, minSize)).toEqual({ x: 100, y: 100, w: 100, h: 200 });
+    expect(resizeRect("e", start, -1000, 0, minSize, undefined, viewport, padding)).toEqual({
+      x: 100,
+      y: 100,
+      w: 100,
+      h: 200,
+    });
     // west edge: width clamps to min, x stops moving with it
-    expect(resizeRect("w", start, 1000, 0, minSize)).toEqual({ x: 300, y: 100, w: 100, h: 200 });
+    expect(resizeRect("w", start, 1000, 0, minSize, undefined, viewport, padding)).toEqual({
+      x: 300,
+      y: 100,
+      w: 100,
+      h: 200,
+    });
   });
 
   it("respects max size when growing past it", () => {
     const maxSize = { w: 400, h: 300 };
-    expect(resizeRect("se", start, 1000, 1000, minSize, maxSize)).toEqual({
+    expect(resizeRect("se", start, 1000, 1000, minSize, maxSize, viewport, padding)).toEqual({
       x: 100,
       y: 100,
       w: 400,
       h: 300,
     });
+  });
+
+  it("caps west-edge growth at maxSize.w and keeps the right edge fixed", () => {
+    const maxSize = { w: 250, h: 300 };
+    const result = resizeRect("w", start, -1000, 0, minSize, maxSize, viewport, padding);
+    expect(result).toEqual({ x: 150, y: 100, w: 250, h: 200 });
+    expect(result.x + result.w).toBe(start.x + start.w);
+  });
+
+  it("caps north-edge growth at maxSize.h and keeps the bottom edge fixed", () => {
+    const maxSize = { w: 400, h: 150 };
+    const result = resizeRect("n", start, 0, -1000, minSize, maxSize, viewport, padding);
+    expect(result).toEqual({ x: 100, y: 150, w: 300, h: 150 });
+    expect(result.y + result.h).toBe(start.y + start.h);
+  });
+
+  it("caps west-edge growth at the viewport padding and keeps the right edge fixed", () => {
+    const nearLeftEdge = { x: 20, y: 100, w: 300, h: 200 };
+    const result = resizeRect("w", nearLeftEdge, -10000, 0, minSize, undefined, viewport, padding);
+    expect(result.x).toBe(padding);
+    expect(result.x + result.w).toBe(nearLeftEdge.x + nearLeftEdge.w);
+  });
+
+  it("caps north-edge growth at the viewport padding and keeps the bottom edge fixed", () => {
+    const nearTopEdge = { x: 100, y: 15, w: 300, h: 200 };
+    const result = resizeRect("n", nearTopEdge, 0, -10000, minSize, undefined, viewport, padding);
+    expect(result.y).toBe(padding);
+    expect(result.y + result.h).toBe(nearTopEdge.y + nearTopEdge.h);
+  });
+
+  it("caps east-edge growth at the viewport padding", () => {
+    const nearRightEdge = { x: 850, y: 100, w: 300, h: 200 };
+    const result = resizeRect("e", nearRightEdge, 10000, 0, minSize, undefined, viewport, padding);
+    expect(result.x).toBe(nearRightEdge.x);
+    expect(result.x + result.w).toBe(viewport.width - padding);
   });
 });

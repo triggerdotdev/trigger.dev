@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { type PanInfo } from "framer-motion";
 import { cn } from "~/utils/cn";
 import {
@@ -10,6 +10,7 @@ import {
   type Rect,
   type ResizeEdge,
   type Size,
+  type Viewport,
 } from "./draggableResizableMath";
 
 export type { ResizeEdge } from "./draggableResizableMath";
@@ -42,7 +43,12 @@ export type UseDraggableResizableResult = {
   size: Size;
 };
 
-function getViewport() {
+function getViewport(): Viewport {
+  // SSR: no window. Report an unbounded viewport so the initial clamp is a no-op;
+  // the mount-time effect below re-clamps against the real viewport once hydrated.
+  if (typeof window === "undefined") {
+    return { width: Infinity, height: Infinity };
+  }
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
@@ -64,49 +70,54 @@ export function useDraggableResizable({
   // cumulative from pan start, so every onPan step re-applies it to this.
   const startRectRef = useRef(rect);
 
-  // Re-clamp on viewport resize so the box never strands off-screen.
+  // Re-clamp on viewport resize (and once on mount, since SSR renders against
+  // an unbounded viewport) so the box never strands off-screen.
   useEffect(() => {
     const onResize = () => {
       setRect((current) => clampRectToViewport(current, getViewport(), viewportPadding));
     };
+    onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [viewportPadding]);
 
   const dragHandleProps: PanHandlerProps = {
-    onPanStart: useCallback(() => {
+    onPanStart: () => {
       startRectRef.current = rectRef.current;
-    }, []),
-    onPan: useCallback(
-      (_event, info: PanInfo) => {
-        const startRect = startRectRef.current;
-        const nextPosition = clampPosition(
-          { x: startRect.x + info.offset.x, y: startRect.y + info.offset.y },
-          { w: startRect.w, h: startRect.h },
-          getViewport(),
-          viewportPadding
-        );
-        setRect((current) => ({ ...current, ...nextPosition }));
-      },
-      [viewportPadding]
-    ),
-    onPanEnd: useCallback(() => {}, []),
+    },
+    onPan: (_event, info: PanInfo) => {
+      const startRect = startRectRef.current;
+      const nextPosition = clampPosition(
+        { x: startRect.x + info.offset.x, y: startRect.y + info.offset.y },
+        { w: startRect.w, h: startRect.h },
+        getViewport(),
+        viewportPadding
+      );
+      setRect((current) => ({ ...current, ...nextPosition }));
+    },
+    onPanEnd: () => {},
   };
 
-  const resizeHandleProps = useCallback(
-    (edge: ResizeEdge): PanHandlerProps => ({
-      onPanStart: () => {
-        startRectRef.current = rectRef.current;
-      },
-      onPan: (_event, info: PanInfo) => {
-        const startRect = startRectRef.current;
-        const resized = resizeRect(edge, startRect, info.offset.x, info.offset.y, minSize, maxSize);
-        setRect(clampRectToViewport(resized, getViewport(), viewportPadding));
-      },
-      onPanEnd: () => {},
-    }),
-    [minSize, maxSize, viewportPadding]
-  );
+  const resizeHandleProps = (edge: ResizeEdge): PanHandlerProps => ({
+    onPanStart: () => {
+      startRectRef.current = rectRef.current;
+    },
+    onPan: (_event, info: PanInfo) => {
+      const startRect = startRectRef.current;
+      const resized = resizeRect(
+        edge,
+        startRect,
+        info.offset.x,
+        info.offset.y,
+        minSize,
+        maxSize,
+        getViewport(),
+        viewportPadding
+      );
+      setRect(clampRectToViewport(resized, getViewport(), viewportPadding));
+    },
+    onPanEnd: () => {},
+  });
 
   return {
     style: {
@@ -146,7 +157,7 @@ const EDGE_POSITION: Record<ResizeEdge, string> = {
 };
 
 /** Thin hit area for one resize edge/corner, styled to match ResizableHandle. Spread `resizeHandleProps(edge)` onto it. */
-export function DraggableResizeHandleClassName(edge: ResizeEdge, className?: string) {
+export function draggableResizeHandleClassName(edge: ResizeEdge, className?: string) {
   return cn(
     "absolute z-10 touch-none select-none",
     EDGE_CURSOR[edge],

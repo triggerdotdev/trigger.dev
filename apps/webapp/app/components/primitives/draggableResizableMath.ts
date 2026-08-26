@@ -43,8 +43,10 @@ export function clampRectToViewport(rect: Rect, viewport: Viewport, padding: num
 }
 
 /**
- * Applies a pointer delta to `start` for the given resize edge, respecting min/max size.
- * North/west edges move the opposite corner too so the far edge stays put.
+ * Applies a pointer delta to `start` for the given resize edge, respecting min/max size
+ * and the viewport bounds. North/west edges move the opposite corner too so the far edge
+ * stays put — the per-edge cap is derived from the *fixed* far edge, so growth can never
+ * push it past the viewport padding.
  */
 export function resizeRect(
   edge: ResizeEdge,
@@ -52,22 +54,28 @@ export function resizeRect(
   dx: number,
   dy: number,
   minSize: Size,
-  maxSize?: Size
+  maxSize: Size | undefined,
+  viewport: Viewport,
+  padding: number
 ): Rect {
   let { x, y, w, h } = start;
 
   if (edge.includes("e")) {
-    w = clamp(start.w + dx, minSize.w, maxSize?.w ?? Infinity);
+    const maxW = Math.min(maxSize?.w ?? Infinity, viewport.width - padding - start.x);
+    w = clamp(start.w + dx, minSize.w, maxW);
   }
   if (edge.includes("s")) {
-    h = clamp(start.h + dy, minSize.h, maxSize?.h ?? Infinity);
+    const maxH = Math.min(maxSize?.h ?? Infinity, viewport.height - padding - start.y);
+    h = clamp(start.h + dy, minSize.h, maxH);
   }
   if (edge.includes("w")) {
-    w = clamp(start.w - dx, minSize.w, maxSize?.w ?? Infinity);
+    const maxW = Math.min(maxSize?.w ?? Infinity, start.x + start.w - padding);
+    w = clamp(start.w - dx, minSize.w, maxW);
     x = start.x + (start.w - w);
   }
   if (edge.includes("n")) {
-    h = clamp(start.h - dy, minSize.h, maxSize?.h ?? Infinity);
+    const maxH = Math.min(maxSize?.h ?? Infinity, start.y + start.h - padding);
+    h = clamp(start.h - dy, minSize.h, maxH);
     y = start.y + (start.h - h);
   }
 
