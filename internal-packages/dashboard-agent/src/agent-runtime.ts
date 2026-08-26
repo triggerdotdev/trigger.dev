@@ -329,6 +329,7 @@ export const clientDataSchema = z.object({
       repo: z.string(),
       sha: z.string(),
       defaultBranch: z.string().optional(),
+      dirty: z.boolean().optional(),
     })
     .optional(),
 });

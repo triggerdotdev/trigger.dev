@@ -31,8 +31,17 @@ const pinnedSnapshot: RepoSnapshot = {
   sha: "cafebabecafebabecafebabecafebabecafebabe",
   defaultBranch: "main",
 };
+// A third snapshot, deployed from a tree with uncommitted changes.
+const dirtySnapshot: RepoSnapshot = {
+  tarballUrl: "http://unused.invalid/never-fetched",
+  owner: "acme",
+  repo: "demo",
+  sha: "dededededededededededededededededededede",
+  defaultBranch: "main",
+  dirty: true,
+};
 const resolveRunSnapshot = async (runId: string) =>
-  runId === "run_pinned" ? pinnedSnapshot : null;
+  runId === "run_pinned" ? pinnedSnapshot : runId === "run_dirty" ? dirtySnapshot : null;
 
 const tools = buildRepoTools(snapshot, resolveRunSnapshot);
 // Tool.execute takes (input, options); options is unused by these tools.
@@ -74,12 +83,19 @@ beforeAll(async () => {
   await mkdir(join(pinnedDir, "src/trigger"), { recursive: true });
   await writeFile(join(pinnedDir, "src/trigger/order.ts"), "const LIMIT = 5000;\n");
   await writeFile(join(pinnedDir, ".ready"), pinnedSnapshot.sha);
+
+  // The dirty commit's workspace: source built from a tree with uncommitted changes.
+  const dirtyDir = workdirFor(dirtySnapshot);
+  await mkdir(join(dirtyDir, "src/trigger"), { recursive: true });
+  await writeFile(join(dirtyDir, "src/trigger/order.ts"), "const LIMIT = 9999;\n");
+  await writeFile(join(dirtyDir, ".ready"), dirtySnapshot.sha);
 });
 
 afterAll(async () => {
   await disposeRepoWorkspaces();
   await rm(workdirFor(snapshot), { recursive: true, force: true });
   await rm(workdirFor(pinnedSnapshot), { recursive: true, force: true });
+  await rm(workdirFor(dirtySnapshot), { recursive: true, force: true });
 });
 
 describe("repo-tools", () => {
@@ -90,7 +106,25 @@ describe("repo-tools", () => {
       repo: "demo",
       sha: "deadbeefdeadbeef",
       defaultBranch: "main",
+      dirty: false,
     });
+  });
+
+  it("get_repo_info stamps dirty:true when the pinned deployment was built from a modified tree", async () => {
+    const res: any = await call(tools.get_repo_info, { runId: "run_dirty" });
+    expect(res.sha).toBe(dirtySnapshot.sha);
+    expect(res.dirty).toBe(true);
+  });
+
+  it("read_file stamps dirty:true when the pinned deployment was built from a modified tree", async () => {
+    const clean: any = await call(tools.read_file, { path: "src/trigger/order.ts" });
+    expect(clean.dirty).toBe(false);
+    const dirty: any = await call(tools.read_file, {
+      path: "src/trigger/order.ts",
+      runId: "run_dirty",
+    });
+    expect(dirty.error).toBeUndefined();
+    expect(dirty.dirty).toBe(true);
   });
 
   it("read_file reads a file from the workspace", async () => {

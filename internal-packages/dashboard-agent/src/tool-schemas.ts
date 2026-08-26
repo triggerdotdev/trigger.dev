@@ -374,7 +374,7 @@ const runIdField = z
 
 export const getRepoInfoSchema = tool({
   description:
-    "Get the connected GitHub repository the agent can read: owner, repo name, the commit SHA the source is pinned to, and the default branch.",
+    "Get the connected GitHub repository the agent can read: owner, repo name, the commit SHA the source is pinned to, and the default branch. If `dirty` is true, the run's deployment was built from a modified tree, so the cited commit may not exactly match what ran — caveat it, don't assert it.",
   inputSchema: z.object({ runId: runIdField }),
 });
 
@@ -393,7 +393,7 @@ export const listFilesSchema = tool({
 
 export const readFileSchema = tool({
   description:
-    "Read a file from the connected repository by its path relative to the repo root. Optionally restrict to a line range. Use this to read the actual task source behind a run or error.",
+    "Read a file from the connected repository by its path relative to the repo root. Optionally restrict to a line range. Use this to read the actual task source behind a run or error. If `dirty` is true, the cited deployment was built from a modified tree — caveat that the source may not exactly match what ran.",
   inputSchema: z.object({
     path: z
       .string()

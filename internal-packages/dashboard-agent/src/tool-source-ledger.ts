@@ -12,6 +12,8 @@ export type SourceReadLookup = {
   wasReadThisTurn(path: string, sha: string): boolean;
   /** The commit a read was served from: the run-pinned snapshot, else the default. */
   shaForReadPath(path: string): string | undefined;
+  /** True if the deployment pinned to `sha` was built from an uncommitted-changes tree. */
+  dirtyForSha(sha: string): boolean;
 };
 
 export type SourceReadLedger = SourceReadLookup & {
@@ -51,6 +53,7 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
       repo: d.repo,
       sha: d.sha,
       defaultBranch: d.defaultBranch,
+      dirty: d.dirty,
     };
   };
 
@@ -68,12 +71,16 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
   // Which files this turn read, and at which commit. A source citation canonicalizes
   // only against a read recorded here.
   const filesReadBySha = new Map<string, Set<string>>();
+  // A commit's dirty stamp, keyed by sha — code-provided, never re-derived from the prompt.
+  const dirtyBySha = new Map<string, boolean>();
+  if (ctx.repoSnapshot) dirtyBySha.set(ctx.repoSnapshot.sha, ctx.repoSnapshot.dirty ?? false);
 
-  function recordFileRead(path: string, sha: string) {
+  function recordFileRead(path: string, sha: string, dirty: boolean) {
     const key = path.replace(/^\/+/, "");
     const shas = filesReadBySha.get(key) ?? new Set<string>();
     shas.add(sha);
     filesReadBySha.set(key, shas);
+    dirtyBySha.set(sha, dirty);
   }
 
   function wasReadThisTurn(path: string, sha: string): boolean {
@@ -89,6 +96,10 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     return [...shas][shas.size - 1];
   }
 
+  function dirtyForSha(sha: string): boolean {
+    return dirtyBySha.get(sha) ?? false;
+  }
+
   function withReadTracking(repoTools: ToolSet): ToolSet {
     const readFile = repoTools.read_file;
     if (!readFile?.execute) return repoTools;
@@ -101,10 +112,8 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
           const result = await execute(input, options);
           const path = (result as { path?: string } | undefined)?.path;
           if (path && !(result as { error?: unknown }).error) {
-            const sha = input?.runId
-              ? (await resolveRunSnapshot(input.runId))?.sha
-              : ctx.repoSnapshot?.sha;
-            if (sha) recordFileRead(path, sha);
+            const snap = input?.runId ? await resolveRunSnapshot(input.runId) : ctx.repoSnapshot;
+            if (snap?.sha) recordFileRead(path, snap.sha, snap.dirty ?? false);
           }
           return result;
         },
@@ -112,5 +121,11 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     };
   }
 
-  return { resolveRunSnapshot, wasReadThisTurn, shaForReadPath, withReadTracking };
+  return {
+    resolveRunSnapshot,
+    wasReadThisTurn,
+    shaForReadPath,
+    dirtyForSha,
+    withReadTracking,
+  };
 }

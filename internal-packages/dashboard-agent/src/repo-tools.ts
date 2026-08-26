@@ -36,6 +36,8 @@ export type RepoSnapshot = {
   /** The commit the archive is pinned to. */
   sha: string;
   defaultBranch?: string;
+  /** True when the deployment this snapshot pins to was built from an uncommitted-changes tree. */
+  dirty?: boolean;
 };
 
 const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100MB ceiling on the download
@@ -227,14 +229,20 @@ export function buildRepoTools(
     );
   }
 
-  // snapshotFor + ensureWorkspace, returning the workdir or an error result.
-  async function loadWorkdir(runId?: string): Promise<{ workdir: string } | { error: string }> {
+  // snapshotFor + ensureWorkspace, returning the workdir (plus the snapshot's dirty
+  // stamp, for tools that surface it) or an error result.
+  async function loadWorkdir(
+    runId?: string
+  ): Promise<{ workdir: string; dirty: boolean } | { error: string }> {
     const snap = await snapshotFor(runId);
     if ("error" in snap) return snap;
     try {
       // Canonicalize the root so the per-tool realpath checks below compare
       // against the real workspace path (tmpdir is itself a symlink on macOS).
-      return { workdir: await realpath(await ensureWorkspace(snap)) };
+      return {
+        workdir: await realpath(await ensureWorkspace(snap)),
+        dirty: snap.dirty ?? false,
+      };
     } catch (error) {
       return { error: `Couldn't load the repository: ${(error as Error).message}` };
     }
@@ -251,6 +259,7 @@ export function buildRepoTools(
           repo: snap.repo,
           sha: snap.sha,
           defaultBranch: snap.defaultBranch,
+          dirty: snap.dirty ?? false,
         };
       },
     }),
@@ -294,7 +303,7 @@ export function buildRepoTools(
       execute: async ({ path, startLine, endLine, runId }) => {
         const loaded = await loadWorkdir(runId);
         if ("error" in loaded) return loaded;
-        const { workdir } = loaded;
+        const { workdir, dirty } = loaded;
         const target = safeResolve(workdir, path);
         if (target === null) return { error: "Path escapes the repository root." };
         // Resolve symlinks: reject only when the file exists and points outside
@@ -324,6 +333,7 @@ export function buildRepoTools(
             content: range.content,
             startLine: from,
             endLine: served,
+            dirty,
             ...(range.truncated ? { truncated: true, notice: READ_TRUNCATION_NOTICE } : {}),
           };
         }
@@ -332,6 +342,7 @@ export function buildRepoTools(
           path,
           content,
           truncated,
+          dirty,
           ...(truncated ? { notice: READ_TRUNCATION_NOTICE } : {}),
         };
       },
