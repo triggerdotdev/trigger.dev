@@ -1,7 +1,7 @@
 // Both class helpers apply to always-rendered wrappers, so toggling fullscreen is a
 // class change only and the open chat's transport, session and transcript survive it.
-import { useMemo } from "react";
-import { motion } from "framer-motion";
+import { useMemo, useRef, useState } from "react";
+import { motion, type PanInfo } from "framer-motion";
 import {
   draggableResizeHandleClassName,
   useDraggableResizable,
@@ -9,6 +9,16 @@ import {
   type ResizeEdge,
 } from "~/components/primitives/DraggableResizable";
 import { cn } from "~/utils/cn";
+
+// Mark an element (e.g. a header button, or just its icon) with `data-agent-no-drag` so a
+// pan starting on it never drags the window.
+const NO_DRAG_SELECTOR = "[data-agent-no-drag]";
+
+/** Spread onto the drag handle; `dragHandleClassName` already carries cursor/touch-action/select-none. */
+export type FloatingDragProps = {
+  dragHandleProps: Partial<PanHandlerProps>;
+  dragHandleClassName: string;
+};
 
 const AGENT_FULLSCREEN_STORAGE_KEY = "tdev:dashboard-agent:fullscreen";
 
@@ -59,13 +69,18 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
   return cn("h-full overflow-hidden", fullscreen && "invisible");
 }
 
-/** Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`; the caller (`DashboardAgent`) supplies it. */
+/**
+ * Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`; the caller
+ * (`DashboardAgent`) supplies it. Owns the drag-vs-click filter so every consumer (the real
+ * panel, the standalone story) gets identical behavior: a pan starting on a
+ * `data-agent-no-drag` element (or a descendant of one) never moves the window.
+ */
 export function FloatingAgentWindow({
   fullscreen,
   children,
 }: {
   fullscreen: boolean;
-  children: (dragHandleProps: Partial<PanHandlerProps>) => React.ReactNode;
+  children: (drag: FloatingDragProps) => React.ReactNode;
 }) {
   const initial = useMemo(() => initialFloatingRect(), []);
   const { style, dragHandleProps, resizeHandleProps } = useDraggableResizable({
@@ -73,10 +88,39 @@ export function FloatingAgentWindow({
     minSize: FLOATING_MIN_SIZE,
     viewportPadding: FLOATING_MARGIN,
   });
+  const [dragging, setDragging] = useState(false);
+  // Set for the rest of a gesture that started on a no-drag element, since framer-motion
+  // can deliver onPan before onPanStart and the target is only known at start.
+  const ignoringGesture = useRef(false);
 
   if (fullscreen) {
-    return <div className={agentTakeoverClassName(true)}>{children({})}</div>;
+    return (
+      <div className={agentTakeoverClassName(true)}>
+        {children({ dragHandleProps: {}, dragHandleClassName: "" })}
+      </div>
+    );
   }
+
+  const filteredDragHandleProps: Partial<PanHandlerProps> = {
+    onPanStart: (event: PointerEvent, info: PanInfo) => {
+      if ((event.target as HTMLElement | null)?.closest(NO_DRAG_SELECTOR)) {
+        ignoringGesture.current = true;
+        return;
+      }
+      ignoringGesture.current = false;
+      setDragging(true);
+      dragHandleProps.onPanStart?.(event, info);
+    },
+    onPan: (event: PointerEvent, info: PanInfo) => {
+      if (ignoringGesture.current) return;
+      dragHandleProps.onPan?.(event, info);
+    },
+    onPanEnd: (event: PointerEvent, info: PanInfo) => {
+      ignoringGesture.current = false;
+      setDragging(false);
+      dragHandleProps.onPanEnd?.(event, info);
+    },
+  };
 
   return (
     <div
@@ -86,7 +130,14 @@ export function FloatingAgentWindow({
       {/* Clips content to the rounded corners without clipping the resize handles below,
           which sit half outside this box's edges. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg">
-        {children(dragHandleProps)}
+        {/* oxlint-disable-next-line react/refs -- filteredDragHandleProps' closures only touch the ref inside their own event handlers, not during this render. */}
+        {children({
+          dragHandleProps: filteredDragHandleProps,
+          dragHandleClassName: cn(
+            "select-none touch-none",
+            dragging ? "cursor-grabbing" : "cursor-grab"
+          ),
+        })}
       </div>
       {RESIZE_EDGES.map((edge) => (
         <motion.div

@@ -63,9 +63,9 @@ export default function Story() {
       )}
       {mounted && open && (
         <FloatingAgentWindow fullscreen={fullscreen}>
-          {(dragHandleProps) => (
+          {({ dragHandleProps, dragHandleClassName }) => (
             <div className="flex h-full flex-col bg-background-bright">
-              <motion.div {...dragHandleProps}>
+              <motion.div {...dragHandleProps} className={dragHandleClassName}>
                 <DashboardAgentHeader
                   title="New chat"
                   chats={NO_CHATS}

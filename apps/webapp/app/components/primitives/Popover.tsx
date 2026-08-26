@@ -223,7 +223,12 @@ function PopoverArrowTrigger({
       >
         {children}
       </Paragraph>
-      <DropdownIcon className={cn("size-4 min-w-4 transition", variantStyles.icon)} />
+      {/* Wrapper only: `data-agent-no-drag` is an opt-out marker some draggable-window hosts
+          check via `closest()`, so the icon (not the title text beside it) can decline a drag
+          without changing this primitive's layout (`contents` keeps the icon as the flex item). */}
+      <span data-agent-no-drag className="contents">
+        <DropdownIcon className={cn("size-4 min-w-4 transition", variantStyles.icon)} />
+      </span>
     </PopoverTrigger>
   );
 }

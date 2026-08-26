@@ -346,7 +346,7 @@ export function DashboardAgent({
         <div className="relative h-full min-h-0">
           <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
           <FloatingAgentWindow fullscreen={fullscreen}>
-            {(dragHandleProps) => (
+            {({ dragHandleProps, dragHandleClassName }) => (
               <DashboardAgentPanel
                 onClose={() => setPanelOpen(false)}
                 requestedMessage={requestedMessage}
@@ -361,6 +361,7 @@ export function DashboardAgent({
                 isFullscreen={fullscreen}
                 onToggleFullscreen={toggleFullscreen}
                 dragHandleProps={dragHandleProps}
+                dragHandleClassName={dragHandleClassName}
               />
             )}
           </FloatingAgentWindow>

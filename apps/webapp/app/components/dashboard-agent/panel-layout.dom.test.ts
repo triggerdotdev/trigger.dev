@@ -10,7 +10,9 @@ import {
   FLOATING_MARGIN,
   FLOATING_MIN_SIZE,
   FLOATING_WIDTH,
+  FloatingAgentWindow,
   initialFloatingRect,
+  type FloatingDragProps,
 } from "./panel-layout";
 
 let container: HTMLDivElement | undefined;
@@ -93,5 +95,67 @@ describe("the floating window's rect, wired with panel-layout's own constants", 
     const hook = renderDraggableResizable();
     act(() => hook.current.resizeHandleProps("e").onPan(fakeEvent, fakePanInfo(0, 0)));
     expect(hook.current.size.w).toBe(FLOATING_MIN_SIZE.w);
+  });
+});
+
+// Mirrors the real header: a title-like element (draggable) beside a
+// `data-agent-no-drag` action (opted out), same as DashboardAgentHeader's button group.
+function renderFloatingAgentWindow() {
+  let latest!: FloatingDragProps;
+  function Harness() {
+    return createElement(FloatingAgentWindow, { fullscreen: false }, (drag: FloatingDragProps) => {
+      // oxlint-disable-next-line react/globals -- test harness capturing the render-prop's value.
+      latest = drag;
+      return createElement(
+        "div",
+        null,
+        createElement("span", { "data-testid": "title" }, "Chat title"),
+        createElement("button", { "data-agent-no-drag": "", "data-testid": "action" }, "Close")
+      );
+    });
+  }
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  act(() => {
+    root!.render(createElement(Harness));
+  });
+  return {
+    get dragHandleProps() {
+      return latest.dragHandleProps;
+    },
+    outerLeft: () => (container!.firstElementChild as HTMLDivElement).style.left,
+    titleEl: () => container!.querySelector<HTMLElement>('[data-testid="title"]')!,
+    actionEl: () => container!.querySelector<HTMLElement>('[data-testid="action"]')!,
+  };
+}
+
+describe("FloatingAgentWindow's drag-vs-click filter", () => {
+  it("drags when a gesture starts on ordinary content, like the header title", () => {
+    stubViewport(1200, 900);
+    const view = renderFloatingAgentWindow();
+    const startLeft = view.outerLeft();
+
+    act(() => {
+      const target = view.titleEl() as unknown as PointerEvent["target"];
+      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfo(-20, 0));
+    });
+
+    expect(view.outerLeft()).not.toBe(startLeft);
+  });
+
+  it("does not drag when a gesture starts on a data-agent-no-drag element", () => {
+    stubViewport(1200, 900);
+    const view = renderFloatingAgentWindow();
+    const startLeft = view.outerLeft();
+
+    act(() => {
+      const target = view.actionEl() as unknown as PointerEvent["target"];
+      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfo(-20, 0));
+    });
+
+    expect(view.outerLeft()).toBe(startLeft);
   });
 });

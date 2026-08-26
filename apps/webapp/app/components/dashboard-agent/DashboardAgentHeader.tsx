@@ -103,7 +103,7 @@ export function DashboardAgentHeader({
         onConfirm={onDeleteChat}
       />
 
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-0.5" data-agent-no-drag>
         {showNewChat && (
           <Button
             variant="minimal/small"
