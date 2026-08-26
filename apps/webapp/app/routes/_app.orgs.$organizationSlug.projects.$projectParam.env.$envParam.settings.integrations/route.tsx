@@ -59,8 +59,9 @@ export const loader = dashboardLoader(
   async ({ params, user, ability }) => {
     const { projectParam, organizationSlug } = params;
 
+    const canManageBuildSettings = ability.can("write", { type: "github" });
     const canManageIntegrations =
-      ability.can("write", { type: "github" }) || ability.can("write", { type: "vercel" });
+      canManageBuildSettings || ability.can("write", { type: "vercel" });
 
     if (!canManageIntegrations) {
       throwPermissionDenied("With your current role, you can't manage integrations.");
@@ -102,6 +103,7 @@ export const loader = dashboardLoader(
       githubAppEnabled: gitHubApp.enabled,
       buildSettings,
       vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
+      canManageBuildSettings,
     });
   }
 );
@@ -208,7 +210,7 @@ export const action = dashboardAction(
 );
 
 export default function IntegrationsSettingsPage() {
-  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
+  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled, canManageBuildSettings } =
     useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -393,7 +395,10 @@ export default function IntegrationsSettingsPage() {
               </>
             }
           />
-          <BuildSettingsForm buildSettings={buildSettings ?? {}} />
+          <BuildSettingsForm
+            buildSettings={buildSettings ?? {}}
+            canManageBuildSettings={canManageBuildSettings}
+          />
         </SettingsSection>
       </SettingsContainer>
 
@@ -427,7 +432,13 @@ export default function IntegrationsSettingsPage() {
   );
 }
 
-function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) {
+function BuildSettingsForm({
+  buildSettings,
+  canManageBuildSettings = true,
+}: {
+  buildSettings: BuildSettings;
+  canManageBuildSettings?: boolean;
+}) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
@@ -575,7 +586,12 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
           name="action"
           value="update-build-settings"
           variant="secondary/small"
-          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
+          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges || !canManageBuildSettings}
+          tooltip={
+            canManageBuildSettings
+              ? undefined
+              : "You don't have permission to manage build settings"
+          }
           LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
         >
           Save

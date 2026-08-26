@@ -822,9 +822,15 @@ function ConnectedVercelProjectForm({
     hasPreviewEnvironment
   );
 
+  const hasVercelCustomEnvironments = customEnvironments.length > 0;
+
   const disabledEnvSlugsForBuildSettings: Partial<Record<EnvSlug, string>> | undefined =
     hasStagingEnvironment && !configValues.vercelStagingEnvironment
-      ? { stg: "Set a Vercel environment for Staging first." }
+      ? {
+          stg: hasVercelCustomEnvironments
+            ? "Set a Vercel environment for Staging first."
+            : "Add a custom environment to this project in Vercel to use Staging.",
+        }
       : undefined;
 
   return (
@@ -935,60 +941,68 @@ function ConnectedVercelProjectForm({
           ref={clearTriggerVersionInputRef}
         />
 
-        {/* Staging environment mapping */}
-        {hasStagingEnvironment && customEnvironments && customEnvironments.length > 0 && (
+        {hasStagingEnvironment && (
           <SettingsRow
             title="Vercel environment for Staging"
             description="Required to enable the Staging options below."
             action={
-              <div data-unlock-target="staging-env">
-                <Select
-                  value={configValues.vercelStagingEnvironment?.environmentId || ""}
-                  setValue={(value) => {
-                    if (!Array.isArray(value)) {
-                      const env = customEnvironments?.find((e) => e.id === value);
-                      setConfigValues((prev) => {
-                        const next = {
-                          ...prev,
-                          vercelStagingEnvironment: env
-                            ? { environmentId: env.id, displayName: env.slug }
-                            : null,
-                        };
-                        // When clearing the staging mapping, strip "stg" from build settings
-                        if (!env) {
-                          next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
-                            (s) => s !== "stg"
-                          );
-                          next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
-                        }
-                        return next;
-                      });
+              !hasVercelCustomEnvironments ? (
+                <Paragraph variant="extra-small" className="w-64">
+                  This Vercel project has no custom environments. Add one in Vercel under Settings{" "}
+                  &rarr; Environments, then reload this page.
+                </Paragraph>
+              ) : (
+                <div data-unlock-target="staging-env">
+                  <Select
+                    value={configValues.vercelStagingEnvironment?.environmentId || ""}
+                    setValue={(value) => {
+                      if (!Array.isArray(value)) {
+                        const env = customEnvironments?.find((e) => e.id === value);
+                        setConfigValues((prev) => {
+                          const next = {
+                            ...prev,
+                            vercelStagingEnvironment: env
+                              ? { environmentId: env.id, displayName: env.slug }
+                              : null,
+                          };
+                          // When clearing the staging mapping, strip "stg" from build settings
+                          if (!env) {
+                            next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
+                              (s) => s !== "stg"
+                            );
+                            next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
+                          }
+                          return next;
+                        });
+                      }
+                    }}
+                    items={[{ id: "", slug: "None" }, ...customEnvironments]}
+                    variant="secondary/small"
+                    placeholder="Select environment"
+                    dropdownIcon
+                    text={
+                      configValues.vercelStagingEnvironment ? (
+                        <StagingEnvOption
+                          name={configValues.vercelStagingEnvironment.displayName}
+                        />
+                      ) : (
+                        "None"
+                      )
                     }
-                  }}
-                  items={[{ id: "", slug: "None" }, ...customEnvironments]}
-                  variant="secondary/small"
-                  placeholder="Select environment"
-                  dropdownIcon
-                  text={
-                    configValues.vercelStagingEnvironment ? (
-                      <StagingEnvOption name={configValues.vercelStagingEnvironment.displayName} />
-                    ) : (
-                      "None"
-                    )
-                  }
-                >
-                  {[
-                    <SelectItem key="" value="">
-                      <span className="text-text-bright">None</span>
-                    </SelectItem>,
-                    ...customEnvironments.map((env) => (
-                      <SelectItem key={env.id} value={env.id}>
-                        <StagingEnvOption name={env.slug} />
-                      </SelectItem>
-                    )),
-                  ]}
-                </Select>
-              </div>
+                  >
+                    {[
+                      <SelectItem key="" value="">
+                        <span className="text-text-bright">None</span>
+                      </SelectItem>,
+                      ...customEnvironments.map((env) => (
+                        <SelectItem key={env.id} value={env.id}>
+                          <StagingEnvOption name={env.slug} />
+                        </SelectItem>
+                      )),
+                    ]}
+                  </Select>
+                </div>
+              )
             }
           />
         )}
