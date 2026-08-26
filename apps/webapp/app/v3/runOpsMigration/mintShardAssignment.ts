@@ -19,6 +19,10 @@ export type MintShardDeps = {
   nowMs: number;
   graceMs: number;
   orgFeatureFlags: unknown;
+  // The shard keys this deployment can actually route (the RUN_OPS_SHARDS descriptor keys). The
+  // active set is bounded to these, so a stored key with no descriptor is never minted into.
+  // Undefined means "no bound" (today's behaviour).
+  routableKeys?: readonly string[];
   onPinRejected?: (info: { environmentId: string; pin: string; activeSet: string[] }) => void;
   onOverrideRejected?: (info: { override: string; activeSet: string[] }) => void;
 };
@@ -94,7 +98,17 @@ function hrwSelect(environmentId: string, activeSet: string[]): string {
 // would leak the drain the active list performs, and throwing would fail customer triggers
 // whenever a pinned shard drains.
 export function computeMintShard(environment: { id: string }, deps: MintShardDeps): ShardKey {
-  const activeSet = effectiveMintShardSet(deps.resolution, deps.nowMs, deps.graceMs);
+  const rawActiveSet = effectiveMintShardSet(deps.resolution, deps.nowMs, deps.graceMs);
+  // Empty check BEFORE the bound, so an unconfigured deployment returns "new" exactly as today.
+  if (rawActiveSet.length === 0) {
+    return "new";
+  }
+
+  // Bound the active set to the keys this deployment can route. A stored key with no descriptor is
+  // dropped, never minted into. If nothing survives, fall back to gen-1 (fail-safe, never a throw).
+  const activeSet = deps.routableKeys
+    ? rawActiveSet.filter((key) => deps.routableKeys!.includes(key))
+    : rawActiveSet;
   if (activeSet.length === 0) {
     return "new";
   }
@@ -148,6 +162,7 @@ export type ResolveMintShardDeps = {
   ttlMs: number;
   graceMs: number;
   orgFeatureFlags: unknown;
+  routableKeys?: readonly string[];
   onPinRejected?: (info: { environmentId: string; pin: string; activeSet: string[] }) => void;
   onOverrideRejected?: (info: { override: string; activeSet: string[] }) => void;
   onReadFailed?: (error: unknown) => void;
@@ -200,6 +215,7 @@ export async function resolveMintShardWith(
     nowMs: deps.nowMs,
     graceMs: deps.graceMs,
     orgFeatureFlags: deps.orgFeatureFlags,
+    routableKeys: deps.routableKeys,
     onPinRejected: deps.onPinRejected,
     onOverrideRejected: deps.onOverrideRejected,
   });

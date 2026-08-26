@@ -13,6 +13,33 @@ import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
 
+/**
+ * User-facing message when a runs-list query exceeds a ClickHouse resource limit. It tells the
+ * caller how to recover (a narrower time range restores partition pruning), and is safe to show
+ * on the dashboard and return from the public API.
+ */
+const RUNS_LIST_QUERY_TOO_EXPENSIVE_MESSAGE =
+  "This query was too expensive to run over the selected time range. Narrow the time window (a shorter period, or a smaller createdAt from/to range) and try again.";
+
+/**
+ * Thrown when a runs-list ClickHouse query hits a server-side resource limit (execution time or
+ * memory). It is the caller's query being too broad, not a service fault, so it carries a 4xx
+ * status and a recovery message rather than surfacing as a 500.
+ */
+export class RunsListQueryError extends Error {
+  public readonly name = "RunsListQueryError";
+  public readonly status = 422;
+  constructor(
+    message: string = RUNS_LIST_QUERY_TOO_EXPENSIVE_MESSAGE,
+    options?: { cause?: unknown }
+  ) {
+    super(message);
+    if (options?.cause !== undefined) {
+      this.cause = options.cause;
+    }
+  }
+}
+
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
   prisma: PrismaClientOrTransaction;

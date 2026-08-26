@@ -1,4 +1,4 @@
-import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
+import { type ClickhouseQueryBuilder, isClickhouseResourceLimitError } from "@internal/clickhouse";
 import { ErrorId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type FilterRunsOptions,
@@ -10,6 +10,7 @@ import {
   type RunsRepositoryOptions,
   type TagListOptions,
   convertRunListInputOptionsToFilterRunsOptions,
+  RunsListQueryError,
 } from "./runsRepository.server";
 import parseDuration from "parse-duration";
 import { decodeRunsCursor, encodeRunsCursor } from "./runsCursor.server";
@@ -18,6 +19,18 @@ import { type PrismaClientOrTransaction } from "~/db.server";
 
 import { boundedIn, type Prisma } from "@trigger.dev/database";
 type RunCursorRow = { runId: string; createdAt: number };
+
+/**
+ * Re-throws a runs-list query error, converting a ClickHouse resource-limit rejection (execution
+ * time or memory) into a typed {@link RunsListQueryError} so callers can surface an actionable 4xx
+ * instead of an opaque 500. Any other error is re-thrown unchanged.
+ */
+function rethrowRunsListQueryError(queryError: unknown): never {
+  if (isClickhouseResourceLimitError(queryError)) {
+    throw new RunsListQueryError(undefined, { cause: queryError });
+  }
+  throw queryError;
+}
 
 /**
  * Default hydrate select for the runs list, used when a caller does not derive
@@ -102,7 +115,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     return (result?.length ?? 0) > 0;
@@ -166,7 +179,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     return result.map((row) => ({ runId: row.run_id, createdAt: row.created_at_ms }));
@@ -349,7 +362,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     if (result.length === 0) {
@@ -402,7 +415,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     return {

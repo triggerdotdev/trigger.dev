@@ -40,6 +40,11 @@ export const DEFAULT_REGION_CHAR = "0";
 const REGION_CHAR_PATTERN = /^[a-z0-9]$/;
 // Same slot, same range: the gen-2 shard key is a region char's positional twin.
 const SHARD_CHAR_PATTERN = REGION_CHAR_PATTERN;
+/** True iff `value` is a single valid gen-2 shard char. The descriptor validator and
+ * `resolveShard` share this so a configured key and a decoded key cannot drift. */
+export function isValidShardChar(value: string): boolean {
+  return SHARD_CHAR_PATTERN.test(value);
+}
 /** One lowercase [a-z0-9] char per supported region, at RUN_OPS_ID_REGION_INDEX. */
 export const REGION_CODES: Readonly<Record<string, string>> = {
   "us-east-1": "e",

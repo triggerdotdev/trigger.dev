@@ -1,7 +1,7 @@
 import {
   createRedisClient,
   type Callback,
-  type Redis,
+  type RedisClient,
   type RedisOptions,
   type Result,
 } from "@internal/redis";
@@ -205,8 +205,20 @@ export type SnapshotStoreMetrics = {
   recordLatency(op: string, ms: number): void;
 };
 
-export type RedisSnapshotStoreOptions = {
-  redisOptions: RedisOptions;
+/**
+ * How the store reaches Redis. Exactly one of the two, enforced by the type rather than a runtime
+ * check: `never` on the opposite member makes both "neither" and "both" a compile error.
+ *
+ * `client` exists because production points at a Valkey/Redis CLUSTER, and cluster topology is not
+ * this package's business. Every command the store issues is key-addressed and every key carries a
+ * `{runId}` hashtag, so one slot serves a whole run and both endpoint shapes behave identically.
+ * A caller-supplied client is owned by the caller: `quit()` leaves it open.
+ */
+export type RedisSnapshotStoreConnection =
+  | { client: RedisClient; redisOptions?: never }
+  | { client?: never; redisOptions: RedisOptions };
+
+export type RedisSnapshotStoreOptions = RedisSnapshotStoreConnection & {
   completedTtlMs: number;
   sinceLimit?: number;
   highWater?: { entryBytes?: number; cycleKeyBytes?: number; cycleCount?: number };
@@ -214,13 +226,25 @@ export type RedisSnapshotStoreOptions = {
   logger?: Logger;
 };
 
+/**
+ * Both window scripts return four leading slots before the first row: the id-cursor variant's
+ * `sinceRaw`, the head's order, the head's distinct set, and the head's dangling flag. Rows follow
+ * in four-element groups, so the head row is the group at this offset.
+ *
+ * Named because the offset drifted out of the comments describing it twice, and the second drift
+ * arrived in the change that fixed the first.
+ */
+const WINDOW_HEAD_ROW_INDEX = 4;
+
 const SKIPPED = "skipped";
 const FORKED = "forked";
 const WRITTEN = "written";
 const DUPLICATE = "duplicate";
 
 export class RedisSnapshotStore {
-  private readonly redis: Redis;
+  private readonly redis: RedisClient;
+  /** Only a client this class opened may be closed by it. */
+  private readonly ownsClient: boolean;
   private readonly logger: Logger;
   private readonly completedTtlMs: number;
   private readonly sinceLimit: number;
@@ -234,15 +258,22 @@ export class RedisSnapshotStore {
     this.sinceLimit = options.sinceLimit ?? 50;
     this.metrics = options.metrics;
     this.highWater = options.highWater ?? {};
-    this.redis = createRedisClient(options.redisOptions, {
-      onError: (error) => this.logger.error("RedisSnapshotStore redis client error", { error }),
-    });
+    this.ownsClient = options.client === undefined;
+    this.redis =
+      options.client ??
+      createRedisClient(options.redisOptions, {
+        onError: (error) => this.logger.error("RedisSnapshotStore redis client error", { error }),
+      });
     this.#registerCommands();
   }
 
   async quit(): Promise<void> {
     // Idempotent and error-swallowing: every test calls this in a `finally`, and a double quit()
     // (or one after a failed connect) must never mask the real assertion failure.
+    //
+    // An injected client is the caller's. Closing it here would take down a connection shared with
+    // the sweeper or with another component, so a borrowed client is left open.
+    if (!this.ownsClient) return;
     if (!this.#quit) {
       this.#quit = this.redis.quit().then(
         () => undefined,
@@ -496,11 +527,12 @@ export class RedisSnapshotStore {
 
       const headOrder = reply[1] ?? "";
       const headDistinct = reply[2] ?? "";
+      const headDangling = reply[3] ?? "";
       const rows: SnapshotRead[] = [];
-      // Tracks whether the Lua-chosen head row (always the first, i === 2) itself survives the
+      // Tracks whether the Lua-chosen head row (always the first, WINDOW_HEAD_ROW_INDEX) survives the
       // env filter below -- headOrder must never be attributed to a different, surviving row.
       let headSurvived = false;
-      for (let i = 3; i + 3 < reply.length; i += 4) {
+      for (let i = WINDOW_HEAD_ROW_INDEX; i + 3 < reply.length; i += 4) {
         // orderKnown is false here: headOrder covers only the head row, resolved separately below.
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
@@ -510,7 +542,7 @@ export class RedisSnapshotStore {
         );
         if (decoded) {
           rows.push(decoded);
-          if (i === 3) headSurvived = true;
+          if (i === WINDOW_HEAD_ROW_INDEX) headSurvived = true;
         }
       }
 
@@ -523,6 +555,13 @@ export class RedisSnapshotStore {
       );
       if (head) {
         head.completedWaitpointIds = headWaitpointIds;
+        // A head whose cycle key has expired carries an empty order that means "unknown", not
+        // "none". The caller cannot distinguish those, so it has to be told, or it resumes a batch
+        // with every position lost. This is what makes the decorator's Postgres fallback reachable
+        // on the since-window path as well as the hot read.
+        if (headDangling === "1") {
+          head.danglingCycle = true;
+        }
         if (head.cycle) {
           this.#checkCycleMismatch(runId, head.cycle.count, headWaitpointIds.order.length);
         }
@@ -560,11 +599,12 @@ export class RedisSnapshotStore {
 
       const headOrder = reply[1] ?? "";
       const headDistinct = reply[2] ?? "";
+      const headDangling = reply[3] ?? "";
       const rows: SnapshotRead[] = [];
-      // Tracks whether the Lua-chosen head row (always the first, i === 2) survives the env filter,
+      // Tracks whether the Lua-chosen head row (always the first, WINDOW_HEAD_ROW_INDEX) survives the env filter,
       // so headOrder is never attributed to a different, surviving row.
       let headSurvived = false;
-      for (let i = 3; i + 3 < reply.length; i += 4) {
+      for (let i = WINDOW_HEAD_ROW_INDEX; i + 3 < reply.length; i += 4) {
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
           opts?.environmentId,
@@ -573,7 +613,7 @@ export class RedisSnapshotStore {
         );
         if (decoded) {
           rows.push(decoded);
-          if (i === 3) headSurvived = true;
+          if (i === WINDOW_HEAD_ROW_INDEX) headSurvived = true;
         }
       }
 
@@ -586,6 +626,13 @@ export class RedisSnapshotStore {
       );
       if (head) {
         head.completedWaitpointIds = headWaitpointIds;
+        // A head whose cycle key has expired carries an empty order that means "unknown", not
+        // "none". The caller cannot distinguish those, so it has to be told, or it resumes a batch
+        // with every position lost. This is what makes the decorator's Postgres fallback reachable
+        // on the since-window path as well as the hot read.
+        if (headDangling === "1") {
+          head.danglingCycle = true;
+        }
         if (head.cycle) {
           this.#checkCycleMismatch(runId, head.cycle.count, headWaitpointIds.order.length);
         }
@@ -872,7 +919,7 @@ export class RedisSnapshotStore {
         -- compare is a chronological compare. Walking newest-first lets the scan stop at the first
         -- entry at or before the cursor, which makes its length the length of the ANSWER rather
         -- than the length of the run's history.
-        local out = { '', '', '' }
+        local out = { '', '', '', '' }
         local headId = nil
         local offset = 0
         local page = limit
@@ -910,6 +957,11 @@ export class RedisSnapshotStore {
           local headPointer = redis.call('HGET', eKey, headId .. '#c')
           out[2] = orderFor(headPointer)
           out[3] = distinctFor(headPointer)
+          -- The head's cycle key can expire while its entry survives: the completion TTL is applied
+          -- per key. Without this flag the head returns an EMPTY order and the caller cannot tell
+          -- that from a head that genuinely had no indexed waitpoints, so a batched resume loses
+          -- every position instead of falling back to Postgres.
+          out[4] = danglingFor(headPointer)
         end
         return out
       `,
@@ -941,7 +993,7 @@ export class RedisSnapshotStore {
         -- The head is the newest SURVIVING entry, and it is the only one whose cycle key is read.
         -- Deriving the order after the loop keeps it paired with the row it is attached to: a row
         -- dropped for a missing body must not donate its cycle data to the next one.
-        local out = { sinceRaw, '', '' }
+        local out = { sinceRaw, '', '', '' }
         local headId = nil
         for i = 1, #ids do
           local id = ids[i]
@@ -958,6 +1010,11 @@ export class RedisSnapshotStore {
           local headPointer = redis.call('HGET', eKey, headId .. '#c')
           out[2] = orderFor(headPointer)
           out[3] = distinctFor(headPointer)
+          -- The head's cycle key can expire while its entry survives: the completion TTL is applied
+          -- per key. Without this flag the head returns an EMPTY order and the caller cannot tell
+          -- that from a head that genuinely had no indexed waitpoints, so a batched resume loses
+          -- every position instead of falling back to Postgres.
+          out[4] = danglingFor(headPointer)
         end
         return out
       `,

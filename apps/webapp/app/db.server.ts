@@ -31,15 +31,18 @@ import {
   assertSplitRealtimeInterlock,
 } from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
-import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
-import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
+import { resolveRunOpsPoolKnobs } from "./v3/runOpsPoolKnobs.server";
+import { buildRunOpsShardTable } from "./v3/runOpsShardTable";
 import {
+  resolveShardResilience,
   controlPlaneTransactionResilience,
   registerTransactionResilience,
   resilienceForClient,
   runOpsLegacyTransactionResilience,
   runOpsTransactionResilience,
 } from "./v3/transactionResilience.server";
+import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
+import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
@@ -275,10 +278,19 @@ export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica"
 
 type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
 type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
+type ShardTopologyDescriptor = {
+  key: string;
+  url?: string;
+  replicaUrl?: string;
+  aliasOf?: "new";
+};
 export type RunOpsTopology = {
   newRunOps: NewRunOpsClients;
   legacyRunOps: RunOpsClients;
   controlPlane: RunOpsClients;
+  // One client pair per gen-2 shard descriptor. Empty unless RUN_OPS_SHARDS is configured. An
+  // aliasOf:"new" descriptor maps to the newRunOps pair BY REFERENCE (no new pool).
+  shards: Map<string, NewRunOpsClients>;
 };
 export type SelectRunOpsTopologyConfig = {
   splitEnabled: boolean;
@@ -288,6 +300,7 @@ export type SelectRunOpsTopologyConfig = {
   newReplicaUrl?: string;
   // When true, legacy reuses the control-plane client instead of opening its own pool. Defaults to false.
   legacySharesControlPlane?: boolean;
+  shards?: ShardTopologyDescriptor[];
 };
 export type RunOpsClientBuilders = {
   controlPlane: RunOpsClients;
@@ -297,6 +310,10 @@ export type RunOpsClientBuilders = {
   // RunOpsPrismaClient double-cast needed): the legacy DB carries the full control-plane schema.
   buildLegacyWriter: (url: string, clientType: string) => PrismaClient;
   buildLegacyReplica: (url: string, clientType: string) => PrismaReplicaClient;
+  // Receive the whole descriptor so the singleton can resolve per-shard knobs and resilience by key.
+  // Optional so the existing test literals (which build no shards) need no change.
+  buildShardWriter?: (shard: ShardTopologyDescriptor) => RunOpsPrismaClient;
+  buildShardReplica?: (shard: ShardTopologyDescriptor) => RunOpsPrismaClient;
 };
 
 // Pure run-ops client selector. No env, no isSplitEnabled() — those
@@ -315,11 +332,11 @@ export function selectRunOpsTopology(
   };
 
   if (!config.splitEnabled) {
-    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
+    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane, shards: new Map() };
   }
 
   if (!config.legacyUrl || !config.newUrl) {
-    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
+    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane, shards: new Map() };
   }
 
   // Same-DB legacy reuses the control-plane pool; only build a separate pool once the DSNs diverge.
@@ -338,12 +355,28 @@ export function selectRunOpsTopology(
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
     ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-replica")
     : newWriter;
+  const newRunOps: NewRunOpsClients = { writer: newWriter, replica: newReplica };
 
-  return {
-    newRunOps: { writer: newWriter, replica: newReplica },
-    legacyRunOps,
-    controlPlane,
-  };
+  const shards = new Map<string, NewRunOpsClients>();
+  for (const shard of config.shards ?? []) {
+    if (shard.aliasOf === "new") {
+      // Aliased: share the new store's clients by reference. No builder, no new pool — the soak path.
+      shards.set(shard.key, newRunOps);
+      continue;
+    }
+    if (!shard.url || !builders.buildShardWriter || !builders.buildShardReplica) {
+      throw new Error(
+        `selectRunOpsTopology: shard "${shard.key}" needs a url and shard builders when not aliased`
+      );
+    }
+    const shardWriter = builders.buildShardWriter(shard);
+    const shardReplica: RunOpsPrismaClient = shard.replicaUrl
+      ? builders.buildShardReplica(shard)
+      : shardWriter;
+    shards.set(shard.key, { writer: shardWriter, replica: shardReplica });
+  }
+
+  return { newRunOps, legacyRunOps, controlPlane, shards };
 }
 
 // The env-bound run-ops topology singleton. The split decision uses
@@ -376,6 +409,17 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
     );
   }
 
+  const newPoolKnobs = resolveRunOpsPoolKnobs("new");
+  const shardDescriptorsByKey = new Map(env.RUN_OPS_SHARDS.map((d) => [d.key, d]));
+
+  // Boot table: emit ONLY when shards are configured, so the inert (RUN_OPS_SHARDS unset) merge adds
+  // no new log output. The fingerprint is an address, not an identity claim (see runOpsAddressFingerprint).
+  if (env.RUN_OPS_SHARDS.length > 0) {
+    logger.info("run-ops shard topology (fingerprint is an address, NOT an identity claim)", {
+      shards: buildRunOpsShardTable(env.RUN_OPS_SHARDS),
+    });
+  }
+
   return selectRunOpsTopology(
     {
       splitEnabled,
@@ -384,6 +428,12 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       newUrl,
       newReplicaUrl: env.RUN_OPS_DATABASE_READ_REPLICA_URL,
       legacySharesControlPlane,
+      shards: env.RUN_OPS_SHARDS.map((d) => ({
+        key: d.key,
+        url: d.url,
+        replicaUrl: d.replicaUrl,
+        aliasOf: d.aliasOf,
+      })),
     },
     {
       controlPlane: { writer: prisma, replica: $replica },
@@ -392,10 +442,14 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-writer",
-              buildRunOpsWriterClient({
+              buildRunOpsClient({
                 url,
                 clientType,
-                useDriverAdapter: env.RUN_OPS_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+                role: "writer",
+                connectionLimit: newPoolKnobs.connectionLimit,
+                poolTimeout: newPoolKnobs.writerPoolTimeout,
+                connectTimeout: newPoolKnobs.writerConnectionTimeout,
+                useDriverAdapter: newPoolKnobs.writerDriverAdapter,
               })
             )
           ),
@@ -409,10 +463,14 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-replica",
-              buildRunOpsReplicaClient({
+              buildRunOpsClient({
                 url,
                 clientType,
-                useDriverAdapter: env.RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER === "1",
+                role: "replica",
+                connectionLimit: newPoolKnobs.replicaConnectionLimit,
+                poolTimeout: newPoolKnobs.replicaPoolTimeout,
+                connectTimeout: newPoolKnobs.replicaConnectionTimeout,
+                useDriverAdapter: newPoolKnobs.replicaDriverAdapter,
               })
             )
           )
@@ -450,6 +508,50 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
             )
           )
         ),
+      // A gen-2 shard is a dedicated run-ops DB, so it mirrors buildNewWriter/buildNewReplica: same
+      // client class, same wrapper stack, its OWN resilience budget, and the "new"-role pool knobs
+      // merged with the descriptor's per-shard overrides. Shards share the run-ops datasource tag.
+      buildShardWriter: (shard) => {
+        const descriptor = shardDescriptorsByKey.get(shard.key);
+        const knobs = resolveRunOpsPoolKnobs("new", descriptor?.knobs);
+        return registerTransactionResilience(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-writer",
+              buildRunOpsClient({
+                url: shard.url!,
+                clientType: `run-ops-shard-${shard.key}-writer`,
+                role: "writer",
+                connectionLimit: knobs.connectionLimit,
+                poolTimeout: knobs.writerPoolTimeout,
+                connectTimeout: knobs.writerConnectionTimeout,
+                useDriverAdapter: knobs.writerDriverAdapter,
+              })
+            )
+          ),
+          resolveShardResilience(shard.key, descriptor?.knobs)
+        );
+      },
+      buildShardReplica: (shard) => {
+        const descriptor = shardDescriptorsByKey.get(shard.key);
+        const knobs = resolveRunOpsPoolKnobs("new", descriptor?.knobs);
+        return markReadReplicaClient(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps(
+              "run-ops-replica",
+              buildRunOpsClient({
+                url: shard.replicaUrl!,
+                clientType: `run-ops-shard-${shard.key}-replica`,
+                role: "replica",
+                connectionLimit: knobs.replicaConnectionLimit,
+                poolTimeout: knobs.replicaPoolTimeout,
+                connectTimeout: knobs.replicaConnectionTimeout,
+                useDriverAdapter: knobs.replicaDriverAdapter,
+              })
+            )
+          )
+        );
+      },
     }
   );
 });
@@ -474,6 +576,22 @@ export const runOpsLegacyPrismaClient: RunOpsPrismaClient = runOpsTopology.legac
   .writer as unknown as RunOpsPrismaClient;
 export const runOpsLegacyReplicaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
   .replica as unknown as RunOpsPrismaClient;
+
+// Gen-2 shard handles for the run-store boundary. Empty unless RUN_OPS_SHARDS is configured.
+// `aliasOf` carries the descriptor's declared alias so the router can dedup an aliased shard (which
+// shares its target's database) out of every fan-out sum — the DECLARATION, not client identity.
+const runOpsShardAliasByKey = new Map(env.RUN_OPS_SHARDS.map((d) => [d.key, d.aliasOf]));
+export const runOpsShardHandles: Array<{
+  key: string;
+  writer: RunOpsPrismaClient;
+  replica: RunOpsPrismaClient;
+  aliasOf?: string;
+}> = [...runOpsTopology.shards.entries()].map(([key, clients]) => ({
+  key,
+  writer: clients.writer,
+  replica: clients.replica,
+  aliasOf: runOpsShardAliasByKey.get(key),
+}));
 
 export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   newReplica: runOpsNewReplicaClient,
@@ -924,64 +1042,64 @@ export function buildReplicaClient({
   return replicaClient;
 }
 
-function buildRunOpsWriterClient({
+// One factory for the run-ops writer and replica clients, backed by the dedicated RunOpsPrismaClient
+// (a separately generated Prisma package). Parameterized by role and the resolved pool knobs, so a
+// gen-1 new store and every gen-2 shard share this single builder. The control-plane builders
+// (buildWriterClient/buildReplicaClient) are a DIFFERENT path and are untouched — this reuses only
+// the shared low-level helpers (buildPrismaConnectionUrl, buildDriverAdapterPool).
+function buildRunOpsClient({
   url,
   clientType,
+  role,
+  connectionLimit,
+  poolTimeout,
+  connectTimeout,
   useDriverAdapter = false,
 }: {
   url: string;
   clientType: string;
+  role: "writer" | "replica";
+  connectionLimit: number;
+  poolTimeout: number;
+  connectTimeout: number;
   useDriverAdapter?: boolean;
 }): RunOpsPrismaClient {
-  const databaseUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    poolTimeout: (env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT).toString(),
-    connectTimeout: (
-      env.RUN_OPS_DATABASE_WRITER_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
-    ).toString(),
+  const isWriter = role === "writer";
+  const setupLabel = isWriter ? "run-ops prisma client" : "run-ops read replica connection";
+  const connectedLabel = isWriter
+    ? "run-ops prisma client connected"
+    : "run-ops read replica connected";
+
+  const connectionUrl = buildPrismaConnectionUrl(url, {
+    connectionLimit: connectionLimit.toString(),
+    poolTimeout: poolTimeout.toString(),
+    connectTimeout: connectTimeout.toString(),
     applicationName: env.SERVICE_NAME,
   });
 
   console.log(
-    `🔌 setting up run-ops prisma client to ${redactUrlSecrets(databaseUrl)}${
+    `🔌 setting up ${setupLabel} to ${redactUrlSecrets(connectionUrl)}${
       useDriverAdapter ? " (pg driver adapter)" : ""
     }`
   );
 
+  const log = [
+    { emit: "event", level: "error" },
+    { emit: "event", level: "info" },
+    { emit: "event", level: "warn" },
+    ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+    process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+      ? [{ emit: "event", level: "query" }]
+      : []) as { emit: "event"; level: "query" }[]),
+  ] as const;
+
   const driverPool = useDriverAdapter
-    ? buildDriverAdapterPool(
-        url,
-        clientType,
-        env.RUN_OPS_DATABASE_WRITER_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
-        env.DATABASE_CONNECTION_LIMIT
-      )
+    ? buildDriverAdapterPool(url, clientType, poolTimeout, connectionLimit)
     : undefined;
 
   const client = driverPool
-    ? new RunOpsPrismaClient({
-        adapter: driverPool.adapter,
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      })
-    : new RunOpsPrismaClient({
-        datasources: { db: { url: databaseUrl.href } },
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      });
+    ? new RunOpsPrismaClient({ adapter: driverPool.adapter, log: [...log] })
+    : new RunOpsPrismaClient({ datasources: { db: { url: connectionUrl.href } }, log: [...log] });
 
   registerDatabaseMetricsSource(
     driverPool
@@ -999,117 +1117,27 @@ function buildRunOpsWriterClient({
     client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
     client.$on("warn", (log) => logger.warn("RunOpsPrismaClient warn", { clientType, event: log }));
     client.$on("error", (log) =>
-      logger.error("RunOpsPrismaClient error", { clientType, event: log, ignoreError: true })
+      // The writer bridges P2002 -> 422 at the store boundary, so its infra errors are logged once
+      // there (ignoreError). Replica errors are not on that write path, so they log normally.
+      logger.error("RunOpsPrismaClient error", {
+        clientType,
+        event: log,
+        ...(isWriter ? { ignoreError: true } : {}),
+      })
     );
   }
 
-  client.$on("query", (log) => queryPerformanceMonitor.onQuery("writer", log));
+  client.$on("query", (log) => queryPerformanceMonitor.onQuery(role, log));
 
-  const connectPromise = client.$connect();
-  if (env.NODE_ENV === "test") {
-    connectPromise.catch((error) => {
-      logger.warn("Failed to eagerly connect run-ops prisma client (writer)", { error });
-    });
-  }
-
-  console.log(`🔌 run-ops prisma client connected`);
-
-  return client;
-}
-
-function buildRunOpsReplicaClient({
-  url,
-  clientType,
-  useDriverAdapter = false,
-}: {
-  url: string;
-  clientType: string;
-  useDriverAdapter?: boolean;
-}): RunOpsPrismaClient {
-  const replicaUrl = buildPrismaConnectionUrl(url, {
-    connectionLimit: (
-      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
-    ).toString(),
-    poolTimeout: (
-      env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT
-    ).toString(),
-    connectTimeout: (
-      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_TIMEOUT ?? env.DATABASE_CONNECTION_TIMEOUT
-    ).toString(),
-    applicationName: env.SERVICE_NAME,
+  // Eager connect is a warm-up only — Prisma reconnects lazily on first query. ALWAYS catch the
+  // rejection (not just under NODE_ENV=test), so a shard/run-ops DB that is unreachable at boot
+  // logs a warning instead of surfacing as an unhandled promise rejection. One unreachable shard
+  // must not take down webapp startup.
+  client.$connect().catch((error) => {
+    logger.warn(`Failed to eagerly connect run-ops prisma client (${role})`, { error });
   });
 
-  console.log(
-    `🔌 setting up run-ops read replica connection to ${redactUrlSecrets(replicaUrl)}${
-      useDriverAdapter ? " (pg driver adapter)" : ""
-    }`
-  );
-
-  const driverPool = useDriverAdapter
-    ? buildDriverAdapterPool(
-        url,
-        clientType,
-        env.RUN_OPS_DATABASE_READ_REPLICA_POOL_TIMEOUT ?? env.DATABASE_POOL_TIMEOUT,
-        env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
-      )
-    : undefined;
-
-  const client = driverPool
-    ? new RunOpsPrismaClient({
-        adapter: driverPool.adapter,
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      })
-    : new RunOpsPrismaClient({
-        datasources: { db: { url: replicaUrl.href } },
-        log: [
-          { emit: "event", level: "error" },
-          { emit: "event", level: "info" },
-          { emit: "event", level: "warn" },
-          ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
-          process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
-            ? [{ emit: "event", level: "query" }]
-            : []) as { emit: "event"; level: "query" }[]),
-        ],
-      });
-
-  registerDatabaseMetricsSource(
-    driverPool
-      ? {
-          clientType,
-          usesDriverAdapter: true,
-          client,
-          pool: driverPool.pool,
-          poolCounters: driverPool.poolCounters,
-        }
-      : { clientType, usesDriverAdapter: false, client }
-  );
-
-  if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
-    client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
-    client.$on("warn", (log) => logger.warn("RunOpsPrismaClient warn", { clientType, event: log }));
-    client.$on("error", (log) =>
-      logger.error("RunOpsPrismaClient error", { clientType, event: log })
-    );
-  }
-
-  client.$on("query", (log) => queryPerformanceMonitor.onQuery("replica", log));
-
-  const connectPromise = client.$connect();
-  if (env.NODE_ENV === "test") {
-    connectPromise.catch((error) => {
-      logger.warn("Failed to eagerly connect run-ops prisma client (replica)", { error });
-    });
-  }
-
-  console.log(`🔌 run-ops read replica connected`);
+  console.log(`🔌 ${connectedLabel}`);
 
   return client;
 }

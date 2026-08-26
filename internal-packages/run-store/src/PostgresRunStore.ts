@@ -1860,7 +1860,7 @@ export class PostgresRunStore implements RunStore {
     const branches = args.idempotencyKeys.map((key) => {
       const base = params.length;
       params.push(args.runtimeEnvironmentId, args.taskIdentifier, key);
-      return `SELECT "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = $${base + 1} AND "taskIdentifier" = $${base + 2} AND "idempotencyKey" = $${base + 3}`;
+      return `SELECT "id", "createdAt", "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = $${base + 1} AND "taskIdentifier" = $${base + 2} AND "idempotencyKey" = $${base + 3}`;
     });
     return prisma.$queryRawUnsafe<IdempotencyKeyRunMatch[]>(
       branches.join(" UNION ALL "),
@@ -2020,11 +2020,18 @@ export class PostgresRunStore implements RunStore {
       error,
     } = input;
 
-    const completedWaitpointOrder =
-      completedWaitpoints
-        ?.filter((c) => c.index !== undefined)
-        .sort((a, b) => a.index! - b.index!)
-        .map((w) => w.id) ?? [];
+    // Left possibly-undefined ON PURPOSE. Prisma omits an undefined key, so the column keeps taking
+    // whatever it took before this method was touched: the schema declares `completedWaitpointOrder
+    // String[]` with no default and the column is nullable, so an omitted key stores NULL, not `{}`.
+    // Defaulting here would send `{}` instead and change what a live write stores.
+    //
+    // The redis-only echo below DOES need a concrete array, because it returns the row shape to the
+    // caller and that field is not nullable in the payload type. That default belongs to the echo,
+    // not to the write, so the two are kept apart.
+    const completedWaitpointOrder = completedWaitpoints
+      ?.filter((c) => c.index !== undefined)
+      .sort((a, b) => a.index! - b.index!)
+      .map((w) => w.id);
 
     // Redis-only: no row is written and the decorator owns the document. Echo the input in the shape
     // the caller expects, so every caller of this method keeps working while Postgres holds nothing.
@@ -2054,7 +2061,7 @@ export class PostgresRunStore implements RunStore {
         workerId: workerId ?? null,
         runnerId: runnerId ?? null,
         metadata: snapshot.metadata ?? null,
-        completedWaitpointOrder,
+        completedWaitpointOrder: completedWaitpointOrder ?? [],
         isValid: !error,
         error: error ?? null,
         createdAt: now,

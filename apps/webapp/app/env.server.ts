@@ -2,6 +2,7 @@ import { z } from "zod";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
+import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDuration } from "./services/realtime/duration.server";
 
@@ -310,6 +311,8 @@ const EnvironmentSchema = z
     RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    // Gen-2 shard descriptors as a JSON array. Unset/"" -> [] (today). See runOpsShards.server.ts.
+    RUN_OPS_SHARDS: z.string().optional().transform(parseRunOpsShards),
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
@@ -332,6 +335,8 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
+    // Instance-level kill switch for the admin dashboard and user impersonation.
+    ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
@@ -2522,6 +2527,14 @@ const EnvironmentSchema = z
           message: `"${required}" is not in COMPUTE_TEMPLATE_MACHINE_PRESETS`,
         });
       }
+    }
+    if (!validateShardListAgainstNewUrl(env.RUN_OPS_SHARDS, env.RUN_OPS_DATABASE_URL)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["RUN_OPS_SHARDS"],
+        message:
+          "RUN_OPS_SHARDS is non-empty but RUN_OPS_DATABASE_URL is unset; a shard requires the gen-1 new store",
+      });
     }
   });
 

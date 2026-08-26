@@ -319,8 +319,9 @@ describe("RoutingRunStore.countPendingWaitpoints — route by runId then partiti
       "legacy_run"
     );
     expect(count).toBe(1);
-    // Fallback queried the other store with ONLY the id missing on the run's store.
-    expect(newStore.calls.map((c) => c.method)).toEqual(["countPendingWaitpoints"]);
+    // Fallback queried the other store with ONLY the id missing on the run's store. It uses the
+    // presence variant so the results can be unioned by id (a drain mirror counts once at N).
+    expect(newStore.calls.map((c) => c.method)).toEqual(["countPendingWaitpointsWithPresence"]);
     expect(newStore.calls[0]?.args[0]).toEqual(["waitpoint_crosstree"]);
   });
 

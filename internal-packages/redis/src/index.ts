@@ -18,7 +18,12 @@ export {
   type RedisCommander,
 } from "ioredis";
 
-/** Single-node or cluster-mode. Interchangeable for callers whose keys share one hash tag. */
+/**
+ * Either endpoint shape. A component that only issues key-addressed commands works against both, so
+ * it should accept this rather than pin itself to a standalone connection. Commands with no key —
+ * SCAN above all — do NOT fan out across a cluster, so anything that issues one must iterate
+ * `cluster.nodes("master")` itself.
+ */
 export type RedisClient = Redis | Cluster;
 
 /**

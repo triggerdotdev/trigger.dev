@@ -23,6 +23,8 @@ import type { Residency } from "@trigger.dev/core/v3/isomorphic";
 export type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
 
 export type IdempotencyKeyRunMatch = {
+  id: string;
+  createdAt: Date;
   friendlyId: string;
   idempotencyKey: string | null;
   idempotencyKeyExpiresAt: Date | null;

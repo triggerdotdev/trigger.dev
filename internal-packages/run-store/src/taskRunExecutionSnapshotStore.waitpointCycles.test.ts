@@ -603,6 +603,49 @@ describe("completed-waitpoint cycles", () => {
   );
 
   containerTest(
+    "the since-window falls back to Postgres when the head cycle key is gone",
+    async ({ prisma, redisOptions }) => {
+      // The hot read has always handled this. The since-window did not: its Lua returned the head's
+      // order and distinct set but never its dangling flag, so the decorator's fallback guard was
+      // dead code and an expired cycle key came back as an EMPTY order. Empty means "no indexed
+      // waitpoints" to the engine, which is how a batched triggerAndWait resumes with every
+      // position lost rather than falling back to the store that still knows them.
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA, wpB] = await seedSnapshotWaitpoints(prisma, env, 2);
+        const first = await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [], "before the wait")
+        );
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [
+            { id: wpA, index: 0 },
+            { id: wpB, index: 1 },
+          ])
+        );
+
+        // The entry hash survives; only the cycle key goes. The completion TTL is applied per key,
+        // so this is a state the keyspace reaches on its own.
+        for (const key of await probe.keys(`snap:{${runId}}:wp:*`)) await probe.del(key);
+
+        const window = await decorated.findManyExecutionSnapshots({
+          where: { runId, isValid: true, createdAt: { gt: first.createdAt } },
+          include: { checkpoint: true },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        });
+
+        expect(window[0]!.completedWaitpointOrder).toEqual([wpA, wpB]);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  containerTest(
     "lockRunToWorker carries its resolved order into the cycle",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
