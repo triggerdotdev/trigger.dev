@@ -330,6 +330,8 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
         status: "EXECUTING",
         uri: "trigger://runs/run_abc",
         consistency: "consistent",
+        phase: "dequeued",
+        concurrencyKey: "customer_123",
       },
     ];
     stubFetch({ holderResolution: "complete", slotHolders });
@@ -369,5 +371,20 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
     expect(answer).toMatchObject({ holderResolution: "none" });
     expect(answer).not.toHaveProperty("slotHolders");
+  });
+
+  it("carries slotHolderFacts verbatim, gated independently of slotHolders/holderResolution", async () => {
+    const slotHolderFacts = {
+      admittedCount: 3,
+      dequeuedCount: 2,
+      runningReported: 2,
+      consistency: "consistent",
+      holderResolution: "complete",
+    };
+    stubFetch({ slotHolderFacts });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ slotHolderFacts });
+    expect(answer).not.toHaveProperty("slotHolders");
+    expect(answer).not.toHaveProperty("holderResolution");
   });
 });
