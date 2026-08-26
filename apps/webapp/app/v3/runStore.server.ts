@@ -16,6 +16,7 @@ import {
   runOpsLegacyReplica,
   runOpsNewPrismaClient,
   runOpsNewReplicaClient,
+  runOpsShardHandles,
 } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -38,6 +39,16 @@ type BuildRunStoreDeps = {
   singleReplica: PrismaReplicaClient;
   /** Id-to-shard-key resolver; defaults to the core resolveShard inside RoutingRunStore. */
   resolveShard?: (id: string) => ShardKey;
+  /** Gen-2 shard handles. When non-empty, buildRunStore builds one dedicated store per descriptor and
+   * hands them to the N-way router; an aliased shard shares its target's database. Empty/absent keeps
+   * the two-store compat router. */
+  shards?: Array<{
+    key: ShardKey;
+    writer: RunOpsPrismaClient;
+    replica: RunOpsPrismaClient;
+    aliasOf?: ShardKey;
+    resilience?: TransactionResilienceConfig;
+  }>;
   /** Per-pool transaction-resilience configs threaded into the store(s) this builds (IoC). */
   singleResilience?: TransactionResilienceConfig;
   newResilience?: TransactionResilienceConfig;
@@ -86,9 +97,25 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     transactionStartRetry: deps.legacyResilience?.startRetry,
   });
 
+  // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
+  // builds a store over its target's (shared) client and carries aliasOf, so the router dedups it out
+  // of fan-out sums by declaration. No shards -> the two-store compat router (byte-identical).
+  const shardStores = (deps.shards ?? []).map((shard) => ({
+    key: shard.key,
+    store: new PostgresRunStore({
+      prisma: shard.writer,
+      readOnlyPrisma: shard.replica,
+      schemaVariant: "dedicated" as const,
+      maxWait: shard.resilience?.maxWait,
+      transactionStartRetry: shard.resilience?.startRetry,
+    }),
+    aliasOf: shard.aliasOf,
+  }));
+
   return new RoutingRunStore({
     new: newStore,
     legacy: legacyStore,
+    shards: shardStores.length > 0 ? shardStores : undefined,
     resolveShard: deps.resolveShard ?? resolveShard,
     metrics: routingStoreMetrics,
   });
@@ -138,6 +165,8 @@ function tryResolveRunOpsHandles() {
       newReplica: runOpsNewReplicaClient,
       legacyWriter: runOpsLegacyPrisma,
       legacyReplica: runOpsLegacyReplica,
+      // Absent under a minimal db.server mock; default to no shards so the compat router is built.
+      shardHandles: runOpsShardHandles ?? [],
     };
   } catch {
     return null;
@@ -155,9 +184,17 @@ export const runStore: RunStore = singleton("RunStore", () => {
       singleResilience: resilienceForClient(prisma),
     });
   }
+  const { shardHandles, ...storeHandles } = handles;
   return buildRunStore({
     splitEnabled: true,
-    ...handles,
+    ...storeHandles,
+    shards: shardHandles.map((shard) => ({
+      key: shard.key,
+      writer: shard.writer,
+      replica: shard.replica,
+      aliasOf: shard.aliasOf,
+      resilience: resilienceForClient(shard.writer),
+    })),
     singleWriter: prisma,
     singleReplica: $replica,
     singleResilience: resilienceForClient(prisma),

@@ -20,6 +20,7 @@ import {
   generateRunOpsId,
   generateRunOpsIdV2,
   generateWaitpointId,
+  isValidShardChar,
   parseRunId,
   parseRunOpsIdBody,
   parseRunOpsIdV2Body,
@@ -415,6 +416,21 @@ describe("parseRunId — v2 arm", () => {
   it("classifies a gen-2 body without the run_ prefix, and under a wrong prefix, legacy", () => {
     expect(parseRunId(generateRunOpsIdV2("a")).format).toBe("legacy");
     expect(parseRunId(`waitpoint_${generateRunOpsIdV2("a")}`).format).toBe("legacy");
+  });
+});
+
+describe("isValidShardChar", () => {
+  it("accepts a single [a-z0-9] char", () => {
+    expect(isValidShardChar("a")).toBe(true);
+    expect(isValidShardChar("0")).toBe(true);
+    expect(isValidShardChar("w")).toBe(true);
+  });
+  it("rejects multi-char, empty, uppercase, and punctuation", () => {
+    expect(isValidShardChar("")).toBe(false);
+    expect(isValidShardChar("ab")).toBe(false);
+    expect(isValidShardChar("A")).toBe(false);
+    expect(isValidShardChar("-")).toBe(false);
+    expect(isValidShardChar("legacy")).toBe(false);
   });
 });
 
