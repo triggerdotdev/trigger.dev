@@ -28,6 +28,12 @@ export type WaitpointCoordinator = {
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
+    /**
+     * The run this waitpoint belongs to. A store arm derives the waitpoint id from the
+     * run's own id body, so the derivation is a pure function of the anchor and needs no
+     * lock. A Postgres arm mints a fresh id and ignores this.
+     */
+    anchorRunId?: string;
   }): AssociatedWaitpointData;
   createAssociatedWaitpoint(params: {
     runId: string;

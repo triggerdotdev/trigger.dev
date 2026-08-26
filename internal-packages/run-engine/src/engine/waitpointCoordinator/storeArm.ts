@@ -164,12 +164,24 @@ export class StoreWaitpointCoordinatorArm implements WaitpointCoordinator {
    * open. If it is absent or already complete, a concurrent completion could see an empty
    * pending set mid-absorb and resume the parent early.
    *
-   * Neither TLA+ campaign models this variant, so this assertion is its only protection
-   * until the race harness covers it.
+   * Scope, stated precisely: this is a PREFLIGHT DETECTOR, not a barrier. It reads the run
+   * shard, then the absorb writes in a separate operation, so a completion landing between
+   * the two is detected on the next call, not prevented. Closing that window means moving
+   * the pending-set assertion inside the absorb script, so check and write share one
+   * atomic action.
+   *
+   * Neither TLA+ campaign models this variant, so until the race harness covers it this
+   * detector plus the fail-loud on a missing id is the whole protection.
    */
   async #assertBatchWaitpointPending(params: RegisterBlocksLocklessParams): Promise<void> {
     if (!params.batchWaitpointId) {
-      return;
+      // Never silently skip. An unwired caller would disable the guard rather than fail,
+      // which is the failure mode the guard exists to prevent.
+      this.batchGuardViolations.add(1);
+      throw new Error(
+        `Lockless absorb for run ${params.runId} reached the store arm with no parent ` +
+          `BATCH waitpoint id, so the pending-set guard has nothing to assert on`
+      );
     }
 
     const state = await this.store.readBlockState(params.runId);
@@ -254,6 +266,10 @@ export class StoreWaitpointCoordinatorArm implements WaitpointCoordinator {
     const held = await this.store.readWaitpoint(waitpointId);
     if (!held) {
       throw new Error(`Waitpoint ${waitpointId} is not present in the store`);
+    }
+
+    if (held.record.type === "MANUAL") {
+      await this.#completeManualProjection(waitpointId, held.completion ?? completion);
     }
 
     return {
@@ -465,6 +481,41 @@ export class StoreWaitpointCoordinatorArm implements WaitpointCoordinator {
       this.projectionWriteFailures.add(1);
       this.logger.error("failed to write the MANUAL waitpoint projection row", {
         waitpointId: waitpoint.id,
+        error,
+      });
+    }
+  }
+
+  /**
+   * Reflect a MANUAL completion onto the projection row.
+   *
+   * The token API and the dashboard read status, output and completedAt from this row, so
+   * leaving it PENDING would report a completed token as still waiting. Best effort, for
+   * the same reason as the create-time write: the store already completed the waitpoint.
+   */
+  async #completeManualProjection(
+    waitpointId: string,
+    completion: WaitpointCompletion
+  ): Promise<void> {
+    const output = completion.output;
+
+    const [error] = await tryCatch(
+      this.runStore.updateManyWaitpoints({
+        where: { id: waitpointId },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(completion.completedAt),
+          output: output ? ("inline" in output ? output.inline : output.ref) : null,
+          outputType: completion.outputType,
+          outputIsError: completion.outputIsError,
+        },
+      })
+    );
+
+    if (error) {
+      this.projectionWriteFailures.add(1);
+      this.logger.error("failed to complete the MANUAL waitpoint projection row", {
+        waitpointId,
         error,
       });
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { computeWaitpointMintKind } from "./waitpointMintKind.server";
+import { computeWaitpointMintKind } from "./waitpointMintKind";
 
 const environment = { organizationId: "org_1", id: "env_1" };
 

@@ -295,6 +295,60 @@ describe("StoreWaitpointCoordinatorArm", () => {
     }
   );
 
+  // The token API and dashboard read status, output and completedAt from the projection
+  // row, so a completion that never reaches it reports a finished token as still waiting.
+  containerTest(
+    "reflects a MANUAL completion onto the projection row",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupEnvironment(prisma);
+      const { store, arm } = setup(redisOptions, prisma);
+
+      try {
+        const created = await arm.createManualWaitpoint({
+          mintKind: "store",
+          environmentId: environment.id,
+          projectId: environment.projectId,
+        });
+
+        await arm.complete({
+          waitpointId: created.waitpoint.id,
+          output: { value: '{"done":true}', type: "application/json", isError: false },
+        });
+
+        const row = await prisma.waitpoint.findFirst({ where: { id: created.waitpoint.id } });
+        expect(row?.status).toBe("COMPLETED");
+        expect(row?.output).toBe('{"done":true}');
+        expect(row?.outputIsError).toBe(false);
+        expect(row?.completedAt).not.toBeNull();
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  // An unwired caller must fail, never silently disable the guard.
+  containerTest(
+    "refuses a lockless absorb that arrives with no parent BATCH waitpoint id",
+    async ({ prisma, redisOptions }) => {
+      const environment = await setupEnvironment(prisma);
+      const { store, arm } = setup(redisOptions, prisma);
+
+      try {
+        await expect(
+          arm.registerBlocksLockless({
+            runId: RUN_ID,
+            waitpointIds: [generateWaitpointId("RUN")],
+            projectId: environment.projectId,
+            batchId: "batch_1",
+            batchIndex: 0,
+          })
+        ).rejects.toThrow(/no parent .*BATCH waitpoint id/);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
   containerTest(
     "returns the cached waitpoint for a repeated idempotency key",
     async ({ prisma, redisOptions }) => {
