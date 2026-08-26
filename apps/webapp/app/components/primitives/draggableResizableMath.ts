@@ -81,3 +81,45 @@ export function resizeRect(
 
   return { x, y, w, h };
 }
+
+/**
+ * Applies one incremental pan step (framer-motion's `PanInfo.delta` — the movement since
+ * the *previous* event, not cumulative from gesture start) to `current` and re-clamps.
+ *
+ * Deliberately incremental rather than start-snapshot + cumulative-offset: framer-motion
+ * defers `onPanStart`/`onPanEnd` by a frame (via its internal scheduler) while `onPan`
+ * fires synchronously, so a start-rect ref captured in `onPanStart` can still hold a
+ * stale (or the mount-time initial) value when the gesture's first `onPan` lands — every
+ * later step then computes off the wrong baseline. Folding each step onto `current`
+ * (always the latest committed rect, via React's functional `setState`) has no baseline
+ * to go stale, so the race can't happen. Safe to call across gesture boundaries with no
+ * reset in between — each call is self-contained.
+ */
+export function applyDragDelta(
+  current: Rect,
+  delta: Point,
+  viewport: Viewport,
+  padding: number
+): Rect {
+  const nextPosition = clampPosition(
+    { x: current.x + delta.x, y: current.y + delta.y },
+    { w: current.w, h: current.h },
+    viewport,
+    padding
+  );
+  return { ...current, ...nextPosition };
+}
+
+/** Resize counterpart of {@link applyDragDelta} — same incremental-step rationale. */
+export function applyResizeDelta(
+  edge: ResizeEdge,
+  current: Rect,
+  delta: Point,
+  minSize: Size,
+  maxSize: Size | undefined,
+  viewport: Viewport,
+  padding: number
+): Rect {
+  const resized = resizeRect(edge, current, delta.x, delta.y, minSize, maxSize, viewport, padding);
+  return clampRectToViewport(resized, viewport, padding);
+}

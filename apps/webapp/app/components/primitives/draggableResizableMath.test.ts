@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyDragDelta,
+  applyResizeDelta,
   clamp,
   clampPosition,
   clampRectToViewport,
   clampSize,
   resizeRect,
+  type Rect,
 } from "./draggableResizableMath";
 
 describe("clamp", () => {
@@ -189,5 +192,77 @@ describe("resizeRect", () => {
     const result = resizeRect("e", nearRightEdge, 10000, 0, minSize, undefined, viewport, padding);
     expect(result.x).toBe(nearRightEdge.x);
     expect(result.x + result.w).toBe(viewport.width - padding);
+  });
+});
+
+// These reproduce the live-testing symptoms: framer-motion defers onPanStart/onPanEnd by a
+// frame (via its internal scheduler) but calls onPan synchronously, so a gesture-start
+// snapshot captured in onPanStart can be stale — or still the mount-time initial rect — when
+// a gesture's first onPan lands. applyDragDelta/applyResizeDelta take framer's per-event
+// `delta` (not the cumulative `offset`) and fold it onto whatever rect is passed in, so the
+// hook can drive them with `setRect(current => apply...(current, ...))` and never needs a
+// separate baseline that could go stale. Simulating "gesture A steps, then gesture B steps,
+// no reset in between" is exactly what a stale-baseline bug would fail on.
+describe("applyResizeDelta / applyDragDelta — gesture sequencing", () => {
+  const start: Rect = { x: 100, y: 100, w: 300, h: 200 };
+  const minSize = { w: 100, h: 80 };
+  const viewport = { width: 1000, height: 800 };
+  const padding = 10;
+
+  it("symptom 1: a second resize gesture on the same edge continues from the first gesture's end, with no reset between them", () => {
+    let rect = start;
+    // Gesture A: five 4px steps east (total +20).
+    for (let i = 0; i < 5; i++) {
+      rect = applyResizeDelta("e", rect, { x: 4, y: 0 }, minSize, undefined, viewport, padding);
+    }
+    expect(rect.w).toBe(320);
+
+    // Gesture B starts immediately — no onPanStart-equivalent call, matching framer's
+    // deferred-onPanStart timing where the first onPan of a new gesture can land first.
+    for (let i = 0; i < 3; i++) {
+      rect = applyResizeDelta("e", rect, { x: 10, y: 0 }, minSize, undefined, viewport, padding);
+    }
+    // Continues from gesture A's end (320), not from a stale baseline (e.g. back to 300).
+    expect(rect.w).toBe(350);
+  });
+
+  it("symptom 2: a drag gesture right after a resize gesture continues from the resized rect, not a stale one", () => {
+    let rect = applyResizeDelta(
+      "se",
+      start,
+      { x: 50, y: 30 },
+      minSize,
+      undefined,
+      viewport,
+      padding
+    );
+    expect(rect).toEqual({ x: 100, y: 100, w: 350, h: 230 });
+
+    // Drag starts immediately after, no reset — same race window as symptom 2.
+    rect = applyDragDelta(rect, { x: 20, y: 5 }, viewport, padding);
+    expect(rect).toEqual({ x: 120, y: 105, w: 350, h: 230 });
+  });
+
+  it("symptom 3/4: a resize right after a drag continues from the dragged position, never snapping back toward a stale/initial rect", () => {
+    // Move well away from wherever `start` or a mount-time initial rect might sit.
+    let rect = applyDragDelta(start, { x: 200, y: 150 }, viewport, padding);
+    expect(rect).toEqual({ x: 300, y: 250, w: 300, h: 200 });
+
+    // Resizing next must clamp against the *current* x/y (300, 250), not `start` (100, 100)
+    // or any other stale baseline — a stale baseline pinned near the right edge would show
+    // up here as the box jumping back toward x=690 (the viewport-clamped position for `start`
+    // near the right edge) instead of resizing in place.
+    rect = applyResizeDelta("e", rect, { x: 10, y: 0 }, minSize, undefined, viewport, padding);
+    expect(rect.x).toBe(300);
+    expect(rect.w).toBe(310);
+  });
+
+  it("dragging right never magnets to the viewport edge before the box actually reaches it", () => {
+    let rect: Rect = { x: 500, y: 100, w: 300, h: 200 };
+    // Small rightward steps, well short of the right edge (max x = 1000 - 10 - 300 = 690).
+    for (let i = 0; i < 5; i++) {
+      rect = applyDragDelta(rect, { x: 10, y: 0 }, viewport, padding);
+    }
+    expect(rect.x).toBe(550);
   });
 });

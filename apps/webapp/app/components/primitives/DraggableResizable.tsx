@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { type PanInfo } from "framer-motion";
 import { cn } from "~/utils/cn";
 import {
+  applyDragDelta,
+  applyResizeDelta,
   clampPosition,
   clampRectToViewport,
   clampSize,
-  resizeRect,
   type Point,
   type Rect,
   type ResizeEdge,
@@ -62,13 +63,6 @@ export function useDraggableResizable({
     const size = clampSize({ w: initial.w, h: initial.h }, minSize, maxSize);
     return { ...clampPosition(initial, size, getViewport(), viewportPadding), ...size };
   });
-  const rectRef = useRef(rect);
-  // oxlint-disable-next-line react/refs -- mirrors state into a ref for use inside gesture callbacks, not for rendering.
-  rectRef.current = rect;
-
-  // Snapshot of the rect at gesture start; framer-motion's PanInfo.offset is
-  // cumulative from pan start, so every onPan step re-applies it to this.
-  const startRectRef = useRef(rect);
 
   // Re-clamp on viewport resize (and once on mount, since SSR renders against
   // an unbounded viewport) so the box never strands off-screen.
@@ -81,40 +75,34 @@ export function useDraggableResizable({
     return () => window.removeEventListener("resize", onResize);
   }, [viewportPadding]);
 
+  // Each onPan step folds `info.delta` (movement since the *last* event, not cumulative)
+  // onto the latest committed rect via the functional setState form. No gesture-start
+  // snapshot is kept: framer-motion defers onPanStart/onPanEnd by a frame but calls onPan
+  // synchronously, so a ref-based baseline captured in onPanStart can still be stale (or
+  // the mount-time initial rect) when the first onPan of a gesture lands. Delta + functional
+  // update has no baseline to go stale, so gestures compose correctly back-to-back.
   const dragHandleProps: PanHandlerProps = {
-    onPanStart: () => {
-      startRectRef.current = rectRef.current;
-    },
+    onPanStart: () => {},
     onPan: (_event, info: PanInfo) => {
-      const startRect = startRectRef.current;
-      const nextPosition = clampPosition(
-        { x: startRect.x + info.offset.x, y: startRect.y + info.offset.y },
-        { w: startRect.w, h: startRect.h },
-        getViewport(),
-        viewportPadding
-      );
-      setRect((current) => ({ ...current, ...nextPosition }));
+      setRect((current) => applyDragDelta(current, info.delta, getViewport(), viewportPadding));
     },
     onPanEnd: () => {},
   };
 
   const resizeHandleProps = (edge: ResizeEdge): PanHandlerProps => ({
-    onPanStart: () => {
-      startRectRef.current = rectRef.current;
-    },
+    onPanStart: () => {},
     onPan: (_event, info: PanInfo) => {
-      const startRect = startRectRef.current;
-      const resized = resizeRect(
-        edge,
-        startRect,
-        info.offset.x,
-        info.offset.y,
-        minSize,
-        maxSize,
-        getViewport(),
-        viewportPadding
+      setRect((current) =>
+        applyResizeDelta(
+          edge,
+          current,
+          info.delta,
+          minSize,
+          maxSize,
+          getViewport(),
+          viewportPadding
+        )
       );
-      setRect(clampRectToViewport(resized, getViewport(), viewportPadding));
     },
     onPanEnd: () => {},
   });
