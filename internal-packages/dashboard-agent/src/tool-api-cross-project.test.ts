@@ -18,13 +18,14 @@ import {
 
 const ORIGIN = "https://api.example.com";
 
-type Call = { url: string; body?: unknown };
+type Call = { url: string; branch: string | null; body?: unknown };
 let calls: Call[] = [];
 
 function stubFetch() {
   return vi.fn(async (input: any, init: any = {}) => {
     const url = typeof input === "string" ? input : input.url;
-    calls.push({ url, body: init.body ? JSON.parse(init.body) : undefined });
+    const branch = new Headers(init.headers ?? {}).get("x-trigger-branch");
+    calls.push({ url, branch, body: init.body ? JSON.parse(init.body) : undefined });
     if (url.endsWith("/jwt")) {
       // The env JWT is minted for whichever project/environment segment the exchange
       // addressed, so the token echoes it back for the assertions below.
@@ -35,12 +36,13 @@ function stubFetch() {
   });
 }
 
-function tools() {
+function tools(overrides: Record<string, unknown> = {}) {
   const ctx = {
     userActorToken: "uat",
     apiOrigin: ORIGIN,
     projectRef: "proj_current",
     environmentName: "prod",
+    ...overrides,
   };
   return buildApiTools({
     ctx,
@@ -103,6 +105,35 @@ describe("the project/environment override", () => {
     await (t.get_run as any).execute({ runId: "run_1", project: "proj_other" }, {} as any);
 
     expect(jwtCalls()[0].url).toBe(`${ORIGIN}/api/v1/projects/proj_other/prod/jwt`);
+  });
+
+  it("still sends x-trigger-branch on the default (no-override) path", async () => {
+    const t = tools({ environmentName: "preview", environmentBranch: "feat-x" });
+
+    await (t.list_runs as any).execute({}, {} as any);
+
+    expect(jwtCalls()[0].branch).toBe("feat-x");
+  });
+
+  it("names the override target, not 'the current environment', when the exchange fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: any) => {
+        const url = typeof input === "string" ? input : input.url;
+        if (url.endsWith("/jwt")) return new Response("nope", { status: 403 });
+        return Response.json({ data: [] });
+      })
+    );
+    const t = tools();
+
+    const result = await (t.list_runs as any).execute(
+      { project: "proj_other", environment: "staging" },
+      {} as any
+    );
+
+    expect(result.error).toBe(
+      "Couldn't reach that project/environment to read runs from (status 403)."
+    );
   });
 });
 

@@ -54,13 +54,21 @@ import type { SourceReadLedger } from "./tool-source-ledger";
  * What to tell the model when a read never reached an environment. Only a missing
  * environment is stated as one; a failed exchange says the read didn't land, and carries
  * its status, so an authorization failure is never reported as an absent environment.
+ * `target` set means the read was aimed at another project/environment, not the current
+ * one, so the wording must say so rather than blaming "the current environment".
  */
-function envUnavailableError(result: EnvUnavailable, action: string): { error: string } {
+function envUnavailableError(
+  result: EnvUnavailable,
+  action: string,
+  target?: ApiTarget
+): { error: string } {
+  const scopeIndefinite = target ? "project/environment" : "current environment";
+  const scopeDefinite = target ? "that project/environment" : "the current environment";
   if (result.envUnavailable === "missing") {
-    return { error: `No current environment is available to ${action}.` };
+    return { error: `No ${scopeIndefinite} is available to ${action}.` };
   }
   const status = result.status ? ` (status ${result.status})` : "";
-  return { error: `Couldn't reach the current environment to ${action}${status}.` };
+  return { error: `Couldn't reach ${scopeDefinite} to ${action}${status}.` };
 }
 
 /**
@@ -283,11 +291,9 @@ export function buildApiTools(args: {
         if (errorId) sp.append("filter[error]", errorId);
         if (effectivePeriod) sp.append("filter[createdAt][period]", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
-        const result = await envApiGet(
-          `/api/v1/runs?${sp.toString()}`,
-          crossProjectTarget({ project, environment })
-        );
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
+        const target = crossProjectTarget({ project, environment });
+        const result = await envApiGet(`/api/v1/runs?${sp.toString()}`, target);
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from", target);
         if (!result.ok) return { error: `Couldn't list runs${fetchReason(result)}.` };
         return { ...curateRuns(result.data), period: effectivePeriod };
       },
@@ -299,11 +305,9 @@ export function buildApiTools(args: {
     get_run: tool({
       ...getRunSchema,
       execute: async ({ runId, project, environment }) => {
-        const result = await envApiGet(
-          `/api/v3/runs/${encodeURIComponent(runId)}`,
-          crossProjectTarget({ project, environment })
-        );
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
+        const target = crossProjectTarget({ project, environment });
+        const result = await envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`, target);
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from", target);
         if (!result.ok) return { error: `Couldn't get run ${runId}${fetchReason(result)}.` };
         return curateRun(result.data);
       },
@@ -312,11 +316,9 @@ export function buildApiTools(args: {
     get_run_trace: tool({
       ...getRunTraceSchema,
       execute: async ({ runId, project, environment }) => {
-        const result = await envApiGet(
-          `/api/v1/runs/${encodeURIComponent(runId)}/trace`,
-          crossProjectTarget({ project, environment })
-        );
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
+        const target = crossProjectTarget({ project, environment });
+        const result = await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`, target);
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from", target);
         if (!result.ok)
           return { error: `Couldn't get the trace for ${runId}${fetchReason(result)}.` };
         const curated = curateTrace(result.data);
@@ -347,11 +349,10 @@ export function buildApiTools(args: {
     get_error: tool({
       ...getErrorSchema,
       execute: async ({ errorId, project, environment }) => {
-        const result = await envApiGet(
-          `/api/v1/errors/${encodeURIComponent(errorId)}`,
-          crossProjectTarget({ project, environment })
-        );
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
+        const target = crossProjectTarget({ project, environment });
+        const result = await envApiGet(`/api/v1/errors/${encodeURIComponent(errorId)}`, target);
+        if (isEnvUnavailable(result))
+          return envUnavailableError(result, "read errors from", target);
         if (!result.ok) return { error: `Couldn't get error ${errorId}${fetchReason(result)}.` };
         return curateError(result.data);
       },
@@ -576,7 +577,8 @@ export function buildApiTools(args: {
         };
 
         const first = await read(type ?? "task");
-        if (isEnvUnavailable(first)) return envUnavailableError(first, "read queues from");
+        if (isEnvUnavailable(first))
+          return envUnavailableError(first, "read queues from", crossTarget);
         if (!first.ok) {
           return {
             error: `Couldn't get metrics for the ${queue} queue${fetchReason(first)}.`,
