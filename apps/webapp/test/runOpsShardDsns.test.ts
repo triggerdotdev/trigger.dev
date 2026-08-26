@@ -109,3 +109,83 @@ describe("shardMigrationDsns matches the descriptor contract", () => {
     expect(shardMigrationDsns(JSON.stringify([shardA]))).toEqual(["postgres://h/a"]);
   });
 });
+
+// The boot schema URL-validates url, replicaUrl and directUrl with isValidDatabaseUrl. The script
+// must not be laxer, or a valid descriptor ahead of an invalid one gets its database migrated before
+// the configuration is rejected.
+describe("shardMigrationDsns validates descriptor values", () => {
+  const rep = { slotName: "s", publicationName: "p", originGeneration: 2 };
+
+  it("rejects a url that is not a parseable URL", () => {
+    const bad = [{ key: "a", region: "r", url: "not a URL", replication: rep }];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/url/i);
+  });
+
+  it("rejects a directUrl that is not a parseable URL", () => {
+    const bad = [
+      { key: "a", region: "r", url: "postgres://h/a", directUrl: "nope", replication: rep },
+    ];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/directUrl/i);
+  });
+
+  it("rejects a replicaUrl that is not a parseable URL", () => {
+    const bad = [
+      { key: "a", region: "r", url: "postgres://h/a", replicaUrl: "nope", replication: rep },
+    ];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/replicaUrl/i);
+  });
+
+  it("rejects an empty schema search param, matching the boot schema", () => {
+    const bad = [{ key: "a", region: "r", url: "postgres://h/a?schema=", replication: rep }];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/url/i);
+  });
+
+  it("rejects a multi-char shard key", () => {
+    const bad = [{ key: "ab", region: "r", url: "postgres://h/a", replication: rep }];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/key/i);
+  });
+
+  it("rejects an origin generation outside 2..255", () => {
+    for (const gen of [1, 256]) {
+      const bad = [
+        {
+          key: "a",
+          region: "r",
+          url: "postgres://h/a",
+          replication: { ...rep, originGeneration: gen },
+        },
+      ];
+      expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/originGeneration/i);
+    }
+  });
+
+  it("rejects a replication block with a blank slot name", () => {
+    const bad = [
+      { key: "a", region: "r", url: "postgres://h/a", replication: { ...rep, slotName: "" } },
+    ];
+    expect(() => shardMigrationDsns(JSON.stringify(bad))).toThrow(/slotName/i);
+  });
+
+  // The failure must come BEFORE any DSN is handed back, so no database is migrated first.
+  it("emits nothing when a later descriptor is invalid", () => {
+    const mixed = [
+      { key: "a", region: "r", url: "postgres://h/a", replication: rep },
+      { key: "b", region: "r", url: "not a URL", replication: { ...rep, originGeneration: 3 } },
+    ];
+    expect(() => shardMigrationDsns(JSON.stringify(mixed))).toThrow(/url/i);
+  });
+
+  it("still accepts a fully valid descriptor with all three URLs", () => {
+    const ok = [
+      {
+        key: "a",
+        region: "r",
+        url: "postgres://h/a?schema=public",
+        replicaUrl: "postgres://h/a-replica?schema=public",
+        directUrl: "postgres://h/a-direct?schema=public",
+        replication: rep,
+      },
+    ];
+    expect(shardMigrationDsns(JSON.stringify(ok))).toEqual(["postgres://h/a-direct?schema=public"]);
+  });
+});
