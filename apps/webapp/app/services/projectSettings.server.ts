@@ -322,7 +322,8 @@ export class ProjectSettingsService {
         },
         where: {
           projectId: projectId,
-          slug: "preview",
+          type: "PREVIEW",
+          parentEnvironmentId: null,
         },
       }),
       (error) => ({
@@ -340,7 +341,8 @@ export class ProjectSettingsService {
         },
         where: {
           projectId: projectId,
-          slug: "stg",
+          type: "STAGING",
+          parentEnvironmentId: null,
         },
       }),
       (error) => ({

@@ -115,7 +115,8 @@ export class GitHubSettingsPresenter extends BasePresenter {
           },
           where: {
             projectId: projectId,
-            slug: "preview",
+            type: "PREVIEW",
+            parentEnvironmentId: null,
           },
         }),
         (error) => ({
@@ -132,7 +133,8 @@ export class GitHubSettingsPresenter extends BasePresenter {
           },
           where: {
             projectId: projectId,
-            slug: "stg",
+            type: "STAGING",
+            parentEnvironmentId: null,
           },
         }),
         (error) => ({
