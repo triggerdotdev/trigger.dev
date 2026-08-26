@@ -255,6 +255,7 @@
     "engine.io": "^6.6.7",
     "esbuild": "^0.15.10",
     "evalite": "1.0.0-beta.16",
+    "jsdom": "^30.0.1",
     "supertest": "^7.0.0",
     "tailwind-scrollbar": "^4.0.2",
     "tsx": "^4.20.6",
