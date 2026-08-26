@@ -48,9 +48,8 @@ export function DashboardAgentLauncher() {
   const { open, setOpen, unreadWakes, unreadWork } = agent;
   const hasUnread = unreadWakes > 0 || unreadWork > 0;
 
-  // Stays visible while the window is open: there is only ever one floating window (it's
-  // fixed-position and already on top of everything), so a click while open is a no-op — it
-  // never spawns a second window, it just re-affirms the one that's already there.
+  // Stays visible while the window is open, and toggles it: there is only ever one floating
+  // window, so open->click closes it rather than re-affirming a no-op.
   return (
     <SimpleTooltip
       asChild
@@ -58,7 +57,7 @@ export function DashboardAgentLauncher() {
       disableHoverableContent
       content={
         <span className="flex items-center">
-          {open ? "Chat open" : "Open chat"}
+          {open ? "Close chat" : "Open chat"}
           <ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />
         </span>
       }
@@ -67,7 +66,7 @@ export function DashboardAgentLauncher() {
           <Button
             variant="ask-trigger/small"
             aria-label={hasUnread ? `${ASK_AGENT_LABEL}, unread updates` : ASK_AGENT_LABEL}
-            onClick={() => setOpen(true)}
+            onClick={() => setOpen(!open)}
           >
             {ASK_AGENT_LABEL}
           </Button>
