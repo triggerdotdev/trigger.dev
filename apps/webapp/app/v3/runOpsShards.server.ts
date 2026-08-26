@@ -122,3 +122,33 @@ export function validateShardListAgainstNewUrl(
 ): boolean {
   return shards.length === 0 || !!newUrl;
 }
+
+// A shard that owns its own physical database. Every boot check that must not treat two handles
+// over one database as two databases derives its target list from here: the distinctness sentinel,
+// the coresidency loop, the read gate, the replication sources and the migration loop.
+export type ShardTarget = {
+  key: string;
+  url: string;
+  replicaUrl?: string;
+  directUrl?: string;
+};
+
+// An aliased shard shares its target's client BY REFERENCE, so it is never its own database. The
+// exemption keys on the declared `aliasOf` field, never on client object identity: two store objects
+// can sit over one database, which identity comparison cannot see.
+export function nonAliasedShards(shards: RunOpsShardDescriptor[]): ShardTarget[] {
+  const targets: ShardTarget[] = [];
+  for (const shard of shards) {
+    if (shard.aliasOf !== undefined) continue;
+    // Unreachable for a valid descriptor (the schema requires exactly one of url/aliasOf); this is
+    // the type narrowing, not a second policy.
+    if (shard.url === undefined) continue;
+    targets.push({
+      key: shard.key,
+      url: shard.url,
+      ...(shard.replicaUrl !== undefined ? { replicaUrl: shard.replicaUrl } : {}),
+      ...(shard.directUrl !== undefined ? { directUrl: shard.directUrl } : {}),
+    });
+  }
+  return targets;
+}

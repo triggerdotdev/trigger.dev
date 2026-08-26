@@ -202,6 +202,225 @@ describe("assertReplicationCoversSplit (boot gate-coupling)", () => {
   });
 });
 
+describe("replication sources at N shards", () => {
+  const baseArgs = {
+    legacyUrl: "postgres://legacy",
+    legacySlotName: "task_runs_to_clickhouse_v1",
+    legacyPublicationName: "task_runs_to_clickhouse_v1_publication",
+    legacyOriginGeneration: 0,
+    newSlotName: "task_runs_to_clickhouse_v2",
+    newPublicationName: "task_runs_to_clickhouse_v2_publication",
+    newOriginGeneration: 1,
+    splitEnabled: true,
+    newUrl: "postgres://new",
+  };
+
+  const shardA = {
+    key: "a",
+    url: "postgres://shard-a",
+    replication: {
+      slotName: "task_runs_to_clickhouse_shard_a",
+      publicationName: "task_runs_to_clickhouse_shard_a_publication",
+      originGeneration: 2,
+    },
+  };
+  const shardB = {
+    key: "b",
+    url: "postgres://shard-b",
+    replication: {
+      slotName: "task_runs_to_clickhouse_shard_b",
+      publicationName: "task_runs_to_clickhouse_shard_b_publication",
+      originGeneration: 3,
+    },
+  };
+
+  it("appends nothing when no shard is configured", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [] });
+    expect(sources.map((s) => s.id)).toEqual(["legacy", "new"]);
+  });
+
+  it("appends one source per shard, after legacy and new", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
+    expect(sources.map((s) => s.id)).toEqual(["legacy", "new", "shard-a", "shard-b"]);
+    expect(sources[2]).toEqual({
+      id: "shard-a",
+      pgConnectionUrl: "postgres://shard-a",
+      slotName: "task_runs_to_clickhouse_shard_a",
+      publicationName: "task_runs_to_clickhouse_shard_a_publication",
+      originGeneration: 2,
+    });
+  });
+
+  it("appends no shard source when the new source is off, because split is the precondition", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      splitEnabled: false,
+      shards: [shardA],
+    });
+    expect(sources.map((s) => s.id)).toEqual(["legacy"]);
+  });
+
+  it("throws when a shard that owns its database has no source", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }],
+      })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("names the uncovered shard in the message", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }, { key: "b" }],
+      })
+    ).toThrow(/shard b/i);
+  });
+
+  it("does NOT throw when every shard has its own source", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }, { key: "b" }],
+      })
+    ).not.toThrow();
+  });
+
+  it("does NOT require a source for an aliased shard, because its target's slot covers it", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "z", aliasOf: "new" }],
+      })
+    ).not.toThrow();
+  });
+
+  it("does NOT check shard coverage when split is off", () => {
+    const sources = buildReplicationSources({ ...baseArgs, splitEnabled: false, shards: [] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: false,
+        sources,
+        shards: [{ key: "a" }],
+      })
+    ).not.toThrow();
+  });
+
+  // The catch site keys on `instanceof SplitReplicationMisconfiguredError` to reach
+  // process.exit(1). A shard with no replication must reach the same exit.
+  it("raises an error the existing exit path recognizes", () => {
+    try {
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({ ...baseArgs, shards: [] }),
+        shards: [{ key: "a" }],
+      });
+      expect.unreachable("expected a throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SplitReplicationMisconfiguredError);
+    }
+  });
+
+  // F1 class: the descriptor parser checks uniqueness AMONG shards only. It cannot see the
+  // env-configured legacy and new sources, so a shard can collide with them. The service's own
+  // check throws too late: the caller has already shut the bootstrap instance down, so the throw
+  // leaves the process up with NO replication at all. These must fail at the fatal boot gate.
+  it("throws when a shard's slot name collides with the gen-1 new slot", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        { ...shardA, replication: { ...shardA.replication, slotName: baseArgs.newSlotName } },
+      ],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("throws when a shard's origin generation collides with the gen-1 new generation", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      newOriginGeneration: 2,
+      shards: [shardA],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("throws when a shard's publication name collides with the legacy publication", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        {
+          ...shardA,
+          replication: { ...shardA.replication, publicationName: baseArgs.legacyPublicationName },
+        },
+      ],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("names the colliding field in the message", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        { ...shardA, replication: { ...shardA.replication, slotName: baseArgs.newSlotName } },
+      ],
+    });
+    expect(() =>
+      assertReplicationCoversSplit({ splitEnabled: true, sources, shards: [{ key: "a" }] })
+    ).toThrow(/slotName/);
+  });
+
+  it("does NOT throw when every shard's slot, publication and generation are its own", () => {
+    const sources = buildReplicationSources({ ...baseArgs, shards: [shardA, shardB] });
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources,
+        shards: [{ key: "a" }, { key: "b" }],
+      })
+    ).not.toThrow();
+  });
+
+  // The service validates sources before it builds a single replication client, so this needs no
+  // container. RunsReplicationService itself is untouched by this change: the check already exists.
+  it("rejects two shards that share an origin generation, via the service's own check", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [shardA, { ...shardB, replication: { ...shardB.replication, originGeneration: 2 } }],
+    });
+
+    expect(
+      () =>
+        new RunsReplicationService({
+          clickhouseFactory: new TestReplicationClickhouseFactory(
+            new ClickHouse({ url: "http://127.0.0.1:1", name: "unused", logLevel: "warn" })
+          ),
+          serviceName: "runs-replication",
+          pgConnectionUrl: "postgres://legacy",
+          slotName: "unused",
+          publicationName: "unused",
+          redisOptions: { host: "127.0.0.1", port: 1 },
+          sources,
+          logLevel: "warn",
+        })
+    ).toThrow(/duplicate originGeneration/i);
+  });
+});
+
 describe("RunsReplication new-source backfill origin generation (integration)", () => {
   replicationContainerTest(
     "backfill via the new source tags the ClickHouse row with the new origin generation (gen=1), not gen=0",
@@ -433,4 +652,97 @@ describe("RunsReplication multi-source wiring (integration)", () => {
       }
     }
   );
+});
+
+// Logical replication needs a session-mode connection, which a transaction pooler cannot serve.
+// The app writer DSN is pooled in a real deployment, so a shard replication source must take the
+// shard's DIRECT url. Getting this wrong throws inside service.start(), which is not a
+// SplitReplicationMisconfiguredError, so the process stays up with every source down.
+describe("shard replication uses the direct connection", () => {
+  const baseArgs = {
+    legacyUrl: "postgres://legacy",
+    legacySlotName: "v1",
+    legacyPublicationName: "v1_pub",
+    legacyOriginGeneration: 0,
+    newSlotName: "v2",
+    newPublicationName: "v2_pub",
+    newOriginGeneration: 1,
+    splitEnabled: true,
+    newUrl: "postgres://new",
+  };
+  const rep = { slotName: "sa", publicationName: "pa", originGeneration: 2 };
+
+  it("prefers the shard's directUrl over its pooled url", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        {
+          key: "a",
+          url: "postgres://pooled:6432/shard_a",
+          directUrl: "postgres://direct:5432/shard_a",
+          replication: rep,
+        },
+      ],
+    });
+    const shard = sources.find((s) => s.id === "shard-a");
+    expect(shard?.pgConnectionUrl).toBe("postgres://direct:5432/shard_a");
+  });
+
+  it("falls back to url when no directUrl is given", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [{ key: "a", url: "postgres://only-url/shard_a", replication: rep }],
+    });
+    const shard = sources.find((s) => s.id === "shard-a");
+    expect(shard?.pgConnectionUrl).toBe("postgres://only-url/shard_a");
+  });
+
+  it("refuses the boot when a replicating shard declares no directUrl", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({
+          ...baseArgs,
+          shards: [{ key: "a", url: "postgres://u", replication: rep }],
+        }),
+        shards: [{ key: "a", hasDirectUrl: false }],
+      })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("names the shard and the reason in that failure", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({
+          ...baseArgs,
+          shards: [{ key: "a", url: "postgres://u", replication: rep }],
+        }),
+        shards: [{ key: "a", hasDirectUrl: false }],
+      })
+    ).toThrow(/shard a.*directUrl|directUrl.*shard a/is);
+  });
+
+  it("does NOT refuse when the replicating shard declares a directUrl", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({
+          ...baseArgs,
+          shards: [{ key: "a", url: "postgres://u", directUrl: "postgres://d", replication: rep }],
+        }),
+        shards: [{ key: "a", hasDirectUrl: true }],
+      })
+    ).not.toThrow();
+  });
+
+  it("does NOT require a directUrl for an aliased shard", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({ ...baseArgs, shards: [] }),
+        shards: [{ key: "z", aliasOf: "new", hasDirectUrl: false }],
+      })
+    ).not.toThrow();
+  });
 });

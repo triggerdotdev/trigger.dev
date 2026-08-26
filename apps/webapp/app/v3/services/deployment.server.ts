@@ -9,6 +9,7 @@ import {
   type DeploymentEvent,
 } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
@@ -195,10 +196,8 @@ export class DeploymentService extends BaseService {
     friendlyId: string,
     data?: Partial<Pick<WorkerDeployment, "canceledReason">>
   ) {
-    const validateDeployment = (
-      deployment: Pick<WorkerDeployment, "id" | "status" | "shortCode"> & {
-        environment: { project: { externalRef: string } };
-      }
+    const validateDeployment = <T extends Pick<WorkerDeployment, "id" | "status">>(
+      deployment: T
     ) => {
       if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
         logger.warn("Attempted cancelling deployment in a final state", {
@@ -210,11 +209,7 @@ export class DeploymentService extends BaseService {
       return okAsync(deployment);
     };
 
-    const cancelDeployment = (
-      deployment: Pick<WorkerDeployment, "id" | "shortCode"> & {
-        environment: { project: { externalRef: string } };
-      }
-    ) =>
+    const cancelDeployment = <T extends Pick<WorkerDeployment, "id">>(deployment: T) =>
       fromPromise(
         this._prisma.workerDeployment.updateMany({
           where: {
@@ -250,7 +245,27 @@ export class DeploymentService extends BaseService {
     return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
-      .andThen(({ deployment }) =>
+      .andTee(({ deployment }) =>
+        recordDeploymentFinished({
+          status: "CANCELED",
+          deployment: {
+            ...deployment,
+            status: "CANCELED",
+            canceledAt: new Date(),
+            canceledReason: data?.canceledReason ?? null,
+          },
+          environment: {
+            organizationId: deployment.environment.project.organizationId,
+            organizationSlug: deployment.environment.organization.slug,
+            projectId: deployment.environment.project.id,
+            projectName: deployment.environment.project.name,
+            projectRef: deployment.environment.project.externalRef,
+            environmentId: deployment.environment.id,
+            environmentType: deployment.environment.type,
+          },
+        })
+      )
+      .andTee(({ deployment }) =>
         this.appendToEventLog(deployment.environment.project, deployment, [
           {
             type: "finalized",
@@ -259,14 +274,11 @@ export class DeploymentService extends BaseService {
               message: data?.canceledReason ?? undefined,
             },
           },
-        ])
-          .orElse((error) => {
-            logger.error("Failed to append event to deployment event log", { error });
-            return okAsync(deployment);
-          })
-          .map(() => deployment)
+        ]).orTee((error) => {
+          logger.error("Failed to append event to deployment event log", { error });
+        })
       )
-      .andThen(deleteTimeout)
+      .andThen(({ deployment }) => deleteTimeout(deployment))
       .map(() => undefined);
   }
 
@@ -484,6 +496,23 @@ export class DeploymentService extends BaseService {
         select: {
           status: true,
           id: true,
+          friendlyId: true,
+          version: true,
+          type: true,
+          createdAt: true,
+          startedAt: true,
+          installedAt: true,
+          builtAt: true,
+          deployedAt: true,
+          failedAt: true,
+          canceledAt: true,
+          canceledReason: true,
+          errorData: true,
+          runtime: true,
+          runtimeVersion: true,
+          cliVersion: true,
+          triggeredVia: true,
+          commitSHA: true,
           buildServerMetadata: true,
           imageReference: true,
           shortCode: true,
@@ -491,8 +520,14 @@ export class DeploymentService extends BaseService {
             include: {
               project: {
                 select: {
+                  id: true,
+                  name: true,
+                  organizationId: true,
                   externalRef: true,
                 },
+              },
+              organization: {
+                select: { slug: true },
               },
             },
           },

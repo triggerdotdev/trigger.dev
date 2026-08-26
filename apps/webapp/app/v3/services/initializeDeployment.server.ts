@@ -16,6 +16,7 @@ import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
 import { DeploymentService } from "./deployment.server";
+import { recordDeploymentInitialized } from "./recordDeploymentFinished.server";
 import { createDeploymentWithNextVersion } from "./initializeDeployment/createDeploymentWithNextVersion.server";
 import {
   cancelSupersededDeployments,
@@ -56,7 +57,8 @@ export type InitializeDeploymentResult =
 export class InitializeDeploymentService extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
-    payload: InitializeDeploymentRequestBody
+    payload: InitializeDeploymentRequestBody,
+    options?: { cliVersion?: string }
   ): Promise<InitializeDeploymentResult> {
     return this.traceWithEnv("call", environment, async (span) => {
       if (payload.externalId) {
@@ -386,11 +388,25 @@ export class InitializeDeploymentService extends BaseService {
             commitSHA: payload.gitMeta?.commitSha ?? undefined,
             externalId: payload.externalId,
             runtime: payload.runtime ?? environment.project.defaultRuntime ?? undefined,
+            cliVersion: options?.cliVersion,
             triggeredVia: payload.triggeredVia ?? undefined,
             startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
           };
         }
       );
+
+      recordDeploymentInitialized({
+        deployment,
+        environment: {
+          organizationId: environment.organizationId,
+          organizationSlug: environment.organization.slug,
+          projectId: environment.projectId,
+          projectName: environment.project.name,
+          projectRef: environment.project.externalRef,
+          environmentId: environment.id,
+          environmentType: environment.type,
+        },
+      });
 
       const timeoutMs =
         deployment.status === "PENDING" ? env.DEPLOY_QUEUE_TIMEOUT_MS : env.DEPLOY_TIMEOUT_MS;

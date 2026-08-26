@@ -1016,6 +1016,7 @@ export class CliApiClient {
       Authorization: `Bearer ${this.accessToken}`,
       "Content-Type": "application/json",
       "x-trigger-source": this.source,
+      "x-trigger-cli-version": VERSION,
       ...this.getBranchHeader(),
     };
   }
