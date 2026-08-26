@@ -3007,7 +3007,17 @@ export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage };
 export type { InferChatClientData, InferChatUIMessage, InferChatUIMessageFromTools };
 
 /** @internal */
-type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };
+/**
+ * A message observed mid-turn and offered for injection. `seqNum` is the record
+ * it came from, so injecting can take it off the router; a batch that is
+ * declined leaves its records queued and they become later turns instead.
+ * Absent for entries that did not come from a channel record.
+ */
+type SteeringQueueEntry = {
+  uiMessage: UIMessage;
+  modelMessages: ModelMessage[];
+  seqNum?: number;
+};
 /** @internal */
 const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
 /** @internal */
@@ -3650,7 +3660,18 @@ async function drainSteeringQueue(
         ? await config.prepare(batchEvent)
         : queue.flatMap((e) => e.modelMessages);
 
-      // Clear the queue and record injected IDs
+      /**
+       * Injection is the point of consumption. The records were only observed
+       * on arrival, so they are still queued on the router and still holding
+       * the resume floor; taking them here is what stops the same message also
+       * being answered as a later turn. A batch that was declined never reaches
+       * this line, so its records stay queued and become later turns, which is
+       * what "messages queue for the next turn" means.
+       */
+      const router = chatInputRouter();
+      for (const entry of queue) {
+        if (entry.seqNum !== undefined) router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
+      }
       queue.length = 0;
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
@@ -6715,7 +6736,9 @@ function chatAgent<
                  * crash before the next turn lost it.
                  */
                 const msgSub = pmConfig
-                  ? messagesInput.on(async (msg) => {
+                  ? chatInputRouter().observe(CHAT_ROUTE_MESSAGES, async (record) => {
+                      const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>)
+                        .payload;
                       // Slim wire: at most one delta message per record. The
                       // pendingMessages handler reads `msg.message` directly
                       // instead of slicing an array — a wire record arrives
@@ -6748,6 +6771,7 @@ function chatAgent<
                           queue.push({
                             uiMessage: lastUIMessage as UIMessage,
                             modelMessages: modelMsgs,
+                            seqNum: record.seqNum,
                           });
                           locals.set(chatSteeringQueueKey, queue);
                         } catch {
@@ -9894,7 +9918,8 @@ function createChatSession(
            * resume floor behind it.
            */
           const sessionMsgSub = sessionPendingMessages
-            ? messagesInput.on(async (msg) => {
+            ? chatInputRouter().observe(CHAT_ROUTE_MESSAGES, async (record) => {
+                const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
                 const lastUIMessage = msg.message;
                 if (lastUIMessage) {
                   if (sessionPendingMessages.onReceived) {
@@ -9910,7 +9935,11 @@ function createChatSession(
                   }
                   try {
                     const modelMsgs = await toModelMessages([lastUIMessage]);
-                    turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                    turnSteeringQueue.push({
+                      uiMessage: lastUIMessage,
+                      modelMessages: modelMsgs,
+                      seqNum: record.seqNum,
+                    });
                   } catch {
                     /* non-fatal */
                   }

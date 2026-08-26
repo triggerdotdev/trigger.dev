@@ -101,6 +101,7 @@ class RouteState {
   readonly queue: SessionStreamRecord[] = [];
   readonly waiters: QueueWaiter[] = [];
   readonly handlers = new Set<RouteHandler>();
+  readonly observers = new Set<RouteHandler>();
 
   constructor(readonly route: SessionRoute) {}
 
@@ -239,6 +240,14 @@ export class SessionChannelRouter {
       return this.#drop(record, "no-handler", routeName);
     }
 
+    for (const observer of state.observers) {
+      try {
+        observer(record);
+      } catch {
+        void 0;
+      }
+    }
+
     const waiter = state.waiters.shift();
     if (waiter) {
       if (waiter.timer) clearTimeout(waiter.timer);
@@ -356,6 +365,54 @@ export class SessionChannelRouter {
     };
   }
 
+  /**
+   * Watch a route without consuming from it.
+   *
+   * Notification and consumption are separate concerns: an observer is told
+   * that a record arrived and the record still queues, so the resume floor
+   * stays held behind it until something actually takes it. A push handler
+   * registered with {@link on} is the opposite, and a record handed to one
+   * counts as terminally decided.
+   *
+   * Only meaningful on a replayable route. On an `at-arrival` route an observer
+   * would either have to count as a listener, which would stop an unconsumed
+   * record being discarded, or watch records it cannot affect, so it is
+   * rejected rather than given one of those two meanings.
+   *
+   * Records already queued are not re-offered: an observer reports arrivals
+   * from the moment it attaches, so re-offering would fire twice for a record
+   * that arrived before a later consumer attached.
+   */
+  observe(name: string, observer: RouteHandler): { off: () => void } {
+    const state = this.#stateOrThrow(name);
+    if (state.route.delivery === "at-arrival") {
+      throw new Error(
+        `Route "${name}" is at-arrival, which cannot be observed: an observer must not decide whether a record is discarded, and cannot be offered one that already was`
+      );
+    }
+    state.observers.add(observer);
+    return {
+      off: () => {
+        state.observers.delete(observer);
+      },
+    };
+  }
+
+  /**
+   * Remove one queued record, identified by sequence.
+   *
+   * For a consumer that decided to take a record it had only observed. Returns
+   * whether it was still queued, so a caller can tell a real take from a record
+   * something else had already consumed.
+   */
+  take(name: string, seqNum: number): boolean {
+    const state = this.#stateOrThrow(name);
+    const index = state.queue.findIndex((record) => record.seqNum === seqNum);
+    if (index === -1) return false;
+    state.queue.splice(index, 1);
+    return true;
+  }
+
   /** Whether an `at-arrival` route currently has anywhere to deliver. */
   hasHandler(name: string): boolean {
     return this.#stateOrThrow(name).handlers.size > 0;
@@ -430,6 +487,7 @@ export class SessionChannelRouter {
     for (const state of this.#routes.values()) {
       state.queue.length = 0;
       state.handlers.clear();
+      state.observers.clear();
       for (const waiter of state.waiters) {
         if (waiter.timer) clearTimeout(waiter.timer);
         waiter.resolve(undefined);

@@ -407,3 +407,93 @@ describe("SessionChannelRouter: exactly-once across a crash", () => {
     }
   });
 });
+
+describe("SessionChannelRouter: observe", () => {
+  it("notifies without consuming, so the record still queues and holds the floor", () => {
+    const r = router();
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+
+    r.ingest(rec(0, "message"));
+
+    expect(seen).toEqual([0]);
+    expect(r.hasPending("messages")).toBe(true);
+    expect(r.resumeFloor()).toBeUndefined();
+  });
+
+  it("does not satisfy a queue route's handler delivery", () => {
+    const r = router();
+    const observed: number[] = [];
+    const handled: number[] = [];
+    r.observe("messages", (record) => observed.push(record.seqNum));
+
+    r.ingest(rec(0, "message"));
+    expect(handled).toEqual([]);
+
+    r.on("messages", (record) => handled.push(record.seqNum));
+    expect(handled).toEqual([0]);
+    expect(observed).toEqual([0]);
+  });
+
+  it("rejects an at-arrival route, so a stop with only an observer is still discarded", () => {
+    const r = router();
+    expect(() => r.observe("stop", () => {})).toThrow(/at-arrival/);
+  });
+
+  it("does not re-offer records that were already queued when it attached", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+    expect(seen).toEqual([]);
+
+    r.ingest(rec(1, "message"));
+    expect(seen).toEqual([1]);
+  });
+
+  it("stops notifying after off()", () => {
+    const r = router();
+    const seen: number[] = [];
+    const sub = r.observe("messages", (record) => seen.push(record.seqNum));
+
+    r.ingest(rec(0, "message"));
+    sub.off();
+    r.ingest(rec(1, "message"));
+
+    expect(seen).toEqual([0]);
+  });
+});
+
+describe("SessionChannelRouter: take", () => {
+  it("removes one queued record by sequence and releases the floor", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+    r.ingest(rec(1, "message"));
+
+    expect(r.take("messages", 0)).toBe(true);
+    expect(r.pendingCount("messages")).toBe(1);
+    expect(r.peek("messages")?.seqNum).toBe(1);
+  });
+
+  it("reports false for a record that is no longer queued", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+
+    expect(r.take("messages", 0)).toBe(true);
+    expect(r.take("messages", 0)).toBe(false);
+    expect(r.take("messages", 99)).toBe(false);
+  });
+
+  it("leaves an untaken observed record to be delivered as normal", async () => {
+    const r = router();
+    r.observe("messages", () => {});
+    r.ingest(rec(0, "message"));
+    r.ingest(rec(1, "message"));
+
+    r.take("messages", 0);
+
+    const next = await r.next("messages", { timeoutMs: 0 });
+    expect(next?.seqNum).toBe(1);
+  });
+});

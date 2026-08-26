@@ -182,6 +182,48 @@ describe("chat.agent steering config", () => {
   });
 });
 
+/**
+ * A mid-turn message the agent declines to inject is documented to "queue for
+ * the next turn". It used to be diverted into a turn-local steering queue and
+ * discarded with the turn, so it was never injected, never written to the wire
+ * buffer, and never answered, with nothing raised at either end. Declining is
+ * also the default: with a `pendingMessages` config and no `shouldInject`, the
+ * callback is treated as returning false for every batch.
+ */
+describe("chat.agent declined steering message", () => {
+  it("answers a declined mid-turn message as its own turn", async () => {
+    const received: string[] = [];
+
+    const agent = chat.agent({
+      id: "pending-drain.declined",
+      pendingMessages: {
+        onReceived: ({ message }) => {
+          received.push(message.id);
+        },
+        shouldInject: () => false,
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model: echoModel(), messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "pending-drain-declined" });
+    try {
+      const first = harness.sendMessage(userMessage("m1", "u-1"));
+      await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      void harness.sendMessage(userMessage("m2", "u-2"));
+      await first;
+
+      await waitFor(() => turnCompleteCount(harness) >= 2);
+
+      expect(received).toContain("u-2");
+      expect(streamedText(harness)).toContain("ANSWER(m2)");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
 describe("chat.agent errored turn", () => {
   it(
     "does not duplicate messages buffered after a turn that threw",
