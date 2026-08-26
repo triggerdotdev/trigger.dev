@@ -1395,42 +1395,82 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view canonicalizes bare evidence ids into trigger:// URIs", async () => {
     const { capability, upserts } = fakeInvestigations();
+    // Span evidence must come from this turn's trace read, so exchange a real env token
+    // and stub the trace call the same way the model would drive it.
+    const fetchStub = stubFetch((url) => {
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/runs/run_abc123/trace")) {
+        return { body: { trace: { traceId: "t1", rootSpan: { id: "span_123", data: {} } } } };
+      }
+      return { body: {} };
+    });
+    try {
+      const tools = buildDashboardAgentTools({ ...ENV_CTX, investigations: capability });
+      await (tools.get_run_trace as { execute: (i: unknown, o: unknown) => Promise<any> }).execute(
+        { runId: "run_abc123" },
+        {}
+      );
+
+      const output = await renderInvestigation(tools, {
+        ...investigationState,
+        hypotheses: [
+          {
+            ...investigationState.hypotheses[0]!,
+            evidence: [
+              { kind: "error", uri: "error_c4b4a797397a9c43", label: "the error group" },
+              { kind: "deployment", uri: "20260726.4", label: "the deploy before the failures" },
+              // An improvised almost-URI: the bare id is salvaged from the last segment.
+              {
+                kind: "error",
+                uri: "trigger://errors/error_c4b4a797397a9c43",
+                label: "improvised",
+              },
+            ],
+          },
+        ],
+        evidence: [
+          // Already canonical, so it passes through untouched.
+          ...investigationState.evidence,
+          // A span carries its two parts, so the executor can build the URI — but only
+          // because get_run_trace returned this exact id earlier in the turn.
+          { kind: "span", runId: "run_abc123", spanId: "span_123", label: "the failing span" },
+        ],
+      });
+
+      expect(output.error).toBeUndefined();
+      const investigation = output.blocks[0].investigation;
+      expect(investigation.hypotheses[0].evidence.map((e: { uri: string }) => e.uri)).toEqual([
+        "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
+        "trigger://proj_abc/env_abc/deployment/20260726.4",
+        "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
+      ]);
+      expect(investigation.evidence.map((e: { uri: string }) => e.uri)).toEqual([
+        "trigger://proj_abc/env_abc/run/run_abc123",
+        "trigger://proj_abc/env_abc/run/run_abc123/span/span_123",
+      ]);
+      expect(JSON.stringify(upserts[0])).not.toContain('"uri":"error_c4b4a797397a9c43"');
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("render_view rejects a span id no trace read returned this turn", async () => {
+    const { capability, upserts } = fakeInvestigations();
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
 
     const output = await renderInvestigation(tools, {
       ...investigationState,
-      hypotheses: [
-        {
-          ...investigationState.hypotheses[0]!,
-          evidence: [
-            { kind: "error", uri: "error_c4b4a797397a9c43", label: "the error group" },
-            { kind: "deployment", uri: "20260726.4", label: "the deploy before the failures" },
-            // An improvised almost-URI: the bare id is salvaged from the last segment.
-            { kind: "error", uri: "trigger://errors/error_c4b4a797397a9c43", label: "improvised" },
-          ],
-        },
-      ],
       evidence: [
-        // Already canonical, so it passes through untouched.
         ...investigationState.evidence,
-        // A span carries its two parts, so the executor can build the URI. Nothing was
-        // read this turn: the read gate belongs to the source kind alone.
-        { kind: "span", runId: "run_abc123", spanId: "span_123", label: "the failing span" },
+        // get_run_trace was never called this turn, so this id is unproven.
+        { kind: "span", runId: "run_abc123", spanId: "span_999", label: "an invented span" },
       ],
     });
 
-    expect(output.error).toBeUndefined();
-    const investigation = output.blocks[0].investigation;
-    expect(investigation.hypotheses[0].evidence.map((e: { uri: string }) => e.uri)).toEqual([
-      "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
-      "trigger://proj_abc/env_abc/deployment/20260726.4",
-      "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
-    ]);
-    expect(investigation.evidence.map((e: { uri: string }) => e.uri)).toEqual([
-      "trigger://proj_abc/env_abc/run/run_abc123",
-      "trigger://proj_abc/env_abc/run/run_abc123/span/span_123",
-    ]);
-    expect(JSON.stringify(upserts[0])).not.toContain('"uri":"error_c4b4a797397a9c43"');
+    expect(output.blocks).toBeUndefined();
+    expect(output.error).toContain("span_999");
+    expect(output.error).toContain("get_run_trace");
+    expect(upserts).toHaveLength(0);
   });
 
   it("render_view pins a source citation to the commit the file was read at", async () => {
