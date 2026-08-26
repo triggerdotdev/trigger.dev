@@ -233,6 +233,10 @@ export function DashboardAgentChat({
   // line forever. Independent of the SDK's own `error`: both drive the same live-error
   // callout, but a deadline firing never touches the server turn or `status`.
   const [deadlineError, setDeadlineError] = useState<TurnDeadlineError | null>(null);
+  // A retry can resend under `status: "submitted"` again — the same status the previous
+  // turn was already in when it fired, so the first-event effect wouldn't otherwise re-run.
+  // Bumped in `retry`/`dismissError` to force it to.
+  const [attempt, setAttempt] = useState(0);
   const firstEventDeadline = useRef(
     createKeyedDeadline<"submitted">({
       deadlineMs: firstEventDeadlineMs,
@@ -251,7 +255,9 @@ export function DashboardAgentChat({
   ).current;
   useEffect(() => {
     firstEventDeadline.sync(status === "submitted" ? "submitted" : null);
-  }, [status, firstEventDeadline]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `attempt` forces a re-sync when
+    // `status` is unchanged across a retry (see its declaration above).
+  }, [status, firstEventDeadline, attempt]);
   useEffect(() => {
     toolPendingDeadline.sync(activeToolPendingKey(status, inFlightToolName(messages)));
   }, [messages, status, toolPendingDeadline]);
@@ -363,6 +369,9 @@ export function DashboardAgentChat({
     // that already fired once would otherwise never re-arm (same key, no change to sync).
     firstEventDeadline.sync(null);
     toolPendingDeadline.sync(null);
+    // Forces the first-event effect to re-sync even when `status` stays "submitted" across
+    // the retry (a resend re-enters "submitted", the same value the failed turn left it in).
+    setAttempt((current) => current + 1);
     turnStartedPathRef.current = renderedPathRef.current;
     if (action.kind === "regenerate") {
       void regenerate();
@@ -384,6 +393,7 @@ export function DashboardAgentChat({
     setDeadlineError(null);
     firstEventDeadline.sync(null);
     toolPendingDeadline.sync(null);
+    setAttempt((current) => current + 1);
   }, [clearError, firstEventDeadline, toolPendingDeadline]);
 
   const resolveUri = useTriggerUriResolver(actionPath);

@@ -121,11 +121,14 @@ describe("turnDeadlineErrorMessage", () => {
 });
 
 /**
- * `DashboardAgentChat`'s wiring reproduced with its own exported pieces (`activeToolPendingKey`,
- * `createKeyedDeadline`) instead of mounting the component — this repo has no DOM/render test
- * setup (see `wake-poll.test.ts` for the same pattern: the extracted logic is what's tested).
+ * These do NOT exercise `DashboardAgentChat` itself — this repo has no DOM/render test setup
+ * (see `wake-poll.test.ts` for the same pattern: the extracted logic is what's tested). They
+ * prove the extracted predicate (`activeToolPendingKey`) gates correctly, and that an explicit
+ * `sync(null)` reset — which the component makes in `retry`/`dismissError` — is what lets a
+ * deadline re-arm on a retry that reproduces the same condition; without that reset, `sync`
+ * with an unchanged key is a no-op and the deadline never fires again.
  */
-describe("DashboardAgentChat wiring", () => {
+describe("the tool-pending gate and retry re-arm, standing in for DashboardAgentChat", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
