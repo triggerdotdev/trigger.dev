@@ -83,7 +83,9 @@ export class FailDeploymentService extends BaseService {
       deployment: failedDeployment,
       environment: {
         organizationId: authenticatedEnv.organizationId,
+        organizationSlug: authenticatedEnv.organization.slug,
         projectId: authenticatedEnv.projectId,
+        projectName: authenticatedEnv.project.name,
         projectRef: authenticatedEnv.project.externalRef,
         environmentId: authenticatedEnv.id,
         environmentType: authenticatedEnv.type,

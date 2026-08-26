@@ -15,7 +15,9 @@ import { BuildServerMetadata } from "@trigger.dev/core/v3";
  */
 export const DeploymentTelemetryAttributes = {
   ORG_ID: "$trigger.org.id",
+  ORG_SLUG: "$trigger.org.slug",
   PROJECT_ID: "$trigger.project.id",
+  PROJECT_NAME: "$trigger.project.name",
   // Project external ref ("proj_…")
   PROJECT_REF: "$trigger.project.ref",
   ENV_ID: "$trigger.env.id",

@@ -256,7 +256,9 @@ export class DeploymentService extends BaseService {
           },
           environment: {
             organizationId: deployment.environment.project.organizationId,
+            organizationSlug: deployment.environment.organization.slug,
             projectId: deployment.environment.project.id,
+            projectName: deployment.environment.project.name,
             projectRef: deployment.environment.project.externalRef,
             environmentId: deployment.environment.id,
             environmentType: deployment.environment.type,
@@ -519,9 +521,13 @@ export class DeploymentService extends BaseService {
               project: {
                 select: {
                   id: true,
+                  name: true,
                   organizationId: true,
                   externalRef: true,
                 },
+              },
+              organization: {
+                select: { slug: true },
               },
             },
           },

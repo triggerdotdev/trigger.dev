@@ -17,6 +17,9 @@ export class TimeoutDeploymentService extends BaseService {
         environment: {
           include: {
             project: true,
+            organization: {
+              select: { slug: true },
+            },
           },
         },
       },
@@ -76,7 +79,9 @@ export class TimeoutDeploymentService extends BaseService {
       deployment: timedOutDeployment,
       environment: {
         organizationId: deployment.environment.project.organizationId,
+        organizationSlug: deployment.environment.organization.slug,
         projectId: deployment.environment.projectId,
+        projectName: deployment.environment.project.name,
         projectRef: deployment.environment.project.externalRef,
         environmentId: deployment.environmentId,
         environmentType: deployment.environment.type,
