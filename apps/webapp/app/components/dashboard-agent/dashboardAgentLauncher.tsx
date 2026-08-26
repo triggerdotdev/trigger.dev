@@ -46,12 +46,11 @@ export function DashboardAgentLauncher() {
   }
 
   const { open, setOpen, unreadWakes, unreadWork } = agent;
-  if (open) {
-    return null;
-  }
-
   const hasUnread = unreadWakes > 0 || unreadWork > 0;
 
+  // Stays visible while the window is open: there is only ever one floating window (it's
+  // fixed-position and already on top of everything), so a click while open is a no-op — it
+  // never spawns a second window, it just re-affirms the one that's already there.
   return (
     <SimpleTooltip
       asChild
@@ -59,7 +58,7 @@ export function DashboardAgentLauncher() {
       disableHoverableContent
       content={
         <span className="flex items-center">
-          Open chat
+          {open ? "Chat open" : "Open chat"}
           <ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />
         </span>
       }
