@@ -59,7 +59,7 @@ export function writeAgentFullscreen(fullscreen: boolean): void {
   }
 }
 
-export function agentTakeoverClassName(fullscreen: boolean): string {
+function agentTakeoverClassName(fullscreen: boolean): string {
   return fullscreen ? "absolute inset-0 z-10 bg-background-bright" : "h-full";
 }
 

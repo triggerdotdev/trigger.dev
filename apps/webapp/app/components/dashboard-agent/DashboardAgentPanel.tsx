@@ -53,6 +53,7 @@ import {
 import { AgentPanelColumn } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
+import { cn } from "~/utils/cn";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
   try {
@@ -132,6 +133,8 @@ export function DashboardAgentPanel({
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname
   );
+  // Cursor feedback only; the drag itself is handled by `dragHandleProps`.
+  const [draggingWindow, setDraggingWindow] = useState(false);
 
   const currentPage = agentPageLabel(pageContext, location.pathname);
 
@@ -609,7 +612,18 @@ export function DashboardAgentPanel({
         onClose();
       }}
     >
-      <motion.div {...dragHandleProps}>
+      <motion.div
+        {...dragHandleProps}
+        onPanStart={(event, info) => {
+          setDraggingWindow(true);
+          dragHandleProps?.onPanStart?.(event, info);
+        }}
+        onPanEnd={(event, info) => {
+          setDraggingWindow(false);
+          dragHandleProps?.onPanEnd?.(event, info);
+        }}
+        className={cn("select-none", draggingWindow ? "cursor-grabbing" : "cursor-grab")}
+      >
         <DashboardAgentHeader
           title={headerTitle}
           chats={chats}

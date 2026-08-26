@@ -137,6 +137,7 @@ const sections: StorySection[] = [
       { name: "Investigation card", slug: "agent-investigation" },
       { name: "Watch card", slug: "agent-watch" },
       { name: "Icons & Buttons", slug: "ai-agent" },
+      { name: "Floating chat window", slug: "dashboard-agent-floating" },
     ],
   },
 ];
