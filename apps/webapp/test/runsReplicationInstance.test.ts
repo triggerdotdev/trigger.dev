@@ -653,3 +653,96 @@ describe("RunsReplication multi-source wiring (integration)", () => {
     }
   );
 });
+
+// Logical replication needs a session-mode connection, which a transaction pooler cannot serve.
+// The app writer DSN is pooled in a real deployment, so a shard replication source must take the
+// shard's DIRECT url. Getting this wrong throws inside service.start(), which is not a
+// SplitReplicationMisconfiguredError, so the process stays up with every source down.
+describe("shard replication uses the direct connection", () => {
+  const baseArgs = {
+    legacyUrl: "postgres://legacy",
+    legacySlotName: "v1",
+    legacyPublicationName: "v1_pub",
+    legacyOriginGeneration: 0,
+    newSlotName: "v2",
+    newPublicationName: "v2_pub",
+    newOriginGeneration: 1,
+    splitEnabled: true,
+    newUrl: "postgres://new",
+  };
+  const rep = { slotName: "sa", publicationName: "pa", originGeneration: 2 };
+
+  it("prefers the shard's directUrl over its pooled url", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [
+        {
+          key: "a",
+          url: "postgres://pooled:6432/shard_a",
+          directUrl: "postgres://direct:5432/shard_a",
+          replication: rep,
+        },
+      ],
+    });
+    const shard = sources.find((s) => s.id === "shard-a");
+    expect(shard?.pgConnectionUrl).toBe("postgres://direct:5432/shard_a");
+  });
+
+  it("falls back to url when no directUrl is given", () => {
+    const sources = buildReplicationSources({
+      ...baseArgs,
+      shards: [{ key: "a", url: "postgres://only-url/shard_a", replication: rep }],
+    });
+    const shard = sources.find((s) => s.id === "shard-a");
+    expect(shard?.pgConnectionUrl).toBe("postgres://only-url/shard_a");
+  });
+
+  it("refuses the boot when a replicating shard declares no directUrl", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({
+          ...baseArgs,
+          shards: [{ key: "a", url: "postgres://u", replication: rep }],
+        }),
+        shards: [{ key: "a", hasDirectUrl: false }],
+      })
+    ).toThrow(SplitReplicationMisconfiguredError);
+  });
+
+  it("names the shard and the reason in that failure", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({
+          ...baseArgs,
+          shards: [{ key: "a", url: "postgres://u", replication: rep }],
+        }),
+        shards: [{ key: "a", hasDirectUrl: false }],
+      })
+    ).toThrow(/shard a.*directUrl|directUrl.*shard a/is);
+  });
+
+  it("does NOT refuse when the replicating shard declares a directUrl", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({
+          ...baseArgs,
+          shards: [{ key: "a", url: "postgres://u", directUrl: "postgres://d", replication: rep }],
+        }),
+        shards: [{ key: "a", hasDirectUrl: true }],
+      })
+    ).not.toThrow();
+  });
+
+  it("does NOT require a directUrl for an aliased shard", () => {
+    expect(() =>
+      assertReplicationCoversSplit({
+        splitEnabled: true,
+        sources: buildReplicationSources({ ...baseArgs, shards: [] }),
+        shards: [{ key: "z", aliasOf: "new", hasDirectUrl: false }],
+      })
+    ).not.toThrow();
+  });
+});

@@ -39,6 +39,8 @@ export function buildReplicationSources(args: {
   shards?: Array<{
     key: string;
     url: string;
+    /** The DIRECT, non-pooled DSN. Logical replication needs a session-mode connection. */
+    directUrl?: string;
     replication: { slotName: string; publicationName: string; originGeneration: number };
   }>;
 }): RunsReplicationSource[] {
@@ -68,9 +70,12 @@ export function buildReplicationSources(args: {
   // split is the precondition for a shard to exist at all. The origin generations come from the
   // descriptor, which the boot parser already bounds to 2..255 and checks for duplicates; the
   // service re-checks uniqueness across every source it is given.
+  // The DIRECT dsn, not the app writer dsn. A transaction pooler cannot serve the replication
+  // protocol, and the writer dsn is pooled in a real deployment. Gen-1 keeps the same separation
+  // through its own RUN_REPLICATION_* variables, and the migration loop prefers directUrl too.
   const shardSources: RunsReplicationSource[] = (args.shards ?? []).map((shard) => ({
     id: shardSourceId(shard.key),
-    pgConnectionUrl: shard.url,
+    pgConnectionUrl: shard.directUrl ?? shard.url,
     slotName: shard.replication.slotName,
     publicationName: shard.replication.publicationName,
     originGeneration: shard.replication.originGeneration,
@@ -143,11 +148,28 @@ class ShardReplicationMisconfiguredError extends SplitReplicationMisconfiguredEr
   }
 }
 
+/**
+ * A shard that replicates but declares no direct dsn. Falling back to its writer dsn is a silent
+ * trap: if that dsn is pooled, the replication client throws inside start(), which is NOT a
+ * SplitReplicationMisconfiguredError, so the process stays up with EVERY source down, legacy
+ * included. Refuse the boot instead.
+ */
+class ShardDirectUrlMissingError extends SplitReplicationMisconfiguredError {
+  constructor(shardKey: string) {
+    super(
+      `run-ops shard ${shardKey} declares replication but no directUrl: logical replication needs a ` +
+        "session-mode connection, which a transaction pooler cannot serve. Give the shard a directUrl " +
+        "pointing at its direct, non-pooled endpoint."
+    );
+    this.name = "ShardDirectUrlMissingError";
+  }
+}
+
 export function assertReplicationCoversSplit(args: {
   splitEnabled: boolean;
   sources: RunsReplicationSource[];
   /** Every configured shard, aliased ones included. An aliased shard needs no source of its own. */
-  shards?: Array<{ key: string; aliasOf?: "new" }>;
+  shards?: Array<{ key: string; aliasOf?: "new"; hasDirectUrl?: boolean }>;
 }): void {
   if (!args.splitEnabled) {
     return;
@@ -160,6 +182,9 @@ export function assertReplicationCoversSplit(args: {
     if (shard.aliasOf !== undefined) continue;
     if (!args.sources.some((s) => s.id === shardSourceId(shard.key))) {
       throw new ShardReplicationMisconfiguredError(shard.key);
+    }
+    if (shard.hasDirectUrl === false) {
+      throw new ShardDirectUrlMissingError(shard.key);
     }
   }
 
@@ -271,7 +296,9 @@ function initializeRunsReplicationInstance() {
     );
     const shardsWithReplication = nonAliasedShards(env.RUN_OPS_SHARDS).flatMap((shard) => {
       const replication = shardReplicationByKey.get(shard.key);
-      return replication ? [{ key: shard.key, url: shard.url, replication }] : [];
+      return replication
+        ? [{ key: shard.key, url: shard.url, directUrl: shard.directUrl, replication }]
+        : [];
     });
 
     isSplitEnabled()
@@ -295,7 +322,11 @@ function initializeRunsReplicationInstance() {
         assertReplicationCoversSplit({
           splitEnabled,
           sources,
-          shards: env.RUN_OPS_SHARDS.map((d) => ({ key: d.key, aliasOf: d.aliasOf })),
+          shards: env.RUN_OPS_SHARDS.map((d) => ({
+            key: d.key,
+            aliasOf: d.aliasOf,
+            hasDirectUrl: d.directUrl !== undefined,
+          })),
         });
 
         if (sources.length > 1) {
