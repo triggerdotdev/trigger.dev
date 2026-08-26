@@ -24,6 +24,11 @@ export type WaitpointCoordinator = {
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
+    /**
+     * The run this waitpoint belongs to. Its id names the shard the row must land on, and
+     * this write bypasses the routing store's stamp check, so an unstamped id is silent here.
+     */
+    anchorRunId: string;
   }): AssociatedWaitpointData;
   createAssociatedWaitpoint(params: {
     runId: string;

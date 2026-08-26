@@ -1,6 +1,6 @@
 import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
-import { mintWaitpointIdFor, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { mintWaitpointIdFor } from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
@@ -382,12 +382,14 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
   mintAssociatedWaitpointData({
     projectId,
     environmentId,
+    anchorRunId,
   }: {
     projectId: string;
     environmentId: string;
+    anchorRunId: string;
   }): AssociatedWaitpointData {
     return {
-      ...WaitpointId.generate(),
+      ...mintWaitpointIdFor(anchorRunId),
       type: "RUN" as const,
       status: "PENDING" as const,
       idempotencyKey: nanoid(24),

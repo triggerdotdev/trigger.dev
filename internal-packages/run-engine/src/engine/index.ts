@@ -1087,6 +1087,7 @@ export class RunEngine {
                   ? this.waitpointSystem.buildRunAssociatedWaitpoint({
                       projectId: environment.project.id,
                       environmentId: environment.id,
+                      anchorRunId: taskRunId,
                     })
                   : undefined,
             },
@@ -1373,6 +1374,7 @@ export class RunEngine {
             ? this.waitpointSystem.buildRunAssociatedWaitpoint({
                 projectId: environment.project.id,
                 environmentId: environment.id,
+                anchorRunId: taskRunId,
               })
             : undefined;
 

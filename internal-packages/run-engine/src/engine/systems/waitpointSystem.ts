@@ -721,11 +721,17 @@ export class WaitpointSystem {
   public buildRunAssociatedWaitpoint({
     projectId,
     environmentId,
+    anchorRunId,
   }: {
     projectId: string;
     environmentId: string;
+    anchorRunId: string;
   }) {
-    return this.coordinator.mintAssociatedWaitpointData({ projectId, environmentId });
+    return this.coordinator.mintAssociatedWaitpointData({
+      projectId,
+      environmentId,
+      anchorRunId,
+    });
   }
 
   /**
@@ -807,7 +813,11 @@ export class WaitpointSystem {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
       // Create waitpoint and link to run atomically
-      const waitpointData = this.buildRunAssociatedWaitpoint({ projectId, environmentId });
+      const waitpointData = this.buildRunAssociatedWaitpoint({
+        projectId,
+        environmentId,
+        anchorRunId: runId,
+      });
 
       const waitpoint = await this.coordinator.createAssociatedWaitpoint({
         runId,
