@@ -89,7 +89,7 @@ function makeRequest(body: unknown): Request {
 
 const SESSION_PAT = "tr_session_pat_for_handover";
 
-function createSessionResponse(externalId: string): Response {
+function createSessionResponse(externalId: string, opts?: { pendingVersion?: boolean }): Response {
   return new Response(
     JSON.stringify({
       id: "session_test",
@@ -111,6 +111,7 @@ function createSessionResponse(externalId: string): Response {
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
       isCached: false,
+      ...(opts?.pendingVersion ? { pendingVersion: true } : {}),
     }),
     {
       status: 200,
@@ -160,6 +161,57 @@ describe("chat.headStart (route handler)", () => {
     vi.restoreAllMocks();
   });
 
+  it("reports a parked agent run in the response headers", async () => {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-parked", { pendingVersion: true });
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      // Stitched response subscribes to `.out` after handover.
+      if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        );
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ chat: chatHelper }) =>
+        streamText({
+          ...chatHelper.toStreamTextOptions(),
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("step 1 while parked") }),
+          }),
+        }),
+    });
+
+    const res = await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-parked",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    // Step 1 still streams from this process even though nothing can answer step 2 yet.
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Trigger-Chat-Pending-Version")).toBe("1");
+    const chunks = await readSSEBodyToChunks(res);
+    expect(chunks.length).toBeGreaterThan(0);
+  });
+
   it("creates the session with handover-prepare in basePayload and returns the session PAT in headers", async () => {
     const requests: CapturedRequest[] = [];
     global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
@@ -200,6 +252,8 @@ describe("chat.headStart (route handler)", () => {
     expect(res.headers.get("X-Trigger-Chat-Id")).toBe("chat-1");
     expect(res.headers.get("X-Trigger-Chat-Access-Token")).toBe(SESSION_PAT);
     expect(res.headers.get("Content-Type")).toMatch(/text\/event-stream/);
+    // Not parked, so the header is absent rather than "0".
+    expect(res.headers.get("X-Trigger-Chat-Pending-Version")).toBeNull();
 
     const sessionCreate = requests.find(
       (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")

@@ -142,6 +142,11 @@ export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
 export type HeadStartSession = {
   readonly chatId: string;
   /**
+   * The agent run is parked waiting for a deployment carrying the session's external deployment
+   * id. Step 1 still streams from this process; step 2 lands once the deployment does.
+   */
+  readonly pendingVersion: boolean;
+  /**
    * Tees a UIMessage stream into `session.out` for durability/resume,
    * fire-and-forget. Returns a passthrough that the caller can use as
    * the HTTP response body.
@@ -235,6 +240,8 @@ export type StartHeadStartOptions<TTools extends Record<string, Tool>> = {
 export type StartHeadStartResult = {
   /** The chat id you passed in — echoed for convenience. */
   chatId: string;
+  /** See {@link HeadStartSession.pendingVersion}. */
+  pendingVersion: boolean;
   /**
    * Resolves once step 1 has drained to `session.out` and the handover is
    * dispatched. Hand to `waitUntil` / `after` on serverless; ignore it on a
@@ -389,7 +396,7 @@ export const chat = {
     // returned promise still surfaces the error.
     completion.catch(() => {});
 
-    return { chatId: opts.chatId, completion };
+    return { chatId: opts.chatId, pendingVersion: session.handle.pendingVersion, completion };
   },
 
   /**
@@ -584,6 +591,7 @@ async function openHandoverSession(opts: {
     })
   );
   const sessionPublicAccessToken = created.publicAccessToken;
+  const pendingVersion = created.pendingVersion === true;
 
   // Combined abort signal: request lifecycle OR an internal timeout
   // mirroring the agent's idle wait so a hung handler doesn't sit
@@ -967,12 +975,15 @@ async function openHandoverSession(opts: {
         // without going back through the handler.
         "X-Trigger-Chat-Id": chatId,
         "X-Trigger-Chat-Access-Token": sessionPublicAccessToken,
+        // Only sent when parked, so an unpinned chat's headers are unchanged.
+        ...(pendingVersion ? { "X-Trigger-Chat-Pending-Version": "1" } : {}),
       },
     });
   };
 
   const handle: HeadStartSession = {
     chatId,
+    pendingVersion,
     tee,
     handoverWhenDone,
     handoverResponse,

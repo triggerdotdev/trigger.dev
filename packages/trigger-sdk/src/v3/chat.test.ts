@@ -1883,6 +1883,7 @@ describe("TriggerChatTransport", () => {
       chatId: string;
       accessToken: string;
       chunks: UIMessageChunk[];
+      pendingVersion?: boolean;
     }): Response {
       return new Response(handoverSseBody(args.chunks), {
         status: 200,
@@ -1890,9 +1891,47 @@ describe("TriggerChatTransport", () => {
           "content-type": "text/event-stream",
           "X-Trigger-Chat-Id": args.chatId,
           "X-Trigger-Chat-Access-Token": args.accessToken,
+          ...(args.pendingVersion ? { "X-Trigger-Chat-Pending-Version": "1" } : {}),
         },
       });
     }
+
+    it("emits run-pending-version when the handover endpoint reports a parked run", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (urlStr === "https://my-app.example/api/chat") {
+          return handoverResponse({
+            chatId: "chat-handover-parked",
+            accessToken: "handover-pat-parked",
+            chunks: sampleChunks,
+            pendingVersion: true,
+          });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        headStart: "https://my-app.example/api/chat",
+        onEvent: (event) => events.push(event),
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-handover-parked",
+        messageId: "m1",
+        messages: [createUserMessage("hello")],
+        abortSignal: undefined,
+      });
+      // Step 1 still arrives from the warm server.
+      expect(await drainChunks(stream)).toEqual(sampleChunks);
+
+      const parked = events.filter((e) => e.type === "run-pending-version");
+      expect(parked).toHaveLength(1);
+      expect(parked[0]).toMatchObject({ chatId: "chat-handover-parked", source: "head-start" });
+    });
 
     it("first-turn POSTs the wire payload to endpoint when no session exists", async () => {
       const requests: Array<{ url: string; init?: RequestInit }> = [];
