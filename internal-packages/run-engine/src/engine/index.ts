@@ -113,8 +113,8 @@ export class RunEngine {
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
-  private snapshotSweepPassCounter: Counter;
-  private snapshotSweepCountsHistogram: Histogram;
+  private snapshotSweepPassCounter?: Counter;
+  private snapshotSweepCountsHistogram?: Histogram;
   private snapshotsSinceReplicaMissCounter: Counter;
   private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
@@ -342,18 +342,22 @@ export class RunEngine {
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
 
-    this.snapshotSweepPassCounter = this.meter.createCounter(
-      "run_engine.snapshot_store.sweep_pass_total",
-      {
-        description:
-          "Orphan-sweep passes by outcome. A pass that throws emits outcome=failed, so silence is distinguishable from success",
-      }
-    );
+    // Only when the sweep is actually wired: a deployment that does not use the snapshot store
+    // should register no series for it at all.
+    if (options.snapshotStore?.runSweep) {
+      this.snapshotSweepPassCounter = this.meter.createCounter(
+        "run_engine.snapshot_store.sweep_pass_total",
+        {
+          description:
+            "Orphan-sweep passes by outcome. A pass that throws emits outcome=failed, so silence is distinguishable from success",
+        }
+      );
 
-    this.snapshotSweepCountsHistogram = this.meter.createHistogram(
-      "run_engine.snapshot_store.sweep_counts",
-      { description: "Per-field counts from one orphan-sweep pass" }
-    );
+      this.snapshotSweepCountsHistogram = this.meter.createHistogram(
+        "run_engine.snapshot_store.sweep_counts",
+        { description: "Per-field counts from one orphan-sweep pass" }
+      );
+    }
 
     this.snapshotsSinceReplicaMissCounter = this.meter.createCounter(
       "run_engine.snapshots_since.replica_miss",
@@ -2950,7 +2954,7 @@ export class RunEngine {
     if (!runSweep) {
       // The cron entry is registered when the engine is constructed, which happens before the
       // webapp sets the binding, so an occurrence already queued at boot can arrive unbound.
-      this.snapshotSweepPassCounter.add(1, { outcome: "unbound" });
+      this.snapshotSweepPassCounter?.add(1, { outcome: "unbound" });
       this.logger.error("sweepSnapshotOrphans ran with no sweep runner bound");
       return;
     }
@@ -2970,10 +2974,10 @@ export class RunEngine {
     } catch (error) {
       this.logger.error("sweepSnapshotOrphans threw", { error });
     } finally {
-      this.snapshotSweepPassCounter.add(1, { outcome });
+      this.snapshotSweepPassCounter?.add(1, { outcome });
       for (const [field, value] of Object.entries(counts ?? {})) {
         if (typeof value === "number") {
-          this.snapshotSweepCountsHistogram.record(value, { field });
+          this.snapshotSweepCountsHistogram?.record(value, { field });
         }
       }
     }

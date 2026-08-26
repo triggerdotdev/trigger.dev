@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SnapshotStoreMode } from "@internal/run-store";
-import { buildSnapshotStoreModeResolver } from "~/v3/snapshotStoreMode.server";
+import {
+  buildSnapshotStoreModeResolver,
+  cachedOrgModeFor,
+  NO_OVERRIDE,
+} from "~/v3/snapshotStoreMode.server";
 
 function build(opts: {
   globalMode?: SnapshotStoreMode;
@@ -59,6 +63,40 @@ describe("snapshot store mode resolver", () => {
   it("resolves an unknown organisation to the global answer, never a throw", () => {
     const r = build({ globalMode: "off", perOrg: {} });
     expect(r.resolve("org_deleted")).toBe("off");
+  });
+
+  it("caches an absent override rather than nothing", () => {
+    // Caching nothing means every organisation without an override re-queries on every write.
+    expect(cachedOrgModeFor(undefined)).toBe(NO_OVERRIDE);
+    expect(cachedOrgModeFor(null)).toBe(NO_OVERRIDE);
+    expect(cachedOrgModeFor("not-a-mode")).toBe(NO_OVERRIDE);
+    expect(cachedOrgModeFor("redis-read")).toBe(NO_OVERRIDE);
+    expect(cachedOrgModeFor("dual-write")).toBe("dual-write");
+  });
+
+  it("stops querying once an absent override is cached", () => {
+    // Without a cached negative, every organisation with no override re-queries on every write,
+    // which is every organisation until a ramp starts.
+    const refresh = vi.fn();
+    let cached: string | undefined;
+    const r = buildSnapshotStoreModeResolver({
+      globalMode: () => "off",
+      orgMode: {
+        get: () => cached as never,
+        refresh: (id: string) => {
+          refresh(id);
+          cached = "__none__";
+        },
+      },
+      envFloor: "off",
+    });
+
+    expect(r.resolve("org_a")).toBe("off");
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    expect(r.resolve("org_a")).toBe("off");
+    expect(r.resolve("org_a")).toBe("off");
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not consult the organisation source when no organisation is supplied", () => {

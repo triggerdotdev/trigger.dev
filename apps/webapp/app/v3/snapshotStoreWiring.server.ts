@@ -5,7 +5,7 @@ import { engine } from "./runEngine.server";
 import { runStoreWithoutSnapshotDecorator } from "./runStore.server";
 import { buildSnapshotSweepRunner } from "./snapshotSweepRunner.server";
 import { setSnapshotRepairEnqueuer, setSnapshotSweepRunner } from "./snapshotStoreBindings.server";
-import { getSnapshotSweepClient } from "./snapshotStoreInstance.server";
+import { getSnapshotSweepClient, registerSnapshotStoreQuit } from "./snapshotStoreInstance.server";
 
 /**
  * The third module: it imports both sides, so neither the run store nor the engine has to import
@@ -47,6 +47,8 @@ export function registerSnapshotStoreWiring(): boolean {
       lockTtlMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS + 3_600_000,
     })
   );
+
+  registerSnapshotStoreQuit(() => sweeper.quit());
 
   logger.info("snapshot store wiring registered");
   return true;

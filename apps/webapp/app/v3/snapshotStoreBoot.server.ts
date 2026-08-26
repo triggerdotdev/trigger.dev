@@ -1,5 +1,6 @@
 import type { SnapshotStoreMode } from "@internal/run-store";
 import { logger } from "~/services/logger.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { getSnapshotRepairEnqueuer } from "./snapshotStoreBindings.server";
 import { getSnapshotStoreConfig, getSnapshotSweepClient } from "./snapshotStoreInstance.server";
 
@@ -15,6 +16,7 @@ export type SnapshotStoreBootDeps = {
 };
 
 const PING_TIMEOUT_MS = 5_000;
+const FLAG_READY_TIMEOUT_MS = 10_000;
 
 export async function assertSnapshotStoreBoot(deps: SnapshotStoreBootDeps): Promise<void> {
   const pastOff = deps.mode !== "off";
@@ -92,6 +94,15 @@ async function pingSweepClient(): Promise<boolean> {
 
 /** The env-reading adapter. The boot log line is not authoritative after boot: the dial can move. */
 export async function assertSnapshotStoreBootFromEnv(): Promise<void> {
+  // Wait for the flag snapshot's first load. Without this the resolved dial is always the env
+  // floor, because a cold registry returns undefined, and the configuration check would only ever
+  // see a value no operator sets. A registry that never loads leaves the check on the floor, which
+  // fails toward inert.
+  await Promise.race([
+    globalFlagsRegistry.isReady,
+    new Promise<void>((resolve) => setTimeout(resolve, FLAG_READY_TIMEOUT_MS)),
+  ]);
+
   const config = getSnapshotStoreConfig();
 
   await assertSnapshotStoreBoot({

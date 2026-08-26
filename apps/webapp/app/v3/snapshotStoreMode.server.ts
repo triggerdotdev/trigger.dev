@@ -7,9 +7,24 @@ import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 
+/** A cached "this organisation has no override", distinct from "not cached". */
+export const NO_OVERRIDE = "__none__" as const;
+
+type CachedOrgMode = SnapshotStoreMode | typeof NO_OVERRIDE;
+
+/**
+ * What to cache for one organisation's blob value. An unparseable or absent value caches
+ * NO_OVERRIDE rather than nothing: caching nothing means every organisation without an override
+ * re-queries on every write, which is all of them until a ramp starts.
+ */
+export function cachedOrgModeFor(raw: unknown): CachedOrgMode {
+  const parsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(raw);
+  return parsed.success ? parsed.data : NO_OVERRIDE;
+}
+
 type OrgModeSource = {
-  /** Cache-only: returns undefined on a miss rather than querying. */
-  get(organizationId: string): SnapshotStoreMode | undefined;
+  /** Cache-only: returns undefined on a true miss rather than querying. */
+  get(organizationId: string): CachedOrgMode | undefined;
   /** Fire-and-forget, de-duplicated per organisation, never throws. */
   refresh(organizationId: string): void;
 };
@@ -26,9 +41,12 @@ export function buildSnapshotStoreModeResolver(deps: {
         return global;
       }
 
-      const override = deps.orgMode.get(organizationId);
-      if (override !== undefined) {
-        return override;
+      const cached = deps.orgMode.get(organizationId);
+      if (cached === NO_OVERRIDE) {
+        return global;
+      }
+      if (cached !== undefined) {
+        return cached;
       }
 
       // Deliberately no read here. Seven decorator methods accept a caller-supplied `tx`, so a
@@ -45,7 +63,7 @@ export function buildSnapshotStoreModeResolver(deps: {
 }
 
 function createOrgModeSource(): OrgModeSource {
-  const cache = new LRUCache<string, SnapshotStoreMode>({
+  const cache = new LRUCache<string, CachedOrgMode>({
     max: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX,
     ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS,
   });
@@ -67,12 +85,7 @@ function createOrgModeSource(): OrgModeSource {
           const raw = (row?.featureFlags as Record<string, unknown> | null | undefined)?.[
             FEATURE_FLAG.snapshotStoreOrgMode
           ];
-          const parsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(raw);
-          if (parsed.success) {
-            cache.set(organizationId, parsed.data);
-          } else {
-            cache.delete(organizationId);
-          }
+          cache.set(organizationId, cachedOrgModeFor(raw));
         })
         .catch((error) => {
           logger.warn("snapshotStoreMode: organisation override refresh failed", {

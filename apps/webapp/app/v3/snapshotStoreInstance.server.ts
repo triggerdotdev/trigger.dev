@@ -64,6 +64,7 @@ function buildClient(name: string): RedisClient {
 
 type Instance = {
   sweepClient: RedisClient;
+  redisSnapshotStore: RedisSnapshotStore;
   decorate: (store: RunStore) => RunStore;
 };
 
@@ -88,6 +89,7 @@ const instance = singleton<Instance | undefined>("snapshotStoreInstance", () => 
 
   return {
     sweepClient,
+    redisSnapshotStore,
     decorate: (store: RunStore) =>
       new TaskRunExecutionSnapshotStore(store, {
         store: redisSnapshotStore,
@@ -128,9 +130,21 @@ export function getSnapshotStoreConfig() {
   };
 }
 
+const extraQuits: (() => Promise<void>)[] = [];
+
+/** Lets the wiring module hand back a teardown for what it built, so this owns closing everything. */
+export function registerSnapshotStoreQuit(quit: () => Promise<void>): void {
+  extraQuits.push(quit);
+}
+
 export async function quitSnapshotStoreClients(): Promise<void> {
   if (!instance) {
     return;
   }
+  for (const quit of extraQuits) {
+    await quit().catch(() => undefined);
+  }
   await instance.sweepClient.quit().catch(() => undefined);
+  // Last: an append in flight must still land.
+  await instance.redisSnapshotStore.quit().catch(() => undefined);
 }

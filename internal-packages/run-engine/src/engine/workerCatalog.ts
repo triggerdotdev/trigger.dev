@@ -89,9 +89,9 @@ export const workerCatalog = {
       lastTimestamp: z.number().optional(),
       cron: z.string(),
     }),
-    // The default budget plus an hour. A pass that outlives this is redelivered and runs beside
-    // itself; the runner's fenced lock is what actually prevents that, this is headroom.
-    visibilityTimeoutMs: 14_400_000,
+    // The default budget plus two hours, so it stays strictly above the runner's lock TTL
+    // (budget plus one hour). Ordered that way, a lock outlives the delivery it belongs to.
+    visibilityTimeoutMs: 18_000_000,
     cron: "0 */6 * * *",
     jitterInMs: 60_000,
     // Load-bearing. A throw takes the dead-letter path, which also reschedules, so the cron chain
