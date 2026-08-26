@@ -33,22 +33,14 @@ const resolveOrgMollifierFlag = makeResolveMollifierFlag();
 // PG's unique index as the backstop.
 const MAX_CLEARED_WINNER_REACQUIRES = 5;
 
-// Every run-ops store keyed by shard key. Both idempotency call sites resolve through this
-// one map, so they cannot disagree about which store owns an id.
-//
-// Built on first use, not at import: dereferencing the db.server handles at module scope
-// breaks any test that mocks `~/db.server` without them, and this module is imported by
-// triggerTask. Memoised because the trigger path is the hottest in the system.
-let cachedShardClients: ReadonlyMap<ShardKey, PrismaClientOrTransaction> | undefined;
-
-function idempotencyShardClients(): ReadonlyMap<ShardKey, PrismaClientOrTransaction> {
-  return (cachedShardClients ??= new Map<ShardKey, PrismaClientOrTransaction>([
-    ["legacy", runOpsLegacyPrisma],
-    ["new", runOpsNewPrisma],
-    ...[...runOpsShardWriters.entries()].map(
-      ([key, writer]) => [key, writer as PrismaClientOrTransaction] as const
-    ),
-  ]));
+// The store that owns a shard key. A function, not a map: the handles are module constants and
+// `runOpsShardWriters` is already keyed, so a second structure would add an allocation and, if
+// memoised, mutable module state. Reading them lazily also keeps this module importable by
+// triggerTask under a `~/db.server` mock that omits them.
+function idempotencyClientFor(shardKey: ShardKey): PrismaClientOrTransaction | undefined {
+  if (shardKey === "legacy") return runOpsLegacyPrisma;
+  if (shardKey === "new") return runOpsNewPrisma;
+  return runOpsShardWriters.get(shardKey);
 }
 
 // Claim ownership context returned to the caller when the
@@ -191,7 +183,7 @@ export class IdempotencyKeyConcern {
       {
         isSplitEnabled,
         fallbackClient: this.prisma,
-        clients: idempotencyShardClients(),
+        clientFor: idempotencyClientFor,
         resolveMintKind: resolveRunIdMintKind,
         logger,
       }
@@ -661,7 +653,7 @@ export class IdempotencyKeyConcern {
     // call sites in agreement and stops this reading as gen-2-unaware.
     const client = clientForShardKey(
       resolveShard(internalId),
-      idempotencyShardClients(),
+      idempotencyClientFor,
       this.prisma,
       logger
     );

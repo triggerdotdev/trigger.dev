@@ -8,8 +8,8 @@ type Logger = { error: (message: string, meta?: Record<string, unknown>) => void
 export type ResolveIdempotencyClientDeps = {
   isSplitEnabled: () => Promise<boolean>;
   fallbackClient: PrismaClientOrTransaction;
-  /** Every store keyed by shard key: the reserved `legacy`/`new` plus one entry per gen-2 shard. */
-  clients: ReadonlyMap<ShardKey, PrismaClientOrTransaction>;
+  /** The store that owns a shard key: the reserved `legacy`/`new`, or a gen-2 shard. */
+  clientFor: (shardKey: ShardKey) => PrismaClientOrTransaction | undefined;
   resolveMintKind: (environment: {
     organizationId: string;
     id: string;
@@ -22,20 +22,18 @@ export type ResolveIdempotencyClientDeps = {
 /**
  * The one place an id becomes a client. `ShardKey` collapses to `string`, so the compiler
  * cannot catch a wrong key here — an absent key takes an explicit logged branch to the
- * fallback rather than a silent `?? legacy`.
+ * fallback rather than a silent `?? legacy`. The configured set is not repeated in the log:
+ * boot already prints the shard table.
  */
 export function clientForShardKey(
   shardKey: ShardKey,
-  clients: ReadonlyMap<ShardKey, PrismaClientOrTransaction>,
+  clientFor: (shardKey: ShardKey) => PrismaClientOrTransaction | undefined,
   fallback: PrismaClientOrTransaction,
   logger?: Logger
 ): PrismaClientOrTransaction {
-  const client = clients.get(shardKey);
+  const client = clientFor(shardKey);
   if (client === undefined) {
-    logger?.error("idempotency: no client configured for shard key", {
-      shardKey,
-      configured: [...clients.keys()],
-    });
+    logger?.error("idempotency: no client configured for shard key", { shardKey });
     return fallback;
   }
   return client;
@@ -54,7 +52,7 @@ export async function resolveIdempotencyDedupClient(
 
   const classify = deps.classify ?? resolveShard;
   const clientFor = (shardKey: ShardKey): PrismaClientOrTransaction =>
-    clientForShardKey(shardKey, deps.clients, deps.fallbackClient, deps.logger);
+    clientForShardKey(shardKey, deps.clientFor, deps.fallbackClient, deps.logger);
 
   if (args.parentRunFriendlyId) {
     let parentInternalId: string;

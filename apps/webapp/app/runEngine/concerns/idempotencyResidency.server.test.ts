@@ -24,7 +24,7 @@ function makeDeps(over: Partial<ResolveIdempotencyClientDeps>): ResolveIdempoten
   return {
     isSplitEnabled: async () => true,
     fallbackClient: FALLBACK,
-    clients: clientMap(),
+    clientFor: (key) => clientMap().get(key),
     resolveMintKind: async () => "runOpsId",
     // Kept as an injected seam: the real resolveShard is total, so only an injected
     // classifier can exercise the throw-to-fallback arm below.
@@ -115,14 +115,16 @@ describe("resolveIdempotencyDedupClient", () => {
 describe("clientForShardKey", () => {
   it("selects the same client the map holds for each reserved key and shard key", () => {
     const clients = clientMap();
-    expect(clientForShardKey("new", clients, FALLBACK)).toBe(NEW_CLIENT);
-    expect(clientForShardKey("legacy", clients, FALLBACK)).toBe(LEGACY_CLIENT);
-    expect(clientForShardKey("a", clients, FALLBACK)).toBe(SHARD_A_CLIENT);
+    const clientFor = (key: string) => clients.get(key);
+    expect(clientForShardKey("new", clientFor, FALLBACK)).toBe(NEW_CLIENT);
+    expect(clientForShardKey("legacy", clientFor, FALLBACK)).toBe(LEGACY_CLIENT);
+    expect(clientForShardKey("a", clientFor, FALLBACK)).toBe(SHARD_A_CLIENT);
   });
 
   it("returns the fallback and logs for a key the map does not hold", () => {
     const errors: unknown[] = [];
-    const client = clientForShardKey("z", clientMap(), FALLBACK, {
+    const map = clientMap();
+    const client = clientForShardKey("z", (key) => map.get(key), FALLBACK, {
       error: (_m, meta) => errors.push(meta),
     });
     expect(client).toBe(FALLBACK);
