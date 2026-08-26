@@ -34,6 +34,7 @@ export function fenceUntrusted(label: string, text: unknown): string | undefined
 function computeRunWait(run: {
   createdAt?: unknown;
   startedAt?: unknown;
+  finishedAt?: unknown;
   queuedAt?: unknown;
   queueWaitReliable?: unknown;
 }):
@@ -43,7 +44,10 @@ function computeRunWait(run: {
   const now = Date.now();
   const created = new Date(run.createdAt as string).getTime();
   const started = run.startedAt ? new Date(run.startedAt as string).getTime() : undefined;
-  const end = started ?? now;
+  // A terminal run that never started (EXPIRED/CANCELED/...) stops waiting at finishedAt,
+  // not at read-time — curation sees arbitrary history, not just live watch targets.
+  const finished = run.finishedAt ? new Date(run.finishedAt as string).getTime() : undefined;
+  const end = started ?? finished ?? now;
   const queuedAt = run.queuedAt ? new Date(run.queuedAt as string).getTime() : null;
 
   if (queuedAt !== null && run.queueWaitReliable === true) {

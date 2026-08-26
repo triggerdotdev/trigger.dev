@@ -180,6 +180,20 @@ describe("computed run wait", () => {
     const run = curateRun({ id: "run_1" });
     expect(run.wait).toBeUndefined();
   });
+
+  it("ends at finishedAt, not now, for a terminal run that never started", () => {
+    const now = Date.now();
+    const run = curateRun({
+      id: "run_1",
+      status: "EXPIRED",
+      createdAt: new Date(now - 10 * 86_400_000).toISOString(),
+      queuedAt: new Date(now - 10 * 86_400_000).toISOString(),
+      finishedAt: new Date(now - 9 * 86_400_000).toISOString(),
+      queueWaitReliable: true,
+    });
+    expect(run.wait?.ms).toBe(86_400_000);
+    expect(run.wait?.label).not.toContain("10d");
+  });
 });
 
 describe("curateTrace emits spanId", () => {
