@@ -1,45 +1,37 @@
-import { BatchId, generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
-import {
-  resolveRunIdMintKind as defaultResolveRunIdMintKind,
-  type RunIdMintKind,
-} from "~/v3/engineVersion.server";
-import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
+import { BatchId, generateRunOpsId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
+import type { MintTarget } from "./mintTarget";
+import { resolveRunMintTarget, type RunMintDeps } from "./resolveRunMintTarget.server";
 
-type ResolveDeps = {
-  resolveRunIdMintKind: typeof defaultResolveRunIdMintKind;
-};
-
-const defaultDeps: ResolveDeps = {
-  resolveRunIdMintKind: defaultResolveRunIdMintKind,
-};
-
-export function batchIdForMintKind(kind: RunIdMintKind): { id: string; friendlyId: string } {
-  if (kind === "runOpsId") {
-    const id = generateRunOpsId();
-    return { id, friendlyId: BatchId.toFriendlyId(id) };
+export function batchIdForMintKind(target: MintTarget): { id: string; friendlyId: string } {
+  if (target.kind !== "runOpsId") {
+    return BatchId.generate();
   }
-  return BatchId.generate();
+
+  const id = target.shardChar
+    ? generateRunOpsIdV2(target.shardChar)
+    : generateRunOpsId(target.region);
+
+  return { id, friendlyId: BatchId.toFriendlyId(id) };
 }
 
+// A batch anchors on the parent RUN's id, never on another batch, and every call site
+// passes that id optionally — so one call serves a root batch and a child batch.
 export async function resolveBatchMintKind(args: {
   environment: { organizationId: string; id: string; orgFeatureFlags?: unknown };
   parentRunFriendlyId?: string;
-  deps?: Partial<ResolveDeps>;
-}): Promise<RunIdMintKind> {
-  const deps = { ...defaultDeps, ...args.deps };
-  return args.parentRunFriendlyId
-    ? resolveInheritedMintKind(args.parentRunFriendlyId)
-    : deps.resolveRunIdMintKind({
-        organizationId: args.environment.organizationId,
-        id: args.environment.id,
-        orgFeatureFlags: args.environment.orgFeatureFlags,
-      });
+  deps?: Partial<RunMintDeps>;
+}): Promise<MintTarget> {
+  return resolveRunMintTarget({
+    environment: args.environment,
+    parentRunFriendlyId: args.parentRunFriendlyId,
+    deps: args.deps,
+  });
 }
 
 export async function mintBatchFriendlyId(args: {
   environment: { organizationId: string; id: string; orgFeatureFlags?: unknown };
   parentRunFriendlyId?: string;
-  deps?: Partial<ResolveDeps>;
+  deps?: Partial<RunMintDeps>;
 }): Promise<{ id: string; friendlyId: string }> {
   return batchIdForMintKind(await resolveBatchMintKind(args));
 }

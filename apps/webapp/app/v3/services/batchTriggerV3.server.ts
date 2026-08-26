@@ -362,15 +362,20 @@ export class BatchTriggerV3Service extends BaseService {
     anchorFriendlyId?: string,
     region?: string
   ): Promise<string> {
-    const mintKind = anchorFriendlyId
+    // Deliberately not routed through resolveRunMintTarget: the root arm below is
+    // unreachable in production (every call site passes an anchor), and resolveMintKind is
+    // injected so a test can drive that arm without a database.
+    const target = anchorFriendlyId
       ? resolveInheritedMintKind(anchorFriendlyId)
-      : await this.resolveMintKind({
-          organizationId: environment.organizationId,
-          id: environment.id,
-          orgFeatureFlags: environment.organization.featureFlags,
-        });
+      : {
+          kind: await this.resolveMintKind({
+            organizationId: environment.organizationId,
+            id: environment.id,
+            orgFeatureFlags: environment.organization.featureFlags,
+          }),
+        };
 
-    return mintFriendlyIdForKind(mintKind, region);
+    return mintFriendlyIdForKind({ ...target, region });
   }
 
   async #prepareRunData(
