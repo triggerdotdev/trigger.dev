@@ -23,12 +23,11 @@ type AssertSame<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : nev
 const _dialMatchesRunStore: AssertSame<DialMode, SnapshotStoreMode> = true;
 void _dialMatchesRunStore;
 
-// Temporary probe. This module typechecks locally and fails in CI with errors that are only
-// consistent with SnapshotStoreMode resolving to `never` there. The reported type here names which
-// it is, so the CI log answers it outright. Remove once the cause is known.
-type ProbeIsNever = [SnapshotStoreMode] extends [never] ? "RESOLVED_NEVER" : "RESOLVED_UNION";
-const _probe: ProbeIsNever = "RESOLVED_UNION";
-void _probe;
+// Temporary probe. It is a union in CI, not never, but a narrower one than here. Assigning a bogus
+// literal makes the compiler expand the alias, so the CI log names the exact members it sees.
+type RevealMembers<T extends string> = { [K in T]: true };
+const _probeMembers: RevealMembers<SnapshotStoreMode> = {};
+void _probeMembers;
 
 type CachedOrgMode = OrgDialMode | typeof NO_OVERRIDE;
 
