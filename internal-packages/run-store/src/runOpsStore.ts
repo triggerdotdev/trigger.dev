@@ -62,6 +62,28 @@ const LEGACY_SHARD: ShardKey = "legacy";
  * and a merge lets a gen-2 shard win. A probe MUST iterate #probeOrder and a merge MUST iterate
  * #precedence.
  */
+/**
+ * An id resolved to a shard key the topology has no store for. Typed so a caller above the
+ * router can answer a 4xx instead of letting a routing failure surface as a 5xx: these ids
+ * arrive as URL parameters, and `resolveShard` is pure id-shape, so any gen-2 shaped id names
+ * a shard char whether or not one is configured.
+ */
+export class UnknownShardKey extends Error {
+  readonly shardKey: string;
+  readonly configured: string[];
+
+  constructor(shardKey: string, configured: string[], subject?: string) {
+    super(
+      subject === undefined
+        ? `RoutingRunStore: no store is configured for shard key "${shardKey}"`
+        : `RoutingRunStore: ${subject} resolves to unconfigured shard key "${shardKey}"`
+    );
+    this.name = "UnknownShardKey";
+    this.shardKey = shardKey;
+    this.configured = configured;
+  }
+}
+
 export class RoutingRunStore implements RunStore {
   readonly #shards: ReadonlyMap<ShardKey, RunStore>;
   // Sequential probe for a lookup with no routable id. The first non-null result wins, and the LAST
@@ -173,12 +195,14 @@ export class RoutingRunStore implements RunStore {
     return client != null && !isReadReplicaClient(client) ? store.primaryReadClient : undefined;
   }
 
-  // The store for a shard key. Unreachable with the compat constructor — #shardKeyOfSafe yields only
-  // the two reserved keys — so this throw fires only if a caller wires a partial map.
+  // The store for a shard key. REACHABLE with the compat constructor: it defaults to the real
+  // `resolveShard`, which is pure id-shape, so any gen-2 shaped id names a shard char even when
+  // no shard is configured. Fails loud rather than reading the wrong database; the API boundary
+  // turns `UnknownShardKey` into a 404 so a caller-supplied id cannot induce a 5xx.
   #shardStore(key: ShardKey): RunStore {
     const store = this.#shards.get(key);
     if (store === undefined) {
-      throw new Error(`RoutingRunStore: no store is configured for shard key "${key}"`);
+      throw new UnknownShardKey(key, [...this.#shards.keys()]);
     }
     return store;
   }
@@ -236,9 +260,7 @@ export class RoutingRunStore implements RunStore {
       // Fail loud instead (§7 append-only rule).
       if (key === runKey) return;
       if (!this.#shards.has(key)) {
-        throw new Error(
-          `RoutingRunStore: waitpoint "${id}" resolves to unconfigured shard key "${key}"`
-        );
+        throw new UnknownShardKey(key, [...this.#shards.keys()], `waitpoint "${id}"`);
       }
       const bucket = byKey.get(key);
       if (bucket) bucket.push(id);
@@ -393,7 +415,7 @@ export class RoutingRunStore implements RunStore {
       // An id resolving to a shard nobody configured is UnknownShardKey. Dropping it would silently
       // omit a row from the hydrated set, so fail loud (§7 append-only rule).
       if (!this.#shards.has(key)) {
-        throw new Error(`RoutingRunStore: id "${id}" resolves to unconfigured shard key "${key}"`);
+        throw new UnknownShardKey(key, [...this.#shards.keys()], `id "${id}"`);
       }
       const bucket = byShard.get(key);
       if (bucket) bucket.push(id);
