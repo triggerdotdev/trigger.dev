@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { enhanceExecutionSnapshotWithWaitpoints } from "../systems/executionSnapshotSystem.js";
 import { buildCompletedWaitpointRecords } from "./completedWaitpointRecords.js";
 import { createCompletedWaitpointResolver } from "./completedWaitpointResolver.js";
+import { envelopeSourceFromWaitpointRow } from "./completionEnvelopeSource.js";
 import type { CompletionEnvelopeSource } from "./types.js";
 
 const COMPLETED_AT = new Date("2026-08-25T00:00:00.000Z");
@@ -30,20 +31,15 @@ function pair(overrides: {
   userProvidedIdempotencyKey?: boolean;
   inactiveIdempotencyKey?: string | null;
 }): { row: Waitpoint; source: CompletionEnvelopeSource } {
-  const outputType = overrides.outputType ?? "application/json";
-  const outputIsError = overrides.outputIsError ?? false;
-  const output = overrides.output ?? null;
-  const isRef = outputType === "application/store";
-
   const row = {
     id: overrides.id,
     friendlyId: `waitpoint_${overrides.id}`,
     type: overrides.type,
     status: "COMPLETED",
     completedAt: COMPLETED_AT,
-    output,
-    outputType,
-    outputIsError,
+    output: overrides.output ?? null,
+    outputType: overrides.outputType ?? "application/json",
+    outputIsError: overrides.outputIsError ?? false,
     completedByTaskRunId: overrides.completedByTaskRunId ?? null,
     completedByBatchId: overrides.completedByBatchId ?? null,
     completedAfter: overrides.completedAfter ?? null,
@@ -52,27 +48,9 @@ function pair(overrides: {
     inactiveIdempotencyKey: overrides.inactiveIdempotencyKey ?? null,
   } as unknown as Waitpoint;
 
-  const source: CompletionEnvelopeSource = {
-    id: overrides.id,
-    friendlyId: `waitpoint_${overrides.id}`,
-    type: overrides.type,
-    completedAt: COMPLETED_AT,
-    outputType,
-    outputIsError,
-    ...(output !== null ? (isRef ? { outputRef: output } : { output }) : {}),
-    ...(overrides.completedByTaskRunId && {
-      completedByTaskRunId: overrides.completedByTaskRunId,
-    }),
-    ...(overrides.completedByBatchId && { completedByBatchId: overrides.completedByBatchId }),
-    ...(overrides.completedAfter && { completedAfter: overrides.completedAfter }),
-    ...(overrides.userProvidedIdempotencyKey &&
-    !overrides.inactiveIdempotencyKey &&
-    overrides.idempotencyKey
-      ? { idempotencyKey: overrides.idempotencyKey }
-      : {}),
-  };
-
-  return { row, source };
+  // Through the SHARED mapper the legacy arm uses. A hand-rolled copy here would make a bug in
+  // that arm invisible to every case below, because the oracle chain would never touch it.
+  return { row, source: envelopeSourceFromWaitpointRow(row) };
 }
 
 function snapshot(batchId: string | null) {
@@ -116,6 +94,7 @@ async function bothPaths(
     ...(batchId ? { batchId } : {}),
     pointer: { cycleSeq: 1, count: order.length },
     order,
+    distinctIds: [...new Set(pairs.map((p) => p.row.id))],
     records: buildCompletedWaitpointRecords(pairs.map((p) => p.source)),
   });
 
@@ -295,6 +274,29 @@ describe("the resolver reproduces the existing hydration", () => {
 
     expect(actual).toEqual(expected);
     expect(actual.find((w) => w.id === "wp_indexless")?.index).toBeUndefined();
+  });
+
+  // The ONE intentional divergence from the oracle. A BATCH waitpoint really is completed with
+  // an output, but the executor never reads it (sharedRuntimeManager.resolveWaitpoint
+  // early-returns on type). Pinned so that if that early return ever goes away, this fails and
+  // says why, instead of the output silently being missing at resume.
+  it("deliberately drops a BATCH output, unlike the oracle", async () => {
+    const { expected, actual } = await bothPaths(
+      [
+        pair({
+          id: "wp_batch",
+          type: "BATCH",
+          completedByBatchId: BATCH_ID,
+          output: '{"message":"batch expired"}',
+          outputIsError: true,
+        }),
+      ],
+      []
+    );
+
+    expect(expected[0]?.output).toBe('{"message":"batch expired"}');
+    expect(actual[0]?.output).toBeUndefined();
+    expect(actual[0]?.outputIsError).toBe(true);
   });
 
   it("for every type at once, under a batch", async () => {
