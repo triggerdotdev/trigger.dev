@@ -223,6 +223,8 @@ export default function IntegrationsSettingsPage() {
   const loadVercelOnboarding = vercelFetcher.load;
   const onboardingData = vercelFetcher.data?.onboardingData ?? null;
   const hasVercelFetcherData = vercelFetcher.data !== undefined;
+  const onboardingDataUnavailable =
+    hasVercelFetcherData && vercelFetcher.state === "idle" && onboardingData === null;
   const vercelOnboardingPath = `${vercelResourcePath(
     organization.slug,
     project.slug,
@@ -407,6 +409,7 @@ export default function IntegrationsSettingsPage() {
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
           hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          onboardingDataUnavailable={onboardingDataUnavailable}
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
