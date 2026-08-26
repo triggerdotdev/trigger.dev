@@ -6,6 +6,8 @@ import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
+import { fetchWaitpointsInChunks } from "../systems/executionSnapshotSystem.js";
+import { envelopeSourceFromWaitpointRow } from "./completionEnvelopeSource.js";
 import type {
   AssociatedWaitpointData,
   CreateBatchWaitpointParams,
@@ -88,68 +90,30 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
   /**
    * Source the envelope fields from the waitpoint rows.
    *
-   * `runId` is unused here and that is correct: a routing store needs it to pick the owning
-   * database, a single store does not. It stays in the signature so both arms share one
-   * shape and the caller never branches.
+   * `runId` is the routing hint, not decoration: the routing store takes it as the third
+   * argument and reads the run's own store, falling back only for the rare cross-tree token.
+   * Omitting it fans every read out across every run-ops database, once per resume.
    *
-   * A row whose `outputType` is already a store reference carries `outputRef`, so the
-   * record build never re-offloads a value that object storage already holds.
+   * Chunked for the same reason the snapshot hydration chunks: a waitpoint output can be
+   * 100KB+, and a large fan-in read whole can exceed Node's string limits. `boundedIn` pads
+   * for plan-cache stability, it does not bound the set.
    */
   async readCompletionEnvelopes({
+    runId,
     waitpointIds,
   }: ReadCompletionEnvelopesParams): Promise<CompletionEnvelopeSource[]> {
     if (waitpointIds.length === 0) {
       return [];
     }
 
-    const rows = await this.runStore.findManyWaitpoints(
-      {
-        where: { id: { in: boundedIn(waitpointIds) } },
-        select: {
-          id: true,
-          friendlyId: true,
-          type: true,
-          completedAt: true,
-          output: true,
-          outputType: true,
-          outputIsError: true,
-          completedByTaskRunId: true,
-          completedByBatchId: true,
-          completedAfter: true,
-          idempotencyKey: true,
-          userProvidedIdempotencyKey: true,
-          inactiveIdempotencyKey: true,
-        },
-      },
-      this.prisma
-    );
+    const rows = await fetchWaitpointsInChunks(this.prisma, waitpointIds, this.runStore, runId);
 
-    return rows.map((row) => {
-      const isRef = row.outputType === "application/store";
-
-      return {
-        id: row.id,
-        friendlyId: row.friendlyId,
-        type: row.type,
-        // A completed waitpoint always has this set. The fallback keeps the shape total
-        // rather than emitting an invalid Date, and mirrors the same fallback the snapshot
-        // hydration already applies.
-        completedAt: row.completedAt ?? new Date(),
-        outputType: row.outputType,
-        outputIsError: row.outputIsError,
-        ...(row.output !== null && row.output !== undefined
-          ? isRef
-            ? { outputRef: row.output }
-            : { output: row.output }
-          : {}),
-        ...(row.completedByTaskRunId && { completedByTaskRunId: row.completedByTaskRunId }),
-        ...(row.completedByBatchId && { completedByBatchId: row.completedByBatchId }),
-        ...(row.completedAfter && { completedAfter: row.completedAfter }),
-        ...(row.userProvidedIdempotencyKey && !row.inactiveIdempotencyKey && row.idempotencyKey
-          ? { idempotencyKey: row.idempotencyKey }
-          : {}),
-      };
-    });
+    // COMPLETED only, so both arms honour one omission contract. The store arm cannot return a
+    // pending waitpoint because a pending one has no completion to read; this arm reads rows by
+    // id and would otherwise hand back an envelope with completedAt defaulted to now. The
+    // resolver's coverage check reads an omission as "fail loud", so the two arms disagreeing
+    // here would turn a pending waitpoint into a resumable one.
+    return rows.filter((row) => row.status === "COMPLETED").map(envelopeSourceFromWaitpointRow);
   }
 
   async registerBlocks({

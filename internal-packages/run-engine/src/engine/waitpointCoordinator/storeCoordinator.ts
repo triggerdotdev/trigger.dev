@@ -539,17 +539,15 @@ export class WaitpointStoreCoordinator {
    * Source the envelope fields for a run's COMPLETED waitpoints.
    *
    * Reads `wp:{id}` and nothing else. Both halves live under that one key — `r` holds the
-   * immutable record, `c` holds the completion — so this needs no run-scoped key and no
-   * script. One HMGET per id, pipelined: each command touches a single key, so nothing can
-   * span two cluster slots and there is no #call guard to route through.
+   * immutable record, `c` holds the completion — so this needs no run-scoped key.
    *
-   * The run's delivered hash carries the same envelope, but `wp:{id}` is the record of
-   * origin, and reading it keeps this independent of whether the run's edges were already
-   * reconciled.
+   * One command per id, issued concurrently rather than as a pipeline. Each id is its own hash
+   * tag, so N ids are N cluster slots: a pipeline spanning them is rejected outright under
+   * cluster mode, and a single-node test server would never surface that.
    *
    * An id with no record, or a record with no completion, is OMITTED rather than defaulted.
-   * The omission is the contract: the caller's coverage check turns a gap into a loud
-   * failure, which a defaulted envelope would hide.
+   * The omission is the contract: the caller's coverage check turns a gap into a loud failure,
+   * which a defaulted envelope would hide.
    */
   async readCompletionEnvelopes({
     waitpointIds,
@@ -558,26 +556,15 @@ export class WaitpointStoreCoordinator {
       return [];
     }
 
-    const pipeline = this.redis.pipeline();
-    for (const id of waitpointIds) {
-      pipeline.hmget(waitpointKeys(id).record, "r", "c");
-    }
-    const replies = await pipeline.exec();
+    const halves = await Promise.all(
+      waitpointIds.map((id) => this.redis.hmget(waitpointKeys(id).record, "r", "c"))
+    );
 
     const out: CompletionEnvelopeSource[] = [];
 
     for (let i = 0; i < waitpointIds.length; i++) {
       const id = waitpointIds[i]!;
-      const reply = replies?.[i];
-
-      // A pipelined command reports its own error in slot 0. Surface it rather than reading
-      // slot 1, because an errored command's value is not a result.
-      const error = reply?.[0];
-      if (error) {
-        throw error;
-      }
-
-      const fields = reply?.[1] as (string | null)[] | undefined;
+      const fields = halves[i];
       const record = parseJson<WaitpointRecordInput>(fields?.[0] ?? undefined);
       const completion = parseJson<WaitpointCompletion>(fields?.[1] ?? undefined);
 

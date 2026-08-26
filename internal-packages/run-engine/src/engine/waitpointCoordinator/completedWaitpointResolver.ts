@@ -1,4 +1,9 @@
-import type { CompletedWaitpointRecord, ResolveCompletedWaitpointsArgs } from "@internal/run-store";
+import type {
+  CompletedWaitpointRecord,
+  ReadClient,
+  ResolveCompletedWaitpointsArgs,
+  RunStore,
+} from "@internal/run-store";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
 
@@ -9,16 +14,23 @@ import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
  * classifies as legacy, finds no row, and would otherwise disappear from the resumed run's
  * completed set with no error at all.
  */
+export type UnresolvableReason = "no-source" | "two-sources" | "lost-run-output";
+
+const MESSAGES: Record<UnresolvableReason, (id: string) => string> = {
+  "no-source": (id) =>
+    `Waitpoint ${id} has neither a cycle record nor a fetched row. Refusing to resume without it.`,
+  "two-sources": (id) =>
+    `Waitpoint ${id} resolved twice, from a cycle record and from a fetched row.`,
+  "lost-run-output": (id) =>
+    `Waitpoint ${id} defers its output to its completing run, and that run's output is gone. Refusing to resume with an empty output.`,
+};
+
 export class UnresolvableWaitpointId extends Error {
   readonly waitpointId: string;
-  readonly reason: "no-source" | "two-sources";
+  readonly reason: UnresolvableReason;
 
-  constructor(waitpointId: string, reason: "no-source" | "two-sources") {
-    super(
-      reason === "no-source"
-        ? `Waitpoint ${waitpointId} has neither a cycle record nor a fetched row. Refusing to resume without it.`
-        : `Waitpoint ${waitpointId} resolved twice, from a cycle record and from a fetched row.`
-    );
+  constructor(waitpointId: string, reason: UnresolvableReason) {
+    super(MESSAGES[reason](waitpointId));
     this.name = "UnresolvableWaitpointId";
     this.waitpointId = waitpointId;
     this.reason = reason;
@@ -26,9 +38,29 @@ export class UnresolvableWaitpointId extends Error {
 }
 
 export type CompletedWaitpointResolverDeps = {
-  /** Reads TaskRun.output. Returns undefined when the row is gone. */
-  readRunOutput(taskRunId: string): Promise<string | undefined>;
+  /**
+   * Reads TaskRun.output. Returns undefined when the row is gone.
+   *
+   * Optional, because most cycles carry no `deriveFromRun` record and therefore never need it.
+   * A cycle that DOES carry one without a reader is a wiring error, not a data condition, so it
+   * throws rather than resolving empty.
+   */
+  readRunOutput?(taskRunId: string): Promise<string | undefined>;
 };
+
+/**
+ * The production reader: TaskRun.output for the completing run, through the store so the read
+ * routes to the run's owning database.
+ */
+export function createRunOutputReader(
+  runStore: Pick<RunStore, "findRun">,
+  client?: ReadClient
+): (taskRunId: string) => Promise<string | undefined> {
+  return async (taskRunId) => {
+    const run = await runStore.findRun({ id: taskRunId }, { select: { output: true } }, client);
+    return run?.output ?? undefined;
+  };
+}
 
 export type ResolveArgs = ResolveCompletedWaitpointsArgs & {
   /** Ids the caller resolved from Postgres rows. Read by the coverage check only. */
@@ -59,7 +91,10 @@ export function createCompletedWaitpointResolver(deps: CompletedWaitpointResolve
       }
     }
 
-    for (const id of args.order) {
+    // Over the WHOLE membership, not `order`. The order omits every index-less wait, so a
+    // check scoped to it cannot see an index-less id whose record is missing — which is the
+    // exact loss this resolver exists to make impossible.
+    for (const id of new Set([...args.distinctIds, ...args.order])) {
       if (!recordIds.has(id) && !resolvedElsewhere.has(id)) {
         throw new UnresolvableWaitpointId(id, "no-source");
       }
@@ -145,5 +180,19 @@ async function hydrateOutput(
     return undefined;
   }
 
-  return deps.readRunOutput(record.completedByTaskRunId);
+  if (!deps.readRunOutput) {
+    throw new Error(
+      `Waitpoint ${record.id} defers its output to run ${record.completedByTaskRunId}, but the resolver was built with no run-output reader.`
+    );
+  }
+
+  // Postgres does not lose this: the back-reference nulls on delete but Waitpoint.output stays,
+  // so the legacy path still emits it. Returning undefined here instead would resolve the
+  // parent's triggerAndWait successfully with no output, which is silent wrong data.
+  const output = await deps.readRunOutput(record.completedByTaskRunId);
+  if (output === undefined) {
+    throw new UnresolvableWaitpointId(record.id, "lost-run-output");
+  }
+
+  return output;
 }

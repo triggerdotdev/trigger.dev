@@ -40,7 +40,7 @@ const _pointerKeys: Exact<keyof CompletedWaitpointsPointer, "cycleSeq" | "count"
 
 const _argsKeys: Exact<
   keyof ResolveCompletedWaitpointsArgs,
-  "runId" | "batchId" | "pointer" | "order" | "records"
+  "runId" | "batchId" | "pointer" | "order" | "distinctIds" | "records"
 > = true;
 import { enhanceExecutionSnapshotWithWaitpoints } from "./executionSnapshotSystem.js";
 
@@ -193,6 +193,7 @@ async function assertParity(
     batchId: batchId ?? undefined,
     pointer: { cycleSeq: 1, count: order.length },
     order,
+    distinctIds: [...new Set(waitpoints.map((w) => w.id))],
     records: waitpoints.map(toRecord),
   };
   // count-carried-forward behaviour (order.length, not the record count) is covered by
@@ -406,6 +407,7 @@ describe("the completed-waitpoints freeze", () => {
       batchId: undefined,
       pointer: { cycleSeq: 1, count: 1 },
       order: ["wp_hook"],
+      distinctIds: ["wp_hook"],
       records: [toRecord(w)],
     });
     expect(resolved).toHaveLength(1);
@@ -611,6 +613,7 @@ describe("the exhaustive parity grid", () => {
                           batchId: readingBatchId ?? undefined,
                           pointer: { cycleSeq: 1, count: order.length },
                           order,
+                          distinctIds: [w.id],
                           records: [toRecord(w)],
                         };
                         const resolved = await referenceResolver(

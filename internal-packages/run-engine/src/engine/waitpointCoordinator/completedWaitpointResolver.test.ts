@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createCompletedWaitpointResolver,
   UnresolvableWaitpointId,
+  type ResolveArgs,
 } from "./completedWaitpointResolver.js";
 
 function record(overrides: Partial<CompletedWaitpointRecord> = {}): CompletedWaitpointRecord {
@@ -19,10 +20,20 @@ function record(overrides: Partial<CompletedWaitpointRecord> = {}): CompletedWai
   };
 }
 
-const noRunOutput = { readRunOutput: async () => undefined };
+type CaseArgs = Omit<ResolveArgs, "distinctIds"> & { distinctIds?: string[] };
 
-function resolver(readRunOutput?: (taskRunId: string) => Promise<string | undefined>) {
-  return createCompletedWaitpointResolver(readRunOutput ? { readRunOutput } : noRunOutput);
+/**
+ * Built with NO run-output reader, deliberately. Every case here carries inline, ref or null
+ * output, so none reaches the branch that reads Postgres.
+ *
+ * Fills `distinctIds` from the records when a case does not name it, because most cases are
+ * about the expansion rather than the membership. The coverage-check cases set it explicitly,
+ * since there it IS the subject.
+ */
+function resolver() {
+  const resolve = createCompletedWaitpointResolver({});
+  return (over: CaseArgs) =>
+    resolve({ ...over, distinctIds: over.distinctIds ?? over.records.map((r) => r.id) });
 }
 
 const CYCLE = { cycleSeq: 1, count: 0 };
@@ -200,51 +211,10 @@ describe("the output hydration", () => {
     expect(entry?.output).toBe("store-key-1");
   });
 
-  it("reads a deriveFromRun output from the run", async () => {
-    const [entry] = await resolver(async (id) =>
-      id === "run_child" ? '{"derived":true}' : undefined
-    )({
-      runId: "run_1",
-      pointer: CYCLE,
-      order: [],
-      records: [
-        record({ type: "RUN", completedByTaskRunId: "run_child", output: { deriveFromRun: true } }),
-      ],
-    });
-
-    expect(entry?.output).toBe('{"derived":true}');
-  });
-
-  it("leaves the output undefined when the run row is gone", async () => {
-    const [entry] = await resolver()({
-      runId: "run_1",
-      pointer: CYCLE,
-      order: [],
-      records: [
-        record({ type: "RUN", completedByTaskRunId: "run_gone", output: { deriveFromRun: true } }),
-      ],
-    });
-
-    expect(entry?.output).toBeUndefined();
-  });
-
-  it("reads the run once for a record that expands to several entries", async () => {
-    const reads: string[] = [];
-    const result = await resolver(async (id) => {
-      reads.push(id);
-      return '{"derived":true}';
-    })({
-      runId: "run_1",
-      pointer: { cycleSeq: 1, count: 2 },
-      order: ["wp_1", "wp_1"],
-      records: [
-        record({ type: "RUN", completedByTaskRunId: "run_child", output: { deriveFromRun: true } }),
-      ],
-    });
-
-    expect(result).toHaveLength(2);
-    expect(reads).toEqual(["run_child"]);
-  });
+  // The deriveFromRun branch is the resolver's only Postgres read, so its cases live in
+  // completedWaitpointResolver.runOutput.test.ts against a real TaskRun row: the found output,
+  // the deleted row, the output-less row, the one-read-per-record property, and the unwired
+  // reader. Faking the read here would assert only that the fake was called.
 
   it("leaves the output undefined when the record carries none", async () => {
     const [entry] = await resolver()({
@@ -322,6 +292,36 @@ describe("the coverage check", () => {
 
     expect(result.map((w) => w.id)).toEqual(["wp_1"]);
     expect(result[0]?.index).toBe(1);
+  });
+
+  // The check must run over the whole membership. An index-less wait is absent from `order` by
+  // construction, so an order-scoped check returns [] here and the run resumes having silently
+  // lost its result.
+  it("throws when an index-less id in the membership has no record", async () => {
+    const failure = await resolver()({
+      runId: "run_1",
+      pointer: CYCLE,
+      order: [],
+      distinctIds: ["wp_indexless"],
+      records: [],
+    }).catch((caught: unknown) => caught as UnresolvableWaitpointId);
+
+    expect(failure).toBeInstanceOf(UnresolvableWaitpointId);
+    expect(failure.waitpointId).toBe("wp_indexless");
+    expect(failure.reason).toBe("no-source");
+  });
+
+  it("accepts an index-less id the caller resolved from a row", async () => {
+    const result = await resolver()({
+      runId: "run_1",
+      pointer: CYCLE,
+      order: [],
+      distinctIds: ["wp_legacy"],
+      records: [],
+      resolvedElsewhere: ["wp_legacy"],
+    });
+
+    expect(result).toEqual([]);
   });
 
   it("resolves an empty cycle to nothing", async () => {

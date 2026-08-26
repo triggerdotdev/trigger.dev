@@ -626,11 +626,17 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         sameOrder(previousIds.order, order) &&
         sameSet(previousIds.distinctIds, distinct)
       ) {
+        // A copy-forward carries no records of its own, and does not need any: it points at a
+        // cycle already minted. But the script may refuse the pointer and mint a replacement
+        // from these refs, and a replacement minted with no records holds ids that nothing
+        // resolves. So carry the surviving cycle's records for that branch.
+        const carried = records ?? (await this.#recordsForCycle(runId, head.cycle.cycleSeq));
+
         return {
           kind: "carryForward",
           cycleSeq: head.cycle.cycleSeq,
           completedWaitpoints,
-          ...(records && { records }),
+          ...(carried && { records: carried }),
         };
       }
     } catch (error) {
@@ -641,6 +647,25 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     return { kind: "new", completedWaitpoints, ...(records && { records }) };
+  }
+
+  // Never fatal. Failing to read the records only loses the refusal branch's ability to mint a
+  // complete replacement, which is where it started; a throw here would fail an append that
+  // would otherwise have succeeded.
+  async #recordsForCycle(
+    runId: string,
+    cycleSeq: number
+  ): Promise<CompletedWaitpointRecord[] | undefined> {
+    try {
+      return await this.redis.getCycleRecords(runId, cycleSeq);
+    } catch (error) {
+      this.logger.warn("reading a cycle's records failed, carrying none", {
+        runId,
+        cycleSeq,
+        error,
+      });
+      return undefined;
+    }
   }
 
   /**

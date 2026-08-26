@@ -17,6 +17,12 @@ export function snapshotKeys(runId: string): SnapshotKeys {
   return { e: `${base}:e`, idx: `${base}:idx`, cur: `${base}:cur`, seq: `${base}:seq` };
 }
 
+// The per-cycle key. Shares the {runId} tag with the four core keys, and the append scripts
+// derive the same name in Lua from KEYS[1]; this is its only TypeScript-side spelling.
+export function cycleKey(runId: string, cycleSeq: number): string {
+  return `snap:{${runId}}:wp:${cycleSeq}`;
+}
+
 export type CompletedWaitpointRef = { id: string; index?: number };
 
 // Reproduces PostgresRunStore.#createExecutionSnapshot's completedWaitpointOrder derivation exactly:
@@ -117,6 +123,12 @@ export type ResolveCompletedWaitpointsArgs = {
   pointer: CompletedWaitpointsPointer;
   /** Index oracle only. A SUBSET of the record ids. Repeats preserved. */
   order: string[];
+  /**
+   * Every id the cycle recorded, deduped, including the ids with no batch index. This is the
+   * membership the resolver's coverage check runs over: `order` omits every index-less wait,
+   * so a check scoped to it cannot see an id whose record is missing.
+   */
+  distinctIds: string[];
   /** The authoritative, complete set. Iterate this, never `order`. */
   records: CompletedWaitpointRecord[];
 };
@@ -493,6 +505,25 @@ export class RedisSnapshotStore {
         return { present: false, distinctIds: [], order: [] };
       }
       return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "", reply[2] ?? "");
+    });
+  }
+
+  /**
+   * The record set a cycle already holds, if any.
+   *
+   * Read on one path only: a copy-forward append that carries no records of its own. A
+   * copy-forward legitimately has none, because it only points at a cycle that was already
+   * minted. But the append script can REFUSE an untrustworthy pointer and mint a replacement
+   * from the carried refs, and a replacement minted with no records holds ids that nothing can
+   * resolve. So the caller reads the surviving cycle's records and carries those.
+   */
+  async getCycleRecords(
+    runId: string,
+    cycleSeq: number
+  ): Promise<CompletedWaitpointRecord[] | undefined> {
+    return this.#timed("getCycleRecords", async () => {
+      const raw = await this.redis.hget(cycleKey(runId, cycleSeq), "records");
+      return raw ? (JSON.parse(raw) as CompletedWaitpointRecord[]) : undefined;
     });
   }
 

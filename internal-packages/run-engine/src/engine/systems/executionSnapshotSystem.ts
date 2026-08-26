@@ -173,7 +173,7 @@ async function getSnapshotWaitpointIdsWithPresence(
  * This is necessary because waitpoints can have large outputs (100KB+),
  * and fetching many at once can exceed Node.js string limits.
  */
-async function fetchWaitpointsInChunks(
+export async function fetchWaitpointsInChunks(
   prisma: PrismaClientOrTransaction,
   waitpointIds: string[],
   runStore?: RunStore,

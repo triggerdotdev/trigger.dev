@@ -96,6 +96,54 @@ describe("a refused carry-forward", () => {
     }
   });
 
+  // The reachable production shape. Every copy-forward append (dequeue, checkpoint, attempt)
+  // re-passes the same refs and carries no records of its own, so this is the case a refusal
+  // actually meets. Before the decorator read the surviving cycle's records, this minted a
+  // replacement holding ids with no records, permanently.
+  redisTest("keeps the records when the caller carried refs but none", async ({ redisOptions }) => {
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+    const raw = createRedisClient(redisOptions, { onError: () => {} });
+    try {
+      await store.append({
+        entry: entry({ id: "snap_1" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: {
+          kind: "new",
+          completedWaitpoints: [{ id: "w_a", index: 0 }],
+          records: [record("w_a", "first")],
+        },
+      });
+
+      // What the decorator now does for a records-less carry: read the surviving cycle's
+      // records and carry those into the refusal branch.
+      const carried = await store.getCycleRecords("run_1", 1);
+      expect(carried).toHaveLength(1);
+
+      await raw.del("snap:{run_1}:e", "snap:{run_1}:idx", "snap:{run_1}:cur", "snap:{run_1}:seq");
+
+      await store.append({
+        entry: entry({ id: "snap_2" }),
+        kind: "birth",
+        isTerminal: false,
+        cycle: {
+          kind: "carryForward",
+          cycleSeq: 1,
+          completedWaitpoints: [{ id: "w_a", index: 0 }],
+          records: carried,
+        },
+      });
+
+      const read = await store.getLatest("run_1");
+      const records = await recordsAt(raw, read!.cycle!.cycleSeq);
+
+      expect(records).toHaveLength(1);
+      expect(records?.[0]?.id).toBe("w_a");
+    } finally {
+      await Promise.all([store.quit(), raw.quit().catch(() => {})]);
+    }
+  });
+
   // Without refs there is nothing to mint from, so the entry is written with no pointer. That is
   // the older behaviour and it stays: no pointer is safe, a pointer with no records is not.
   redisTest("writes no pointer when the caller carried no refs", async ({ redisOptions }) => {

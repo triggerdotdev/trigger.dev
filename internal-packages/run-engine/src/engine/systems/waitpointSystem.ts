@@ -491,14 +491,6 @@ export class WaitpointSystem {
         };
       }
 
-      // The record set rides the wait cycle's key once per resume, so build it here rather
-      // than at each append site. Nothing mints a store-format waitpoint yet, so
-      // #completedWaitpointRecordsFor returns undefined on every live path today.
-      const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
-        runId,
-        blockingWaitpoints
-      );
-
       // 3. Get the run (run-ops scalars) + resolve its environment via the control-plane resolver,
       // so the run-ops DB can split without a cross-provider join.
       const run = await this.$.runStore.findRun(
@@ -616,6 +608,13 @@ export class WaitpointSystem {
           };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
+          // Built inside the branch, not before the switch: the statuses above return without
+          // appending, and they must not pay an envelope read to do it.
+          const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
+            runId,
+            blockingWaitpoints
+          );
+
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
             this.$.prisma,
             {
@@ -683,6 +682,11 @@ export class WaitpointSystem {
               `continueRunIfUnblocked: run is suspended, but has no checkpoint: ${runId}`
             );
           }
+
+          const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
+            runId,
+            blockingWaitpoints
+          );
 
           //put it back in the queue, with the original timestamp (w/ priority)
           //this prioritizes dequeuing waiting runs over new runs
@@ -761,17 +765,22 @@ export class WaitpointSystem {
   }
 
   /**
-   * The record set for one resume, or undefined when this wait has no store-resident half.
+   * The record set for one resume, or undefined when no blocking waitpoint carries a store-format
+   * id.
    *
-   * The classification gate is what keeps this inert. `parseWaitpointId` reports legacy for
-   * every id minted today, so no live resume reads an envelope or writes a record until a
-   * waitpoint mints in store format.
+   * Gated on id FORMAT, not residency. The two are not the same during a migration: a
+   * store-format id can still be served by the Postgres arm, exactly as run-ops ids were for
+   * runs. Whichever arm owns it answers, so the gate only decides whether to ask at all.
+   *
+   * That gate is what keeps this inert. `parseWaitpointId` reports legacy for every id minted
+   * today, so no live resume reads an envelope or writes a record until a waitpoint mints in
+   * store format.
    */
   async #completedWaitpointRecordsFor(
     runId: string,
     blockingWaitpoints: RunBlockEdge[]
   ): Promise<CompletedWaitpointRecord[] | undefined> {
-    const storeResidentIds = [
+    const storeFormatIds = [
       ...new Set(
         blockingWaitpoints
           .map((b) => b.waitpoint.id)
@@ -779,13 +788,13 @@ export class WaitpointSystem {
       ),
     ];
 
-    if (storeResidentIds.length === 0) {
+    if (storeFormatIds.length === 0) {
       return undefined;
     }
 
     const sources = await this.coordinator.readCompletionEnvelopes({
       runId,
-      waitpointIds: storeResidentIds,
+      waitpointIds: storeFormatIds,
     });
 
     return buildCompletedWaitpointRecords(sources);
