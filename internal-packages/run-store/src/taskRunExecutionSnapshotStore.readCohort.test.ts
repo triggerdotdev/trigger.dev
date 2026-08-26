@@ -28,7 +28,7 @@ const ids = Array.from({ length: 500 }, (_, n) => `run_cohort_${n}_${n * 7919}`)
 
 describe("the read cohort", () => {
   it("reads nothing from Redis before the read positions", () => {
-    for (const mode of ["off", "dual-write", "compare"] as const) {
+    for (const mode of ["off", "dual-write"] as const) {
       const store = probe(mode, 100);
       expect(ids.every((id) => !store.readsFromRedis(id))).toBe(true);
     }

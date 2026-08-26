@@ -60,10 +60,13 @@ const WAITPOINT_CHUNK_SIZE = 100;
  * The rollout dial. Postgres stays fully written and authoritative in every position before
  * `redis-only`, so every earlier position rolls back losslessly by turning the dial down.
  *
- * `compare` writes exactly as `dual-write` does. Its sampled dual-read and diff are a later ticket;
- * the position is named here so the dial does not have to widen once that lands.
+ * A `compare` position was named here before its behaviour existed, and it read from this type as a
+ * real dial position while behaving in every respect exactly like `dual-write`. A dial value that
+ * silently does something other than its name is worse than a missing one: turning it on would have
+ * looked like enabling divergence reporting and delivered plain dual-write. It is added back by the
+ * ticket that implements the sampled dual-read and diff, at which point the name will be true.
  */
-export type SnapshotStoreMode = "off" | "dual-write" | "compare" | "redis-read" | "redis-only";
+export type SnapshotStoreMode = "off" | "dual-write" | "redis-read" | "redis-only";
 
 /**
  * Enqueues the existing `repairSnapshot` job for a run whose append was lost. The decorator lives in

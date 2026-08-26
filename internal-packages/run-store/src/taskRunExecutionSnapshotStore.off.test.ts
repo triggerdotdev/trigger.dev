@@ -87,7 +87,7 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
 
   it("reports every other dial position as one that writes Redis", () => {
     const { store } = forwardingProbe();
-    const modes = ["dual-write", "compare", "redis-read", "redis-only"] as const;
+    const modes = ["dual-write", "redis-read", "redis-only"] as const;
 
     for (const mode of modes) {
       const decorated = new TaskRunExecutionSnapshotStore(store, {
