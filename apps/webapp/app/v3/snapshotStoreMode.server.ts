@@ -10,7 +10,27 @@ import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 /** A cached "this organisation has no override", distinct from "not cached". */
 export const NO_OVERRIDE = "__none__" as const;
 
-type CachedOrgMode = SnapshotStoreMode | typeof NO_OVERRIDE;
+/**
+ * The dial positions, declared here rather than imported, so this module does not depend on the
+ * run-store package's build output to typecheck. The assertion below fails if the two ever diverge.
+ */
+type DialMode = "off" | "dual-write" | "compare" | "redis-read" | "redis-only";
+
+/** Only the write positions are settable per organisation: reads are global. */
+type OrgDialMode = "off" | "dual-write" | "compare";
+
+type AssertSame<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _dialMatchesRunStore: AssertSame<DialMode, SnapshotStoreMode> = true;
+void _dialMatchesRunStore;
+
+// Temporary probe. This module typechecks locally and fails in CI with errors that are only
+// consistent with SnapshotStoreMode resolving to `never` there. The reported type here names which
+// it is, so the CI log answers it outright. Remove once the cause is known.
+type ProbeIsNever = [SnapshotStoreMode] extends [never] ? "RESOLVED_NEVER" : "RESOLVED_UNION";
+const _probe: ProbeIsNever = "RESOLVED_UNION";
+void _probe;
+
+type CachedOrgMode = OrgDialMode | typeof NO_OVERRIDE;
 
 /**
  * What to cache for one organisation's blob value. An unparseable or absent value caches
@@ -30,12 +50,12 @@ type OrgModeSource = {
 };
 
 export function buildSnapshotStoreModeResolver(deps: {
-  globalMode: () => SnapshotStoreMode | undefined;
+  globalMode: () => DialMode | undefined;
   orgMode: OrgModeSource;
-  envFloor: SnapshotStoreMode;
+  envFloor: DialMode;
 }): SnapshotStoreModeResolver {
   return {
-    resolve(organizationId?: string): SnapshotStoreMode {
+    resolve(organizationId?: string): DialMode {
       const global = deps.globalMode() ?? deps.envFloor;
       if (!organizationId) {
         return global;
