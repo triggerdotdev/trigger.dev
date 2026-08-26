@@ -1,11 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { mintWaitpointIdFor } from "@trigger.dev/core/v3/isomorphic";
 import { WAITPOINT_MINT_SITES } from "./waitpointMintCatalog";
-
-const GEN2_ANCHOR = `${"a".repeat(24)}a2`;
-const GEN1_ANCHOR = `${"a".repeat(24)}01`;
 
 function repoRoot(): string {
   let dir = process.cwd();
@@ -25,63 +21,92 @@ function count(source: string, pattern: RegExp): number {
   return (source.match(pattern) ?? []).length;
 }
 
-// Every source file that may create a Postgres waitpoint row. The coordinator directory is
-// WALKED rather than listed, so a mint added in a new coordinator file cannot hide here.
-function scannedFiles(): string[] {
-  const coordinatorDir = "internal-packages/run-engine/src/engine/waitpointCoordinator";
-  const walked = readdirSync(path.join(repoRoot(), coordinatorDir))
-    .filter((name) => name.endsWith(".ts") && !name.includes(".test."))
-    .map((name) => `${coordinatorDir}/${name}`);
+// Every production `.ts` under a root, walked rather than listed: a mint added in a new
+// file, or moved back into `systems/` where these all lived until the coordinator seam was
+// extracted, has to be visible here or the census is decorative.
+//
+// Test-support trees are excluded deliberately. A helper that writes a row through raw
+// Prisma never reaches the routing store, so it cannot misroute; requiring it to be
+// catalogued would fill the census with sites that carry no risk.
+const TEST_SUPPORT_DIRS = new Set(["tests", "__tests__", "fixtures"]);
 
-  return [
-    ...walked,
-    "internal-packages/run-engine/src/engine/index.ts",
-    "internal-packages/run-store/src/PostgresRunStore.ts",
-  ];
+function walk(relativeRoot: string): string[] {
+  const absolute = path.join(repoRoot(), relativeRoot);
+  return readdirSync(absolute).flatMap((name) => {
+    const child = `${relativeRoot}/${name}`;
+    if (statSync(path.join(absolute, name)).isDirectory()) {
+      return TEST_SUPPORT_DIRS.has(name) ? [] : walk(child);
+    }
+    return name.endsWith(".ts") && !name.includes(".test.") ? [child] : [];
+  });
 }
 
-describe("waitpoint mint census — behaviour per catalogued site", () => {
-  for (const site of WAITPOINT_MINT_SITES) {
-    it(`${site.id} (${site.type}) stamps a gen-2 anchor's shard char`, () => {
-      const r = mintWaitpointIdFor(GEN2_ANCHOR);
-      expect(r.id[24]).toBe("a");
-      expect(r.id[25]).toBe("2");
-    });
+// The mint helpers are the only sanctioned way to produce a Postgres waitpoint id.
+const MINT_CALL = /mintWaitpointIdFor(?:Shard)?\(/g;
+const UNSTAMPED_MINT = /WaitpointId\.generate\(/g;
+const WAITPOINT_WRITE = /waitpoint\.create\(|upsertWaitpoint\(|createWaitpoint\(/g;
 
-    it(`${site.id} (${site.type}) keeps a cuid for a gen-1 anchor`, () => {
-      expect(mintWaitpointIdFor(GEN1_ANCHOR).id.length).toBe(25);
-    });
-  }
-});
+// The catalog holds the mint expressions as string data, so scanning it would count them.
+const CATALOG_ITSELF =
+  "internal-packages/run-engine/src/engine/waitpointCoordinator/waitpointMintCatalog.ts";
 
-describe("waitpoint mint census — source drift guard", () => {
-  it("no scanned source mints a waitpoint id with the un-stamped helper", () => {
-    // The regex matches tokens inside comments too — deliberate. Any textual addition
-    // forces the census to be reconciled, so a new site cannot land without an entry.
-    for (const file of scannedFiles()) {
-      expect({ file, hits: count(read(file), /WaitpointId\.generate\(/g) }).toEqual({
-        file,
-        hits: 0,
-      });
+const ENGINE_SOURCES = walk("internal-packages/run-engine/src/engine").filter(
+  (f) => f !== CATALOG_ITSELF
+);
+const SCANNED = [...ENGINE_SOURCES, "internal-packages/run-store/src/PostgresRunStore.ts"];
+
+// expression -> how many times the catalog says it appears in this file
+function expectedMints(file: string): Map<string, number> {
+  const expected = new Map<string, number>();
+  for (const site of WAITPOINT_MINT_SITES.filter((s) => s.site === file)) {
+    for (const expr of site.mints) {
+      expected.set(expr, (expected.get(expr) ?? 0) + 1);
     }
+  }
+  return expected;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+describe("waitpoint mint census — the catalog matches the source", () => {
+  it("scans the engine tree and the run-store writer, and finds files to scan", () => {
+    expect(ENGINE_SOURCES.length).toBeGreaterThan(10);
+    expect(SCANNED).toContain("internal-packages/run-engine/src/engine/systems/waitpointSystem.ts");
   });
 
-  it("every file that writes a waitpoint row is catalogued", () => {
-    const catalogued = new Set(WAITPOINT_MINT_SITES.map((s) => s.site));
+  // Per EXPRESSION, not per file: this fails for a fifth mint added inside an
+  // already-catalogued file, AND for a swapped anchor — mintWaitpointIdFor(undefined) in
+  // place of the run id — which a bare call-count would wave through.
+  it.each(SCANNED)("%s has exactly the mint expressions the catalog claims", (file) => {
+    const source = read(file);
+    const expected = expectedMints(file);
 
-    for (const file of scannedFiles()) {
-      const source = read(file);
-      // A create with NO id is the worst case: Prisma's @default(cuid()) then mints a cuid
-      // on a gen-2 shard after the write, which no stamp check can see.
-      const writes =
-        count(source, /waitpoint\.create\(/g) +
-        count(source, /upsertWaitpoint\(/g) +
-        count(source, /createWaitpoint\(/g);
-
-      if (writes > 0) {
-        expect({ file, catalogued: catalogued.has(file) }).toEqual({ file, catalogued: true });
-      }
+    for (const [expr, n] of expected) {
+      expect({ expr, found: count(source, new RegExp(escapeRegExp(expr), "g")) }).toEqual({
+        expr,
+        found: n,
+      });
     }
+
+    // No mint in the file beyond the ones the catalog accounts for.
+    const accounted = [...expected.values()].reduce((a, b) => a + b, 0);
+    expect(count(source, MINT_CALL)).toBe(accounted);
+  });
+
+  it.each(SCANNED)("%s mints no waitpoint id with the un-stamped helper", (file) => {
+    // The regex matches tokens inside comments too — deliberate. Any textual addition
+    // forces the census to be reconciled, so a new site cannot land unnoticed.
+    expect(count(read(file), UNSTAMPED_MINT)).toBe(0);
+  });
+
+  it.each(SCANNED)("%s writes a waitpoint row only if it is catalogued", (file) => {
+    // A create with NO id is the worst case: Prisma's @default(cuid()) then mints a cuid on
+    // a gen-2 shard after the write, which no stamp check can see.
+    const writes = count(read(file), WAITPOINT_WRITE);
+    const catalogued = WAITPOINT_MINT_SITES.some((s) => s.site === file);
+    expect(writes === 0 || catalogued).toBe(true);
   });
 
   it("every catalogued site names a file that exists", () => {
@@ -89,6 +114,16 @@ describe("waitpoint mint census — source drift guard", () => {
       expect({ site: site.site, exists: existsSync(path.join(repoRoot(), site.site)) }).toEqual({
         site: site.site,
         exists: true,
+      });
+    }
+  });
+
+  it("every catalogued site names its enclosing symbol in that file", () => {
+    for (const site of WAITPOINT_MINT_SITES) {
+      const symbol = site.symbol.split(" ")[0]!.replace("#", "");
+      expect({ site: site.id, present: read(site.site).includes(symbol) }).toEqual({
+        site: site.id,
+        present: true,
       });
     }
   });

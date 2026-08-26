@@ -1824,10 +1824,10 @@ export class RunEngine {
     standaloneResidency?: "NEW" | "LEGACY";
     /**
      * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
-     * shard the token's id is stamped for. When it names a gen-2 shard the caller must NOT also
-     * set `standaloneResidency`: a residency hint outranks the id shape in the router and can
-     * only name a gen-1 store, so the row would land there while its completion routes to the
-     * shard. Only a Postgres implementation reads this.
+     * shard the token's id is stamped for. When it names a gen-2 shard the implementation must
+     * IGNORE `standaloneResidency`: a residency hint outranks the id shape in the router and
+     * can only name a gen-1 store, so honouring it would land the row there while its
+     * completion routes to the shard. Only a Postgres implementation reads this.
      */
     standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
@@ -1868,8 +1868,10 @@ export class RunEngine {
           data: {
             // Stamped from the BATCH, not the blocked run: this create passes only
             // completedByBatchId, so the routing store resolves the owner from the batch and
-            // validates the stamp against the batch's shard. The two match, because the batch
-            // inherited this run's shard when it was minted.
+            // validates the stamp against the BATCH's shard. On the normal path the two are
+            // the same char anyway, because the batch inherited this run's shard. They differ
+            // only if a batch ever blocks a run from another shard -- and then this is the
+            // stamp that matches the owner the router actually checks.
             ...mintWaitpointIdFor(batchId),
             type: "BATCH",
             idempotencyKey: batchId,

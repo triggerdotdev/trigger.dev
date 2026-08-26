@@ -1,71 +1,149 @@
+import type { RunStore } from "@internal/run-store";
+import type { Logger } from "@trigger.dev/core/logger";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { describe, expect, it } from "vitest";
-import { mintWaitpointIdFor, resolveShard } from "@trigger.dev/core/v3/isomorphic";
+import { LegacyPostgresWaitpointCoordinator } from "./legacyPostgresCoordinator.js";
 
-// The mint is pure, so each site's stamping is asserted without a container. The write
-// behaviour itself is covered by the coordinator's own suite.
+// These drive the real create sites, not the mint helper. A test that calls the helper with
+// a hand-written literal passes even when a site stops passing its anchor, which is the one
+// regression that matters here.
 const GEN2_RUN = `${"a".repeat(24)}a2`;
 const GEN1_RUN = `${"a".repeat(24)}01`;
-const CUID_RUN = "c".repeat(25);
+const GEN2_BATCH = `${"d".repeat(24)}b2`;
 
-describe("DATETIME and MANUAL waitpoint ids", () => {
-  it("a gen-2 run anchor stamps that run's shard char", () => {
-    const r = mintWaitpointIdFor(GEN2_RUN);
-    expect(r.id[24]).toBe("a");
-    expect(r.id[25]).toBe("2");
+type Captured = { id?: string; friendlyId?: string };
+
+function coordinatorCapturing(captured: Captured) {
+  const runStore = {
+    findWaitpoint: async () => null,
+    upsertWaitpoint: async (args: { create: Captured }) => {
+      captured.id = args.create.id;
+      captured.friendlyId = args.create.friendlyId;
+      return { id: args.create.id } as unknown as Waitpoint;
+    },
+  } as unknown as RunStore;
+
+  return new LegacyPostgresWaitpointCoordinator({
+    runStore,
+    prisma: {} as unknown as PrismaClient,
+    logger: {
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    } as unknown as Logger,
+  });
+}
+
+describe("createDateTimeWaitpoint stamps the anchor's shard", () => {
+  it("a gen-2 run anchor yields a gen-2 waitpoint id", async () => {
+    const captured: Captured = {};
+    await coordinatorCapturing(captured).createDateTimeWaitpoint({
+      runId: GEN2_RUN,
+      projectId: "proj",
+      environmentId: "env",
+      completedAfter: new Date(),
+    });
+
+    expect(captured.id).toHaveLength(26);
+    expect(captured.id?.[24]).toBe("a");
+    expect(captured.id?.[25]).toBe("2");
+    expect(captured.friendlyId).toBe(`waitpoint_${captured.id}`);
+  });
+
+  it("a gen-1 run anchor keeps a cuid", async () => {
+    const captured: Captured = {};
+    await coordinatorCapturing(captured).createDateTimeWaitpoint({
+      runId: GEN1_RUN,
+      projectId: "proj",
+      environmentId: "env",
+      completedAfter: new Date(),
+    });
+
+    expect(captured.id).toHaveLength(25);
+  });
+});
+
+describe("createManualWaitpoint stamps the anchor's shard", () => {
+  it("a gen-2 run anchor yields a gen-2 waitpoint id", async () => {
+    const captured: Captured = {};
+    await coordinatorCapturing(captured).createManualWaitpoint({
+      runId: GEN2_RUN,
+      projectId: "proj",
+      environmentId: "env",
+    });
+
+    expect(captured.id?.[24]).toBe("a");
+    expect(captured.id?.[25]).toBe("2");
+  });
+
+  it("a standalone token mints by the environment's shard, not by an anchor", async () => {
+    const captured: Captured = {};
+    await coordinatorCapturing(captured).createManualWaitpoint({
+      projectId: "proj",
+      environmentId: "env",
+      standaloneShardKey: "c",
+    });
+
+    expect(captured.id?.[24]).toBe("c");
+    expect(captured.id?.[25]).toBe("2");
+  });
+
+  it("a standalone token on a gen-1 environment keeps a cuid", async () => {
+    const captured: Captured = {};
+    await coordinatorCapturing(captured).createManualWaitpoint({
+      projectId: "proj",
+      environmentId: "env",
+      standaloneShardKey: "new",
+      standaloneResidency: "NEW",
+    });
+
+    expect(captured.id).toHaveLength(25);
+  });
+
+  it("an owning run outranks the environment shard", async () => {
+    const captured: Captured = {};
+    await coordinatorCapturing(captured).createManualWaitpoint({
+      runId: GEN2_RUN,
+      projectId: "proj",
+      environmentId: "env",
+      standaloneShardKey: "c",
+    });
+
+    // The run's shard, not the environment's: a co-located waitpoint follows its run.
+    expect(captured.id?.[24]).toBe("a");
+  });
+});
+
+describe("mintAssociatedWaitpointData stamps the anchor's shard", () => {
+  // The row this mints is written inside the run store, which has no stamp check, so an
+  // unstamped id here strands the parent run with nothing logged.
+  const mint = (anchorRunId: string) =>
+    coordinatorCapturing({}).mintAssociatedWaitpointData({
+      projectId: "proj",
+      environmentId: "env",
+      anchorRunId,
+    });
+
+  it("a gen-2 run anchor yields a gen-2 waitpoint id", () => {
+    const data = mint(GEN2_RUN);
+    expect(data.id).toHaveLength(26);
+    expect(data.id[24]).toBe("a");
+    expect(data.id[25]).toBe("2");
+    expect(data.friendlyId).toBe(`waitpoint_${data.id}`);
   });
 
   it("a gen-1 run anchor keeps a cuid", () => {
-    expect(mintWaitpointIdFor(GEN1_RUN).id.length).toBe(25);
-  });
-
-  it("a cuid run anchor keeps a cuid", () => {
-    expect(mintWaitpointIdFor(CUID_RUN).id.length).toBe(25);
-  });
-
-  it("each retry attempt mints a distinct id on the same shard", () => {
-    const first = mintWaitpointIdFor(GEN2_RUN);
-    const second = mintWaitpointIdFor(GEN2_RUN);
-    expect(first.id).not.toBe(second.id);
-    expect(first.id[24]).toBe("a");
-    expect(second.id[24]).toBe("a");
-  });
-});
-
-describe("the RUN-associated waitpoint", () => {
-  // This row is written inside the run store, which has no stamp check. A cuid here lands
-  // on a gen-2 shard, the completion fallback probes only the gen-1 pair, and the parent
-  // waits forever with no error. So the anchor must reach the mint.
-  it("stamps the run's shard char when the run is gen-2", () => {
-    const r = mintWaitpointIdFor(GEN2_RUN);
-    expect(r.id[24]).toBe("a");
-    expect(r.id[25]).toBe("2");
-  });
-
-  it("keeps a cuid for a gen-1 run, which is today's behaviour", () => {
-    expect(mintWaitpointIdFor(GEN1_RUN).id.length).toBe(25);
+    expect(mint(GEN1_RUN).id).toHaveLength(25);
   });
 
   it("mints a fresh core, so the waitpoint id never equals the run's own body", () => {
-    expect(mintWaitpointIdFor(GEN2_RUN).id).not.toBe(GEN2_RUN);
-  });
-});
-
-describe("the BATCH waitpoint", () => {
-  const GEN2_BATCH = `${"d".repeat(24)}a2`;
-
-  // The create passes only completedByBatchId, so the routing store resolves the owner
-  // from the BATCH and validates the stamp against the batch's shard. Stamping from the
-  // run would throw. The two agree structurally: the batch is minted from the same parent
-  // run id that is then blocked, in the same request.
-  it("stamps the batch's shard char", () => {
-    expect(mintWaitpointIdFor(GEN2_BATCH).id[24]).toBe("a");
+    expect(mint(GEN2_RUN).id).not.toBe(GEN2_RUN);
   });
 
-  it("the batch's shard equals the blocked run's shard", () => {
-    expect(resolveShard(GEN2_BATCH)).toBe(resolveShard(GEN2_RUN));
-  });
-
-  it("a gen-1 batch keeps a cuid", () => {
-    expect(mintWaitpointIdFor(`${"d".repeat(24)}01`).id.length).toBe(25);
+  it("a batch anchor stamps the batch's shard", () => {
+    // What blockRunWithCreatedBatch relies on: the router validates a BATCH waitpoint
+    // against the batch's shard, because the create names only completedByBatchId.
+    expect(mint(GEN2_BATCH).id[24]).toBe("b");
   });
 });

@@ -200,10 +200,10 @@ export class WaitpointSystem {
     standaloneResidency?: "NEW" | "LEGACY";
     /**
      * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
-     * shard the token's id is stamped for. When it names a gen-2 shard the caller must NOT also
-     * set `standaloneResidency`: a residency hint outranks the id shape in the router and can
-     * only name a gen-1 store, so the row would land there while its completion routes to the
-     * shard. Only a Postgres implementation reads this.
+     * shard the token's id is stamped for. When it names a gen-2 shard the implementation must
+     * IGNORE `standaloneResidency`: a residency hint outranks the id shape in the router and
+     * can only name a gen-1 store, so honouring it would land the row there while its
+     * completion routes to the shard. Only a Postgres implementation reads this.
      */
     standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
