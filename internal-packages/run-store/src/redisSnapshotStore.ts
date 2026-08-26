@@ -195,6 +195,25 @@ export type AppendResult =
   | { outcome: "forked"; actualCur: string }
   | { outcome: "duplicate"; seq: number };
 
+/** The single source of truth for the outcome vocabulary the metrics layer bounds against. */
+export const APPEND_RESULT_OUTCOMES = [
+  "written",
+  "skippedNoKeyspace",
+  "forked",
+  "duplicate",
+] as const satisfies readonly AppendResult["outcome"][];
+
+/**
+ * `satisfies` alone only proves each listed literal is a valid outcome. This proves the reverse too,
+ * so a new member on AppendResult fails the build here rather than becoming "other" on a dashboard.
+ */
+type AssertSameOutcomes<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _outcomesExhaustive: AssertSameOutcomes<
+  (typeof APPEND_RESULT_OUTCOMES)[number],
+  AppendResult["outcome"]
+> = true;
+void _outcomesExhaustive;
+
 export type SnapshotStoreMetrics = {
   recordAppend(outcome: string, ttl: string): void;
   recordEntryBytes(bytes: number): void;
@@ -290,6 +309,15 @@ export class RedisSnapshotStore {
     } finally {
       this.metrics?.recordLatency(op, Date.now() - started);
     }
+  }
+
+  /**
+   * Removes a run's whole keyspace, wait-cycle keys included. The caller must have established that
+   * the head cannot be trusted and that Postgres still holds the run's rows.
+   */
+  async dropRun(runId: string): Promise<void> {
+    const keys = snapshotKeys(runId);
+    await this.redis.dropSnapshotRun(keys.e, keys.idx, keys.cur, keys.seq);
   }
 
   async append(args: {
@@ -859,6 +887,18 @@ export class RedisSnapshotStore {
       `,
     });
 
+    this.redis.defineCommand("dropSnapshotRun", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        local cycles = tonumber(redis.call('HGET', seqKey, 'c') or '0')
+        for i = 1, cycles do
+          redis.call('DEL', wpKey(i))
+        end
+        return redis.call('DEL', eKey, idxKey, curKey, seqKey)
+      `,
+    });
+
     this.redis.defineCommand("readSnapshotById", {
       numberOfKeys: 4,
       lua: `
@@ -1046,6 +1086,13 @@ export function decodeWaitpointIds(
 
 declare module "@internal/redis" {
   interface RedisCommander<Context> {
+    dropSnapshotRun(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
     appendSnapshotEntry(
       eKey: string,
       idxKey: string,

@@ -1,4 +1,5 @@
 import type { Meter } from "@internal/tracing";
+import { APPEND_RESULT_OUTCOMES } from "@internal/run-store";
 import type { DecoratorMetrics, SnapshotStoreMetrics } from "@internal/run-store";
 
 export type SnapshotSweepCounts = Record<string, number | boolean>;
@@ -8,7 +9,8 @@ export type SnapshotSweepCounts = Record<string, number | boolean>;
 // rather than minting a series.
 const APPEND_OUTCOMES = ["written", "duplicate", "forked", "skippedNoKeyspace"] as const;
 const APPEND_TTLS = ["none", "completion", "reapplied"] as const;
-const WRITE_OUTCOMES = ["written", "staged", "post_expiry", "skipped", "failed"] as const;
+/** Derived from the store's own vocabulary, so an added outcome cannot silently become "other". */
+export const WRITE_OUTCOMES = APPEND_RESULT_OUTCOMES;
 const READ_SOURCES = ["redis", "postgres"] as const;
 const SWEEP_OUTCOMES = [
   "completed",
@@ -69,9 +71,7 @@ export function createSnapshotStoreMetrics(meter: Meter) {
   const appendTotal = meter.createCounter("run_engine.snapshot_store.append_total");
   const writeTotal = meter.createCounter("run_engine.snapshot_store.write_total");
   const appendFailed = meter.createCounter("run_engine.snapshot_store.append_failed");
-  const flushStaged = meter.createCounter("run_engine.snapshot_store.flush_staged");
   const readSource = meter.createCounter("run_engine.snapshot_store.read_source");
-  const postExpiryWrite = meter.createCounter("run_engine.snapshot_store.post_expiry_write");
   const skippedNoKeyspace = meter.createCounter("run_engine.snapshot_store.skipped_no_keyspace");
   const cycleMismatch = meter.createCounter("run_engine.snapshot_store.cycle_mismatch");
   const entryBytes = meter.createHistogram("run_engine.snapshot_store.entry_bytes");
@@ -101,12 +101,6 @@ export function createSnapshotStoreMetrics(meter: Meter) {
         site: bounded(site, WRITE_SITES),
         outcome: bounded(outcome, WRITE_OUTCOMES),
       });
-      if (outcome === "post_expiry") {
-        postExpiryWrite.add(1);
-      }
-      if (outcome === "staged") {
-        flushStaged.add(1);
-      }
     },
     recordAppendFailed: (site) => appendFailed.add(1, { site: bounded(site, WRITE_SITES) }),
     recordRead: (method, source) =>
