@@ -62,6 +62,24 @@ const LEGACY_SHARD: ShardKey = "legacy";
  * and a merge lets a gen-2 shard win. A probe MUST iterate #probeOrder and a merge MUST iterate
  * #precedence.
  */
+/**
+ * An id resolved to a shard key the topology has no store for. Typed so a caller above the
+ * router can answer a 4xx instead of letting a routing failure surface as a 5xx: these ids
+ * arrive as URL parameters, and `resolveShard` is pure id-shape, so any gen-2 shaped id names
+ * a shard char whether or not one is configured.
+ */
+export class UnknownShardKey extends Error {
+  readonly shardKey: string;
+  readonly configured: string[];
+
+  constructor(shardKey: string, configured: string[]) {
+    super(`RoutingRunStore: no store is configured for shard key "${shardKey}"`);
+    this.name = "UnknownShardKey";
+    this.shardKey = shardKey;
+    this.configured = configured;
+  }
+}
+
 export class RoutingRunStore implements RunStore {
   readonly #shards: ReadonlyMap<ShardKey, RunStore>;
   // Sequential probe for a lookup with no routable id. The first non-null result wins, and the LAST
@@ -175,12 +193,12 @@ export class RoutingRunStore implements RunStore {
 
   // The store for a shard key. REACHABLE with the compat constructor: it defaults to the real
   // `resolveShard`, which is pure id-shape, so any gen-2 shaped id names a shard char even when
-  // no shard is configured. Callers above the router must therefore translate this into a 4xx on
-  // a read path — these ids arrive as URL parameters — rather than let it surface as a 5xx.
+  // no shard is configured. Fails loud rather than reading the wrong database; the API boundary
+  // turns `UnknownShardKey` into a 404 so a caller-supplied id cannot induce a 5xx.
   #shardStore(key: ShardKey): RunStore {
     const store = this.#shards.get(key);
     if (store === undefined) {
-      throw new Error(`RoutingRunStore: no store is configured for shard key "${key}"`);
+      throw new UnknownShardKey(key, [...this.#shards.keys()]);
     }
     return store;
   }

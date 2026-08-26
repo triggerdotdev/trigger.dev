@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RoutingRunStore } from "./runOpsStore.js";
+import { RoutingRunStore, UnknownShardKey } from "./runOpsStore.js";
 import type { ReadClient, RunStore } from "./types.js";
 
 // Pins the routing ALGEBRA: probe order, merge precedence, and the two id-less fallbacks that
@@ -300,6 +300,29 @@ describe("RoutingRunStore id-to-shard-key seam", () => {
       'no store is configured for shard key "a"'
     );
     expect(trace(log)).toEqual([]);
+  });
+
+  // Typed, not a bare Error: the API boundary matches on it to answer 404 instead of 500, and
+  // the operator needs the key and the configured set to tell a forged id from a dropped shard.
+  it("throws a typed UnknownShardKey carrying the key and the configured set", () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+    });
+
+    let thrown: unknown;
+    try {
+      router.findRun({ id: `${"0".repeat(24)}a2` });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(UnknownShardKey);
+    const error = thrown as UnknownShardKey;
+    expect(error.name).toBe("UnknownShardKey");
+    expect(error.shardKey).toBe("a");
+    expect([...error.configured].sort()).toEqual(["legacy", "new"]);
   });
 
   it("still routes gen-1 shapes on the compat pair with the real resolver", () => {
