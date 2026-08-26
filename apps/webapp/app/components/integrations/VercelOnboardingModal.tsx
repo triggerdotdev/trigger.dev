@@ -99,6 +99,7 @@ export function VercelOnboardingModal({
   hasStagingEnvironment,
   hasPreviewEnvironment,
   hasOrgIntegration,
+  onboardingDataUnavailable = false,
   nextUrl,
   onDataReload,
   vercelManageAccessUrl,
@@ -112,6 +113,8 @@ export function VercelOnboardingModal({
   hasStagingEnvironment: boolean;
   hasPreviewEnvironment: boolean;
   hasOrgIntegration: boolean;
+  /** The onboarding fetch settled without returning data - show an error instead of spinning. */
+  onboardingDataUnavailable?: boolean;
   nextUrl?: string;
   onDataReload?: (vercelStagingEnvironment?: string) => void;
   vercelManageAccessUrl?: string;
@@ -772,9 +775,35 @@ export function VercelOnboardingModal({
               <span>Set up Vercel Integration</span>
             </div>
           </DialogHeader>
-          <div className="flex items-center justify-center py-8">
-            <Spinner color="blue" className="size-6" />
-          </div>
+          {onboardingDataUnavailable ? (
+            <div className="flex flex-col items-start gap-3 py-4">
+              <Paragraph variant="small">
+                We couldn't load your Vercel projects. The integration may have been removed or lost
+                access to this organization on Vercel.
+              </Paragraph>
+              <div className="flex items-center gap-2">
+                {onDataReload && (
+                  <Button variant="secondary/small" onClick={() => onDataReload()}>
+                    Try again
+                  </Button>
+                )}
+                {vercelManageAccessUrl && (
+                  <LinkButton
+                    to={vercelManageAccessUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    variant="tertiary/small"
+                  >
+                    Manage access on Vercel
+                  </LinkButton>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <Spinner color="blue" className="size-6" />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     );
