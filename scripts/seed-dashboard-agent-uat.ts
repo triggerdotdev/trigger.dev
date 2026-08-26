@@ -8,6 +8,10 @@
  * Most scenarios use that project's DEVELOPMENT environment. S6 (dirty deploy) needs a
  * real deployment, so it uses the project's PRODUCTION environment instead.
  *
+ * DEVELOPMENT environments are per-user (one per org member) - pass --user <email> to pick
+ * whose dev env gets seeded (defaults to local@trigger.dev, the seed script's own user).
+ * Get this wrong and the tester's dashboard 404s on ids seeded into someone else's dev env.
+ *
  * Postgres rows are written with the real Prisma client. Redis run-queue state is written
  * by hand, replicating the key format from
  * internal-packages/run-engine/src/run-queue/keyProducer.ts and the `slotHoldersOfQueue`
@@ -32,7 +36,7 @@
  *    `clickhouse-client` INSERT to run manually for the ClickHouse side.
  *
  * USAGE:
- *   pnpm exec tsx scripts/seed-dashboard-agent-uat.ts <subcommand>
+ *   pnpm exec tsx scripts/seed-dashboard-agent-uat.ts <subcommand> [--user <email>]
  *
  * SUBCOMMANDS:
  *   slots         S1  - uat-slots queue (limit 1), 1 EXECUTING holder, 5 PENDING/queued runs
@@ -49,6 +53,13 @@
  *   all               - runs every scenario above
  *   clean             - removes everything this script created
  *
+ * FLAGS:
+ *   --user <email>    - whose DEVELOPMENT env to seed (default: local@trigger.dev). Errors if
+ *                        that user has no dev env in the hello-world project. `clean` uses this
+ *                        too, but ALSO sweeps every DEVELOPMENT/PRODUCTION env in the project for
+ *                        "uat-" rows regardless of --user, so leftovers from a different --user
+ *                        run always get removed.
+ *
  * ENV VARS (same as the running webapp - see .env.example):
  *   DATABASE_URL, REDIS_HOST, REDIS_PORT, REDIS_USERNAME, REDIS_PASSWORD, REDIS_TLS_DISABLED
  */
@@ -62,6 +73,7 @@ const UAT_TAG_PREFIX = "uat-";
 
 const REFERENCES_ORG_TITLE = "References";
 const HELLO_WORLD_PROJECT_NAME = "hello-world";
+const DEFAULT_USER_EMAIL = "local@trigger.dev";
 
 // Same effective prefix RunEngine applies to its RunQueue redis client:
 // options.queue.redis.keyPrefix ("engine:") + "runqueue:" (see engine/index.ts).
@@ -109,19 +121,24 @@ function randomHex(bytes: number) {
 // Target resolution
 // ---------------------------------------------------------------------------
 
-type Ctx = {
+type ProjectCtx = {
   prisma: PrismaClient;
   redis: Redis;
   orgId: string;
   projectId: string;
+  projectName: string;
+};
+
+type Ctx = ProjectCtx & {
   devEnv: RuntimeEnvironment;
   prodEnv: RuntimeEnvironment;
 };
 
-async function resolveTarget(prisma: PrismaClient, redis: Redis): Promise<Ctx> {
-  // Resolved via the project, not a specific member's org membership - a self-hosted dev
-  // instance can have more than one "References" org (re-seeded under different users), and
-  // whoever actually holds the hello-world project is the one that matters here.
+// Resolved via the project, not a specific member's org membership - a self-hosted dev
+// instance can have more than one "References" org (re-seeded under different users), and
+// whoever actually holds the hello-world project is the one that matters here. Used by both
+// resolveTarget (needs a --user's dev env) and clean (doesn't - it sweeps every env).
+async function resolveProject(prisma: PrismaClient, redis: Redis): Promise<ProjectCtx> {
   const project = await prisma.project.findFirst({
     where: { name: HELLO_WORLD_PROJECT_NAME, organization: { title: REFERENCES_ORG_TITLE } },
     include: { organization: true },
@@ -131,21 +148,44 @@ async function resolveTarget(prisma: PrismaClient, redis: Redis): Promise<Ctx> {
       `Project "${HELLO_WORLD_PROJECT_NAME}" not found under a "${REFERENCES_ORG_TITLE}" org. Run "pnpm run db:seed" first.`
     );
   }
-  const organization = project.organization;
 
-  // A project can have more than one DEVELOPMENT env (one per member) - pick the
-  // earliest-created for determinism, independent of which user last seeded/used it.
-  const environments = await prisma.runtimeEnvironment.findMany({
-    where: { projectId: project.id },
-    orderBy: { createdAt: "asc" },
+  return {
+    prisma,
+    redis,
+    orgId: project.organization.id,
+    projectId: project.id,
+    projectName: project.name,
+  };
+}
+
+async function resolveTarget(prisma: PrismaClient, redis: Redis, userEmail: string): Promise<Ctx> {
+  const projectCtx = await resolveProject(prisma, redis);
+
+  // DEVELOPMENT envs are per-member (RuntimeEnvironment.orgMemberId) - resolve via the
+  // OrgMember -> User join for --user, so ids get seeded into the env the tester actually
+  // opens. A wrong pick here is silent: the dashboard just 404s on every seeded id.
+  const devEnv = await prisma.runtimeEnvironment.findFirst({
+    where: {
+      projectId: projectCtx.projectId,
+      type: "DEVELOPMENT",
+      orgMember: { user: { email: userEmail } },
+    },
   });
-  const devEnv = environments.find((e) => e.type === "DEVELOPMENT");
-  const prodEnv = environments.find((e) => e.type === "PRODUCTION");
-  if (!devEnv || !prodEnv) {
-    throw new Error(`Missing dev/prod environment for project ${project.name}.`);
+  if (!devEnv) {
+    throw new Error(
+      `No DEVELOPMENT environment for user "${userEmail}" in project "${projectCtx.projectName}". ` +
+        `They need to be a member of the "${REFERENCES_ORG_TITLE}" org (which mints a dev env per member).`
+    );
   }
 
-  return { prisma, redis, orgId: organization.id, projectId: project.id, devEnv, prodEnv };
+  const prodEnv = await prisma.runtimeEnvironment.findFirst({
+    where: { projectId: projectCtx.projectId, type: "PRODUCTION" },
+  });
+  if (!prodEnv) {
+    throw new Error(`Missing PRODUCTION environment for project ${projectCtx.projectName}.`);
+  }
+
+  return { ...projectCtx, devEnv, prodEnv };
 }
 
 // ---------------------------------------------------------------------------
@@ -632,10 +672,18 @@ function formatChDateTime(date: Date) {
 // clean
 // ---------------------------------------------------------------------------
 
-async function clean(ctx: Ctx) {
+async function clean(ctx: ProjectCtx) {
+  // Sweeps every DEVELOPMENT/PRODUCTION env in the project, not just the --user-selected
+  // one: a previous run under a different --user left "uat-" rows in ITS dev env, and those
+  // are just as much this script's mess to clean up. The "uat-" prefix is unambiguous enough
+  // that a project-wide sweep is safe.
+  const envs = await ctx.prisma.runtimeEnvironment.findMany({
+    where: { projectId: ctx.projectId, type: { in: ["DEVELOPMENT", "PRODUCTION"] } },
+  });
+
   const runs = await ctx.prisma.taskRun.findMany({
     where: {
-      runtimeEnvironmentId: { in: [ctx.devEnv.id, ctx.prodEnv.id] },
+      runtimeEnvironmentId: { in: boundedIn(envs.map((e) => e.id)) },
       idempotencyKey: { startsWith: UAT_TAG_PREFIX },
     },
     select: { id: true },
@@ -651,7 +699,7 @@ async function clean(ctx: Ctx) {
     "uat-wait-queue",
     "uat-dirty-deploy-queue",
   ];
-  for (const env of [ctx.devEnv, ctx.prodEnv]) {
+  for (const env of envs) {
     for (const name of queueNames) {
       const base = queueKey(ctx.orgId, ctx.projectId, env.id, name);
       const ckBase = queueKey(ctx.orgId, ctx.projectId, env.id, name, "uat-ck-fastpath");
@@ -690,21 +738,30 @@ async function clean(ctx: Ctx) {
 
   await ctx.prisma.taskQueue.deleteMany({
     where: {
-      runtimeEnvironmentId: { in: [ctx.devEnv.id, ctx.prodEnv.id] },
+      runtimeEnvironmentId: { in: boundedIn(envs.map((e) => e.id)) },
       name: { startsWith: UAT_TAG_PREFIX },
     },
   });
 
   // BackgroundWorker -> WorkerDeployment is onDelete: Cascade.
   await ctx.prisma.backgroundWorker.deleteMany({
-    where: { runtimeEnvironmentId: ctx.prodEnv.id, version: "uat-dirty-1" },
+    where: {
+      runtimeEnvironmentId: { in: boundedIn(envs.map((e) => e.id)) },
+      version: "uat-dirty-1",
+    },
   });
 
   await ctx.prisma.errorGroupState.deleteMany({
-    where: { environmentId: ctx.devEnv.id, taskIdentifier: "uat-recurred-task" },
+    where: {
+      environmentId: { in: boundedIn(envs.map((e) => e.id)) },
+      taskIdentifier: "uat-recurred-task",
+    },
   });
 
-  console.log(`Cleaned ${runIds.length} runs, uat-* queues, dirty-deploy worker, error group.`);
+  console.log(
+    `Cleaned ${runIds.length} runs, uat-* queues, dirty-deploy worker, error group ` +
+      `(swept ${envs.length} envs in the project).`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -725,7 +782,7 @@ const SUBCOMMANDS = [
 type Subcommand = (typeof SUBCOMMANDS)[number];
 
 function printHelp() {
-  console.log(`Usage: pnpm exec tsx scripts/seed-dashboard-agent-uat.ts <subcommand>
+  console.log(`Usage: pnpm exec tsx scripts/seed-dashboard-agent-uat.ts <subcommand> [--user <email>]
 
 Subcommands:
   slots         S1  uat-slots queue (limit 1): 1 EXECUTING holder + 5 queued runs
@@ -736,7 +793,11 @@ Subcommands:
   dirty-deploy  S6  WorkerDeployment with git.dirty=true, linked to a run
   recurred      S10 ErrorGroupState resolved 2d ago (prints manual ClickHouse SQL)
   all               run every scenario above
-  clean             remove everything this script created
+  clean             remove everything this script created (sweeps every dev env in the
+                     project, not just --user's - the --user flag is ignored here)
+
+Flags:
+  --user <email>    whose DEVELOPMENT env to seed (default: ${DEFAULT_USER_EMAIL})
 
 Env: DATABASE_URL, REDIS_HOST, REDIS_PORT, REDIS_USERNAME, REDIS_PASSWORD, REDIS_TLS_DISABLED
 `);
@@ -775,6 +836,14 @@ async function main() {
 
   const subcommand = arg as Subcommand;
 
+  const rest = process.argv.slice(3);
+  const userFlagIndex = rest.indexOf("--user");
+  const userEmail = userFlagIndex === -1 ? DEFAULT_USER_EMAIL : rest[userFlagIndex + 1];
+  if (userFlagIndex !== -1 && !userEmail) {
+    console.error("--user requires an email argument");
+    process.exit(1);
+  }
+
   const prisma = new PrismaClient();
   const redis = createRedisClient({
     host: process.env.REDIS_HOST ?? "localhost",
@@ -786,7 +855,16 @@ async function main() {
   });
 
   try {
-    const ctx = await resolveTarget(prisma, redis);
+    if (subcommand === "clean") {
+      // clean ignores --user on purpose - it sweeps every dev env in the project, so a
+      // stray --user isn't required to resolve (and wouldn't limit the sweep anyway).
+      await clean(await resolveProject(prisma, redis));
+      printSummary();
+      return;
+    }
+
+    const ctx = await resolveTarget(prisma, redis, userEmail);
+    console.log(`Target user: ${userEmail} (dev env ${ctx.devEnv.id})`);
 
     switch (subcommand) {
       case "slots":
@@ -818,9 +896,6 @@ async function main() {
         await seedWait(ctx);
         await seedDirtyDeploy(ctx);
         await seedRecurred(ctx);
-        break;
-      case "clean":
-        await clean(ctx);
         break;
     }
 
