@@ -102,11 +102,11 @@ describe("snapshot store mode resolver", () => {
   it("does not consult the organisation source when no organisation is supplied", () => {
     const get = vi.fn(() => undefined);
     const r = buildSnapshotStoreModeResolver({
-      globalMode: () => "compare",
+      globalMode: () => "redis-read",
       orgMode: { get, refresh: () => {} },
       envFloor: "off",
     });
-    expect(r.resolve()).toBe("compare");
+    expect(r.resolve()).toBe("redis-read");
     expect(get).not.toHaveBeenCalled();
   });
 });

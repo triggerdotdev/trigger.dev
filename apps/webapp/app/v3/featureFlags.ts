@@ -161,14 +161,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
-  [FEATURE_FLAG.snapshotStoreMode]: z.enum([
-    "off",
-    "dual-write",
-    "compare",
-    "redis-read",
-    "redis-only",
-  ]),
-  [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write", "compare"]),
+  [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
+  [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write"]),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

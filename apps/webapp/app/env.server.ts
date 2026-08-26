@@ -1306,7 +1306,7 @@ const EnvironmentSchema = z
     // Execution-snapshot store. MODE here is only the FLOOR: the operational dial is the
     // snapshotStoreMode feature flag, so it can move without a deploy.
     RUN_ENGINE_SNAPSHOT_STORE_MODE: z
-      .enum(["off", "dual-write", "compare", "redis-read", "redis-only"])
+      .enum(["off", "dual-write", "redis-read", "redis-only"])
       .default("off"),
     RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS: z.coerce
       .number()

@@ -14,20 +14,14 @@ export const NO_OVERRIDE = "__none__" as const;
  * The dial positions, declared here rather than imported, so this module does not depend on the
  * run-store package's build output to typecheck. The assertion below fails if the two ever diverge.
  */
-type DialMode = "off" | "dual-write" | "compare" | "redis-read" | "redis-only";
+type DialMode = "off" | "dual-write" | "redis-read" | "redis-only";
 
 /** Only the write positions are settable per organisation: reads are global. */
-type OrgDialMode = "off" | "dual-write" | "compare";
+type OrgDialMode = "off" | "dual-write";
 
 type AssertSame<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 const _dialMatchesRunStore: AssertSame<DialMode, SnapshotStoreMode> = true;
 void _dialMatchesRunStore;
-
-// Temporary probe. It is a union in CI, not never, but a narrower one than here. Assigning a bogus
-// literal makes the compiler expand the alias, so the CI log names the exact members it sees.
-type RevealMembers<T extends string> = { [K in T]: true };
-const _probeMembers: RevealMembers<SnapshotStoreMode> = {};
-void _probeMembers;
 
 type CachedOrgMode = OrgDialMode | typeof NO_OVERRIDE;
 

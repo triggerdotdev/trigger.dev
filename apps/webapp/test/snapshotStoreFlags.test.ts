@@ -6,8 +6,8 @@ import {
 } from "~/v3/featureFlags";
 
 describe("snapshot store dial catalog", () => {
-  it("accepts all five positions globally", () => {
-    for (const value of ["off", "dual-write", "compare", "redis-read", "redis-only"]) {
+  it("accepts all four positions globally", () => {
+    for (const value of ["off", "dual-write", "redis-read", "redis-only"]) {
       expect(FeatureFlagCatalog.snapshotStoreMode.safeParse(value).success).toBe(true);
     }
   });
@@ -17,7 +17,7 @@ describe("snapshot store dial catalog", () => {
   });
 
   it("accepts only write positions per organisation", () => {
-    for (const value of ["off", "dual-write", "compare"]) {
+    for (const value of ["off", "dual-write"]) {
       expect(FeatureFlagCatalog.snapshotStoreOrgMode.safeParse(value).success).toBe(true);
     }
     // Reads are global, so an org at a read position would read state its own writes never created.
