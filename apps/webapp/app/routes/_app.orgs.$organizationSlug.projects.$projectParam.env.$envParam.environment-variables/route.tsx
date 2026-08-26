@@ -20,7 +20,15 @@ import {
 import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { fromPromise } from "neverthrow";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -815,6 +823,26 @@ function EditEnvironmentVariablePanel({
 
   const isLoading = fetcher.state !== "idle";
 
+  function handleOpenChange(open: boolean) {
+    if (open) {
+      setIsSecret(variable.isSecret);
+    }
+
+    setIsOpen(open);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (
+      isSecret &&
+      !variable.isSecret &&
+      !window.confirm(
+        "Making this variable secret is irreversible. The value will be hidden and cannot be revealed again. Continue?"
+      )
+    ) {
+      event.preventDefault();
+    }
+  }
+
   // Close dialog on successful submission
   useEffect(() => {
     if (lastSubmission?.success && fetcher.state === "idle") {
@@ -834,13 +862,13 @@ function EditEnvironmentVariablePanel({
   });
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft />
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>Edit environment variable</DialogHeader>
-        <fetcher.Form method="post" {...getFormProps(form)}>
+        <fetcher.Form method="post" {...getFormProps(form)} onSubmit={handleSubmit}>
           <input type="hidden" name="action" value="edit" />
           <input type="hidden" name="isSecret" value={isSecret ? "true" : "false"} />
           <input {...getInputProps(id, { type: "hidden" })} value={variable.id} />
@@ -898,7 +926,11 @@ function EditEnvironmentVariablePanel({
                 </Button>
               }
               cancelButton={
-                <Button onClick={() => setIsOpen(false)} variant="tertiary/medium" type="button">
+                <Button
+                  onClick={() => handleOpenChange(false)}
+                  variant="tertiary/medium"
+                  type="button"
+                >
                   Cancel
                 </Button>
               }
