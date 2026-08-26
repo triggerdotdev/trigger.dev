@@ -3,9 +3,8 @@ import { apiGet } from "./tool-api-client";
 import type { RepoSnapshot } from "./repo-tools";
 
 /**
- * Which files and spans a turn read. The ledger is the only proof a source or span
- * citation can canonicalize against: a snapshot sha or a remembered id from an earlier
- * turn is not proof of reading.
+ * Which files and spans a turn read. The only proof a citation can canonicalize against;
+ * a remembered id from an earlier turn is not proof of reading.
  */
 
 /** The part of the ledger evidence canonicalisation reads. */
@@ -85,9 +84,8 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     const shas = filesReadBySha.get(key) ?? new Set<string>();
     shas.add(sha);
     filesReadBySha.set(key, shas);
-    // Sticky true: two snapshots can share a sha (a dirty run-pinned deploy off the
-    // same commit as the clean tracked branch) — a later clean read must never erase
-    // the caveat a dirty read already earned.
+    // Sticky true: two snapshots can share a sha, so a later clean read must never
+    // erase the caveat a dirty read already earned.
     dirtyBySha.set(sha, dirty || (dirtyBySha.get(sha) ?? false));
   }
 

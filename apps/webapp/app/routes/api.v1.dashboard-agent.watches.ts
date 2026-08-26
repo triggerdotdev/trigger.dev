@@ -13,10 +13,8 @@ import {
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 /**
- * Programmatic watch creation (MCP). Only the agent's delegated user-actor token is accepted.
- * An environment-pinned token fixes the environment; an org-wide one lets the body name any
- * environment in its org, re-authorized against the user's membership, and falls back to the
- * token's own environment when the body names none. Never the chat's stored context.
+ * Programmatic watch creation (MCP). User-actor token only; org-wide tokens let the body
+ * name any environment in the org, re-authorized against membership. Never the chat's stored context.
  */
 
 const BodySchema = z.object({

@@ -229,14 +229,11 @@ export function DashboardAgentChat({
 
   const messages = orderTranscript(rawMessages, orderRef.current);
 
-  // Bounded waits so a stalled turn says so instead of leaving the panel on a progress
-  // line forever. Independent of the SDK's own `error`: both drive the same live-error
-  // callout, but a deadline firing never touches the server turn or `status`.
+  // Independent of the SDK's own `error`: both drive the live-error callout, but a
+  // deadline firing never touches the server turn or `status`.
   const [deadlineError, setDeadlineError] = useState<TurnDeadlineError | null>(null);
-  // A retry can resend under `status: "submitted"` again — the same status the previous
-  // turn was already in when it fired, so the first-event effect wouldn't otherwise re-run.
-  // Bumped in `retry` to force it to. `dismissError` never bumps it: dismiss means "stop
-  // telling me", not "start a new wait".
+  // Bumped in `retry` to force the first-event effect to re-run when a resend reuses the
+  // same `status: "submitted"`. `dismissError` never bumps it.
   const [attempt, setAttempt] = useState(0);
   const firstEventDeadline = useRef(
     createKeyedDeadline<"submitted">({

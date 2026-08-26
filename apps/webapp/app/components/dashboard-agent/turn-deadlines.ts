@@ -1,11 +1,6 @@
 /**
- * Bounded waits during a live turn, so a stalled agent says so instead of leaving the
- * panel on a progress line forever. Two independent deadlines:
- *  - "first event": nothing has streamed back since the message was sent.
- *  - "tool pending": a single tool call has stayed pending too long.
- * Both drive the same live-error affordance the SDK's own errors use (`turn-error.ts`),
- * and both clear the moment the condition they're watching changes — including late
- * recovery after they've already fired.
+ * Bounded waits during a live turn: "first event" (nothing streamed yet) and "tool
+ * pending" (one tool call stuck). Both clear the moment the watched condition changes.
  */
 
 export const FIRST_EVENT_DEADLINE_MS = 45_000;
@@ -14,9 +9,8 @@ export const TOOL_PENDING_DEADLINE_MS = 120_000;
 export type TurnDeadlineError = { kind: "first-event" } | { kind: "tool-pending"; tool: string };
 
 /**
- * The tool-pending deadline's key: null unless a turn is actually live. A dangling
- * `input-available` part on an idle chat — a stopped turn, a reload of old history — is
- * not a pending call, and arming a timer for it would fire with nothing able to clear it.
+ * Null unless a turn is live. A dangling `input-available` part on an idle chat isn't a
+ * pending call, and arming a timer for it would fire with nothing able to clear it.
  */
 export function activeToolPendingKey(status: string, inFlightTool: string | null): string | null {
   const inFlight = status === "streaming" || status === "submitted";
@@ -51,9 +45,8 @@ export type KeyedDeadline<K extends string> = {
 };
 
 /**
- * Watches one condition across successive `sync` calls: the timer starts the moment `sync`
- * sees a key it wasn't already watching, fires `onTimeout` if that same key is still active
- * after `deadlineMs`, and clears (`onClear`) whenever the key changes away, fired or not.
+ * Timer starts when `sync` sees a new key, fires `onTimeout` if it's still active after
+ * `deadlineMs`, and clears (`onClear`) whenever the key changes away, fired or not.
  */
 export function createKeyedDeadline<K extends string>(
   options: KeyedDeadlineOptions<K>

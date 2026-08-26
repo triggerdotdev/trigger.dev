@@ -121,12 +121,8 @@ describe("turnDeadlineErrorMessage", () => {
 });
 
 /**
- * These do NOT exercise `DashboardAgentChat` itself — this repo has no DOM/render test setup
- * (see `wake-poll.test.ts` for the same pattern: the extracted logic is what's tested). They
- * prove the extracted predicate (`activeToolPendingKey`) gates correctly, and that an explicit
- * `sync(null)` reset — which the component makes in `retry`/`dismissError` — is what lets a
- * deadline re-arm on a retry that reproduces the same condition; without that reset, `sync`
- * with an unchanged key is a no-op and the deadline never fires again.
+ * Tests the extracted predicate, not `DashboardAgentChat` (no DOM/render setup here). The
+ * component's explicit `sync(null)` reset is required to re-arm on retry: an unchanged key is a no-op.
  */
 describe("the tool-pending gate and retry re-arm, standing in for DashboardAgentChat", () => {
   beforeEach(() => {
@@ -158,9 +154,8 @@ describe("the tool-pending gate and retry re-arm, standing in for DashboardAgent
     await vi.advanceTimersByTimeAsync(120_000);
     expect(timeouts).toEqual(["get_run"]);
 
-    // Retry's explicit reset (DashboardAgentChat.tsx) before the retried turn's effect
-    // re-syncs the same key — without it, `sync("get_run")` while still `currentKey`
-    // would be a no-op and the deadline would never fire again.
+    // Retry's explicit reset (DashboardAgentChat.tsx): without it, re-syncing the same
+    // key while still `currentKey` would be a no-op and the deadline would never re-fire.
     deadline.sync(null);
     deadline.sync(activeToolPendingKey("streaming", inFlightToolName(dangling)));
 

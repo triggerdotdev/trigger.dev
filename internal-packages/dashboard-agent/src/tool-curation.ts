@@ -27,9 +27,8 @@ export function fenceUntrusted(label: string, text: unknown): string | undefined
 }
 
 /**
- * Mirrors dashboardAgentWatchRunChecks.describeRunWait: `queuedAt` only measures this
- * attempt's wait when the source marked it reliable (a resume/retry/pause re-enqueue
- * doesn't restamp it). Absent `queuedAt` or reliability falls back to the run's age.
+ * Mirrors dashboardAgentWatchRunChecks.describeRunWait: `queuedAt` only counts when the
+ * source marked it reliable (a re-enqueue doesn't restamp it), else falls back to age.
  */
 function computeRunWait(run: {
   createdAt?: unknown;

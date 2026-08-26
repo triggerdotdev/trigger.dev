@@ -120,9 +120,8 @@ describe("retryImport", () => {
 
 describe("loadStreamdownRenderer", () => {
   it("resolves to a plain-text fallback when the chunk load keeps failing", async () => {
-    // The fallback path deliberately re-raises the original error as a process-level
-    // unhandled rejection (for StaleAssetRecovery). Swap in our own listener so that
-    // expected rejection is asserted on, not reported as a test-runner failure.
+    // The fallback path re-raises as an unhandled rejection (for StaleAssetRecovery); swap
+    // in our own listener so it's asserted on, not reported as a test-runner failure.
     const priorListeners = process.listeners("unhandledRejection");
     process.removeAllListeners("unhandledRejection");
     const caught = new Promise<Error>((resolve) => {

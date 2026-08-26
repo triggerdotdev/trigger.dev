@@ -4,36 +4,26 @@
  * Seeds/fabricates fixture data for the dashboard-agent UAT scenarios (S1-S10) in the
  * local dev environment. Companion script for `dashboard-agent-uat-scenarios.md`.
  *
- * TARGET: the seeded "References" org / "hello-world" project (see apps/webapp/seed.ts).
- * Most scenarios use that project's DEVELOPMENT environment. S6 (dirty deploy) needs a
- * real deployment, so it uses the project's PRODUCTION environment instead.
+ * TARGET: the seeded "References" org / "hello-world" project (see apps/webapp/seed.ts),
+ * DEVELOPMENT env by default (S6 needs a real deployment, so it uses PRODUCTION). DEVELOPMENT
+ * envs are per-user - pass --user <email> to pick whose dev env gets seeded, or the tester's
+ * dashboard 404s on ids seeded into someone else's.
  *
- * DEVELOPMENT environments are per-user (one per org member) - pass --user <email> to pick
- * whose dev env gets seeded (defaults to local@trigger.dev, the seed script's own user).
- * Get this wrong and the tester's dashboard 404s on ids seeded into someone else's dev env.
+ * Postgres rows go through Prisma. Redis run-queue state is hand-written, replicating the key
+ * format from keyProducer.ts and the `slotHoldersOfQueue` Lua script in run-queue/index.ts (no
+ * public export for the key producer) - keep in sync if those change.
  *
- * Postgres rows are written with the real Prisma client. Redis run-queue state is written
- * by hand, replicating the key format from
- * internal-packages/run-engine/src/run-queue/keyProducer.ts and the `slotHoldersOfQueue`
- * Lua script in internal-packages/run-engine/src/run-queue/index.ts (this package has no
- * public export for the key producer, so the format is reproduced here rather than
- * imported - keep it in sync if keyProducer.ts changes).
- *
- * Each scenario tags everything it creates with a "uat-" prefix (queue names,
- * idempotencyKey, taskIdentifier, externalId) so `clean` can find and remove it, and so
- * re-running a subcommand upserts instead of duplicating.
+ * Everything created is tagged "uat-" (queue names, idempotencyKey, taskIdentifier, externalId)
+ * so `clean` can find it and re-running a subcommand upserts instead of duplicating.
  *
  * IDEMPOTENCY DEVIATIONS FROM THE UAT DOC (verified against schema/code, not guessed):
- *  - TaskRun has no "QUEUED" status; the 5 queued runs use PENDING (the real
- *    "waiting to be executed" status), with queuedAt set and no startedAt.
+ *  - TaskRun has no "QUEUED" status; the 5 queued runs use PENDING, queuedAt set, no startedAt.
  *  - TaskRun has no "finishedAt" field; the doc's "finishedAt" maps to `completedAt`.
- *  - S4 uses `currentDequeued` (not `currentConcurrency`) at the env level - that's the
- *    set `QueueRetrievePresenter`'s envConcurrency actually reads
- *    (RunQueue#currentConcurrencyOfEnvironment -> SCARD(envCurrentDequeuedKey)).
- *  - S10: inserting directly into ClickHouse `task_runs_v2` (source of the `errors_v1`
- *    materialized view) from a script is impractical to get right generically, so this
- *    only writes the Postgres side (ErrorGroupState.resolvedAt) and prints the exact
- *    `clickhouse-client` INSERT to run manually for the ClickHouse side.
+ *  - S4 uses `currentDequeued` (not `currentConcurrency`) at the env level - that's what
+ *    `QueueRetrievePresenter`'s envConcurrency actually reads.
+ *  - S10 only writes the Postgres side (ErrorGroupState.resolvedAt) and prints the manual
+ *    `clickhouse-client` INSERT for the ClickHouse side, since inserting into `task_runs_v2`
+ *    generically from a script is impractical.
  *
  * USAGE:
  *   pnpm exec tsx scripts/seed-dashboard-agent-uat.ts <subcommand> [--user <email>]
@@ -134,10 +124,8 @@ type Ctx = ProjectCtx & {
   prodEnv: RuntimeEnvironment;
 };
 
-// Resolved via the project, not a specific member's org membership - a self-hosted dev
-// instance can have more than one "References" org (re-seeded under different users), and
-// whoever actually holds the hello-world project is the one that matters here. Used by both
-// resolveTarget (needs a --user's dev env) and clean (doesn't - it sweeps every env).
+// Resolved via the project, not a member's org membership: a self-hosted dev instance can
+// have more than one "References" org, and only the one holding hello-world matters here.
 async function resolveProject(prisma: PrismaClient, redis: Redis): Promise<ProjectCtx> {
   const project = await prisma.project.findFirst({
     where: { name: HELLO_WORLD_PROJECT_NAME, organization: { title: REFERENCES_ORG_TITLE } },
@@ -161,9 +149,8 @@ async function resolveProject(prisma: PrismaClient, redis: Redis): Promise<Proje
 async function resolveTarget(prisma: PrismaClient, redis: Redis, userEmail: string): Promise<Ctx> {
   const projectCtx = await resolveProject(prisma, redis);
 
-  // DEVELOPMENT envs are per-member (RuntimeEnvironment.orgMemberId) - resolve via the
-  // OrgMember -> User join for --user, so ids get seeded into the env the tester actually
-  // opens. A wrong pick here is silent: the dashboard just 404s on every seeded id.
+  // DEVELOPMENT envs are per-member - resolve via OrgMember -> User for --user. A wrong
+  // pick here is silent: the dashboard just 404s on every seeded id.
   const devEnv = await prisma.runtimeEnvironment.findFirst({
     where: {
       projectId: projectCtx.projectId,
@@ -192,14 +179,8 @@ async function resolveTarget(prisma: PrismaClient, redis: Redis, userEmail: stri
 // Postgres upsert helpers
 // ---------------------------------------------------------------------------
 
-// GET /api/v1/queues/:queueParam?type=custom (QueueRetrievePresenter.getQueue,
-// apps/webapp/app/presenters/v3/QueueRetrievePresenter.server.ts) resolves a "custom" queue
-// by an EXACT match on TaskQueue.name within the env - no prefix, unlike type=task which
-// prepends "task/". So every uat-* queue name here must be the literal :queueParam value the
-// agent/tester will query with, and `type` must be NAMED (-> QueueItem.type "custom") to
-// report correctly. Getting either wrong 404s the queue-info route even though the sibling
-// metrics route (api.v1.queues.$queueParam.metrics.ts) stays 200 - it never touches Postgres
-// and returns zeroed metrics for an unknown queue instead of 404ing.
+// The queue-info route matches TaskQueue.name EXACTLY (no "task/" prefix), so `name` must
+// be the literal :queueParam value and `type` must be NAMED, or the route 404s.
 async function upsertQueue(
   ctx: Ctx,
   env: RuntimeEnvironment,
@@ -373,11 +354,8 @@ async function seedCkInvisible(ctx: Ctx) {
   });
   record("S3", "run (invisible admitted holder)", run.friendlyId, `ck=${concurrencyKeyValue}`);
 
-  // Admitted fast-path: SADD into the CK variant's own currentConcurrency set only.
-  // Deliberately NOT added to ckIndex (a ZSET the slotHoldersOfQueue Lua script walks to
-  // find CK variants) and runningCounter is left untouched (GET defaults to 0) - so this
-  // holder is structurally unlistable, matching the "admitted holders may not be visible"
-  // observability limit.
+  // SADD into the CK variant's currentConcurrency only, deliberately not in ckIndex, so
+  // this holder is structurally unlistable by slotHoldersOfQueue.
   const ckQueueKey = queueKey(
     ctx.orgId,
     ctx.projectId,
@@ -392,10 +370,8 @@ async function seedCkInvisible(ctx: Ctx) {
 // S4: env-binding
 // ---------------------------------------------------------------------------
 
-// Cap on real (Postgres-backed) filler holders. A live env's maximumConcurrencyLimit can be
-// large (e.g. an org bumped to 300), and target = limit * burstFactor shouldn't turn into
-// hundreds of TaskRun rows just to make a number line up. Past this cap, filler holders are
-// synthetic Redis-only ids (tracked in envBindingSyntheticIdsKey so `clean` can remove them).
+// Cap on real (Postgres-backed) filler holders, so a large limit*burstFactor target doesn't
+// turn into hundreds of TaskRun rows. Past this cap, fillers are synthetic Redis-only ids.
 const ENV_BINDING_MAX_REAL_FILLER_RUNS = 10;
 
 function envBindingSyntheticIdsKey(orgId: string, projectId: string, envId: string) {
@@ -420,9 +396,8 @@ async function seedEnvBinding(ctx: Ctx) {
 
   const now = new Date();
 
-  // 1 run in the roomy queue, the rest spread across the filler queues - together they
-  // saturate the env (current == limit * burstFactor) while uat-slots-roomy itself has
-  // plenty of spare capacity.
+  // Filler queues saturate the env (current == limit * burstFactor) while the roomy
+  // queue itself still has plenty of spare capacity.
   const roomyRun = await upsertRun(ctx, {
     idempotencyKey: "uat-env-roomy-holder",
     env: ctx.devEnv,
@@ -681,10 +656,8 @@ function formatChDateTime(date: Date) {
 // ---------------------------------------------------------------------------
 
 async function clean(ctx: ProjectCtx) {
-  // Sweeps every DEVELOPMENT/PRODUCTION env in the project, not just the --user-selected
-  // one: a previous run under a different --user left "uat-" rows in ITS dev env, and those
-  // are just as much this script's mess to clean up. The "uat-" prefix is unambiguous enough
-  // that a project-wide sweep is safe.
+  // Sweeps every env in the project, not just --user's: a prior run under a different
+  // --user left "uat-" rows elsewhere, and the prefix is unambiguous enough to sweep safely.
   const envs = await ctx.prisma.runtimeEnvironment.findMany({
     where: { projectId: ctx.projectId, type: { in: ["DEVELOPMENT", "PRODUCTION"] } },
   });

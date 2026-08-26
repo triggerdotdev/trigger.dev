@@ -140,7 +140,6 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
 });
 
-/** Default cap on the number of slot holders returned by `slotHoldersOfQueue`. */
 const DEFAULT_SLOT_HOLDER_LIMIT = 20;
 
 /**
@@ -686,14 +685,8 @@ export class RunQueue {
   }
 
   /**
-   * Who currently holds this queue's concurrency slots, with the counts from the same
-   * snapshot. One read-only Lua invocation over the base sets, every CK variant listed in
-   * ckIndex, and the runningCounter.
-   *
-   * `consistency` is "mismatch" when the enumerated dequeued members don't add up to the
-   * reported running count, or when a dequeued member isn't also admitted (dequeued is a
-   * subset of admitted). The list is never claimed to be complete: ckIndex is a backlog
-   * index, so a CK variant with nothing queued left holds slots we cannot enumerate.
+   * Snapshot of who holds this queue's slots. Never complete: ckIndex only tracks queued
+   * variants, so a drained CK variant's holders are invisible. `consistency` flags drift.
    */
   public async slotHoldersOfQueue(
     env: MinimalAuthenticatedEnvironment,
@@ -5633,10 +5626,8 @@ end
 `,
     });
 
-    // Read-only snapshot of who holds a queue's concurrency slots: the base queue's
-    // currentConcurrency/currentDequeued members, the same two sets for every CK variant
-    // listed in ckIndex, and the runningCounter — all in one invocation so the identities
-    // and the counts come from the same view.
+    // One invocation so slot identities and counts share the same view; keeps
+    // admittedCount/dequeuedCount/runningReported consistent with the returned holders.
     this.redis.defineCommand("slotHoldersOfQueue", {
       numberOfKeys: 3,
       lua: `

@@ -281,11 +281,8 @@ describe("get_queue reports the live read it actually got", () => {
 });
 
 /**
- * slotHolders / slotHolderFacts are additive fields on the live row: the tool must carry
- * them through verbatim when the API sends them, and omit rather than fabricate them when
- * it doesn't (an older API). Completeness is structurally unknowable for per-key concurrency
- * queues, so neither field claims it — that's what slotHolderFacts.truncated/unlistedRunning
- * are for.
+ * Additive fields: carried through verbatim when the API sends them, omitted (not
+ * fabricated) when it doesn't. Completeness is unknowable, hence truncated/unlistedRunning.
  */
 describe("get_queue carries slot-holder facts through, and omits them when absent", () => {
   const ORIGIN = "https://api.example.com";

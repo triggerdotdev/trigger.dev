@@ -1,7 +1,6 @@
 /**
- * An org-wide user-actor token may exchange for any environment of its organization, but only for
- * a user who is still a member of it. Membership is checked against a real database, because the
- * membership-scoped query — not any ability check — is the tenant floor here.
+ * An org-wide user-actor token exchanges for any environment of its org, only for a member.
+ * Membership is checked against a real database: the query, not an ability check, is the floor.
  */
 
 import { postgresTest } from "@internal/testcontainers";

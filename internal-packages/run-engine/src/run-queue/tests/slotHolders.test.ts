@@ -76,9 +76,8 @@ describe("RunQueue.slotHoldersOfQueue", () => {
   redisTest("CK holder admitted, then dequeued", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer);
     try {
-      // r1 takes the fast path: it claims a slot on the ck-a variant without ever
-      // touching the variant zset. r2 goes the slow path so the variant lands in
-      // ckIndex, which is what makes r1 enumerable.
+      // r1 takes the fast path (never touches the variant zset); r2 goes slow so the
+      // variant lands in ckIndex, which is what makes r1 enumerable.
       await queue.enqueueMessage({
         env: authenticatedEnvDev,
         message: makeMessage({ runId: "r1", concurrencyKey: "ck-a" }),

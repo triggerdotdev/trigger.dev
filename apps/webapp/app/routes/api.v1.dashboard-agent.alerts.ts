@@ -21,9 +21,8 @@ import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 /**
- * `GET` lists this chat's project's watch alerts; `POST` subscribes the user's email. Only the
- * agent's delegated user-actor token is accepted. An environment-pinned token fixes the
- * environment; an org-wide one lets the request name any environment in its org.
+ * `GET` lists this chat's watch alerts, `POST` subscribes the user's email. User-actor
+ * token only; org-wide tokens let the request name any environment in the org.
  */
 
 const ListQuerySchema = z.object({

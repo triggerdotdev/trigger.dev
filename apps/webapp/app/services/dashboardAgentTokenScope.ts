@@ -1,13 +1,6 @@
 /**
- * Which environment a dashboard-agent turn may act in, from the token's claims alone.
- *
- * An org-wide token draws the boundary at its organization: the request may name any
- * environment inside it, and the token's own environment is only the default when it names
- * none. `organizationId` comes back with the target, for the caller to check the resolved
- * environment against — a request id is never authorization on its own.
- *
- * A token with no organization is the legacy environment-pinned form: its one environment,
- * which the request can echo but never replace.
+ * Org-wide tokens allow any environment in their org (default: the token's own); legacy
+ * tokens are pinned to one. `organizationId` comes back so the caller still checks it.
  */
 
 export type AgentTokenScope =

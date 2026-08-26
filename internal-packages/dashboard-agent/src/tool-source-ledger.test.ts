@@ -62,9 +62,8 @@ describe("tool-source-ledger dirty propagation", () => {
       vi.unstubAllGlobals();
     });
 
-    // A dirty run-pinned deploy can land on the exact same commit as the clean tracked
-    // branch. A later clean read of that sha must not erase the caveat the dirty read
-    // already earned — that's the exact fact-loss dirtyForSha exists to prevent.
+    // A later clean read of a sha must not erase the caveat a dirty read already earned:
+    // that's the exact fact-loss dirtyForSha exists to prevent.
     it("stays true once a dirty read has recorded a sha, even after a later clean read of the same sha", async () => {
       const sharedSha = "5ca5ca5ca5ca5ca5ca5ca5ca5ca5ca5ca5ca5ca5";
       const sharedShaSnapshot: RepoSnapshot = {

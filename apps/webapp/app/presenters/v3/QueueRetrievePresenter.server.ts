@@ -49,9 +49,8 @@ export type SlotHolderFacts = {
   consistency: SlotHolderConsistency;
 };
 
-// A run can only hold a slot before it reaches a final status. PENDING counts: Redis
-// membership is written at admission, before the Postgres status moves on. DELAYED runs
-// are not queued at all, so holding a slot is drift.
+// A run can only hold a slot before its final status. PENDING counts because Redis
+// membership is written at admission, ahead of the Postgres status; DELAYED never queues.
 const NON_HOLDING_STATUSES = new Set<TaskRunStatus>([
   "DELAYED",
   "CANCELED",
