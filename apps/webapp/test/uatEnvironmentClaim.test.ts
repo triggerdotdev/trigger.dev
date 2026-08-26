@@ -75,7 +75,7 @@ vi.mock("~/db.server", () => ({
   $replica: {
     user: {
       findUnique: async ({ where }: any) =>
-        MEMBER_USER_IDS.includes(where.id) ? { id: where.id } : null,
+        KNOWN_USER_IDS.includes(where.id) ? { id: where.id } : null,
     },
     runtimeEnvironment: {
       // Enough of the where-clause to tell the rows apart the way Prisma would: the branchless
@@ -92,6 +92,13 @@ vi.mock("~/db.server", () => ({
             return false;
           return true;
         }) ?? null,
+    },
+    organization: {
+      // The membership-scoped lookup behind an org-wide claim.
+      findFirst: async ({ where }: any) =>
+        where.id === ORGANIZATION.id && MEMBER_USER_IDS.includes(where.members?.some?.userId)
+          ? { id: ORGANIZATION.id }
+          : null,
     },
     workerDeployment: { findFirst: async () => null },
     backgroundWorkerTask: { findMany: async () => [] },
@@ -117,6 +124,9 @@ const ORGANIZATION = { id: "org_1234", slug: "test-org" };
 const PROJECT = { id: "proj_1234", externalRef: "proj_ref_1234", slug: "test-project" };
 const USER_ID = "usr_member";
 const MEMBER_USER_IDS = [USER_ID];
+// A real user of another organization: authenticates, but is a member of nothing here.
+const OUTSIDER_USER_ID = "usr_outsider";
+const KNOWN_USER_IDS = [...MEMBER_USER_IDS, OUTSIDER_USER_ID];
 
 function environment(
   id: string,
@@ -161,11 +171,19 @@ const DEV_BRANCH = {
 };
 const ENVIRONMENTS = [ENV_A, ENV_B, PREVIEW_PARENT, PREVIEW_BRANCH, DEV_PARENT, DEV_BRANCH];
 
-function mintToken(opts: { environmentId?: string; client?: string } = {}) {
+function mintToken(
+  opts: {
+    environmentId?: string;
+    organizationId?: string;
+    client?: string;
+    userId?: string;
+  } = {}
+) {
   return signUserActorToken(SESSION_SECRET, {
-    userId: USER_ID,
+    userId: opts.userId ?? USER_ID,
     client: opts.client ?? "dashboard-agent",
     ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+    ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
     cap: ["read:apiKeys", "read:runs", "read:deployments"],
   });
 }
@@ -454,6 +472,40 @@ describe.each(ENVIRONMENT_CASES)(
  * whenever its user's role allows writes — the token travels in a task payload, so that is
  * a real widening rather than a theoretical one.
  */
+/** An org-wide claim spans its whole organization, and stops at its edge. */
+describe("env JWT exchange — org-wide token", () => {
+  beforeEach(() => {
+    mocks.can.mockReset();
+    mocks.can.mockReturnValue(true);
+  });
+
+  it("mints for a sibling environment of the claimed organization", async () => {
+    const token = await mintToken({ organizationId: ORGANIZATION.id });
+
+    const response = await ROUTE_CASES[0].call(token, "staging");
+
+    expect(response.status).toBe(200);
+  });
+
+  it("403s a claim for another organization", async () => {
+    const token = await mintToken({ organizationId: "org_other" });
+
+    const response = await ROUTE_CASES[0].call(token, "prod");
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "forbidden_environment" });
+  });
+
+  it("refuses a non-member of the claimed organization", async () => {
+    const token = await mintToken({ organizationId: ORGANIZATION.id, userId: OUTSIDER_USER_ID });
+
+    const response = await ROUTE_CASES[0].call(token, "prod");
+
+    // The project lookup is already membership-scoped, so a non-member never reaches the org check.
+    expect(response.status).toBe(404);
+  });
+});
+
 describe("env JWT exchange — the cap is a ceiling", () => {
   beforeEach(() => {
     mocks.can.mockReset();
