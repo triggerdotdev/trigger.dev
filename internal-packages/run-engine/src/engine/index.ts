@@ -1733,6 +1733,14 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
   }
 
+  async slotHoldersOfQueue(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    options?: { limit?: number }
+  ) {
+    return this.runQueue.slotHoldersOfQueue(environment, queue, options);
+  }
+
   async concurrencyKeyBreakdown(
     environment: MinimalAuthenticatedEnvironment,
     queue: string,

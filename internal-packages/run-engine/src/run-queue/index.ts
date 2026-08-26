@@ -140,6 +140,31 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
 });
 
+/** Default cap on the number of slot holders returned by `slotHoldersOfQueue`. */
+const DEFAULT_SLOT_HOLDER_LIMIT = 20;
+
+/**
+ * "admitted": the run holds a concurrency slot (member of currentConcurrency).
+ * "dequeued": a worker has also pulled it off the worker queue (member of currentDequeued).
+ */
+export type QueueSlotHolderPhase = "admitted" | "dequeued";
+
+export type QueueSlotHolder = {
+  runId: string;
+  concurrencyKey: string | null;
+  phase: QueueSlotHolderPhase;
+};
+
+export type QueueSlotHolders = {
+  holders: QueueSlotHolder[];
+  admittedCount: number;
+  dequeuedCount: number;
+  /** The aggregate the queue reports as "running": SCARD(base currentDequeued) + runningCounter. */
+  runningReported: number;
+  consistency: "consistent" | "mismatch";
+  holderResolution: "complete" | "partial";
+};
+
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
 export interface RunQueueMetricsEmitter {
   enabledSync(): boolean;
@@ -655,6 +680,60 @@ export class RunQueue {
     });
 
     return result;
+  }
+
+  /**
+   * Who currently holds this queue's concurrency slots, with the counts from the same
+   * snapshot. One read-only Lua invocation over the base sets, every CK variant listed in
+   * ckIndex, and the runningCounter.
+   *
+   * `consistency` is "mismatch" when the enumerated dequeued members don't add up to the
+   * reported running count, or when a dequeued member isn't also admitted (dequeued is a
+   * subset of admitted). `holderResolution` is "partial" when the list was capped, or when
+   * the runningCounter says CK variants are running but ckIndex is empty — a variant with no
+   * queued messages left isn't indexed, so its members can't be enumerated.
+   */
+  public async slotHoldersOfQueue(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    options?: { limit?: number }
+  ): Promise<QueueSlotHolders> {
+    const limit = options?.limit ?? DEFAULT_SLOT_HOLDER_LIMIT;
+    const baseQueueKey = this.keys.queueKey(env, queue);
+
+    const [
+      admittedCount,
+      dequeuedCount,
+      runningReported,
+      ckRunningCounter,
+      orphanCount,
+      ckVariantCount,
+      truncated,
+      rawHolders,
+    ] = await this.redis.slotHoldersOfQueue(
+      baseQueueKey,
+      this.keys.ckIndexKeyFromQueue(baseQueueKey),
+      this.keys.queueRunningCounterKey(env, queue),
+      this.options.redis.keyPrefix ?? "",
+      String(limit)
+    );
+
+    const holders = rawHolders.map(([runId, variant, phase]) => ({
+      runId,
+      concurrencyKey: variant ? (this.#concurrencyKeyFromQueue(variant) ?? null) : null,
+      phase: phase === "dequeued" ? ("dequeued" as const) : ("admitted" as const),
+    }));
+
+    return {
+      holders,
+      admittedCount,
+      dequeuedCount,
+      runningReported,
+      consistency:
+        dequeuedCount === runningReported && orphanCount === 0 ? "consistent" : "mismatch",
+      holderResolution:
+        truncated === 1 || (ckRunningCounter > 0 && ckVariantCount === 0) ? "partial" : "complete",
+    };
   }
 
   public async lengthOfEnvQueue(env: MinimalAuthenticatedEnvironment) {
@@ -5559,6 +5638,90 @@ if removedFromDequeued == 1 then
 end
 `,
     });
+
+    // Read-only snapshot of who holds a queue's concurrency slots: the base queue's
+    // currentConcurrency/currentDequeued members, the same two sets for every CK variant
+    // listed in ckIndex, and the runningCounter — all in one invocation so the identities
+    // and the counts come from the same view.
+    this.redis.defineCommand("slotHoldersOfQueue", {
+      numberOfKeys: 3,
+      lua: `
+local baseQueueKey = KEYS[1]
+local ckIndexKey = KEYS[2]
+local runningCounterKey = KEYS[3]
+
+local keyPrefix = ARGV[1]
+local maxHolders = tonumber(ARGV[2])
+
+local admittedCount = 0
+local dequeuedCount = 0
+local orphanCount = 0
+local truncated = 0
+local holders = {}
+
+local function addHolder(runId, variant, phase)
+  if #holders >= maxHolders then
+    truncated = 1
+    return
+  end
+  holders[#holders + 1] = { runId, variant, phase }
+end
+
+-- variant is the un-prefixed queue name ('' for the base queue) so the caller can
+-- recover the concurrency key from it.
+local function collect(scopeKey, variant)
+  local admitted = redis.call('SMEMBERS', scopeKey .. ':currentConcurrency')
+  local dequeued = redis.call('SMEMBERS', scopeKey .. ':currentDequeued')
+
+  admittedCount = admittedCount + #admitted
+  dequeuedCount = dequeuedCount + #dequeued
+
+  local isDequeued = {}
+  for _, id in ipairs(dequeued) do
+    isDequeued[id] = true
+  end
+
+  local isAdmitted = {}
+  for _, id in ipairs(admitted) do
+    isAdmitted[id] = true
+    if isDequeued[id] then
+      addHolder(id, variant, 'dequeued')
+    else
+      addHolder(id, variant, 'admitted')
+    end
+  end
+
+  -- dequeued is a subset of admitted; anything else is drift the caller must know about.
+  for _, id in ipairs(dequeued) do
+    if not isAdmitted[id] then
+      orphanCount = orphanCount + 1
+      addHolder(id, variant, 'dequeued')
+    end
+  end
+end
+
+collect(baseQueueKey, '')
+
+local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+for _, v in ipairs(variants) do
+  collect(keyPrefix .. v, v)
+end
+
+local baseDequeued = redis.call('SCARD', baseQueueKey .. ':currentDequeued')
+local ckRunning = tonumber(redis.call('GET', runningCounterKey) or '0') or 0
+
+return {
+  admittedCount,
+  dequeuedCount,
+  baseDequeued + ckRunning,
+  ckRunning,
+  orphanCount,
+  #variants,
+  truncated,
+  holders,
+}
+`,
+    });
   }
 }
 
@@ -5569,6 +5732,21 @@ function safeJsonParse(rawMessage: string): unknown {
     return undefined;
   }
 }
+
+/**
+ * Raw slotHoldersOfQueue reply: counts, then the holder triples
+ * [runId, variant queue name ('' = base), phase].
+ */
+type SlotHoldersReply = [
+  admittedCount: number,
+  dequeuedCount: number,
+  runningReported: number,
+  ckRunningCounter: number,
+  orphanCount: number,
+  ckVariantCount: number,
+  truncated: number,
+  holders: [runId: string, variant: string, phase: string][],
+];
 
 declare module "@internal/redis" {
   interface RedisCommander<Context> {
@@ -5672,6 +5850,17 @@ declare module "@internal/redis" {
       workerQueueKey: string,
       callback?: Callback<[string, string] | undefined>
     ): Result<[string, string] | undefined, Context>;
+
+    slotHoldersOfQueue(
+      // keys
+      baseQueueKey: string,
+      ckIndexKey: string,
+      runningCounterKey: string,
+      // args
+      keyPrefix: string,
+      maxHolders: string,
+      callback?: Callback<SlotHoldersReply>
+    ): Result<SlotHoldersReply, Context>;
 
     dequeueMessageFromKey(
       // keys
