@@ -46,16 +46,17 @@ describe("slotHolderConsistency", () => {
 });
 
 describe("envConcurrencyFromRead", () => {
-  it("pairs the env limit with the read current concurrency", async () => {
-    await expect(envConcurrencyFromRead(10, async () => 7)).resolves.toEqual({
+  it("pairs the env limit and burst factor with the read current concurrency", async () => {
+    await expect(envConcurrencyFromRead(10, 2, async () => 7)).resolves.toEqual({
       limit: 10,
       current: 7,
+      burstFactor: 2,
     });
   });
 
   it("degrades to undefined rather than throwing when the read fails", async () => {
     await expect(
-      envConcurrencyFromRead(10, async () => {
+      envConcurrencyFromRead(10, 2, async () => {
         throw new Error("redis down");
       })
     ).resolves.toBeUndefined();

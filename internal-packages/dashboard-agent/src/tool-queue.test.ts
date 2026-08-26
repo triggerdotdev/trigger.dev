@@ -403,8 +403,8 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
     expect(answer).not.toHaveProperty("slotHolders");
   });
 
-  it("carries envConcurrency verbatim: the binding fact when the env is saturated", async () => {
-    const envConcurrency = { limit: 10, current: 10 };
+  it("carries envConcurrency verbatim, including burstFactor", async () => {
+    const envConcurrency = { limit: 10, current: 10, burstFactor: 2 };
     stubFetch({ envConcurrency });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
     expect(answer).toMatchObject({ envConcurrency });

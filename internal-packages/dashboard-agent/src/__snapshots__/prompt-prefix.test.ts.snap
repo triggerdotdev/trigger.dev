@@ -8,14 +8,14 @@ exports[`the prefix stays inside its budget > matches the committed measurement 
       "estimatedTokens": 7008,
     },
     "tools": {
-      "chars": 42165,
+      "chars": 42368,
       "count": 24,
-      "estimatedTokens": 10541,
+      "estimatedTokens": 10592,
     },
     "total": {
-      "chars": 70199,
-      "estimatedTokens": 17550,
-      "fingerprint": "394c9609",
+      "chars": 70402,
+      "estimatedTokens": 17601,
+      "fingerprint": "f3e5cef7",
     },
   },
   "code": {
@@ -24,14 +24,14 @@ exports[`the prefix stays inside its budget > matches the committed measurement 
       "estimatedTokens": 7697,
     },
     "tools": {
-      "chars": 45174,
+      "chars": 45377,
       "count": 28,
-      "estimatedTokens": 11294,
+      "estimatedTokens": 11344,
     },
     "total": {
-      "chars": 75963,
-      "estimatedTokens": 18991,
-      "fingerprint": "5cee9a7c",
+      "chars": 76166,
+      "estimatedTokens": 19042,
+      "fingerprint": "9d2ccce0",
     },
   },
 }

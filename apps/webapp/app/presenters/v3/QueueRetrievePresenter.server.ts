@@ -22,6 +22,8 @@ export type SlotHolderStatus = TaskRunStatus | "not_found";
 export type EnvConcurrency = {
   limit: number;
   current: number;
+  /** The dequeue gate is `current < limit * burstFactor`, not `current < limit`. */
+  burstFactor: number;
 };
 
 export type SlotHolder = {
@@ -75,11 +77,12 @@ export function slotHolderConsistency(
 /** Guarded env-concurrency read: a failing Redis read degrades to `undefined`, never throws. */
 export async function envConcurrencyFromRead(
   limit: number,
+  burstFactor: number,
   readCurrent: () => Promise<number>
 ): Promise<EnvConcurrency | undefined> {
   try {
     const current = await readCurrent();
-    return { limit, current };
+    return { limit, current, burstFactor };
   } catch {
     return undefined;
   }
@@ -208,7 +211,11 @@ export class QueueRetrievePresenter extends BasePresenter {
   async #envConcurrency(
     environment: AuthenticatedEnvironment
   ): Promise<EnvConcurrency | undefined> {
-    return envConcurrencyFromRead(environment.maximumConcurrencyLimit, () =>
+    const burstFactor =
+      typeof environment.concurrencyLimitBurstFactor === "number"
+        ? environment.concurrencyLimitBurstFactor
+        : environment.concurrencyLimitBurstFactor.toNumber();
+    return envConcurrencyFromRead(environment.maximumConcurrencyLimit, burstFactor, () =>
       engine.concurrencyOfEnvQueue(environment)
     );
   }
