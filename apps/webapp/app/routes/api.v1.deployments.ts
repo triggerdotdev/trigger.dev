@@ -43,7 +43,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   try {
     const result = await service.call(authenticatedEnv, body.data, {
-      cliVersion: request.headers.get("x-trigger-cli-version") ?? undefined,
+      cliVersion: parseCliVersionHeader(request),
     });
     const { deployment, imageRef } = result;
 
@@ -75,6 +75,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     logger.error("Error initializing deployment", { error });
     return json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+// Client-controlled and persisted, so only accept version-shaped values
+const CLI_VERSION_REGEX = /^[0-9A-Za-z.+-]{1,64}$/;
+
+function parseCliVersionHeader(request: Request): string | undefined {
+  const value = request.headers.get("x-trigger-cli-version");
+  return value && CLI_VERSION_REGEX.test(value) ? value : undefined;
 }
 
 export const loader = createLoaderApiRoute(
