@@ -12,18 +12,18 @@
  */
 import { CheckCircleIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import type { WatchResultBlock as WatchResultBlockPayload } from "@internal/dashboard-agent-contracts";
-import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { ChatSystemBlock } from "./chat-layout";
 import { TONE_ICON_COLOR } from "./agent-badges";
 import { cn } from "~/utils/cn";
 
 /**
- * Icon and label per outcome. A confirmation is not a success (nothing has happened
- * yet) so it wears the neutral Ask Trigger glyph; the check belongs to the one-shot
- * that did answer the question.
+ * Icon and label per outcome. `watching` is a live watch, still running — same
+ * spinner the chat uses while the agent is responding, not a static glyph. The
+ * one-shot outcomes are terminal (nothing left to watch), so they keep their icons.
  */
 const OUTCOME = {
-  watching: { label: "Watch", icon: <AgentMonoLogo size={14} decorative /> },
+  watching: { label: "Watch", icon: <AgentSpinner size={14} /> },
   already_true: {
     label: "Watch",
     icon: <CheckCircleIcon className={cn("size-3.5 shrink-0", TONE_ICON_COLOR.success)} />,
