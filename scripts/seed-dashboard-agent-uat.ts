@@ -192,6 +192,14 @@ async function resolveTarget(prisma: PrismaClient, redis: Redis, userEmail: stri
 // Postgres upsert helpers
 // ---------------------------------------------------------------------------
 
+// GET /api/v1/queues/:queueParam?type=custom (QueueRetrievePresenter.getQueue,
+// apps/webapp/app/presenters/v3/QueueRetrievePresenter.server.ts) resolves a "custom" queue
+// by an EXACT match on TaskQueue.name within the env - no prefix, unlike type=task which
+// prepends "task/". So every uat-* queue name here must be the literal :queueParam value the
+// agent/tester will query with, and `type` must be NAMED (-> QueueItem.type "custom") to
+// report correctly. Getting either wrong 404s the queue-info route even though the sibling
+// metrics route (api.v1.queues.$queueParam.metrics.ts) stays 200 - it never touches Postgres
+// and returns zeroed metrics for an unknown queue instead of 404ing.
 async function upsertQueue(
   ctx: Ctx,
   env: RuntimeEnvironment,
