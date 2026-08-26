@@ -15,25 +15,30 @@ import { BasePresenter } from "./basePresenter.server";
 
 export type SlotHolderPhase = "admitted" | "dequeued";
 export type SlotHolderConsistency = "consistent" | "mismatch" | "unresolved";
-export type SlotHolderResolution = "complete" | "partial" | "none";
 /** "not_found": a Redis slot holder with no matching TaskRun row. */
 export type SlotHolderStatus = TaskRunStatus | "not_found";
 
 export type SlotHolder = {
   runId: string;
   status: SlotHolderStatus;
+  /** Built from the raw Redis member id when the run didn't resolve, so it won't open. */
   uri: string;
   concurrencyKey: string | null;
   phase: SlotHolderPhase;
   consistency: SlotHolderConsistency;
 };
 
+/** The holder list is never claimed to be complete — a CK queue's holders can be unlistable. */
 export type SlotHolderFacts = {
   admittedCount: number;
   dequeuedCount: number;
   runningReported: number;
+  /** The list hit the cap, so more holders provably exist. */
+  truncated: boolean;
+  /** Dequeued holders that provably exist but aren't listed. */
+  unlistedRunning: number;
+  /** The counts mean nothing when this is "unresolved". */
   consistency: SlotHolderConsistency;
-  holderResolution: SlotHolderResolution;
 };
 
 // A run can only hold a slot before it reaches a final status. PENDING counts: Redis
@@ -189,8 +194,9 @@ export class QueueRetrievePresenter extends BasePresenter {
         admittedCount: 0,
         dequeuedCount: 0,
         runningReported: 0,
+        truncated: false,
+        unlistedRunning: 0,
         consistency: "unresolved" as const,
-        holderResolution: "none" as const,
       },
     };
 
@@ -244,8 +250,9 @@ export class QueueRetrievePresenter extends BasePresenter {
         admittedCount: snapshot.admittedCount,
         dequeuedCount: snapshot.dequeuedCount,
         runningReported: snapshot.runningReported,
+        truncated: snapshot.truncated,
+        unlistedRunning: snapshot.unlistedRunning,
         consistency: snapshot.consistency,
-        holderResolution: runsById === undefined ? "none" : snapshot.holderResolution,
       },
     };
   }

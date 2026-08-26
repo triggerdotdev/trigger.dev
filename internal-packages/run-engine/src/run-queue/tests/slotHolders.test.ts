@@ -100,8 +100,9 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       expect(admitted.admittedCount).toBe(1);
       expect(admitted.dequeuedCount).toBe(0);
       expect(admitted.runningReported).toBe(0);
+      expect(admitted.truncated).toBe(false);
+      expect(admitted.unlistedRunning).toBe(0);
       expect(admitted.consistency).toBe("consistent");
-      expect(admitted.holderResolution).toBe("complete");
 
       const dequeued = await queue.dequeueMessageFromWorkerQueue("consumer_1", WORKER_QUEUE);
       expect(dequeued?.messageId).toBe("r1");
@@ -110,8 +111,8 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       expect(after.holders).toEqual([{ runId: "r1", concurrencyKey: "ck-a", phase: "dequeued" }]);
       expect(after.dequeuedCount).toBe(1);
       expect(after.runningReported).toBe(1);
+      expect(after.unlistedRunning).toBe(0);
       expect(after.consistency).toBe("consistent");
-      expect(after.holderResolution).toBe("complete");
     } finally {
       await queue.quit();
     }
@@ -141,8 +142,9 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       expect(result.admittedCount).toBe(2);
       expect(result.dequeuedCount).toBe(1);
       expect(result.runningReported).toBe(1);
+      expect(result.truncated).toBe(false);
+      expect(result.unlistedRunning).toBe(0);
       expect(result.consistency).toBe("consistent");
-      expect(result.holderResolution).toBe("complete");
     } finally {
       await queue.quit();
     }
@@ -164,7 +166,6 @@ describe("RunQueue.slotHoldersOfQueue", () => {
         workerQueue: WORKER_QUEUE,
         skipDequeueProcessing: true,
       });
-      await queue.dequeueMessageFromWorkerQueue("consumer_1", WORKER_QUEUE);
 
       const baseline = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
       expect(baseline.consistency).toBe("consistent");
@@ -177,15 +178,16 @@ describe("RunQueue.slotHoldersOfQueue", () => {
 
       const broken = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
       expect(broken.consistency).toBe("mismatch");
-      expect(broken.holders).toEqual(baseline.holders);
+      expect(broken.holders).toEqual([{ runId: "r1", concurrencyKey: "ck-a", phase: "admitted" }]);
       expect(broken.runningReported).toBe(7);
+      expect(broken.unlistedRunning).toBe(7);
     } finally {
       await queue.quit();
     }
   });
 
   redisTest(
-    "running-only CK variant outside ckIndex resolves partial",
+    "running-only CK variant outside ckIndex is reported as unlisted",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer);
       try {
@@ -200,17 +202,46 @@ describe("RunQueue.slotHoldersOfQueue", () => {
         );
 
         const result = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
-        expect(result.holderResolution).toBe("partial");
-        expect(result.consistency).not.toBe("consistent");
         expect(result.holders).toEqual([]);
         expect(result.runningReported).toBe(1);
+        expect(result.unlistedRunning).toBe(1);
+        expect(result.consistency).toBe("mismatch");
       } finally {
         await queue.quit();
       }
     }
   );
 
-  redisTest("caps the holder list and reports partial", async ({ redisContainer }) => {
+  redisTest("a lone fast-path CK holder is simply not listed", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      // Nothing queued on the variant means no ckIndex entry, so this holder can't be
+      // enumerated. No field claims otherwise — the payload just doesn't mention it.
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r1", concurrencyKey: "ck-a" }),
+        workerQueue: WORKER_QUEUE,
+        skipDequeueProcessing: true,
+        enableFastPath: true,
+      });
+
+      const result = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
+      expect(result).toEqual({
+        holders: [],
+        admittedCount: 0,
+        dequeuedCount: 0,
+        runningReported: 0,
+        truncated: false,
+        unlistedRunning: 0,
+        consistency: "consistent",
+      });
+      expect(result).not.toHaveProperty("holderResolution");
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("caps the holder list and reports it as truncated", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer);
     try {
       for (let i = 0; i < 3; i++) {
@@ -226,7 +257,7 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       const result = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE, { limit: 2 });
       expect(result.holders).toHaveLength(2);
       expect(result.admittedCount).toBe(3);
-      expect(result.holderResolution).toBe("partial");
+      expect(result.truncated).toBe(true);
     } finally {
       await queue.quit();
     }

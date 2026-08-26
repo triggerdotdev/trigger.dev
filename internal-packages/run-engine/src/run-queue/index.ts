@@ -161,8 +161,11 @@ export type QueueSlotHolders = {
   dequeuedCount: number;
   /** The aggregate the queue reports as "running": SCARD(base currentDequeued) + runningCounter. */
   runningReported: number;
+  /** The holder list hit the cap, so more holders provably exist. */
+  truncated: boolean;
+  /** Dequeued holders that provably exist but aren't in the list. */
+  unlistedRunning: number;
   consistency: "consistent" | "mismatch";
-  holderResolution: "complete" | "partial";
 };
 
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
@@ -689,9 +692,8 @@ export class RunQueue {
    *
    * `consistency` is "mismatch" when the enumerated dequeued members don't add up to the
    * reported running count, or when a dequeued member isn't also admitted (dequeued is a
-   * subset of admitted). `holderResolution` is "partial" when the list was capped, or when
-   * the runningCounter says CK variants are running but ckIndex is empty — a variant with no
-   * queued messages left isn't indexed, so its members can't be enumerated.
+   * subset of admitted). The list is never claimed to be complete: ckIndex is a backlog
+   * index, so a CK variant with nothing queued left holds slots we cannot enumerate.
    */
   public async slotHoldersOfQueue(
     env: MinimalAuthenticatedEnvironment,
@@ -701,22 +703,14 @@ export class RunQueue {
     const limit = options?.limit ?? DEFAULT_SLOT_HOLDER_LIMIT;
     const baseQueueKey = this.keys.queueKey(env, queue);
 
-    const [
-      admittedCount,
-      dequeuedCount,
-      runningReported,
-      ckRunningCounter,
-      orphanCount,
-      ckVariantCount,
-      truncated,
-      rawHolders,
-    ] = await this.redis.slotHoldersOfQueue(
-      baseQueueKey,
-      this.keys.ckIndexKeyFromQueue(baseQueueKey),
-      this.keys.queueRunningCounterKey(env, queue),
-      this.options.redis.keyPrefix ?? "",
-      String(limit)
-    );
+    const [admittedCount, dequeuedCount, runningReported, orphanCount, truncated, rawHolders] =
+      await this.redis.slotHoldersOfQueue(
+        baseQueueKey,
+        this.keys.ckIndexKeyFromQueue(baseQueueKey),
+        this.keys.queueRunningCounterKey(env, queue),
+        this.options.redis.keyPrefix ?? "",
+        String(limit)
+      );
 
     const holders = rawHolders.map(([runId, variant, phase]) => ({
       runId,
@@ -729,10 +723,10 @@ export class RunQueue {
       admittedCount,
       dequeuedCount,
       runningReported,
+      truncated: truncated === 1,
+      unlistedRunning: Math.max(0, runningReported - dequeuedCount),
       consistency:
         dequeuedCount === runningReported && orphanCount === 0 ? "consistent" : "mismatch",
-      holderResolution:
-        truncated === 1 || (ckRunningCounter > 0 && ckVariantCount === 0) ? "partial" : "complete",
     };
   }
 
@@ -5714,9 +5708,7 @@ return {
   admittedCount,
   dequeuedCount,
   baseDequeued + ckRunning,
-  ckRunning,
   orphanCount,
-  #variants,
   truncated,
   holders,
 }
@@ -5741,9 +5733,7 @@ type SlotHoldersReply = [
   admittedCount: number,
   dequeuedCount: number,
   runningReported: number,
-  ckRunningCounter: number,
   orphanCount: number,
-  ckVariantCount: number,
   truncated: number,
   holders: [runId: string, variant: string, phase: string][],
 ];
