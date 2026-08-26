@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import {
+  draggableResizeHandleClassName,
   useDraggableResizable,
   type PanHandlerProps,
   type ResizeEdge,
@@ -17,17 +18,6 @@ const FLOATING_HEIGHT = 512;
 const FLOATING_MARGIN = 16;
 const FLOATING_MIN_SIZE = { w: 320, h: 360 };
 const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
-
-const RESIZE_HANDLE_CLASS: Record<ResizeEdge, string> = {
-  n: "absolute inset-x-2 top-0 h-1.5 cursor-n-resize",
-  s: "absolute inset-x-2 bottom-0 h-1.5 cursor-s-resize",
-  e: "absolute inset-y-2 right-0 w-1.5 cursor-e-resize",
-  w: "absolute inset-y-2 left-0 w-1.5 cursor-w-resize",
-  ne: "absolute right-0 top-0 size-3 cursor-ne-resize",
-  nw: "absolute left-0 top-0 size-3 cursor-nw-resize",
-  se: "absolute right-0 bottom-0 size-3 cursor-se-resize",
-  sw: "absolute left-0 bottom-0 size-3 cursor-sw-resize",
-};
 
 function initialFloatingRect() {
   if (typeof window === "undefined") {
@@ -100,7 +90,11 @@ export function FloatingAgentWindow({
     >
       {children(dragHandleProps)}
       {RESIZE_EDGES.map((edge) => (
-        <motion.div key={edge} {...resizeHandleProps(edge)} className={RESIZE_HANDLE_CLASS[edge]} />
+        <motion.div
+          key={edge}
+          {...resizeHandleProps(edge)}
+          className={draggableResizeHandleClassName(edge)}
+        />
       ))}
     </div>
   );

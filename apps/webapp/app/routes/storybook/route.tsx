@@ -95,7 +95,6 @@ const sections: StorySection[] = [
       { name: "Page header", slug: "page-header" },
       { name: "Tree view", slug: "tree-view" },
       { name: "Resizable", slug: "resizable" },
-      { name: "Draggable resizable", slug: "draggable-resizable" },
       { name: "Animated panel", slug: "animated-panel" },
       { name: "Accordion", slug: "accordion" },
     ],
@@ -132,12 +131,12 @@ const sections: StorySection[] = [
     title: "Trigger Agent",
     items: [
       { name: "Chat UI", slug: "agent-ui" },
+      { name: "Floating chat window", slug: "dashboard-agent-floating" },
       { name: "View blocks", slug: "agent-view-blocks" },
       { name: "Report view", slug: "agent-report" },
       { name: "Investigation card", slug: "agent-investigation" },
       { name: "Watch card", slug: "agent-watch" },
       { name: "Icons & Buttons", slug: "ai-agent" },
-      { name: "Floating chat window", slug: "dashboard-agent-floating" },
     ],
   },
 ];
