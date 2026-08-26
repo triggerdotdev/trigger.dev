@@ -375,24 +375,26 @@ export default function IntegrationsSettingsPage() {
                 />
               </SettingsSection>
             )}
-
-            <SettingsSection>
-              <SettingsHeader
-                title="Build settings"
-                description={
-                  <>
-                    Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
-                    <InlineCode variant="extra-small" className="whitespace-nowrap">
-                      --native-build-server
-                    </InlineCode>{" "}
-                    flag.
-                  </>
-                }
-              />
-              <BuildSettingsForm buildSettings={buildSettings ?? {}} />
-            </SettingsSection>
           </>
         )}
+
+        {/* Build settings also drive CLI deploys, so they stay available when the
+            GitHub app is disabled and the Git/Vercel sections above are hidden. */}
+        <SettingsSection>
+          <SettingsHeader
+            title="Build settings"
+            description={
+              <>
+                Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
+                <InlineCode variant="extra-small" className="whitespace-nowrap">
+                  --native-build-server
+                </InlineCode>{" "}
+                flag.
+              </>
+            }
+          />
+          <BuildSettingsForm buildSettings={buildSettings ?? {}} />
+        </SettingsSection>
       </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
