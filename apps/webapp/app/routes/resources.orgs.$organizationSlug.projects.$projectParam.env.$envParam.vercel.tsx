@@ -2,7 +2,7 @@ import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { Result, fromPromise } from "neverthrow";
 import { useEffect, useRef, useState } from "react";
@@ -62,7 +62,6 @@ import {
   type SyncEnvVarsMapping,
   type VercelProjectIntegrationData,
   envSlugArrayField,
-  getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
@@ -596,7 +595,6 @@ function VercelLoadingIcon() {
 function VercelSettingsRows({
   organizationSlug,
   projectSlug,
-  environmentSlug: _environmentSlug,
   hasOrgIntegration,
   isGitHubConnected,
   onOpenModal,
@@ -605,7 +603,6 @@ function VercelSettingsRows({
 }: {
   organizationSlug: string;
   projectSlug: string;
-  environmentSlug: string;
   hasOrgIntegration: boolean;
   isGitHubConnected: boolean;
   onOpenModal?: () => void;
@@ -698,19 +695,6 @@ function VercelGitHubWarning() {
   );
 }
 
-function envSlugLabel(slug: EnvSlug): string {
-  switch (slug) {
-    case "prod":
-      return "Production";
-    case "stg":
-      return "Staging";
-    case "preview":
-      return "Preview";
-    case "dev":
-      return "Development";
-  }
-}
-
 function ConnectedVercelProjectForm({
   connectedProject,
   hasStagingEnvironment,
@@ -774,7 +758,7 @@ function ConnectedVercelProjectForm({
     stagingEnvChanged ||
     autoPromoteChanged;
 
-  const [configForm, _fields] = useForm({
+  const [configForm] = useForm({
     id: "update-vercel-config",
     lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
@@ -833,7 +817,6 @@ function ConnectedVercelProjectForm({
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
-  const availableEnvSlugs = getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment);
   const availableEnvSlugsForBuildSettings = getAvailableEnvSlugsForBuildSettings(
     hasStagingEnvironment,
     hasPreviewEnvironment
@@ -843,15 +826,6 @@ function ConnectedVercelProjectForm({
     hasStagingEnvironment && !configValues.vercelStagingEnvironment
       ? { stg: "Set a Vercel environment for Staging first." }
       : undefined;
-
-  const _formatSelectedEnvs = (
-    selected: EnvSlug[],
-    availableSlugs: EnvSlug[] = availableEnvSlugs
-  ): string => {
-    if (selected.length === 0) return "None selected";
-    if (selected.length === availableSlugs.length) return "All environments";
-    return selected.map(envSlugLabel).join(", ");
-  };
 
   return (
     <>
@@ -1041,7 +1015,6 @@ function ConnectedVercelProjectForm({
           }
           currentTriggerVersion={currentTriggerVersion}
           currentTriggerVersionFetchFailed={currentTriggerVersionFetchFailed}
-          hideSectionToggles
           layout="settings"
         />
 
@@ -1205,7 +1178,6 @@ function VercelSettingsPanel({
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const { load } = fetcher;
-  const _location = useLocation();
   const data = fetcher.data;
   const [hasFetched, setHasFetched] = useState(false);
 
@@ -1270,7 +1242,6 @@ function VercelSettingsPanel({
     <VercelSettingsRows
       organizationSlug={organizationSlug}
       projectSlug={projectSlug}
-      environmentSlug={environmentSlug}
       hasOrgIntegration={data.hasOrgIntegration}
       isGitHubConnected={data.isGitHubConnected}
       onOpenModal={onOpenVercelModal}
