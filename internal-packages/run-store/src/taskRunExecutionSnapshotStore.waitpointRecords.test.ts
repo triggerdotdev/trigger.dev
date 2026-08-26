@@ -183,6 +183,36 @@ describe("the completed-waitpoint record set", () => {
     }
   });
 
+  // The shape every copy-forward append actually has: same id set, no records of its own. The
+  // cycle's records must survive it untouched.
+  containerTest(
+    "a records-less copy-forward does not clobber the records",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+        const waitpoints = [{ id: wpA!, index: 0 }];
+
+        await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, waitpoints, [record(wpA!)])
+        );
+        // No records this time, exactly as dequeue/checkpoint/attempt appends do.
+        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+
+        const records = await readRecords(probe, runId);
+
+        expect(await probe.keys(`snap:{${runId}}:wp:*`)).toHaveLength(1);
+        expect(records).toHaveLength(1);
+        expect(records?.[0]?.id).toBe(wpA);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
   containerTest(
     "a record set survives beside a repeat-preserving order",
     async ({ prisma, redisOptions }) => {

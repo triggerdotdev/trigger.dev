@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createCompletedWaitpointResolver,
   UnresolvableWaitpointId,
+  type ResolveArgs,
 } from "./completedWaitpointResolver.js";
 
 function record(overrides: Partial<CompletedWaitpointRecord> = {}): CompletedWaitpointRecord {
@@ -21,8 +22,17 @@ function record(overrides: Partial<CompletedWaitpointRecord> = {}): CompletedWai
 
 const noRunOutput = { readRunOutput: async () => undefined };
 
+type CaseArgs = Omit<ResolveArgs, "distinctIds"> & { distinctIds?: string[] };
+
+/**
+ * Fills `distinctIds` from the records when a case does not name it, because most cases are
+ * about the expansion rather than the membership. The coverage-check cases set it explicitly,
+ * since there it IS the subject.
+ */
 function resolver(readRunOutput?: (taskRunId: string) => Promise<string | undefined>) {
-  return createCompletedWaitpointResolver(readRunOutput ? { readRunOutput } : noRunOutput);
+  const resolve = createCompletedWaitpointResolver(readRunOutput ? { readRunOutput } : noRunOutput);
+  return (over: CaseArgs) =>
+    resolve({ ...over, distinctIds: over.distinctIds ?? over.records.map((r) => r.id) });
 }
 
 const CYCLE = { cycleSeq: 1, count: 0 };
@@ -215,17 +225,21 @@ describe("the output hydration", () => {
     expect(entry?.output).toBe('{"derived":true}');
   });
 
-  it("leaves the output undefined when the run row is gone", async () => {
-    const [entry] = await resolver()({
+  // Postgres does not lose this: the back-reference nulls on delete but Waitpoint.output stays,
+  // so the legacy path still emits it. Resolving to undefined would resolve the parent's
+  // triggerAndWait successfully with no output, which is silent wrong data.
+  it("refuses when the run row it defers to is gone", async () => {
+    const failure = await resolver()({
       runId: "run_1",
       pointer: CYCLE,
       order: [],
       records: [
         record({ type: "RUN", completedByTaskRunId: "run_gone", output: { deriveFromRun: true } }),
       ],
-    });
+    }).catch((caught: unknown) => caught as UnresolvableWaitpointId);
 
-    expect(entry?.output).toBeUndefined();
+    expect(failure).toBeInstanceOf(UnresolvableWaitpointId);
+    expect(failure.reason).toBe("lost-run-output");
   });
 
   it("reads the run once for a record that expands to several entries", async () => {
@@ -322,6 +336,36 @@ describe("the coverage check", () => {
 
     expect(result.map((w) => w.id)).toEqual(["wp_1"]);
     expect(result[0]?.index).toBe(1);
+  });
+
+  // The check must run over the whole membership. An index-less wait is absent from `order` by
+  // construction, so an order-scoped check returns [] here and the run resumes having silently
+  // lost its result.
+  it("throws when an index-less id in the membership has no record", async () => {
+    const failure = await resolver()({
+      runId: "run_1",
+      pointer: CYCLE,
+      order: [],
+      distinctIds: ["wp_indexless"],
+      records: [],
+    }).catch((caught: unknown) => caught as UnresolvableWaitpointId);
+
+    expect(failure).toBeInstanceOf(UnresolvableWaitpointId);
+    expect(failure.waitpointId).toBe("wp_indexless");
+    expect(failure.reason).toBe("no-source");
+  });
+
+  it("accepts an index-less id the caller resolved from a row", async () => {
+    const result = await resolver()({
+      runId: "run_1",
+      pointer: CYCLE,
+      order: [],
+      distinctIds: ["wp_legacy"],
+      records: [],
+      resolvedElsewhere: ["wp_legacy"],
+    });
+
+    expect(result).toEqual([]);
   });
 
   it("resolves an empty cycle to nothing", async () => {

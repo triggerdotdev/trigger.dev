@@ -50,7 +50,10 @@ function chooseOutput(source: CompletionEnvelopeSource): CompletedWaitpointRecor
     return { deriveFromRun: true };
   }
 
-  // The runtime discards a batch output at source, so there is nothing to carry.
+  // Deliberately dropped, and this is the one place the record set does NOT reproduce the row.
+  // A BATCH waitpoint IS completed with an output (see batchSystem), but the executor ignores
+  // it: sharedRuntimeManager.resolveWaitpoint early-returns for type === "BATCH" and never
+  // reads the body. Carrying it would put bytes in the cycle key that nothing can observe.
   if (source.type === "BATCH") {
     return null;
   }
