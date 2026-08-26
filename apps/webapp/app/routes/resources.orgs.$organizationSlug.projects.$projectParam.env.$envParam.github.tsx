@@ -779,6 +779,7 @@ function GitHubSettingsRows({
 export function ConnectedGitHubRepoForm({
   connectedGitHubRepo,
   previewEnvironmentEnabled,
+  stagingEnvironmentEnabled,
   organizationSlug,
   projectSlug,
   environmentSlug,
@@ -788,6 +789,7 @@ export function ConnectedGitHubRepoForm({
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
   previewEnvironmentEnabled?: boolean;
+  stagingEnvironmentEnabled?: boolean;
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
@@ -956,24 +958,42 @@ export function ConnectedGitHubRepoForm({
 
         <SettingsRow
           action={
-            <Input
-              {...getInputProps(fields.stagingBranch, { type: "text" })}
-              defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
-              placeholder="none"
-              variant="medium"
-              className="font-mono"
-              containerClassName="w-64"
-              icon={GitBranchIcon}
-              onChange={(e) => {
-                setGitSettingsValues((prev) => ({
-                  ...prev,
-                  stagingBranch: e.target.value,
-                }));
-              }}
-            />
+            stagingEnvironmentEnabled ? (
+              <Input
+                {...getInputProps(fields.stagingBranch, { type: "text" })}
+                defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
+                placeholder="none"
+                variant="medium"
+                className="font-mono"
+                containerClassName="w-64"
+                icon={GitBranchIcon}
+                onChange={(e) => {
+                  setGitSettingsValues((prev) => ({
+                    ...prev,
+                    stagingBranch: e.target.value,
+                  }));
+                }}
+              />
+            ) : (
+              <LinkButton
+                to={billingPath}
+                variant="secondary/small"
+                LeadingIcon={ArrowUpCircleIcon}
+                leadingIconClassName="text-indigo-500"
+              >
+                Upgrade
+              </LinkButton>
+            )
           }
         >
-          <EnvironmentRowLabel type="STAGING" />
+          <EnvironmentRowLabel
+            type="STAGING"
+            description={
+              stagingEnvironmentEnabled
+                ? undefined
+                : "Upgrade your plan to enable a Staging environment"
+            }
+          />
         </SettingsRow>
 
         <SettingsRow
@@ -1122,6 +1142,7 @@ export function GitHubSettingsPanel({
         <ConnectedGitHubRepoForm
           connectedGitHubRepo={data.connectedRepository}
           previewEnvironmentEnabled={data.isPreviewEnvironmentEnabled}
+          stagingEnvironmentEnabled={data.isStagingEnvironmentEnabled}
           organizationSlug={organizationSlug}
           projectSlug={projectSlug}
           environmentSlug={environmentSlug}
