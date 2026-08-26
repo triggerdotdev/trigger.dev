@@ -68,14 +68,8 @@ export const SNAPSHOT_SWEEP_COUNT_FIELDS = [
   "partial",
 ] as const;
 
-export type SnapshotSweepCountField =
-  | "scanned"
-  | "expired"
-  | "deleted"
-  | "skipped"
-  | "pendingDeletion"
-  | "nodes"
-  | "partial";
+/** Derived from the list above, so the runtime filter and the type cannot drift apart. */
+type SnapshotSweepCountField = (typeof SNAPSHOT_SWEEP_COUNT_FIELDS)[number];
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
