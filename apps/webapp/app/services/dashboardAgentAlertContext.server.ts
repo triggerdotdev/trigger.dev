@@ -20,8 +20,11 @@ export async function resolveAgentAlertContext(params: {
   chatId: string;
   /** The environment this turn resolved to. The authority here. */
   environmentId: string;
-  /** Set for an org-wide token: the environment must belong to this org. */
-  organizationId?: string;
+  /**
+   * The org the environment must belong to, for a token scoped to one. Required rather than
+   * optional so a new caller has to decide, instead of skipping the check by omission.
+   */
+  organizationId: string | undefined;
   /** Optional echoes from the request body. Checked, never trusted. */
   claimedEnvironmentId?: string;
   claimedProjectRef?: string;

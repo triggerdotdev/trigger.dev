@@ -1,6 +1,7 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { resolveAgentAlertContext } from "~/services/dashboardAgentAlertContext.server";
+import { resolveAgentTokenScope } from "~/services/dashboardAgentTokenScope";
 import { unsubscribeChannelFromWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
@@ -31,14 +32,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Not allowed", code: "forbidden_client" }, { status: 403 });
   }
   const userId = authentication.userActor.userId;
-  // The turn's environment scope is the authority for the chat's project below.
-  const environmentId = authentication.userActor.environmentId;
-  if (!environmentId) {
-    return json(
-      { error: "This chat has no environment context.", code: "invalid_target" },
-      { status: 400 }
-    );
-  }
 
   const parsedParams = ParamsSchema.safeParse(params);
   if (!parsedParams.success) return json({ error: "Invalid params" }, { status: 400 });
@@ -56,10 +49,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
   const body = parsedBody.data;
 
+  // The environment this turn may unsubscribe in. There is no trusted fallback.
+  const scope = resolveAgentTokenScope(authentication.userActor, {
+    environmentId: body.environmentId,
+  });
+  if (!scope.ok) {
+    return json({ error: scope.error, code: scope.code }, { status: 400 });
+  }
+
   try {
     const context = await resolveAgentAlertContext({
       userId,
-      environmentId,
+      environmentId: scope.environmentId,
+      organizationId: scope.organizationId,
       chatId: body.chatId,
       claimedEnvironmentId: body.environmentId,
       claimedProjectRef: body.projectRef,
@@ -92,7 +94,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     logger.error("Failed to unsubscribe a channel from dashboard agent watch alerts", {
       error,
       userId,
-      environmentId,
+      environmentId: scope.environmentId,
       channelId: parsedParams.data.channelId,
     });
     throw error;

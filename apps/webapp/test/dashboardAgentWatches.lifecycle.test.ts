@@ -1366,4 +1366,84 @@ describe("the agent's alert boundary", () => {
       expect(refused.status).toBe(404);
     }
   );
+
+  postgresTest(
+    "an org-wide token manages alerts in a sibling environment but not another org's",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-orgwide");
+      const sibling = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "staging",
+          type: "STAGING",
+          projectId: seeded.project.id,
+          organizationId: seeded.organization.id,
+          apiKey: `tr_stg_${seeded.project.slug}`,
+          pkApiKey: `pk_stg_${seeded.project.slug}`,
+          shortcode: `s${seeded.project.slug.slice(0, 6)}`,
+        },
+      });
+      await createChat(ctx.agentDb, {
+        id: "chat_1",
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+      });
+
+      ctx.actor = {
+        userId: seeded.user.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+        organizationId: seeded.organization.id,
+      };
+
+      const subscribed = (await alertsAction(
+        createRequest({ chatId: "chat_1", channel: "email", environmentId: sibling.id })
+      )) as Response;
+      expect(subscribed.status).toBe(200);
+      const channelId = (await subscribed.json()).id;
+      // The sibling environment is what drove the subscription, not the token's own.
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: channelId } })
+      ).toMatchObject({ environmentTypes: ["STAGING"] });
+
+      // The unsubscribe reaches the same environment instead of 400ing on a mismatch.
+      const removed = (await alertChannelAction(
+        deleteRequest(channelId, { chatId: "chat_1", environmentId: sibling.id })
+      )) as Response;
+      expect(removed.status).toBe(200);
+
+      // Another org, with the user a member and the chat living there too, so nothing but
+      // the token's own organization claim stands in the way.
+      const other = await seed(prisma, "alert-otherorg");
+      await prisma.orgMember.create({
+        data: { organizationId: other.organization.id, userId: seeded.user.id, role: "ADMIN" },
+      });
+      await createChat(ctx.agentDb, {
+        id: "chat_other",
+        organizationId: other.organization.id,
+        userId: seeded.user.id,
+      });
+      const otherChannel = await seedWatchChannel(prisma, other, `${seeded.user.email}`);
+
+      const refusedSubscribe = (await alertsAction(
+        createRequest({
+          chatId: "chat_other",
+          channel: "email",
+          environmentId: other.environment.id,
+        })
+      )) as Response;
+      expect(refusedSubscribe.status).toBe(404);
+
+      const refusedDelete = (await alertChannelAction(
+        deleteRequest(otherChannel.id, {
+          chatId: "chat_other",
+          environmentId: other.environment.id,
+        })
+      )) as Response;
+      expect(refusedDelete.status).toBe(404);
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: otherChannel.id } })
+      ).toMatchObject({ enabled: true });
+    }
+  );
 });
