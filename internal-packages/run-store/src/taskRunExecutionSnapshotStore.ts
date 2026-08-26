@@ -155,14 +155,24 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return this.modeResolver?.resolve() ?? this.#staticMode;
   }
 
+  /** The resolved position for one organisation. Falls back to the global answer when unknown. */
+  protected modeFor(organizationId?: string): SnapshotStoreMode {
+    return this.modeResolver?.resolve(organizationId) ?? this.#staticMode;
+  }
+
   /** True in every position that appends to Redis, for this entry's organisation. */
   protected writesRedisFor(organizationId?: string): boolean {
-    return (this.modeResolver?.resolve(organizationId) ?? this.#staticMode) !== "off";
+    return this.modeFor(organizationId) !== "off";
   }
 
   /** Test seam for the per-organisation predicate. Not for production callers. */
   writesRedisForTest(organizationId?: string): boolean {
     return this.writesRedisFor(organizationId);
+  }
+
+  /** Test seam for the resolved position. Not for production callers. */
+  modeForTest(organizationId?: string): SnapshotStoreMode {
+    return this.modeFor(organizationId);
   }
 
   /**
@@ -499,7 +509,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
             error,
           });
 
-          if (this.mode === "redis-only") {
+          // The same organisation dial that decided to append decides whether a lost birth is
+          // fatal. Using the global position here would fail run creation for an organisation whose
+          // own position still has Postgres authoritative.
+          if (this.modeFor(entry.organizationId) === "redis-only") {
             throw error;
           }
           return;

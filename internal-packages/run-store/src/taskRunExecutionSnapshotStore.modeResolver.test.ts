@@ -57,4 +57,16 @@ describe("TaskRunExecutionSnapshotStore mode resolution", () => {
     const store = storeWith({ modeResolver: resolverOf({ org_a: "off" }, "redis-read") });
     expect(store.writesRedisForTest()).toBe(true);
   });
+
+  it("resolves the fatal-birth decision per organisation, not globally", () => {
+    // A lost birth append is fatal only where Postgres holds nothing. An organisation still on a
+    // dual-write position must not have its run creation failed by the global position.
+    const store = storeWith({
+      modeResolver: resolverOf({ org_dual: "dual-write" }, "redis-only"),
+    });
+
+    expect(store.modeForTest("org_dual")).toBe("dual-write");
+    expect(store.modeForTest("org_other")).toBe("redis-only");
+    expect(store.modeForTest()).toBe("redis-only");
+  });
 });
