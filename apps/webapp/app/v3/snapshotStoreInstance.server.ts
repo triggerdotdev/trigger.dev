@@ -64,6 +64,7 @@ function buildClient(name: string): RedisClient {
 
 type Instance = {
   sweepClient: RedisClient;
+  hotPathClient: RedisClient;
   redisSnapshotStore: RedisSnapshotStore;
   decorate: (store: RunStore) => RunStore;
 };
@@ -79,16 +80,17 @@ const instance = singleton<Instance | undefined>("snapshotStoreInstance", () => 
   // transition append. It also backs the sweep's exclusion lock.
   const sweepClient = buildClient("sweep");
 
+  const hotPathClient = buildClient("store");
+
   const redisSnapshotStore = new RedisSnapshotStore({
-    // The store still builds its own single-node client, so cluster mode reaches the sweep but not
-    // the hot path. Hand it a pre-built client once its options accept one.
-    redisOptions: redisOptions(),
+    client: hotPathClient,
     completedTtlMs: env.RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS,
     metrics: metrics.store,
   });
 
   return {
     sweepClient,
+    hotPathClient,
     redisSnapshotStore,
     decorate: (store: RunStore) =>
       new TaskRunExecutionSnapshotStore(store, {
@@ -145,6 +147,8 @@ export async function quitSnapshotStoreClients(): Promise<void> {
     await quit().catch(() => undefined);
   }
   await instance.sweepClient.quit().catch(() => undefined);
-  // Last: an append in flight must still land.
+  // Last: an append in flight must still land. The store's own quit() returns early on a
+  // caller-supplied client, so closing the socket is ours.
   await instance.redisSnapshotStore.quit().catch(() => undefined);
+  await instance.hotPathClient.quit().catch(() => undefined);
 }

@@ -2961,6 +2961,9 @@ export class RunEngine {
 
     const budgetMs = this.options.snapshotStore?.sweepBudgetMs ?? 10_800_000;
     const controller = new AbortController();
+    // The deadline is the sweep's own stopping rule; this is the backstop for a pass that has
+    // stopped reaching a batch boundary, so the signal is not merely decorative.
+    const abortAt = globalThis.setTimeout(() => controller.abort(), budgetMs + 60_000);
     let outcome = "failed";
     let counts: Record<string, number | boolean> | undefined;
 
@@ -2974,6 +2977,7 @@ export class RunEngine {
     } catch (error) {
       this.logger.error("sweepSnapshotOrphans threw", { error });
     } finally {
+      globalThis.clearTimeout(abortAt);
       this.snapshotSweepPassCounter?.add(1, { outcome });
       for (const [field, value] of Object.entries(counts ?? {})) {
         if (typeof value === "number") {

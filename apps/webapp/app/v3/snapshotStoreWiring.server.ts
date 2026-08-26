@@ -23,27 +23,20 @@ export function registerSnapshotStoreWiring(): boolean {
   });
 
   const sweeper = new SnapshotOrphanSweeper({
-    redisOptions: {
-      keyPrefix: "engine:",
-      host: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST ?? undefined,
-      port: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_PORT ?? undefined,
-      username: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_USERNAME ?? undefined,
-      password: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_PASSWORD ?? undefined,
-      ...(env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-    },
+    // Its own connection, so a scan of every master can never stall a transition append.
+    client: sweepClient,
     // The undecorated router: rule 2 asks Postgres whether a run row exists, and must never be
     // able to ask Redis whether Redis is an orphan.
     runStore: runStoreWithoutSnapshotDecorator,
     completedTtlMs: env.RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS,
     orphanAgeMs: env.RUN_ENGINE_SNAPSHOT_STORE_ORPHAN_AGE_MS,
+    confirmOrphanAfterMs: env.RUN_ENGINE_SNAPSHOT_STORE_CONFIRM_ORPHAN_AFTER_MS,
   });
 
   setSnapshotSweepRunner(
     buildSnapshotSweepRunner({
       client: sweepClient,
-      // The sweep does not yet accept a deadline, so the budget is not enforced inside a pass. The
-      // fenced lock is what keeps two passes apart; its TTL covers the expected pass duration.
-      sweep: async () => ({ ...(await sweeper.sweep()) }),
+      sweep: async ({ deadline, signal }) => ({ ...(await sweeper.sweep({ deadline, signal })) }),
       lockTtlMs: env.RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS + 3_600_000,
     })
   );
