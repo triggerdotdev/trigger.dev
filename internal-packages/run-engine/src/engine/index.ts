@@ -26,7 +26,7 @@ import {
   generateInternalId,
   parseNaturalLanguageDurationInMs,
   RunId,
-  WaitpointId,
+  mintWaitpointIdFor,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
   type PrismaClient,
@@ -1855,7 +1855,11 @@ export class RunEngine {
       const waitpoint = await this.runStore.createWaitpoint(
         {
           data: {
-            ...WaitpointId.generate(),
+            // Stamped from the BATCH, not the blocked run: this create passes only
+            // completedByBatchId, so the routing store resolves the owner from the batch and
+            // validates the stamp against the batch's shard. The two match, because the batch
+            // inherited this run's shard when it was minted.
+            ...mintWaitpointIdFor(batchId),
             type: "BATCH",
             idempotencyKey: batchId,
             userProvidedIdempotencyKey: false,
