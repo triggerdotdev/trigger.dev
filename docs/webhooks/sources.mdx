@@ -1,0 +1,133 @@
+---
+title: "Sources and verification"
+description: "Provider presets, custom verification config, and typing the webhook event."
+sidebarTitle: "Sources & verification"
+---
+
+A webhook's `source` tells Trigger.dev which provider the request is from and how to verify it. Use a built-in preset, or `webhooks.custom()` for a provider without one.
+
+## Presets
+
+Built-in presets know the provider's signature scheme, so you don't configure anything:
+
+<CodeGroup>
+
+```ts Stripe
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const stripeWebhook = webhook({
+  id: "stripe",
+  source: webhooks.stripe(),
+  onEvent: async ({ event }) => {
+    if (event.type === "payment_intent.succeeded") {
+      // ...
+    }
+  },
+});
+```
+
+```ts GitHub
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const githubWebhook = webhook({
+  id: "github",
+  source: webhooks.github(),
+  onEvent: async ({ event, headers }) => {
+    // GitHub puts the event type in a header
+    console.log(headers.get("x-github-event"));
+  },
+});
+```
+
+```ts Svix
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+// Also covers Clerk, Resend, and other Svix-powered providers
+export const svixWebhook = webhook({
+  id: "svix",
+  source: webhooks.svix(),
+  onEvent: async ({ event }) => {
+    // ...
+  },
+});
+```
+
+</CodeGroup>
+
+The available presets are `stripe()`, `github()`, `svix()`, `square()`, and `discord()`.
+
+## Custom providers
+
+For a provider without a preset, `webhooks.custom()` describes the scheme as data. For example, an HMAC-SHA256 signature over the raw body, in a custom header:
+
+```ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const customWebhook = webhook({
+  id: "custom",
+  source: webhooks.custom<{ id: string; message: string }>({
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "x-webhook-signature",
+    signingString: "raw",
+    idempotencyField: { from: "body", name: "id" },
+  }),
+  onEvent: async ({ event }) => {
+    console.log(event.message);
+  },
+});
+```
+
+<Tip>
+  Reach for a preset first; drop to `custom()` for the long tail. A custom config can almost always
+  express a provider's scheme without any code.
+</Tip>
+
+## Typing the event
+
+Presets ship a sensible default event type, and they're generic, so you can plug in the provider's official type for full type-safety and autocomplete:
+
+```ts
+import type Stripe from "stripe";
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const stripeEvents = webhook({
+  id: "stripe-events",
+  source: webhooks.stripe<Stripe.Event>(),
+  onEvent: async ({ event }) => {
+    // `event` is now the full, discriminated Stripe.Event union
+  },
+});
+```
+
+For `webhooks.custom<T>()`, pass your own event type as `T`.
+
+<Note>
+  The event is typed but not re-validated against that type at runtime: once the signature is
+  verified, the body is trusted (the same model the official provider SDKs use). If you want runtime
+  validation, validate `event` inside `onEvent`.
+</Note>
+
+## How verification works
+
+Every inbound request is verified before your task runs. Trigger.dev checks the signature, the
+timestamp (for replay protection, where the provider supplies one), and derives an idempotency key.
+When the preset maps a provider event id it uses that; otherwise it falls back to a hash of the raw
+body, timestamp, and signature. A request that fails verification gets a `400` and never creates a run.
+
+Presets handle this for you. Under the hood, every scheme is one of:
+
+- **`hmac`**: HMAC over the raw body or a templated signing string, signature in a header. The header can be a raw value, a prefixed one (like GitHub's `sha256=…`), or a structured one (like Stripe's `t=…,v1=…`).
+- **`shared-secret`**: a static token compared in a header, bearer, basic auth, or the body.
+- **`url-secret`**: a secret in the URL path or query string.
+- **`asymmetric`**: public-key signatures (Ed25519, ECDSA, RSA). You store the provider's public key instead of a shared secret.
+
+<Warning>
+  `url-secret` places the secret in the request URL (path or query string), where it can be captured
+  by access logs, proxies, and tracing systems. Prefer a header-based scheme (`hmac` or
+  `shared-secret`) when the provider supports one.
+</Warning>
+
+Once a request is verified, see [Connecting a provider](/webhooks/connect) for how to point the
+provider at the webhook URL and set the secret.

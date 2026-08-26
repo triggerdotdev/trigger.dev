@@ -103,6 +103,7 @@ async function indexDeployment({
         tasks: workerManifest.tasks,
         prompts: workerManifest.prompts,
         queues: workerManifest.queues,
+        webhooks: workerManifest.webhooks,
         sourceFiles,
         runtime: workerManifest.runtime,
         runtimeVersion: workerManifest.runtimeVersion,

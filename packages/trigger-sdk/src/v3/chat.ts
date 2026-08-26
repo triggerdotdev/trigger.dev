@@ -97,6 +97,24 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
   metadata?: TMetadata;
   /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
   action?: unknown;
+  /**
+   * Origin of an `"action"` trigger. `"webhook"` actions (delivered by the hosted webhook ingress)
+   * carry a fixed envelope typed via `ChatEventActions`, so they bypass `actionSchema` validation;
+   * omitted / `"client"` actions (frontend or server) are validated against `actionSchema`.
+   */
+  actionSource?: "client" | "webhook";
+  /**
+   * A channel-delivered turn (hosted webhook ingress -> a chat frontend like Slack). Carries the raw
+   * verified provider event; the run resolves the connector by `connectorId` from `chat.agent({ channels })`
+   * and applies its `inbound()` mapper to produce the turn's message. Present instead of `message`.
+   */
+  channelEvent?: {
+    connectorId: string;
+    event: unknown;
+    source: string;
+    headers: Record<string, string>;
+    deliveryId: string;
+  };
   /** Whether this run is continuing an existing chat whose previous run ended. */
   continuation?: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */

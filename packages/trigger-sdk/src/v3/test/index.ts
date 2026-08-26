@@ -8,10 +8,21 @@ import "./setup-catalog.js";
 
 export {
   mockChatAgent,
+  DEFAULT_TEST_CONNECTOR_ID,
   type MockChatAgentOptions,
   type MockChatAgentHarness,
   type MockChatAgentTurn,
 } from "./mock-chat-agent.js";
+
+export {
+  recordingChannelConnector,
+  type RecordingChannelConnector,
+  type RecordingChannelConnectorOptions,
+  type RecordedSend,
+  type RecordedReaction,
+  type RecordedFinalize,
+  type TestChannelEvent,
+} from "./mock-channel-connector.js";
 
 // Re-export the lower-level task context harness so consumers can build
 // their own test helpers without adding a separate `@trigger.dev/core`
