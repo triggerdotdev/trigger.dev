@@ -153,6 +153,8 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt?: Date;
   }) {
     const result = await this.coordinator.createDateTimeWaitpoint({
+      // Pinned until the mint flag reaches this entry point.
+      mintKind: "legacy",
       runId,
       projectId,
       environmentId,
@@ -201,6 +203,8 @@ export class WaitpointSystem {
     standaloneResidency?: "NEW" | "LEGACY";
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const result = await this.coordinator.createManualWaitpoint({
+      // Pinned until the mint flag reaches this entry point.
+      mintKind: "legacy",
       runId,
       environmentId,
       projectId,
@@ -729,6 +733,21 @@ export class WaitpointSystem {
         waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
       };
     }); // end of runlock
+  }
+
+  /**
+   * The BATCH waitpoint for a batch. Returns null when the batch already has one.
+   *
+   * mintKind is pinned to legacy until the mint flag is threaded through the batch entry
+   * point; the store arm is unreachable from here until then.
+   */
+  public async createBatchWaitpoint(params: {
+    batchId: string;
+    environmentId: string;
+    projectId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<Waitpoint | null> {
+    return this.coordinator.createBatchWaitpoint({ ...params, mintKind: "legacy" });
   }
 
   public buildRunAssociatedWaitpoint({

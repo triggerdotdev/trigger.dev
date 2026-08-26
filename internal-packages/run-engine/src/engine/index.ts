@@ -26,7 +26,6 @@ import {
   generateInternalId,
   parseNaturalLanguageDurationInMs,
   RunId,
-  WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
   type PrismaClient,
@@ -1849,22 +1848,19 @@ export class RunEngine {
     organizationId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
-    try {
-      const waitpoint = await this.runStore.createWaitpoint(
-        {
-          data: {
-            ...WaitpointId.generate(),
-            type: "BATCH",
-            idempotencyKey: batchId,
-            userProvidedIdempotencyKey: false,
-            completedByBatchId: batchId,
-            environmentId,
-            projectId,
-          },
-        },
-        tx
-      );
+    const waitpoint = await this.waitpointSystem.createBatchWaitpoint({
+      batchId,
+      environmentId,
+      projectId,
+      tx,
+    });
 
+    // Duplicate batch: the coordinator already reported it.
+    if (!waitpoint) {
+      return null;
+    }
+
+    try {
       await this.blockRunWithWaitpoint({
         runId,
         waitpoints: waitpoint.id,
@@ -1873,19 +1869,17 @@ export class RunEngine {
         batch: { id: batchId },
         // No tx: the block edge routes to the run's owning DB, not the control-plane tx.
       });
-
-      return waitpoint;
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        // duplicate idempotency key
-        if (error.code === "P2002") {
-          return null;
-        } else {
-          throw error;
-        }
+      // The previous shape wrapped the create AND the block in one catch, so a P2002 from
+      // the block step also returned null. Kept deliberately: narrowing it here would be a
+      // behaviour change smuggled into an extraction.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return null;
       }
       throw error;
     }
+
+    return waitpoint;
   }
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {

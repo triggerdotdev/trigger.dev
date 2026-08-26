@@ -8,6 +8,7 @@ import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
 import type {
   AssociatedWaitpointData,
+  CreateBatchWaitpointParams,
   ClearRunBlockStateParams,
   CompleteParams,
   CompleteResult,
@@ -330,6 +331,43 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     const waitpoint = await this.runStore.upsertWaitpoint(upsertArgs, undefined, colocate);
 
     return { kind: "created", waitpoint };
+  }
+
+  /**
+   * The BATCH waitpoint for a batch, keyed on the batch id as its idempotency key.
+   *
+   * The P2002 catch IS the duplicate-batch contract: a second call for the same batch
+   * collides on the idempotencyKey unique index, and null is the caller's "this batch
+   * already has one" signal rather than an error. It stays on this arm because the code
+   * is dead against a non-Postgres store, where NX reports the duplicate instead.
+   */
+  async createBatchWaitpoint({
+    batchId,
+    environmentId,
+    projectId,
+    tx,
+  }: CreateBatchWaitpointParams): Promise<Waitpoint | null> {
+    try {
+      return await this.runStore.createWaitpoint(
+        {
+          data: {
+            ...WaitpointId.generate(),
+            type: "BATCH",
+            idempotencyKey: batchId,
+            userProvidedIdempotencyKey: false,
+            completedByBatchId: batchId,
+            environmentId,
+            projectId,
+          },
+        },
+        tx
+      );
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async createManualWaitpoint({

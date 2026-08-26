@@ -24,6 +24,7 @@ export type WaitpointCoordinator = {
   complete(params: CompleteParams): Promise<CompleteResult>;
   createDateTimeWaitpoint(params: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult>;
   createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult>;
+  createBatchWaitpoint(params: CreateBatchWaitpointParams): Promise<Waitpoint | null>;
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
@@ -32,6 +33,23 @@ export type WaitpointCoordinator = {
     runId: string;
     data: AssociatedWaitpointData;
   }): Promise<Waitpoint>;
+};
+
+/**
+ * Which coordinator mints a NEW waitpoint. Structurally identical to the webapp's own
+ * WaitpointMintKind; re-declared because the engine never imports from the webapp.
+ *
+ * Read at the mint and never again — every later operation routes by the minted id's shape.
+ */
+export type WaitpointMintKind = "legacy" | "store";
+
+export type CreateBatchWaitpointParams = {
+  batchId: string;
+  environmentId: string;
+  projectId: string;
+  mintKind: WaitpointMintKind;
+  /** Legacy arm only: the create may join a caller transaction. A store arm ignores it. */
+  tx?: PrismaClientOrTransaction;
 };
 
 export type ReadCompletionEnvelopesParams = {
@@ -110,7 +128,15 @@ export type RegisterBlocksParams = {
  * The lockless variant writes the edge and does not count. Two methods rather than
  * one method with a flag, so "the batch path issues no extra query" is structural.
  */
-export type RegisterBlocksLocklessParams = Omit<RegisterBlocksParams, "client">;
+export type RegisterBlocksLocklessParams = Omit<RegisterBlocksParams, "client"> & {
+  /**
+   * The parent's BATCH waitpoint id. A store arm asserts it is present and PENDING on the
+   * run's shard before writing any item edge, so the run's pending set can never be
+   * momentarily empty mid-absorb. Neither TLA+ campaign models this, so the assertion is
+   * the only protection. A legacy arm ignores it.
+   */
+  batchWaitpointId?: string;
+};
 
 export type CompleteParams = {
   waitpointId: string;
@@ -143,6 +169,7 @@ export type CreateWaitpointResult =
   | { kind: "created"; waitpoint: Waitpoint };
 
 export type CreateDateTimeWaitpointParams = {
+  mintKind: WaitpointMintKind;
   /** When set, the waitpoint co-locates with this run's DB and the dedup probe targets it. */
   runId?: string;
   projectId: string;
@@ -153,6 +180,7 @@ export type CreateDateTimeWaitpointParams = {
 };
 
 export type CreateManualWaitpointParams = {
+  mintKind: WaitpointMintKind;
   runId?: string;
   environmentId: string;
   projectId: string;
