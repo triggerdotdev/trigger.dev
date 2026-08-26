@@ -278,6 +278,42 @@ describe("RoutingRunStore id-to-shard-key seam", () => {
     );
     expect(trace(log)).toEqual([]);
   });
+
+  // The case above injects a resolver. This one does NOT: it uses the real `resolveShard`, which
+  // the compat constructor defaults to. `resolveShard` is pure id-shape, so a gen-2 shaped id
+  // names its shard char whatever the topology holds — the two-store compat router therefore
+  // reaches this throw for any gen-2 id, with no shard configured anywhere.
+  //
+  // That matters beyond this class: these ids reach read routes as URL parameters, so whatever
+  // sits above the router must translate this throw into a 4xx rather than let it surface as a
+  // 5xx that any caller can induce.
+  it("reaches the unconfigured-shard throw for a real gen-2 id, even on the compat pair", () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+    });
+
+    const genTwoId = `${"0".repeat(24)}a2`;
+
+    expect(() => router.findRun({ id: genTwoId })).toThrow(
+      'no store is configured for shard key "a"'
+    );
+    expect(trace(log)).toEqual([]);
+  });
+
+  it("still routes gen-1 shapes on the compat pair with the real resolver", () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+    });
+
+    router.findRun({ id: `${"0".repeat(24)}01` });
+    router.findRun({ id: "c".repeat(25) });
+
+    expect(trace(log)).toEqual(["new:findRun", "legacy:findRun"]);
+  });
 });
 
 function buildNShardRouter(shardKeys: string[], opts: { aliasOf?: Record<string, string> } = {}) {

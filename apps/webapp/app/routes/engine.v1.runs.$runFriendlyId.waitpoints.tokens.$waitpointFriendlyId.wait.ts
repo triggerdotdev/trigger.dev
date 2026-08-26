@@ -55,6 +55,11 @@ const { action } = createActionApiRoute(
         { status: 200 }
       );
     } catch (error) {
+      // A Response thrown inside the try is a deliberate status (the 404 above), not a
+      // failure. Re-throw it untouched, or every intentional 4xx here becomes a 500.
+      if (error instanceof Response) {
+        throw error;
+      }
       logger.error("Failed to wait for waitpoint", { runId, waitpointId, error });
       throw json({ error: "Failed to wait for waitpoint token" }, { status: 500 });
     }

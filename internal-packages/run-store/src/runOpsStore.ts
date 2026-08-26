@@ -173,8 +173,10 @@ export class RoutingRunStore implements RunStore {
     return client != null && !isReadReplicaClient(client) ? store.primaryReadClient : undefined;
   }
 
-  // The store for a shard key. Unreachable with the compat constructor — #shardKeyOfSafe yields only
-  // the two reserved keys — so this throw fires only if a caller wires a partial map.
+  // The store for a shard key. REACHABLE with the compat constructor: it defaults to the real
+  // `resolveShard`, which is pure id-shape, so any gen-2 shaped id names a shard char even when
+  // no shard is configured. Callers above the router must therefore translate this into a 4xx on
+  // a read path — these ids arrive as URL parameters — rather than let it surface as a 5xx.
   #shardStore(key: ShardKey): RunStore {
     const store = this.#shards.get(key);
     if (store === undefined) {
