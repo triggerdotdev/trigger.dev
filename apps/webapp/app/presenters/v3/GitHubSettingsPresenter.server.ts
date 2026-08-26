@@ -19,6 +19,7 @@ export class GitHubSettingsPresenter extends BasePresenter {
         connectedRepository: undefined,
         installations: undefined,
         isPreviewEnvironmentEnabled: undefined,
+        isStagingEnvironmentEnabled: undefined,
       });
     }
 
@@ -123,15 +124,41 @@ export class GitHubSettingsPresenter extends BasePresenter {
         })
       ).map((previewEnvironment) => previewEnvironment !== null);
 
+    const isStagingEnvironmentEnabled = () =>
+      fromPromise(
+        (this._replica as PrismaClient).runtimeEnvironment.findFirst({
+          select: {
+            id: true,
+          },
+          where: {
+            projectId: projectId,
+            slug: "stg",
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      ).map((stagingEnvironment) => stagingEnvironment !== null);
+
     return ResultAsync.combine([
       isPreviewEnvironmentEnabled(),
+      isStagingEnvironmentEnabled(),
       findConnectedGithubRepository(),
       listGithubAppInstallations(),
-    ]).map(([isPreviewEnvironmentEnabled, connectedGithubRepository, githubAppInstallations]) => ({
-      enabled: true,
-      connectedRepository: connectedGithubRepository,
-      installations: githubAppInstallations,
-      isPreviewEnvironmentEnabled,
-    }));
+    ]).map(
+      ([
+        isPreviewEnvironmentEnabled,
+        isStagingEnvironmentEnabled,
+        connectedGithubRepository,
+        githubAppInstallations,
+      ]) => ({
+        enabled: true,
+        connectedRepository: connectedGithubRepository,
+        installations: githubAppInstallations,
+        isPreviewEnvironmentEnabled,
+        isStagingEnvironmentEnabled,
+      })
+    );
   }
 }
