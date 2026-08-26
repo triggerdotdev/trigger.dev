@@ -234,20 +234,28 @@ export class ProjectSettingsService {
     return getExistingConnectedRepo()
       .andThen((connectedRepo) => {
         const installationId = Number(connectedRepo.repository.installation.appInstallationId);
+        const oldStagingBranch = connectedRepo.branchTracking?.staging?.branch;
 
-        return ResultAsync.combine([
-          validateProductionBranch({
-            installationId,
-            fullRepoName: connectedRepo.repository.fullName,
-            oldProductionBranch: connectedRepo.branchTracking?.prod?.branch,
-          }),
-          validateStagingBranch({
-            installationId,
-            fullRepoName: connectedRepo.repository.fullName,
-            oldStagingBranch: connectedRepo.branchTracking?.staging?.branch,
-          }),
-          this.isPreviewEnvironmentEnabled(projectId),
-        ]);
+        return this.isStagingEnvironmentEnabled(projectId).andThen((stagingEnvironmentEnabled) =>
+          ResultAsync.combine([
+            validateProductionBranch({
+              installationId,
+              fullRepoName: connectedRepo.repository.fullName,
+              oldProductionBranch: connectedRepo.branchTracking?.prod?.branch,
+            }),
+            // Without a staging environment the row is an upgrade prompt, not an input, so the
+            // submitted value is ignored - and we keep whatever is stored rather than clearing it,
+            // so a downgrade doesn't quietly destroy a tracking branch the org already configured.
+            stagingEnvironmentEnabled
+              ? validateStagingBranch({
+                  installationId,
+                  fullRepoName: connectedRepo.repository.fullName,
+                  oldStagingBranch,
+                })
+              : okAsync(oldStagingBranch),
+            this.isPreviewEnvironmentEnabled(projectId),
+          ])
+        );
       })
       .map(([productionBranch, stagingBranch, previewEnvironmentEnabled]) => ({
         productionBranch,
@@ -325,5 +333,23 @@ export class ProjectSettingsService {
         cause: error,
       })
     ).map((previewEnvironment) => previewEnvironment !== null);
+  }
+
+  private isStagingEnvironmentEnabled(projectId: string) {
+    return fromPromise(
+      this.#prismaClient.runtimeEnvironment.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          projectId: projectId,
+          slug: "stg",
+        },
+      }),
+      (error) => ({
+        type: "other" as const,
+        cause: error,
+      })
+    ).map((stagingEnvironment) => stagingEnvironment !== null);
   }
 }

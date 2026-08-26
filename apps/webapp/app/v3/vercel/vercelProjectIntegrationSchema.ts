@@ -85,13 +85,16 @@ export function createDefaultVercelIntegrationData(
   vercelProjectId: string,
   vercelProjectName: string,
   vercelTeamId: string | null,
-  vercelTeamSlug?: string
+  vercelTeamSlug?: string,
+  availableEnvSlugs: EnvSlug[] = ALL_ENV_SLUGS
 ): VercelProjectIntegrationData {
+  const defaultOn = (["prod", "preview"] as EnvSlug[]).filter((s) => availableEnvSlugs.includes(s));
+
   return {
     config: {
       atomicBuilds: [],
-      pullEnvVarsBeforeBuild: ["prod", "preview"],
-      discoverEnvVars: ["prod", "preview"],
+      pullEnvVarsBeforeBuild: defaultOn,
+      discoverEnvVars: defaultOn,
       vercelStagingEnvironment: null,
       autoPromote: true,
     },
@@ -140,6 +143,30 @@ export function getAvailableEnvSlugs(
     if (s === "preview" && !hasPreviewEnvironment) return false;
     return true;
   });
+}
+
+/**
+ * Drops env slugs the project has no environment for. Only touches keys present on the input, so a
+ * partial config update never clobbers a field the caller didn't mean to change.
+ */
+export function restrictConfigToAvailableEnvSlugs(
+  config: Partial<VercelIntegrationConfig>,
+  availableEnvSlugs: EnvSlug[]
+): Partial<VercelIntegrationConfig> {
+  const restricted = { ...config };
+
+  for (const key of ["atomicBuilds", "pullEnvVarsBeforeBuild", "discoverEnvVars"] as const) {
+    const slugs = restricted[key];
+    if (slugs) {
+      restricted[key] = slugs.filter((slug) => availableEnvSlugs.includes(slug));
+    }
+  }
+
+  if ("vercelStagingEnvironment" in restricted && !availableEnvSlugs.includes("stg")) {
+    restricted.vercelStagingEnvironment = null;
+  }
+
+  return restricted;
 }
 
 export function getAvailableEnvSlugsForBuildSettings(
