@@ -1,17 +1,22 @@
 // The resolver must produce what the executor already consumes, so the oracle is the
 // existing hydration and not a hand-written literal. A literal cannot catch a drift in
 // enhanceExecutionSnapshotWithWaitpoints itself; this can.
-import type { Waitpoint } from "@trigger.dev/database";
-import { describe, expect, it } from "vitest";
+import { postgresTest } from "@internal/testcontainers";
+import { PostgresRunStore } from "@internal/run-store";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
+import { describe, expect } from "vitest";
+import { seedChildRunWithOutput } from "./testFixtures/childRun.js";
 import { enhanceExecutionSnapshotWithWaitpoints } from "../systems/executionSnapshotSystem.js";
 import { buildCompletedWaitpointRecords } from "./completedWaitpointRecords.js";
-import { createCompletedWaitpointResolver } from "./completedWaitpointResolver.js";
+import {
+  createCompletedWaitpointResolver,
+  createRunOutputReader,
+} from "./completedWaitpointResolver.js";
 import { envelopeSourceFromWaitpointRow } from "./completionEnvelopeSource.js";
 import type { CompletionEnvelopeSource } from "./types.js";
 
 const COMPLETED_AT = new Date("2026-08-25T00:00:00.000Z");
 const RUN_ID = "run_0123456789abcdefghijklm";
-const CHILD_RUN_ID = "run_zyxwvutsrqponmlkjihgfe";
 const BATCH_ID = "batch_0123456789abcdefghijk";
 
 /**
@@ -70,25 +75,21 @@ function sortEntries<T extends { id: string; index?: number }>(entries: T[]): T[
  * variant makes — that TaskRun.output holds the same string.
  */
 async function bothPaths(
+  prisma: PrismaClient,
   pairs: ReturnType<typeof pair>[],
   order: string[],
   batchId: string | null = null
 ) {
-  const outputsByRunId = new Map<string, string>();
-  for (const { row } of pairs) {
-    if (row.completedByTaskRunId && row.output !== null) {
-      outputsByRunId.set(row.completedByTaskRunId, row.output);
-    }
-  }
-
   const expected = enhanceExecutionSnapshotWithWaitpoints(
     snapshot(batchId),
     pairs.map((p) => p.row),
     order
   ).completedWaitpoints;
 
+  const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
   const actual = await createCompletedWaitpointResolver({
-    readRunOutput: async (taskRunId) => outputsByRunId.get(taskRunId),
+    readRunOutput: createRunOutputReader(runStore),
   })({
     runId: RUN_ID,
     ...(batchId ? { batchId } : {}),
@@ -102,8 +103,9 @@ async function bothPaths(
 }
 
 describe("the resolver reproduces the existing hydration", () => {
-  it("for a single MANUAL waitpoint with an inline output", async () => {
+  postgresTest("for a single MANUAL waitpoint with an inline output", async ({ prisma }) => {
     const { expected, actual } = await bothPaths(
+      prisma,
       [pair({ id: "wp_manual", type: "MANUAL", output: '{"token":1}' })],
       []
     );
@@ -111,45 +113,54 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("for a MANUAL waitpoint with a user-provided idempotency key", async () => {
+  postgresTest(
+    "for a MANUAL waitpoint with a user-provided idempotency key",
+    async ({ prisma }) => {
+      const { expected, actual } = await bothPaths(
+        prisma,
+        [
+          pair({
+            id: "wp_manual",
+            type: "MANUAL",
+            output: '{"token":1}',
+            idempotencyKey: "user-key",
+            userProvidedIdempotencyKey: true,
+          }),
+        ],
+        []
+      );
+
+      expect(actual).toEqual(expected);
+      expect(actual[0]?.idempotencyKey).toBe("user-key");
+    }
+  );
+
+  postgresTest(
+    "for an idempotency key the user provided but that went inactive",
+    async ({ prisma }) => {
+      const { expected, actual } = await bothPaths(
+        prisma,
+        [
+          pair({
+            id: "wp_manual",
+            type: "MANUAL",
+            output: '{"token":1}',
+            idempotencyKey: "user-key",
+            userProvidedIdempotencyKey: true,
+            inactiveIdempotencyKey: "old",
+          }),
+        ],
+        []
+      );
+
+      expect(actual).toEqual(expected);
+      expect(actual[0]?.idempotencyKey).toBeUndefined();
+    }
+  );
+
+  postgresTest("for a DATETIME waitpoint", async ({ prisma }) => {
     const { expected, actual } = await bothPaths(
-      [
-        pair({
-          id: "wp_manual",
-          type: "MANUAL",
-          output: '{"token":1}',
-          idempotencyKey: "user-key",
-          userProvidedIdempotencyKey: true,
-        }),
-      ],
-      []
-    );
-
-    expect(actual).toEqual(expected);
-    expect(actual[0]?.idempotencyKey).toBe("user-key");
-  });
-
-  it("for an idempotency key the user provided but that went inactive", async () => {
-    const { expected, actual } = await bothPaths(
-      [
-        pair({
-          id: "wp_manual",
-          type: "MANUAL",
-          output: '{"token":1}',
-          idempotencyKey: "user-key",
-          userProvidedIdempotencyKey: true,
-          inactiveIdempotencyKey: "old",
-        }),
-      ],
-      []
-    );
-
-    expect(actual).toEqual(expected);
-    expect(actual[0]?.idempotencyKey).toBeUndefined();
-  });
-
-  it("for a DATETIME waitpoint", async () => {
-    const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_datetime",
@@ -163,14 +174,16 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("for a RUN waitpoint outside a batch", async () => {
+  postgresTest("for a RUN waitpoint outside a batch", async ({ prisma }) => {
+    const childRunId = await seedChildRunWithOutput(prisma, '{"ok":true}');
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_run",
           type: "RUN",
           output: '{"ok":true}',
-          completedByTaskRunId: CHILD_RUN_ID,
+          completedByTaskRunId: childRunId,
         }),
       ],
       []
@@ -179,14 +192,16 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("for a RUN waitpoint read under a batch", async () => {
+  postgresTest("for a RUN waitpoint read under a batch", async ({ prisma }) => {
+    const childRunId = await seedChildRunWithOutput(prisma, '{"ok":true}');
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_run",
           type: "RUN",
           output: '{"ok":true}',
-          completedByTaskRunId: CHILD_RUN_ID,
+          completedByTaskRunId: childRunId,
         }),
       ],
       ["wp_run"],
@@ -197,15 +212,17 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual[0]?.completedByTaskRun?.batch?.id).toBe(BATCH_ID);
   });
 
-  it("for a RUN waitpoint whose output is an error", async () => {
+  postgresTest("for a RUN waitpoint whose output is an error", async ({ prisma }) => {
+    const childRunId = await seedChildRunWithOutput(prisma, '{"message":"boom"}');
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_run",
           type: "RUN",
           output: '{"message":"boom"}',
           outputIsError: true,
-          completedByTaskRunId: CHILD_RUN_ID,
+          completedByTaskRunId: childRunId,
         }),
       ],
       []
@@ -214,8 +231,9 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("for a BATCH waitpoint", async () => {
+  postgresTest("for a BATCH waitpoint", async ({ prisma }) => {
     const { expected, actual } = await bothPaths(
+      prisma,
       [pair({ id: "wp_batch", type: "BATCH", completedByBatchId: BATCH_ID })],
       []
     );
@@ -223,8 +241,9 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual).toEqual(expected);
   });
 
-  it("for an already-offloaded output", async () => {
+  postgresTest("for an already-offloaded output", async ({ prisma }) => {
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_manual",
@@ -241,15 +260,17 @@ describe("the resolver reproduces the existing hydration", () => {
 
   // The case the suite was blind to, and the one the frozen reference orders the other way. The
   // oracle emits the ref string; so does this, by a different branch.
-  it("for an offloaded RUN success", async () => {
+  postgresTest("for an offloaded RUN success", async ({ prisma }) => {
+    const childRunId = await seedChildRunWithOutput(prisma, "s3://bucket/key");
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_run_ref",
           type: "RUN",
           output: "s3://bucket/key",
           outputType: "application/store",
-          completedByTaskRunId: CHILD_RUN_ID,
+          completedByTaskRunId: childRunId,
         }),
       ],
       []
@@ -259,14 +280,16 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual[0]?.output).toBe("s3://bucket/key");
   });
 
-  it("for one run present at two batch indexes", async () => {
+  postgresTest("for one run present at two batch indexes", async ({ prisma }) => {
+    const childRunId = await seedChildRunWithOutput(prisma, '{"ok":true}');
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_run",
           type: "RUN",
           output: '{"ok":true}',
-          completedByTaskRunId: CHILD_RUN_ID,
+          completedByTaskRunId: childRunId,
         }),
       ],
       ["wp_run", "wp_run"],
@@ -277,15 +300,19 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual.map((w) => w.index)).toEqual([0, 1]);
   });
 
-  it("for an index-less waitpoint sitting beside indexed ones", async () => {
+  postgresTest("for an index-less waitpoint sitting beside indexed ones", async ({ prisma }) => {
+    // Seeded to match the RUN row's own output, which is the parity premise: TaskRun.output
+    // holds the same string the waitpoint carried.
+    const childRunId = await seedChildRunWithOutput(prisma, '{"ok":true}');
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({ id: "wp_indexless", type: "MANUAL", output: '{"token":1}' }),
         pair({
           id: "wp_run",
           type: "RUN",
           output: '{"ok":true}',
-          completedByTaskRunId: CHILD_RUN_ID,
+          completedByTaskRunId: childRunId,
         }),
       ],
       ["wp_run"],
@@ -300,8 +327,9 @@ describe("the resolver reproduces the existing hydration", () => {
   // an output, but the executor never reads it (sharedRuntimeManager.resolveWaitpoint
   // early-returns on type). Pinned so that if that early return ever goes away, this fails and
   // says why, instead of the output silently being missing at resume.
-  it("deliberately drops a BATCH output, unlike the oracle", async () => {
+  postgresTest("deliberately drops a BATCH output, unlike the oracle", async ({ prisma }) => {
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_batch",
@@ -319,14 +347,16 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual[0]?.outputIsError).toBe(true);
   });
 
-  it("for every type at once, under a batch", async () => {
+  postgresTest("for every type at once, under a batch", async ({ prisma }) => {
+    const childRunId = await seedChildRunWithOutput(prisma, '{"ok":true}');
     const { expected, actual } = await bothPaths(
+      prisma,
       [
         pair({
           id: "wp_run",
           type: "RUN",
           output: '{"ok":true}',
-          completedByTaskRunId: CHILD_RUN_ID,
+          completedByTaskRunId: childRunId,
         }),
         pair({ id: "wp_batch", type: "BATCH", completedByBatchId: BATCH_ID }),
         pair({

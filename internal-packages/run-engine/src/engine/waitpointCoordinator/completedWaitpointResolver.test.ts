@@ -20,17 +20,18 @@ function record(overrides: Partial<CompletedWaitpointRecord> = {}): CompletedWai
   };
 }
 
-const noRunOutput = { readRunOutput: async () => undefined };
-
 type CaseArgs = Omit<ResolveArgs, "distinctIds"> & { distinctIds?: string[] };
 
 /**
+ * Built with NO run-output reader, deliberately. Every case here carries inline, ref or null
+ * output, so none reaches the branch that reads Postgres.
+ *
  * Fills `distinctIds` from the records when a case does not name it, because most cases are
  * about the expansion rather than the membership. The coverage-check cases set it explicitly,
  * since there it IS the subject.
  */
-function resolver(readRunOutput?: (taskRunId: string) => Promise<string | undefined>) {
-  const resolve = createCompletedWaitpointResolver(readRunOutput ? { readRunOutput } : noRunOutput);
+function resolver() {
+  const resolve = createCompletedWaitpointResolver({});
   return (over: CaseArgs) =>
     resolve({ ...over, distinctIds: over.distinctIds ?? over.records.map((r) => r.id) });
 }
@@ -210,55 +211,10 @@ describe("the output hydration", () => {
     expect(entry?.output).toBe("store-key-1");
   });
 
-  it("reads a deriveFromRun output from the run", async () => {
-    const [entry] = await resolver(async (id) =>
-      id === "run_child" ? '{"derived":true}' : undefined
-    )({
-      runId: "run_1",
-      pointer: CYCLE,
-      order: [],
-      records: [
-        record({ type: "RUN", completedByTaskRunId: "run_child", output: { deriveFromRun: true } }),
-      ],
-    });
-
-    expect(entry?.output).toBe('{"derived":true}');
-  });
-
-  // Postgres does not lose this: the back-reference nulls on delete but Waitpoint.output stays,
-  // so the legacy path still emits it. Resolving to undefined would resolve the parent's
-  // triggerAndWait successfully with no output, which is silent wrong data.
-  it("refuses when the run row it defers to is gone", async () => {
-    const failure = await resolver()({
-      runId: "run_1",
-      pointer: CYCLE,
-      order: [],
-      records: [
-        record({ type: "RUN", completedByTaskRunId: "run_gone", output: { deriveFromRun: true } }),
-      ],
-    }).catch((caught: unknown) => caught as UnresolvableWaitpointId);
-
-    expect(failure).toBeInstanceOf(UnresolvableWaitpointId);
-    expect(failure.reason).toBe("lost-run-output");
-  });
-
-  it("reads the run once for a record that expands to several entries", async () => {
-    const reads: string[] = [];
-    const result = await resolver(async (id) => {
-      reads.push(id);
-      return '{"derived":true}';
-    })({
-      runId: "run_1",
-      pointer: { cycleSeq: 1, count: 2 },
-      order: ["wp_1", "wp_1"],
-      records: [
-        record({ type: "RUN", completedByTaskRunId: "run_child", output: { deriveFromRun: true } }),
-      ],
-    });
-
-    expect(result).toHaveLength(2);
-    expect(reads).toEqual(["run_child"]);
-  });
+  // The deriveFromRun branch is the resolver's only Postgres read, so its cases live in
+  // completedWaitpointResolver.runOutput.test.ts against a real TaskRun row: the found output,
+  // the deleted row, the output-less row, the one-read-per-record property, and the unwired
+  // reader. Faking the read here would assert only that the fake was called.
 
   it("leaves the output undefined when the record carries none", async () => {
     const [entry] = await resolver()({

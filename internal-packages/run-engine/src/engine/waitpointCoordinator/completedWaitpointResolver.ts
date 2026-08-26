@@ -1,4 +1,9 @@
-import type { CompletedWaitpointRecord, ResolveCompletedWaitpointsArgs } from "@internal/run-store";
+import type {
+  CompletedWaitpointRecord,
+  ReadClient,
+  ResolveCompletedWaitpointsArgs,
+  RunStore,
+} from "@internal/run-store";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
 
@@ -33,9 +38,29 @@ export class UnresolvableWaitpointId extends Error {
 }
 
 export type CompletedWaitpointResolverDeps = {
-  /** Reads TaskRun.output. Returns undefined when the row is gone. */
-  readRunOutput(taskRunId: string): Promise<string | undefined>;
+  /**
+   * Reads TaskRun.output. Returns undefined when the row is gone.
+   *
+   * Optional, because most cycles carry no `deriveFromRun` record and therefore never need it.
+   * A cycle that DOES carry one without a reader is a wiring error, not a data condition, so it
+   * throws rather than resolving empty.
+   */
+  readRunOutput?(taskRunId: string): Promise<string | undefined>;
 };
+
+/**
+ * The production reader: TaskRun.output for the completing run, through the store so the read
+ * routes to the run's owning database.
+ */
+export function createRunOutputReader(
+  runStore: Pick<RunStore, "findRun">,
+  client?: ReadClient
+): (taskRunId: string) => Promise<string | undefined> {
+  return async (taskRunId) => {
+    const run = await runStore.findRun({ id: taskRunId }, { select: { output: true } }, client);
+    return run?.output ?? undefined;
+  };
+}
 
 export type ResolveArgs = ResolveCompletedWaitpointsArgs & {
   /** Ids the caller resolved from Postgres rows. Read by the coverage check only. */
@@ -153,6 +178,12 @@ async function hydrateOutput(
 
   if (!record.completedByTaskRunId) {
     return undefined;
+  }
+
+  if (!deps.readRunOutput) {
+    throw new Error(
+      `Waitpoint ${record.id} defers its output to run ${record.completedByTaskRunId}, but the resolver was built with no run-output reader.`
+    );
   }
 
   // Postgres does not lose this: the back-reference nulls on delete but Waitpoint.output stays,
