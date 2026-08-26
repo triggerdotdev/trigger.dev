@@ -193,13 +193,18 @@ function DotMatrixTab() {
         ))}
       </div>
       <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
-        Action icon candidates — rounded dot-matrix silhouettes, generated from circular/ elliptical
-        bands rather than hand-drawn corners. `currentColor`, same box as any other icon. Not wired
-        into `InvestigateButton.tsx` / `WatchButton.tsx` — comparison only.
+        Action icon candidates — silhouettes on the exact same grid as the shapes above (same
+        `dotMatrixGeometry`, grid always visible, same as "Face options"). Every lit dot sits on a
+        grid node; none off-grid, none resized. `currentColor`, same box as any other icon. Not
+        wired into `InvestigateButton.tsx` / `WatchButton.tsx` — comparison only.
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         <div className="flex flex-col items-center gap-2">
-          <InvestigateDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} />
+          <InvestigateDotIcon
+            className="text-text-bright"
+            style={{ width: 32, height: 32 }}
+            showGrid
+          />
           <div className="text-[10px] uppercase tracking-wide text-text-dimmed">
             investigate — magnifier
           </div>
@@ -208,17 +213,18 @@ function DotMatrixTab() {
           <InvestigateGlassesDotIcon
             className="text-text-bright"
             style={{ width: 32, height: 32 }}
+            showGrid
           />
           <div className="text-[10px] uppercase tracking-wide text-text-dimmed">
             investigate — glasses
           </div>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <WatchDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} />
+          <WatchDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} showGrid />
           <div className="text-[10px] uppercase tracking-wide text-text-dimmed">watch — eye</div>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <AlertDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} />
+          <AlertDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} showGrid />
           <div className="text-[10px] uppercase tracking-wide text-text-dimmed">alert — bell</div>
         </div>
       </div>

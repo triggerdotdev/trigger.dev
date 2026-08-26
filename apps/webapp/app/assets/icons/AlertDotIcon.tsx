@@ -1,29 +1,18 @@
 import { DotMatrixIcon } from "./dotMatrixIcon";
 
-// Dot-matrix ("LED"/flip-dot) variant of an Alert bell icon, for the Investigate/Watch
-// comparison set in storybook.ai-agent's shape library: a rounded bell body (circular
-// annulus arc, "s" softening the edge) over a flared lip, with a clapper dot. Not used
-// anywhere in the app.
-const BITMAP = [
-  ".....o.....",
-  "....sss....",
-  "...os.so...",
-  "..o.....o..",
-  "..o.....o..",
-  "..o.....o..",
-  "..ss...ss..",
-  ".ooooooooo.",
-  ".....o.....",
-  "....ooo....",
-  ".....o.....",
-];
+// Dot-matrix bell variant for the Investigate/Watch comparison set, drawn on the same
+// 5x5 grid as the Shape library: knob, rounded dome sides, flared lip, clapper. For
+// comparison in storybook.ai-agent; not used anywhere in the app.
+const BITMAP = ["..o..", ".ooo.", "o...o", "ooooo", "..o.."];
 
 export function AlertDotIcon({
   className,
   style,
+  showGrid,
 }: {
   className?: string;
   style?: React.CSSProperties;
+  showGrid?: boolean;
 }) {
-  return <DotMatrixIcon bitmap={BITMAP} className={className} style={style} />;
+  return <DotMatrixIcon bitmap={BITMAP} className={className} style={style} showGrid={showGrid} />;
 }

@@ -1,31 +1,32 @@
+import { dotMatrixGeometry, MATRIX } from "~/components/primitives/AgentDotMatrix";
+
 /**
- * Coarse dot-matrix ("LED"/flip-dot) rendering of an icon silhouette: a bitmap of
- * "o"/"s"/"." rows becomes a grid of `currentColor` circles at a fixed viewBox, so it
- * drops in anywhere a normal icon does. "s" is a smaller dot — used at the inner/outer
- * edge of a curved band so the silhouette reads rounder instead of stair-stepped. Used
- * by the storybook-only dot-matrix icon variants — not wired into any live UI.
+ * A silhouette drawn on the exact same grid as the Shape library's `AgentDotMatrix`
+ * shapes ("Face options" in storybook.ai-agent): `MATRIX`x`MATRIX` nodes, same pitch,
+ * same dot radius (`dotMatrixGeometry`) — every lit dot sits on a grid node, none
+ * off-grid, none resized. `currentColor`, so it drops in anywhere a normal icon does.
+ * Used by the storybook-only dot-matrix icon variants — not wired into any live UI.
  */
 export function DotMatrixIcon({
   bitmap,
   className,
   style,
   size = 24,
-  dotRadius = 1.15,
-  smallDotRadius = dotRadius * 0.6,
+  /** Faint always-visible grid, matching "Face options" (`gridAtRest`) at its own default opacity. */
+  showGrid = false,
+  gridOpacity = 0.18,
 }: {
-  /** Equal-length rows: "o" = full dot, "s" = small dot, "." = off. */
+  /** Exactly `MATRIX` rows of `MATRIX` chars: "o" = lit, "." = off. */
   bitmap: string[];
   className?: string;
   /** `width`/`height` here override `size`, matching how heroicons is usually sized. */
   style?: React.CSSProperties;
   size?: number;
-  dotRadius?: number;
-  smallDotRadius?: number;
+  showGrid?: boolean;
+  gridOpacity?: number;
 }) {
-  const rows = bitmap.length;
-  const cols = bitmap[0]?.length ?? 0;
-  const cellW = size / cols;
-  const cellH = size / rows;
+  const { pitch, dotR } = dotMatrixGeometry(size);
+  const center = (i: number) => i * pitch + pitch / 2;
 
   return (
     <svg
@@ -37,18 +38,24 @@ export function DotMatrixIcon({
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {bitmap.flatMap((row, r) =>
-        [...row].map((cell, c) => {
-          if (cell !== "o" && cell !== "s") return null;
+      {showGrid &&
+        Array.from({ length: MATRIX * MATRIX }, (_, i) => {
+          const r = Math.floor(i / MATRIX);
+          const c = i % MATRIX;
           return (
             <circle
-              key={`${r}-${c}`}
-              cx={c * cellW + cellW / 2}
-              cy={r * cellH + cellH / 2}
-              r={cell === "s" ? smallDotRadius : dotRadius}
+              key={`ghost-${r}-${c}`}
+              cx={center(c)}
+              cy={center(r)}
+              r={dotR}
+              opacity={gridOpacity}
             />
           );
-        })
+        })}
+      {bitmap.flatMap((row, r) =>
+        [...row].map((cell, c) =>
+          cell === "o" ? <circle key={`${r}-${c}`} cx={center(c)} cy={center(r)} r={dotR} /> : null
+        )
       )}
     </svg>
   );

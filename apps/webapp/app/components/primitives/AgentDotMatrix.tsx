@@ -25,7 +25,19 @@ import { useThemeMode } from "~/hooks/useThemeMode";
 //   into it. The default playlist is sequenced so every consecutive pair of
 //   shapes shares dots.
 
-const MATRIX = 5;
+export const MATRIX = 5;
+
+/**
+ * The grid geometry every dot in the library shares: a `MATRIX`x`MATRIX` grid, dot
+ * centered per cell, radius 30% of the cell pitch (never below 0.75px). Static icon
+ * variants (e.g. `dotMatrixIcon.tsx`) reuse this so they read as native shape-library
+ * members instead of a different dot system.
+ */
+export function dotMatrixGeometry(size: number) {
+  const pitch = size / MATRIX;
+  const dotR = Math.max(0.75, pitch * 0.3);
+  return { pitch, dotR };
+}
 
 // --- shapes (5-line bitmaps: "o" = dot on) ---------------------------------
 

@@ -1,27 +1,18 @@
 import { DotMatrixIcon } from "./dotMatrixIcon";
 
-// Dot-matrix ("LED"/flip-dot) variant of the Watch action's eye icon (heroicons
-// `EyeIcon`), for comparison in storybook.ai-agent's shape library. 9x9, generated from
-// an elliptical band (not hand-drawn corners) so the almond outline reads round; "s"
-// softens the band's inner/outer edge. Not used anywhere in the app.
-const BITMAP = [
-  ".........",
-  ".........",
-  "..sooos..",
-  ".o..o..o.",
-  ".o.ooo.o.",
-  ".o..o..o.",
-  "..sooos..",
-  ".........",
-  ".........",
-];
+// Dot-matrix variant of the Watch action's eye icon (heroicons `EyeIcon`), drawn on the
+// same 5x5 grid as the Shape library: an outline ring with a pupil dot at center. For
+// comparison in storybook.ai-agent; not used anywhere in the app.
+const BITMAP = [".....", ".ooo.", "o.o.o", ".ooo.", "....."];
 
 export function WatchDotIcon({
   className,
   style,
+  showGrid,
 }: {
   className?: string;
   style?: React.CSSProperties;
+  showGrid?: boolean;
 }) {
-  return <DotMatrixIcon bitmap={BITMAP} className={className} style={style} />;
+  return <DotMatrixIcon bitmap={BITMAP} className={className} style={style} showGrid={showGrid} />;
 }
