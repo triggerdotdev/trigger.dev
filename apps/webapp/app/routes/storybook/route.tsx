@@ -95,6 +95,7 @@ const sections: StorySection[] = [
       { name: "Page header", slug: "page-header" },
       { name: "Tree view", slug: "tree-view" },
       { name: "Resizable", slug: "resizable" },
+      { name: "Draggable resizable", slug: "draggable-resizable" },
       { name: "Animated panel", slug: "animated-panel" },
       { name: "Accordion", slug: "accordion" },
     ],

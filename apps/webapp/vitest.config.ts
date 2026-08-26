@@ -22,6 +22,7 @@ export default defineConfig({
       "app/components/runs/**/*.test.ts",
       "app/components/dashboard-agent/**/*.test.ts",
       "app/components/queues/**/*.test.ts",
+      "app/components/primitives/**/*.test.ts",
       "app/routes/storybook.agent-ui/*.test.ts",
       "app/presenters/v3/reports/**/*.test.ts",
     ],
