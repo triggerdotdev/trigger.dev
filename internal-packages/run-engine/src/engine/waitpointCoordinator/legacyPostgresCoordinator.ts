@@ -1,6 +1,6 @@
 import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { mintWaitpointIdFor, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
@@ -239,6 +239,8 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // The two `nanoid(24)` calls below are deliberately separate and produce DIFFERENT values:
     // the upsert `where` key must not match the `create` key, or a guaranteed-miss upsert becomes
     // a possible update. Do not hoist either to a shared constant.
+    // The id is stamped for the anchor run's shard, so the waitpoint's own row is routable
+    // and its completion write needs no probe. A gen-1 or legacy anchor keeps a cuid.
     const upsertArgs = {
       where: {
         environmentId_idempotencyKey: {
@@ -247,7 +249,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
         },
       },
       create: {
-        ...WaitpointId.generate(),
+        ...mintWaitpointIdFor(runId),
         type: "DATETIME" as const,
         idempotencyKey: idempotencyKey ?? nanoid(24),
         idempotencyKeyExpiresAt,
@@ -330,8 +332,9 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     while (attempts < maxRetries) {
       try {
         // As in createDateTimeWaitpoint, the two `nanoid(24)` calls are deliberately separate and
-        // differ. Both, and `WaitpointId.generate()`, are re-evaluated on every attempt: that is
-        // what makes a retry after a unique-constraint conflict try a fresh key.
+        // differ. Both, and the id mint, are re-evaluated on every attempt: that is what makes a
+        // retry after a unique-constraint conflict try a fresh key. The anchor does not change,
+        // so every attempt stays on the same shard.
         const waitpoint = await this.runStore.upsertWaitpoint(
           {
             where: {
@@ -341,7 +344,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
               },
             },
             create: {
-              ...WaitpointId.generate(),
+              ...mintWaitpointIdFor(runId),
               type: "MANUAL",
               idempotencyKey: idempotencyKey ?? nanoid(24),
               idempotencyKeyExpiresAt,
