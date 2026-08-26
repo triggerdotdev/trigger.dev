@@ -1,4 +1,5 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type UserActorClaims } from "@trigger.dev/rbac";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import {
@@ -15,12 +16,14 @@ import {
   subscribeChannelToWatchAlerts,
   watchAlertDeduplicationKey,
 } from "~/services/dashboardAgentWatchAlerts.server";
+import { resolveAgentTokenScope } from "~/services/dashboardAgentTokenScope";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 /**
- * `GET` lists this chat's project's watch alerts; `POST` subscribes the user's email. Only
- * the agent's delegated user-actor token is accepted, and the environment comes from it.
+ * `GET` lists this chat's project's watch alerts; `POST` subscribes the user's email. Only the
+ * agent's delegated user-actor token is accepted. An environment-pinned token fixes the
+ * environment; an org-wide one lets the request name any environment in its org.
  */
 
 const ListQuerySchema = z.object({
@@ -38,24 +41,16 @@ const CreateBodySchema = z.object({
   projectRef: z.string().min(1).optional(),
 });
 
-/** A token without an environment scope is unusable here. */
+/** A token that scopes neither an environment nor an organization is unusable here. */
 async function authenticate(
   request: Request
-): Promise<{ userId: string; environmentId: string } | { error: Response }> {
+): Promise<{ userId: string; claims: UserActorClaims } | { error: Response }> {
   const authentication = await authenticateUatOrApiRequest(request);
   const actor = authentication?.userActor;
   if (!actor || actor.client !== "dashboard-agent") {
     return { error: json({ error: "Invalid or missing access token" }, { status: 401 }) };
   }
-  if (!actor.environmentId) {
-    return {
-      error: json(
-        { error: "This chat has no environment context.", code: "invalid_target" },
-        { status: 400 }
-      ),
-    };
-  }
-  return { userId: actor.userId, environmentId: actor.environmentId };
+  return { userId: actor.userId, claims: actor };
 }
 
 /** A mismatched claim is the caller's error, the rest are 404s. */
@@ -74,9 +69,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
 
+  const scope = resolveAgentTokenScope(auth.claims, { environmentId: query.data.environmentId });
+  if (!scope.ok) {
+    return json({ error: scope.error, code: scope.code }, { status: 400 });
+  }
+
   const context = await resolveAgentAlertContext({
     userId: auth.userId,
-    environmentId: auth.environmentId,
+    environmentId: scope.environmentId,
+    organizationId: scope.organizationId,
     chatId: query.data.chatId,
     claimedEnvironmentId: query.data.environmentId,
     claimedProjectRef: query.data.projectRef,
@@ -130,9 +131,15 @@ export async function action({ request }: ActionFunctionArgs) {
   }
   const body = parsed.data;
 
+  const scope = resolveAgentTokenScope(auth.claims, { environmentId: body.environmentId });
+  if (!scope.ok) {
+    return json({ error: scope.error, code: scope.code }, { status: 400 });
+  }
+
   const context = await resolveAgentAlertContext({
     userId,
-    environmentId: auth.environmentId,
+    environmentId: scope.environmentId,
+    organizationId: scope.organizationId,
     chatId: body.chatId,
     claimedEnvironmentId: body.environmentId,
     claimedProjectRef: body.projectRef,

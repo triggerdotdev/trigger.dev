@@ -3,6 +3,7 @@ import { watchSpecSchema } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { resolveWatchEmailAlertsState } from "~/services/dashboardAgentWatchAlerts.server";
+import { resolveAgentTokenScope } from "~/services/dashboardAgentTokenScope";
 import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.server";
 import {
   authorizeWatchEnvironmentById,
@@ -12,8 +13,10 @@ import {
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 /**
- * Programmatic watch creation (MCP). Only the agent's delegated user-actor token is
- * accepted, and the environment comes from it, never the body or the chat's stored context.
+ * Programmatic watch creation (MCP). Only the agent's delegated user-actor token is accepted.
+ * An environment-pinned token fixes the environment; an org-wide one lets the body name any
+ * environment in its org, re-authorized against the user's membership, and falls back to the
+ * token's own environment when the body names none. Never the chat's stored context.
  */
 
 const BodySchema = z.object({
@@ -22,8 +25,8 @@ const BodySchema = z.object({
   /** Consent for the wake turn to open an investigation. Off unless explicitly sent. */
   investigateOnAttention: z.boolean().optional(),
   /**
-   * Only checked against the token's environment scope, never used in its place.
-   * `environmentId` is the canonical `RuntimeEnvironment.id`, not a slug.
+   * Checked against an environment-pinned token; the target for an org-wide one, and then
+   * still re-authorized. `environmentId` is the canonical `RuntimeEnvironment.id`, not a slug.
    */
   projectRef: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
@@ -42,14 +45,6 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Not allowed", code: "forbidden_client" }, { status: 403 });
   }
   const userId = authentication.userActor.userId;
-  // The environment this turn is scoped to. There is no trusted fallback.
-  const environmentId = authentication.userActor.environmentId;
-  if (!environmentId) {
-    return json(
-      { error: "This chat has no environment context to watch in.", code: "invalid_target" },
-      { status: 400 }
-    );
-  }
 
   let rawBody: unknown;
   try {
@@ -64,7 +59,17 @@ export async function action({ request }: ActionFunctionArgs) {
   }
   const parsed = parsedBody.data;
 
-  // Refuse a body naming a different environment rather than silently picking one.
+  // The environment this turn may watch in. There is no trusted fallback.
+  const scope = resolveAgentTokenScope(authentication.userActor, {
+    environmentId: parsed.environmentId,
+  });
+  if (!scope.ok) {
+    return json({ error: scope.error, code: scope.code }, { status: 400 });
+  }
+  const environmentId = scope.environmentId;
+
+  // An environment-pinned token refuses a body naming a different environment rather than
+  // silently picking one. An org-wide one resolved to the body's environment already.
   if (parsed.environmentId && parsed.environmentId !== environmentId) {
     return json(
       {
@@ -85,6 +90,10 @@ export async function action({ request }: ActionFunctionArgs) {
     // The same authorization a background check applies.
     const environment = await authorizeWatchEnvironmentById({ userId, environmentId });
     if (!environment) {
+      return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+    }
+    // An org-wide token stops at its own org, whichever environment the request named.
+    if (scope.organizationId && environment.organizationId !== scope.organizationId) {
       return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
     }
     // A chat belongs to one org; its watches can't point at another org's env.

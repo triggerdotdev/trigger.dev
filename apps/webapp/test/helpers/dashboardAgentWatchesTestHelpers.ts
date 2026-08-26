@@ -15,7 +15,9 @@ export type DashboardAgentWatchesTestContext = {
   prisma: PrismaClient;
   agentDb: DashboardAgentDb;
   canAccess: boolean;
-  actor: undefined | { userId: string; client?: string; environmentId?: string };
+  actor:
+    | undefined
+    | { userId: string; client?: string; environmentId?: string; organizationId?: string };
   /** Every task id the suite would have triggered for real. */
   triggered: string[];
 };

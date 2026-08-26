@@ -18,8 +18,10 @@ export type AgentAlertContext =
 export async function resolveAgentAlertContext(params: {
   userId: string;
   chatId: string;
-  /** The turn's environment scope, off the user-actor token. The authority here. */
+  /** The environment this turn resolved to. The authority here. */
   environmentId: string;
+  /** Set for an org-wide token: the environment must belong to this org. */
+  organizationId?: string;
   /** Optional echoes from the request body. Checked, never trusted. */
   claimedEnvironmentId?: string;
   claimedProjectRef?: string;
@@ -42,6 +44,9 @@ export async function resolveAgentAlertContext(params: {
     environmentId: params.environmentId,
   });
   if (!environment || environment.organizationId !== chat.organizationId) {
+    return { ok: false, code: "invalid_target", error: "Environment not found" };
+  }
+  if (params.organizationId && environment.organizationId !== params.organizationId) {
     return { ok: false, code: "invalid_target", error: "Environment not found" };
   }
 

@@ -70,6 +70,7 @@ export async function kickWatchInvestigation(params: {
     apiOrigin: userApiOrigin,
     userActorToken: await mintDashboardAgentUserActorToken(watch.userId, {
       environmentId: watch.environmentId,
+      organizationId: watch.organizationId,
     }),
   };
 

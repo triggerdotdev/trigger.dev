@@ -13,6 +13,7 @@ import { previousCheckFacts } from "~/services/dashboardAgentWatchChecks";
 import {
   BACKLOG,
   DashboardAgentWatchesTestHarness,
+  HEALTH,
   RUN_START,
   readRunOnce,
   type DashboardAgentWatchesTestContext,
@@ -765,6 +766,72 @@ describe("the createWatch endpoint's authorization", () => {
       });
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ code: "environment_mismatch" });
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "lets an org-wide token watch another environment in its org",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "orgwide");
+      const sibling = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "staging",
+          type: "STAGING",
+          projectId: seeded.project.id,
+          organizationId: seeded.organization.id,
+          apiKey: `tr_stg_${seeded.project.slug}`,
+          pkApiKey: `pk_stg_${seeded.project.slug}`,
+          shortcode: `s${seeded.project.slug.slice(0, 6)}`,
+        },
+      });
+      await seedChat(seeded, "chat_1");
+
+      ctx.actor = {
+        userId: seeded.user.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+        organizationId: seeded.organization.id,
+      };
+
+      // A report spec: its target needs no seeded runtime row, so a 200 here is the
+      // authorization answer and nothing else.
+      const response = await post({ spec: HEALTH, chatId: "chat_1", environmentId: sibling.id });
+      expect(response.status).toBe(200);
+      const watches = await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" });
+      expect(watches).toHaveLength(1);
+      expect(watches[0]?.environmentId).toBe(sibling.id);
+    }
+  );
+
+  postgresTest(
+    "refuses an org-wide token pointed at another org's environment",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "orgclaim");
+      const other = await seed(prisma, "otherorgclaim");
+      // A member of both orgs, and the chat lives in the other one, so nothing but the
+      // token's own organization claim stands between the request and that environment.
+      await prisma.orgMember.create({
+        data: { organizationId: other.organization.id, userId: seeded.user.id, role: "ADMIN" },
+      });
+      await createChat(ctx.agentDb, {
+        id: "chat_1",
+        organizationId: other.organization.id,
+        userId: seeded.user.id,
+      });
+
+      ctx.actor = {
+        userId: seeded.user.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+        organizationId: seeded.organization.id,
+      };
+
+      const response = await post({ ...validBody("chat_1"), environmentId: other.environment.id });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({ code: "invalid_target" });
       expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
     }
   );

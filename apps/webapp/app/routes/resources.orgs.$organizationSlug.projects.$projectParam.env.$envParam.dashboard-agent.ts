@@ -344,6 +344,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             ...clientContext,
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv.id,
+              organizationId: project.organizationId,
             }),
             apiOrigin: dashboardAgentUserApiOrigin(),
             projectRef: project.externalRef,

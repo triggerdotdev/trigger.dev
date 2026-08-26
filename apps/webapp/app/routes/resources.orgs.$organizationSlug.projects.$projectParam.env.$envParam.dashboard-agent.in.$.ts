@@ -160,6 +160,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       try {
         userActorToken = await mintDashboardAgentUserActorToken(user.id, {
           environmentId: runtimeEnv.id,
+          organizationId: project.organizationId,
         });
       } catch (error) {
         logger.error("Dashboard agent in-proxy could not mint a token", { error, upstreamPath });

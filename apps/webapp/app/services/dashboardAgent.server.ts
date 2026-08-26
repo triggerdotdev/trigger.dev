@@ -60,15 +60,17 @@ export function dashboardAgentUserApiOrigin(): string {
 // metadata so the token reaches the agent without ever touching the browser.
 //
 // Endpoints that bind something to one environment read `environmentId` off the token,
-// so the agent can't name a different one in a request body.
+// so the agent can't name a different one in a request body. `organizationId` is the outer
+// boundary: it never widens what `environmentId` already pins.
 export function mintDashboardAgentUserActorToken(
   userId: string,
-  opts: { environmentId: string }
+  opts: { environmentId: string; organizationId: string }
 ): Promise<string> {
   return signUserActorToken(env.SESSION_SECRET, {
     userId,
     client: "dashboard-agent",
     environmentId: opts.environmentId,
+    organizationId: opts.organizationId,
     cap: DASHBOARD_AGENT_UAT_CAP,
     expirationTime: Math.floor(Date.now() / 1000) + DASHBOARD_AGENT_UAT_TTL_SECONDS,
   });
