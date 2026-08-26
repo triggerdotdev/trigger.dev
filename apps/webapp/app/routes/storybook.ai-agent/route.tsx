@@ -1,14 +1,5 @@
 import { ComponentNames } from "../storybook/StoryKit";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { AlertDotIcon } from "~/assets/icons/AlertDotIcon";
-import { CrosshairDotIcon } from "~/assets/icons/CrosshairDotIcon";
-import { FingerprintDotIcon } from "~/assets/icons/FingerprintDotIcon";
-import { FlashlightDotIcon } from "~/assets/icons/FlashlightDotIcon";
-import { InvestigateDotIcon } from "~/assets/icons/InvestigateDotIcon";
-import { InvestigateGlassesDotIcon } from "~/assets/icons/InvestigateGlassesDotIcon";
-import { RadarDotIcon } from "~/assets/icons/RadarDotIcon";
-import { SonarDotIcon } from "~/assets/icons/SonarDotIcon";
-import { WatchDotIcon } from "~/assets/icons/WatchDotIcon";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import {
@@ -22,13 +13,16 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   AgentDotMatrix,
   AgentMonoLogo,
+  dotMatrixGeometry,
   DOT_MATRIX_PALETTES,
   DOT_SHAPES,
   EXTRA_FACE_SHAPES,
   FACE_SHAPES,
+  MATRIX,
   type DotMatrixPaletteName,
   type DotShapeName,
 } from "~/components/primitives/AgentDotMatrix";
+import { cn } from "~/utils/cn";
 
 // Experiments for the trigger.dev AI dashboard-agent identity: a resting logo
 // that animates while the agent thinks. Each tab is a separate experiment.
@@ -37,20 +31,7 @@ export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="px-4 pt-4">
-        <ComponentNames
-          names={[
-            "AgentDotMatrix.tsx",
-            "InvestigateDotIcon.tsx",
-            "InvestigateGlassesDotIcon.tsx",
-            "RadarDotIcon.tsx",
-            "FingerprintDotIcon.tsx",
-            "CrosshairDotIcon.tsx",
-            "FlashlightDotIcon.tsx",
-            "SonarDotIcon.tsx",
-            "WatchDotIcon.tsx",
-            "AlertDotIcon.tsx",
-          ]}
-        />
+        <ComponentNames names={["AgentDotMatrix.tsx"]} />
       </div>
       <div className="flex max-w-3xl flex-col gap-1">
         <Header1>Trigger Agent — Icons & Buttons</Header1>
@@ -85,13 +66,6 @@ export default function Story() {
 }
 
 // --- Dot matrix (5x5) ---------------------------------------------------------
-
-/** Any `*DotIcon` component: the shared shape shared by every icon in the candidate lists below. */
-type DotIconComponent = React.ComponentType<{
-  className?: string;
-  style?: CSSProperties;
-  showGrid?: boolean;
-}>;
 
 function DotMatrixTab() {
   return (
@@ -210,39 +184,66 @@ function DotMatrixTab() {
         ))}
       </div>
       <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
-        Action icon candidates — silhouettes on the exact same grid as the shapes above (same
-        `dotMatrixGeometry`, grid always visible, same as "Face options"). Every lit dot sits on a
-        grid node; none off-grid, none resized. `currentColor`, same box as any other icon. Not
-        wired into `InvestigateButton.tsx` / `WatchButton.tsx` — comparison only.
+        Icon editor — same grid as the shapes above (`dotMatrixGeometry`, `MATRIX`x`MATRIX`), at
+        1.5x the size the candidates were shown at. Click a dot to toggle it; the bitmap below reads
+        back as a `MATRIX`-line string, ready to paste into a shape definition.
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
-        {(
-          [
-            [InvestigateDotIcon, "investigate — magnifier"],
-            [InvestigateGlassesDotIcon, "investigate — glasses"],
-            [RadarDotIcon, "investigate — radar"],
-            [FingerprintDotIcon, "investigate — fingerprint"],
-            [CrosshairDotIcon, "investigate — crosshair"],
-            [FlashlightDotIcon, "investigate — flashlight"],
-            [SonarDotIcon, "investigate — sonar ping"],
-          ] as [DotIconComponent, string][]
-        ).map(([Icon, label]) => (
-          <div key={label} className="flex flex-col items-center gap-2">
-            <Icon className="text-text-bright" style={{ width: 32, height: 32 }} showGrid />
-            <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{label}</div>
-          </div>
-        ))}
+        <DotGridEditor />
       </div>
-      <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
-        <div className="flex flex-col items-center gap-2">
-          <WatchDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} showGrid />
-          <div className="text-[10px] uppercase tracking-wide text-text-dimmed">watch — eye</div>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <AlertDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} showGrid />
-          <div className="text-[10px] uppercase tracking-wide text-text-dimmed">alert — bell</div>
-        </div>
-      </div>
+    </div>
+  );
+}
+
+// 1.5x the 32px candidate icons this replaced.
+const EDITOR_SIZE = 48;
+
+/** Interactive `MATRIX`x`MATRIX` grid: click a dot to toggle it on (accent) or off (ghost). */
+function DotGridEditor() {
+  const [lit, setLit] = useState<boolean[]>(() => new Array(MATRIX * MATRIX).fill(false));
+  const { pitch, dotR } = dotMatrixGeometry(EDITOR_SIZE);
+  const center = (i: number) => i * pitch + pitch / 2;
+
+  const toggle = (index: number) => {
+    setLit((current) => current.map((value, i) => (i === index ? !value : value)));
+  };
+
+  const rows = useMemo(
+    () =>
+      Array.from({ length: MATRIX }, (_, r) =>
+        Array.from({ length: MATRIX }, (_, c) => (lit[r * MATRIX + c] ? "#" : ".")).join("")
+      ),
+    [lit]
+  );
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <svg
+        width={EDITOR_SIZE}
+        height={EDITOR_SIZE}
+        viewBox={`0 0 ${EDITOR_SIZE} ${EDITOR_SIZE}`}
+        className="rounded-md border border-grid-bright"
+      >
+        {lit.map((isLit, i) => {
+          const r = Math.floor(i / MATRIX);
+          const c = i % MATRIX;
+          return (
+            <circle
+              key={i}
+              cx={center(c)}
+              cy={center(r)}
+              r={dotR}
+              fill="currentColor"
+              opacity={isLit ? 1 : 0.25}
+              className={cn("cursor-pointer", isLit ? "text-success" : "text-text-dimmed")}
+              onClick={() => toggle(i)}
+            />
+          );
+        })}
+      </svg>
+      <pre className="rounded border border-grid-bright bg-charcoal-900 px-2 py-1 font-mono text-[10px] leading-tight text-text-dimmed">
+        {rows.join("\n")}
+      </pre>
     </div>
   );
 }
