@@ -27,14 +27,13 @@ type FinishedDeployment = Pick<
   | "failedAt"
   | "canceledAt"
   | "canceledReason"
-  | "buildServerMetadata"
   | "errorData"
   | "runtime"
   | "runtimeVersion"
   | "cliVersion"
   | "triggeredVia"
   | "commitSHA"
->;
+> & { buildServerMetadata: unknown };
 
 type EnvironmentInfo = {
   organizationId?: string;
@@ -132,11 +131,10 @@ export function recordDeploymentInitialized(params: {
     | "type"
     | "status"
     | "createdAt"
-    | "buildServerMetadata"
     | "runtime"
     | "cliVersion"
     | "triggeredVia"
-  >;
+  > & { buildServerMetadata: unknown };
   environment: EnvironmentInfo;
 }): void {
   try {

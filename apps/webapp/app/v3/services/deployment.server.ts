@@ -196,10 +196,8 @@ export class DeploymentService extends BaseService {
     friendlyId: string,
     data?: Partial<Pick<WorkerDeployment, "canceledReason">>
   ) {
-    const validateDeployment = (
-      deployment: Pick<WorkerDeployment, "id" | "status" | "shortCode"> & {
-        environment: { project: { externalRef: string } };
-      }
+    const validateDeployment = <T extends Pick<WorkerDeployment, "id" | "status">>(
+      deployment: T
     ) => {
       if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
         logger.warn("Attempted cancelling deployment in a final state", {
@@ -211,11 +209,7 @@ export class DeploymentService extends BaseService {
       return okAsync(deployment);
     };
 
-    const cancelDeployment = (
-      deployment: Pick<WorkerDeployment, "id" | "shortCode"> & {
-        environment: { project: { externalRef: string } };
-      }
-    ) =>
+    const cancelDeployment = <T extends Pick<WorkerDeployment, "id">>(deployment: T) =>
       fromPromise(
         this._prisma.workerDeployment.updateMany({
           where: {
@@ -252,8 +246,21 @@ export class DeploymentService extends BaseService {
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
       .andTee(({ deployment }) =>
-        this.#recordCanceledTelemetry(deployment.id).orTee((error) => {
-          logger.error("Failed to record canceled deployment telemetry", { error });
+        recordDeploymentFinished({
+          status: "CANCELED",
+          deployment: {
+            ...deployment,
+            status: "CANCELED",
+            canceledAt: new Date(),
+            canceledReason: data?.canceledReason ?? null,
+          },
+          environment: {
+            organizationId: deployment.environment.project.organizationId,
+            projectId: deployment.environment.project.id,
+            projectRef: deployment.environment.project.externalRef,
+            environmentId: deployment.environment.id,
+            environmentType: deployment.environment.type,
+          },
         })
       )
       .andTee(({ deployment }) =>
@@ -477,42 +484,6 @@ export class DeploymentService extends BaseService {
     );
   }
 
-  // The cancel chain only carries a narrow row selection, so re-fetch the full row
-  #recordCanceledTelemetry(deploymentId: string) {
-    return fromPromise(
-      this._prisma.workerDeployment.findFirst({
-        where: { id: deploymentId },
-        include: {
-          environment: {
-            include: {
-              project: {
-                select: { id: true, organizationId: true, externalRef: true },
-              },
-            },
-          },
-        },
-      }),
-      (error) => ({
-        type: "other" as const,
-        cause: error,
-      })
-    ).map((canceled) => {
-      if (!canceled || canceled.status !== "CANCELED") return;
-
-      recordDeploymentFinished({
-        status: "CANCELED",
-        deployment: canceled,
-        environment: {
-          organizationId: canceled.environment.project.organizationId,
-          projectId: canceled.environment.project.id,
-          projectRef: canceled.environment.project.externalRef,
-          environmentId: canceled.environmentId,
-          environmentType: canceled.environment.type,
-        },
-      });
-    });
-  }
-
   private getDeployment(environmentId: string, friendlyId: string) {
     return fromPromise(
       this._prisma.workerDeployment.findFirst({
@@ -523,6 +494,23 @@ export class DeploymentService extends BaseService {
         select: {
           status: true,
           id: true,
+          friendlyId: true,
+          version: true,
+          type: true,
+          createdAt: true,
+          startedAt: true,
+          installedAt: true,
+          builtAt: true,
+          deployedAt: true,
+          failedAt: true,
+          canceledAt: true,
+          canceledReason: true,
+          errorData: true,
+          runtime: true,
+          runtimeVersion: true,
+          cliVersion: true,
+          triggeredVia: true,
+          commitSHA: true,
           buildServerMetadata: true,
           imageReference: true,
           shortCode: true,
@@ -530,6 +518,8 @@ export class DeploymentService extends BaseService {
             include: {
               project: {
                 select: {
+                  id: true,
+                  organizationId: true,
                   externalRef: true,
                 },
               },
