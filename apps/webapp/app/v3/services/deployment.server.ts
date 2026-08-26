@@ -251,15 +251,12 @@ export class DeploymentService extends BaseService {
     return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
-      .andThen(({ deployment }) =>
-        this.#recordCanceledTelemetry(deployment.id)
-          .orElse((error) => {
-            logger.error("Failed to record canceled deployment telemetry", { error });
-            return okAsync(undefined);
-          })
-          .map(() => ({ deployment }))
+      .andTee(({ deployment }) =>
+        this.#recordCanceledTelemetry(deployment.id).orTee((error) => {
+          logger.error("Failed to record canceled deployment telemetry", { error });
+        })
       )
-      .andThen(({ deployment }) =>
+      .andTee(({ deployment }) =>
         this.appendToEventLog(deployment.environment.project, deployment, [
           {
             type: "finalized",
@@ -268,14 +265,11 @@ export class DeploymentService extends BaseService {
               message: data?.canceledReason ?? undefined,
             },
           },
-        ])
-          .orElse((error) => {
-            logger.error("Failed to append event to deployment event log", { error });
-            return okAsync(deployment);
-          })
-          .map(() => deployment)
+        ]).orTee((error) => {
+          logger.error("Failed to append event to deployment event log", { error });
+        })
       )
-      .andThen(deleteTimeout)
+      .andThen(({ deployment }) => deleteTimeout(deployment))
       .map(() => undefined);
   }
 
