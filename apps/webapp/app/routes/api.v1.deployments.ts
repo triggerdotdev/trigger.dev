@@ -78,7 +78,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 // Client-controlled and persisted, so cap what we accept
-const CLI_VERSION_MAX_LENGTH = 64;
+const CLI_VERSION_MAX_LENGTH = 128;
 
 function parseCliVersionHeader(request: Request): string | undefined {
   const value = request.headers.get("x-trigger-cli-version");
