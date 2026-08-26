@@ -373,9 +373,6 @@ export class SnapshotOrphanSweeper {
 
     if (markedAt === undefined || Number.isNaN(markedAt)) {
       if (!dryRun) {
-        // The TTL is a multiple of the confirm window so a candidate gets several chances to be
-        // sighted again, while a marker left behind by a run that turned out to be alive cannot
-        // linger long enough to pre-authorise a later deletion.
         // The field carries no TTL of its own; it lives and dies with the seq hash, which the
         // keyspace's own completion expiry already governs. That removes the marker-lifetime knob
         // whose derivation was wrong in the first place.
@@ -403,9 +400,12 @@ export class SnapshotOrphanSweeper {
    * Clears a rule 2 marker for a keyspace whose run turned out to exist after all, so a later
    * genuine absence still needs its own two sightings rather than inheriting a stale one.
    *
-   * Only called on a path that already found a run row, and only for terminal runs — a live run
-   * never reaches rule 2, so it can never hold a marker, and charging every live keyspace a round
-   * trip to prove that would cost more than the case is worth.
+   * Called for EVERY run row the lookup returned, live ones included, and it has to be: a keyspace
+   * marked by an earlier incomplete lookup can belong to a run that is perfectly alive, and a
+   * SUSPENDED run can sit that way for weeks. Leaving the marker in place would let a later genuine
+   * absence delete on what is really a first sighting, which is the hole the two-sighting rule
+   * exists to close. It costs one DEL per existing run per pass; that is the price of the guard
+   * being sound rather than nearly sound.
    */
   async #clearOrphanMarker(runId: string): Promise<void> {
     try {
