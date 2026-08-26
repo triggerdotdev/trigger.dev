@@ -1,6 +1,5 @@
-import { TrashIcon } from "@heroicons/react/20/solid";
+import { MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
-import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { Button } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -43,7 +42,7 @@ function ProcessIcon({ process }: { process: ChatProcess }) {
   return (
     <span title={label} aria-label={label} role="img" className="shrink-0 text-text-dimmed">
       {process === "investigating" ? (
-        <AgentMonoLogo size={14} decorative />
+        <MagnifyingGlassIcon className="size-3.5" />
       ) : (
         <AgentSpinner size={14} />
       )}
