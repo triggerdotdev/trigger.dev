@@ -1573,9 +1573,18 @@ async function waitOnChatRoute<T>(
 
       span.setAttribute("wait.resolved", "suspended");
       while (true) {
+        /**
+         * The floor doubles as the wake cursor: the server completes the
+         * waitpoint immediately if anything sits after this sequence, so a
+         * floor that has advanced past an unread record parks a waitpoint
+         * nothing will complete. Recorded on the span so a run that never woke
+         * can be diagnosed from its trace alone.
+         */
+        const wakeFrom = router.resumeFloor();
+        span.setAttribute("wait.lastSeqNum", wakeFrom ?? -1);
         const wake = await session.in.awaitWake({
           timeout: options.timeout,
-          lastSeqNum: router.resumeFloor(),
+          lastSeqNum: wakeFrom,
         });
         if (!wake.ok) {
           span.recordException(wake.error);
@@ -5802,14 +5811,6 @@ function chatAgent<
       // `messagesInput.waitWithIdleTimeout` so recovered turns fire first.
       const bootInjectedQueue: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>[] =
         [];
-      // Messages consumed by a turn's `messagesInput.on` handler, dispatched
-      // one per turn by the end-of-turn pickup. Loop-level on purpose:
-      // consuming a record advances the committed `.in` cursor, so entries
-      // dropped with a turn-local buffer are lost permanently.
-      const pendingWireMessages: ChatTaskWirePayload<
-        TUIMessage,
-        inferSchemaIn<TClientDataSchema>
-      >[] = [];
       const couldHavePriorState = payload.continuation === true || ctx.attempt.number > 1;
 
       // `.in` resume cursor, computed at most once per boot. The boot
@@ -6705,57 +6706,56 @@ function chatAgent<
                 const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
                 const pmConfig = locals.get(chatPendingMessagesKey);
-                const msgSub = messagesInput.on(async (msg) => {
-                  // If pendingMessages is configured, route to the steering queue
-                  // instead of the wire buffer. The frontend handles re-sending
-                  // non-injected messages via sendMessage on turn complete.
-                  if (pmConfig) {
-                    // Slim wire: at most one delta message per record. The
-                    // pendingMessages handler reads `msg.message` directly
-                    // instead of slicing an array — a wire record arrives
-                    // with the new user message in `.message`, or no message
-                    // at all (regenerate / preload / close / handover-prepare).
-                    const lastUIMessage = msg.message as TUIMessage | undefined;
-                    if (lastUIMessage) {
-                      if (pmConfig.onReceived) {
+                /**
+                 * Only attached when there is a steering config to feed. Without
+                 * one a mid-turn message is left queued on the router, which is
+                 * what holds the resume floor behind it: a record handed to a
+                 * handler counts as terminally decided, so buffering one here
+                 * published a cursor past a message held only in memory and a
+                 * crash before the next turn lost it.
+                 */
+                const msgSub = pmConfig
+                  ? messagesInput.on(async (msg) => {
+                      // Slim wire: at most one delta message per record. The
+                      // pendingMessages handler reads `msg.message` directly
+                      // instead of slicing an array — a wire record arrives
+                      // with the new user message in `.message`, or no message
+                      // at all (regenerate / preload / close / handover-prepare).
+                      const lastUIMessage = msg.message as TUIMessage | undefined;
+                      if (lastUIMessage) {
+                        if (pmConfig.onReceived) {
+                          try {
+                            await pmConfig.onReceived({
+                              message: lastUIMessage as TUIMessage,
+                              chatId: currentWirePayload.chatId,
+                              turn,
+                            });
+                          } catch {
+                            /* non-fatal */
+                          }
+                        }
+
                         try {
-                          await pmConfig.onReceived({
-                            message: lastUIMessage as TUIMessage,
-                            chatId: currentWirePayload.chatId,
-                            turn,
+                          const queue = locals.get(chatSteeringQueueKey) ?? [];
+                          // Deduplicate by message ID — guards against double-sends
+                          if (
+                            lastUIMessage.id &&
+                            queue.some((e) => e.uiMessage.id === lastUIMessage.id)
+                          ) {
+                            return;
+                          }
+                          const modelMsgs = await toModelMessages([lastUIMessage]);
+                          queue.push({
+                            uiMessage: lastUIMessage as UIMessage,
+                            modelMessages: modelMsgs,
                           });
+                          locals.set(chatSteeringQueueKey, queue);
                         } catch {
-                          /* non-fatal */
+                          /* conversion failed — skip steering queue */
                         }
                       }
-
-                      try {
-                        const queue = locals.get(chatSteeringQueueKey) ?? [];
-                        // Deduplicate by message ID — guards against double-sends
-                        if (
-                          lastUIMessage.id &&
-                          queue.some((e) => e.uiMessage.id === lastUIMessage.id)
-                        ) {
-                          return;
-                        }
-                        const modelMsgs = await toModelMessages([lastUIMessage]);
-                        queue.push({
-                          uiMessage: lastUIMessage as UIMessage,
-                          modelMessages: modelMsgs,
-                        });
-                        locals.set(chatSteeringQueueKey, queue);
-                      } catch {
-                        /* conversion failed — skip steering queue */
-                      }
-                    }
-                    return; // Don't add to wire buffer — frontend handles non-injected case
-                  }
-
-                  // No pendingMessages config — standard wire buffer for next turn
-                  pendingWireMessages.push(
-                    msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
-                  );
-                });
+                    })
+                  : undefined;
                 turnMsgSub = msgSub;
 
                 // Track new messages for this turn (user input + assistant response).
@@ -7120,7 +7120,7 @@ function chatAgent<
                 // The turn counter is decremented so the next iteration
                 // sees the same `turn` value — actions don't count.
                 if (isAction) {
-                  msgSub.off();
+                  msgSub?.off();
 
                   if (
                     (locals.get(chatPipeCountKey) ?? 0) === 0 &&
@@ -7410,7 +7410,7 @@ function chatAgent<
                       throw error;
                     }
                   } finally {
-                    msgSub.off();
+                    msgSub?.off();
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
@@ -7966,14 +7966,6 @@ function chatAgent<
                   return "continue";
                 }
 
-                // If messages arrived during streaming (without pendingMessages config),
-                // dispatch the oldest as the next turn. The rest stay queued
-                // and drain one per turn.
-                if (pendingWireMessages.length > 0) {
-                  currentWirePayload = pendingWireMessages.shift()!;
-                  return "continue";
-                }
-
                 // chat.requestUpgrade() was called — exit the loop so the
                 // transport triggers a new run on the latest version.
                 // chat.endRun() — same exit, no upgrade semantics.
@@ -8279,12 +8271,6 @@ function chatAgent<
             // until an unrelated live message arrives.
             if (bootInjectedQueue.length > 0) {
               currentWirePayload = bootInjectedQueue.shift()!;
-              continue;
-            }
-
-            // Same for messages buffered during the errored turn — already consumed, idling strands them.
-            if (pendingWireMessages.length > 0) {
-              currentWirePayload = pendingWireMessages.shift()!;
               continue;
             }
 
@@ -9775,10 +9761,6 @@ function createChatSession(
       const accumulator = new ChatMessageAccumulator();
       let previousTurnUsage: LanguageModelUsage | undefined;
       let cumulativeUsage: LanguageModelUsage = emptyUsage();
-      // Messages consumed mid-turn, dispatched one per next(). Iterator-level
-      // for the same reason as the agent loop's `pendingWireMessages`:
-      // consumed records never replay, so a turn-local buffer loses them.
-      const sessionPendingWire: ChatTaskWirePayload[] = [];
       // The current turn's message subscription — detached defensively at the
       // top of next() in case user code threw without complete()/done().
       let activeMsgSub: { off: () => void } | undefined;
@@ -9857,29 +9839,28 @@ function createChatSession(
             }
           }
 
-          // Subsequent turns: drain buffered mid-turn messages first (they
-          // were consumed and won't be re-delivered), then wait.
+          /**
+           * Subsequent turns take the next message from the router. A record
+           * that arrived mid-turn is already queued there, so this returns it
+           * without suspending.
+           */
           if (turn > 0) {
-            if (sessionPendingWire.length > 0) {
-              currentPayload = sessionPendingWire.shift()!;
-            } else {
-              // chat.requestUpgrade() / chat.endRun() — exit before waiting
-              if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
-                stop.cleanup();
-                return { done: true, value: undefined };
-              }
-
-              const next = await messagesInput.waitWithIdleTimeout({
-                idleTimeoutInSeconds,
-                timeout,
-                spanName: "waiting for next message",
-              });
-              if (!next.ok || runSignal.aborted) {
-                stop.cleanup();
-                return { done: true, value: undefined };
-              }
-              currentPayload = next.output;
+            // chat.requestUpgrade() / chat.endRun() — exit before waiting
+            if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              stop.cleanup();
+              return { done: true, value: undefined };
             }
+
+            const next = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds,
+              timeout,
+              spanName: "waiting for next message",
+            });
+            if (!next.ok || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+            currentPayload = next.output;
           }
 
           // Check limits
@@ -9907,38 +9888,35 @@ function createChatSession(
             clientData: currentPayload.metadata,
           });
 
-          // Listen for messages during streaming (steering + next-turn buffer)
-          const sessionMsgSub = messagesInput.on(async (msg) => {
-            if (sessionPendingMessages) {
-              // Steering route — the frontend re-sends non-injected
-              // messages on turn complete, so don't also buffer the wire.
-              // Slim wire: at most one delta message per record. Read
-              // `msg.message` directly — no array slicing needed.
-              const lastUIMessage = msg.message;
-              if (lastUIMessage) {
-                if (sessionPendingMessages.onReceived) {
+          /**
+           * Only attached when there is a steering config to feed. Without one a
+           * mid-turn message stays queued on the router, which is what keeps the
+           * resume floor behind it.
+           */
+          const sessionMsgSub = sessionPendingMessages
+            ? messagesInput.on(async (msg) => {
+                const lastUIMessage = msg.message;
+                if (lastUIMessage) {
+                  if (sessionPendingMessages.onReceived) {
+                    try {
+                      await sessionPendingMessages.onReceived({
+                        message: lastUIMessage,
+                        chatId: currentPayload.chatId,
+                        turn,
+                      });
+                    } catch {
+                      /* non-fatal */
+                    }
+                  }
                   try {
-                    await sessionPendingMessages.onReceived({
-                      message: lastUIMessage,
-                      chatId: currentPayload.chatId,
-                      turn,
-                    });
+                    const modelMsgs = await toModelMessages([lastUIMessage]);
+                    turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
                   } catch {
                     /* non-fatal */
                   }
                 }
-                try {
-                  const modelMsgs = await toModelMessages([lastUIMessage]);
-                  turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
-                } catch {
-                  /* non-fatal */
-                }
-              }
-              return;
-            }
-
-            sessionPendingWire.push(msg);
-          });
+              })
+            : undefined;
           activeMsgSub = sessionMsgSub;
 
           // Accumulate messages. Slim wire: pass the single delta message as
@@ -9967,7 +9945,7 @@ function createChatSession(
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {
             await writeUpgradeRequiredChunk();
-            sessionMsgSub.off();
+            sessionMsgSub?.off();
             stop.cleanup();
             return { done: true, value: undefined };
           }
@@ -10013,7 +9991,7 @@ function createChatSession(
                 if (!response || response.role !== "assistant") {
                   throw new Error("turn.complete() could not find the spliced handover response");
                 }
-                sessionMsgSub.off();
+                sessionMsgSub?.off();
                 await chatWriteTurnComplete();
                 return response;
               }
@@ -10030,7 +10008,7 @@ function createChatSession(
                 });
                 if (runSignal.aborted) {
                   // Full cancel — don't accumulate
-                  sessionMsgSub.off();
+                  sessionMsgSub?.off();
                   await chatWriteTurnComplete();
                   return undefined;
                 }
@@ -10052,7 +10030,7 @@ function createChatSession(
               } finally {
                 // Detach at stream end (like the agent loop): the steering queue
                 // can't inject anymore, so later arrivals must buffer for the next turn.
-                sessionMsgSub.off();
+                sessionMsgSub?.off();
               }
 
               if (response) {
@@ -10155,7 +10133,7 @@ function createChatSession(
                 }
               }
 
-              sessionMsgSub.off();
+              sessionMsgSub?.off();
               await chatWriteTurnComplete();
               return response;
             },
@@ -10174,7 +10152,7 @@ function createChatSession(
             },
 
             async done() {
-              sessionMsgSub.off();
+              sessionMsgSub?.off();
               await chatWriteTurnComplete();
             },
 

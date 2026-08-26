@@ -259,6 +259,10 @@ class TestSessionOutputChannel extends SessionOutputChannel {
       for (const [name, value] of extraHeaders) {
         if (name === "public-access-token") {
           synthetic.publicAccessToken = value;
+        } else if (name === "session-in-event-id") {
+          synthetic.sessionInEventId = value;
+        } else if (name === "session-in-consumed-id") {
+          synthetic.sessionInConsumedId = value;
         }
       }
     }
