@@ -38,6 +38,13 @@ export function buildCompletedWaitpointRecords(
 }
 
 function chooseOutput(source: CompletionEnvelopeSource): CompletedWaitpointRecordOutput {
+  // Ref BEFORE the RUN branch, which is the opposite order to the reference implementation in
+  // completedWaitpointFreeze.test.ts. Both are byte-identical at read time, by that reference's
+  // own reasoning: an offloaded RUN success has the same ref string in TaskRun.output. This
+  // order is preferred because it needs no Postgres read to recover a string already in hand,
+  // and because a deriveFromRun record whose run row is later deleted now refuses rather than
+  // resolving empty — so routing an offloaded RUN success down the ref branch keeps it
+  // resolvable when that row is gone.
   if (source.outputRef !== undefined) {
     return { ref: source.outputRef };
   }

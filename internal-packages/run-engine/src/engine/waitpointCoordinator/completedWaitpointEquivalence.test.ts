@@ -239,6 +239,26 @@ describe("the resolver reproduces the existing hydration", () => {
     expect(actual).toEqual(expected);
   });
 
+  // The case the suite was blind to, and the one the frozen reference orders the other way. The
+  // oracle emits the ref string; so does this, by a different branch.
+  it("for an offloaded RUN success", async () => {
+    const { expected, actual } = await bothPaths(
+      [
+        pair({
+          id: "wp_run_ref",
+          type: "RUN",
+          output: "s3://bucket/key",
+          outputType: "application/store",
+          completedByTaskRunId: CHILD_RUN_ID,
+        }),
+      ],
+      []
+    );
+
+    expect(actual).toEqual(expected);
+    expect(actual[0]?.output).toBe("s3://bucket/key");
+  });
+
   it("for one run present at two batch indexes", async () => {
     const { expected, actual } = await bothPaths(
       [

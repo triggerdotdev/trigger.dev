@@ -107,7 +107,12 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
 
     const rows = await fetchWaitpointsInChunks(this.prisma, waitpointIds, this.runStore, runId);
 
-    return rows.map(envelopeSourceFromWaitpointRow);
+    // COMPLETED only, so both arms honour one omission contract. The store arm cannot return a
+    // pending waitpoint because a pending one has no completion to read; this arm reads rows by
+    // id and would otherwise hand back an envelope with completedAt defaulted to now. The
+    // resolver's coverage check reads an omission as "fail loud", so the two arms disagreeing
+    // here would turn a pending waitpoint into a resumable one.
+    return rows.filter((row) => row.status === "COMPLETED").map(envelopeSourceFromWaitpointRow);
   }
 
   async registerBlocks({

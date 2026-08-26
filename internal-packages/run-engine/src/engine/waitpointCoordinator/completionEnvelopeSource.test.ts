@@ -98,6 +98,16 @@ describe("envelopeSourceFromWaitpointRow", () => {
     });
   });
 
+  // The mapper itself is status-blind by design: the legacy arm filters to COMPLETED before
+  // calling it, so both arms omit a pending waitpoint rather than describing one. This states
+  // that the mapper is not where that decision lives.
+  it("does not itself inspect status", () => {
+    const source = envelopeSourceFromWaitpointRow(row({ status: "PENDING", completedAt: null }));
+
+    expect(source.id).toBe("wp_1");
+    expect(source.completedAt).toBeInstanceOf(Date);
+  });
+
   it("carries the RUN and BATCH back-references", () => {
     expect(
       envelopeSourceFromWaitpointRow(row({ type: "RUN", completedByTaskRunId: "run_child" }))

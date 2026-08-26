@@ -83,6 +83,22 @@ describe("buildCompletedWaitpointRecords", () => {
       expect(record?.output).toEqual({ ref: "store-key-1" });
     });
 
+    // Deliberately a ref, not deriveFromRun, and the opposite of the reference implementation in
+    // completedWaitpointFreeze.test.ts. Byte-identical either way, and this route stays
+    // resolvable when the completing run row is gone.
+    it("routes an offloaded RUN success down the ref branch", () => {
+      const [record] = buildCompletedWaitpointRecords([
+        source({
+          type: "RUN",
+          outputRef: "s3://bucket/key",
+          outputType: "application/store",
+          completedByTaskRunId: "run_1",
+        }),
+      ]);
+
+      expect(record?.output).toEqual({ ref: "s3://bucket/key" });
+    });
+
     it("marks a plain RUN output as derivable from the run", () => {
       const [record] = buildCompletedWaitpointRecords([
         source({ type: "RUN", output: '{"ok":true}', completedByTaskRunId: "run_1" }),
