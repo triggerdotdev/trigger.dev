@@ -31,6 +31,38 @@ export function assertUserActorEnvironment(
   throw forbiddenEnvironment("This token isn't scoped to that environment.");
 }
 
+/**
+ * The environment gate for the JWT exchange: an environment claim still mints only for its own
+ * environment, and an org claim mints for any environment of that org the user belongs to.
+ */
+export async function assertUserActorEnvironmentAccess(
+  userActor: UserActorClaims | undefined,
+  environment: { id: string; organizationId: string }
+): Promise<void> {
+  if (!userActor?.organizationId || userActor.environmentId === environment.id) {
+    assertUserActorEnvironment(userActor, environment.id);
+    return;
+  }
+
+  if (userActor.organizationId !== environment.organizationId) {
+    throw forbiddenEnvironment("This token isn't scoped to that organization.");
+  }
+
+  // Membership is the tenant floor here, so it is a membership-scoped query, not an ability check.
+  const membership = await $replica.organization.findFirst({
+    where: {
+      id: environment.organizationId,
+      deletedAt: null,
+      members: { some: { userId: userActor.userId } },
+    },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    throw forbiddenEnvironment("You don't have access to that organization.");
+  }
+}
+
 /** The same check for a route that names an org/project rather than one environment. */
 export async function assertUserActorScope(
   userActor: UserActorClaims | undefined,

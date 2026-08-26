@@ -17,7 +17,7 @@ import {
   type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { env as appEnv } from "~/env.server";
-import { assertUserActorEnvironment } from "~/services/userActorEnvironment.server";
+import { assertUserActorEnvironmentAccess } from "~/services/userActorEnvironment.server";
 import { assertSourcePatActive } from "~/services/personalAccessToken.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
@@ -119,8 +119,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       triggerBranch
     );
 
-    // A user-actor token signed for one environment mints only for that one.
-    assertUserActorEnvironment(userActor, runtimeEnv.id);
+    // A user-actor token signed for one environment mints only for that one; one signed for an
+    // organization mints for any environment of that org its user is a member of.
+    await assertUserActorEnvironmentAccess(userActor, runtimeEnv);
 
     // This mints a JWT signed with the environment's secret key. For a PAT
     // (a user), gate it on env-tier read:apiKeys so a restricted role can't
