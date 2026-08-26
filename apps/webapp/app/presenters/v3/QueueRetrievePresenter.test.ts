@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { slotHolderConsistency } from "./QueueRetrievePresenter.server";
+import { envConcurrencyFromRead, slotHolderConsistency } from "./QueueRetrievePresenter.server";
 
 describe("slotHolderConsistency", () => {
   it("treats every non-final status as legitimately holding a slot", () => {
@@ -42,5 +42,22 @@ describe("slotHolderConsistency", () => {
   it("reports unresolved when the lookup failed", () => {
     expect(slotHolderConsistency(undefined, true)).toBe("unresolved");
     expect(slotHolderConsistency({ status: "EXECUTING" }, true)).toBe("unresolved");
+  });
+});
+
+describe("envConcurrencyFromRead", () => {
+  it("pairs the env limit with the read current concurrency", async () => {
+    await expect(envConcurrencyFromRead(10, async () => 7)).resolves.toEqual({
+      limit: 10,
+      current: 7,
+    });
+  });
+
+  it("degrades to undefined rather than throwing when the read fails", async () => {
+    await expect(
+      envConcurrencyFromRead(10, async () => {
+        throw new Error("redis down");
+      })
+    ).resolves.toBeUndefined();
   });
 });

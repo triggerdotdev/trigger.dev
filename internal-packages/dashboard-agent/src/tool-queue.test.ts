@@ -402,4 +402,36 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
     expect(answer).toMatchObject({ slotHolderFacts });
     expect(answer).not.toHaveProperty("slotHolders");
   });
+
+  it("carries envConcurrency verbatim: the binding fact when the env is saturated", async () => {
+    const envConcurrency = { limit: 10, current: 10 };
+    stubFetch({ envConcurrency });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ envConcurrency });
+  });
+
+  it("omits envConcurrency rather than fabricating it when the API doesn't send it", async () => {
+    stubFetch({ queued: 3 });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).not.toHaveProperty("envConcurrency");
+  });
+
+  it("carries the concurrency override breakdown verbatim, so an override reads as temporary", async () => {
+    const concurrency = {
+      current: 5,
+      base: 10,
+      override: 5,
+      overriddenBy: "Jane Doe",
+      overriddenAt: "2026-08-01T00:00:00.000Z",
+    };
+    stubFetch({ concurrency });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ concurrency });
+  });
+
+  it("omits concurrency rather than fabricating it when the API doesn't send it", async () => {
+    stubFetch({ queued: 3 });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).not.toHaveProperty("concurrency");
+  });
 });

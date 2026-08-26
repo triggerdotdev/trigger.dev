@@ -18,6 +18,12 @@ export type SlotHolderConsistency = "consistent" | "mismatch" | "unresolved";
 /** "not_found": a Redis slot holder with no matching TaskRun row. */
 export type SlotHolderStatus = TaskRunStatus | "not_found";
 
+/** Env-scope concurrency, alongside the queue row — the queue can show headroom while the env is saturated. */
+export type EnvConcurrency = {
+  limit: number;
+  current: number;
+};
+
 export type SlotHolder = {
   runId: string;
   status: SlotHolderStatus;
@@ -64,6 +70,19 @@ export function slotHolderConsistency(
   if (lookupFailed) return "unresolved";
   if (!run) return "mismatch";
   return NON_HOLDING_STATUSES.has(run.status) ? "mismatch" : "consistent";
+}
+
+/** Guarded env-concurrency read: a failing Redis read degrades to `undefined`, never throws. */
+export async function envConcurrencyFromRead(
+  limit: number,
+  readCurrent: () => Promise<number>
+): Promise<EnvConcurrency | undefined> {
+  try {
+    const current = await readCurrent();
+    return { limit, current };
+  } catch {
+    return undefined;
+  }
 }
 
 export type FoundQueue = Prettify<
@@ -149,6 +168,7 @@ export class QueueRetrievePresenter extends BasePresenter {
     ]);
 
     const { slotHolders, slotHolderFacts } = await this.#slotHolders(environment, queue.name);
+    const envConcurrency = await this.#envConcurrency(environment);
 
     // Transform queues to include running and queued counts
     return {
@@ -176,8 +196,21 @@ export class QueueRetrievePresenter extends BasePresenter {
             : null,
         slotHolders,
         slotHolderFacts,
+        envConcurrency,
       },
     };
+  }
+
+  /**
+   * Env-scope concurrency, so a client can tell whether the binding constraint is the queue
+   * or the environment. Guarded: a failing Redis read degrades to omitted, never a 500.
+   */
+  async #envConcurrency(
+    environment: AuthenticatedEnvironment
+  ): Promise<EnvConcurrency | undefined> {
+    return envConcurrencyFromRead(environment.maximumConcurrencyLimit, () =>
+      engine.concurrencyOfEnvQueue(environment)
+    );
   }
 
   /**

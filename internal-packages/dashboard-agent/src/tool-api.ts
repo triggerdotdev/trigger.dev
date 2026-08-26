@@ -187,6 +187,10 @@ export function withLiveState(metrics: unknown, queueType: "task" | "custom", li
     // Older API rows carry neither field; omit rather than fabricate an empty answer.
     ...(row.slotHolders !== undefined ? { slotHolders: row.slotHolders } : {}),
     ...(row.slotHolderFacts !== undefined ? { slotHolderFacts: row.slotHolderFacts } : {}),
+    // Distinguishes a temporary override from configuration.
+    ...(row.concurrency !== undefined ? { concurrency: row.concurrency } : {}),
+    // Env-scope facts: the binding constraint can be the environment, not this queue.
+    ...(row.envConcurrency !== undefined ? { envConcurrency: row.envConcurrency } : {}),
   };
 }
 
