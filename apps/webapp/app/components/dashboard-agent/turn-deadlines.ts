@@ -13,6 +13,16 @@ export const TOOL_PENDING_DEADLINE_MS = 120_000;
 
 export type TurnDeadlineError = { kind: "first-event" } | { kind: "tool-pending"; tool: string };
 
+/**
+ * The tool-pending deadline's key: null unless a turn is actually live. A dangling
+ * `input-available` part on an idle chat — a stopped turn, a reload of old history — is
+ * not a pending call, and arming a timer for it would fire with nothing able to clear it.
+ */
+export function activeToolPendingKey(status: string, inFlightTool: string | null): string | null {
+  const inFlight = status === "streaming" || status === "submitted";
+  return inFlight ? inFlightTool : null;
+}
+
 export function turnDeadlineErrorMessage(
   error: TurnDeadlineError,
   toolLabel: (tool: string) => string

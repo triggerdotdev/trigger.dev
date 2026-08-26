@@ -406,9 +406,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           );
         }
       } catch (error) {
-        // Both starts are one create-session-and-trigger round trip, so a rejection means no
-        // handover was dispatched and no message was sent: a session the call did create in
-        // spite of the error idles out having done nothing. The empty row is all there is to undo.
+        // Both starts are one create-session-and-trigger round trip, so a rejection usually
+        // means no handover was dispatched and no message was sent: a session the call did
+        // create in spite of the error idles out having done nothing. The `withTimeout` above
+        // is the exception — its trigger can still land after we've given up and soft-deleted
+        // the chat below, orphaning a live session on a chat the user never sees again; the
+        // run is otherwise harmless and the `in` proxy's chat lookup treats it as missing.
         // Swallowed so the start's own error is what surfaces and gets logged.
         await softDeleteChat(dashboardAgentDb, {
           chatId,

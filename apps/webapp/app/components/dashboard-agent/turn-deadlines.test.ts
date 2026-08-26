@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createKeyedDeadline, turnDeadlineErrorMessage } from "./turn-deadlines";
+import { inFlightToolName } from "./progress-line";
+import {
+  activeToolPendingKey,
+  createKeyedDeadline,
+  turnDeadlineErrorMessage,
+} from "./turn-deadlines";
 
 function harness<K extends string>(deadlineMs: number) {
   const timeouts: K[] = [];
@@ -112,5 +117,51 @@ describe("turnDeadlineErrorMessage", () => {
     expect(turnDeadlineErrorMessage({ kind: "tool-pending", tool: "get_run" }, label)).toBe(
       "Reading the run is taking longer than expected. It may not be running — try again."
     );
+  });
+});
+
+/**
+ * `DashboardAgentChat`'s wiring reproduced with its own exported pieces (`activeToolPendingKey`,
+ * `createKeyedDeadline`) instead of mounting the component — this repo has no DOM/render test
+ * setup (see `wake-poll.test.ts` for the same pattern: the extracted logic is what's tested).
+ */
+describe("DashboardAgentChat wiring", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const dangling = [
+    { role: "assistant", parts: [{ type: "tool-get_run", state: "input-available" }] },
+  ];
+
+  it("never arms for a dangling tool part on an idle chat, and never errors", async () => {
+    const { deadline, timeouts } = harness<string>(120_000);
+
+    // Same call the component's effect makes every render: status is "ready" (idle),
+    // not "streaming"/"submitted", so the key is gated to null despite the dangling part.
+    deadline.sync(activeToolPendingKey("ready", inFlightToolName(dangling)));
+
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(timeouts).toEqual([]);
+  });
+
+  it("retry re-arms the deadline after it already fired on the same dangling part", async () => {
+    const { deadline, timeouts } = harness<string>(120_000);
+
+    deadline.sync(activeToolPendingKey("streaming", inFlightToolName(dangling)));
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(timeouts).toEqual(["get_run"]);
+
+    // Retry's explicit reset (DashboardAgentChat.tsx) before the retried turn's effect
+    // re-syncs the same key — without it, `sync("get_run")` while still `currentKey`
+    // would be a no-op and the deadline would never fire again.
+    deadline.sync(null);
+    deadline.sync(activeToolPendingKey("streaming", inFlightToolName(dangling)));
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(timeouts).toEqual(["get_run", "get_run"]);
   });
 });

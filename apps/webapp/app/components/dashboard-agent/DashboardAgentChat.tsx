@@ -39,6 +39,7 @@ import { takeNavigateIntent } from "./turn-navigation";
 import { sendRequestOutcome } from "./send-request";
 import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import {
+  activeToolPendingKey,
   createKeyedDeadline,
   FIRST_EVENT_DEADLINE_MS,
   TOOL_PENDING_DEADLINE_MS,
@@ -252,8 +253,8 @@ export function DashboardAgentChat({
     firstEventDeadline.sync(status === "submitted" ? "submitted" : null);
   }, [status, firstEventDeadline]);
   useEffect(() => {
-    toolPendingDeadline.sync(inFlightToolName(messages));
-  }, [messages, toolPendingDeadline]);
+    toolPendingDeadline.sync(activeToolPendingKey(status, inFlightToolName(messages)));
+  }, [messages, status, toolPendingDeadline]);
   useEffect(
     () => () => {
       firstEventDeadline.dispose();
@@ -358,18 +359,32 @@ export function DashboardAgentChat({
     if (!action) return;
     clearError();
     setDeadlineError(null);
+    // Reset the deadlines' own key, not just the displayed error: a dangling tool part
+    // that already fired once would otherwise never re-arm (same key, no change to sync).
+    firstEventDeadline.sync(null);
+    toolPendingDeadline.sync(null);
     turnStartedPathRef.current = renderedPathRef.current;
     if (action.kind === "regenerate") {
       void regenerate();
       return;
     }
     void sendMessage({ text: action.text, messageId: action.messageId });
-  }, [messages, sendMessage, regenerate, clearError, atMessageCap]);
+  }, [
+    messages,
+    sendMessage,
+    regenerate,
+    clearError,
+    atMessageCap,
+    firstEventDeadline,
+    toolPendingDeadline,
+  ]);
 
   const dismissError = useCallback(() => {
     clearError();
     setDeadlineError(null);
-  }, [clearError]);
+    firstEventDeadline.sync(null);
+    toolPendingDeadline.sync(null);
+  }, [clearError, firstEventDeadline, toolPendingDeadline]);
 
   const resolveUri = useTriggerUriResolver(actionPath);
 
