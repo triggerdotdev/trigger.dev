@@ -77,6 +77,8 @@ redisTest("reports failed and still releases its own lock", async ({ redisOption
       lockTtlMs: 60_000,
     });
 
+    // Resolving is deliberate: the worker reschedules a cron job on acknowledge as well as on the
+    // dead-letter path, so a failure needs no throw to keep the chain alive.
     expect((await runner(opts())).outcome).toBe("failed");
     expect(await client.get(LOCK_KEY)).toBeNull();
   } finally {

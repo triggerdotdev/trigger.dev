@@ -58,6 +58,16 @@ export type SnapshotSweepOutcome =
   | "unbound"
   | "aborted";
 
+export const SNAPSHOT_SWEEP_COUNT_FIELDS = [
+  "scanned",
+  "expired",
+  "deleted",
+  "skipped",
+  "pendingDeletion",
+  "nodes",
+  "partial",
+] as const;
+
 export type SnapshotSweepCountField =
   | "scanned"
   | "expired"

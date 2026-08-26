@@ -93,6 +93,7 @@ import {
 } from "./controlPlaneResolver.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
+import { SNAPSHOT_SWEEP_COUNT_FIELDS } from "./types.js";
 import type {
   EngineWorker,
   HeartbeatTimeouts,
@@ -2976,16 +2977,16 @@ export class RunEngine {
       outcome = result.outcome;
       counts = result.counts;
     } catch (error) {
+      // Deliberately not rethrown. Both the acknowledge path and the dead-letter path reschedule a
+      // cron job, so returning here continues the chain; throwing would only add a dead-letter
+      // entry for every transient blip. The outcome metric is the signal.
       this.logger.error("sweepSnapshotOrphans threw", { error });
-      // Rethrow after the finally records the outcome. Acknowledging here would skip the
-      // dead-letter path, and that path is what re-enqueues the next occurrence, so one transient
-      // failure would stop the sweep for good.
-      throw error;
     } finally {
       globalThis.clearTimeout(abortAt);
       this.snapshotSweepPassCounter?.add(1, { outcome });
       for (const [field, value] of Object.entries(counts ?? {})) {
-        if (typeof value === "number") {
+        // Each field is a metric attribute, so an unrecognised key would mint a time series.
+        if (typeof value === "number" && SNAPSHOT_SWEEP_COUNT_FIELDS.includes(field as never)) {
           this.snapshotSweepCountsHistogram?.record(value, { field });
         }
       }

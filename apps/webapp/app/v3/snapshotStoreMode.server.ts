@@ -91,14 +91,20 @@ function createOrgModeSource(): OrgModeSource {
     ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS ?? DEFAULT_CACHE_TTL_MS,
   });
   const inFlight = new Set<string>();
+  // A replica read that started before an invalidation can land after the primary read and put the
+  // superseded value back. A per-organisation generation lets a stale load discard its own result.
+  const generations = new Map<string, number>();
+  const generationOf = (organizationId: string) => generations.get(organizationId) ?? 0;
 
   return {
     get: (organizationId) => cache.get(organizationId),
     invalidate: (organizationId) => {
       // Drop first, so a resolve between now and the re-read falls back rather than serving a
       // value the write just replaced.
+      const generation = generationOf(organizationId) + 1;
+      generations.set(organizationId, generation);
       cache.delete(organizationId);
-      void load(organizationId, prisma);
+      void load(organizationId, prisma, generation);
     },
     refresh: (organizationId) => {
       if (inFlight.has(organizationId)) {
@@ -106,13 +112,17 @@ function createOrgModeSource(): OrgModeSource {
       }
       inFlight.add(organizationId);
 
-      void load(organizationId, $replica).finally(() => {
+      void load(organizationId, $replica, generationOf(organizationId)).finally(() => {
         inFlight.delete(organizationId);
       });
     },
   };
 
-  function load(organizationId: string, client: typeof prisma | typeof $replica) {
+  function load(
+    organizationId: string,
+    client: typeof prisma | typeof $replica,
+    generation: number
+  ) {
     return client.organization
       .findFirst({ where: { id: organizationId }, select: { featureFlags: true } })
       .then((row) => {
@@ -121,6 +131,10 @@ function createOrgModeSource(): OrgModeSource {
         const raw = (row?.featureFlags as Record<string, unknown> | null | undefined)?.[
           FEATURE_FLAG.snapshotStoreOrgMode
         ];
+        // A newer invalidation happened while this read was in flight, so its answer is stale.
+        if (generation < generationOf(organizationId)) {
+          return;
+        }
         cache.set(organizationId, cachedOrgModeFor(raw));
       })
       .catch((error) => {
