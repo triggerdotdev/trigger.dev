@@ -37,7 +37,9 @@ type FinishedDeployment = Pick<
 
 type EnvironmentInfo = {
   organizationId?: string;
+  organizationSlug?: string;
   projectId?: string;
+  projectName?: string;
   projectRef?: string;
   environmentId?: string;
   environmentType?: string;
@@ -73,7 +75,9 @@ export function recordDeploymentFinished(params: {
         attributes: {
           [SEMINTATTRS_FORCE_RECORDING]: true,
           [ATTRS.ORG_ID]: environment.organizationId,
+          [ATTRS.ORG_SLUG]: environment.organizationSlug,
           [ATTRS.PROJECT_ID]: environment.projectId,
+          [ATTRS.PROJECT_NAME]: environment.projectName,
           [ATTRS.PROJECT_REF]: environment.projectRef,
           [ATTRS.ENV_ID]: environment.environmentId,
           [ATTRS.ENV_TYPE]: environment.environmentType,
@@ -147,7 +151,9 @@ export function recordDeploymentInitialized(params: {
         attributes: {
           [SEMINTATTRS_FORCE_RECORDING]: true,
           [ATTRS.ORG_ID]: environment.organizationId,
+          [ATTRS.ORG_SLUG]: environment.organizationSlug,
           [ATTRS.PROJECT_ID]: environment.projectId,
+          [ATTRS.PROJECT_NAME]: environment.projectName,
           [ATTRS.PROJECT_REF]: environment.projectRef,
           [ATTRS.ENV_ID]: environment.environmentId,
           [ATTRS.ENV_TYPE]: environment.environmentType,

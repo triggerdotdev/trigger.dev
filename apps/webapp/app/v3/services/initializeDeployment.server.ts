@@ -399,7 +399,9 @@ export class InitializeDeploymentService extends BaseService {
         deployment,
         environment: {
           organizationId: environment.organizationId,
+          organizationSlug: environment.organization.slug,
           projectId: environment.projectId,
+          projectName: environment.project.name,
           projectRef: environment.project.externalRef,
           environmentId: environment.id,
           environmentType: environment.type,
