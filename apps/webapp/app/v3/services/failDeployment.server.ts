@@ -1,11 +1,11 @@
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { Prisma, type WorkerDeploymentStatus } from "@trigger.dev/database";
+import { boundedIn, Prisma, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 
 export const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",
@@ -41,25 +41,53 @@ export class FailDeploymentService extends BaseService {
       return;
     }
 
-    const failedDeployment = await this._prisma.workerDeployment.update({
+    const failedAt = new Date();
+
+    // Guarded: a concurrent terminal transition can win after the check above
+    const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
+        status: { notIn: boundedIn(FINAL_DEPLOYMENT_STATUSES) },
       },
       data: {
         status: "FAILED",
-        failedAt: new Date(),
+        failedAt,
         errorData: params.error,
         buildEnvVars: Prisma.DbNull,
       },
     });
 
-    recordDeploymentOutcome({
+    if (updatedCount === 0) {
+      logger.warn("Worker deployment reached a final state concurrently, skipping fail", {
+        id: deployment.id,
+        friendlyId,
+      });
+      return;
+    }
+
+    // Re-read: the row can gain phase timestamps between the read and the guarded write
+    const failedDeployment = await this._prisma.workerDeployment.findFirst({
+      where: { id: deployment.id },
+    });
+
+    if (!failedDeployment) {
+      logger.error("Worker deployment disappeared after fail transition", {
+        id: deployment.id,
+        friendlyId,
+      });
+      return;
+    }
+
+    recordDeploymentFinished({
       status: "FAILED",
-      deploymentFriendlyId: friendlyId,
-      organizationId: authenticatedEnv.organizationId,
-      projectId: authenticatedEnv.projectId,
-      environmentId: authenticatedEnv.id,
-      environmentType: authenticatedEnv.type,
+      deployment: failedDeployment,
+      environment: {
+        organizationId: authenticatedEnv.organizationId,
+        projectId: authenticatedEnv.projectId,
+        projectRef: authenticatedEnv.project.externalRef,
+        environmentId: authenticatedEnv.id,
+        environmentType: authenticatedEnv.type,
+      },
       reason: params.error.message,
     });
 

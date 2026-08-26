@@ -42,7 +42,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new InitializeDeploymentService();
 
   try {
-    const result = await service.call(authenticatedEnv, body.data);
+    const result = await service.call(authenticatedEnv, body.data, {
+      cliVersion: parseCliVersionHeader(request),
+    });
     const { deployment, imageRef } = result;
 
     const responseBody: InitializeDeploymentResponseBody = {
@@ -73,6 +75,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     logger.error("Error initializing deployment", { error });
     return json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+// Client-controlled and persisted, so cap what we accept
+const CLI_VERSION_MAX_LENGTH = 128;
+
+function parseCliVersionHeader(request: Request): string | undefined {
+  const value = request.headers.get("x-trigger-cli-version");
+  return value && value.length <= CLI_VERSION_MAX_LENGTH ? value : undefined;
 }
 
 export const loader = createLoaderApiRoute(
