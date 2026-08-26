@@ -1,5 +1,8 @@
+import { EyeIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { ComponentNames } from "../storybook/StoryKit";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { InvestigateDotIcon } from "~/assets/icons/InvestigateDotIcon";
+import { WatchDotIcon } from "~/assets/icons/WatchDotIcon";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import {
@@ -28,7 +31,9 @@ export default function Story() {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="px-4 pt-4">
-        <ComponentNames names={["AgentDotMatrix.tsx"]} />
+        <ComponentNames
+          names={["AgentDotMatrix.tsx", "InvestigateDotIcon.tsx", "WatchDotIcon.tsx"]}
+        />
       </div>
       <div className="flex max-w-3xl flex-col gap-1">
         <Header1>Trigger Agent — Icons & Buttons</Header1>
@@ -47,6 +52,9 @@ export default function Story() {
           <ClientTabsTrigger variant="underline" value="orbit-dots">
             Orbit dots
           </ClientTabsTrigger>
+          <ClientTabsTrigger variant="underline" value="action-icons">
+            Action icons
+          </ClientTabsTrigger>
         </ClientTabsList>
         <ClientTabsContent value="dot-matrix">
           <DotMatrixTab />
@@ -56,6 +64,9 @@ export default function Story() {
         </ClientTabsContent>
         <ClientTabsContent value="orbit-dots">
           <OrbitDotsTab />
+        </ClientTabsContent>
+        <ClientTabsContent value="action-icons">
+          <ActionIconsTab />
         </ClientTabsContent>
       </ClientTabs>
     </div>
@@ -251,6 +262,67 @@ function ToggleableMatrix({
     >
       <AgentDotMatrix size={size} active={active} {...matrix} />
     </button>
+  );
+}
+
+// --- Action icons (current vs dot-matrix) ---------------------------------------
+
+const ACTION_ICON_SIZES = [16, 20, 24];
+
+function ActionIconRow({
+  label,
+  CurrentIcon,
+  DotIcon,
+}: {
+  label: string;
+  CurrentIcon: React.ComponentType<{ className?: string; style?: CSSProperties }>;
+  DotIcon: React.ComponentType<{ className?: string; style?: CSSProperties }>;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Header2 className="text-sm">{label}</Header2>
+      <div className="flex flex-wrap gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
+        {ACTION_ICON_SIZES.map((s) => (
+          <div key={`current-${s}`} className="flex flex-col items-center gap-2">
+            <CurrentIcon className="text-text-bright" style={{ width: s, height: s }} />
+            <div className="text-[10px] uppercase tracking-wide text-text-dimmed">
+              current · {s}px
+            </div>
+          </div>
+        ))}
+        {ACTION_ICON_SIZES.map((s) => (
+          <div key={`dot-${s}`} className="flex flex-col items-center gap-2">
+            <DotIcon className="text-text-bright" style={{ width: s, height: s }} />
+            <div className="text-[10px] uppercase tracking-wide text-text-dimmed">
+              dot-matrix · {s}px
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Comparison only: the current heroicons Investigate/Watch icons next to a coarse
+ * dot-matrix ("LED"/flip-dot) variant, so the owner can pick one. Neither
+ * `InvestigateDotIcon` nor `WatchDotIcon` is wired into `InvestigateButton.tsx` /
+ * `WatchButton.tsx` — this tab is the only place they render.
+ */
+function ActionIconsTab() {
+  return (
+    <div className="flex flex-col gap-6 py-6">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
+        The Investigate and Watch action icons, current (heroicons, filled) vs an 8x8 dot-matrix
+        silhouette in the same style as the logo above. `currentColor`, same box.
+      </Paragraph>
+      <ActionIconRow
+        label="Investigate"
+        CurrentIcon={MagnifyingGlassIcon}
+        DotIcon={InvestigateDotIcon}
+      />
+      <ActionIconRow label="Watch" CurrentIcon={EyeIcon} DotIcon={WatchDotIcon} />
+    </div>
   );
 }
 
