@@ -1,6 +1,6 @@
 import { LRUCache } from "lru-cache";
 import type { SnapshotStoreMode, SnapshotStoreModeResolver } from "@internal/run-store";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
@@ -40,11 +40,16 @@ type OrgModeSource = {
   get(organizationId: string): CachedOrgMode | undefined;
   /** Fire-and-forget, de-duplicated per organisation, never throws. */
   refresh(organizationId: string): void;
+  /** Re-reads from the primary after a write, so replica lag cannot re-cache the old value. */
+  invalidate(organizationId: string): void;
 };
+
+/** What resolution needs. Invalidation is a save-path concern, not a read-path one. */
+type ResolverOrgSource = Pick<OrgModeSource, "get" | "refresh">;
 
 export function buildSnapshotStoreModeResolver(deps: {
   globalMode: () => DialMode | undefined;
-  orgMode: OrgModeSource;
+  orgMode: ResolverOrgSource;
   envFloor: DialMode;
 }): SnapshotStoreModeResolver {
   return {
@@ -89,33 +94,42 @@ function createOrgModeSource(): OrgModeSource {
 
   return {
     get: (organizationId) => cache.get(organizationId),
+    invalidate: (organizationId) => {
+      // Drop first, so a resolve between now and the re-read falls back rather than serving a
+      // value the write just replaced.
+      cache.delete(organizationId);
+      void load(organizationId, prisma);
+    },
     refresh: (organizationId) => {
       if (inFlight.has(organizationId)) {
         return;
       }
       inFlight.add(organizationId);
 
-      void $replica.organization
-        .findFirst({ where: { id: organizationId }, select: { featureFlags: true } })
-        .then((row) => {
-          // Only the narrow per-org key. The blob is never passed as `overrides` for the global
-          // key, where a parsing override would win outright.
-          const raw = (row?.featureFlags as Record<string, unknown> | null | undefined)?.[
-            FEATURE_FLAG.snapshotStoreOrgMode
-          ];
-          cache.set(organizationId, cachedOrgModeFor(raw));
-        })
-        .catch((error) => {
-          logger.warn("snapshotStoreMode: organisation override refresh failed", {
-            organizationId,
-            error,
-          });
-        })
-        .finally(() => {
-          inFlight.delete(organizationId);
-        });
+      void load(organizationId, $replica).finally(() => {
+        inFlight.delete(organizationId);
+      });
     },
   };
+
+  function load(organizationId: string, client: typeof prisma | typeof $replica) {
+    return client.organization
+      .findFirst({ where: { id: organizationId }, select: { featureFlags: true } })
+      .then((row) => {
+        // Only the narrow per-org key. The blob is never passed as `overrides` for the global
+        // key, where a parsing override would win outright.
+        const raw = (row?.featureFlags as Record<string, unknown> | null | undefined)?.[
+          FEATURE_FLAG.snapshotStoreOrgMode
+        ];
+        cache.set(organizationId, cachedOrgModeFor(raw));
+      })
+      .catch((error) => {
+        logger.warn("snapshotStoreMode: organisation override read failed", {
+          organizationId,
+          error,
+        });
+      });
+  }
 }
 
 /** Built on first use, never at import: importing this module must have no side effect. */
@@ -134,5 +148,5 @@ export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapsho
 
 /** Called by the organisation flag save path so the writing process sees a dial change at once. */
 export function invalidateSnapshotStoreOrgMode(organizationId: string): void {
-  orgModeSource().refresh(organizationId);
+  orgModeSource().invalidate(organizationId);
 }

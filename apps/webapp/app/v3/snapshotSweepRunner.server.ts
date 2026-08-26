@@ -44,6 +44,9 @@ export function buildSnapshotSweepRunner(deps: {
       }
       return { outcome: "completed", counts };
     } catch (error) {
+      if (signal.aborted) {
+        return { outcome: "aborted" };
+      }
       logger.error("snapshot orphan sweep pass failed", { error });
       return { outcome: "failed" };
     } finally {

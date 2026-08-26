@@ -26,7 +26,7 @@ describe("TaskRunExecutionSnapshotStore mode resolution", () => {
   });
 
   it("falls back to the static mode when no resolver is supplied", () => {
-    expect(storeWith({ mode: "compare" }).mode).toBe("compare");
+    expect(storeWith({ mode: "redis-read" }).mode).toBe("redis-read");
   });
 
   it("defaults to off with neither", () => {

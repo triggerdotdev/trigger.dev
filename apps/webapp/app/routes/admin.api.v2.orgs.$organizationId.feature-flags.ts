@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
 import { invalidateSnapshotStoreOrgMode } from "~/v3/snapshotStoreMode.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
@@ -145,6 +146,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   } = validationResult.data;
 
   const requestedFlags = withoutOrgForbiddenSnapshotKeys(rawRequestedFlags);
+
+  const snapshotStoreError = snapshotStoreFlagSaveError(requestedFlags, {
+    redisHostConfigured: !!env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST,
+  });
+  if (snapshotStoreError) {
+    return json({ error: snapshotStoreError }, { status: 400 });
+  }
 
   // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
   // is graced from the currently-effective global kind, not the hardcoded default "cuid".

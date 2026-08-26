@@ -10,7 +10,10 @@ import {
   withoutDerivedKeys,
 } from "~/v3/featureFlags.server";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
-import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
+import {
+  globalOnlySnapshotStoreFlagError,
+  snapshotStoreFlagSaveError,
+} from "~/v3/snapshotStoreFlagGuard.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
@@ -29,6 +32,11 @@ export async function action({ request }: ActionFunctionArgs) {
         },
         { status: 400 }
       );
+    }
+
+    const globalOnlyError = globalOnlySnapshotStoreFlagError(body as Record<string, unknown>);
+    if (globalOnlyError) {
+      return json({ error: globalOnlyError }, { status: 400 });
     }
 
     const snapshotStoreError = snapshotStoreFlagSaveError(body as Record<string, unknown>, {

@@ -50,6 +50,23 @@ export type CrossSeamGuardHook = (input: {
   routeKind: "MANUAL" | "DATETIME" | "RESUME_TOKEN" | "IDEMPOTENCY_REUSE" | "RUN";
 }) => Promise<CrossSeamGuardDecision>;
 
+export type SnapshotSweepOutcome =
+  | "completed"
+  | "partial"
+  | "skipped_locked"
+  | "failed"
+  | "unbound"
+  | "aborted";
+
+export type SnapshotSweepCountField =
+  | "scanned"
+  | "expired"
+  | "deleted"
+  | "skipped"
+  | "pendingDeletion"
+  | "nodes"
+  | "partial";
+
 export type RunEngineOptions = {
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
@@ -171,9 +188,10 @@ export type RunEngineOptions = {
    * runs, because a pass needs a run store and its own Redis client and the engine opens neither.
    */
   snapshotStore?: {
+    /** Bounded on purpose: both fields become metric attributes, so each value is a time series. */
     runSweep?: (opts: { deadline: number; signal: AbortSignal }) => Promise<{
-      outcome: string;
-      counts?: Record<string, number | boolean>;
+      outcome: SnapshotSweepOutcome;
+      counts?: Partial<Record<SnapshotSweepCountField, number | boolean>>;
     }>;
     /** Cron. Absent or empty falls back to the catalog default. */
     sweepSchedule?: string;

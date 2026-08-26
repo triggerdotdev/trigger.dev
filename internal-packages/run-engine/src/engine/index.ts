@@ -98,6 +98,7 @@ import type {
   HeartbeatTimeouts,
   ReportableQueue,
   RunEngineOptions,
+  SnapshotSweepOutcome,
   TriggerParams,
 } from "./types.js";
 import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
@@ -2964,8 +2965,8 @@ export class RunEngine {
     // The deadline is the sweep's own stopping rule; this is the backstop for a pass that has
     // stopped reaching a batch boundary, so the signal is not merely decorative.
     const abortAt = globalThis.setTimeout(() => controller.abort(), budgetMs + 60_000);
-    let outcome = "failed";
-    let counts: Record<string, number | boolean> | undefined;
+    let outcome: SnapshotSweepOutcome = "failed";
+    let counts: Partial<Record<string, number | boolean>> | undefined;
 
     try {
       const result = await runSweep({
@@ -2976,6 +2977,10 @@ export class RunEngine {
       counts = result.counts;
     } catch (error) {
       this.logger.error("sweepSnapshotOrphans threw", { error });
+      // Rethrow after the finally records the outcome. Acknowledging here would skip the
+      // dead-letter path, and that path is what re-enqueues the next occurrence, so one transient
+      // failure would stop the sweep for good.
+      throw error;
     } finally {
       globalThis.clearTimeout(abortAt);
       this.snapshotSweepPassCounter?.add(1, { outcome });

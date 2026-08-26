@@ -17,7 +17,10 @@ import {
   lockedFlagsInPayload,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
-import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
+import {
+  globalOnlySnapshotStoreFlagError,
+  snapshotStoreFlagSaveError,
+} from "~/v3/snapshotStoreFlagGuard.server";
 import { flags as getGlobalFlags, replaceGlobalFeatureFlags } from "~/v3/featureFlags.server";
 import { featuresForRequest } from "~/features.server";
 import { Button } from "~/components/primitives/Buttons";
@@ -128,6 +131,11 @@ export const action = dashboardAction(
         { error: "Invalid feature flags", details: validationResult.error.issues },
         { status: 400 }
       );
+    }
+
+    const globalOnlyError = globalOnlySnapshotStoreFlagError(parsed.data.flags);
+    if (globalOnlyError) {
+      return json({ error: globalOnlyError }, { status: 400 });
     }
 
     const snapshotStoreError = snapshotStoreFlagSaveError(parsed.data.flags, {
