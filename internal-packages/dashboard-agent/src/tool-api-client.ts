@@ -115,7 +115,7 @@ export type DashboardAgentApiClient = {
   /** Whether this turn has both a delegated token and an origin to spend it on. */
   hasAuth: boolean;
   /** A GET as the environment JWT, or why no environment JWT could be made. */
-  envApiGet(path: string): Promise<EnvFetchResult>;
+  envApiGet(path: string, target?: ApiTarget): Promise<EnvFetchResult>;
   postQuery(query: string, period: string | undefined): Promise<QueryPostResult | EnvUnavailable>;
   validateChartQuery(query: string, period: string | undefined): Promise<string | null>;
 };
@@ -128,6 +128,11 @@ export type ApiClientContext = {
   environmentBranch?: string;
 };
 
+// A per-call override of which project/environment a data lookup targets, for reads
+// that cross into another project of the same organization. Omitted fields fall back
+// to the context's own project/environment.
+export type ApiTarget = { projectRef?: string; environmentName?: string };
+
 export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient {
   const { userActorToken, apiOrigin, projectRef, environmentName, environmentBranch } = ctx;
   const origin = apiOrigin ? apiOrigin.replace(/\/$/, "") : "";
@@ -137,20 +142,20 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   // environment. Caching the promise makes concurrent calls share one exchange.
   type EnvJwt = { ok: true; token: string } | EnvUnavailable;
   const envJwts = new Map<string, Promise<EnvJwt>>();
-  function getEnvJwt(refresh = false): Promise<EnvJwt> {
-    if (!hasAuth || !projectRef || !environmentName) return Promise.resolve(MISSING_ENV);
-    const key = `${projectRef}/${environmentName}/${environmentBranch ?? ""}`;
+  function getEnvJwt(refresh = false, target?: ApiTarget): Promise<EnvJwt> {
+    // An override drops the branch: it names another project/environment, which the
+    // current branch can't be assumed to apply to. A field left off the override still
+    // falls back to ctx's own value.
+    const ref = target?.projectRef ?? projectRef;
+    const env = target?.environmentName ?? environmentName;
+    const branch = target ? undefined : environmentBranch;
+    if (!hasAuth || !ref || !env) return Promise.resolve(MISSING_ENV);
+    const key = `${ref}/${env}/${branch ?? ""}`;
     if (refresh) envJwts.delete(key);
     let pending = envJwts.get(key);
     if (!pending) {
       // A failed exchange is not cached: a 403 or a 5xx would otherwise pin the whole turn.
-      pending = exchangeEnvJwt(
-        origin,
-        userActorToken!,
-        projectRef,
-        environmentName,
-        environmentBranch
-      ).then((result) => {
+      pending = exchangeEnvJwt(origin, userActorToken!, ref, env, branch).then((result) => {
         if (!result.ok) envJwts.delete(key);
         return result;
       });
@@ -165,13 +170,14 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
    */
   async function withEnvJwt<T extends object>(
     call: (jwt: string) => Promise<T>,
-    isUnauthorized: (result: T) => boolean
+    isUnauthorized: (result: T) => boolean,
+    target?: ApiTarget
   ): Promise<T | EnvUnavailable> {
-    const jwt = await getEnvJwt();
+    const jwt = await getEnvJwt(false, target);
     if (!jwt.ok) return jwt;
     const first = await call(jwt.token);
     if (!isUnauthorized(first)) return first;
-    const fresh = await getEnvJwt(true);
+    const fresh = await getEnvJwt(true, target);
     if (!fresh.ok) return first;
     return call(fresh.token);
   }
@@ -179,8 +185,8 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   const unauthorizedGet = (result: FetchResult) =>
     !result.ok && "status" in result && result.status === 401;
 
-  function envApiGet(path: string): Promise<EnvFetchResult> {
-    return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
+  function envApiGet(path: string, target?: ApiTarget): Promise<EnvFetchResult> {
+    return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet, target);
   }
 
   // A POST, so it can't use envApiGet, but keeps the same JWT cache and one-shot

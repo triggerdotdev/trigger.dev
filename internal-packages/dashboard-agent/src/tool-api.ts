@@ -25,6 +25,7 @@ import {
   fetchReason,
   isEnvUnavailable,
   NO_AUTH,
+  type ApiTarget,
   type DashboardAgentApiClient,
   type EnvFetchResult,
   type EnvUnavailable,
@@ -197,6 +198,19 @@ export function withLiveState(metrics: unknown, queueType: "task" | "custom", li
 /** Failed `run_query` calls in a row before the tool tells the model to stop and answer. */
 export const MAX_CONSECUTIVE_QUERY_FAILURES = 3;
 
+/**
+ * A data lookup's optional `project`/`environment` input as an `envApiGet` target.
+ * `undefined` when neither was given, so the default (ctx-scoped, branch-aware) path
+ * is unchanged rather than re-derived from ctx through an override.
+ */
+function crossProjectTarget(input: {
+  project?: string;
+  environment?: string;
+}): ApiTarget | undefined {
+  if (!input.project && !input.environment) return undefined;
+  return { projectRef: input.project, environmentName: input.environment };
+}
+
 export function buildApiTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
@@ -261,7 +275,7 @@ export function buildApiTools(args: {
 
     list_runs: tool({
       ...listRunsSchema,
-      execute: async ({ status, taskIdentifier, errorId, period, limit }) => {
+      execute: async ({ status, taskIdentifier, errorId, period, limit, project, environment }) => {
         const effectivePeriod = period ? clampPeriod(period) : undefined;
         const sp = new URLSearchParams();
         if (status) sp.append("filter[status]", status);
@@ -269,7 +283,10 @@ export function buildApiTools(args: {
         if (errorId) sp.append("filter[error]", errorId);
         if (effectivePeriod) sp.append("filter[createdAt][period]", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
-        const result = await envApiGet(`/api/v1/runs?${sp.toString()}`);
+        const result = await envApiGet(
+          `/api/v1/runs?${sp.toString()}`,
+          crossProjectTarget({ project, environment })
+        );
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok) return { error: `Couldn't list runs${fetchReason(result)}.` };
         return { ...curateRuns(result.data), period: effectivePeriod };
@@ -281,8 +298,11 @@ export function buildApiTools(args: {
     // different cached prefix.
     get_run: tool({
       ...getRunSchema,
-      execute: async ({ runId }) => {
-        const result = await envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`);
+      execute: async ({ runId, project, environment }) => {
+        const result = await envApiGet(
+          `/api/v3/runs/${encodeURIComponent(runId)}`,
+          crossProjectTarget({ project, environment })
+        );
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok) return { error: `Couldn't get run ${runId}${fetchReason(result)}.` };
         return curateRun(result.data);
@@ -291,8 +311,11 @@ export function buildApiTools(args: {
 
     get_run_trace: tool({
       ...getRunTraceSchema,
-      execute: async ({ runId }) => {
-        const result = await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`);
+      execute: async ({ runId, project, environment }) => {
+        const result = await envApiGet(
+          `/api/v1/runs/${encodeURIComponent(runId)}/trace`,
+          crossProjectTarget({ project, environment })
+        );
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok)
           return { error: `Couldn't get the trace for ${runId}${fetchReason(result)}.` };
@@ -323,8 +346,11 @@ export function buildApiTools(args: {
 
     get_error: tool({
       ...getErrorSchema,
-      execute: async ({ errorId }) => {
-        const result = await envApiGet(`/api/v1/errors/${encodeURIComponent(errorId)}`);
+      execute: async ({ errorId, project, environment }) => {
+        const result = await envApiGet(
+          `/api/v1/errors/${encodeURIComponent(errorId)}`,
+          crossProjectTarget({ project, environment })
+        );
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
         if (!result.ok) return { error: `Couldn't get error ${errorId}${fetchReason(result)}.` };
         return curateError(result.data);
@@ -494,7 +520,11 @@ export function buildApiTools(args: {
 
     get_queue: tool({
       ...getQueueSchema,
-      execute: async ({ queue, type, period }) => {
+      execute: async ({ queue, type, period, project, environment }) => {
+        const crossTarget = crossProjectTarget({ project, environment });
+        const effectiveProjectRef = project ?? projectRef;
+        const effectiveEnvironmentName = environment ?? environmentName;
+
         // The metrics route answers an unknown queue with zeroes rather than a 404, so a
         // wrong `type` reads exactly like an idle queue — and the wrong half of that pair
         // is easy to pick, since a named queue and a task's own queue look alike. Try the
@@ -504,7 +534,8 @@ export function buildApiTools(args: {
           if (period) sp.append("period", period);
           // Queue names may contain `/`; encode them as a single path segment.
           const result = await envApiGet(
-            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}/metrics?${sp.toString()}`
+            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}/metrics?${sp.toString()}`,
+            crossTarget
           );
           return result;
         };
@@ -514,7 +545,8 @@ export function buildApiTools(args: {
         // someone stopped, and the answer has to lead with which one it is.
         const live = async (kind: "task" | "custom") => {
           const result = await envApiGet(
-            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}?type=${kind}`
+            `/api/v1/queues/${encodeURIComponent(queueNameForKind(queue, kind))}?type=${kind}`,
+            crossTarget
           );
           return readQueueLiveState(result);
         };
@@ -523,12 +555,17 @@ export function buildApiTools(args: {
         // named after, while a custom queue's name says nothing about who writes to it.
         const answer = async (metrics: unknown, kind: "task" | "custom", state: QueueLiveRead) => {
           const base = withLiveState(metrics, kind, state);
-          if (base.queueType !== "custom" || !hasAuth || !projectRef || !environmentName) {
+          if (
+            base.queueType !== "custom" ||
+            !hasAuth ||
+            !effectiveProjectRef ||
+            !effectiveEnvironmentName
+          ) {
             return base;
           }
           const workers = await apiGet(
             origin,
-            `/api/v1/projects/${projectRef}/${environmentName}/workers/current`,
+            `/api/v1/projects/${effectiveProjectRef}/${effectiveEnvironmentName}/workers/current`,
             userActorToken!
           );
           if (!workers.ok) return base;
