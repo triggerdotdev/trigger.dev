@@ -66,6 +66,17 @@ describe("the card's sections appear only when they have something in them", () 
     expect(html).toContain("Hypotheses");
     expect(html).toContain("The receipt builder is handed a null order id.");
   });
+
+  it("leaves out the hypotheses count on the toggle when there are none", () => {
+    const html = markup({ block: block({}) });
+    expect(html).not.toContain("hypothesis");
+    expect(html).not.toContain("hypotheses");
+  });
+
+  it("shows the hypotheses count on the toggle once there is one", () => {
+    const html = markup({ block: block({ hypotheses: [HYPOTHESIS] }) });
+    expect(html).toContain("1 hypothesis");
+  });
 });
 
 describe("action buttons need a host to hand the intent to", () => {

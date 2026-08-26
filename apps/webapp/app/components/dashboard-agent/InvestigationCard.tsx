@@ -208,10 +208,12 @@ export function InvestigationCard({
           >
             <span className="flex items-center gap-1.5 text-xs text-text-dimmed">
               {expanded ? "Hide how I worked this out" : "How I worked this out"}
-              <span className="text-text-faint">
-                ({investigation.hypotheses.length} hypothes
-                {investigation.hypotheses.length === 1 ? "is" : "es"})
-              </span>
+              {investigation.hypotheses.length > 0 ? (
+                <span className="text-text-faint">
+                  ({investigation.hypotheses.length} hypothes
+                  {investigation.hypotheses.length === 1 ? "is" : "es"})
+                </span>
+              ) : null}
             </span>
           </Button>
 
