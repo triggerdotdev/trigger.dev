@@ -69,14 +69,19 @@ function reportOverrideRejected(info: { override: string; activeSet: string[] })
 /**
  * Which shard an environment mints new roots into. Call only after resolveRunIdMintKind has
  * returned "runOpsId". Returns "new" to mean a gen-1 run-ops id, which is today's behaviour.
- *
- * @knipignore the gen-2 write-path change is the first production caller; drop this tag there.
  */
 export async function resolveMintShard(environment: {
   id: string;
   // Pass environment.organization.featureFlags from the trigger call site.
   orgFeatureFlags?: unknown;
 }): Promise<ShardKey> {
+  // No shard descriptor means no shard can ever be minted into, so answer before reading
+  // anything: an unconfigured deployment keeps exactly today's code path, with no
+  // control-plane query on the trigger path, no cache write and no log line.
+  if (env.RUN_OPS_SHARDS.length === 0) {
+    return "new";
+  }
+
   return resolveMintShardWith(environment, {
     readFlags: readSetFlags,
     cache: liveCache,
