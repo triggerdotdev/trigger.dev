@@ -677,6 +677,7 @@ function VariableField({
             onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
             autoFocus={index === 0}
             onPaste={onPaste}
+            autoComplete="off"
           />
           <FormError id={fields.key.errorId}>{fields.key.errors}</FormError>
         </div>
@@ -689,6 +690,7 @@ function VariableField({
               placeholder="Not set"
               value={value.value}
               onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
+              autoComplete="off"
             />
             <FormError id={fields.value.errorId}>{fields.value.errors}</FormError>
           </div>
