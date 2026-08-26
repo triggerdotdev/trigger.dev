@@ -41,6 +41,36 @@ describe("gate off — run mint paths", () => {
     expect(mintFriendlyIdForKind(target).slice(4).length).toBe(25);
   });
 
+  it("a child of a gen-1 parent keeps the caller's region char", async () => {
+    // The pre-split code passed the region on BOTH arms, so a child run stamped the
+    // requested region. Dropping it on the inherited arm would silently stamp the default.
+    const target = await resolveRunMintTarget({
+      environment,
+      parentRunFriendlyId: `run_${"a".repeat(24)}01`,
+      region: "us-east-1",
+      deps: {
+        resolveRunIdMintKind: vi.fn().mockResolvedValue("runOpsId"),
+        resolveMintShard: offShard,
+      },
+    });
+    const body = mintFriendlyIdForKind(target).slice(4);
+    expect(body[24]).toBe("e");
+    expect(body[25]).toBe("1");
+  });
+
+  it("a gen-2 parent's shard still outranks the caller's region", async () => {
+    const target = await resolveRunMintTarget({
+      environment,
+      parentRunFriendlyId: `run_${"a".repeat(24)}a2`,
+      region: "us-east-1",
+      deps: {
+        resolveRunIdMintKind: vi.fn().mockResolvedValue("runOpsId"),
+        resolveMintShard: offShard,
+      },
+    });
+    expect(mintFriendlyIdForKind(target).slice(4)[24]).toBe("a");
+  });
+
   it("a child of a gen-1 parent mints a gen-1 v1 id", () => {
     const body = mintFriendlyIdForKind(resolveInheritedMintKind(`run_${"a".repeat(24)}01`)).slice(
       4

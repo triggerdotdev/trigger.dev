@@ -27,7 +27,9 @@ export async function resolveRunMintTarget(args: {
   deps?: Partial<RunMintDeps>;
 }): Promise<MintTarget> {
   if (args.parentRunFriendlyId) {
-    return resolveInheritedMintKind(args.parentRunFriendlyId);
+    // The region still travels: it takes index 24 for an inherited gen-1 parent, exactly as
+    // it did before this branch. A gen-2 parent's shardChar outranks it.
+    return { ...resolveInheritedMintKind(args.parentRunFriendlyId), region: args.region };
   }
 
   const deps = { ...defaultDeps, ...args.deps };
