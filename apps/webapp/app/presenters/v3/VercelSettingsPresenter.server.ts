@@ -173,6 +173,9 @@ export class VercelSettingsPresenter extends BasePresenter {
         })
       ).map((repo) => repo !== null);
 
+    // Match on slug, not type: preview branches are PREVIEW rows too, and only the
+    // branchable parent carries the "preview" slug. Keeps this in step with
+    // GitHubSettingsPresenter and ProjectSettingsService, which ask the same question.
     const checkStagingEnvironment = () =>
       fromPromise(
         (this._replica as PrismaClient).runtimeEnvironment.findFirst({
@@ -181,7 +184,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           },
           where: {
             projectId,
-            type: "STAGING",
+            slug: "stg",
           },
         }),
         (error) => ({
@@ -198,7 +201,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           },
           where: {
             projectId,
-            type: "PREVIEW",
+            slug: "preview",
           },
         }),
         (error) => ({
