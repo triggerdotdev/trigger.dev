@@ -4,6 +4,7 @@
  * whole webapp service graph). The handlers wire the production defaults; tests
  * inject per-container stores/replicas, so these helpers never import db.server.
  */
+import { resolveShard } from "@trigger.dev/core/v3/isomorphic";
 import type { CompleteBatchResult } from "@internal/run-engine";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { RunStore } from "@internal/run-store";
@@ -82,8 +83,25 @@ export async function resolveBatchRunOpsWriter(
     newReplica: RunOpsPrismaClient;
     newWriter: RunOpsPrismaClient;
     legacyWriter: RunOpsPrismaClient;
+    shards?: ReadonlyArray<{ key: string; writer: RunOpsPrismaClient }>;
   }
 ): Promise<RunOpsPrismaClient> {
+  // A gen-2 batch names its own shard in its id, so route by that and never probe. The
+  // probe below is binary — NEW, else assume LEGACY — so a gen-2 batch would fall through
+  // to a store that holds no such row, and the completion update would throw before the
+  // batch waitpoint could complete, leaving the parent run blocked with nothing logged.
+  const shardKey = resolveShard(batchId);
+  if (shardKey !== "new" && shardKey !== "legacy") {
+    const shard = deps.shards?.find((s) => s.key === shardKey);
+    if (!shard) {
+      // Writing to a guessed store is what strands a run. Fail loud instead.
+      throw new Error(
+        `resolveBatchRunOpsWriter: batch "${batchId}" names shard "${shardKey}", which is not configured`
+      );
+    }
+    return shard.writer;
+  }
+
   const onNew = await deps.newReplica.batchTaskRun.findFirst({
     where: { id: batchId },
     select: { id: true },
@@ -105,6 +123,7 @@ export type BatchCompletionDeps = {
   newReplica: RunOpsPrismaClient;
   newWriter: RunOpsPrismaClient;
   legacyWriter: RunOpsPrismaClient;
+  shards?: ReadonlyArray<{ key: string; writer: RunOpsPrismaClient }>;
   tryCompleteBatch: (batchId: string) => Promise<unknown>;
 };
 
@@ -135,6 +154,7 @@ export async function handleBatchCompletion(
     newReplica: deps.newReplica,
     newWriter: deps.newWriter,
     legacyWriter: deps.legacyWriter,
+    shards: deps.shards,
   });
 
   try {

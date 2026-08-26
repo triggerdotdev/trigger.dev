@@ -490,6 +490,42 @@ describe("runEngineHandlers batch completion", () => {
 });
 
 describe("runEngineHandlers batch residency routing", () => {
+  // A gen-2 batch lives on its own shard. The binary probe below it looks only on the
+  // NEW store and then assumes LEGACY, so without a shard arm the completion update runs
+  // on a database that has no such row: Prisma throws "no record was found for an
+  // update", the callback dies before tryCompleteBatch, the BATCH waitpoint stays
+  // PENDING and the parent run waits forever with nothing logged as a hang.
+  it("a gen-2 batch resolves to its own shard writer", async () => {
+    const shardWriter = {} as never; // identity is the whole assertion; no database is touched
+    const gen2BatchId = `${"a".repeat(24)}a2`;
+
+    const writer = await resolveBatchRunOpsWriter(gen2BatchId, {
+      newReplica: {
+        batchTaskRun: {
+          findFirst: async () => {
+            throw new Error("a gen-2 batch id must never probe the NEW store");
+          },
+        },
+      } as never,
+      newWriter: {} as never,
+      legacyWriter: {} as never,
+      shards: [{ key: "a", writer: shardWriter as never }],
+    });
+
+    expect(writer).toBe(shardWriter);
+  });
+
+  it("an unconfigured shard key fails loud rather than writing elsewhere", async () => {
+    await expect(
+      resolveBatchRunOpsWriter(`${"a".repeat(24)}z2`, {
+        newReplica: {} as never,
+        newWriter: {} as never,
+        legacyWriter: {} as never,
+        shards: [{ key: "a", writer: {} as never }],
+      })
+    ).rejects.toThrow(/shard/i);
+  });
+
   // True single-DB invariant: the topology's cpFallback makes newReplica and
   // legacyWriter the SAME control-plane client, so the probe always resolves to
   // that one client regardless of where length-classification would guess.
