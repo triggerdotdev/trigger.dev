@@ -191,18 +191,69 @@ function DotMatrixTab() {
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         <DotGridEditor />
       </div>
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
+        Owner-drawn candidates, exactly as given — editor size and {CANDIDATE_SMALL_SIZE}px, so
+        legibility at icon size is judgeable. #2 and #5 are identical (an A/B pair).
+      </Paragraph>
+      <OwnerBitmapsRow />
     </div>
   );
 }
 
 // 1.5x the 32px candidate icons this replaced.
 const EDITOR_SIZE = 48;
+// Within the 16-24px range action icons render at.
+const CANDIDATE_SMALL_SIZE = 20;
+
+/**
+ * Renders a flat `MATRIX * MATRIX` lit/unlit array on the shared grid geometry —
+ * `dotMatrixGeometry`, so pitch and dot radius always match the Shape library above.
+ * Shared by the interactive editor (`onToggle`) and the static owner-bitmap previews.
+ */
+function DotGrid({
+  lit,
+  size,
+  litClassName = "text-success",
+  onToggle,
+}: {
+  lit: boolean[];
+  size: number;
+  litClassName?: string;
+  onToggle?: (index: number) => void;
+}) {
+  const { pitch, dotR } = dotMatrixGeometry(size);
+  const center = (i: number) => i * pitch + pitch / 2;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="rounded-md border border-grid-bright"
+    >
+      {lit.map((isLit, i) => {
+        const r = Math.floor(i / MATRIX);
+        const c = i % MATRIX;
+        return (
+          <circle
+            key={i}
+            cx={center(c)}
+            cy={center(r)}
+            r={dotR}
+            fill="currentColor"
+            opacity={isLit ? 1 : 0.25}
+            className={cn(onToggle && "cursor-pointer", isLit ? litClassName : "text-text-dimmed")}
+            onClick={onToggle ? () => onToggle(i) : undefined}
+          />
+        );
+      })}
+    </svg>
+  );
+}
 
 /** Interactive `MATRIX`x`MATRIX` grid: click a dot to toggle it on (accent) or off (ghost). */
 function DotGridEditor() {
   const [lit, setLit] = useState<boolean[]>(() => new Array(MATRIX * MATRIX).fill(false));
-  const { pitch, dotR } = dotMatrixGeometry(EDITOR_SIZE);
-  const center = (i: number) => i * pitch + pitch / 2;
 
   const toggle = (index: number) => {
     setLit((current) => current.map((value, i) => (i === index ? !value : value)));
@@ -218,32 +269,46 @@ function DotGridEditor() {
 
   return (
     <div className="flex flex-col items-start gap-2">
-      <svg
-        width={EDITOR_SIZE}
-        height={EDITOR_SIZE}
-        viewBox={`0 0 ${EDITOR_SIZE} ${EDITOR_SIZE}`}
-        className="rounded-md border border-grid-bright"
-      >
-        {lit.map((isLit, i) => {
-          const r = Math.floor(i / MATRIX);
-          const c = i % MATRIX;
-          return (
-            <circle
-              key={i}
-              cx={center(c)}
-              cy={center(r)}
-              r={dotR}
-              fill="currentColor"
-              opacity={isLit ? 1 : 0.25}
-              className={cn("cursor-pointer", isLit ? "text-success" : "text-text-dimmed")}
-              onClick={() => toggle(i)}
-            />
-          );
-        })}
-      </svg>
+      <DotGrid lit={lit} size={EDITOR_SIZE} onToggle={toggle} />
       <pre className="rounded border border-grid-bright bg-charcoal-900 px-2 py-1 font-mono text-[10px] leading-tight text-text-dimmed">
         {rows.join("\n")}
       </pre>
+    </div>
+  );
+}
+
+function bitmapToLit(bitmap: string[]): boolean[] {
+  return bitmap.flatMap((row) => [...row].map((cell) => cell === "#"));
+}
+
+// Owner-drawn in the editor above, 5-line `MATRIX` bitmaps, exactly as given.
+const OWNER_BITMAPS: { id: number; bitmap: string[] }[] = [
+  { id: 1, bitmap: ["#.#.#", ".#.#.", "#...#", ".#.#.", "#.#.#"] },
+  { id: 2, bitmap: [".###.", "#####", "#.#.#", ".###.", "....."] },
+  { id: 3, bitmap: [".....", ".###.", "#.#.#", ".###.", "....."] },
+  { id: 4, bitmap: ["..#..", ".###.", "##.##", ".###.", "..#.."] },
+  // Same as #2 — the owner may be A/B-ing it; rendered anyway.
+  { id: 5, bitmap: [".###.", "#####", "#.#.#", ".###.", "....."] },
+  { id: 6, bitmap: [".###.", "#.#.#", "#####", "#.#.#", ".###."] },
+  { id: 7, bitmap: ["..#..", "..#..", "##.##", "..#..", "..#.."] },
+  { id: 8, bitmap: [".###.", "#...#", "#...#", "#####", "..#.."] },
+  { id: 9, bitmap: [".###.", "#####", "#.#.#", "#####", "..#.."] },
+  { id: 10, bitmap: [".###.", "#####", "#####", "..#..", "..#.."] },
+];
+
+function OwnerBitmapsRow() {
+  return (
+    <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
+      {OWNER_BITMAPS.map(({ id, bitmap }) => {
+        const lit = bitmapToLit(bitmap);
+        return (
+          <div key={id} className="flex flex-col items-end gap-2">
+            <DotGrid lit={lit} size={EDITOR_SIZE} litClassName="text-text-bright" />
+            <DotGrid lit={lit} size={CANDIDATE_SMALL_SIZE} litClassName="text-text-bright" />
+            <div className="text-[10px] uppercase tracking-wide text-text-dimmed">#{id}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
