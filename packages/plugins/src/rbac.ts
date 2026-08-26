@@ -299,6 +299,9 @@ export type UserActorClaims = {
   // The `RuntimeEnvironment.id` the token was minted for, so a route need not trust the request
   // body. Optional because other UAT flows are environment-agnostic.
   environmentId?: string;
+  // The `Organization.id` the token was minted for, for org-wide UATs that span
+  // multiple projects/environments. Optional because scoped UAT flows carry environmentId instead.
+  organizationId?: string;
   // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
   // user's role. Absent today; the auth path is already cap-ready.
   cap?: string[];
@@ -319,6 +322,7 @@ export async function signUserActorToken(
     client: string;
     sessionId?: string;
     environmentId?: string;
+    organizationId?: string;
     pat?: string;
     cap?: string[];
     expirationTime?: string | number | Date;
@@ -333,6 +337,7 @@ export async function signUserActorToken(
         client: opts.client,
         ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
         ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+        ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
         ...(opts.pat ? { pat: opts.pat } : {}),
       },
       ...(opts.cap ? { cap: opts.cap } : {}),
@@ -356,13 +361,20 @@ export async function verifyUserActorToken(
   if (payload.kind !== USER_ACTOR_KIND || typeof payload.sub !== "string") return;
 
   const act = payload.act as
-    | { client?: string; sessionId?: string; environmentId?: string; pat?: string }
+    | {
+        client?: string;
+        sessionId?: string;
+        environmentId?: string;
+        organizationId?: string;
+        pat?: string;
+      }
     | undefined;
   return {
     userId: payload.sub,
     client: act?.client,
     sessionId: act?.sessionId,
     environmentId: act?.environmentId,
+    organizationId: act?.organizationId,
     pat: act?.pat,
     cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
     expiresAt: typeof payload.exp === "number" ? payload.exp : undefined,
