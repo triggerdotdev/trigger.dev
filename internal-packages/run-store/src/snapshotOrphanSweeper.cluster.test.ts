@@ -68,7 +68,10 @@ describe("scanTargetsOf", () => {
     let generation = 0;
     (cluster as unknown as { nodes: () => Redis[] }).nodes = () => {
       generation += 1;
-      return Array.from({ length: generation }, (_v, i) => new Redis({ lazyConnect: true, port: 65100 + i }));
+      return Array.from(
+        { length: generation },
+        (_v, i) => new Redis({ lazyConnect: true, port: 65100 + i })
+      );
     };
 
     expect(scanTargetsOf(cluster)).toHaveLength(1);

@@ -301,25 +301,28 @@ describe("a run seen alive clears its marker", () => {
 });
 
 describe("a pass can stop inside a budget", () => {
-  containerTest("an already-passed deadline yields a partial pass", async ({ prisma, redisOptions }) => {
-    const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-    const sweeper = new SnapshotOrphanSweeper({
-      redisOptions,
-      runStore: runStore as unknown as RunStore,
-      completedTtlMs: COMPLETED_TTL_MS,
-    });
+  containerTest(
+    "an already-passed deadline yields a partial pass",
+    async ({ prisma, redisOptions }) => {
+      const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const sweeper = new SnapshotOrphanSweeper({
+        redisOptions,
+        runStore: runStore as unknown as RunStore,
+        completedTtlMs: COMPLETED_TTL_MS,
+      });
 
-    try {
-      const result = await sweeper.sweep({ deadline: Date.now() - 1 });
+      try {
+        const result = await sweeper.sweep({ deadline: Date.now() - 1 });
 
-      // redis-worker redelivers a job that outlives its visibility timeout, and nothing extends it,
-      // so a pass that cannot stop on its own runs concurrently with itself.
-      expect(result.partial).toBe(true);
-      expect(result.scanned).toBe(0);
-    } finally {
-      await sweeper.quit();
+        // redis-worker redelivers a job that outlives its visibility timeout, and nothing extends it,
+        // so a pass that cannot stop on its own runs concurrently with itself.
+        expect(result.partial).toBe(true);
+        expect(result.scanned).toBe(0);
+      } finally {
+        await sweeper.quit();
+      }
     }
-  });
+  );
 
   containerTest("an aborted signal yields a partial pass", async ({ prisma, redisOptions }) => {
     const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
