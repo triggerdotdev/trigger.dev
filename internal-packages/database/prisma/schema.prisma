@@ -2265,6 +2265,8 @@ model WorkerDeployment {
 
   runtime        String?
   runtimeVersion String?
+  /// CLI version that initiated the deploy, stamped at initialization
+  cliVersion     String?
 
   imageReference String?
   imagePlatform  String  @default("linux/amd64")

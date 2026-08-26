@@ -940,6 +940,10 @@ const EnvironmentSchema = z
     DISABLE_HTTP_INSTRUMENTATION: BoolEnv.default(false),
 
     INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+
+    // Second trace exporter receiving only `deployment.*` spans; they still flow to the main one
+    INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_URL: z.string().optional(),
+    INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_AUTH_HEADERS: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_ENABLED: z.string().default("0"),
