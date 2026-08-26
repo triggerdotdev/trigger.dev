@@ -1,14 +1,9 @@
 // @vitest-environment jsdom
 //
-// Drives the hook's own handlers in framer-motion's *real* callback order, not the
-// pure math functions: framer-motion defers onPanStart/onPanEnd by a frame (its internal
-// scheduler) while onPan fires synchronously, so a real gesture can deliver one or more
-// onPan events before the onPanStart for that same gesture lands. A startRectRef-based
-// implementation resets its baseline to the *already-moved* rect when the late onPanStart
-// finally fires, corrupting every subsequent onPan in the gesture. This file proves the
-// hook survives that ordering; draggableResizableMath.test.ts's pure-function tests can't,
-// since they call the (already-fixed) math directly and have no callback ordering to get
-// wrong.
+// Framer-motion can deliver onPan before onPanStart for the same gesture (its scheduler
+// defers onPanStart by a frame); a start-rect-ref implementation would corrupt its
+// baseline when the late onPanStart lands. This drives the hook's real handlers to prove
+// it survives that ordering, unlike the pure-math tests in draggableResizableMath.test.ts.
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";

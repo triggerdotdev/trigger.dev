@@ -1,95 +1,20 @@
 import type { UIMessage } from "@ai-sdk/react";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
-import { useLocation } from "@remix-run/react";
-import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { demoFixtures, DemoIntentBubble } from "~/components/dashboard-agent/demo";
-import {
-  ChatProgress,
-  ChatText,
-  ChatTranscript,
-  ChatTurn,
-} from "~/components/dashboard-agent/chat-layout";
+import { ChatProgress, ChatTranscript, ChatTurn } from "~/components/dashboard-agent/chat-layout";
 import { DashboardAgentComposer } from "~/components/dashboard-agent/DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
-import { DashboardAgentHeader } from "~/components/dashboard-agent/DashboardAgentHeader";
-import type { DashboardAgentChat } from "~/components/dashboard-agent/DashboardAgentHistory";
 import { DashboardAgentHero } from "~/components/dashboard-agent/DashboardAgentHero";
 import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
-import { AgentPanelColumn, FloatingAgentWindow } from "~/components/dashboard-agent/panel-layout";
+import { AgentPanelColumn } from "~/components/dashboard-agent/panel-layout";
 import { liveProgress } from "~/components/dashboard-agent/progress-line";
 import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
 import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
-import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
 import { demoTranscripts, investigationBlock, type DemoTranscript } from "./fixtures";
 import { fixtureResolveUri, GalleryPage, noop, PANEL_FRAME } from "./gallery";
-
-const NO_CHATS: DashboardAgentChat[] = [];
-
-/**
- * The dashboard agent's default (and only) mode: a floating window docked bottom-right,
- * draggable across the whole page and resizable by its edges and corners. Toggled open
- * here so the section demos the live shell, not a screenshot of it.
- */
-function FloatingWindowHarness() {
-  const [open, setOpen] = useState(true);
-  const [fullscreen, setFullscreen] = useState(false);
-
-  // Storybook only: the demo window must not follow you to another story. The real
-  // dashboard's chat intentionally persists across navigation — this effect is scoped to
-  // this story route and has no equivalent in DashboardAgent.tsx.
-  const { pathname } = useLocation();
-  const previousPathname = useRef(pathname);
-  useEffect(() => {
-    if (previousPathname.current === pathname) return;
-    previousPathname.current = pathname;
-    setOpen(false);
-  }, [pathname]);
-
-  return (
-    <>
-      <div className={cn(PANEL_FRAME, "flex h-24 items-center justify-center")}>
-        <Button variant="primary/medium" onClick={() => setOpen((current) => !current)}>
-          {open ? "Close chat" : "Open chat"}
-        </Button>
-      </div>
-      {open && (
-        <FloatingAgentWindow fullscreen={fullscreen}>
-          {(dragHandleProps) => (
-            <div className="flex h-full flex-col bg-background-bright">
-              <motion.div {...dragHandleProps}>
-                <DashboardAgentHeader
-                  title="New chat"
-                  chats={NO_CHATS}
-                  currentChatId=""
-                  thinkingChatId={null}
-                  onNewChat={noop}
-                  showNewChat={false}
-                  onOpenHistory={noop}
-                  onSelectChat={noop}
-                  onDeleteChat={noop}
-                  onToggleFullscreen={() => setFullscreen((current) => !current)}
-                  isFullscreen={fullscreen}
-                  onClose={() => setOpen(false)}
-                />
-              </motion.div>
-              <ChatTranscript>
-                <ChatTurn speaker="user">
-                  <ChatText speaker="user" text="Why did the queue back up around 2pm?" />
-                </ChatTurn>
-                <ChatTurn>
-                  <ChatText text="Concurrency on the `emails` queue hit its limit at 14:02 and stayed there for about 12 minutes. I can show you the runs that queued behind it." />
-                </ChatTurn>
-              </ChatTranscript>
-            </div>
-          )}
-        </FloatingAgentWindow>
-      )}
-    </>
-  );
-}
 
 const { demoIntents, demoWatches, demoPageContexts, demoInvestigations } = demoFixtures;
 
@@ -317,8 +242,6 @@ function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeW
 }
 
 const STATES: Record<string, React.ReactNode> = {
-  "shell-floating-window": <FloatingWindowHarness />,
-
   "hero-panel": <HeroHarness context={demoPageContexts.other} />,
   "hero-panel-contextual": <HeroHarness context={demoPageContexts.failedRun} />,
   "hero-fullscreen": <HeroHarness context={demoPageContexts.failedRun} fullscreen />,
@@ -415,7 +338,6 @@ export default function Story() {
       page="chat"
       states={STATES}
       componentNames={[
-        "panel-layout.tsx",
         "DashboardAgentComposer.tsx",
         "DashboardAgentMessages.tsx",
         "DashboardAgentHero.tsx",

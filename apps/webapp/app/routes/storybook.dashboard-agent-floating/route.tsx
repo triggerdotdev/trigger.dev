@@ -12,15 +12,22 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 
 const NO_CHATS: DashboardAgentChat[] = [];
 
-/**
- * The dashboard agent's default (and only) mode: a floating window docked at the
- * bottom of the page, draggable across the whole page and resizable by its edges and
- * corners. Static content only — this demos the shell (`FloatingAgentWindow`, the real
- * `DashboardAgentHeader`, and `agentTakeoverClassName` fullscreen), not a live backend.
- */
+/** Static content only: this demos the shell (drag, resize, fullscreen), not a live backend. */
 export default function Story() {
   const [open, setOpen] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const closeWindow = () => {
+    setOpen(false);
+    setFullscreen(false);
+  };
+
+  // SSR has no window, so the initial rect (and hydrated one) would mismatch; render the
+  // demo only once mounted client-side.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- SSR has no window; flips once client-mounted.
+    setMounted(true);
+  }, []);
 
   // Storybook only: the demo window must not follow you to another story. The real
   // dashboard's chat intentionally persists across navigation — this effect is scoped to
@@ -30,7 +37,7 @@ export default function Story() {
   useEffect(() => {
     if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
-    setOpen(false);
+    closeWindow();
   }, [pathname]);
 
   return (
@@ -47,14 +54,14 @@ export default function Story() {
           the page the same way the old side panel did.
         </Paragraph>
       </div>
-      {!open && (
+      {mounted && !open && (
         <div className="px-4">
           <Button variant="primary/medium" onClick={() => setOpen(true)}>
             Open chat
           </Button>
         </div>
       )}
-      {open && (
+      {mounted && open && (
         <FloatingAgentWindow fullscreen={fullscreen}>
           {(dragHandleProps) => (
             <div className="flex h-full flex-col bg-background-bright">
@@ -71,7 +78,7 @@ export default function Story() {
                   onDeleteChat={() => {}}
                   onToggleFullscreen={() => setFullscreen((f) => !f)}
                   isFullscreen={fullscreen}
-                  onClose={() => setOpen(false)}
+                  onClose={closeWindow}
                 />
               </motion.div>
               <ChatTranscript>

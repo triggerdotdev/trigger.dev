@@ -56,10 +56,14 @@ export function DashboardAgentLauncher() {
       tabbable
       disableHoverableContent
       content={
-        <span className="flex items-center">
-          {open ? "Close chat" : "Open chat"}
-          <ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />
-        </span>
+        open ? (
+          "Close chat"
+        ) : (
+          <span className="flex items-center">
+            Open chat
+            <ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />
+          </span>
+        )
       }
       button={
         <span className="relative inline-flex shrink-0">

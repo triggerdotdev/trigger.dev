@@ -17,11 +17,7 @@ import { ChatSystemBlock } from "./chat-layout";
 import { TONE_ICON_COLOR } from "./agent-badges";
 import { cn } from "~/utils/cn";
 
-/**
- * Icon and label per outcome. `watching` is a live watch, still running — same
- * spinner the chat uses while the agent is responding, not a static glyph. The
- * one-shot outcomes are terminal (nothing left to watch), so they keep their icons.
- */
+/** `watching` is a live watch, so it gets the chat's spinner; the terminal outcomes keep static icons. */
 const OUTCOME = {
   watching: { label: "Watch", icon: <AgentSpinner size={14} /> },
   already_true: {

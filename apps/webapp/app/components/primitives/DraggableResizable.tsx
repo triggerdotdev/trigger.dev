@@ -75,12 +75,10 @@ export function useDraggableResizable({
     return () => window.removeEventListener("resize", onResize);
   }, [viewportPadding]);
 
-  // Each onPan step folds `info.delta` (movement since the *last* event, not cumulative)
-  // onto the latest committed rect via the functional setState form. No gesture-start
-  // snapshot is kept: framer-motion defers onPanStart/onPanEnd by a frame but calls onPan
-  // synchronously, so a ref-based baseline captured in onPanStart can still be stale (or
-  // the mount-time initial rect) when the first onPan of a gesture lands. Delta + functional
-  // update has no baseline to go stale, so gestures compose correctly back-to-back.
+  // Each onPan step folds `info.delta` onto the latest committed rect via functional
+  // setState, with no gesture-start baseline kept: framer-motion can deliver onPan before
+  // onPanStart (its scheduler defers onPanStart by a frame), which would make a ref-based
+  // baseline stale.
   const dragHandleProps: PanHandlerProps = {
     onPanStart: () => {},
     onPan: (_event, info: PanInfo) => {

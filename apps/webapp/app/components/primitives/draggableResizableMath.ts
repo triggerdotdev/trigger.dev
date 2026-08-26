@@ -60,21 +60,29 @@ export function resizeRect(
 ): Rect {
   let { x, y, w, h } = start;
 
+  // `minSize` wins over the viewport cap: a tiny viewport must not shrink the box
+  // below its minimum, so every per-edge cap is floored at the matching min dimension.
   if (edge.includes("e")) {
-    const maxW = Math.min(maxSize?.w ?? Infinity, viewport.width - padding - start.x);
+    const maxW = Math.max(
+      minSize.w,
+      Math.min(maxSize?.w ?? Infinity, viewport.width - padding - start.x)
+    );
     w = clamp(start.w + dx, minSize.w, maxW);
   }
   if (edge.includes("s")) {
-    const maxH = Math.min(maxSize?.h ?? Infinity, viewport.height - padding - start.y);
+    const maxH = Math.max(
+      minSize.h,
+      Math.min(maxSize?.h ?? Infinity, viewport.height - padding - start.y)
+    );
     h = clamp(start.h + dy, minSize.h, maxH);
   }
   if (edge.includes("w")) {
-    const maxW = Math.min(maxSize?.w ?? Infinity, start.x + start.w - padding);
+    const maxW = Math.max(minSize.w, Math.min(maxSize?.w ?? Infinity, start.x + start.w - padding));
     w = clamp(start.w - dx, minSize.w, maxW);
     x = start.x + (start.w - w);
   }
   if (edge.includes("n")) {
-    const maxH = Math.min(maxSize?.h ?? Infinity, start.y + start.h - padding);
+    const maxH = Math.max(minSize.h, Math.min(maxSize?.h ?? Infinity, start.y + start.h - padding));
     h = clamp(start.h - dy, minSize.h, maxH);
     y = start.y + (start.h - h);
   }
@@ -83,17 +91,10 @@ export function resizeRect(
 }
 
 /**
- * Applies one incremental pan step (framer-motion's `PanInfo.delta` — the movement since
- * the *previous* event, not cumulative from gesture start) to `current` and re-clamps.
- *
- * Deliberately incremental rather than start-snapshot + cumulative-offset: framer-motion
- * defers `onPanStart`/`onPanEnd` by a frame (via its internal scheduler) while `onPan`
- * fires synchronously, so a start-rect ref captured in `onPanStart` can still hold a
- * stale (or the mount-time initial) value when the gesture's first `onPan` lands — every
- * later step then computes off the wrong baseline. Folding each step onto `current`
- * (always the latest committed rect, via React's functional `setState`) has no baseline
- * to go stale, so the race can't happen. Safe to call across gesture boundaries with no
- * reset in between — each call is self-contained.
+ * Applies one incremental pan step (framer's per-event `delta`, not cumulative `offset`)
+ * to `current` and re-clamps. Incremental rather than start-snapshot-based because
+ * framer-motion can deliver a gesture's first `onPan` before its `onPanStart`, which
+ * would leave a snapshot baseline stale.
  */
 export function applyDragDelta(
   current: Rect,

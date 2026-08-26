@@ -193,20 +193,14 @@ function DotMatrixTab() {
 // 1.5x the 32px candidate icons this replaced.
 const EDITOR_SIZE = 48;
 
-/**
- * Renders a flat `MATRIX * MATRIX` lit/unlit array on the shared grid geometry —
- * `dotMatrixGeometry`, so pitch and dot radius always match the Shape library above.
- * Shared by the interactive editor (`onToggle`) and the static owner-bitmap previews.
- */
+/** Renders a flat `MATRIX * MATRIX` lit/unlit array using `dotMatrixGeometry`, so pitch and dot radius always match the Shape library above. */
 function DotGrid({
   lit,
   size,
-  litClassName = "text-success",
   onToggle,
 }: {
   lit: boolean[];
   size: number;
-  litClassName?: string;
   onToggle?: (index: number) => void;
 }) {
   const { pitch, dotR } = dotMatrixGeometry(size);
@@ -230,8 +224,22 @@ function DotGrid({
             r={dotR}
             fill="currentColor"
             opacity={isLit ? 1 : 0.25}
-            className={cn(onToggle && "cursor-pointer", isLit ? litClassName : "text-text-dimmed")}
+            className={cn(
+              onToggle && "cursor-pointer focus-visible:outline focus-visible:outline-2",
+              isLit ? "text-success" : "text-text-dimmed"
+            )}
             onClick={onToggle ? () => onToggle(i) : undefined}
+            {...(onToggle && {
+              role: "button",
+              tabIndex: 0,
+              "aria-pressed": isLit,
+              "aria-label": `Dot ${r + 1}, ${c + 1}`,
+              onKeyDown: (event: React.KeyboardEvent) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                onToggle(i);
+              },
+            })}
           />
         );
       })}

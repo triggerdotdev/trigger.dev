@@ -135,6 +135,10 @@ export function DashboardAgentPanel({
   );
   // Cursor feedback only; the drag itself is handled by `dragHandleProps`.
   const [draggingWindow, setDraggingWindow] = useState(false);
+  // Fullscreen passes no drag handlers at all (an empty object), so pan wiring is a no-op there.
+  const isDraggable = !!dragHandleProps?.onPan;
+  // Set when a gesture starts on a header button/link, so its onPan steps are dropped too.
+  const ignoringGesture = useRef(false);
 
   const currentPage = agentPageLabel(pageContext, location.pathname);
 
@@ -614,15 +618,45 @@ export function DashboardAgentPanel({
     >
       <motion.div
         {...dragHandleProps}
-        onPanStart={(event, info) => {
-          setDraggingWindow(true);
-          dragHandleProps?.onPanStart?.(event, info);
-        }}
-        onPanEnd={(event, info) => {
-          setDraggingWindow(false);
-          dragHandleProps?.onPanEnd?.(event, info);
-        }}
-        className={cn("select-none", draggingWindow ? "cursor-grabbing" : "cursor-grab")}
+        onPanStart={
+          isDraggable
+            ? (event, info) => {
+                // Buttons/links inside the header (history, new chat, expand, close) sit
+                // above the drag handle; a click there must not move the window.
+                if (
+                  (event.target as HTMLElement | null)?.closest("button, a, input, [role=button]")
+                ) {
+                  ignoringGesture.current = true;
+                  return;
+                }
+                ignoringGesture.current = false;
+                setDraggingWindow(true);
+                dragHandleProps?.onPanStart?.(event, info);
+              }
+            : undefined
+        }
+        onPan={
+          isDraggable
+            ? (event, info) => {
+                if (ignoringGesture.current) return;
+                dragHandleProps?.onPan?.(event, info);
+              }
+            : undefined
+        }
+        onPanEnd={
+          isDraggable
+            ? (event, info) => {
+                ignoringGesture.current = false;
+                setDraggingWindow(false);
+                dragHandleProps?.onPanEnd?.(event, info);
+              }
+            : undefined
+        }
+        className={cn(
+          "select-none",
+          isDraggable && "touch-none",
+          isDraggable && (draggingWindow ? "cursor-grabbing" : "cursor-grab")
+        )}
       >
         <DashboardAgentHeader
           title={headerTitle}

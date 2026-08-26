@@ -55,7 +55,6 @@ export type GalleryGroup =
   | "watches"
   | "watch-card"
   | "wakes"
-  | "shell"
   | "hero"
   | "prompts"
   | "intents"
@@ -70,7 +69,6 @@ export type GallerySection = {
 };
 
 export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: string }[] = [
-  { group: "shell", page: "chat", label: "Floating window" },
   { group: "hero", page: "chat", label: "Blank-state hero" },
   { group: "prompts", page: "chat", label: "Suggested prompts" },
   { group: "messages", page: "chat", label: "Message-level states" },
@@ -88,12 +86,6 @@ export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: 
 ];
 
 export const MANIFEST: GallerySection[] = [
-  {
-    sectionId: "shell-floating-window",
-    title: "Draggable, resizable — the default and only chat mode",
-    group: "shell",
-  },
-
   {
     sectionId: "hero-panel",
     title: "Floating window content (380px) — no page context",

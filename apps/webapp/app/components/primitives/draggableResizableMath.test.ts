@@ -195,14 +195,38 @@ describe("resizeRect", () => {
   });
 });
 
-// These reproduce the live-testing symptoms: framer-motion defers onPanStart/onPanEnd by a
-// frame (via its internal scheduler) but calls onPan synchronously, so a gesture-start
-// snapshot captured in onPanStart can be stale — or still the mount-time initial rect — when
-// a gesture's first onPan lands. applyDragDelta/applyResizeDelta take framer's per-event
-// `delta` (not the cumulative `offset`) and fold it onto whatever rect is passed in, so the
-// hook can drive them with `setRect(current => apply...(current, ...))` and never needs a
-// separate baseline that could go stale. Simulating "gesture A steps, then gesture B steps,
-// no reset in between" is exactly what a stale-baseline bug would fail on.
+describe("resizeRect — minSize wins over a viewport-derived cap smaller than it", () => {
+  const minSize = { w: 320, h: 360 };
+
+  it("east: a narrow viewport still floors width at minSize.w", () => {
+    const start = { x: 100, y: 50, w: 300, h: 400 };
+    const viewport = { width: 350, height: 800 };
+    expect(resizeRect("e", start, 1000, 0, minSize, undefined, viewport, 16).w).toBe(320);
+  });
+
+  it("south: a short viewport still floors height at minSize.h", () => {
+    const start = { x: 50, y: 100, w: 400, h: 300 };
+    const viewport = { width: 800, height: 400 };
+    expect(resizeRect("s", start, 0, 1000, minSize, undefined, viewport, 16).h).toBe(360);
+  });
+
+  it("west: a small fixed right edge still floors width at minSize.w", () => {
+    const start = { x: 10, y: 50, w: 50, h: 400 };
+    const viewport = { width: 1000, height: 800 };
+    expect(resizeRect("w", start, -1000, 0, minSize, undefined, viewport, 16).w).toBe(320);
+  });
+
+  it("north: a small fixed bottom edge still floors height at minSize.h", () => {
+    const start = { x: 50, y: 10, w: 400, h: 50 };
+    const viewport = { width: 1000, height: 800 };
+    expect(resizeRect("n", start, 0, -1000, minSize, undefined, viewport, 16).h).toBe(360);
+  });
+});
+
+// These reproduce the live-testing symptoms: framer-motion can deliver a gesture's first
+// onPan before its onPanStart, so a baseline captured in onPanStart can be stale.
+// applyDragDelta/applyResizeDelta avoid that by folding framer's per-event `delta` onto
+// whatever rect is passed in, with no baseline to go stale.
 describe("applyResizeDelta / applyDragDelta — gesture sequencing", () => {
   const start: Rect = { x: 100, y: 100, w: 300, h: 200 };
   const minSize = { w: 100, h: 80 };
@@ -248,10 +272,8 @@ describe("applyResizeDelta / applyDragDelta — gesture sequencing", () => {
     let rect = applyDragDelta(start, { x: 200, y: 150 }, viewport, padding);
     expect(rect).toEqual({ x: 300, y: 250, w: 300, h: 200 });
 
-    // Resizing next must clamp against the *current* x/y (300, 250), not `start` (100, 100)
-    // or any other stale baseline — a stale baseline pinned near the right edge would show
-    // up here as the box jumping back toward x=690 (the viewport-clamped position for `start`
-    // near the right edge) instead of resizing in place.
+    // Resize must clamp against the current x/y (300, 250), not `start` — a stale baseline
+    // would show up as x jumping back toward 690, the viewport-clamped position near the edge.
     rect = applyResizeDelta("e", rect, { x: 10, y: 0 }, minSize, undefined, viewport, padding);
     expect(rect.x).toBe(300);
     expect(rect.w).toBe(310);

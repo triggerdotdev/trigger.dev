@@ -13,13 +13,13 @@ import { cn } from "~/utils/cn";
 const AGENT_FULLSCREEN_STORAGE_KEY = "tdev:dashboard-agent:fullscreen";
 
 // V1 floating window: 380x512, bottom-right, matching the gallery's own panel frame.
-const FLOATING_WIDTH = 380;
-const FLOATING_HEIGHT = 512;
-const FLOATING_MARGIN = 16;
-const FLOATING_MIN_SIZE = { w: 320, h: 360 };
+export const FLOATING_WIDTH = 380;
+export const FLOATING_HEIGHT = 512;
+export const FLOATING_MARGIN = 16;
+export const FLOATING_MIN_SIZE = { w: 320, h: 360 };
 const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
 
-function initialFloatingRect() {
+export function initialFloatingRect() {
   if (typeof window === "undefined") {
     return { x: 0, y: 0, w: FLOATING_WIDTH, h: FLOATING_HEIGHT };
   }
@@ -59,12 +59,7 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
   return cn("h-full overflow-hidden", fullscreen && "invisible");
 }
 
-/**
- * The floating chat window: `useDraggableResizable`-positioned bottom-right, draggable
- * and resizable across the whole page. Fullscreen swaps it back to the same takeover the
- * old right-column mode used, which needs `children` positioned inside a `relative`
- * ancestor — the caller (`DashboardAgent`) supplies that.
- */
+/** Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`; the caller (`DashboardAgent`) supplies it. */
 export function FloatingAgentWindow({
   fullscreen,
   children,
@@ -86,9 +81,13 @@ export function FloatingAgentWindow({
   return (
     <div
       style={style}
-      className="z-20 flex flex-col overflow-hidden rounded-lg border border-border-bright bg-background-bright shadow-2xl"
+      className="z-20 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
     >
-      {children(dragHandleProps)}
+      {/* Clips content to the rounded corners without clipping the resize handles below,
+          which sit half outside this box's edges. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg">
+        {children(dragHandleProps)}
+      </div>
       {RESIZE_EDGES.map((edge) => (
         <motion.div
           key={edge}

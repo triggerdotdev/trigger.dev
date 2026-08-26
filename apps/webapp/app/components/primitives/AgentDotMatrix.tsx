@@ -27,12 +27,7 @@ import { useThemeMode } from "~/hooks/useThemeMode";
 
 export const MATRIX = 5;
 
-/**
- * The grid geometry every dot in the library shares: a `MATRIX`x`MATRIX` grid, dot
- * centered per cell, radius 30% of the cell pitch (never below 0.75px). Static icon
- * variants (e.g. `dotMatrixIcon.tsx`) reuse this so they read as native shape-library
- * members instead of a different dot system.
- */
+/** Shared so anything else drawing on this grid stays visually identical to the shape library. */
 export function dotMatrixGeometry(size: number) {
   const pitch = size / MATRIX;
   const dotR = Math.max(0.75, pitch * 0.3);
