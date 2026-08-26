@@ -1,8 +1,13 @@
 import { ComponentNames } from "../storybook/StoryKit";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { AlertDotIcon } from "~/assets/icons/AlertDotIcon";
+import { CrosshairDotIcon } from "~/assets/icons/CrosshairDotIcon";
+import { FingerprintDotIcon } from "~/assets/icons/FingerprintDotIcon";
+import { FlashlightDotIcon } from "~/assets/icons/FlashlightDotIcon";
 import { InvestigateDotIcon } from "~/assets/icons/InvestigateDotIcon";
 import { InvestigateGlassesDotIcon } from "~/assets/icons/InvestigateGlassesDotIcon";
+import { RadarDotIcon } from "~/assets/icons/RadarDotIcon";
+import { SonarDotIcon } from "~/assets/icons/SonarDotIcon";
 import { WatchDotIcon } from "~/assets/icons/WatchDotIcon";
 import { LogoIcon } from "~/components/LogoIcon";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
@@ -37,6 +42,11 @@ export default function Story() {
             "AgentDotMatrix.tsx",
             "InvestigateDotIcon.tsx",
             "InvestigateGlassesDotIcon.tsx",
+            "RadarDotIcon.tsx",
+            "FingerprintDotIcon.tsx",
+            "CrosshairDotIcon.tsx",
+            "FlashlightDotIcon.tsx",
+            "SonarDotIcon.tsx",
             "WatchDotIcon.tsx",
             "AlertDotIcon.tsx",
           ]}
@@ -75,6 +85,13 @@ export default function Story() {
 }
 
 // --- Dot matrix (5x5) ---------------------------------------------------------
+
+/** Any `*DotIcon` component: the shared shape shared by every icon in the candidate lists below. */
+type DotIconComponent = React.ComponentType<{
+  className?: string;
+  style?: CSSProperties;
+  showGrid?: boolean;
+}>;
 
 function DotMatrixTab() {
   return (
@@ -199,26 +216,24 @@ function DotMatrixTab() {
         wired into `InvestigateButton.tsx` / `WatchButton.tsx` — comparison only.
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
-        <div className="flex flex-col items-center gap-2">
-          <InvestigateDotIcon
-            className="text-text-bright"
-            style={{ width: 32, height: 32 }}
-            showGrid
-          />
-          <div className="text-[10px] uppercase tracking-wide text-text-dimmed">
-            investigate — magnifier
+        {(
+          [
+            [InvestigateDotIcon, "investigate — magnifier"],
+            [InvestigateGlassesDotIcon, "investigate — glasses"],
+            [RadarDotIcon, "investigate — radar"],
+            [FingerprintDotIcon, "investigate — fingerprint"],
+            [CrosshairDotIcon, "investigate — crosshair"],
+            [FlashlightDotIcon, "investigate — flashlight"],
+            [SonarDotIcon, "investigate — sonar ping"],
+          ] as [DotIconComponent, string][]
+        ).map(([Icon, label]) => (
+          <div key={label} className="flex flex-col items-center gap-2">
+            <Icon className="text-text-bright" style={{ width: 32, height: 32 }} showGrid />
+            <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{label}</div>
           </div>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <InvestigateGlassesDotIcon
-            className="text-text-bright"
-            style={{ width: 32, height: 32 }}
-            showGrid
-          />
-          <div className="text-[10px] uppercase tracking-wide text-text-dimmed">
-            investigate — glasses
-          </div>
-        </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         <div className="flex flex-col items-center gap-2">
           <WatchDotIcon className="text-text-bright" style={{ width: 32, height: 32 }} showGrid />
           <div className="text-[10px] uppercase tracking-wide text-text-dimmed">watch — eye</div>
