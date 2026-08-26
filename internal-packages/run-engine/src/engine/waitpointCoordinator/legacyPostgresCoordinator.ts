@@ -1,6 +1,6 @@
 import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
-import { mintWaitpointIdFor } from "@trigger.dev/core/v3/isomorphic";
+import { mintWaitpointIdFor, mintWaitpointIdForShard } from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
@@ -274,6 +274,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     timeout,
     tags,
     standaloneResidency,
+    standaloneShardKey,
   }: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
     // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the waitpoint
     // co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run (co-resident). A
@@ -281,11 +282,18 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // owner, blocked later by whichever run waits on it (possibly cross-DB, resolved by the
     // run-co-resident block edge + completion fan-out). With no owner it reads the env mint kind via
     // `standaloneResidency` so a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
+    // A gen-2 standalone token carries its shard in its own id, so it passes NO hint and lets
+    // the id route: `residency` outranks the id shape and can only name a gen-1 store.
+    const standaloneShard = runId ? undefined : standaloneShardKey;
+    const isGen2Standalone =
+      standaloneShard !== undefined && standaloneShard !== "new" && standaloneShard !== "legacy";
     const colocate = runId
       ? { coLocateWithRunId: runId }
-      : standaloneResidency
-        ? { residency: standaloneResidency }
-        : undefined;
+      : isGen2Standalone
+        ? undefined
+        : standaloneResidency
+          ? { residency: standaloneResidency }
+          : undefined;
     const existingWaitpoint = idempotencyKey
       ? await this.runStore.findWaitpoint(
           {
@@ -344,7 +352,9 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
               },
             },
             create: {
-              ...mintWaitpointIdFor(runId),
+              ...(standaloneShard !== undefined
+                ? mintWaitpointIdForShard(standaloneShard)
+                : mintWaitpointIdFor(runId)),
               type: "MANUAL",
               idempotencyKey: idempotencyKey ?? nanoid(24),
               idempotencyKeyExpiresAt,

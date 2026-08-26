@@ -27,6 +27,7 @@ import {
   parseNaturalLanguageDurationInMs,
   RunId,
   mintWaitpointIdFor,
+  type ShardKey,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
   type PrismaClient,
@@ -1809,6 +1810,7 @@ export class RunEngine {
     timeout,
     tags,
     standaloneResidency,
+    standaloneShardKey,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1820,6 +1822,14 @@ export class RunEngine {
     tags?: string[];
     /** Standalone-token residency (no owning run) from the env mint kind; ignored when `runId` is set. */
     standaloneResidency?: "NEW" | "LEGACY";
+    /**
+     * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
+     * shard the token's id is stamped for. When it names a gen-2 shard the caller must NOT also
+     * set `standaloneResidency`: a residency hint outranks the id shape in the router and can
+     * only name a gen-1 store, so the row would land there while its completion routes to the
+     * shard. Only a Postgres implementation reads this.
+     */
+    standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -1830,6 +1840,7 @@ export class RunEngine {
       timeout,
       tags,
       standaloneResidency,
+      standaloneShardKey,
     });
   }
 

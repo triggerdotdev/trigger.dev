@@ -1,5 +1,6 @@
 import type { ReadClient } from "@internal/run-store";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
+import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 
 /**
  * The waitpoint and edge state operations that `WaitpointSystem` delegates.
@@ -135,6 +136,14 @@ export type CreateManualWaitpointParams = {
    * full rationale. Only a Postgres implementation reads this.
    */
   standaloneResidency?: "NEW" | "LEGACY";
+    /**
+     * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
+     * shard the token's id is stamped for. When it names a gen-2 shard the caller must NOT also
+     * set `standaloneResidency`: a residency hint outranks the id shape in the router and can
+     * only name a gen-1 store, so the row would land there while its completion routes to the
+     * shard. Only a Postgres implementation reads this.
+     */
+  standaloneShardKey?: ShardKey;
 };
 
 /** The RUN-waitpoint row data. Pure — no store touch — so the mint is coordinator-owned. */
