@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SnapshotStoreMode } from "@internal/run-store";
 import {
+  createOrgModeSource,
   buildSnapshotStoreModeResolver,
   cachedOrgModeFor,
   NO_OVERRIDE,
@@ -108,5 +109,46 @@ describe("snapshot store mode resolver", () => {
     });
     expect(r.resolve()).toBe("redis-read");
     expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe("a saved organisation dial survives a lagging replica", () => {
+  type Deferred = { resolve: (v: unknown) => void; promise: Promise<unknown> };
+
+  function deferred(): Deferred {
+    let resolve!: (v: unknown) => void;
+    const promise = new Promise<unknown>((r) => (resolve = r));
+    return { resolve, promise };
+  }
+
+  function clientFor(read: () => Promise<unknown>) {
+    return { organization: { findFirst: () => read() as never } } as never;
+  }
+
+  it("does not let a replica read that starts after the save re-cache the old value", async () => {
+    // The primary carries the saved value; the replica is still lagging and carries the old one.
+    const primary = deferred();
+    const replica = deferred();
+
+    const source = createOrgModeSource({
+      primary: clientFor(() => primary.promise),
+      replica: clientFor(() => replica.promise),
+    });
+
+    // The save path invalidates, which drops the cache and reads the primary.
+    source.invalidate("org_1");
+    // A concurrent write for the same organisation misses the now-empty cache and warms off-path.
+    source.refresh("org_1");
+
+    // The primary lands first with the saved value.
+    primary.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(source.get("org_1")).toBe("dual-write");
+
+    // Then the lagging replica lands with the pre-save value. It must not win.
+    replica.resolve({ featureFlags: {} });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(source.get("org_1")).toBe("dual-write");
   });
 });

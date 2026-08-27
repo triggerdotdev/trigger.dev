@@ -83,7 +83,21 @@ export function buildSnapshotStoreModeResolver(deps: {
 const DEFAULT_CACHE_MAX = 10_000;
 const DEFAULT_CACHE_TTL_MS = 30_000;
 
-function createOrgModeSource(): OrgModeSource {
+type OrgModeClient = {
+  organization: {
+    findFirst(args: {
+      where: { id: string };
+      select: { featureFlags: true };
+    }): Promise<{ featureFlags: unknown } | null>;
+  };
+};
+
+export function createOrgModeSource(clients?: {
+  primary: OrgModeClient;
+  replica: OrgModeClient;
+}): OrgModeSource {
+  const primaryClient = (clients?.primary ?? prisma) as OrgModeClient;
+  const replicaClient = (clients?.replica ?? $replica) as OrgModeClient;
   // Defaults inline as well as in the schema: this must not throw when a caller supplies a partial
   // env, and an LRU with neither bound set is a constructor error.
   const cache = new LRUCache<string, CachedOrgMode>({
@@ -91,6 +105,11 @@ function createOrgModeSource(): OrgModeSource {
     ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS ?? DEFAULT_CACHE_TTL_MS,
   });
   const inFlight = new Set<string>();
+  // Organisations whose primary read is still in flight after a save. A replica refresh started in
+  // that window would carry the SAME generation as the invalidation, so the generation guard below
+  // could not discard it, and a lagging replica landing second would restore the pre-save value for
+  // a full cache TTL. The save is the one read that must win, so nothing else reads during it.
+  const primaryPending = new Set<string>();
   // A replica read that started before an invalidation can land after the primary read and put the
   // superseded value back. A per-organisation generation lets a stale load discard its own result.
   const generations = new Map<string, number>();
@@ -104,25 +123,26 @@ function createOrgModeSource(): OrgModeSource {
       const generation = generationOf(organizationId) + 1;
       generations.set(organizationId, generation);
       cache.delete(organizationId);
-      void load(organizationId, prisma, generation);
+      primaryPending.add(organizationId);
+      void load(organizationId, primaryClient, generation).finally(() => {
+        primaryPending.delete(organizationId);
+      });
     },
     refresh: (organizationId) => {
-      if (inFlight.has(organizationId)) {
+      // A save is mid-read for this organisation. Its answer is authoritative and a replica cannot
+      // improve on it, so skip: the resolver falls back to the global position until it lands.
+      if (primaryPending.has(organizationId) || inFlight.has(organizationId)) {
         return;
       }
       inFlight.add(organizationId);
 
-      void load(organizationId, $replica, generationOf(organizationId)).finally(() => {
+      void load(organizationId, replicaClient, generationOf(organizationId)).finally(() => {
         inFlight.delete(organizationId);
       });
     },
   };
 
-  function load(
-    organizationId: string,
-    client: typeof prisma | typeof $replica,
-    generation: number
-  ) {
+  function load(organizationId: string, client: OrgModeClient, generation: number) {
     return client.organization
       .findFirst({ where: { id: organizationId }, select: { featureFlags: true } })
       .then((row) => {
