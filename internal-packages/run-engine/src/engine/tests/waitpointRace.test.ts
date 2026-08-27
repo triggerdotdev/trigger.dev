@@ -2,6 +2,7 @@ import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
+import { createTestEngine } from "./helpers/engineFactory.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { setTimeout } from "timers/promises";
 
@@ -12,7 +13,7 @@ describe("RunEngine Waitpoints – race condition", () => {
     "join-row removed before run continues (failing race)",
     async ({ prisma, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
         queue: {

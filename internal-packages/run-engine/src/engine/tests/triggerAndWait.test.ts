@@ -2,6 +2,7 @@ import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
+import { createTestEngine } from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { RunDuplicateIdempotencyKeyError } from "../errors.js";
@@ -13,7 +14,7 @@ describe("RunEngine triggerAndWait", () => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -203,7 +204,7 @@ describe("RunEngine triggerAndWait", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -460,7 +461,7 @@ describe("RunEngine triggerAndWait", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,

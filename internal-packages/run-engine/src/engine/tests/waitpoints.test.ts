@@ -2,6 +2,7 @@ import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
+import { createTestEngine } from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import type { EventBusEventArgs } from "../eventBus.js";
 import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3";
@@ -14,7 +15,7 @@ describe("RunEngine Waitpoints", () => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -137,7 +138,7 @@ describe("RunEngine Waitpoints", () => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -279,7 +280,7 @@ describe("RunEngine Waitpoints", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -417,7 +418,7 @@ describe("RunEngine Waitpoints", () => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -541,7 +542,7 @@ describe("RunEngine Waitpoints", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -690,7 +691,7 @@ describe("RunEngine Waitpoints", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -847,7 +848,7 @@ describe("RunEngine Waitpoints", () => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -998,7 +999,7 @@ describe("RunEngine Waitpoints", () => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -1160,7 +1161,7 @@ describe("RunEngine Waitpoints", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
