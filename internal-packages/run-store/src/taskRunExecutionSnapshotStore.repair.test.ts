@@ -344,7 +344,7 @@ describe("repairRedisHead", () => {
     expect(redis.calls).toHaveLength(0);
   });
 
-  it("touches Redis for no run when the deployment-wide dial is off", async () => {
+  it("still heals a resident run when the deployment-wide dial is off", async () => {
     const redis = new RecordingRedis(redisHead("snap_prev", new Date("2026-01-01T00:00:00.000Z")));
     const store = harness({
       pg: pgHead({
@@ -357,7 +357,10 @@ describe("repairRedisHead", () => {
       mode: "off",
     });
 
-    await expect(store.repairRedisHead("run_1", "snap_lost")).resolves.toBe("off");
-    expect(redis.calls).toHaveLength(0);
+    // The dial governs births. A run that is already resident keeps its mirror, and healing it is
+    // the whole point of the repair: refusing here would leave a head frozen for the rest of the
+    // run's life precisely because an operator lowered the dial.
+    await expect(store.repairRedisHead("run_1", "snap_lost")).resolves.toBe("reappended");
+    expect(redis.calls).toContain("append");
   });
 });

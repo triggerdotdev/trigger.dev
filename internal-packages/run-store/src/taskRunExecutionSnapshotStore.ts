@@ -105,7 +105,7 @@ export type SnapshotStoreHaltCheck = () => boolean;
  * caller only logs: no value here means the run needs anything further done to it.
  */
 export type SnapshotRepairOutcome =
-  | "off"
+  | "halted"
   | "noSnapshot"
   | "notResident"
   | "alreadyCurrent"
@@ -573,7 +573,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
           kind: "birth",
           isTerminal: isTerminalEntry(entry),
         });
-        this.#recordOutcome(site, entry, result);
+        await this.#recordOutcome(site, entry, result);
 
         // Modelled AFTER the successful append: the crash this boundary represents is a process that
         // died between the two stores, not an append that failed.
@@ -647,7 +647,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
           ...(cycle && { cycle }),
         });
 
-        this.#recordOutcome(site, entry, result);
+        await this.#recordOutcome(site, entry, result);
         return;
       } catch (error) {
         // An injected fault models a dead process, not a retryable append failure.
@@ -696,7 +696,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    */
   async repairRedisHead(runId: string, snapshotId: string): Promise<SnapshotRepairOutcome> {
     if (!this.writesRedisForTransition()) {
-      return "off";
+      // The hard stop, not the dial: the dial governs births and never refuses a repair.
+      return "halted";
     }
 
     const row = await this.delegate.findLatestExecutionSnapshot(runId);
@@ -828,11 +829,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * re-derives the head from Postgres, and two previous attempts at that in this area were withdrawn
    * as unsafe, so an operator decides. See the SnapshotStoreAppendForked rule.
    */
-  #recordOutcome(
+  async #recordOutcome(
     site: string,
     entry: SnapshotEntryInput,
     result: Awaited<ReturnType<RedisSnapshotStore["append"]>>
-  ): void {
+  ): Promise<void> {
     this.metrics?.recordWrite(site, result.outcome);
 
     if (result.outcome === "forked") {
@@ -842,7 +843,22 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         site,
         actualCur: result.actualCur,
       });
+
+      // A fork is not a race to shrug at: the two compare-and-set sites assert the head, so once it
+      // is wrong every later append from them forks too and the mirror is frozen for the rest of the
+      // run. The repair re-derives the head from Postgres without asserting `cur`, which is the one
+      // operation that clears this, so ask for it rather than only reporting.
+      await this.#enqueueRepair(entry);
     }
+  }
+
+  /** Test seam for the outcome handler. Not for production callers. */
+  async recordOutcomeForTest(
+    site: string,
+    entry: SnapshotEntryInput,
+    result: Awaited<ReturnType<RedisSnapshotStore["append"]>>
+  ): Promise<void> {
+    await this.#recordOutcome(site, entry, result);
   }
 
   // ---------------------------------------------------------------------------------------------

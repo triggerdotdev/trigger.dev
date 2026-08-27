@@ -365,47 +365,45 @@ describe("transition write ordering", () => {
     }
   });
 
-  containerTest(
-    "reports a forked append without enqueuing a repair",
-    async ({ prisma, redisOptions }) => {
-      const { decorated, redis, repairs, writes } = harness(prisma as never, redisOptions as never);
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const { workerId, taskId } = await seedSnapshotWorker(prisma, env);
-        const runId = generateInternalId();
-        await seedBirth(decorated, redis, runId, env);
+  containerTest("asks for a repair when an append forks", async ({ prisma, redisOptions }) => {
+    const { decorated, redis, repairs, writes } = harness(prisma as never, redisOptions as never);
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const { workerId, taskId } = await seedSnapshotWorker(prisma, env);
+      const runId = generateInternalId();
+      await seedBirth(decorated, redis, runId, env);
 
-        // A stale previousSnapshotId: another writer advanced the head. A repair cannot help, so the
-        // outcome is counted and dropped.
-        await decorated.lockRunToWorker(runId, {
-          lockedAt: new Date(),
-          lockedById: taskId,
-          lockedToVersionId: workerId,
-          lockedQueueId: undefined,
-          startedAt: new Date(),
-          baseCostInCents: 0,
-          machinePreset: "small-1x",
-          taskVersion: "1.0.0",
-          snapshot: {
-            id: generateInternalId(),
-            previousSnapshotId: generateInternalId(),
-            attemptNumber: 1,
-            environmentId: env.id,
-            environmentType: env.type,
-            projectId: env.projectId,
-            organizationId: env.organizationId,
-            completedWaitpointIds: [],
-            completedWaitpointOrder: [],
-          },
-        });
+      // A stale previousSnapshotId: the head is not what this write expected. Every later
+      // compare-and-set append would fork too, so the run needs the head re-derived from Postgres.
+      await decorated.lockRunToWorker(runId, {
+        lockedAt: new Date(),
+        lockedById: taskId,
+        lockedToVersionId: workerId,
+        lockedQueueId: undefined,
+        startedAt: new Date(),
+        baseCostInCents: 0,
+        machinePreset: "small-1x",
+        taskVersion: "1.0.0",
+        snapshot: {
+          id: generateInternalId(),
+          previousSnapshotId: generateInternalId(),
+          attemptNumber: 1,
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+          completedWaitpointIds: [],
+          completedWaitpointOrder: [],
+        },
+      });
 
-        expect(writes).toContainEqual({ site: "lockRunToWorker", outcome: "forked" });
-        expect(repairs).toEqual([]);
-      } finally {
-        await redis.quit();
-      }
+      expect(writes).toContainEqual({ site: "lockRunToWorker", outcome: "forked" });
+      expect(repairs).toHaveLength(1);
+      expect(repairs[0]).toMatchObject({ runId });
+    } finally {
+      await redis.quit();
     }
-  );
+  });
 
   containerTest(
     "appends for the standalone createExecutionSnapshot",
