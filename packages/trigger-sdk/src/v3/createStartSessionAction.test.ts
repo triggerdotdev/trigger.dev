@@ -115,7 +115,7 @@ describe("chat.createStartSessionAction — runtime", () => {
     ]);
   });
 
-  it("forwards maxDuration, region, and lockToVersion from triggerConfig", async () => {
+  it("forwards maxDuration, region, lockToVersion, and ttl from triggerConfig", async () => {
     installStartFixture();
 
     const start = chat.createStartSessionAction("fake-chat", {
@@ -123,6 +123,7 @@ describe("chat.createStartSessionAction — runtime", () => {
         maxDuration: 120,
         region: "us-east-1",
         lockToVersion: "20260101.1",
+        ttl: "2m",
       },
     });
     await start({ chatId: "chat-parity" });
@@ -130,6 +131,16 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.maxDuration).toBe(120);
     expect(lastStartBody?.triggerConfig.region).toBe("us-east-1");
     expect(lastStartBody?.triggerConfig.lockToVersion).toBe("20260101.1");
+    expect(lastStartBody?.triggerConfig.ttl).toBe("2m");
+  });
+
+  it("omits ttl when triggerConfig does not set it", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat");
+    await start({ chatId: "chat-no-ttl" });
+
+    expect(lastStartBody?.triggerConfig).not.toHaveProperty("ttl");
   });
 
   it("server-mints override tokens for additional API keys", async () => {

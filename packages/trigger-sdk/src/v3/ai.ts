@@ -10448,6 +10448,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const maxDuration = params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration;
     const idleTimeoutInSeconds =
       params.triggerConfig?.idleTimeoutInSeconds ?? options?.triggerConfig?.idleTimeoutInSeconds;
+    const ttl = params.triggerConfig?.ttl ?? options?.triggerConfig?.ttl;
 
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
@@ -10470,6 +10471,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       ...(options?.triggerConfig?.region || params.triggerConfig?.region
         ? { region: params.triggerConfig?.region ?? options?.triggerConfig?.region }
         : {}),
+      ...(ttl !== undefined ? { ttl } : {}),
       ...(options?.triggerConfig?.lockToVersion || params.triggerConfig?.lockToVersion
         ? {
             lockToVersion:
