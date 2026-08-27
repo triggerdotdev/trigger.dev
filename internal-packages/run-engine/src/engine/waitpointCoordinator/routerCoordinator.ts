@@ -1,5 +1,6 @@
+import type { Counter, Meter } from "@internal/tracing";
 import type { Logger } from "@trigger.dev/core/logger";
-import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { deriveWaitpointIdFromAnchor, parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
 import { UnclassifiableWaitpointId } from "../errors.js";
 import { waitpointIdFromEdgeField } from "./keys.js";
@@ -26,6 +27,7 @@ export type WaitpointRouterCoordinatorOptions = {
   /** Absent when no waitpoint store is configured, which makes the store path unreachable. */
   store?: WaitpointCoordinator;
   logger: Logger;
+  meter: Meter;
 };
 
 /**
@@ -48,11 +50,19 @@ export class WaitpointRouterCoordinator implements WaitpointCoordinator {
   private readonly legacy: WaitpointCoordinator;
   private readonly store?: WaitpointCoordinator;
   private readonly logger: Logger;
+  private readonly legacyAnchorDowngrades: Counter;
 
   constructor(options: WaitpointRouterCoordinatorOptions) {
     this.legacy = options.legacy;
     this.store = options.store;
     this.logger = options.logger;
+    this.legacyAnchorDowngrades = options.meter.createCounter(
+      "waitpoint.legacy_anchor_downgrades",
+      {
+        description:
+          "Store mints that fell back to legacy because the anchor run carried a legacy id",
+      }
+    );
   }
 
   async clearRunBlockState(params: ClearRunBlockStateParams): Promise<{ count: number }> {
@@ -168,13 +178,38 @@ export class WaitpointRouterCoordinator implements WaitpointCoordinator {
     return this.#armForMint(params.mintKind).createBatchWaitpoint(params);
   }
 
+  /**
+   * A RUN waitpoint's store id is derived from its anchor run's id body, so an anchor that
+   * is not itself a run-ops id has nothing to derive from. That run keeps a legacy
+   * waitpoint even in a flipped organization, which is the coexistence rule.
+   *
+   * Counted, not just logged: an organization whose runs are all legacy-shaped mints zero
+   * store waitpoints, and a wave gate that reads "no store problems" off an empty sample
+   * is measuring nothing.
+   */
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
     anchorRunId?: string;
     mintKind?: WaitpointMintKind;
   }): AssociatedWaitpointData {
-    return this.#armForMint(params.mintKind ?? "legacy").mintAssociatedWaitpointData(params);
+    const mintKind = params.mintKind ?? "legacy";
+
+    if (mintKind === "store" && !this.#canDeriveFromAnchor(params.anchorRunId)) {
+      this.legacyAnchorDowngrades.add(1);
+      this.logger.info("waitpoint mint fell back to legacy: the anchor run is not a run-ops id", {
+        anchorRunId: params.anchorRunId,
+      });
+      return this.legacy.mintAssociatedWaitpointData(params);
+    }
+
+    return this.#armForMint(mintKind).mintAssociatedWaitpointData(params);
+  }
+
+  #canDeriveFromAnchor(anchorRunId: string | undefined): boolean {
+    return (
+      anchorRunId !== undefined && deriveWaitpointIdFromAnchor(anchorRunId, "RUN") !== undefined
+    );
   }
 
   /** Routes on the minted id, so it lands wherever mintAssociatedWaitpointData put it. */

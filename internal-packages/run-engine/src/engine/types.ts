@@ -1,3 +1,4 @@
+import type { WaitpointMintKind } from "./waitpointCoordinator/types.js";
 import { type RedisOptions } from "@internal/redis";
 import type { Meter, Tracer } from "@internal/tracing";
 import type { Logger, LogLevel } from "@trigger.dev/core/logger";
@@ -308,6 +309,11 @@ export type HeartbeatTimeouts = {
 };
 
 export type TriggerParams = {
+  /**
+   * Which coordinator mints this run's associated waitpoint, when a parent waits on it.
+   * Resolved from the organization's flag by the caller; absent means legacy.
+   */
+  waitpointMintKind?: WaitpointMintKind;
   number?: number;
   friendlyId: string;
   environment: MinimalAuthenticatedEnvironment;

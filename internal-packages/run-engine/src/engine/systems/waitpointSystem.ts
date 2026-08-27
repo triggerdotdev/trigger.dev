@@ -13,6 +13,7 @@ import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { buildCompletedWaitpointRecords } from "../waitpointCoordinator/completedWaitpointRecords.js";
 import type {
+  AssociatedWaitpointData,
   RunBlockEdge,
   WaitpointCoordinator,
   WaitpointMintKind,
@@ -757,14 +758,45 @@ export class WaitpointSystem {
     return this.coordinator.createBatchWaitpoint({ ...params, mintKind: "legacy" });
   }
 
+  /**
+   * Mint the RUN waitpoint's data for a run that a parent will block on.
+   *
+   * A store mint derives the id from the anchor run's own id body, so the id is a pure
+   * function of the run id and create-if-absent needs no lock. Derivation only works when
+   * the run itself carries a run-ops id, so a legacy-shaped run keeps a legacy waitpoint
+   * even in a flipped organization, which is the coexistence rule the id routing relies on.
+   */
   public buildRunAssociatedWaitpoint({
     projectId,
     environmentId,
+    anchorRunId,
+    mintKind,
   }: {
     projectId: string;
     environmentId: string;
+    anchorRunId?: string;
+    mintKind?: WaitpointMintKind;
   }) {
-    return this.coordinator.mintAssociatedWaitpointData({ projectId, environmentId });
+    return this.coordinator.mintAssociatedWaitpointData({
+      projectId,
+      environmentId,
+      anchorRunId,
+      mintKind,
+    });
+  }
+
+  /**
+   * Create the RUN waitpoint that `buildRunAssociatedWaitpoint` minted.
+   *
+   * Only the store path calls this: the legacy path writes the row inside the run's own
+   * create. A crash between the run commit and this call leaves the waitpoint absent, and
+   * the parent's register step then fails loud rather than resuming without it.
+   */
+  public async createRunAssociatedWaitpoint(params: {
+    runId: string;
+    data: AssociatedWaitpointData;
+  }): Promise<Waitpoint> {
+    return this.coordinator.createAssociatedWaitpoint(params);
   }
 
   /**

@@ -1,3 +1,4 @@
+import { getMeter } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
@@ -72,6 +73,7 @@ function router(calls: string[], opts: { withStore?: boolean } = { withStore: tr
     legacy: arm("legacy", calls),
     store: opts.withStore ? arm("store", calls) : undefined,
     logger,
+    meter: getMeter("routerCoordinator.test"),
   });
 }
 
@@ -107,6 +109,7 @@ describe("WaitpointRouterCoordinator", () => {
         legacy: arm("legacy", calls, { readRunBlockState: async () => [legacyEdge] }),
         store: arm("store", calls, { readRunBlockState: async () => [storeEdge] }),
         logger,
+        meter: getMeter("routerCoordinator.test"),
       });
 
       const edges = await coordinator.readRunBlockState("run_1");
@@ -120,6 +123,7 @@ describe("WaitpointRouterCoordinator", () => {
         legacy: arm("legacy", calls, { registerBlocks: async () => ({ pendingCount: 1 }) }),
         store: arm("store", calls, { registerBlocks: async () => ({ pendingCount: 2 }) }),
         logger,
+        meter: getMeter("routerCoordinator.test"),
       });
 
       const { pendingCount } = await coordinator.registerBlocks({
@@ -154,6 +158,7 @@ describe("WaitpointRouterCoordinator", () => {
           readCompletionEnvelopes: async () => [{ id: "b" } as CompletionEnvelopeSource],
         }),
         logger,
+        meter: getMeter("routerCoordinator.test"),
       });
 
       const sources = await coordinator.readCompletionEnvelopes({

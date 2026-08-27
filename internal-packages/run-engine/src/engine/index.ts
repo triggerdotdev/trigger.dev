@@ -25,6 +25,7 @@ import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
   generateInternalId,
   parseNaturalLanguageDurationInMs,
+  parseWaitpointId,
   RunId,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -429,6 +430,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
       coordinator: new WaitpointRouterCoordinator({
+        meter: this.meter,
         legacy: new LegacyPostgresWaitpointCoordinator({
           runStore: this.runStore,
           prisma: this.prisma,
@@ -877,6 +879,7 @@ export class RunEngine {
       replayedFromTaskRunFriendlyId,
       batch,
       resumeParentOnCompletion,
+      waitpointMintKind,
       depth,
       metadata,
       metadataType,
@@ -999,6 +1002,23 @@ export class RunEngine {
 
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
+
+        // Mint the RUN waitpoint's identity BEFORE the run is created, so the decision to
+        // block the parent never depends on a Postgres relation that the store path does
+        // not write. Keying the block step off the row instead would silently stop
+        // suspending parents the moment a waitpoint stopped living in Postgres.
+        const associatedWaitpointData =
+          resumeParentOnCompletion && parentTaskRunId
+            ? this.waitpointSystem.buildRunAssociatedWaitpoint({
+                projectId: environment.project.id,
+                environmentId: environment.id,
+                anchorRunId: taskRunId,
+                mintKind: waitpointMintKind,
+              })
+            : undefined;
+        const associatedWaitpointRidesTheCreate =
+          associatedWaitpointData !== undefined &&
+          parseWaitpointId(associatedWaitpointData.id).format === "legacy";
         const initialSnapshotId = generateInternalId();
 
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
@@ -1108,15 +1128,14 @@ export class RunEngine {
                 workerId,
                 runnerId,
               },
-              // Only create waitpoint if parent is waiting for this run to complete
-              // For standalone triggers (no waiting parent), waitpoint is created lazily if needed later
-              associatedWaitpoint:
-                resumeParentOnCompletion && parentTaskRunId
-                  ? this.waitpointSystem.buildRunAssociatedWaitpoint({
-                      projectId: environment.project.id,
-                      environmentId: environment.id,
-                    })
-                  : undefined,
+              // Only create the waitpoint if a parent is waiting for this run. A standalone
+              // trigger gets one lazily later, if anything ever needs it.
+              //
+              // The store path deliberately passes nothing here: its waitpoint is created
+              // after the run commits, so the run's own insert carries no waitpoint row.
+              associatedWaitpoint: associatedWaitpointRidesTheCreate
+                ? associatedWaitpointData
+                : undefined,
             },
             tx
           );
@@ -1159,8 +1178,18 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
+        // The store path's waitpoint is created here, after the run commits. Create-if-absent
+        // on an id derived from the run means a retry recomputes the same id, so this is
+        // idempotent and needs no lock.
+        if (associatedWaitpointData && !associatedWaitpointRidesTheCreate) {
+          await this.waitpointSystem.createRunAssociatedWaitpoint({
+            runId: taskRun.id,
+            data: associatedWaitpointData,
+          });
+        }
+
         //triggerAndWait or batchTriggerAndWait
-        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+        if (resumeParentOnCompletion && parentTaskRunId && associatedWaitpointData) {
           if (batch) {
             // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
             // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
@@ -1168,8 +1197,8 @@ export class RunEngine {
             // processing large batches with high concurrency.
             await this.waitpointSystem.blockRunWithWaitpointLockless({
               runId: parentTaskRunId,
-              waitpoints: taskRun.associatedWaitpoint.id,
-              projectId: taskRun.associatedWaitpoint.projectId,
+              waitpoints: associatedWaitpointData.id,
+              projectId: associatedWaitpointData.projectId,
               batch,
             });
           } else {
@@ -1177,8 +1206,8 @@ export class RunEngine {
             // the snapshot and insert the waitpoint
             await this.waitpointSystem.blockRunWithWaitpoint({
               runId: parentTaskRunId,
-              waitpoints: taskRun.associatedWaitpoint.id,
-              projectId: taskRun.associatedWaitpoint.projectId,
+              waitpoints: associatedWaitpointData.id,
+              projectId: associatedWaitpointData.projectId,
               organizationId: environment.organization.id,
               batch,
               workerId,
@@ -1337,6 +1366,7 @@ export class RunEngine {
     rootTaskRunId,
     depth,
     resumeParentOnCompletion,
+    waitpointMintKind,
     batch,
     traceId,
     spanId,
@@ -1363,6 +1393,8 @@ export class RunEngine {
     /** Depth in the task tree (0 for root, parentDepth+1 for children). */
     depth?: number;
     resumeParentOnCompletion?: boolean;
+    /** Which coordinator mints the associated waitpoint. Absent means legacy. */
+    waitpointMintKind?: WaitpointMintKind;
     batch?: { id: string; index: number };
     traceId?: string;
     spanId?: string;
@@ -1395,14 +1427,19 @@ export class RunEngine {
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
 
-        // Build associated waitpoint data if parent is waiting for this run
+        // Minted before the create, for the same reason as the trigger path: the decision to
+        // block the parent must not depend on a row the store path never writes.
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
             ? this.waitpointSystem.buildRunAssociatedWaitpoint({
                 projectId: environment.project.id,
                 environmentId: environment.id,
+                anchorRunId: taskRunId,
+                mintKind: waitpointMintKind,
               })
             : undefined;
+        const waitpointRidesTheCreate =
+          waitpointData !== undefined && parseWaitpointId(waitpointData.id).format === "legacy";
 
         // No execution snapshot is needed: this run never gets dequeued, executed,
         // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
@@ -1436,19 +1473,26 @@ export class RunEngine {
               resumeParentOnCompletion,
               taskEventStore,
             },
-            associatedWaitpoint: waitpointData,
+            associatedWaitpoint: waitpointRidesTheCreate ? waitpointData : undefined,
           },
           undefined
         );
 
         span.setAttribute("runId", taskRun.id);
 
+        if (waitpointData && !waitpointRidesTheCreate) {
+          await this.waitpointSystem.createRunAssociatedWaitpoint({
+            runId: taskRun.id,
+            data: waitpointData,
+          });
+        }
+
         // If parent is waiting, block it with the waitpoint then immediately
         // complete it with the error output so the parent can resume.
-        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+        if (resumeParentOnCompletion && parentTaskRunId && waitpointData) {
           await this.waitpointSystem.blockRunAndCompleteWaitpoint({
             runId: parentTaskRunId,
-            waitpointId: taskRun.associatedWaitpoint.id,
+            waitpointId: waitpointData.id,
             output: { value: JSON.stringify(error), isError: true },
             projectId: environment.project.id,
             organizationId: environment.organization.id,

@@ -34,6 +34,8 @@ export type WaitpointCoordinator = {
      * lock. A Postgres arm mints a fresh id and ignores this.
      */
     anchorRunId?: string;
+    /** Which arm mints it. Absent means legacy, which is what every existing caller wants. */
+    mintKind?: WaitpointMintKind;
   }): AssociatedWaitpointData;
   createAssociatedWaitpoint(params: {
     runId: string;
