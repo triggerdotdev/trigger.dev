@@ -1796,7 +1796,6 @@ async function waitOnChatRoute<T>(
 
 type ChatMessageSubscription = {
   off: () => void;
-  drain?: () => Promise<void>;
 };
 
 /**
@@ -1826,8 +1825,16 @@ function subscribeToRawChatMessages(
  * delivery of every later message, and only when a schema is declared. Raw
  * delivery has always been fire-and-forget, so awaiting here would also make
  * handler concurrency differ between the validated and unvalidated paths for no
- * stated reason. `drain()` still covers the parse chain, which is what callers
- * need before ending a run.
+ * stated reason.
+ *
+ * `off()` detaches from the router but does not cancel work already chained:
+ * the parse chain is a live promise chain and runs to completion on its own, so
+ * a frame that arrives just before a turn closes is still parsed and a failure
+ * is still reported (through the `!active` branch). Nothing therefore has to
+ * wait on it, which is why no `drain()` hook is exposed. The one uncovered edge
+ * is a parse still in flight when the task itself returns, where teardown can
+ * cut the report short; give this a bounded wait at the run-end boundary rather
+ * than an unbounded one, since the chain awaits a user-supplied schema.
  */
 function subscribeToValidatedChatMessages(
   handler: (payload: ChatTaskWirePayload, isActive: () => boolean) => unknown,
@@ -1874,7 +1881,6 @@ function subscribeToValidatedChatMessages(
       active = false;
       subscription.off();
     },
-    drain: () => delivery,
   };
 }
 
@@ -1958,7 +1964,6 @@ function observeValidatedChatMessages(
       active = false;
       subscription.off();
     },
-    drain: () => delivery,
   };
 }
 
