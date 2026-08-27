@@ -550,14 +550,24 @@ Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data
 Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. Managed-agent hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options. Custom agents parse `payload.metadata` on the initial payload and later input frames before passing it to user code.
 
 ```ts
-chat.withClientData<TSchema>({ schema: TSchema }): ChatBuilder<UIMessage, TSchema>;
+chat.withClientData<TSchema>({
+  schema: TSchema;
+  reportErrorAt?: "turn-end" | "arrival";
+  onValidationError?: (event: { error: unknown; payload: ChatTaskWirePayload }) => Promise<void> | void;
+}): ChatBuilder<UIMessage, TSchema>;
 ```
 
-| Parameter | Type         | Description                                        |
-| --------- | ------------ | -------------------------------------------------- |
-| `schema`  | `TaskSchema` | Zod, ArkType, Valibot, or any supported schema lib |
+| Parameter           | Type                        | Default      | Description                                                                                                              |
+| ------------------- | --------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `schema`            | `TaskSchema`                | required     | Zod, ArkType, Valibot, or any supported schema lib                                                                       |
+| `reportErrorAt`     | `"turn-end" \| "arrival"`   | `"turn-end"` | When the client-visible `Invalid client data` error is written for a frame that failed validation mid-turn                |
+| `onValidationError` | `(event) => void`           | —            | Called when an input fails validation. Composes with the task-level `onClientDataValidationError` rather than replacing it |
+
+`reportErrorAt` governs only the stream-visible error. `"turn-end"` holds it until the turn closes, so a bad send cannot truncate an answer the user is already reading; `"arrival"` writes it as soon as validation fails, ending the response in progress. `onValidationError` and the task log fire on arrival in both modes, and the frame is never delivered as a turn either way.
 
 For `chat.customAgent()`, invalid client data is skipped. Async reads emit an error chunk followed by `turn-complete`. A `chat.messages.on()` subscription uses the task's `onClientDataValidationError` callback and task log instead, so an active response is not ended early. Without a schema, metadata is passed through unchanged.
+
+Passing options directly to `chat.customAgent()` instead of through the builder uses the flat equivalents: `clientDataSchema`, `clientDataReportErrorAt`, and `onClientDataValidationError`.
 
 Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chatwithclientdata).
 

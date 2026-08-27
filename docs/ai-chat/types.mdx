@@ -169,6 +169,8 @@ export const myChat = chat
 
 The schema runs at runtime for both `.agent()` and `.customAgent()`. Custom agents validate the initial payload and later `chat.messages` frames. Invalid frames are not passed to user code. Async reads emit an error chunk followed by `turn-complete`; `chat.messages.on()` reports through `onClientDataValidationError` and the task log so it does not end an active response. Without a schema, metadata is passed through unchanged.
 
+`withClientData` also takes `reportErrorAt` and `onValidationError` alongside `schema`. See [chat.withClientData](/ai-chat/reference#chatwithclientdata) for both, and [Validating client data](/ai-chat/custom-agents#validating-client-data) for the custom-agent walkthrough.
+
 ## ChatBuilder
 
 Both `chat.withUIMessage()` and `chat.withClientData()` return a **ChatBuilder** — a chainable object that accumulates configuration before creating the agent with `.agent()`.
