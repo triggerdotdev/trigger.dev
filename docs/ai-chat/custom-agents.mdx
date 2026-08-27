@@ -31,9 +31,11 @@ This convenience path settles the invalid input before the read returns. If your
 
 An invalid [head-start handover](/ai-chat/fast-starts#handover-with-custom-agents) boot fails closed. The SDK waits for the warm handler to finish so stream ordering stays intact. A handover skip ends the run. A real handover writes the validation error and `turn-complete` after the warm output, then ends the run. Without a schema, metadata is passed through unchanged.
 
-`chat.messages.on()` is different because a subscribed frame can arrive while the current response is still streaming. Ending the turn at that point would cut off the response. While the subscription is active, the SDK skips an invalid frame, logs the validation error, and calls `onClientDataValidationError` if you set it. This also applies to the steering subscription created by `chat.createSession({ pendingMessages })`.
+`chat.messages.on()` is different because a subscribed frame can arrive while the current response is still streaming. Ending the turn at that point would cut off the response. While the subscription is active, the SDK skips an invalid frame, logs the validation error, and calls `onClientDataValidationError` if you set it. A raw subscription has no turn boundary the SDK can key a later write to, so it reports through the callback and the task log only and never writes to the stream.
 
-By default the client-visible `Invalid client data` error for such a frame is held until the turn ends, so a bad send cannot truncate an answer the user is already reading. Pass `reportErrorAt: "arrival"` to `withClientData` if you would rather surface it as soon as validation fails, accepting that it ends the response in progress:
+The steering subscription created by `chat.createSession({ pendingMessages })` skips an invalid frame the same way, but the session does own the turn boundary, so it can write the client-visible error once the turn has closed. `reportErrorAt` governs that write and applies to steering frames only, not to `chat.messages.on()`.
+
+By default the `Invalid client data` error for a steering frame is held until the turn ends, so a bad send cannot truncate an answer the user is already reading. Pass `reportErrorAt: "arrival"` to `withClientData` if you would rather surface it as soon as validation fails, accepting that it ends the response in progress:
 
 ```ts
 chat.withClientData({
