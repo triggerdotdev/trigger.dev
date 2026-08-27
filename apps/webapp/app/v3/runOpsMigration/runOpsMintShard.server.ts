@@ -75,9 +75,8 @@ export async function resolveMintShard(environment: {
   // Pass environment.organization.featureFlags from the trigger call site.
   orgFeatureFlags?: unknown;
 }): Promise<ShardKey> {
-  // No shard descriptor means no shard can ever be minted into, so answer before reading
-  // anything: an unconfigured deployment keeps exactly today's code path, with no
-  // control-plane query on the trigger path, no cache write and no log line.
+  // Answer before reading anything, so an unconfigured deployment adds no control-plane query to
+  // the trigger path, no cache write and no log line.
   if (env.RUN_OPS_SHARDS.length === 0) {
     return "new";
   }

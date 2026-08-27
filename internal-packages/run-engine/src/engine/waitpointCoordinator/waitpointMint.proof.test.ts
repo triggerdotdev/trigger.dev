@@ -21,8 +21,8 @@ function count(source: string, pattern: RegExp): number {
   return (source.match(pattern) ?? []).length;
 }
 
-// Walked rather than listed, so a mint added in a new file is still visible. Test-support trees
-// are excluded: a helper writing through raw Prisma never reaches the routing store.
+// Walked, not listed, so a mint in a new file is visible. Test trees excluded: a raw-Prisma
+// helper never reaches the routing store.
 const TEST_SUPPORT_DIRS = new Set(["tests", "__tests__", "fixtures"]);
 
 function walk(relativeRoot: string): string[] {
@@ -36,12 +36,11 @@ function walk(relativeRoot: string): string[] {
   });
 }
 
-// The mint helpers are the only sanctioned way to produce a Postgres waitpoint id.
 const MINT_CALL = /mintWaitpointIdFor(?:Shard)?\(/g;
 const UNSTAMPED_MINT = /WaitpointId\.generate\(/g;
 const WAITPOINT_WRITE = /waitpoint\.create\(|upsertWaitpoint\(|createWaitpoint\(/g;
 
-// The catalog holds the mint expressions as string data, so scanning it would count them.
+// Scanning the catalog would count its own string data.
 const CATALOG_ITSELF =
   "internal-packages/run-engine/src/engine/waitpointCoordinator/waitpointMintCatalog.ts";
 
@@ -50,7 +49,6 @@ const ENGINE_SOURCES = walk("internal-packages/run-engine/src/engine").filter(
 );
 const SCANNED = [...ENGINE_SOURCES, "internal-packages/run-store/src/PostgresRunStore.ts"];
 
-// expression -> how many times the catalog says it appears in this file
 function expectedMints(file: string): Map<string, number> {
   const expected = new Map<string, number>();
   for (const site of WAITPOINT_MINT_SITES.filter((s) => s.site === file)) {
@@ -71,7 +69,7 @@ describe("waitpoint mint census — the catalog matches the source", () => {
     expect(SCANNED).toContain("internal-packages/run-engine/src/engine/systems/waitpointSystem.ts");
   });
 
-  // Per expression, not per file, so a swapped anchor fails too and not just a new site.
+  // Per expression, so a swapped anchor fails too.
   it.each(SCANNED)("%s has exactly the mint expressions the catalog claims", (file) => {
     const source = read(file);
     const expected = expectedMints(file);
@@ -88,12 +86,12 @@ describe("waitpoint mint census — the catalog matches the source", () => {
   });
 
   it.each(SCANNED)("%s mints no waitpoint id with the un-stamped helper", (file) => {
-    // Matches inside comments too, deliberately: any textual addition forces a reconcile.
+    // Matches inside comments too: any textual addition forces a reconcile.
     expect(count(read(file), UNSTAMPED_MINT)).toBe(0);
   });
 
   it.each(SCANNED)("%s writes a waitpoint row only if it is catalogued", (file) => {
-    // A create with no id is the worst case: @default(cuid()) then mints one after the write.
+    // Worst case is a create with no id: @default(cuid()) mints one after the write.
     const writes = count(read(file), WAITPOINT_WRITE);
     const catalogued = WAITPOINT_MINT_SITES.some((s) => s.site === file);
     expect(writes === 0 || catalogued).toBe(true);

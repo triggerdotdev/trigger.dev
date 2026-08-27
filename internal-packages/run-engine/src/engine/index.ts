@@ -1859,8 +1859,8 @@ export class RunEngine {
       const waitpoint = await this.runStore.createWaitpoint(
         {
           data: {
-            // Stamped from the batch, not the blocked run: this create passes only
-            // completedByBatchId, so that is the owner the router validates the stamp against.
+            // From the batch, not the blocked run: the create passes only completedByBatchId,
+            // which is the owner the router validates against.
             ...mintWaitpointIdFor(batchId),
             type: "BATCH",
             idempotencyKey: batchId,

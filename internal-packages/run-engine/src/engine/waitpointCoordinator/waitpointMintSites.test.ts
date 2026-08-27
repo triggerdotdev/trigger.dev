@@ -4,8 +4,8 @@ import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { describe, expect, it } from "vitest";
 import { LegacyPostgresWaitpointCoordinator } from "./legacyPostgresCoordinator.js";
 
-// These drive the real create sites, not the mint helper: a test calling the helper directly
-// passes even when a site stops passing its anchor.
+// These drive the real create sites: calling the helper directly passes even when a site stops
+// passing its anchor.
 const GEN2_RUN = `${"a".repeat(24)}a2`;
 const GEN1_RUN = `${"a".repeat(24)}01`;
 const GEN2_BATCH = `${"d".repeat(24)}b2`;
@@ -114,8 +114,6 @@ describe("createManualWaitpoint stamps the anchor's shard", () => {
 });
 
 describe("mintAssociatedWaitpointData stamps the anchor's shard", () => {
-  // Written inside the run store, which has no stamp check, so an unstamped id here strands the
-  // parent run with nothing logged.
   const mint = (anchorRunId: string) =>
     coordinatorCapturing({}).mintAssociatedWaitpointData({
       projectId: "proj",
@@ -140,7 +138,6 @@ describe("mintAssociatedWaitpointData stamps the anchor's shard", () => {
   });
 
   it("a batch anchor stamps the batch's shard", () => {
-    // The create names only completedByBatchId, so that is what the router validates against.
     expect(mint(GEN2_BATCH).id[24]).toBe("b");
   });
 });

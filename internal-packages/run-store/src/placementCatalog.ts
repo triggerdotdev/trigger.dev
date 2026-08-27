@@ -1,39 +1,23 @@
-// Every method on the `RunStore` interface appears exactly once below, as a read or as a write.
-// `placement.proof.test.ts` diffs this catalog against the interface, so a new method fails the
-// build until somebody classifies it.
-//
-// The waitpoint mint census is exhaustive over id production and cannot see a row with no minted
-// id, which is how `WaitpointTag` wrote to a gen-1 store for a gen-2 environment with every
-// functional test passing. This is exhaustive over placement instead: what does each write route
-// by? The combination that must never exist is residency-only routing with a silent miss.
-//
-// Pure module: no store import, no Prisma, no env.
+// Every `RunStore` method appears below once, as a read or a write, and `placement.proof.test.ts`
+// fails until a new one is classified. The combination that must never exist is residency-only
+// routing with a silent miss: `WaitpointTag` sat there, misplacing rows with tests passing.
 
-/** What the routing decision is made from. `residency` cannot name a gen-2 shard. */
+/** `residency` cannot name a gen-2 shard. */
 type PlacementBasis = "own-id" | "owner-id" | "shard-hint" | "fan-out" | "residency";
 
-/**
- * `loud` — Prisma raises "no record was found for an update" and the caller sees it.
- * `silent` — the write succeeds on the wrong database. A create inserts a row there; an
- * `updateMany` reports zero rows affected, which callers read as "nothing to do".
- */
+/** `silent`: the write succeeds on the wrong database, or an `updateMany` affects zero rows. */
 type MissMode = "loud" | "silent";
 
 export type PlacementSite = {
   method: string;
   basis: PlacementBasis;
   missMode: MissMode;
-  /**
-   * Routing expressions the implementation contains, verbatim. The proof test requires each to
-   * still be present, so weakening a route fails here first. List every arm: the first arm that
-   * matches is what routes, so a set that looks safe on its last arm proves nothing.
-   */
+  /** Verbatim, and every arm: the first arm that matches is what routes. */
   routes: readonly string[];
-  /** Required for `residency` and `fan-out`, where safety is a claim rather than a mechanism. */
+  /** Required for `residency` and `fan-out`, where safety is a claim not a mechanism. */
   why?: string;
 };
 
-/** Handed a run id, routing on it. Listed by name; 20 identical entries would be rubber-stamped. */
 export const ROUTES_BY_GIVEN_RUN_ID: readonly string[] = [
   "startAttempt",
   "completeAttemptSuccess",
@@ -204,11 +188,7 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
   },
 ];
 
-/**
- * Reads, listed only so the union covers the interface exactly: a new method named
- * `getOrCreateThing` would otherwise pass for a read on the strength of its name. Read routing is
- * not audited here, because a read that probes the wrong store finds nothing and moves on.
- */
+/** Listed so the union covers the interface: a `getOrCreateThing` must not pass as a read. */
 export const READ_ONLY_METHODS: readonly string[] = [
   "findRun",
   "findRunOrThrow",

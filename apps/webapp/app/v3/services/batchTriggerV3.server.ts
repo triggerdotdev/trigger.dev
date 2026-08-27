@@ -362,9 +362,8 @@ export class BatchTriggerV3Service extends BaseService {
     anchorFriendlyId?: string,
     region?: string
   ): Promise<string> {
-    // Deliberately not routed through resolveRunMintTarget: the root arm below is
-    // unreachable in production (every call site passes an anchor), and resolveMintKind is
-    // injected so a test can drive that arm without a database.
+    // Not routed through resolveRunMintTarget: the root arm is unreachable in production and
+    // resolveMintKind is injected so a test can drive it without a database.
     const target = anchorFriendlyId
       ? resolveInheritedMintKind(anchorFriendlyId)
       : {

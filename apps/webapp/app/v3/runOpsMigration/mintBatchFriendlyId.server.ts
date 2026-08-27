@@ -14,8 +14,7 @@ export function batchIdForMintKind(target: MintTarget): { id: string; friendlyId
   return { id, friendlyId: BatchId.toFriendlyId(id) };
 }
 
-// A batch anchors on the parent RUN's id, never on another batch, and every call site
-// passes that id optionally — so one call serves a root batch and a child batch.
+// A batch anchors on the parent run's id, never on another batch.
 export async function resolveBatchMintKind(args: {
   environment: { organizationId: string; id: string; orgFeatureFlags?: unknown };
   parentRunFriendlyId?: string;

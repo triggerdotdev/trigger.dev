@@ -8,8 +8,7 @@ import {
 import { batchIdForMintKind } from "./mintBatchFriendlyId.server";
 import { resolveRunMintTarget } from "./resolveRunMintTarget.server";
 
-// The gate is off when RUN_OPS_SHARDS is unset or runOpsMintShardSet is empty; either way
-// resolveMintShard answers "new". Every assertion is "the id is what it was before gen-2".
+// Gate off means resolveMintShard answers "new". Every assertion is "the id is what it was".
 const offShard = vi.fn().mockResolvedValue("new" as const);
 const environment = { organizationId: "org_1", id: "env_1", orgFeatureFlags: {} };
 

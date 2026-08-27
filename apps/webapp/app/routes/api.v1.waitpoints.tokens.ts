@@ -70,8 +70,7 @@ const { action } = createActionApiRoute(
       });
       const residency = mintKind === "runOpsId" ? "NEW" : "LEGACY";
 
-      // The token's id is minted inside the engine, so the shard travels with the call. No
-      // extra query: the org flags this reads are already loaded on the authenticated env.
+      // No extra query: the org flags are already loaded on the authenticated env.
       const standaloneShardKey =
         mintKind === "runOpsId"
           ? await resolveMintShard({

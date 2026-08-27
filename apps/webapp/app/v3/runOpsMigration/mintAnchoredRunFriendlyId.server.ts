@@ -2,9 +2,7 @@ import { generateRunOpsId, generateRunOpsIdV2, RunId } from "@trigger.dev/core/v
 import type { MintTarget } from "./mintTarget";
 import { resolveInheritedMintKind } from "./resolveInheritedMintKind.server";
 
-// Shared id-generation branch for every run-mint path: "runOpsId" -> a dedicated store,
-// "cuid" -> LEGACY. A shardChar selects one gen-2 shard and takes index 24; without one,
-// the region takes that slot exactly as it does today.
+// A shardChar selects one gen-2 shard and takes index 24; without one the region takes that slot.
 export function mintFriendlyIdForKind(target: MintTarget): string {
   if (target.kind !== "runOpsId") {
     return RunId.generate().friendlyId;

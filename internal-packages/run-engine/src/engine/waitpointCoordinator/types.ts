@@ -25,7 +25,7 @@ export type WaitpointCoordinator = {
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
-    /** Names the shard the row lands on. This write skips the router's stamp check. */
+    /** This write skips the router's stamp check. */
     anchorRunId: string;
   }): AssociatedWaitpointData;
   createAssociatedWaitpoint(params: {
@@ -112,11 +112,9 @@ export type CreateWaitpointResult =
 
 export type CreateDateTimeWaitpointParams = {
   /**
-   * When set, the waitpoint co-locates with this run's DB and the dedup probe targets it.
-   *
-   * Every production caller supplies it, and there is deliberately no standalone arm. Omitting it
-   * on a gen-2 environment mints a cuid and lands the row on a gen-1 store, silently. A standalone
-   * caller needs a shard hint here first, as `createManualWaitpointParams` has.
+   * Co-locates the waitpoint with this run's DB. There is deliberately no standalone arm: omitting
+   * it on a gen-2 environment lands the row on a gen-1 store, silently. A standalone caller needs
+   * a shard hint here first, as `CreateManualWaitpointParams` has.
    */
   runId?: string;
   projectId: string;
@@ -139,10 +137,7 @@ export type CreateManualWaitpointParams = {
    * full rationale. Only a Postgres implementation reads this.
    */
   standaloneResidency?: "NEW" | "LEGACY";
-  /**
-   * The environment's mint shard, for a standalone token with no owning run. When it names a gen-2
-   * shard the implementation must ignore `standaloneResidency`, which can only name a gen-1 store.
-   */
+  /** For a standalone token. When it names a gen-2 shard, ignore `standaloneResidency`. */
   standaloneShardKey?: ShardKey;
 };
 

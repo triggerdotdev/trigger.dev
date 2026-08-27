@@ -76,8 +76,7 @@ describe("mintWaitpointIdFor", () => {
 });
 
 describe("resolveShard shape checks match the decoding parsers", () => {
-  // The alphabet is [0-9a-v], so "the shape matches" and "the decode would not throw" are the
-  // same predicate. These pin that equivalence: a drift misroutes rather than erroring.
+  // Pins the shape/decode equivalence: a drift misroutes rather than erroring.
   const classifyByDecode = (body: string): string => {
     const genTwo = parseRunOpsIdV2Body(body);
     if (genTwo) return genTwo.shard;

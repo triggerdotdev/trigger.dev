@@ -239,7 +239,6 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // The two `nanoid(24)` calls below are deliberately separate and produce DIFFERENT values:
     // the upsert `where` key must not match the `create` key, or a guaranteed-miss upsert becomes
     // a possible update. Do not hoist either to a shared constant.
-    // Stamped for the anchor run's shard, so the row is routable and completion needs no probe.
     const upsertArgs = {
       where: {
         environmentId_idempotencyKey: {
@@ -338,9 +337,8 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     while (attempts < maxRetries) {
       try {
         // As in createDateTimeWaitpoint, the two `nanoid(24)` calls are deliberately separate and
-        // differ. Both, and the id mint, are re-evaluated on every attempt: that is what makes a
-        // retry after a unique-constraint conflict try a fresh key. The anchor does not change,
-        // so every attempt stays on the same shard.
+        // differ. Both are re-evaluated per attempt, so a retry after a conflict tries a fresh
+        // key. The anchor does not change, so every attempt stays on the same shard.
         const waitpoint = await this.runStore.upsertWaitpoint(
           {
             where: {

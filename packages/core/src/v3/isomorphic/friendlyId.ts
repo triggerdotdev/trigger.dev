@@ -229,12 +229,10 @@ export function isRunOpsIdBody(body: string): boolean {
   return parseRunOpsIdBody(body) !== undefined;
 }
 
-// Shape-only check over the same alphabet base32hexDecode accepts, so it is the same predicate as
-// "the decode would not throw". Routing needs the shape only, and decoding a timestamp to discard
-// it costs ~30x more on a path taken for every routed call.
+// Same alphabet base32hexDecode accepts, so this and "the decode would not throw" are one
+// predicate. Decoding a timestamp to discard it costs ~30x more on the router's hot path.
 const RUN_OPS_ID_CORE_PATTERN = /^[0-9a-v]{24}$/;
 
-/** Shape-only v1 body check for routing: 26 chars, version "1", region and core in range. */
 export function isRunOpsIdBodyShape(body: string): boolean {
   return (
     body.length === RUN_OPS_ID_LENGTH &&
@@ -244,7 +242,6 @@ export function isRunOpsIdBodyShape(body: string): boolean {
   );
 }
 
-/** Shape-only gen-2 body check for routing. Returns the shard char, or undefined. */
 export function runOpsIdV2ShardShape(body: string): string | undefined {
   if (body.length !== RUN_OPS_ID_LENGTH) return undefined;
   if (body[RUN_OPS_ID_VERSION_INDEX] !== RUN_OPS_ID_VERSION_2) return undefined;

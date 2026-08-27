@@ -87,9 +87,8 @@ export async function resolveBatchRunOpsWriter(
     shards?: ReadonlyArray<{ key: string; writer: RunOpsPrismaClient }>;
   }
 ): Promise<RunOpsPrismaClient> {
-  // A gen-2 batch names its shard in its id. The probe below is binary, so without this a gen-2
-  // batch resolves to a store holding no such row and the update throws before the batch waitpoint
-  // completes, leaving the parent blocked with nothing logged.
+  // The probe below is binary, so without this a gen-2 batch resolves to a store holding no such
+  // row, and the update throws before the batch waitpoint completes.
   const shardKey = resolveShard(batchId);
   if (shardKey !== "new" && shardKey !== "legacy") {
     const shard = deps.shards?.find((s) => s.key === shardKey);

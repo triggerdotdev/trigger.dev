@@ -492,8 +492,7 @@ describe("runEngineHandlers batch completion", () => {
 describe("runEngineHandlers batch residency routing", () => {
   // See resolveBatchRunOpsWriter: without a shard arm a gen-2 batch resolves to a store holding
   // no such row, and the parent waits forever with nothing logged.
-  // Real databases, so the assertion is where the rows landed rather than which object came back.
-  // The shard is prisma14 and both gen-1 slots are prisma17, so every wrong resolution lands on a
+  // The shard is prisma14 and both gen-1 slots are prisma17, so any wrong resolution lands on a
   // database holding no such batch.
   heteroPostgresTest(
     "a gen-2 batch commits on its shard, and the gen-1 store stays empty",
@@ -537,7 +536,6 @@ describe("runEngineHandlers batch residency routing", () => {
         }
       );
 
-      // The hang was the callback dying on "no record was found for an update" before this.
       const onShard = await prisma14.batchTaskRun.findFirstOrThrow({ where: { id: gen2BatchId } });
       expect(onShard.status).toBe("PARTIAL_FAILED");
       expect(
@@ -552,8 +550,7 @@ describe("runEngineHandlers batch residency routing", () => {
     }
   );
 
-  // A throwing double deliberately: this asserts a call that must NOT happen, and a real client
-  // would return null and pass either way.
+  // A throwing double: a real client would return null and pass either way.
   it("a gen-2 batch id never probes the gen-1 store", async () => {
     const shardWriter = {} as never;
 

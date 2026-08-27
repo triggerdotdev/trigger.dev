@@ -936,9 +936,6 @@ describe("RoutingRunStore batch probe tolerates legitimate dual-residency", () =
 });
 
 describe("RoutingRunStore waitpoint tags follow their environment's shard", () => {
-  // A tag has no id to route by and `residency` names only a gen-1 store, so without the hint the
-  // row lands on a different database from the tokens it describes. Reads fan out and still find
-  // it, so the symptom is placement rather than an error.
   const tag = { environmentId: "env_1", name: "tag", projectId: "proj_1" };
 
   const shardedRouter = () => {
@@ -971,9 +968,7 @@ describe("RoutingRunStore waitpoint tags follow their environment's shard", () =
 });
 
 describe("RoutingRunStore waitpoint writes: a stamped gen-2 id outranks a residency hint", () => {
-  // `residency` names only NEW or LEGACY, so a stamped gen-2 id has to win. Before this, safety
-  // rested on every caller withholding the hint for a gen-2 id; a caller that passed both would
-  // have written the row to a gen-1 database silently, because a create never misses.
+  // A caller passing both used to write to a gen-1 database silently: a create never misses.
   const GEN2 = `${"a".repeat(24)}a2`;
   const GEN1 = `${"a".repeat(24)}01`;
   const CUID = "c".repeat(25);

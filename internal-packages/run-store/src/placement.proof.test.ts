@@ -23,17 +23,12 @@ const read = (relative: string) => readFileSync(path.join(repoRoot(), relative),
 const TYPES = "internal-packages/run-store/src/types.ts";
 const STORE = "internal-packages/run-store/src/runOpsStore.ts";
 
-/**
- * Method names on the `RunStore` interface, overloads collapsed. Parsed from source rather than
- * imported as a type, so a failure can name the method somebody forgot to classify.
- */
+/** Parsed from source, not imported as a type, so a failure can name the unclassified method. */
 function interfaceMethods(): string[] {
   const source = read(TYPES);
   const start = source.indexOf("export interface RunStore {");
   expect(start).toBeGreaterThan(-1);
 
-  // Declarations sit at two-space indent. A stray name from later in the file shows up as
-  // uncatalogued rather than being dropped.
   const body = source.slice(start);
   const names = new Set<string>();
   for (const match of body.matchAll(/^ {2}([a-zA-Z][A-Za-z0-9]*)(<[^\n]*?>)?\(/gm)) {
@@ -42,12 +37,9 @@ function interfaceMethods(): string[] {
   return [...names];
 }
 
-/**
- * One method implementation: its declaration to the next member at the same indent. Not
- * brace-matching, which a signature carrying an inline object type makes fiddly to get right.
- */
+/** Not brace-matching: an inline object type in a signature makes that fiddly to get right. */
 function methodBody(source: string, method: string): string | undefined {
-  // The last declaration: an overloaded method leads with bodiless signatures.
+  // Last, not first: an overloaded method leads with bodiless signatures.
   const declaration = new RegExp(`^ {2}(?:async )?${method}(?:<[^\\n]*?>)?\\(`, "gm");
   const matches = [...source.matchAll(declaration)];
   const start = matches.at(-1)?.index;
@@ -71,7 +63,6 @@ describe("run-store placement census — every write states what it routes by", 
     expect(methods).toContain("findRun");
   });
 
-  // The point of the census: nobody adds a write without saying how it is placed.
   it("classifies every interface method as exactly one of read or write", () => {
     const methods = interfaceMethods();
     const { all } = catalogued();
@@ -96,8 +87,6 @@ describe("run-store placement census — every write states what it routes by", 
     expect({ duplicates }).toEqual({ duplicates: [] });
   });
 
-  // The forbidden cell: a row on a database its owner does not live on, with nothing to detect
-  // it. `upsertWaitpointTag` sat here and every functional test passed.
   it("has no write that routes on residency alone and misses silently", () => {
     const forbidden = PLACEMENT_SITES.filter(
       (s) => s.basis === "residency" && s.missMode === "silent"
@@ -106,7 +95,6 @@ describe("run-store placement census — every write states what it routes by", 
     expect({ residencyOnlySilentWrites: forbidden }).toEqual({ residencyOnlySilentWrites: [] });
   });
 
-  // Both are claims about safety rather than mechanisms, so each has to be argued in the catalog.
   it("requires a written justification wherever safety is a claim, not a mechanism", () => {
     const unjustified = PLACEMENT_SITES.filter(
       (s) => (s.basis === "residency" || s.basis === "fan-out") && (s.why ?? "").trim().length < 40
@@ -120,8 +108,7 @@ describe("run-store placement census — every write states what it routes by", 
     expect({ withoutRoutes: empty }).toEqual({ withoutRoutes: [] });
   });
 
-  // Scoped to the method's own body, not the whole file: three creates share
-  // `#routeOrNew(params.data.id)`, so a file-wide search passes when one loses its route.
+  // Per body, not per file: three creates share one route expression.
   it.each(PLACEMENT_SITES)("$method still contains the routes the catalog claims", (site) => {
     const body = methodBody(read(STORE), site.method);
 
