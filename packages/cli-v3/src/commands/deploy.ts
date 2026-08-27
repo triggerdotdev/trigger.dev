@@ -6,6 +6,8 @@ import {
   tryCatch,
 } from "@trigger.dev/core/v3";
 import type {
+  DeployBuildPath,
+  DeployBuildPathSource,
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   GitMeta,
@@ -91,6 +93,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
   nativeBuildServer: z.boolean().default(false),
+  depotBuild: z.boolean().default(false),
   localBundle: z.boolean().default(false),
   fromBundle: z.string().optional(),
   detach: z.boolean().default(false),
@@ -250,6 +253,18 @@ export function configureDeployCommand(program: Command) {
           "--native-build-server",
           "Use the native build server for building the image"
         )
+      )
+      .addOption(
+        new CommandOption(
+          "--depot-build",
+          "Build the image with Depot, ignoring the build path configured for this project on the server"
+        ).conflicts([
+          "nativeBuildServer",
+          "localBundle",
+          "localBuild",
+          "forceLocalBuild",
+          "fromBundle",
+        ])
       )
       .addOption(
         new CommandOption(
@@ -445,7 +460,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
-  if (options.localBundle) {
+  const buildPath = await resolveBuildPath(projectClient.client, resolvedConfig.project, options);
+
+  if (buildPath === "native_local_bundle") {
     await handleLocalBundleDeploy({
       apiClient: projectClient.client,
       config: resolvedConfig,
@@ -458,7 +475,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     return;
   }
 
-  if (options.nativeBuildServer) {
+  if (buildPath === "native") {
     await handleNativeBuildServerDeploy({
       apiClient: projectClient.client,
       config: resolvedConfig,
@@ -1235,6 +1252,76 @@ function getTriggeredVia(): DeploymentTriggeredVia {
   }
 
   return "cli:manual";
+}
+
+const DEPLOY_SETTINGS_TIMEOUT_MS = 3_000;
+
+const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
+  depot: "Depot",
+  native: "native build server",
+  native_local_bundle: "native build server (local bundle)",
+};
+
+const BUILD_PATH_SOURCE_LABEL: Record<DeployBuildPathSource, string> = {
+  default: "server default",
+  global: "configured on the server",
+  global_environment: "configured on the server for this environment type",
+  organization: "configured for your organization",
+  organization_environment: "configured for your organization's environments of this type",
+  project_opt_out: "the native build server is disabled in the project settings",
+  unavailable: "the native build server is not available on this server",
+};
+
+/**
+ * Explicit path flags always win and skip the server round-trip. Otherwise the server
+ * decides (org/env-type feature flags); any failure to ask falls open to Depot, the path
+ * older CLIs use unconditionally.
+ */
+async function resolveBuildPath(
+  apiClient: CliApiClient,
+  projectRef: string,
+  options: DeployCommandOptions
+): Promise<DeployBuildPath> {
+  if (options.localBundle) {
+    logger.debug("Build path from --local-bundle");
+    return "native_local_bundle";
+  }
+
+  if (options.nativeBuildServer) {
+    logger.debug(`Build path from ${options.detach ? "--detach" : "--native-build-server"}`);
+    return "native";
+  }
+
+  if (options.depotBuild || options.localBuild) {
+    logger.debug(`Build path from ${options.localBuild ? "--local-build" : "--depot-build"}`);
+    return "depot";
+  }
+
+  const [error, result] = await tryCatch(
+    apiClient.getDeploySettings(
+      projectRef,
+      options.env,
+      AbortSignal.timeout(DEPLOY_SETTINGS_TIMEOUT_MS)
+    )
+  );
+
+  if (error || !result.success) {
+    logger.debug("Failed to fetch deploy settings", {
+      error: error ?? (result && !result.success ? result.error : undefined),
+    });
+    log.warn("Could not fetch the deploy settings from the server, using the Depot build path");
+    return "depot";
+  }
+
+  const { path, source } = result.data.build;
+
+  if (path !== "depot") {
+    log.info(`Using the ${BUILD_PATH_LABEL[path]} build path (${BUILD_PATH_SOURCE_LABEL[source]})`);
+  } else {
+    logger.debug(`Build path depot (${source})`);
+  }
+
+  return path;
 }
 
 async function handleNativeBuildServerDeploy({
