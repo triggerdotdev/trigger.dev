@@ -3,6 +3,10 @@
 # These are paging rules, not dashboard panels. A sustained append failure burns an attempt number
 # on every state transition, so runs exhaust their retry budget from an infrastructure fault rather
 # than from anything the task did. That is silent to the customer until their run fails for good.
+# The exported names carry a deployment-dependent prefix (locally `triggerdotdev_`) that is added
+# somewhere in the OpenTelemetry pipeline, not by the instrument names in the code. Matching on the
+# suffix keeps these rules correct wherever that prefix differs, and an alert that silently matches
+# nothing is worse than no alert.
 groups:
   - name: snapshot-store
     interval: 30s
@@ -10,7 +14,7 @@ groups:
       - alert: SnapshotStoreAppendFailing
         # Any sustained failure at all, not a rate threshold: one failed append per minute still
         # burns one attempt per minute on the runs it touches.
-        expr: sum(rate(run_engine_snapshot_store_append_failed_total[5m])) > 0
+        expr: sum(rate({__name__=~".*run_engine_snapshot_store_append_failed_total"}[5m])) > 0
         for: 10m
         labels:
           severity: page
@@ -24,7 +28,7 @@ groups:
 
       - alert: SnapshotStoreSweepNotCompleting
         # The sweep is the only reaper for orphaned keyspaces. Its absence is silent by nature.
-        expr: sum(increase(run_engine_snapshot_store_sweep_pass_total{outcome="completed"}[24h])) == 0
+        expr: sum(increase({__name__=~".*run_engine_snapshot_store_sweep_pass_total",outcome="completed"}[24h])) == 0
         for: 1h
         labels:
           severity: ticket
