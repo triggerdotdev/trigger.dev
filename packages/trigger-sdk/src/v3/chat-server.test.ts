@@ -216,7 +216,7 @@ describe("chat.headStart (route handler)", () => {
     expect(body.triggerConfig.basePayload.idleTimeoutInSeconds).toBe(60);
   });
 
-  it("merges triggerConfig tags and queue into createSession", async () => {
+  it("merges triggerConfig tags, queue and ttl into createSession", async () => {
     const requests: CapturedRequest[] = [];
     global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
       const urlStr = typeof url === "string" ? url : url.toString();
@@ -248,6 +248,7 @@ describe("chat.headStart (route handler)", () => {
       triggerConfig: {
         tags: ["org:acme", "agentic-run:xyz"],
         queue: "my-queue",
+        ttl: "2m",
       },
       run: async ({ chat: chatHelper }) => {
         return streamText({
@@ -276,6 +277,7 @@ describe("chat.headStart (route handler)", () => {
     const body = JSON.parse(sessionCreate!.init!.body as string);
     expect(body.triggerConfig.tags).toEqual(["chat:chat-1", "org:acme", "agentic-run:xyz"]);
     expect(body.triggerConfig.queue).toBe("my-queue");
+    expect(body.triggerConfig.ttl).toBe("2m");
     expect(body.triggerConfig.basePayload.trigger).toBe("handover-prepare");
     expect(body.triggerConfig.basePayload.chatId).toBe("chat-1");
   });

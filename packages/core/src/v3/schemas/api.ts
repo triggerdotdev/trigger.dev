@@ -1850,6 +1850,11 @@ export const SessionTriggerConfig = z.object({
   lockToVersion: z.string().optional(),
   /** Region to schedule runs in. Forwarded to `TaskRunOptions.region`. */
   region: z.string().optional(),
+  /**
+   * How long a run may sit undequeued before it expires (duration string
+   * like `"2m"`, or seconds). Forwarded to `TaskRunOptions.ttl`.
+   */
+  ttl: z.string().or(z.number().nonnegative().int()).optional(),
   /** Convenience field surfaced to chat.agent via the wire payload. */
   idleTimeoutInSeconds: z.number().int().positive().max(3600).optional(),
 });
