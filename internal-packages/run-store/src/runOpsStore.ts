@@ -1565,14 +1565,15 @@ export class RoutingRunStore implements RunStore {
       }
       return this.#shardStore(key);
     }
-    if (residency !== undefined) {
+    // `residency` names only NEW or LEGACY, so a stamped gen-2 id wins.
+    const stamped = typeof waitpointId === "string" ? this.#shardKeyOfSafe(waitpointId) : undefined;
+    const isGen2Stamped =
+      stamped !== undefined && stamped !== NEW_SHARD && stamped !== LEGACY_SHARD;
+
+    if (residency !== undefined && !isGen2Stamped) {
       return this.#shardStore(residency === "NEW" ? NEW_SHARD : LEGACY_SHARD);
     }
-    return this.#shardStore(
-      typeof waitpointId === "string"
-        ? this.#shardKeyOfSafe(waitpointId)
-        : this.#idlessWaitpointShard
-    );
+    return this.#shardStore(stamped ?? this.#idlessWaitpointShard);
   }
 
   upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
@@ -2243,12 +2244,49 @@ export class RoutingRunStore implements RunStore {
   upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
     tx?: PrismaClientOrTransaction,
-    residency?: Residency
+    residency?: Residency,
+    shardKey?: ShardKey
   ): Promise<WaitpointTag> {
     // No owning run; route by the env's residency hint when present, else a minted id-shape, else
     // fall back to LEGACY (same precedence as a standalone waitpoint). Caller tx is never forwarded.
-    const store = this.#waitpointWriteStore(undefined, residency, data.id);
+    //
+    const store =
+      shardKey !== undefined && shardKey !== NEW_SHARD && shardKey !== LEGACY_SHARD
+        ? this.#shardStore(shardKey)
+        : this.#waitpointWriteStore(undefined, residency, data.id);
     return store.upsertWaitpointTag(data, undefined);
+  }
+
+  // Both keys, in order. Drain can mirror a tag onto NEW keeping its id, and NEW wins. Then by
+  // name, because the per-database unique index lets a store mint its own cuid for a tag it has
+  // not seen. Dropping a row is safe: nothing reads a tag's id.
+  #mergeTags<R extends Record<string, unknown>>(legs: Array<{ key: ShardKey; rows: R[] }>): R[] {
+    const survivors = this.#mergeById(legs);
+    const survivorSet = new Set<R>(survivors as R[]);
+
+    // Survivors only, so a stale mirror cannot win its name back.
+    const winnerByName = new Map<string, R>();
+    for (const { rows } of legs) {
+      for (const row of rows) {
+        if (!survivorSet.has(row)) continue;
+        const key = RoutingRunStore.#tagNameKey(row);
+        if (key !== undefined) winnerByName.set(key, row);
+      }
+    }
+
+    // Filter, not rebuild: position matters when `orderBy` is absent.
+    return (survivors as R[]).filter((row) => {
+      const key = RoutingRunStore.#tagNameKey(row);
+      return key === undefined || winnerByName.get(key) === row;
+    });
+  }
+
+  static #tagNameKey(row: Record<string, unknown>): string | undefined {
+    const environmentId = row.environmentId;
+    const name = row.name;
+    return typeof environmentId === "string" && typeof name === "string"
+      ? `${environmentId}\u0000${name}`
+      : undefined;
   }
 
   // A tag keyed by (environmentId, name) can exist on BOTH DBs for one env (dual-resident, no
@@ -2281,7 +2319,7 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       )) as unknown as Array<Record<string, unknown>>,
     }));
-    const deduped = this.#mergeById(legs) as unknown as WaitpointTag[];
+    const deduped = this.#mergeTags(legs) as unknown as WaitpointTag[];
     const merged = args.orderBy
       ? (sortByOrderBy(
           deduped as unknown as Array<Record<string, unknown>>,

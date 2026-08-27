@@ -1,6 +1,6 @@
 import type { RunEngine } from "@internal/run-engine";
 import { TaskRunErrorCodes, type TaskRunError } from "@trigger.dev/core/v3";
-import { RunId, generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
@@ -8,8 +8,8 @@ import type {
 } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
-import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
+import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
+import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import type { RunStore } from "@internal/run-store";
@@ -103,17 +103,16 @@ export class TriggerFailedTaskService {
       return args.runFriendlyId;
     }
 
-    const mintKind = args.parentRunFriendlyId
-      ? resolveInheritedMintKind(args.parentRunFriendlyId)
-      : await resolveRunIdMintKind({
+    return mintFriendlyIdForKind(
+      await resolveRunMintTarget({
+        environment: {
           organizationId: args.organizationId,
           id: args.environmentId,
           orgFeatureFlags: args.orgFeatureFlags,
-        });
-
-    return mintKind === "runOpsId"
-      ? RunId.toFriendlyId(generateRunOpsId())
-      : RunId.generate().friendlyId;
+        },
+        parentRunFriendlyId: args.parentRunFriendlyId,
+      })
+    );
   }
 
   async call(request: TriggerFailedTaskRequest): Promise<string | null> {

@@ -1,12 +1,12 @@
 ---
 title: "Version upgrades"
 sidebarTitle: "Version upgrades"
-description: "Gracefully migrate suspended chat agents to a new deployment using chat.requestUpgrade() and the continuation mechanism."
+description: "Gracefully migrate chat agents to a new deployment using chat.requestUpgrade(), chat.endAndContinue(), and the continuation mechanism."
 ---
 
 Chat agent runs are pinned to the worker version they started on. When you deploy a new version, suspended runs resume on the **old** code. If your deploy includes breaking changes (new tools, changed schemas, updated API contracts), this can cause issues.
 
-`chat.requestUpgrade()` lets the agent opt out of the current run so the transport triggers a new one on the latest version.
+`chat.requestUpgrade()` is the managed upgrade signal for `chat.agent()` and the `chat.createSession()` iterator. Fully hand-rolled custom agents use `chat.endAndContinue()` between turns to immediately hand the Session to a new run.
 
 ## How it works
 
@@ -151,14 +151,34 @@ export const myChat = chat
 
 This upgrades on **every** deploy, not just breaking changes. Good for fast-moving projects where you always want the latest code.
 
-## Other agent types
+## Custom agents
 
-- **`chat.agent()`** and **`chat.createSession()`** — use `chat.requestUpgrade()` as shown above
-- **`chat.customAgent()`** — you control the turn loop, so just `return` from `run()` when you want to exit
+Use `chat.requestUpgrade()` with `chat.agent()`. With `chat.createSession()`, call `chat.requestUpgrade()`, then advance the iterator once more so it can exit normally. For an immediate handoff, close the iterator before calling `chat.endAndContinue()`. In a fully hand-rolled `chat.customAgent()` task, detach input listeners, persist the completed turn, write its boundary, then call `chat.endAndContinue()` and return immediately:
+
+Close a `chat.createSession()` iterator between reads. If `return()` races a `next()` that is already waiting for input, it waits for that read to settle before the handoff can continue. Input dispatched while the iterator is closing is not yielded as a turn and remains available to the continuation unless you write another turn-complete boundary.
+
+```ts
+// Detach any chat.messages.on() subscriptions you created.
+stop.cleanup();
+await persistMessages(conversation.uiMessages);
+await chat.writeTurnComplete();
+await chat.endAndContinue();
+return;
+```
+
+The continuation uses the same durable Session and receives `.in` records that the old run has not consumed. It starts on the latest deployed task version unless the Session's trigger configuration sets `lockToVersion`.
+
+If input has been dispatched to the old run but should be processed by the continuation, detach the old listeners and skip the final `chat.writeTurnComplete()`. A turn-complete boundary acknowledges the latest input dispatched to the old run, so writing one after that dispatch would cause the continuation to resume past the input.
+
+<Warning>
+  `chat.endAndContinue()` starts the successor but does not stop the calling run. Perform no more Session reads or writes after calling it, and return from the task. If the handoff fails, the promise rejects.
+</Warning>
 
 ## Interaction with recovery boot
 
-`chat.requestUpgrade()` is a graceful exit — the old run returns cleanly, never writing a partial assistant. The new continuation run boots with an empty `session.out` tail and the upgrade-trigger message on `session.in`. The trigger message dispatches as turn 1 on the new version via the normal continuation-wait path. [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot) does NOT fire on this path — the hook is reserved for mid-stream interruptions (cancel / crash / OOM) where a partial assistant exists on the tail.
+When `chat.requestUpgrade()` is handled before a turn starts, the SDK immediately hands the Session to a new run, which processes the same input on the latest version. When it is requested during a turn, including through `chat.createSession()`, the current turn finishes and the old run exits; the next input starts the continuation run.
+
+Both are graceful exits. [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot) does not fire — the hook is reserved for mid-stream interruptions (cancel, crash, or OOM) where a partial assistant exists on the tail.
 
 ## See also
 

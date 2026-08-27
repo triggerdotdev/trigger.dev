@@ -683,10 +683,10 @@ export class SessionInputChannel {
   }
 
   /**
-   * The highest S2 sequence number of any record this channel has
-   * delivered to a `once()` / `wait()` consumer (or had shifted off its
-   * buffer into one). Distinct from "last received" — buffered-but-not-
-   * yet-consumed records don't count.
+   * The highest S2 sequence number that is safe to persist as consumed.
+   * This stays behind the earliest unconsumed record if a later record was
+   * handled first. Distinct from "last received", which advances for records
+   * that may still be pending.
    *
    * Used by `chat.agent` to persist the `.in` resume cursor on each
    * `turn-complete` control record, so the next worker boot can subscribe
@@ -702,79 +702,121 @@ export class SessionInputChannel {
    * run-engine waitpoint holds the run until the session append handler
    * fires it. Only callable from inside `task.run()`.
    */
+  /**
+   * Suspend until the channel wakes this run, and read nothing.
+   *
+   * The waitpoint is only a wake signal: the append route commits the record to
+   * the channel before it drains any waitpoint, so once this resolves the
+   * record is durably readable from the channel itself, carrying its real
+   * sequence. Separating the wake from the read is what lets a consumer that
+   * owns its own delivery (the chat input router) reuse this without the
+   * channel also taking a record out from under it.
+   *
+   * @internal
+   */
+  async awaitWake(
+    options?: InputStreamWaitOptions & { lastSeqNum?: number }
+  ): Promise<{ ok: true; waitpointId: string } | { ok: false; error: Error }> {
+    const ctx = taskContext.ctx;
+
+    if (!ctx) {
+      throw new Error("session.in.wait() can only be used from inside a task.run()");
+    }
+
+    const apiClient = apiClientManager.clientOrThrow();
+
+    const lastConsumedSeqNum =
+      options?.lastSeqNum ?? sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
+    const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
+      session: this.sessionId,
+      io: "in",
+      timeout: options?.timeout,
+      idempotencyKey: options?.idempotencyKey,
+      idempotencyKeyTTL: options?.idempotencyKeyTTL,
+      tags: options?.tags,
+      lastSeqNum: lastConsumedSeqNum,
+    });
+
+    const waitResponse = await apiClient.waitForWaitpointToken({
+      runFriendlyId: ctx.run.id,
+      waitpointFriendlyId: response.waitpointId,
+    });
+
+    if (!waitResponse.success) {
+      throw new Error("Failed to block on session stream waitpoint");
+    }
+
+    sessionStreams.disconnectStream(this.sessionId, "in");
+
+    const waitResult = await runtime.waitUntil(response.waitpointId);
+
+    if (!waitResult.ok) {
+      const parsed =
+        waitResult.output !== undefined
+          ? await conditionallyImportAndParsePacket(
+              {
+                data: waitResult.output,
+                dataType: waitResult.outputType ?? "application/json",
+              },
+              apiClient
+            )
+          : undefined;
+      return {
+        ok: false as const,
+        error: new WaitpointTimeoutError(parsed?.message ?? "Timed out"),
+      };
+    }
+
+    sessionStreams.reconnectStream(this.sessionId, "in");
+    return { ok: true as const, waitpointId: response.waitpointId };
+  }
+
   wait<T = unknown>(options?: InputStreamWaitOptions): ManualWaitpointPromise<T> {
     return new ManualWaitpointPromise<T>(async (resolve, reject) => {
       try {
-        const ctx = taskContext.ctx;
-
-        if (!ctx) {
-          throw new Error("session.in.wait() can only be used from inside a task.run()");
-        }
-
         const apiClient = apiClientManager.clientOrThrow();
-
-        const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
-          session: this.sessionId,
-          io: "in",
-          timeout: options?.timeout,
-          idempotencyKey: options?.idempotencyKey,
-          idempotencyKeyTTL: options?.idempotencyKeyTTL,
-          tags: options?.tags,
-          lastSeqNum: sessionStreams.lastSeqNum(this.sessionId, "in"),
-        });
 
         const result = await tracer.startActiveSpan(
           options?.spanName ?? `sessions.open(${this.sessionId}).in.wait()`,
           async (span) => {
-            const waitResponse = await apiClient.waitForWaitpointToken({
-              runFriendlyId: ctx.run.id,
-              waitpointFriendlyId: response.waitpointId,
-            });
+            const wake = await this.awaitWake(options);
 
-            if (!waitResponse.success) {
-              throw new Error("Failed to block on session stream waitpoint");
+            if (!wake.ok) {
+              span.recordException(wake.error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+              return { ok: false as const, error: wake.error };
             }
 
-            // Drop the SSE tail + buffer before suspending so the record
-            // delivered via the waitpoint path isn't re-buffered on resume.
-            sessionStreams.disconnectStream(this.sessionId, "in");
+            span.setAttribute(SemanticInternalAttributes.ENTITY_ID, wake.waitpointId);
 
-            const waitResult = await runtime.waitUntil(response.waitpointId);
+            const record = await sessionStreams.onceRecord(this.sessionId, "in");
 
-            const data =
-              waitResult.output !== undefined
-                ? await conditionallyImportAndParsePacket(
-                    {
-                      data: waitResult.output,
-                      dataType: waitResult.outputType ?? "application/json",
-                    },
-                    apiClient
-                  )
-                : undefined;
-
-            if (waitResult.ok) {
-              // Advance both cursors past the record consumed via the
-              // waitpoint: the seq counter so the SSE tail doesn't replay
-              // it, and the consume cursor so turn-completes don't stamp a
-              // stale `session-in-event-id`.
-              const prevSeq = sessionStreams.lastSeqNum(this.sessionId, "in");
-              const nextSeq = (prevSeq ?? -1) + 1;
-              sessionStreams.setLastSeqNum(this.sessionId, "in", nextSeq);
-              sessionStreams.setLastDispatchedSeqNum(this.sessionId, "in", nextSeq);
-
-              return { ok: true as const, output: data as T };
-            } else {
-              const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
+            if (!record.ok) {
+              const error = new WaitpointTimeoutError("Timed out");
               span.recordException(error);
               span.setStatus({ code: SpanStatusCode.ERROR });
               return { ok: false as const, error };
             }
+
+            sessionStreams.setLastSeqNum(this.sessionId, "in", record.output.seqNum);
+
+            const data = await conditionallyImportAndParsePacket(
+              {
+                data:
+                  typeof record.output.data === "string"
+                    ? record.output.data
+                    : JSON.stringify(record.output.data),
+                dataType: "application/json",
+              },
+              apiClient
+            );
+
+            return { ok: true as const, output: data as T };
           },
           {
             attributes: {
               [SemanticInternalAttributes.STYLE_ICON]: "wait",
               [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
-              [SemanticInternalAttributes.ENTITY_ID]: response.waitpointId,
               session: this.sessionId,
               io: "in",
               ...accessoryAttributes({

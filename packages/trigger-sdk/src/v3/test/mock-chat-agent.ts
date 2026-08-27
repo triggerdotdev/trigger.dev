@@ -4,6 +4,7 @@ import type { LocalsKey } from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import { __setSessionOpenImplForTests, __setSessionStartImplForTests } from "../sessions.js";
 import {
+  __resetChatInputRouterForTests,
   __setReadChatSnapshotImplForTests,
   __setReplaySessionInTailImplForTests,
   __setReplaySessionOutTailImplForTests,
@@ -389,6 +390,8 @@ export function mockChatAgent(
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
   let seededSessionInMessages: UIMessage[] = [];
+
+  __resetChatInputRouterForTests();
 
   __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
     return seededSnapshot as ChatSnapshotV1<T> | undefined;
