@@ -1894,10 +1894,14 @@ function subscribeToValidatedChatMessages(
  * buffer of its own, because the record was never removed from the channel.
  */
 function observeValidatedChatMessages(
-  handler: (payload: ChatTaskWirePayload, isActive: () => boolean) => unknown,
-  options: {
-    onSeqNum?: (seqNum: number) => void;
-  } = {}
+  /**
+   * Receives the observed record's own `seqNum`. It is passed per record rather
+   * than tracked outside, because the handler runs after an await: with two
+   * frames in flight a shared slot already holds the newer sequence by the time
+   * the older frame's parse resolves, and the steering queue would then take
+   * the wrong record off the channel.
+   */
+  handler: (payload: ChatTaskWirePayload, seqNum: number, isActive: () => boolean) => unknown
 ): ChatMessageSubscription {
   let active = true;
   let delivery = Promise.resolve();
@@ -1908,7 +1912,7 @@ function observeValidatedChatMessages(
 
   const subscription = chatInputRouter().observe(CHAT_ROUTE_MESSAGES, (record) => {
     const payload = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
-    options.onSeqNum?.(record.seqNum);
+    const seqNum = record.seqNum;
     /**
      * Claimed synchronously, before any await, so a read cannot validate the
      * same record. The promise lets a read wait for the outcome rather than
@@ -1937,12 +1941,15 @@ function observeValidatedChatMessages(
            * a later one, so removing it loses nothing that was still owed.
            */
           const timing = locals.get(chatCustomAgentClientDataErrorTimingKey) ?? "turn-end";
+          const writeNow = timing === "arrival" || !active;
           await reportChatCustomAgentClientDataError(payload, result.error, {
-            // A terminal error written into a live response can close it, so by
-            // default it waits for the turn to end. `"arrival"` opts into the
-            // earlier, more disruptive report.
-            writeToStream: timing === "arrival" || !active,
+            writeToStream: writeNow,
           });
+          if (!writeNow) {
+            const deferred = locals.get(chatCustomAgentDeferredClientDataErrorsKey) ?? [];
+            deferred.push(payload);
+            locals.set(chatCustomAgentDeferredClientDataErrorsKey, deferred);
+          }
           // Drop the record: an invalid frame is never answered, by this run or
           // a later one. Released so a waiting read stops waiting, finds it
           // gone, and goes back to waiting for the next message.
@@ -1954,7 +1961,7 @@ function observeValidatedChatMessages(
         // Valid, so release. The record is still queued, and whichever comes
         // first, an injection or a later turn's read, now owns it.
         releaseClaim();
-        void Promise.resolve(handler(result.payload, () => active)).catch(() => {});
+        void Promise.resolve(handler(result.payload, seqNum, () => active)).catch(() => {});
       })
       .catch(() => {});
   });
@@ -2045,13 +2052,31 @@ const messagesInput: ChatMessages = {
       );
     }
 
-    const record = await chatInputRouter().next(CHAT_ROUTE_MESSAGES, {
-      timeoutMs: timeoutInSeconds === undefined ? undefined : timeoutInSeconds * 1000,
-    });
-    if (!record) return undefined;
+    // Consuming read, so it takes the same claim-and-validate path as the other
+    // reads: a record the observer still owns is put back and awaited, and an
+    // invalid payload is reported and skipped rather than surfaced raw.
+    while (true) {
+      const record = await chatInputRouter().next(CHAT_ROUTE_MESSAGES, {
+        timeoutMs: timeoutInSeconds === undefined ? undefined : timeoutInSeconds * 1000,
+      });
+      if (!record) return undefined;
 
-    const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
-    return { id: record.id, seqNum: record.seqNum, payload: chunk.payload };
+      const claim = observerClaimFor(record);
+      if (claim) {
+        chatInputRouter().untake(CHAT_ROUTE_MESSAGES, record);
+        await claim;
+        continue;
+      }
+
+      const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+      if (!shouldValidateChatCustomAgentPayload(chunk.payload)) {
+        return { id: record.id, seqNum: record.seqNum, payload: chunk.payload };
+      }
+      const validated = await validateChatCustomAgentPayload(chunk.payload);
+      if (validated.ok) {
+        return { id: record.id, seqNum: record.seqNum, payload: validated.payload };
+      }
+    }
   },
   wait(options) {
     return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {
@@ -3211,6 +3236,17 @@ const chatAgentRunContextKey = locals.create<TaskRunContext>("chat.agentRunConte
 /** @internal When a mid-turn validation failure writes its terminal error. */
 const chatCustomAgentClientDataErrorTimingKey = locals.create<"turn-end" | "arrival">(
   "chat.customAgent.clientDataErrorTiming"
+);
+/**
+ * @internal Client-data errors held back until the open turn closes.
+ *
+ * The default timing exists so a bad send cannot truncate an answer already
+ * being read, which means the write has to happen later rather than not at all:
+ * the callback and the task log are server-side, so dropping the stream write
+ * would leave the client with no signal that its frame was rejected.
+ */
+const chatCustomAgentDeferredClientDataErrorsKey = locals.create<ChatTaskWirePayload[]>(
+  "chat.customAgent.deferredClientDataErrors"
 );
 /**
  * @internal Sequences the validating observer has claimed.
@@ -9888,6 +9924,7 @@ function createStopSignal(): {
 async function chatWriteTurnComplete(options?: {
   publicAccessToken?: string;
 }): Promise<{ lastEventId?: string; sessionInEventId?: string }> {
+  await flushDeferredChatCustomAgentClientDataErrors();
   const result = await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
   // Same cursor written to the `session-in-event-id` header inside
   // `writeTurnCompleteChunk`; surfaced here so the caller can persist it.
@@ -9896,6 +9933,25 @@ async function chatWriteTurnComplete(options?: {
     lastEventId: result?.lastEventId,
     ...(inCursor !== undefined ? { sessionInEventId: String(inCursor) } : {}),
   };
+}
+
+/**
+ * Writes the client-data errors held back by the default `"turn-end"` timing.
+ *
+ * Ordered before the turn-complete chunk, matching the error-then-turn-complete
+ * shape the submitted-turn and async-read paths already write.
+ */
+async function flushDeferredChatCustomAgentClientDataErrors(): Promise<void> {
+  const deferred = locals.get(chatCustomAgentDeferredClientDataErrorsKey);
+  if (!deferred || deferred.length === 0) return;
+  locals.set(chatCustomAgentDeferredClientDataErrorsKey, []);
+  for (const payload of deferred) {
+    try {
+      await writeChatCustomAgentClientDataErrorToStream(payload);
+    } catch {
+      /* non-fatal */
+    }
+  }
 }
 
 /**
@@ -10784,13 +10840,9 @@ function createChatSession<TClientData = unknown>(
 
           const sessionMsgSub: ChatMessageSubscription | undefined = sessionPendingMessages
             ? locals.get(chatCustomAgentClientDataParserKey)
-              ? (() => {
-                  let lastSeqNum: number | undefined;
-                  return observeValidatedChatMessages(
-                    (msg, isActive) => handleSteeringMessage(msg, lastSeqNum, isActive),
-                    { onSeqNum: (seqNum) => (lastSeqNum = seqNum) }
-                  );
-                })()
+              ? observeValidatedChatMessages((msg, seqNum, isActive) =>
+                  handleSteeringMessage(msg, seqNum, isActive)
+                )
               : chatInputRouter().observe(CHAT_ROUTE_MESSAGES, (record) => {
                   const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
                   void handleSteeringMessage(msg, record.seqNum);

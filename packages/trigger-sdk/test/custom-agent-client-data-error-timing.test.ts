@@ -100,6 +100,10 @@ describe("chat.customAgent clientDataValidationErrorTiming", () => {
 
       releaseFirstTurn.resolve();
       await first;
+      // The default holds the write until the turn closes, so the assertion has
+      // to wait for it: without this, "no chunk while open" would also pass if
+      // the error were never written at all.
+      await waitFor(() => errorChunks(harness).length > 0, "deferred error written");
       return { chunksWhileOpen, chunksAfter: errorChunks(harness).length, validationErrors };
     } finally {
       releaseFirstTurn.resolve();
@@ -112,6 +116,7 @@ describe("chat.customAgent clientDataValidationErrorTiming", () => {
     // The handler always fires on arrival; only the stream write is held back.
     expect(result.validationErrors).toHaveLength(1);
     expect(result.chunksWhileOpen).toBe(0);
+    expect(result.chunksAfter).toBeGreaterThan(0);
   });
 
   it('writes the terminal error immediately with "arrival"', { timeout: 30_000 }, async () => {
