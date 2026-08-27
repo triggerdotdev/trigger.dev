@@ -50,9 +50,9 @@ const DEPLOY_ENV_SLUG_FOR_TYPE: Record<RuntimeEnvironmentType, DeployEnvSlug> = 
   PREVIEW: "preview",
 };
 
-export type DeployEnvSlug = "dev" | "staging" | "prod" | "preview";
+type DeployEnvSlug = "dev" | "staging" | "prod" | "preview";
 
-export type DeployBuildPathSource =
+type DeployBuildPathSource =
   | "unavailable"
   | "organization_environment"
   | "organization"
