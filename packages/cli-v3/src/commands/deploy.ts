@@ -27,7 +27,7 @@ import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
-import { applyBuildPathOptions } from "../deploy/buildPath.js";
+import { applyBuildPathOptions, nativeOnlyFlagError } from "../deploy/buildPath.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -279,7 +279,7 @@ export function configureDeployCommand(program: Command) {
       .addOption(
         new CommandOption(
           "--local-bundle",
-          "Experimental: install and bundle locally and upload only the build output. Only available with the native build server."
+          "Experimental: install and bundle locally and upload only the build output. Requires --native-build."
         ).conflicts(["localBuild", "forceLocalBuild", "depotBuild"])
       )
       .addOption(
@@ -294,7 +294,7 @@ export function configureDeployCommand(program: Command) {
       .addOption(
         new CommandOption(
           "--detach",
-          "Return immediately after the deployment is queued, do not wait for the build to complete. Only available with the native build server."
+          "Return immediately after the deployment is queued, do not wait for the build to complete. Requires --native-build."
         )
       )
       .addOption(new CommandOption("--plain", "Plain output").hideHelp())
@@ -314,6 +314,11 @@ async function deployCommand(dir: string, options: unknown) {
 }
 
 async function _deployCommand(dir: string, options: DeployCommandOptions) {
+  const nativeOnlyError = nativeOnlyFlagError(options);
+  if (nativeOnlyError) {
+    throw new Error(nativeOnlyError);
+  }
+
   if (options.externalId !== undefined) {
     options.externalId = options.externalId.trim();
 
@@ -1291,7 +1296,8 @@ const BUILD_PATH_SOURCE_LABEL: Record<DeployBuildPathSource, string> = {
 
 /**
  * Explicit path flags (--native-build, --depot-build, --local-build) win and skip the server
- * round-trip. Otherwise the server decides (org/env-type feature flags); any failure to ask
+ * round-trip; --local-bundle and --detach require --native-build, so they never depend on the
+ * server either. Otherwise the server decides (org/env-type feature flags); any failure to ask
  * falls open to Depot, the path older CLIs use unconditionally.
  */
 async function resolveBuildPath(
@@ -1321,21 +1327,13 @@ async function resolveBuildPath(
     const failure = error ?? (result && !result.success ? result : undefined);
     logger.debug("Failed to fetch deploy settings", { failure });
 
-    // --detach and --local-bundle only exist on the native path, so the user's intent is
-    // clear without the server; everyone else gets Depot, the path older CLIs always used.
-    const fallback: DeployBuildPath = options.detach || options.localBundle ? "native" : "depot";
+    // A 404 is an older server without the endpoint; Depot is exactly what it expects.
     const is404 = !error && result && !result.success && result.statusCode === 404;
-
-    // A 404 is an older server without the endpoint; nothing to warn about.
     if (!is404) {
-      log.warn(
-        `Could not fetch the deploy settings from the server, ${
-          fallback === "native" ? "using the native build server" : "using the Depot build path"
-        }`
-      );
+      log.warn("Could not fetch the deploy settings from the server, using the Depot build path");
     }
 
-    return fallback;
+    return "depot";
   }
 
   const { path, source } = result.data.build;
