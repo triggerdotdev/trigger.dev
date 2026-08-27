@@ -13,6 +13,7 @@ const ORIGIN = "https://api.example.com";
 const CTX = {
   userActorToken: "uat",
   apiOrigin: ORIGIN,
+  organizationId: "org_1",
   projectRef: "proj_ref",
   environmentName: "prod",
 };

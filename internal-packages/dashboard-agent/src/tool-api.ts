@@ -240,6 +240,15 @@ export function buildApiTools(args: {
       ...listProjectsSchema,
       execute: async () => {
         if (!hasAuth) return NO_AUTH;
+        // An empty `projects` here would read as "this org has no other projects" —
+        // a proven absence the sweep rule would then act on. Say the scope is
+        // unknown instead of silently narrowing it to nothing.
+        if (!organizationId) {
+          return {
+            error:
+              "Couldn't determine this conversation's organization, so the project list is unavailable.",
+          };
+        }
         const result = await apiGet(origin, "/api/v1/projects", userActorToken!);
         if (!result.ok) return { error: `Couldn't list projects${fetchReason(result)}.` };
         return curateProjects(result.data, organizationId);

@@ -167,13 +167,16 @@ describe("list_projects org scoping", () => {
     ]);
   });
 
-  it("fails closed to an empty list when the turn has no organizationId", async () => {
+  it("errors rather than returning an empty list when the turn has no organizationId", async () => {
     vi.stubGlobal("fetch", stubProjectsFetch());
     const t = tools();
 
     const result = await (t.list_projects as any).execute({}, {} as any);
 
-    expect(result.projects).toEqual([]);
+    expect(result.projects).toBeUndefined();
+    expect(result.error).toBe(
+      "Couldn't determine this conversation's organization, so the project list is unavailable."
+    );
   });
 });
 
