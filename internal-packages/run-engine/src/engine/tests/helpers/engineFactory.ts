@@ -90,6 +90,7 @@ export async function readWaitpointForArm(
 
 export type ArmBlockEdge = {
   waitpointId: string;
+  batchId: string | null;
   batchIndex: number | null;
   waitpoint: Waitpoint;
 };
@@ -110,6 +111,7 @@ export async function readRunBlockEdgesForArm(
 
   const edges: ArmBlockEdge[] = legacy.map((edge) => ({
     waitpointId: edge.waitpointId,
+    batchId: edge.batchId,
     batchIndex: edge.batchIndex,
     waitpoint: edge.waitpoint,
   }));
@@ -126,6 +128,7 @@ export async function readRunBlockEdgesForArm(
       if (held) {
         edges.push({
           waitpointId: edge.waitpointId,
+          batchId: edge.batchId ?? null,
           batchIndex: edge.batchIndex ?? null,
           waitpoint: toPrismaWaitpoint(held.record, held.status, held.completion),
         });
