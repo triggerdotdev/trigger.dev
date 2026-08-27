@@ -29,7 +29,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextArea } from "~/components/primitives/TextArea";
-import { TextLink } from "~/components/primitives/TextLink";
+import { TextLink, textLinkClassName } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
@@ -42,6 +42,15 @@ import { cn } from "~/utils/cn";
 import { sendToPlain } from "~/utils/plain.server";
 import { formatCurrency } from "~/utils/numberFormatter";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+
+function WhiteSpinnerIcon() {
+  return <Spinner color="white" />;
+}
+
+/** A white spinner would vanish on the secondary button's light surface. */
+function InheritSpinnerIcon() {
+  return <Spinner color="inherit" />;
+}
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -323,6 +332,7 @@ export function TierFree({
   const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -399,7 +409,7 @@ export function TierFree({
                 <Button
                   variant="danger/medium"
                   disabled={isLoading}
-                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                  LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
                   type="submit"
                 >
                   Downgrade plan
@@ -489,6 +499,7 @@ export function TierHobby({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -527,7 +538,7 @@ export function TierHobby({
                 <Button
                   variant="secondary/medium"
                   disabled={isLoading}
-                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                  LeadingIcon={isLoading ? InheritSpinnerIcon : undefined}
                   form="subscribe-hobby"
                 >
                   {`Downgrade to ${plan.title}`}
@@ -602,9 +613,7 @@ export function TierHobby({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
-                Request a BAA
-              </span>
+              <span className={cn(textLinkClassName(), "cursor-pointer")}>Request a BAA</span>
             }
           />
         </HIPAAAddOn>
@@ -631,6 +640,7 @@ export function TierPro({
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
   }, [subscription]);
 
@@ -670,7 +680,7 @@ export function TierPro({
                   <Button
                     variant="primary/medium"
                     disabled={isLoading}
-                    LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                    LeadingIcon={isLoading ? WhiteSpinnerIcon : undefined}
                     form="subscribe-pro"
                   >
                     {`Upgrade to ${plan.title}`}
@@ -756,9 +766,7 @@ export function TierPro({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
-                Request a BAA
-              </span>
+              <span className={cn(textLinkClassName(), "cursor-pointer")}>Request a BAA</span>
             }
           />
         </HIPAAAddOn>
@@ -816,9 +824,7 @@ export function TierEnterprise() {
             <Feedback
               defaultValue="hipaa"
               button={
-                <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
-                  Request a BAA
-                </span>
+                <span className={cn(textLinkClassName(), "cursor-pointer")}>Request a BAA</span>
               }
             />
           </HIPAAAddOn>

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 
 type LocaleContext = {
   locales: string[];
@@ -13,7 +13,7 @@ type LocaleContextProviderProps = {
 const Context = createContext<LocaleContext | null>(null);
 
 export const LocaleContextProvider = ({ locales, children }: LocaleContextProviderProps) => {
-  const value = { locales };
+  const value = useMemo(() => ({ locales }), [locales]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 };

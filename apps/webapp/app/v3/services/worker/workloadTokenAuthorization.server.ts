@@ -9,7 +9,7 @@
  * Pure and env-import-free so it stays trivially testable.
  */
 
-export type CreatedAtGateOutcome = "grandfathered" | "suppressed";
+type CreatedAtGateOutcome = "grandfathered" | "suppressed";
 
 export type CreatedAtGateEvaluation = {
   outcome: CreatedAtGateOutcome;

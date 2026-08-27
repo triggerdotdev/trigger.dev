@@ -103,7 +103,7 @@ function SpanPill({ text, icon }: { text: string; icon?: string }) {
   );
 }
 
-export function SpanCodePathAccessory({
+function SpanCodePathAccessory({
   accessory,
   className,
 }: {

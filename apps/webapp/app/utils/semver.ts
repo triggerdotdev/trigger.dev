@@ -16,7 +16,7 @@ function parseVersionParts(version: string): number[] {
  * Falls back to lexicographic comparison when segments are equal.
  * Returns a negative number if `a` should come before `b` (i.e. `a` is newer).
  */
-export function compareVersionsDescending(a: string, b: string): number {
+function compareVersionsDescending(a: string, b: string): number {
   const partsA = parseVersionParts(a);
   const partsB = parseVersionParts(b);
   const maxLen = Math.max(partsA.length, partsB.length);

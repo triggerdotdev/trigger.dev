@@ -233,7 +233,7 @@ describe("buildWorker", async () => {
 
         const rewrittenManifest = rewriteBuildManifestPaths(buildManifest!, destination.path);
 
-        if (resolvedConfig!.instrumentedPackageNames?.length ?? 0 > 0) {
+        if ((resolvedConfig!.instrumentedPackageNames?.length ?? 0) > 0) {
           expect(rewrittenManifest.loaderEntryPoint).toBe("/app/src/entryPoints/loader.mjs");
         } else {
           expect(rewrittenManifest.loaderEntryPoint).toBeUndefined();

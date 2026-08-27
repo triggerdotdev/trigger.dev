@@ -2,6 +2,7 @@ import type { UIMessage } from "@ai-sdk/react";
 import { memo } from "react";
 import { AssistantResponse, ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 
 // ---------------------------------------------------------------------------
 // AgentMessageView — renders an AI SDK UIMessage[] conversation.
@@ -219,12 +220,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     }
     return (
       <div key={i} className="text-xs">
-        <a
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-indigo-400 underline hover:text-indigo-300"
-        >
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={textLinkClassName()}>
           {label}
         </a>
       </div>
@@ -274,12 +270,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     }
     return (
       <div key={i} className="text-xs">
-        <a
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-indigo-400 underline hover:text-indigo-300"
-        >
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={textLinkClassName()}>
           {p.filename ?? "Download file"}
         </a>
       </div>

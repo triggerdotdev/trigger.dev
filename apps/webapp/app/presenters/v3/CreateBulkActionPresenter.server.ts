@@ -26,7 +26,7 @@ export class CreateBulkActionPresenter extends BasePresenter {
 
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       organizationId,
-      "standard"
+      "runsList"
     );
     const runsRepository = new RunsRepository({
       clickhouse,

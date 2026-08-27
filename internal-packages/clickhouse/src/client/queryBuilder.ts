@@ -12,6 +12,7 @@ export type WhereCondition = {
 export class ClickhouseQueryBuilder<TOutput> {
   private name: string;
   private baseQuery: string;
+  private prewhereClauses: string[] = [];
   private whereClauses: string[] = [];
   private havingClauses: string[] = [];
   private params: QueryParams = {};
@@ -39,6 +40,28 @@ export class ClickhouseQueryBuilder<TOutput> {
   /** Set query parameters without adding a WHERE clause. Use for base queries with inline params. */
   setParams(params: QueryParams): this {
     Object.assign(this.params, params);
+    return this;
+  }
+
+  /**
+   * Adds a PREWHERE clause. On a `... FINAL` base query, only use this for columns that are
+   * immutable or additive across a run's versions (e.g. task_identifier, tags): PREWHERE filters
+   * rows before FINAL reconciles versions, so a mutable column (e.g. status) would keep a stale
+   * version and drop the winning one. It filters before materialising the wide columns, which is
+   * what bounds memory on `task_runs_v2 FINAL` scans.
+   */
+  prewhere(clause: string, params?: QueryParams): this {
+    this.prewhereClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  prewhereIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.prewhere(clause, params);
+    }
     return this;
   }
 
@@ -117,6 +140,9 @@ export class ClickhouseQueryBuilder<TOutput> {
 
   build(): { query: string; params: QueryParams } {
     let query = this.baseQuery;
+    if (this.prewhereClauses.length > 0) {
+      query += " PREWHERE " + this.prewhereClauses.join(" AND ");
+    }
     if (this.whereClauses.length > 0) {
       query += " WHERE " + this.whereClauses.join(" AND ");
     }

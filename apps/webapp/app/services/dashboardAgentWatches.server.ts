@@ -8,7 +8,6 @@ import {
   appendChatMessageOnce,
   armWatchBatch,
   cancelWatch,
-  chatExists,
   claimWatchSubmission,
   countActiveWatchesForOrg,
   createChat,
@@ -57,6 +56,7 @@ import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironm
 import { isReportKey } from "~/presenters/v3/reports/report-registry";
 import {
   dashboardAgentApiOrigin,
+  dashboardAgentUserApiOrigin,
   isDashboardAgentConfigured as isDashboardAgentConfiguredDefault,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
@@ -82,9 +82,7 @@ import {
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
 /** The task that polls a watch. Lives in the agent project, triggered by us. */
-export const WATCH_TASK_ID = "dashboard-agent-watch";
-
-export { MAX_ACTIVE_WATCHES_PER_CHAT };
+const WATCH_TASK_ID = "dashboard-agent-watch";
 
 export type WatchAuthorization =
   | { ok: true; environment: AuthenticatedEnvironment }
@@ -170,7 +168,7 @@ export async function authorizeWatchEnvironmentById(params: {
   return authorization.ok ? authorization.environment : null;
 }
 
-export type CreateWatchErrorCode =
+type CreateWatchErrorCode =
   | "limit_reached"
   | "watch_limit_reached"
   | "duplicate"
@@ -1046,11 +1044,12 @@ export async function scheduleWatchTick(params: {
   if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
 
   await client.tasks.trigger(
     WATCH_TASK_ID,
-    { watchId: params.watchId, token: params.token, apiOrigin, tick: params.tick },
+    { watchId: params.watchId, token: params.token, apiOrigin: userApiOrigin, tick: params.tick },
     {
       delay: `${params.delayMinutes}m`,
       // Keyed on the generation the payload carries, so a retried schedule can't double-tick.
@@ -1062,7 +1061,7 @@ export async function scheduleWatchTick(params: {
 }
 
 /** The task that polls a whole (environment, cadence) group. */
-export const WATCH_BATCH_TASK_ID = "dashboard-agent-watch-batch";
+const WATCH_BATCH_TASK_ID = "dashboard-agent-watch-batch";
 
 /**
  * How long a chain may go silent before it is treated as dead and re-armed. Three cadences
@@ -1141,6 +1140,7 @@ export async function scheduleWatchBatchTick(params: {
   if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
   const token = await mintDashboardAgentWatchBatchToken({
     environmentId: params.environmentId,
@@ -1152,7 +1152,7 @@ export async function scheduleWatchBatchTick(params: {
     {
       environmentId: params.environmentId,
       cadenceMinutes: params.cadenceMinutes,
-      apiOrigin,
+      apiOrigin: userApiOrigin,
       token,
       epoch: params.epoch,
       tick: params.tick,
@@ -1176,6 +1176,7 @@ export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date
   if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
   const token = await mintDashboardAgentWatchToken({
     watchId: watch.id,
@@ -1184,7 +1185,7 @@ export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date
 
   await client.tasks.trigger(
     WATCH_TASK_ID,
-    { watchId: watch.id, token, apiOrigin, tick: 0, deliverOnly: true },
+    { watchId: watch.id, token, apiOrigin: userApiOrigin, tick: 0, deliverOnly: true },
     {
       idempotencyKey: `watch:${watch.id}:deliver`,
       idempotencyKeyTTL: "10m",
@@ -1281,14 +1282,6 @@ export async function listActiveWatchesForChats(params: {
       })),
     ])
   );
-}
-
-export function chatBelongsToUser(params: {
-  chatId: string;
-  userId: string;
-  organizationId: string;
-}): Promise<boolean> {
-  return chatExists(dashboardAgentDb, params);
 }
 
 export type { ChatWatchContext };

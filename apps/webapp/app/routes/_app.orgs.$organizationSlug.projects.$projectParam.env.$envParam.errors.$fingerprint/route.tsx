@@ -55,6 +55,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { $replica } from "~/db.server";
@@ -74,6 +75,8 @@ import {
   type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
@@ -99,6 +102,8 @@ export const meta = pageMeta(({ params }) => [
   params.fingerprint ? ErrorId.toFriendlyId(params.fingerprint) : "Error",
   "Errors",
 ]);
+
+const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
 
 const emptyStringToUndefined = z.preprocess(
   (v) => (v === "" ? undefined : v),
@@ -250,12 +255,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const [logsClickhouseClient, clickhouseClient] = await Promise.all([
+  const [logsClickhouseClient, clickhouseClient, runsListClickhouseClient] = await Promise.all([
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "logs"),
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "runsList"),
   ]);
 
-  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
+  const presenter = new ErrorGroupPresenter(
+    $replica,
+    logsClickhouseClient,
+    clickhouseClient,
+    runsListClickhouseClient
+  );
 
   const detailPromise = presenter
     .call(project.organizationId, environment.id, {
@@ -268,6 +279,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      columns: getRunColumnsForSelect(request),
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -327,9 +339,9 @@ export default function Page() {
   } = useTypedLoaderData<typeof loader>();
 
   const location = useOptimisticLocation();
-  const searchParams = new URLSearchParams(location.search);
 
   const errorsPath = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
     const base = v3ErrorsPath(
       { slug: organizationSlug },
       { slug: projectParam },
@@ -347,7 +359,7 @@ export default function Page() {
     }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
-  }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
+  }, [organizationSlug, projectParam, envParam, location.search]);
 
   const alertsHref = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -388,16 +400,7 @@ export default function Page() {
             </div>
           }
         >
-          <TypedAwait
-            resolve={data}
-            errorElement={
-              <div className="flex items-center justify-center px-3 py-12">
-                <Callout variant="error" className="max-w-fit">
-                  Unable to load error details. Please refresh the page or try again in a moment.
-                </Callout>
-              </div>
-            }
-          >
+          <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
             {(result) => {
               if ("error" in result) {
                 return (
@@ -534,6 +537,12 @@ function ErrorGroupDetail({
                   >
                     Bulk replay…
                   </PermissionLink>
+                  <RunsDisplayOptions
+                    sampleFilters={{
+                      errorId: ErrorId.toFriendlyId(fingerprint),
+                      rootOnly: "false",
+                    }}
+                  />
                   <ListPagination list={runList} />
                 </div>
               )}
@@ -856,7 +865,6 @@ function ActivityChart({
   activity: ErrorGroupActivity;
   versions: ErrorGroupActivityVersions;
 }) {
-  const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
   const colors = useMemo(
     () => versions.map((_, i) => ERROR_CHART_COLORS[i % ERROR_CHART_COLORS.length]),
     [versions]

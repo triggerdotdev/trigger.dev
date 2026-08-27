@@ -5,15 +5,7 @@
  * Split by responsibility; this file is the registry's public face.
  */
 
-export { PROMPT_SLOTS, type PageSlotPrompts, type PromptSlot } from "./prompt-chips";
+export { PROMPT_SLOTS, type PromptSlot } from "./prompt-chips";
 export { GENERIC_PROMPTS } from "./docs-prompts";
-export { isFailedDeploymentStatus, pageDefaultPrompts, pageSlotPrompts } from "./page-prompts";
-export {
-  contextualPrompts,
-  contextualPromptsBySlot,
-  formatAgo,
-  formatMultiplier,
-  promptForSignal,
-  SIGNAL_PRIORITY,
-  SIGNAL_SLOT,
-} from "./signal-prompts";
+export { pageDefaultPrompts, pageSlotPrompts } from "./page-prompts";
+export { contextualPromptsBySlot } from "./signal-prompts";

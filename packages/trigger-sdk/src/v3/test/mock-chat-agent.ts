@@ -4,6 +4,7 @@ import type { LocalsKey } from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import { __setSessionOpenImplForTests, __setSessionStartImplForTests } from "../sessions.js";
 import {
+  __resetChatInputRouterForTests,
   __setReadChatSnapshotImplForTests,
   __setReplaySessionInTailImplForTests,
   __setReplaySessionOutTailImplForTests,
@@ -13,9 +14,7 @@ import {
 import { createTestSessionHandle, type TestSessionOutState } from "./test-session-handle.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
-export type SetupLocals = (locals: {
-  set<T>(key: LocalsKey<T>, value: T): void;
-}) => void | Promise<void>;
+type SetupLocals = (locals: { set<T>(key: LocalsKey<T>, value: T): void }) => void | Promise<void>;
 
 // The slim wire payload shape used by chat.agent tasks. Kept loose here so we
 // don't import from the backend-only ai.ts module. At most ONE message per
@@ -391,6 +390,8 @@ export function mockChatAgent(
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
   let seededSessionInMessages: UIMessage[] = [];
+
+  __resetChatInputRouterForTests();
 
   __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
     return seededSnapshot as ChatSnapshotV1<T> | undefined;

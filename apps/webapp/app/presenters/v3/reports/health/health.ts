@@ -129,7 +129,7 @@ function collectLinks(findings: Finding[]): ReportViewModel["links"] {
 }
 
 // The health verdict. All health semantics live here and no presentation does.
-export type HealthAssessment = {
+type HealthAssessment = {
   scope: string;
   period: string;
   baselineLabel: string;
@@ -147,7 +147,7 @@ export type HealthAssessment = {
   facts: Record<string, unknown>;
 };
 
-export function assessHealth(input: HealthInput): HealthAssessment {
+function assessHealth(input: HealthInput): HealthAssessment {
   const metrics = buildMetrics(input);
   const drain = computeDrain(input);
 

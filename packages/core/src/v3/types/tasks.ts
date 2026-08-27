@@ -918,6 +918,28 @@ export type TriggerOptions = {
   version?: string;
 
   /**
+   * Pin this run to the deployment that was deployed under this external id — a commit SHA,
+   * a CI run id, a release tag — matching `trigger.dev deploy --external-id`.
+   *
+   * Use this when the code making the call and the tasks it triggers must be the same
+   * release. If nothing has been deployed under the id yet the run waits for it rather than
+   * running on the wrong version, and gives up after an hour if it never arrives.
+   *
+   * Usually you don't set this by hand: the SDK reads `TRIGGER_EXTERNAL_DEPLOYMENT_ID`, and
+   * with `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` it discovers your hosting platform's
+   * commit variable automatically. Setting it here always wins over both.
+   *
+   * `version` (and the `TRIGGER_VERSION` environment variable) take precedence over this.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { externalDeploymentId: process.env.VERCEL_GIT_COMMIT_SHA });
+   * ```
+   */
+  externalDeploymentId?: string;
+
+  /**
    * Specify the region to run the task in. This overrides the default region set for your project in the dashboard.
    *
    * Check the Regions page in the dashboard for regions that are available to you.

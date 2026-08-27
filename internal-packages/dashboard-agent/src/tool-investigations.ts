@@ -47,7 +47,7 @@ const RECURRENCE_WATCH = { checkEveryMinutes: 15, maxHours: WATCH_MAX_HOURS } as
  * The card's typed next actions, decided here and never by the model. "Show code"
  * needs a concluded card, a cited source line, and a read at that commit this turn.
  */
-export function investigationCapabilities(
+function investigationCapabilities(
   state: InvestigationState,
   reads: SourceReadLookup
 ): InvestigationCapabilities | null {
@@ -119,7 +119,7 @@ export function investigationCapabilities(
   return { version: INVESTIGATION_CAPABILITIES_VERSION, actions };
 }
 
-export type InvestigationRenderResult =
+type InvestigationRenderResult =
   | { error: string }
   | { blocks: unknown[]; investigationId?: string; revision?: number };
 

@@ -8,7 +8,7 @@ import type {
   QueryResultWithStats,
 } from "./types.js";
 import type { z } from "zod";
-import type { ClickHouseSettings, InsertResult } from "@clickhouse/client";
+import type { ClickHouseSettings, CommandResult, InsertResult } from "@clickhouse/client";
 import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 
 export class NoopClient implements ClickhouseReader, ClickhouseWriter {
@@ -106,6 +106,41 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
   }): (params: TParams) => AsyncIterable<TOut> {
     return async function* () {
       // Noop: empty stream.
+    };
+  }
+
+  public command<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    query: string;
+    params?: TSchema;
+    settings?: ClickHouseSettings;
+  }): (params: z.input<TSchema>) => Promise<Result<CommandResult, QueryError>> {
+    return async (params) => {
+      const validParams = req.params?.safeParse(params);
+      if (validParams?.error) {
+        return [
+          new QueryError(`Bad params: ${validParams.error.message}`, { query: req.query }),
+          null,
+        ];
+      }
+
+      return [
+        null,
+        {
+          query_id: "noop",
+          summary: {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+          },
+          response_headers: {},
+        },
+      ];
     };
   }
 

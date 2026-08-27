@@ -13,7 +13,6 @@ import {
   type inferSchemaIn,
   type inferSchemaOut,
   InputStreamOncePromise,
-  type InputStreamOnceResult,
   isAdditionalApiKey,
   isSchemaZodEsque,
   logger,
@@ -26,8 +25,11 @@ import {
   resourceCatalog,
   type SessionTriggerConfig,
   SemanticInternalAttributes,
+  SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
   sessionStreams,
+  SessionChannelRouter,
+  InputStreamTimeoutError,
   taskContext,
   type TaskIdentifier,
   type TaskOptions,
@@ -36,6 +38,9 @@ import {
   type TaskWithSchema,
   TRIGGER_CONTROL_SUBTYPE,
   type StreamWriteResult,
+  type RouterCheckpoint,
+  type SessionRouteTable,
+  type SessionStreamRecord,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -220,53 +225,6 @@ async function findLatestSessionInCursor(chatId: string): Promise<number | undef
     if (Number.isFinite(parsed)) latestCursor = parsed;
   }
   return latestCursor;
-}
-
-/** Test-only entry point for the records-based cursor scan. @internal */
-export async function __findLatestSessionInCursorForTests(
-  chatId: string
-): Promise<number | undefined> {
-  return findLatestSessionInCursor(chatId);
-}
-
-/**
- * Seed the `.in` resume cursor for custom-agent loops (`chat.customAgent`
- * raw loops and `chat.createSession`) the way `chat.agent`'s boot does.
- *
- * MUST run before anything attaches a `.in` listener (`createStopSignal`,
- * `chat.messages.on`, the first wait): attaching opens the SSE tail with
- * `Last-Event-ID` from the seeded cursor, so attach-then-seed replays
- * every record from seq 0 — already-answered user messages get delivered
- * into the new run's first wait and the loop re-answers them.
- *
- * Seeds both cursors: `setLastSeqNum` controls the SSE `Last-Event-ID`,
- * `setLastDispatchedSeqNum` gates waiter dispatch — seeding only the
- * former still re-delivers records the manager buffered before the seed.
- *
- * No-ops on fresh boots and when a cursor is already seeded (e.g. the
- * `chatCustomAgent` wrapper ran before a nested `createChatSession`).
- * @internal
- */
-async function seedSessionInResumeCursorForCustomLoop(
-  payload: Pick<ChatTaskWirePayload, "chatId" | "continuation">
-): Promise<void> {
-  if (sessionStreams.lastSeqNum(payload.chatId, "in") !== undefined) return;
-  // No continuation/attempt gate: the wire may omit `continuation` on a
-  // run that still has prior turns (chat.agent covers that case via its
-  // snapshot). The scan doubles as the prior-state probe — a fresh
-  // session has no turn-complete on `.out`, returns no cursor, and
-  // seeds nothing. Cost on fresh boots is one non-blocking records read.
-  try {
-    const cursor = await findLatestSessionInCursor(payload.chatId);
-    if (cursor !== undefined) {
-      sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
-      sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
-    }
-  } catch (error) {
-    logger.warn("chat session: session.in resume cursor lookup failed; old messages may replay", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
 
 /**
@@ -1723,26 +1681,154 @@ export type ChatTaskRunPayload<
 // keep their original shape. Each accessor resolves the session handle
 // lazily via `getChatSession()` so the module-level references stay
 // compatible with the pre-migration wiring.
+/**
+ * One message record delivered through {@link chat.messages}.
+ *
+ * `id` is the append's stable idempotency key and `seqNum` is its monotonic
+ * sequence on the Session `.in` channel. Both remain stable if the record is
+ * delivered again after a reconnect.
+ */
+export type ChatMessageRecord = Readonly<{
+  id: string;
+  seqNum: number;
+  payload: ChatTaskWirePayload;
+}>;
+
+export type ChatMessages = RealtimeDefinedInputStream<ChatTaskWirePayload> & {
+  /** Whether the local buffer head is a message that can be consumed immediately. */
+  hasPending(): Promise<boolean>;
+  /** Consume one message record, or return `undefined` when the optional timeout elapses. */
+  next(options?: { timeoutInSeconds?: number }): Promise<ChatMessageRecord | undefined>;
+};
+
+/**
+ * Read one record from a route, suspending the run if nothing is there yet.
+ *
+ * The wake and the read are separate steps: the channel wakes the run, then the
+ * router hands over whatever it routed. Nothing else can take the record in
+ * between, which is what keeps the published cursors and the delivered record
+ * in agreement.
+ * @internal
+ */
+async function waitOnChatRoute<T>(
+  route: string,
+  options: {
+    idleTimeoutInSeconds?: number;
+    timeout?: string;
+    spanName?: string;
+    skipSuspend?: boolean;
+    onSuspend?: () => Promise<void> | void;
+    onResume?: () => Promise<void> | void;
+  }
+): Promise<{ ok: true; output: T; record: SessionStreamRecord } | { ok: false; error?: Error }> {
+  const router = chatInputRouter();
+  const session = getChatSession();
+
+  return tracer.startActiveSpan(
+    options.spanName ?? `chat.${route}.wait()`,
+    async (span) => {
+      const idleMs = (options.idleTimeoutInSeconds ?? 0) * 1000;
+      if (idleMs > 0) {
+        const warm = await router.next(route, { timeoutMs: idleMs });
+        if (warm) {
+          span.setAttribute("wait.resolved", "idle");
+          return { ok: true as const, output: warm.data as T, record: warm };
+        }
+      } else {
+        const buffered = await router.next(route, { timeoutMs: 0 });
+        if (buffered) {
+          span.setAttribute("wait.resolved", "buffered");
+          return { ok: true as const, output: buffered.data as T, record: buffered };
+        }
+      }
+
+      if (options.skipSuspend) {
+        span.setAttribute("wait.resolved", "skipped");
+        return {
+          ok: false as const,
+          error: new Error("Idle timeout elapsed and skipSuspend is set"),
+        };
+      }
+
+      if (options.onSuspend) await options.onSuspend();
+
+      span.setAttribute("wait.resolved", "suspended");
+      while (true) {
+        /**
+         * The floor doubles as the wake cursor: the server completes the
+         * waitpoint immediately if anything sits after this sequence, so a
+         * floor that has advanced past an unread record parks a waitpoint
+         * nothing will complete. Recorded on the span so a run that never woke
+         * can be diagnosed from its trace alone.
+         */
+        const wakeFrom = router.resumeFloor();
+        span.setAttribute("wait.lastSeqNum", wakeFrom ?? -1);
+        const wake = await session.in.awaitWake({
+          timeout: options.timeout,
+          lastSeqNum: wakeFrom,
+        });
+        if (!wake.ok) {
+          span.recordException(wake.error);
+          return { ok: false as const, error: wake.error };
+        }
+
+        const record = await router.next(route);
+        if (!record) continue;
+
+        if (options.onResume) await options.onResume();
+        return { ok: true as const, output: record.data as T, record };
+      }
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "sessions",
+        session: session.id,
+        io: "in",
+        route,
+        ...accessoryAttributes({
+          items: [{ text: `${session.id}.in:${route}`, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+}
+
 type ChatMessageSubscription = {
   off: () => void;
   drain?: () => Promise<void>;
 };
 
+/**
+ * Raw `.in` message delivery, with no client-data validation.
+ *
+ * Sits directly on the router's `messages` route, so a record handed to the
+ * handler is consumed and the resume floor is free to advance past it.
+ */
 function subscribeToRawChatMessages(
   handler: (payload: ChatTaskWirePayload) => unknown
 ): ChatMessageSubscription {
-  return getChatSession().in.on<ChatInputChunk>((chunk) => {
-    if (chunk.kind === "message") {
-      // Returning `true` marks the record CONSUMED at the manager level:
-      // it is neither buffered for a later `once()` nor re-delivered by
-      // the buffer drain when the next turn re-attaches its handler.
-      void Promise.resolve(handler(chunk.payload)).catch(() => {});
-      return true;
-    }
-    return undefined;
+  return chatInputRouter().on(CHAT_ROUTE_MESSAGES, (record) => {
+    const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+    void Promise.resolve(handler(chunk.payload)).catch(() => {});
   });
 }
 
+/**
+ * Message delivery with client-data validation in front of it.
+ *
+ * Parses are chained so payloads are validated in wire order, which is the
+ * point of the feature: a later message must not be validated against state a
+ * earlier one has not established yet.
+ *
+ * The handler is dispatched but **not** awaited by that chain. Awaiting it
+ * would serialise user code, so one slow or never-resolving handler would stall
+ * delivery of every later message, and only when a schema is declared. Raw
+ * delivery has always been fire-and-forget, so awaiting here would also make
+ * handler concurrency differ between the validated and unvalidated paths for no
+ * stated reason. `drain()` still covers the parse chain, which is what callers
+ * need before ending a run.
+ */
 function subscribeToValidatedChatMessages(
   handler: (payload: ChatTaskWirePayload, isActive: () => boolean) => unknown,
   options: {
@@ -1775,9 +1861,9 @@ function subscribeToValidatedChatMessages(
           return;
         }
         if (active) {
-          await handler(result.payload, () => active);
+          void Promise.resolve(handler(result.payload, () => active)).catch(() => {});
         } else {
-          await options.onAfterOff?.(result.payload);
+          void Promise.resolve(options.onAfterOff?.(result.payload)).catch(() => {});
         }
       })
       .catch(() => {});
@@ -1792,7 +1878,101 @@ function subscribeToValidatedChatMessages(
   };
 }
 
-const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
+/**
+ * Validated delivery that does **not** consume.
+ *
+ * The steering path must observe rather than take: a record it does not inject
+ * has to stay queued so a later turn answers it. Validation still runs in wire
+ * order in front of the handler, so `clientData` is parsed before steering code
+ * sees it, and a frame whose parse finishes after the turn closed needs no
+ * buffer of its own, because the record was never removed from the channel.
+ */
+function observeValidatedChatMessages(
+  handler: (payload: ChatTaskWirePayload, isActive: () => boolean) => unknown,
+  options: {
+    onSeqNum?: (seqNum: number) => void;
+  } = {}
+): ChatMessageSubscription {
+  let active = true;
+  let delivery = Promise.resolve();
+  const claims =
+    locals.get(chatObserverClaimedSeqNumsKey) ??
+    new Map<number, { released: Promise<void>; release: () => void }>();
+  locals.set(chatObserverClaimedSeqNumsKey, claims);
+
+  const subscription = chatInputRouter().observe(CHAT_ROUTE_MESSAGES, (record) => {
+    const payload = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+    options.onSeqNum?.(record.seqNum);
+    /**
+     * Claimed synchronously, before any await, so a read cannot validate the
+     * same record. The promise lets a read wait for the outcome rather than
+     * spin on a record it is not allowed to take.
+     */
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    claims.set(record.seqNum, { released, release });
+    const releaseClaim = () => {
+      claims.delete(record.seqNum);
+      release();
+    };
+    delivery = delivery
+      .then(async () => {
+        const result = await parseChatCustomAgentPayload(payload);
+        if (!result.ok) {
+          /**
+           * Reported once, then taken off the channel.
+           *
+           * Observing does not consume, so without this the record would be
+           * read again by the next turn and parsed a second time, firing a
+           * user-supplied schema and reporting the same failure twice. A frame
+           * that fails validation is never going to be answered by this run or
+           * a later one, so removing it loses nothing that was still owed.
+           */
+          const timing = locals.get(chatCustomAgentClientDataErrorTimingKey) ?? "turn-end";
+          await reportChatCustomAgentClientDataError(payload, result.error, {
+            // A terminal error written into a live response can close it, so by
+            // default it waits for the turn to end. `"arrival"` opts into the
+            // earlier, more disruptive report.
+            writeToStream: timing === "arrival" || !active,
+          });
+          // Drop the record: an invalid frame is never answered, by this run or
+          // a later one. Released so a waiting read stops waiting, finds it
+          // gone, and goes back to waiting for the next message.
+          chatInputRouter().take(CHAT_ROUTE_MESSAGES, record.seqNum);
+          releaseClaim();
+          return;
+        }
+
+        // Valid, so release. The record is still queued, and whichever comes
+        // first, an injection or a later turn's read, now owns it.
+        releaseClaim();
+        void Promise.resolve(handler(result.payload, () => active)).catch(() => {});
+      })
+      .catch(() => {});
+  });
+
+  return {
+    off() {
+      active = false;
+      subscription.off();
+    },
+    drain: () => delivery,
+  };
+}
+
+/**
+ * Whether a record is currently owned by the validating observer.
+ *
+ * A read that pulls one puts it back and keeps waiting, so the observer's parse
+ * stays the only one and the record is not consumed out from under it.
+ */
+function observerClaimFor(record: SessionStreamRecord): Promise<void> | undefined {
+  return locals.get(chatObserverClaimedSeqNumsKey)?.get(record.seqNum)?.released;
+}
+
+const messagesInput: ChatMessages = {
   id: "chat-messages",
   on(handler) {
     if (!locals.get(chatCustomAgentClientDataParserKey)) {
@@ -1803,84 +1983,101 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
     return subscribeToValidatedChatMessages(deliver, { onAfterOff: deliver });
   },
   once(options) {
-    const ctx = taskContext.ctx;
-    const runId = ctx?.run.id;
-
     return new InputStreamOncePromise<ChatTaskWirePayload>((resolve, reject) => {
-      tracer
-        .startActiveSpan(
-          options?.spanName ?? `chat.messages.once()`,
-          async () => {
-            while (true) {
-              const result = await getChatSession().in.once<ChatInputChunk>(options);
-              if (!result.ok) {
-                resolve(result as InputStreamOnceResult<ChatTaskWirePayload>);
-                return;
-              }
-              if (result.output.kind === "message") {
-                if (!shouldValidateChatCustomAgentPayload(result.output.payload)) {
-                  resolve({ ok: true, output: result.output.payload });
-                  return;
-                }
-                const validated = await validateChatCustomAgentPayload(result.output.payload);
-                if (validated.ok) {
-                  resolve({ ok: true, output: validated.payload });
-                  return;
-                }
-              }
-              // Non-message chunks (stops) are handled by the stopInput
-              // facade's persistent listener; loop and wait for the next.
-            }
-          },
-          {
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "streams",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-              ...(runId
-                ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-messages`,
-                  }
-                : {}),
-              streamId: "chat-messages",
-              ...accessoryAttributes({
-                items: [{ text: "chat-messages", variant: "normal" }],
-                style: "codepath",
-              }),
-            },
-          }
-        )
-        .catch(reject);
-    });
-  },
-  peek() {
-    const chunk = getChatSession().in.peek<ChatInputChunk>();
-    if (chunk && chunk.kind === "message") {
-      return validateChatCustomAgentPayloadSync(chunk.payload);
-    }
-    return undefined;
-  },
-  wait(options) {
-    return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {
-      try {
-        while (true) {
-          const result = await getChatSession().in.wait<ChatInputChunk>(options);
-          if (!result.ok) {
-            resolve(result);
-            return;
-          }
-          if (result.output.kind === "message") {
-            if (!shouldValidateChatCustomAgentPayload(result.output.payload)) {
-              resolve({ ok: true, output: result.output.payload });
+      // Same skip-and-wait rule as `waitWithIdleTimeout`: a payload that fails
+      // validation is reported and not surfaced.
+      const take = () => {
+        chatInputRouter()
+          .next(CHAT_ROUTE_MESSAGES, { timeoutMs: options?.timeoutMs })
+          .then(async (record) => {
+            if (!record) {
+              resolve({
+                ok: false,
+                error: new InputStreamTimeoutError("chat-messages", options?.timeoutMs ?? 0),
+              });
               return;
             }
-            const validated = await validateChatCustomAgentPayload(result.output.payload);
+            const claim = observerClaimFor(record);
+            if (claim) {
+              chatInputRouter().untake(CHAT_ROUTE_MESSAGES, record);
+              await claim;
+              take();
+              return;
+            }
+            const payload = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+            if (!shouldValidateChatCustomAgentPayload(payload)) {
+              resolve({ ok: true, output: payload });
+              return;
+            }
+            const validated = await validateChatCustomAgentPayload(payload);
             if (validated.ok) {
               resolve({ ok: true, output: validated.payload });
               return;
             }
+            take();
+          }, reject);
+      };
+      take();
+    });
+  },
+  peek() {
+    const record = chatInputRouter().peek(CHAT_ROUTE_MESSAGES);
+    if (!record) return undefined;
+    const payload = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+    return validateChatCustomAgentPayloadSync(payload);
+  },
+  async hasPending() {
+    return chatInputRouter().hasPending(CHAT_ROUTE_MESSAGES);
+  },
+  async next(options) {
+    const timeoutInSeconds = options?.timeoutInSeconds;
+    if (
+      timeoutInSeconds !== undefined &&
+      (!Number.isFinite(timeoutInSeconds) || timeoutInSeconds < 0)
+    ) {
+      throw new TypeError(
+        "chat.messages.next() timeoutInSeconds must be a finite non-negative number"
+      );
+    }
+
+    const record = await chatInputRouter().next(CHAT_ROUTE_MESSAGES, {
+      timeoutMs: timeoutInSeconds === undefined ? undefined : timeoutInSeconds * 1000,
+    });
+    if (!record) return undefined;
+
+    const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+    return { id: record.id, seqNum: record.seqNum, payload: chunk.payload };
+  },
+  wait(options) {
+    return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {
+      try {
+        // Same skip-and-wait rule as `waitWithIdleTimeout`, looping back into
+        // the suspending wait rather than surfacing an unvalidated payload.
+        while (true) {
+          const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "message" }>>(
+            CHAT_ROUTE_MESSAGES,
+            { timeout: options?.timeout, spanName: options?.spanName }
+          );
+          if (!result.ok) {
+            resolve({ ok: false, error: result.error ?? new Error("Timed out") });
+            return;
           }
-          // Stop chunks are handled by the stopInput facade's persistent
-          // listener; loop back into the suspending wait.
+          const claim = observerClaimFor(result.record);
+          if (claim) {
+            chatInputRouter().untake(CHAT_ROUTE_MESSAGES, result.record);
+            await claim;
+            continue;
+          }
+          const payload = result.output.payload;
+          if (!shouldValidateChatCustomAgentPayload(payload)) {
+            resolve({ ok: true, output: payload });
+            return;
+          }
+          const validated = await validateChatCustomAgentPayload(payload);
+          if (validated.ok) {
+            resolve({ ok: true, output: validated.payload });
+            return;
+          }
         }
       } catch (error) {
         reject(error);
@@ -1888,27 +2085,36 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
     });
   },
   async waitWithIdleTimeout(options) {
+    /**
+     * A payload that fails client-data validation is reported and skipped
+     * rather than surfaced, so the caller never sees an unvalidated
+     * `clientData`. The loop waits for the next message instead of returning an
+     * error, which keeps a single bad client send from ending the turn.
+     */
     while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "message") {
-        if (!shouldValidateChatCustomAgentPayload(result.output.payload)) {
-          return { ok: true, output: result.output.payload };
-        }
-        const validated = await validateChatCustomAgentPayload(result.output.payload);
-        if (validated.ok) {
-          return { ok: true, output: validated.payload };
-        }
+      const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "message" }>>(
+        CHAT_ROUTE_MESSAGES,
+        options
+      );
+      if (!result.ok) return { ok: false, error: result.error };
+
+      const claim = observerClaimFor(result.record);
+      if (claim) {
+        chatInputRouter().untake(CHAT_ROUTE_MESSAGES, result.record);
+        await claim;
+        continue;
       }
-      // Swallow stop-kind chunks — persistent stop listener already handled
-      // the abort; we just loop for the next message.
+      const payload = result.output.payload;
+      if (!shouldValidateChatCustomAgentPayload(payload)) {
+        return { ok: true, output: payload };
+      }
+      const validated = await validateChatCustomAgentPayload(payload);
+      if (validated.ok) {
+        return { ok: true, output: validated.payload };
+      }
     }
   },
   async send(_runId, data, options) {
-    // The `runId` argument is kept for signature parity with
-    // `RealtimeDefinedInputStream` but ignored — sessions are addressed
-    // by sessionId, not runId. Callers producing messages from outside
-    // the run should prefer the transport's `session.in.send(...)` path.
     await getChatSession().in.send(
       { kind: "message", payload: data } satisfies ChatInputChunk,
       options?.requestOptions
@@ -1919,98 +2125,59 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
 const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = {
   id: "chat-stop",
   on(handler) {
-    return getChatSession().in.on<ChatInputChunk>((chunk) => {
-      if (chunk.kind === "stop") {
-        // Consume stop records (see the messages facade above). A stop is
-        // only meaningful to the turn it interrupts — buffering it would
-        // let a stale stop abort a future turn.
-        void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
-        return true;
-      }
-      return undefined;
+    return chatInputRouter().on(CHAT_ROUTE_STOP, (record) => {
+      const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+      void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
     });
   },
   once(options) {
-    const ctx = taskContext.ctx;
-    const runId = ctx?.run.id;
-
     return new InputStreamOncePromise<{ stop: true; message?: string }>((resolve, reject) => {
-      tracer
-        .startActiveSpan(
-          options?.spanName ?? `chat.stop.once()`,
-          async () => {
-            while (true) {
-              const result = await getChatSession().in.once<ChatInputChunk>(options);
-              if (!result.ok) {
-                resolve(result as InputStreamOnceResult<{ stop: true; message?: string }>);
-                return;
-              }
-              if (result.output.kind === "stop") {
-                resolve({
-                  ok: true,
-                  output: { stop: true, message: result.output.message },
-                });
-                return;
-              }
-            }
-          },
-          {
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "streams",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-              ...(runId
-                ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-stop`,
-                  }
-                : {}),
-              streamId: "chat-stop",
-              ...accessoryAttributes({
-                items: [{ text: "chat-stop", variant: "normal" }],
-                style: "codepath",
-              }),
-            },
+      chatInputRouter()
+        .next(CHAT_ROUTE_STOP, { timeoutMs: options?.timeoutMs })
+        .then((record) => {
+          if (!record) {
+            resolve({
+              ok: false,
+              error: new InputStreamTimeoutError("chat-stop", options?.timeoutMs ?? 0),
+            });
+            return;
           }
-        )
-        .catch(reject);
+          const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+          resolve({ ok: true, output: { stop: true, message: chunk.message } });
+        }, reject);
     });
   },
   peek() {
-    const chunk = getChatSession().in.peek<ChatInputChunk>();
-    if (chunk && chunk.kind === "stop") {
-      return { stop: true, message: chunk.message };
-    }
-    return undefined;
+    const record = chatInputRouter().peek(CHAT_ROUTE_STOP);
+    if (!record) return undefined;
+    const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+    return { stop: true, message: chunk.message };
   },
   wait(options) {
     return new ManualWaitpointPromise<{ stop: true; message?: string }>(async (resolve, reject) => {
       try {
-        while (true) {
-          const result = await getChatSession().in.wait<ChatInputChunk>(options);
-          if (!result.ok) {
-            resolve(result);
-            return;
-          }
-          if (result.output.kind === "stop") {
-            resolve({
-              ok: true,
-              output: { stop: true, message: result.output.message },
-            });
-            return;
-          }
-        }
+        const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "stop" }>>(
+          CHAT_ROUTE_STOP,
+          { timeout: options?.timeout, spanName: options?.spanName }
+        );
+        resolve(
+          result.ok
+            ? { ok: true, output: { stop: true, message: result.output.message } }
+            : { ok: false, error: result.error ?? new Error("Timed out") }
+        );
       } catch (error) {
         reject(error);
       }
     });
   },
   async waitWithIdleTimeout(options) {
-    while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "stop") {
-        return { ok: true, output: { stop: true, message: result.output.message } };
-      }
-    }
+    const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "stop" }>>(
+      CHAT_ROUTE_STOP,
+      options
+    );
+    return result.ok
+      ? { ok: true as const, output: { stop: true, message: result.output.message } }
+      : { ok: false as const, error: result.error };
   },
   async send(_runId, data, options) {
     await getChatSession().in.send(
@@ -2058,16 +2225,8 @@ const handoverInput = {
     spanName?: string;
     skipSuspend?: boolean;
   }) {
-    while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "handover" || result.output.kind === "handover-skip") {
-        return { ok: true as const, output: result.output as HandoverSignal };
-      }
-      // Other kinds (message, stop) are not expected during handover-prepare.
-      // Loop back; the message and stop facades have their own listeners
-      // running so signals on those kinds aren't lost.
-    }
+    const result = await waitOnChatRoute<HandoverSignal>(CHAT_ROUTE_HANDOVER, options);
+    return result.ok ? { ok: true as const, output: result.output } : result;
   },
 };
 
@@ -2084,9 +2243,8 @@ const handoverInput = {
  * For the common case prefer `accumulator.consumeHandover()`, which also seeds
  * `payload.headStartMessages` and applies the partial for you.
  *
- * Must be called at turn 0 before any `chat.messages.waitWithIdleTimeout` —
- * that facade consumes and discards non-message chunks, which would swallow the
- * handover signal.
+ * Safe to call at any point in turn 0: the handover signal has its own route,
+ * so a message facade waiting at the same time cannot take it.
  */
 async function waitForHandover(options: {
   /** The run's wire payload (only `trigger` / `idleTimeoutInSeconds` are read). */
@@ -2096,15 +2254,257 @@ async function waitForHandover(options: {
   spanName?: string;
 }): Promise<HandoverSignal | null> {
   if (options.payload.trigger !== "handover-prepare") return null;
-  const result = await handoverInput.waitWithIdleTimeout({
-    idleTimeoutInSeconds:
-      options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
-    timeout: options.timeout,
-    spanName: options.spanName ?? "waiting for handover signal",
+  try {
+    const result = await handoverInput.waitWithIdleTimeout({
+      idleTimeoutInSeconds:
+        options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
+      timeout: options.timeout,
+      spanName: options.spanName ?? "waiting for handover signal",
+    });
+    // Non-ok = idle timeout or the warm handler crashed without signaling.
+    if (!result.ok) return null;
+    return result.output;
+  } finally {
+    chatInputRouter().clearRoute(CHAT_ROUTE_HANDOVER);
+  }
+}
+
+/**
+ * Everything `session.in` carries, and what happens to each kind.
+ *
+ * A route's two properties are what make the resume protocol derivable rather
+ * than hand-maintained. `messages` is replayable because losing a user message
+ * is data loss. `stop` is neither queued nor replayable: it only means anything
+ * to the turn that is live when it lands, and a replayed one would abort
+ * whichever turn happened to be running. `handover` is queued but not
+ * replayable, because it can arrive before its consumer is ready yet is
+ * meaningless to any later boot.
+ *
+ * A kind absent from this table has no consumer, so the router discards it
+ * instead of letting it park at the head of a queue.
+ * @internal
+ */
+const CHAT_INPUT_ROUTES: SessionRouteTable = {
+  kindOf: (data) => (data as ChatInputChunk | undefined)?.kind,
+  routes: [
+    { name: "messages", delivery: "queue", replayable: true, kinds: ["message"] },
+    { name: "stop", delivery: "at-arrival", replayable: false, kinds: ["stop"] },
+    {
+      name: "handover",
+      delivery: "queue",
+      replayable: false,
+      kinds: ["handover", "handover-skip"],
+    },
+  ],
+};
+
+const CHAT_ROUTE_MESSAGES = "messages";
+const CHAT_ROUTE_STOP = "stop";
+const CHAT_ROUTE_HANDOVER = "handover";
+
+/**
+ * The `.in` router for the run this worker is currently serving.
+ *
+ * One slot rather than a map, because the facades have to reach the same router
+ * the boot attached without depending on a locals scope being active. Tagged
+ * with the run as well as the chat: a warm process is reused across runs and the
+ * executor tears the channel subscription down at the end of each one, so
+ * reusing a router across runs would leave the new run with no input at all. A
+ * nested `chat.createSession` within the same run still shares it.
+ * @internal
+ */
+let currentChatInputRouter:
+  | { chatId: string; runId: string | undefined; router: SessionChannelRouter; attached: boolean }
+  | undefined;
+
+/**
+ * Both cursors from the latest `turn-complete` on `.out`, in one scan.
+ *
+ * Absent for a chat whose turns predate the headers, in which case the router
+ * starts from the beginning of the channel and nothing is treated as replayed.
+ * @internal
+ */
+async function findLatestSessionInCheckpoint(chatId: string): Promise<RouterCheckpoint> {
+  const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(chatId, "out");
+  const checkpoint: RouterCheckpoint = {};
+  for (const record of response.records) {
+    if (controlSubtype(record.headers) !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
+    const resumeFrom = Number.parseInt(
+      headerValue(record.headers, SESSION_IN_EVENT_ID_HEADER) ?? "",
+      10
+    );
+    if (Number.isFinite(resumeFrom)) checkpoint.resumeFrom = resumeFrom;
+    const appliedThrough = Number.parseInt(
+      headerValue(record.headers, SESSION_IN_CONSUMED_ID_HEADER) ?? "",
+      10
+    );
+    if (Number.isFinite(appliedThrough)) checkpoint.appliedThrough = appliedThrough;
+  }
+  return checkpoint;
+}
+
+/**
+ * The highest `.in` sequence already on the channel at boot, above the floor.
+ *
+ * Everything already on the channel when a run boots is, by definition, not
+ * arriving live on this run, so the channel's own tail is the end of this run's
+ * replay window.
+ *
+ * The turn boundary's value is not enough on its own. A boundary is written when
+ * a turn ends, so a control record that arrived after the last boundary is not
+ * covered by it, and a boundary written by an older SDK does not carry one at
+ * all. Both cases leave an already-applied record looking live.
+ *
+ * Bounded by `afterEventId` when a floor is known, which is the common case, so
+ * the read covers the replay window rather than the conversation. An absent
+ * floor means no boundary has committed a cursor yet, and the channel is still
+ * short.
+ *
+ * Returns `undefined` if the read fails; the caller then falls back to the
+ * floor, which is the previous release's behaviour.
+ * @internal
+ */
+async function findSessionInReplayWindowEnd(
+  chatId: string,
+  afterSeqNum: number | undefined
+): Promise<number | undefined> {
+  try {
+    const apiClient = apiClientManager.clientOrThrow();
+    const response = await apiClient.readSessionStreamRecords(chatId, "in", {
+      ...(afterSeqNum === undefined ? {} : { afterEventId: String(afterSeqNum) }),
+    });
+    let highest: number | undefined;
+    for (const record of response.records) {
+      const seqNum = typeof record.seqNum === "number" ? record.seqNum : Number.NaN;
+      if (Number.isFinite(seqNum) && (highest === undefined || seqNum > highest)) {
+        highest = seqNum;
+      }
+    }
+    return highest;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Attach the `.in` router for this run.
+ *
+ * Reads the checkpoint and subscribes in one call, so there is no window in
+ * which a listener is attached before the resume cursor is seeded. Attaching
+ * first would open the tail at sequence 0 and replay every record the previous
+ * run already answered, which is a mistake the previous shape of this code made
+ * possible and this shape does not.
+ *
+ * The router consumes every record at dispatch, so the channel's own buffer
+ * stays empty for chat and its cursor bookkeeping never engages. Delivery,
+ * ordering and the published cursors are the router's, entirely.
+ * @internal
+ */
+async function installChatInputRouter(
+  chatId: string,
+  options?: { fallbackResumeFrom?: number; resuming?: boolean }
+): Promise<SessionChannelRouter> {
+  const entry = chatInputRouterEntry(chatId);
+  if (entry.attached) return entry.router;
+
+  let checkpoint: RouterCheckpoint = {};
+  try {
+    checkpoint = await findLatestSessionInCheckpoint(chatId);
+  } catch (error) {
+    logger.warn("chat session: session.in resume cursor lookup failed; old messages may replay", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (checkpoint.resumeFrom === undefined && options?.fallbackResumeFrom !== undefined) {
+    checkpoint.resumeFrom = options.fallbackResumeFrom;
+  }
+  // Only a resuming run has a replay window. On a first boot nothing has been
+  // applied by anyone, so treating what is already on the channel as replayed
+  // would discard a signal that arrived before the agent got here, which is
+  // exactly how a head-start handover reaches a cold run.
+  const resuming = checkpoint.resumeFrom !== undefined || options?.resuming === true;
+  if (resuming) {
+    const replayWindowEnd = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
+    if (replayWindowEnd !== undefined) {
+      checkpoint.appliedThrough = Math.max(
+        checkpoint.appliedThrough ?? replayWindowEnd,
+        replayWindowEnd
+      );
+    }
+  }
+
+  const router = entry.router;
+  router.restore(checkpoint);
+
+  const floor = router.resumeFrom();
+  if (floor !== undefined) {
+    sessionStreams.setLastSeqNum(chatId, "in", floor);
+    sessionStreams.setLastDispatchedSeqNum(chatId, "in", floor);
+  }
+
+  sessionStreams.onRecord(chatId, "in", (record) => {
+    router.ingest(record);
+    return true;
   });
-  // Non-ok = idle timeout or the warm handler crashed without signaling.
-  if (!result.ok) return null;
-  return result.output;
+
+  entry.attached = true;
+  return router;
+}
+
+function chatInputRouterEntry(chatId: string): {
+  chatId: string;
+  runId: string | undefined;
+  router: SessionChannelRouter;
+  attached: boolean;
+} {
+  const runId = taskContext.ctx?.run.id;
+  if (currentChatInputRouter?.chatId === chatId && currentChatInputRouter.runId === runId) {
+    return currentChatInputRouter;
+  }
+
+  currentChatInputRouter = {
+    chatId,
+    runId,
+    router: new SessionChannelRouter(CHAT_INPUT_ROUTES, {
+      onDrop: (record, reason) => {
+        if (reason === "unroutable" || reason === "malformed") {
+          logger.warn("chat: discarded a session.in record nothing on this worker can consume", {
+            reason,
+            seqNum: record.seqNum,
+          });
+        }
+      },
+    }),
+    attached: false,
+  };
+  return currentChatInputRouter;
+}
+
+/** Drop the router so the next boot attaches a fresh one. @internal */
+export function __resetChatInputRouterForTests(): void {
+  currentChatInputRouter = undefined;
+}
+
+/** The cursors this run would publish on its next turn boundary. @internal */
+export function __chatInputCheckpointForTests(): RouterCheckpoint {
+  return currentChatInputRouter?.router.checkpoint() ?? {};
+}
+
+/** Test-only entry point for the turn-boundary cursor scan. @internal */
+export async function __findLatestSessionInCheckpointForTests(
+  chatId: string
+): Promise<RouterCheckpoint> {
+  return findLatestSessionInCheckpoint(chatId);
+}
+
+/**
+ * This chat's router. Created on first use so a facade reached before the
+ * install still shares the one the install will attach.
+ * @internal
+ */
+function chatInputRouter(): SessionChannelRouter {
+  return chatInputRouterEntry(getChatSession().id).router;
 }
 
 /**
@@ -2803,6 +3203,25 @@ const chatOnCompactedKey =
   locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
 /** @internal Full task `ctx` for the active `chat.agent` run (for hooks invoked from nested compaction). */
 const chatAgentRunContextKey = locals.create<TaskRunContext>("chat.agentRunContext");
+/** @internal When a mid-turn validation failure writes its terminal error. */
+const chatCustomAgentClientDataErrorTimingKey = locals.create<"turn-end" | "arrival">(
+  "chat.customAgent.clientDataErrorTiming"
+);
+/**
+ * @internal Sequences the validating observer has claimed.
+ *
+ * The observer watches without consuming, so a record it is still validating is
+ * also visible to a turn's read. Claiming makes ownership single: a read that
+ * pulls a claimed record puts it back and keeps waiting, so exactly one of them
+ * validates it and the schema runs once per frame.
+ */
+const chatObserverClaimedSeqNumsKey = locals.create<
+  Map<number, { released: Promise<void>; release: () => void }>
+>("chat.customAgent.observerClaims");
+/** @internal Marks the root run created by `chat.customAgent()`. */
+const chatCustomAgentRunKey = locals.create<boolean>("chat.customAgentRun");
+/** @internal Number of active `chat.createSession()` iterators in this run. */
+const chatActiveSessionIteratorsKey = locals.create<number>("chat.createSession.activeIterators");
 const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
@@ -3030,7 +3449,17 @@ export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage };
 export type { InferChatClientData, InferChatUIMessage, InferChatUIMessageFromTools };
 
 /** @internal */
-type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };
+/**
+ * A message observed mid-turn and offered for injection. `seqNum` is the record
+ * it came from, so injecting can take it off the router; a batch that is
+ * declined leaves its records queued and they become later turns instead.
+ * Absent for entries that did not come from a channel record.
+ */
+type SteeringQueueEntry = {
+  uiMessage: UIMessage;
+  modelMessages: ModelMessage[];
+  seqNum?: number;
+};
 /** @internal */
 const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
 /** @internal */
@@ -3637,7 +4066,14 @@ async function drainSteeringQueue(
 
   const ctx = locals.get(chatTurnContextKey);
   const stepNumber = steps.length - 1;
-  const uiMessages = queue.map((e) => e.uiMessage);
+  /**
+   * Snapshot, because `shouldInject` and `prepare` can await. A record arriving
+   * during either is not in this batch, so it must not be consumed by it: the
+   * callbacks never saw it and could not have injected it, and taking it would
+   * lose a message that should become a later turn instead.
+   */
+  const batch = [...queue];
+  const uiMessages = batch.map((e) => e.uiMessage);
 
   const batchEvent: PendingMessagesBatchEvent = {
     messages: uiMessages,
@@ -3654,30 +4090,81 @@ async function drainSteeringQueue(
 
   if (!shouldInject) return [];
 
-  // Extract message texts for span attributes
-  const messageTexts = uiMessages.map(
-    (m) =>
-      (m.parts ?? [])
-        .filter((p: any) => p.type === "text")
-        .map((p: any) => p.text)
-        .join("") || ""
-  );
+  const textOfUIMessage = (m: UIMessage) =>
+    (m.parts ?? [])
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text)
+      .join("") || "";
+  // Span attributes describe the offered batch; the chunk and callback below
+  // describe what was actually claimed and injected.
+  const messageTexts = uiMessages.map(textOfUIMessage);
   const _previewText =
     messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
     "pending message injected",
     async () => {
-      // Transform the batch — default: concatenate all pre-converted model messages
-      const injected = config.prepare
-        ? await config.prepare(batchEvent)
-        : queue.flatMap((e) => e.modelMessages);
+      /**
+       * Claim before transforming, and inject only what was claimed.
+       *
+       * Injection is the point of consumption: the records were only observed
+       * on arrival, so they are still queued on the router and still holding
+       * the resume floor, and taking them here is what stops the same message
+       * also being answered as a later turn. A declined batch never reaches
+       * this line, so its records stay queued and become later turns, which is
+       * what "messages queue for the next turn" means.
+       *
+       * A failed claim means something else already consumed that record while
+       * `shouldInject` was awaiting, so it is already being answered as a turn
+       * of its own. Injecting it as well would process the same message twice.
+       * An entry with no `seqNum` did not come from a channel record (the
+       * accumulator's own queue), so there is nothing to claim and it is kept.
+       */
+      const router = chatInputRouter();
+      const claimed: SteeringQueueEntry[] = [];
+      const takenRecords: SessionStreamRecord[] = [];
+      for (const entry of batch) {
+        if (entry.seqNum === undefined) {
+          claimed.push(entry);
+          continue;
+        }
+        const record = router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
+        if (!record) continue;
+        takenRecords.push(record);
+        claimed.push(entry);
+      }
+      for (const entry of claimed) {
+        const at = queue.indexOf(entry);
+        if (at !== -1) queue.splice(at, 1);
+      }
 
-      // Clear the queue and record injected IDs
-      queue.length = 0;
+      if (claimed.length === 0) return [];
+
+      /**
+       * Give the claim back if the transform fails. `prepare` is caller code and
+       * can throw; the records have already left the router by this point, so
+       * without returning them a failed transform would consume the messages and
+       * they would never be answered at all.
+       */
+      const releaseClaim = () => {
+        for (const record of takenRecords) router.untake(CHAT_ROUTE_MESSAGES, record);
+        for (const entry of claimed) if (!queue.includes(entry)) queue.push(entry);
+      };
+
+      const claimedUIMessages = claimed.map((e) => e.uiMessage);
+      let injected: ModelMessage[];
+      try {
+        injected = config.prepare
+          ? await config.prepare({ ...batchEvent, messages: claimedUIMessages })
+          : claimed.flatMap((e) => e.modelMessages);
+      } catch (err) {
+        releaseClaim();
+        throw err;
+      }
+
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
-        for (const m of uiMessages) injectedIds.add(m.id);
+        for (const m of claimedUIMessages) injectedIds.add(m.id);
       }
 
       // Write injection confirmation chunk to the stream so the frontend
@@ -3691,10 +4178,10 @@ async function drainSteeringQueue(
                 type: PENDING_MESSAGE_INJECTED_TYPE,
                 id: generateMessageId(),
                 data: {
-                  messageIds: uiMessages.map((m) => m.id),
-                  messages: uiMessages.map((m, idx) => ({
+                  messageIds: claimedUIMessages.map((m) => m.id),
+                  messages: claimedUIMessages.map((m) => ({
                     id: m.id,
-                    text: messageTexts[idx] ?? "",
+                    text: textOfUIMessage(m),
                   })),
                 },
               });
@@ -3710,7 +4197,7 @@ async function drainSteeringQueue(
       if (config.onInjected && injected.length > 0) {
         try {
           await config.onInjected({
-            messages: uiMessages,
+            messages: claimedUIMessages,
             injectedModelMessages: injected,
             chatId: ctx?.chatId ?? "",
             turn: ctx?.turn ?? 0,
@@ -5615,6 +6102,21 @@ type ChatCustomAgentOptions<
     error: unknown;
     payload: ChatTaskWirePayload<TUIMessage, unknown>;
   }) => Promise<void> | void;
+  /**
+   * When a frame that arrived mid-turn fails `clientDataSchema` validation,
+   * decides when the terminal error reaches the client.
+   *
+   * - `"turn-end"` (default) waits until the turn has closed. A terminal error
+   *   written into a live response can close it, so this keeps a bad client
+   *   send from truncating an answer the user is already reading.
+   * - `"arrival"` writes it as soon as validation fails, which surfaces the
+   *   problem sooner at the cost of ending the response in progress.
+   *
+   * `onClientDataValidationError` and the task log fire on arrival either way;
+   * this only governs the stream-visible error. The frame is never delivered as
+   * a turn in either mode.
+   */
+  clientDataValidationErrorTiming?: "turn-end" | "arrival";
   run: TaskOptions<
     TIdentifier,
     ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
@@ -5629,7 +6131,13 @@ function chatCustomAgent<
 >(
   options: ChatCustomAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
-  const { clientDataSchema, onClientDataValidationError, run: userRun, ...restOptions } = options;
+  const {
+    clientDataSchema,
+    onClientDataValidationError,
+    clientDataValidationErrorTiming,
+    run: userRun,
+    ...restOptions
+  } = options;
   const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
   const parseClientDataSync = clientDataSchema
     ? getChatCustomAgentSyncSchemaParseFn(clientDataSchema)
@@ -5660,6 +6168,7 @@ function chatCustomAgent<
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatExternalIdKey, payload.chatId);
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      locals.set(chatCustomAgentRunKey, true);
       if (parseClientData && parseClientDataSync) {
         locals.set(chatCustomAgentClientDataParserKey, {
           parse: parseClientData,
@@ -5672,6 +6181,10 @@ function chatCustomAgent<
           onClientDataValidationError as ChatCustomAgentClientDataErrorHandler
         );
       }
+      locals.set(
+        chatCustomAgentClientDataErrorTimingKey,
+        clientDataValidationErrorTiming ?? "turn-end"
+      );
       // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
       // trims `session.out` back to the previous turn boundary. Without
       // this the slot is undefined and the trim never runs, so `.out`
@@ -5680,10 +6193,9 @@ function chatCustomAgent<
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
-      // Seed the `.in` resume cursor before user code attaches any `.in`
-      // listener — otherwise a continuation boot replays already-answered
-      // messages into the loop's first wait.
-      await seedSessionInResumeCursorForCustomLoop(payload);
+      await installChatInputRouter(payload.chatId, {
+        resuming: Boolean(payload.continuation),
+      });
 
       // Keep the schema-free path identical to the original custom-agent
       // wrapper, including when userRun starts executing.
@@ -5835,6 +6347,7 @@ function chatAgent<
       { signal: runSignal, ctx }
     ) => {
       locals.set(chatAgentRunContextKey, ctx);
+      locals.set(chatCustomAgentRunKey, false);
 
       // On AI SDK 7, register the `@ai-sdk/otel` integration (once per process)
       // so `experimental_telemetry` spans flow into the run trace. Awaited here
@@ -5949,14 +6462,6 @@ function chatAgent<
       // `messagesInput.waitWithIdleTimeout` so recovered turns fire first.
       const bootInjectedQueue: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>[] =
         [];
-      // Messages consumed by a turn's `messagesInput.on` handler, dispatched
-      // one per turn by the end-of-turn pickup. Loop-level on purpose:
-      // consuming a record advances the committed `.in` cursor, so entries
-      // dropped with a turn-local buffer are lost permanently.
-      const pendingWireMessages: ChatTaskWirePayload<
-        TUIMessage,
-        inferSchemaIn<TClientDataSchema>
-      >[] = [];
       const couldHavePriorState = payload.continuation === true || ctx.attempt.number > 1;
 
       // `.in` resume cursor, computed at most once per boot. The boot
@@ -6097,53 +6602,16 @@ function chatAgent<
         );
       }
 
-      // ── session.in resume cursor ───────────────────────────────────
+      // ── session.in router ──────────────────────────────────────────
       //
-      // A fresh worker subscribes to `session.in` from seq 0 and would
-      // re-deliver every record ever appended — including user messages
-      // from turns already completed on a prior run. Without a cursor,
-      // the loop would re-process them as fresh turns and the slim-wire
-      // merge would replace-by-id against snapshot-restored copies,
-      // yielding no-op replaces while the customer's actual new message
-      // waits in the queue.
-      //
-      // The cursor is the seq_num of the last `.in` record the prior
-      // worker committed to processing, persisted on each `turn-complete`
-      // control record as a `session-in-event-id` sibling header. The
-      // boot scan reads the header off `.out`'s latest turn-complete and
-      // seeds the manager so the upcoming `.in` SSE subscribe opens with
-      // `Last-Event-ID: <cursor>` — S2 starts after that seq and old
-      // messages never reach this worker.
-      //
-      // Applies in three cases (any of which means `.in` has records
-      // belonging to completed turns the new run should skip):
-      //  - OOM retry (`ctx.attempt.number > 1`)
-      //  - Continuation run (`payload.continuation === true`) — prior run
-      //    crashed / was canceled / requested upgrade
-      //  - Snapshot exists at all (catches edge cases where the wire
-      //    didn't set `continuation` but a snapshot indicates prior turns)
-      const needsResumeCursor =
-        ctx.attempt.number > 1 || payload.continuation === true || bootSnapshot !== undefined;
-
-      if (needsResumeCursor) {
-        try {
-          // Reuse the cursor the boot block already resolved (snapshot
-          // field or records scan) — only scan here when the boot block
-          // was skipped (hydrateMessages, or snapshot-only signals).
-          const cursor = bootInCursorResolved
-            ? bootInCursor
-            : await findLatestSessionInCursor(payload.chatId);
-          if (cursor !== undefined) {
-            sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
-            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
-          }
-        } catch (error) {
-          logger.warn(
-            "chat.agent: session.in resume cursor lookup failed; old messages may replay",
-            { error: error instanceof Error ? error.message : String(error) }
-          );
-        }
-      }
+      // Reads the turn boundary and subscribes in one call. `bootInCursor` is
+      // only a fallback: the boot block above may already have resolved a
+      // cursor from the snapshot, which is used when the boundary itself
+      // carries none.
+      await installChatInputRouter(payload.chatId, {
+        fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
+        resuming: Boolean(payload.continuation) || ctx.attempt.number > 1,
+      });
 
       // ── Recovery boot + chain reconstruction ────────────────────────
       if (!hydrateMessages) {
@@ -6889,57 +7357,59 @@ function chatAgent<
                 const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
                 const pmConfig = locals.get(chatPendingMessagesKey);
-                const msgSub = messagesInput.on(async (msg) => {
-                  // If pendingMessages is configured, route to the steering queue
-                  // instead of the wire buffer. The frontend handles re-sending
-                  // non-injected messages via sendMessage on turn complete.
-                  if (pmConfig) {
-                    // Slim wire: at most one delta message per record. The
-                    // pendingMessages handler reads `msg.message` directly
-                    // instead of slicing an array — a wire record arrives
-                    // with the new user message in `.message`, or no message
-                    // at all (regenerate / preload / close / handover-prepare).
-                    const lastUIMessage = msg.message as TUIMessage | undefined;
-                    if (lastUIMessage) {
-                      if (pmConfig.onReceived) {
+                /**
+                 * Only attached when there is a steering config to feed. Without
+                 * one a mid-turn message is left queued on the router, which is
+                 * what holds the resume floor behind it: a record handed to a
+                 * handler counts as terminally decided, so buffering one here
+                 * published a cursor past a message held only in memory and a
+                 * crash before the next turn lost it.
+                 */
+                const msgSub = pmConfig
+                  ? chatInputRouter().observe(CHAT_ROUTE_MESSAGES, async (record) => {
+                      const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>)
+                        .payload;
+                      // Slim wire: at most one delta message per record. The
+                      // pendingMessages handler reads `msg.message` directly
+                      // instead of slicing an array — a wire record arrives
+                      // with the new user message in `.message`, or no message
+                      // at all (regenerate / preload / close / handover-prepare).
+                      const lastUIMessage = msg.message as TUIMessage | undefined;
+                      if (lastUIMessage) {
+                        if (pmConfig.onReceived) {
+                          try {
+                            await pmConfig.onReceived({
+                              message: lastUIMessage as TUIMessage,
+                              chatId: currentWirePayload.chatId,
+                              turn,
+                            });
+                          } catch {
+                            /* non-fatal */
+                          }
+                        }
+
                         try {
-                          await pmConfig.onReceived({
-                            message: lastUIMessage as TUIMessage,
-                            chatId: currentWirePayload.chatId,
-                            turn,
+                          const queue = locals.get(chatSteeringQueueKey) ?? [];
+                          // Deduplicate by message ID — guards against double-sends
+                          if (
+                            lastUIMessage.id &&
+                            queue.some((e) => e.uiMessage.id === lastUIMessage.id)
+                          ) {
+                            return;
+                          }
+                          const modelMsgs = await toModelMessages([lastUIMessage]);
+                          queue.push({
+                            uiMessage: lastUIMessage as UIMessage,
+                            modelMessages: modelMsgs,
+                            seqNum: record.seqNum,
                           });
+                          locals.set(chatSteeringQueueKey, queue);
                         } catch {
-                          /* non-fatal */
+                          /* conversion failed — skip steering queue */
                         }
                       }
-
-                      try {
-                        const queue = locals.get(chatSteeringQueueKey) ?? [];
-                        // Deduplicate by message ID — guards against double-sends
-                        if (
-                          lastUIMessage.id &&
-                          queue.some((e) => e.uiMessage.id === lastUIMessage.id)
-                        ) {
-                          return;
-                        }
-                        const modelMsgs = await toModelMessages([lastUIMessage]);
-                        queue.push({
-                          uiMessage: lastUIMessage as UIMessage,
-                          modelMessages: modelMsgs,
-                        });
-                        locals.set(chatSteeringQueueKey, queue);
-                      } catch {
-                        /* conversion failed — skip steering queue */
-                      }
-                    }
-                    return; // Don't add to wire buffer — frontend handles non-injected case
-                  }
-
-                  // No pendingMessages config — standard wire buffer for next turn
-                  pendingWireMessages.push(
-                    msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
-                  );
-                });
+                    })
+                  : undefined;
                 turnMsgSub = msgSub;
 
                 // Track new messages for this turn (user input + assistant response).
@@ -7304,7 +7774,7 @@ function chatAgent<
                 // The turn counter is decremented so the next iteration
                 // sees the same `turn` value — actions don't count.
                 if (isAction) {
-                  msgSub.off();
+                  msgSub?.off();
 
                   if (
                     (locals.get(chatPipeCountKey) ?? 0) === 0 &&
@@ -7594,7 +8064,7 @@ function chatAgent<
                       throw error;
                     }
                   } finally {
-                    msgSub.off();
+                    msgSub?.off();
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
@@ -8103,7 +8573,7 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
-                          const snapshotInCursor = getChatSession().in.lastDispatchedSeqNum();
+                          const snapshotInCursor = chatInputRouter().resumeFloor();
                           await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                             version: 1,
                             savedAt: Date.now(),
@@ -8147,14 +8617,6 @@ function chatAgent<
                 // that the dead predecessor never acknowledged.
                 if (bootInjectedQueue.length > 0) {
                   currentWirePayload = bootInjectedQueue.shift()!;
-                  return "continue";
-                }
-
-                // If messages arrived during streaming (without pendingMessages config),
-                // dispatch the oldest as the next turn. The rest stay queued
-                // and drain one per turn.
-                if (pendingWireMessages.length > 0) {
-                  currentWirePayload = pendingWireMessages.shift()!;
                   return "continue";
                 }
 
@@ -8436,7 +8898,7 @@ function chatAgent<
             // neither the snapshot nor the replayable `.in` tail.
             if (!hydrateMessages) {
               try {
-                const errorSnapshotInCursor = getChatSession().in.lastDispatchedSeqNum();
+                const errorSnapshotInCursor = chatInputRouter().resumeFloor();
                 await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                   version: 1,
                   savedAt: Date.now(),
@@ -8463,12 +8925,6 @@ function chatAgent<
             // until an unrelated live message arrives.
             if (bootInjectedQueue.length > 0) {
               currentWirePayload = bootInjectedQueue.shift()!;
-              continue;
-            }
-
-            // Same for messages buffered during the errored turn — already consumed, idling strands them.
-            if (pendingWireMessages.length > 0) {
-              currentWirePayload = pendingWireMessages.shift()!;
               continue;
             }
 
@@ -9088,6 +9544,67 @@ function requestUpgrade(): void {
 }
 
 /**
+ * Hand off the current custom agent Session to a fresh run.
+ *
+ * This is the low-level handoff for a fully hand-rolled
+ * `chat.customAgent()` loop. This method rejects while a
+ * `chat.createSession()` iterator is active. Close the iterator before calling
+ * it. If `return()` races an active `next()`, it waits for that read to settle
+ * before releasing the handoff guard. Call only between turns and after
+ * detaching input listeners for the old run. If the old run completed its
+ * current turn, persist its state and call {@link chatWriteTurnComplete} before
+ * handing off.
+ * Do not write a new turn boundary after input that the continuation run should
+ * process has been dispatched: the boundary acknowledges that input.
+ *
+ * The server starts the continuation run but does not stop this run, so return
+ * from the task immediately after awaiting this function. The promise rejects
+ * if the server cannot complete the handoff.
+ *
+ * Pending Session input that the old run has not consumed remains on the
+ * durable `.in` stream and is delivered to the continuation run.
+ *
+ * @example
+ * ```ts
+ * // Detach any chat.messages.on() subscriptions you created.
+ * await persistMessages();
+ * await chat.writeTurnComplete();
+ * await chat.endAndContinue();
+ * return;
+ * ```
+ */
+async function endAndContinue(): Promise<void> {
+  if (locals.get(chatCustomAgentRunKey) !== true) {
+    throw new Error(
+      "chat.endAndContinue() can only be called from inside a chat.customAgent() run"
+    );
+  }
+  if ((locals.get(chatActiveSessionIteratorsKey) ?? 0) > 0) {
+    throw new Error(
+      "chat.endAndContinue() cannot be called while a chat.createSession() iterator is active. Close the iterator, then call chat.endAndContinue()."
+    );
+  }
+
+  await performEndAndContinue();
+}
+
+/** @internal Shared server handoff used by managed and custom agent loops. */
+async function performEndAndContinue(): Promise<void> {
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
+
+  if (!chatId || !callingRunId) {
+    throw new Error("Cannot end and continue without an active chat agent run");
+  }
+
+  const apiClient = apiClientManager.clientOrThrow();
+  await apiClient.endAndContinueSession(chatId, {
+    callingRunId,
+    reason: "upgrade",
+  });
+}
+
+/**
  * Exit the run after the current turn completes, without waiting for the
  * next message. Unlike {@link requestUpgrade}, no upgrade-required signal
  * is sent to the client — the turn finishes normally, `onTurnComplete`
@@ -9308,10 +9825,14 @@ function createStopSignal(): {
  * task instead of round-tripping them back from the client:
  * - `lastEventId` — the turn-complete control record's seq_num on
  *   `session.out`; where the next turn's output stream resumes.
- * - `sessionInEventId` — the committed-consume cursor on `session.in` as of
- *   this turn-complete, letting a raw loop correlate the boundary with the
- *   exact input record it acknowledged. Trigger owns input-cursor recovery,
- *   so this is for correlation / out-of-sync detection, not required.
+ * - `sessionInEventId` — the safe-to-resume-from cursor on `session.in` as of
+ *   this turn-complete. It is the highest sequence that can be resumed past
+ *   without skipping an unhandled message, so it is held back behind any
+ *   message still buffered unconsumed and is NOT necessarily the sequence of
+ *   the record this turn answered. Trigger owns input-cursor recovery, so this
+ *   is for correlation / out-of-sync detection, not required. Treat it as a
+ *   lower bound: a value below the record you just handled is expected, not a
+ *   sign of a lost turn.
  *
  * Either is `undefined` when the corresponding cursor isn't available.
  *
@@ -9328,7 +9849,7 @@ async function chatWriteTurnComplete(options?: {
   const result = await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
   // Same cursor written to the `session-in-event-id` header inside
   // `writeTurnCompleteChunk`; surfaced here so the caller can persist it.
-  const inCursor = getChatSession().in.lastDispatchedSeqNum();
+  const inCursor = chatInputRouter().resumeFloor();
   return {
     lastEventId: result?.lastEventId,
     ...(inCursor !== undefined ? { sessionInEventId: String(inCursor) } : {}),
@@ -9895,6 +10416,98 @@ export type ChatTurn<TClientData = unknown> = {
     | undefined;
 };
 
+function trackActiveChatSessionIterator<TTurn>(
+  iterator: AsyncIterator<TTurn>
+): AsyncIterator<TTurn> {
+  locals.set(chatActiveSessionIteratorsKey, (locals.get(chatActiveSessionIteratorsKey) ?? 0) + 1);
+  let active = true;
+  let closing = false;
+  let activeNextCalls = 0;
+  let closePromise: Promise<IteratorResult<TTurn>> | undefined;
+  const nextSettledWaiters = new Set<() => void>();
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    const remaining = Math.max((locals.get(chatActiveSessionIteratorsKey) ?? 1) - 1, 0);
+    locals.set(chatActiveSessionIteratorsKey, remaining);
+  }
+
+  function settleNextCall() {
+    activeNextCalls = Math.max(activeNextCalls - 1, 0);
+    if (activeNextCalls > 0) return;
+
+    for (const resolve of nextSettledWaiters) {
+      resolve();
+    }
+    nextSettledWaiters.clear();
+  }
+
+  function waitForNextCalls(): Promise<void> {
+    if (activeNextCalls === 0) return Promise.resolve();
+    return new Promise((resolve) => nextSettledWaiters.add(resolve));
+  }
+
+  function closeIterator(): Promise<IteratorResult<TTurn>> {
+    closing = true;
+    if (!closePromise) {
+      closePromise = (async () => {
+        // A blocked next() can install a new message listener after it resumes.
+        // Let every started call settle, then make the inner cleanup final.
+        await waitForNextCalls();
+        try {
+          return iterator.return
+            ? await iterator.return()
+            : { done: true as const, value: undefined };
+        } finally {
+          finish();
+        }
+      })();
+    }
+    return closePromise;
+  }
+
+  return {
+    async next() {
+      if (closing) {
+        return { done: true as const, value: undefined };
+      }
+
+      activeNextCalls++;
+      let result: IteratorResult<TTurn>;
+      try {
+        result = await iterator.next();
+      } catch (error) {
+        settleNextCall();
+        try {
+          await closeIterator();
+        } catch {
+          // Preserve the original iterator error after best-effort cleanup.
+        }
+        throw error;
+      }
+
+      settleNextCall();
+      if (result.done) {
+        try {
+          await closeIterator();
+        } catch {
+          // The inner next() already ended cleanly; cleanup remains best-effort.
+        }
+      } else if (closing) {
+        // return() won the race. Do not expose a turn the caller has already
+        // abandoned; without a new turn-complete boundary its input remains
+        // replayable by the continuation run.
+        return { done: true as const, value: undefined };
+      }
+      return result;
+    },
+    return() {
+      return closeIterator();
+    },
+  };
+}
+
 /**
  * Create a chat session that yields turns as an async iterator.
  *
@@ -9958,30 +10571,19 @@ function createChatSession<TClientData = unknown>(
       const accumulator = new ChatMessageAccumulator();
       let previousTurnUsage: LanguageModelUsage | undefined;
       let cumulativeUsage: LanguageModelUsage = emptyUsage();
-      // Messages consumed mid-turn, dispatched one per next(). Iterator-level
-      // for the same reason as the agent loop's `pendingWireMessages`:
-      // consumed records never replay, so a turn-local buffer loses them.
-      const sessionPendingWire: Array<
-        | { payload: ChatTaskWirePayload; validation: "unvalidated" | "valid" }
-        | { payload: ChatTaskWirePayload; validation: "invalid"; error: unknown }
-      > = [];
       // The current turn's message subscription — detached defensively at the
       // top of next() in case user code threw without complete()/done().
       let activeMsgSub: ChatMessageSubscription | undefined;
 
-      return {
+      const iterator: AsyncIterator<ChatTurn<TClientData>> = {
         async next(): Promise<IteratorResult<ChatTurn<TClientData>>> {
-          if (activeMsgSub?.drain) {
-            activeMsgSub.off();
-            await activeMsgSub.drain();
-          } else {
-            // Keep the schema-free path free of a new async boundary.
-            activeMsgSub?.off();
-          }
+          activeMsgSub?.off();
           activeMsgSub = undefined;
           if (!booted) {
             booted = true;
-            await seedSessionInResumeCursorForCustomLoop(currentPayload);
+            await installChatInputRouter(currentPayload.chatId, {
+              resuming: Boolean(currentPayload.continuation),
+            });
             stop = createStopSignal();
           }
           turn++;
@@ -10047,54 +10649,33 @@ function createChatSession<TClientData = unknown>(
             }
           }
 
-          // Subsequent turns: drain buffered mid-turn messages first (they
-          // were consumed and won't be re-delivered), then wait.
+          /**
+           * Subsequent turns take the next message from the router. A record
+           * that arrived mid-turn is already queued there, so this returns it
+           * without suspending.
+           */
           if (turn > 0) {
-            let bufferedPayload: ChatTaskWirePayload<UIMessage, TClientData> | undefined;
-            while (sessionPendingWire.length > 0) {
-              const candidate = sessionPendingWire.shift()!;
-              if (candidate.validation === "invalid") {
-                await reportChatCustomAgentClientDataError(candidate.payload, candidate.error, {
-                  writeToStream: true,
-                });
-                continue;
-              }
-              if (
-                candidate.validation === "valid" ||
-                !locals.get(chatCustomAgentClientDataParserKey)
-              ) {
-                // Avoid adding an async boundary when no schema is configured.
-                bufferedPayload = candidate.payload as ChatTaskWirePayload<UIMessage, TClientData>;
-                break;
-              }
-
-              const validated = await validateChatCustomAgentPayload(candidate.payload);
-              if (validated.ok) {
-                bufferedPayload = validated.payload as ChatTaskWirePayload<UIMessage, TClientData>;
-                break;
-              }
+            // chat.requestUpgrade() / chat.endRun() — exit before waiting
+            if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              stop.cleanup();
+              return { done: true, value: undefined };
             }
 
-            if (bufferedPayload) {
-              currentPayload = bufferedPayload;
-            } else {
-              // chat.requestUpgrade() / chat.endRun() — exit before waiting
-              if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
-                stop.cleanup();
-                return { done: true, value: undefined };
-              }
-
-              const next = await messagesInput.waitWithIdleTimeout({
-                idleTimeoutInSeconds,
-                timeout,
-                spanName: "waiting for next message",
-              });
-              if (!next.ok || runSignal.aborted) {
-                stop.cleanup();
-                return { done: true, value: undefined };
-              }
-              currentPayload = next.output as ChatTaskWirePayload<UIMessage, TClientData>;
+            const next = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds,
+              timeout,
+              spanName: "waiting for next message",
+            });
+            if (!next.ok || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
             }
+            /**
+             * The facade validated `clientData` against the configured schema
+             * before returning, so the parsed shape is what arrives here. The
+             * cast carries that across the untyped wire payload boundary.
+             */
+            currentPayload = next.output as typeof currentPayload;
           }
 
           // Check limits
@@ -10122,23 +10703,16 @@ function createChatSession<TClientData = unknown>(
             clientData: currentPayload.metadata,
           });
 
-          // Listen for messages during streaming (steering + next-turn buffer)
+          /**
+           * Only attached when there is a steering config to feed. Without one a
+           * mid-turn message stays queued on the router, which is what keeps the
+           * resume floor behind it.
+           */
           const handleSteeringMessage = async (
             msg: ChatTaskWirePayload,
+            seqNum: number | undefined,
             isActive: () => boolean = () => true
           ) => {
-            const bufferForNextTurn = () => {
-              sessionPendingWire.push({ payload: msg, validation: "valid" });
-            };
-            if (!isActive()) {
-              bufferForNextTurn();
-              return;
-            }
-
-            // Steering route — the frontend re-sends non-injected
-            // messages on turn complete, so don't also buffer the wire.
-            // Slim wire: at most one delta message per record. Read
-            // `msg.message` directly — no array slicing needed.
             const lastUIMessage = msg.message;
             if (lastUIMessage) {
               if (sessionPendingMessages?.onReceived) {
@@ -10152,44 +10726,34 @@ function createChatSession<TClientData = unknown>(
                   /* non-fatal */
                 }
               }
-              if (!isActive()) {
-                bufferForNextTurn();
-                return;
-              }
+              if (!isActive()) return;
               try {
                 const modelMsgs = await toModelMessages([lastUIMessage]);
-                if (!isActive()) {
-                  bufferForNextTurn();
-                  return;
-                }
-                turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                turnSteeringQueue.push({
+                  uiMessage: lastUIMessage,
+                  modelMessages: modelMsgs,
+                  seqNum,
+                });
               } catch {
                 /* non-fatal */
               }
             }
           };
 
-          const sessionMsgSub: ChatMessageSubscription = sessionPendingMessages
+          const sessionMsgSub: ChatMessageSubscription | undefined = sessionPendingMessages
             ? locals.get(chatCustomAgentClientDataParserKey)
-              ? subscribeToValidatedChatMessages(handleSteeringMessage, {
-                  onAfterOff: (msg) => {
-                    sessionPendingWire.push({ payload: msg, validation: "valid" });
-                  },
-                  onInvalidAfterOff: (msg, error) => {
-                    sessionPendingWire.push({ payload: msg, validation: "invalid", error });
-                  },
+              ? (() => {
+                  let lastSeqNum: number | undefined;
+                  return observeValidatedChatMessages(
+                    (msg, isActive) => handleSteeringMessage(msg, lastSeqNum, isActive),
+                    { onSeqNum: (seqNum) => (lastSeqNum = seqNum) }
+                  );
+                })()
+              : chatInputRouter().observe(CHAT_ROUTE_MESSAGES, (record) => {
+                  const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+                  void handleSteeringMessage(msg, record.seqNum);
                 })
-              : messagesInput.on(async (msg) => {
-                  // Steering route — the frontend re-sends non-injected
-                  // messages on turn complete, so don't also buffer the wire.
-                  await handleSteeringMessage(msg);
-                })
-            : subscribeToRawChatMessages((msg) => {
-                // Buffer synchronously in wire order. Validation happens when
-                // the frame becomes the next turn, after the active response
-                // has completed and it is safe to write an error boundary.
-                sessionPendingWire.push({ payload: msg, validation: "unvalidated" });
-              });
+            : undefined;
           activeMsgSub = sessionMsgSub;
 
           // Accumulate messages. Slim wire: pass the single delta message as
@@ -10218,7 +10782,7 @@ function createChatSession<TClientData = unknown>(
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {
             await writeUpgradeRequiredChunk();
-            sessionMsgSub.off();
+            sessionMsgSub?.off();
             stop.cleanup();
             return { done: true, value: undefined };
           }
@@ -10264,7 +10828,7 @@ function createChatSession<TClientData = unknown>(
                 if (!response || response.role !== "assistant") {
                   throw new Error("turn.complete() could not find the spliced handover response");
                 }
-                sessionMsgSub.off();
+                sessionMsgSub?.off();
                 await chatWriteTurnComplete();
                 return response;
               }
@@ -10281,7 +10845,7 @@ function createChatSession<TClientData = unknown>(
                 });
                 if (runSignal.aborted) {
                   // Full cancel — don't accumulate
-                  sessionMsgSub.off();
+                  sessionMsgSub?.off();
                   await chatWriteTurnComplete();
                   return undefined;
                 }
@@ -10303,7 +10867,7 @@ function createChatSession<TClientData = unknown>(
               } finally {
                 // Detach at stream end (like the agent loop): the steering queue
                 // can't inject anymore, so later arrivals must buffer for the next turn.
-                sessionMsgSub.off();
+                sessionMsgSub?.off();
               }
 
               if (response) {
@@ -10406,6 +10970,7 @@ function createChatSession<TClientData = unknown>(
                 }
               }
 
+              sessionMsgSub?.off();
               await chatWriteTurnComplete();
               return response;
             },
@@ -10424,7 +10989,7 @@ function createChatSession<TClientData = unknown>(
             },
 
             async done() {
-              sessionMsgSub.off();
+              sessionMsgSub?.off();
               await chatWriteTurnComplete();
             },
 
@@ -10481,6 +11046,8 @@ function createChatSession<TClientData = unknown>(
           return { done: true, value: undefined };
         },
       };
+
+      return trackActiveChatSessionIterator(iterator);
     },
   };
 }
@@ -10895,6 +11462,10 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};
+    const maxAttempts = params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts;
+    const maxDuration = params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration;
+    const idleTimeoutInSeconds =
+      params.triggerConfig?.idleTimeoutInSeconds ?? options?.triggerConfig?.idleTimeoutInSeconds;
 
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
@@ -10912,18 +11483,8 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
         ? { queue: params.triggerConfig?.queue ?? options?.triggerConfig?.queue }
         : {}),
       tags,
-      ...(options?.triggerConfig?.maxAttempts !== undefined ||
-      params.triggerConfig?.maxAttempts !== undefined
-        ? {
-            maxAttempts: params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
-          }
-        : {}),
-      ...(options?.triggerConfig?.maxDuration !== undefined ||
-      params.triggerConfig?.maxDuration !== undefined
-        ? {
-            maxDuration: params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration!,
-          }
-        : {}),
+      ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+      ...(maxDuration !== undefined ? { maxDuration } : {}),
       ...(options?.triggerConfig?.region || params.triggerConfig?.region
         ? { region: params.triggerConfig?.region ?? options?.triggerConfig?.region }
         : {}),
@@ -10933,14 +11494,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
               params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
         : {}),
-      ...(options?.triggerConfig?.idleTimeoutInSeconds !== undefined ||
-      params.triggerConfig?.idleTimeoutInSeconds !== undefined
-        ? {
-            idleTimeoutInSeconds:
-              params.triggerConfig?.idleTimeoutInSeconds ??
-              options?.triggerConfig?.idleTimeoutInSeconds!,
-          }
-        : {}),
+      ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
     const startBody = {
@@ -11148,6 +11702,8 @@ export const chat = {
   isStopped,
   /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
   requestUpgrade,
+  /** Hand off a custom agent Session to a fresh run. See {@link endAndContinue}. */
+  endAndContinue,
   /** Exit the run after the current turn completes, without any upgrade signal. See {@link endRun}. */
   endRun,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
@@ -11260,6 +11816,17 @@ async function writeTurnCompleteChunk(
 ): Promise<StreamWriteResult> {
   const session = getChatSession();
 
+  // A handover-prepare boot claims the handover kinds so a signal arriving
+  // before `waitForHandover` attaches is not drained. Released here rather than
+  // only in `waitForHandover`, because a loop that never calls it would
+  // otherwise hold the claim for the life of the run and leave a handover
+  // record parked at the head of the channel, where it wedges
+  // `chat.messages.next()`. Every surface reaches a turn boundary through this
+  // function, including the managed agent, which does not call the public
+  // `chat.writeTurnComplete`. By the time a turn completes the handover window
+  // is over either way.
+  chatInputRouter().clearRoute(CHAT_ROUTE_HANDOVER);
+
   // 1. Write the turn-complete control record. The ack's `lastEventId` is
   //    this record's seq_num — that's the trim target for the NEXT turn.
   //
@@ -11274,9 +11841,14 @@ async function writeTurnCompleteChunk(
   if (publicAccessToken) {
     extraHeaders.push(["public-access-token", publicAccessToken]);
   }
-  const inCursor = session.in.lastDispatchedSeqNum();
+  const routerCheckpoint = chatInputRouter().checkpoint();
+  const inCursor = routerCheckpoint.resumeFrom;
   if (inCursor !== undefined) {
     extraHeaders.push([SESSION_IN_EVENT_ID_HEADER, String(inCursor)]);
+  }
+  const consumedCursor = routerCheckpoint.appliedThrough;
+  if (consumedCursor !== undefined) {
+    extraHeaders.push([SESSION_IN_CONSUMED_ID_HEADER, String(consumedCursor)]);
   }
   const result = await session.out.writeControl(
     TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,
@@ -11342,17 +11914,12 @@ async function writeTurnCompleteChunk(
  * @internal
  */
 async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
-  const ctx = taskContext.ctx;
-  const chatId = ctx?.run.id ? getChatIdFromContext() : undefined;
-  const callingRunId = ctx?.run.id;
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
   if (chatId && callingRunId) {
-    const apiClient = apiClientManager.clientOrThrow();
     try {
-      await apiClient.endAndContinueSession(chatId, {
-        callingRunId,
-        reason: "upgrade",
-      });
+      await performEndAndContinue();
     } catch (error) {
       // Non-fatal: the next `.in/append` re-triggers via the probe.
       // Swallow rather than throw so we still emit the chunk + exit.
@@ -11366,17 +11933,6 @@ async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
 
   const session = getChatSession();
   return session.out.writeControl(TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED);
-}
-
-/**
- * Resolves the current chat's `chatId` (used as session externalId) from
- * the bound session handle. Returns `undefined` if no agent is bound —
- * shouldn't happen at the call sites that invoke
- * `writeUpgradeRequiredChunk`, but defensive against misuse.
- * @internal
- */
-function getChatIdFromContext(): string | undefined {
-  return locals.get(chatSessionHandleKey)?.id;
 }
 
 /**

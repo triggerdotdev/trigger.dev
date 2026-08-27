@@ -6,18 +6,14 @@ import {
   type ChartState,
 } from "~/components/primitives/charts/ChartCompound";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { MiniLineChart } from "~/components/metrics/MiniLineChart";
 import {
   useMetricResourceQuery,
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
-import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { QUEUE_METRICS_DEFAULT_PERIOD } from "~/components/queues/queueMetricsPeriod";
-import { cn } from "~/utils/cn";
-import { formatNumberCompact } from "~/utils/numberFormatter";
 
 // Shared building blocks for queue-metric UI (queue detail page, task detail page,
 // run inspector). All CH-derived data is fetched client-side through useQueueMetric
@@ -86,7 +82,7 @@ export function formatWaitMs(ms: number): string {
   return `${(ms / 3_600_000).toFixed(1)}h`;
 }
 
-export type QueueMetricSeriesConfig = { key: string; label: string; color: string };
+type QueueMetricSeriesConfig = { key: string; label: string; color: string };
 
 type QueueMetricChartProps = {
   query: string;
@@ -367,115 +363,3 @@ export function QueueSidebarStats({
 
 // A compact stat card with a recent trend sparkline underneath, for the run inspector.
 // The headline is a live "now" value from the loader; the sparkline pulls its own series.
-const SPARKLINE_PERIOD = "30m";
-
-export function QueueSparklineStat({
-  title,
-  info,
-  query,
-  color,
-  ids,
-  queueName,
-  formatPeak,
-  unitLabel,
-  chartHeight,
-}: {
-  title: string;
-  /** Tooltip text under the info icon next to the title (matches the queue page copy). */
-  info?: ReactNode;
-  query: string;
-  color: string;
-  ids: QueueMetricIds;
-  queueName: string;
-  formatPeak?: (peak: number) => string;
-  /** Unit shown in the per-bucket hover tooltip (e.g. queued, ms). */
-  unitLabel?: { singular: string; plural: string };
-  /** Plot height in px. Defaults to the shared mini-chart height. */
-  chartHeight?: number;
-}) {
-  const timeRange: QueueMetricTimeRange = { period: SPARKLINE_PERIOD, from: null, to: null };
-  const { rows } = useQueueMetric(query, {
-    ids,
-    timeRange,
-    queueName,
-    fillGaps: true,
-    defaultPeriod: SPARKLINE_PERIOD,
-  });
-
-  const { data, throttled, bucketStartMs, bucketIntervalMs, peak } = useMemo(() => {
-    const points = rows
-      .map((r) => ({
-        bucket: clickhouseTimeToMs(r.t),
-        v: toNumber(r.v),
-        // Present only when the query selects it (Backlog); 0 elsewhere so no overlay draws.
-        throttled: toNumber(r.throttled),
-      }))
-      .filter((p) => Number.isFinite(p.bucket))
-      .sort((a, b) => a.bucket - b.bucket);
-    return {
-      data: points.map((p) => p.v),
-      throttled: points.map((p) => p.throttled),
-      bucketStartMs: points[0]?.bucket,
-      bucketIntervalMs: points.length > 1 ? points[1]!.bucket - points[0]!.bucket : undefined,
-      peak: points.reduce((m, p) => Math.max(m, p.v), 0),
-    };
-  }, [rows]);
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1">
-        <Header3 className="leading-6">{title}</Header3>
-        {info || (data.length > 0 && peak > 0) ? (
-          <InfoIconTooltip
-            content={
-              <div className="flex flex-col gap-1">
-                {info ? <span>{info}</span> : null}
-                {data.length > 0 && peak > 0 ? (
-                  <span className="tabular-nums text-text-dimmed">
-                    Peak {formatPeak ? formatPeak(peak) : formatNumberCompact(peak)}
-                  </span>
-                ) : null}
-              </div>
-            }
-            contentClassName="max-w-[230px]"
-            disableHoverableContent
-          />
-        ) : null}
-      </div>
-      <MiniLineChart
-        data={data}
-        throttled={throttled}
-        bucketStartMs={bucketStartMs}
-        bucketIntervalMs={bucketIntervalMs}
-        color={color}
-        unitLabel={unitLabel}
-        height={chartHeight}
-        fillWidth
-        showPeak={false}
-      />
-    </div>
-  );
-}
-
-export function QueueMetricStat({
-  label,
-  value,
-  className,
-  loading,
-}: {
-  label: string;
-  value: string;
-  className?: string;
-  loading?: boolean;
-}) {
-  return (
-    <div className="rounded-sm border border-grid-dimmed bg-background-bright px-3 py-2">
-      <div className="text-xs text-text-dimmed">{label}</div>
-      {loading ? (
-        <div className="mt-1 h-6 w-12 animate-pulse rounded bg-grid-bright/50" />
-      ) : (
-        <div className={cn("text-2xl tabular-nums text-text-bright", className)}>{value}</div>
-      )}
-    </div>
-  );
-}

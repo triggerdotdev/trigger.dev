@@ -5,6 +5,7 @@
 
 import { json, redirect } from "@remix-run/server-runtime";
 import type { RbacAbility } from "@trigger.dev/rbac";
+import { env } from "~/env.server";
 import { rbac } from "~/services/rbac.server";
 import { getUserId } from "~/services/session.server";
 import { permissionDeniedResponse } from "~/utils/permissionDenied";
@@ -23,7 +24,7 @@ function loginRedirectFor(request: Request, override?: string): Response {
 
 function isAuthorized(ability: RbacAbility, authorization: AuthorizationOption): boolean {
   if ("requireSuper" in authorization) {
-    return ability.canSuper();
+    return env.ADMIN_DASHBOARD_ENABLED && ability.canSuper();
   }
   return ability.can(authorization.action, authorization.resource);
 }

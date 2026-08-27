@@ -23,7 +23,7 @@ export function MachineLabelCombo({
   );
 }
 
-export function MachineLabel({
+function MachineLabel({
   preset,
   className,
 }: {

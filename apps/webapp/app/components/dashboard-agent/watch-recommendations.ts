@@ -44,7 +44,7 @@ export function queueWatchRecommendation(
   return queueAgeWatchRecommendation(queueName);
 }
 
-export function queueAgeWatchRecommendation(
+function queueAgeWatchRecommendation(
   queueName: string,
   thresholdMinutes: number = WATCH_DEFAULT_QUEUE_AGE_MINUTES
 ): WatchSpec {

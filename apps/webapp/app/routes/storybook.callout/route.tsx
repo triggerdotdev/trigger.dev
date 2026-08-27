@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { AnimatedCallout } from "~/components/primitives/AnimatedCallout";
@@ -10,6 +11,9 @@ export default function Story() {
 
   return (
     <div className="grid grid-cols-2">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Callout.tsx", "AnimatedCallout.tsx"]} />
+      </div>
       <div className="flex flex-col items-start gap-y-4 p-4">
         <Header2>Animated callout</Header2>
         <Button

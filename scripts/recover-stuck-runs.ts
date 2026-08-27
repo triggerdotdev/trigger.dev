@@ -142,7 +142,7 @@ async function main() {
         ? {
             tls: {
               // If connecting via localhost tunnel to a remote Redis, disable cert verification
-              rejectUnauthorized: redisReadUrlObj.hostname === "localhost" ? false : true,
+              rejectUnauthorized: redisReadUrlObj.hostname !== "localhost",
             },
           }
         : {}),
@@ -165,7 +165,7 @@ async function main() {
           ? {
               tls: {
                 // If connecting via localhost tunnel to a remote Redis, disable cert verification
-                rejectUnauthorized: redisWriteUrlObj.hostname === "localhost" ? false : true,
+                rejectUnauthorized: redisWriteUrlObj.hostname !== "localhost",
               },
             }
           : {}),

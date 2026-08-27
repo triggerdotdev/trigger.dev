@@ -52,6 +52,7 @@ function useCreateDashboard({
 
   useEffect(() => {
     if (navigation.formAction === formAction && navigation.state === "loading") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.formAction, navigation.state, formAction]);

@@ -1,7 +1,7 @@
 import { useFetcher } from "@remix-run/react";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Button } from "~/components/primitives/Buttons";
@@ -58,6 +58,9 @@ type AIGeneratedCronFieldProps = {
 export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
   const fetcher = useFetcher<typeof action>();
   const [text, setText] = useState<string>("");
+  const onSuccessRef = useRef(onSuccess);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
+  onSuccessRef.current = onSuccess;
   const organization = useOrganization();
   const project = useProject();
   const isLoading = fetcher.state !== "idle";
@@ -66,11 +69,11 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
 
   useEffect(() => {
     if (resultData?.cron !== undefined) {
-      onSuccess(resultData.cron);
+      onSuccessRef.current(resultData.cron);
     }
   }, [resultData?.cron]);
 
-  const submit = useCallback(async (value: string) => {
+  const submit = (value: string) => {
     fetcher.submit(
       { message: value },
       {
@@ -79,7 +82,7 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
         encType: "application/json",
       }
     );
-  }, []);
+  };
 
   return (
     <div className="max-w-md">

@@ -183,6 +183,7 @@ export class ApiRunListPresenter extends BasePresenter {
     return this.trace("call", async (span) => {
       const options: RunListOptions = {
         projectId: project.id,
+        columns: { visibleStandardIds: [], smartSources: ["metadata"] },
       };
 
       // pagination
@@ -310,7 +311,7 @@ export class ApiRunListPresenter extends BasePresenter {
           const metadata = await parsePacket(
             {
               data: run.metadata ?? undefined,
-              dataType: run.metadataType,
+              dataType: run.metadataType ?? "application/json",
             },
             {
               filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],

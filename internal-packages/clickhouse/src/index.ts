@@ -31,6 +31,7 @@ import {
   getLogDetailQueryBuilderV2,
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { projectTaskEventsSearchV2Window } from "./taskEventsSearchProjector.js";
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
@@ -74,11 +75,13 @@ import {
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
+import type { Meter } from "@internal/tracing";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export * from "./taskEventsSearchProjector.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
 export type * from "./queueMetrics.js";
@@ -121,7 +124,7 @@ export {
 export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
-export { QueryError } from "./client/errors.js";
+export { QueryError, isClickhouseResourceLimitError } from "./client/errors.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {
@@ -131,12 +134,14 @@ export type ClickhouseCommonConfig = {
   httpAgent?: HttpAgent | HttpsAgent;
   clickhouseSettings?: ClickHouseSettings;
   logger?: Logger;
+  meter?: Meter;
   logLevel?: LogLevel;
   compression?: {
     request?: boolean;
     response?: boolean;
   };
   maxOpenConnections?: number;
+  requestTimeoutMs?: number;
 };
 
 export type ClickHouseConfig =
@@ -175,10 +180,12 @@ export class ClickHouse {
         url: config.url,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
       this.reader = client;
@@ -191,10 +198,12 @@ export class ClickHouse {
         url: config.readerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
       this.writer = new ClickhouseClient({
@@ -202,10 +211,12 @@ export class ClickHouse {
         url: config.writerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
 
@@ -336,6 +347,7 @@ export class ClickHouse {
   get taskEventsSearch() {
     return {
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
+      projectV2Window: projectTaskEventsSearchV2Window(this.writer),
     };
   }
 

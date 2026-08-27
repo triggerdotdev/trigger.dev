@@ -54,11 +54,13 @@ export function DashboardAgentComposer({
   const sendButton = isStreaming ? (
     <Button
       variant="minimal/small"
-      className="aspect-square h-7 min-w-0 bg-charcoal-600 p-1 hover:bg-charcoal-550"
+      className="aspect-square h-7 min-w-0 bg-surface-control p-1 hover:bg-surface-control-hover"
       aria-label="Stop generating"
       tooltip="Stop generating"
       onClick={onStop}
-      LeadingIcon={<StopIcon className="size-4 text-white" />}
+      // Not text-white: this button's surface goes light with the theme, unlike
+      // the indigo Send button below it.
+      LeadingIcon={<StopIcon className="size-4 text-text-bright" />}
     />
   ) : (
     <Button

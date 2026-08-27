@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 
 export type OperatingSystemPlatform = "mac" | "windows";
 
@@ -18,7 +18,9 @@ export const OperatingSystemContextProvider = ({
   platform,
   children,
 }: OperatingSystemContextProviderProps) => {
-  return <Context.Provider value={{ platform }}>{children}</Context.Provider>;
+  const value = useMemo(() => ({ platform }), [platform]);
+
+  return <Context.Provider value={value}>{children}</Context.Provider>;
 };
 
 const throwIfNoProvider = () => {

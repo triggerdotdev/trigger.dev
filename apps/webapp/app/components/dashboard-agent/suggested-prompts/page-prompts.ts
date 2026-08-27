@@ -45,7 +45,7 @@ const RUNNING_BATCH_STATUSES = new Set(["PENDING", "PROCESSING"]);
 /** A canceled deploy is deliberate, so it's excluded. */
 const FAILED_DEPLOYMENT_STATUSES = new Set(["FAILED", "TIMED_OUT"]);
 
-export function isFailedDeploymentStatus(status: string | undefined): boolean {
+function isFailedDeploymentStatus(status: string | undefined): boolean {
   return status !== undefined && FAILED_DEPLOYMENT_STATUSES.has(status);
 }
 

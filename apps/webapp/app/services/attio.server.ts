@@ -112,7 +112,7 @@ function domainFromEmail(email: string | undefined): string | undefined {
   return email?.split("@")[1]?.toLowerCase().trim() || undefined;
 }
 
-export const attioClient = env.ATTIO_API_KEY ? new AttioClient(env.ATTIO_API_KEY) : null;
+const attioClient = env.ATTIO_API_KEY ? new AttioClient(env.ATTIO_API_KEY) : null;
 
 export async function enqueueAttioWorkspaceSync(payload: AttioWorkspaceSync) {
   if (!attioClient) return;

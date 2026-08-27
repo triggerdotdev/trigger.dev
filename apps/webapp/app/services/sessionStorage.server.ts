@@ -24,4 +24,4 @@ export function getUserSession(request: Request) {
   return sessionStorage.getSession(request.headers.get("Cookie"));
 }
 
-export const { getSession, commitSession, destroySession } = sessionStorage;
+export const { getSession, commitSession } = sessionStorage;

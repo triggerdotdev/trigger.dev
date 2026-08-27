@@ -1,7 +1,7 @@
 import { heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient } from "@trigger.dev/database";
-import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 import type { PrismaReplicaClient } from "~/db.server";
 import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
@@ -284,6 +284,107 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
       expect(result!.id).toBe(seeded.id);
       expect(single.calls.length).toBe(1);
       expect(legacy.calls.length).toBe(0);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "gen-2 waitpoint resolves on its OWN shard replica; the gen-1 new store is never read",
+    async ({ prisma17, prisma14 }) => {
+      const id = generateRunOpsIdV2("a");
+      const environmentId = generateRunOpsId();
+      const projectId = generateRunOpsId();
+      const seeded = await seedWaitpoint(prisma17, id, { id: environmentId, projectId });
+
+      // The gen-1 new store and the legacy replica are both forbidden: a gen-2 id must
+      // take one read on its shard and probe nothing else.
+      const newClient = recording(prisma14, { forbidden: true });
+      const legacyReplica = recording(prisma14, { forbidden: true });
+      const shardReplica = recording(prisma17);
+
+      const result = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId,
+        read: read(id, environmentId),
+        deps: {
+          splitEnabled: true,
+          newClient: newClient.handle,
+          legacyReplica: legacyReplica.handle,
+          newPrimary: newClient.handle,
+          shardReplicas: new Map([["a", shardReplica.handle]]),
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(seeded.id);
+      expect(shardReplica.calls.length).toBe(1);
+      expect(newClient.calls.length).toBe(0);
+      expect(legacyReplica.calls.length).toBe(0);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "a gen-2 waitpoint missing its shard REPLICA falls back to that shard's WRITER, not the gen-1 new writer",
+    async ({ prisma17, prisma14 }) => {
+      // Read-your-writes: a token completed immediately after mint may not have replicated.
+      // The fallback must read the shard's own primary. Reading the gen-1 new writer would
+      // query the wrong database and return null.
+      const id = generateRunOpsIdV2("a");
+      const environmentId = generateRunOpsId();
+      const projectId = generateRunOpsId();
+      const seeded = await seedWaitpoint(prisma17, id, { id: environmentId, projectId });
+
+      const shardReplica = recording(prisma14); // lags: does not have the row
+      const shardWriter = recording(prisma17); // has the row
+      const forbiddenNewPrimary = recording(prisma17, { forbidden: true });
+
+      const result = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId,
+        read: read(id, environmentId),
+        deps: {
+          splitEnabled: true,
+          newClient: recording(prisma14, { forbidden: true }).handle,
+          legacyReplica: recording(prisma14, { forbidden: true }).handle,
+          newPrimary: forbiddenNewPrimary.handle,
+          shardReplicas: new Map([["a", shardReplica.handle]]),
+          shardWriters: new Map([["a", shardWriter.handle]]),
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(seeded.id);
+      expect(shardReplica.calls.length).toBe(1);
+      expect(shardWriter.calls.length).toBe(1);
+      expect(forbiddenNewPrimary.calls.length).toBe(0);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "a gen-2 waitpoint with no configured shard writer returns null instead of reading a wrong database",
+    async ({ prisma17, prisma14 }) => {
+      const id = generateRunOpsIdV2("a");
+      const environmentId = generateRunOpsId();
+      const projectId = generateRunOpsId();
+      await seedWaitpoint(prisma17, id, { id: environmentId, projectId });
+
+      const forbiddenNewPrimary = recording(prisma17, { forbidden: true });
+
+      const result = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId,
+        read: read(id, environmentId),
+        deps: {
+          splitEnabled: true,
+          newClient: recording(prisma14, { forbidden: true }).handle,
+          legacyReplica: recording(prisma14, { forbidden: true }).handle,
+          newPrimary: forbiddenNewPrimary.handle,
+          shardReplicas: new Map([["a", recording(prisma14).handle]]),
+          shardWriters: new Map(),
+        },
+      });
+
+      expect(result).toBeNull();
+      expect(forbiddenNewPrimary.calls.length).toBe(0);
     }
   );
 });

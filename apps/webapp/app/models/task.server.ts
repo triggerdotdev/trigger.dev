@@ -3,7 +3,6 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { sqlDatabaseSchema } from "~/db.server";
 
 export { getTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
-export type { TaskIdentifierEntry } from "~/services/taskIdentifierCache.server";
 
 /**
  *

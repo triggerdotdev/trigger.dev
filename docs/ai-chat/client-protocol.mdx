@@ -955,8 +955,11 @@ You can send messages while the agent is still streaming a response. These are *
 
 The wire format is identical to a normal `kind: "message"` send — same `.in` channel, single `message` field. The difference is timing. What happens depends on the agent's `pendingMessages` configuration:
 
-- **With `pendingMessages.shouldInject`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With `pendingMessages.shouldInject` returning `true`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With a `pendingMessages` config that declines it**, either because `shouldInject` returned `false` or because it is absent: the message stays queued on the backend and is answered as the next turn.
 - **Without `pendingMessages` config**: the message queues for the next turn.
+
+In every case the message is answered. A declined message keeps its place in the queue, so it also survives a crash and is picked up by whichever run continues the conversation.
 
 See [Pending Messages](/ai-chat/pending-messages) for how to configure the agent side.
 

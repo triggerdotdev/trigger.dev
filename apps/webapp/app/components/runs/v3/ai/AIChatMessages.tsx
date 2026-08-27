@@ -288,8 +288,9 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
 
   // Auto-select input tab when input arrives after initial render (e.g. streaming tool calls)
   useEffect(() => {
-    if (!hasSubAgent && hasInput && activeTab === null) {
-      setActiveTab("input");
+    if (!hasSubAgent && hasInput) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
+      setActiveTab((current) => current ?? "input");
     }
   }, [hasInput, hasSubAgent]);
 
@@ -344,6 +345,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
           >
             {availableTabs.map((tab) => (
               <button
+                type="button"
                 key={tab}
                 onClick={() => handleTabClick(tab)}
                 className={`px-2.5 py-1 text-[11px] capitalize transition-colors ${

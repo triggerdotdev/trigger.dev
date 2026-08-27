@@ -281,7 +281,7 @@ export function DashboardAgent({
       cancelled = true;
       stop();
     };
-  }, [hasAccess, watching, actionPath, setPanelOpen, openChat]);
+  }, [hasAccess, watching, actionPath, setPanelOpen, openChat, rememberToasted]);
 
   // Zeroes the wake dot right away; the poll restores the truth if another chat has one. The
   // work count is not touched here: the panel derives it from the chat list.

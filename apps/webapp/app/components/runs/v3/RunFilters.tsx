@@ -87,7 +87,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 
-export const RunStatus = z.enum(allTaskRunStatuses);
+const RunStatus = z.enum(allTaskRunStatuses);
 
 const StringOrStringArray = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -105,7 +105,7 @@ const StringOrStringArray = z.preprocess((value) => {
   return undefined;
 }, z.string().array().optional());
 
-export const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
+const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
   if (typeof value === "string") {
     if (value.length > 0) {
       const parsed = MachinePresetName.safeParse(value);
@@ -406,6 +406,15 @@ export function RunsFilters(props: RunFiltersProps) {
       <FilterMenu {...props} />
       {hasFilters && (
         <Form className="-ml-1 h-6">
+          {searchParams.getAll("cols").map((v, i) => (
+            <input key={`cols-${i}`} type="hidden" name="cols" value={v} />
+          ))}
+          {searchParams.getAll("hide").map((v, i) => (
+            <input key={`hide-${i}`} type="hidden" name="hide" value={v} />
+          ))}
+          {searchParams.getAll("sc").map((v, i) => (
+            <input key={`sc-${i}`} type="hidden" name="sc" value={v} />
+          ))}
           <Button
             variant="minimal/small"
             LeadingIcon={XMarkIcon}
@@ -546,6 +555,7 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
           {filtered.map((type, index) => (
             <SelectButtonItem
               key={type.name}
+              accessibleLabel={type.title}
               onClick={() => {
                 clearSearchValue();
                 setFilterType(type.name);
@@ -1011,11 +1021,14 @@ function TagsDropdown({
     from: value("from"),
     to: value("to"),
   });
+  const fromTimestamp = from?.getTime();
+  const toTimestamp = to?.getTime();
 
   const tagValues = values("tags").filter((v) => v !== "");
   const selected = tagValues.length > 0 ? tagValues : undefined;
 
   const fetcher = useFetcher<typeof tagsLoader>();
+  const { load } = fetcher;
 
   useEffect(() => {
     const searchParams = new URLSearchParams();
@@ -1025,14 +1038,14 @@ function TagsDropdown({
     if (period) {
       searchParams.set("period", period);
     }
-    if (from) {
-      searchParams.set("from", from.getTime().toString());
+    if (fromTimestamp !== undefined) {
+      searchParams.set("from", fromTimestamp.toString());
     }
-    if (to) {
-      searchParams.set("to", to.getTime().toString());
+    if (toTimestamp !== undefined) {
+      searchParams.set("to", toTimestamp.toString());
     }
-    fetcher.load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
-  }, [environment.id, searchValue, period, from?.getTime(), to?.getTime()]);
+    load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
+  }, [environment.id, fromTimestamp, load, period, searchValue, toTimestamp]);
 
   const filtered = useMemo(() => {
     let items: string[] = [];
@@ -1170,32 +1183,31 @@ function QueuesDropdown({
     250
   );
 
-  const filtered = useMemo(() => {
-    let items: { name: string; type: "custom" | "task"; value: string }[] = [];
+  const items: { name: string; type: "custom" | "task"; value: string }[] = [];
 
-    for (const queueName of selected ?? []) {
-      const queueItem = fetcher.data?.queues.find((q) => q.name === queueName);
-      if (!queueItem) {
-        if (queueName.startsWith("task/")) {
-          items.push({
-            name: queueName.replace("task/", ""),
-            type: "task",
-            value: queueName,
-          });
-        } else {
-          items.push({
-            name: queueName,
-            type: "custom",
-            value: queueName,
-          });
-        }
+  for (const queueName of selected ?? []) {
+    const queueItem = fetcher.data?.queues.find((q) => q.name === queueName);
+    if (!queueItem) {
+      if (queueName.startsWith("task/")) {
+        items.push({
+          name: queueName.replace("task/", ""),
+          type: "task",
+          value: queueName,
+        });
+      } else {
+        items.push({
+          name: queueName,
+          type: "custom",
+          value: queueName,
+        });
       }
     }
+  }
 
-    if (fetcher.data === undefined) {
-      return matchSorter(items, searchValue);
-    }
-
+  let filtered: typeof items;
+  if (fetcher.data === undefined) {
+    filtered = matchSorter(items, searchValue);
+  } else {
     items.push(
       ...fetcher.data.queues.map((q) => ({
         name: q.name,
@@ -1204,10 +1216,10 @@ function QueuesDropdown({
       }))
     );
 
-    return matchSorter(Array.from(new Set(items)), searchValue, {
+    filtered = matchSorter(Array.from(new Set(items)), searchValue, {
       keys: ["name"],
     });
-  }, [searchValue, fetcher.data]);
+  }
 
   return (
     <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
@@ -1317,29 +1329,27 @@ function RegionsDropdown({
 
   const selected = values("regions").filter((v) => v !== "");
 
-  const filtered = useMemo(() => {
-    type RegionItem = { masterQueue: string; name: string; location?: string };
-    const items: RegionItem[] = [];
+  type RegionItem = { masterQueue: string; name: string; location?: string };
+  const items: RegionItem[] = [];
 
-    for (const masterQueue of selected) {
-      const known = regions.find((r) => r.masterQueue === masterQueue);
-      if (!known) {
-        items.push({ masterQueue, name: masterQueue });
-      }
+  for (const masterQueue of selected) {
+    const known = regions.find((r) => r.masterQueue === masterQueue);
+    if (!known) {
+      items.push({ masterQueue, name: masterQueue });
     }
+  }
 
-    for (const region of regions) {
-      if (!items.some((i) => i.masterQueue === region.masterQueue)) {
-        items.push({
-          masterQueue: region.masterQueue,
-          name: region.name,
-          location: region.location,
-        });
-      }
+  for (const region of regions) {
+    if (!items.some((i) => i.masterQueue === region.masterQueue)) {
+      items.push({
+        masterQueue: region.masterQueue,
+        name: region.name,
+        location: region.location,
+      });
     }
+  }
 
-    return matchSorter(items, searchValue, { keys: ["name", "masterQueue"] });
-  }, [searchValue, regions, selected.join(",")]);
+  const filtered = matchSorter(items, searchValue, { keys: ["name", "masterQueue"] });
 
   return (
     <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
@@ -1565,33 +1575,31 @@ export function VersionsDropdown({
     250
   );
 
-  const filtered = useMemo(() => {
-    let items: { version: string; isCurrent: boolean }[] = [];
+  const items: { version: string; isCurrent: boolean }[] = [];
 
-    for (const version of selected ?? []) {
-      const versionItem = fetcher.data?.versions.find((v) => v.version === version);
-      if (!versionItem) {
-        items.push({
-          version,
-          isCurrent: false,
-        });
-      }
+  for (const version of selected ?? []) {
+    const versionItem = fetcher.data?.versions.find((v) => v.version === version);
+    if (!versionItem) {
+      items.push({
+        version,
+        isCurrent: false,
+      });
     }
+  }
 
-    if (fetcher.data === undefined) {
-      return matchSorter(items, searchValue);
-    }
-
+  let filtered: typeof items;
+  if (fetcher.data === undefined) {
+    filtered = matchSorter(items, searchValue);
+  } else {
     items.push(...fetcher.data.versions);
 
-    if (searchValue === "") {
-      return items;
-    }
-
-    return matchSorter(Array.from(new Set(items)), searchValue, {
-      keys: ["version"],
-    });
-  }, [searchValue, fetcher.data]);
+    filtered =
+      searchValue === ""
+        ? items
+        : matchSorter(Array.from(new Set(items)), searchValue, {
+            keys: ["version"],
+          });
+  }
 
   return (
     <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>

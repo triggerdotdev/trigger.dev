@@ -19,5 +19,11 @@ export function mapRunToLiveFields(run: ListedRun) {
     usageDurationMs: Number(run.usageDurationMs),
     costInCents: run.costInCents,
     baseCostInCents: run.baseCostInCents,
+    metadata: run.metadata,
+    metadataType: run.metadataType,
+    payload: run.payload,
+    payloadType: run.payloadType,
+    output: run.output,
+    outputType: run.outputType,
   };
 }

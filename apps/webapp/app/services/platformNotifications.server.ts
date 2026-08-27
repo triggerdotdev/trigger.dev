@@ -1,24 +1,28 @@
 import type { z } from "zod";
-import { errAsync, fromPromise, type ResultAsync } from "neverthrow";
+import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { Prisma, prisma, sqlDatabaseSchema } from "~/db.server";
 import {
   type PlatformNotificationScope,
   type PlatformNotificationSurface,
+  type PrismaClientOrTransaction,
 } from "@trigger.dev/database";
 import { incrementCliRequestCounter } from "./platformNotificationCounter.server";
 import {
+  CreateDraftPlatformNotificationSchema,
+  type CreateDraftPlatformNotificationInput,
   CreatePlatformNotificationSchema,
   type CreatePlatformNotificationInput,
   type PayloadV1,
   PayloadV1Schema,
+  PublishDraftPlatformNotificationSchema,
+  type PublishDraftPlatformNotificationInput,
+  UpdateDraftPlatformNotificationSchema,
+  type UpdateDraftPlatformNotificationInput,
   UpdatePlatformNotificationSchema,
 } from "./platformNotificationSchemas";
 import { isCliVersionEligible } from "./platformNotificationVersionTargeting";
 
-export {
-  CreatePlatformNotificationSchema,
-  UpdatePlatformNotificationSchema,
-} from "./platformNotificationSchemas";
+export { UpdatePlatformNotificationSchema } from "./platformNotificationSchemas";
 export type { CreatePlatformNotificationInput, PayloadV1 } from "./platformNotificationSchemas";
 
 export type PlatformNotificationWithPayload = {
@@ -32,32 +36,39 @@ export type PlatformNotificationWithPayload = {
 
 // --- Read: admin list with interaction stats ---
 
-export async function getAdminNotificationsList({
-  page = 1,
-  pageSize = 20,
-  hideInactive = false,
-}: {
-  page?: number;
-  pageSize?: number;
-  hideInactive?: boolean;
-}) {
-  const where = hideInactive ? { archivedAt: null, endsAt: { gt: new Date() } } : {};
+export async function getAdminNotificationsList(
+  {
+    page = 1,
+    pageSize = 20,
+    hideInactive = false,
+  }: {
+    page?: number;
+    pageSize?: number;
+    hideInactive?: boolean;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
+  // Drafts carry placeholder dates, so exempt them from the "inactive" (expired)
+  // filter: a draft is neither active nor expired and must stay visible to admins.
+  const where = hideInactive
+    ? { archivedAt: null, OR: [{ isDraft: true }, { endsAt: { gt: new Date() } }] }
+    : {};
 
   const [notifications, total] = await Promise.all([
-    prisma.platformNotification.findMany({
+    db.platformNotification.findMany({
       where,
       orderBy: [{ createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.platformNotification.count({ where }),
+    db.platformNotification.count({ where }),
   ]);
 
   const notificationIds = notifications.map((n) => n.id);
 
   const interactionStats =
     notificationIds.length > 0
-      ? await prisma.$queryRaw<
+      ? await db.$queryRaw<
           {
             notificationId: string;
             seen: bigint;
@@ -96,6 +107,7 @@ export async function getAdminNotificationsList({
         priority: n.priority,
         startsAt: n.startsAt,
         endsAt: n.endsAt,
+        isDraft: n.isDraft,
         archivedAt: n.archivedAt,
         createdAt: n.createdAt,
         payload: n.payload,
@@ -129,21 +141,25 @@ export async function getAdminNotificationsList({
 
 // --- Read: active notifications for webapp ---
 
-export async function getActivePlatformNotifications({
-  userId,
-  organizationId,
-  projectId,
-}: {
-  userId: string;
-  organizationId: string;
-  projectId?: string;
-}) {
+export async function getActivePlatformNotifications(
+  {
+    userId,
+    organizationId,
+    projectId,
+  }: {
+    userId: string;
+    organizationId: string;
+    projectId?: string;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
   const now = new Date();
 
-  const notifications = await prisma.platformNotification.findMany({
+  const notifications = await db.platformNotification.findMany({
     where: {
       surface: "WEBAPP",
       archivedAt: null,
+      isDraft: false,
       startsAt: { lte: now },
       endsAt: { gt: now },
       AND: [
@@ -313,25 +329,30 @@ export async function verifyOrgMembership({
 
 // --- Read: recent changelogs (for Help & Feedback) ---
 
-export async function getRecentChangelogs({
-  userId,
-  organizationId,
-  projectId,
-  limit = 2,
-}: {
-  userId: string;
-  organizationId?: string;
-  projectId?: string;
-  limit?: number;
-}) {
+export async function getRecentChangelogs(
+  {
+    userId,
+    organizationId,
+    projectId,
+    limit = 2,
+  }: {
+    userId: string;
+    organizationId?: string;
+    projectId?: string;
+    limit?: number;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
   // NOTE: Intentionally not filtering by archivedAt or endsAt.
   // We want to show archived and expired changelogs in the "What's new" section
   // so users can still find recent release notes.
-  // We DO filter by scope (to prevent user-scoped changelogs leaking to others)
-  // and by startsAt (to hide changelogs scheduled for the future).
-  const notifications = await prisma.platformNotification.findMany({
+  // We DO filter by scope (to prevent user-scoped changelogs leaking to others),
+  // by startsAt (to hide changelogs scheduled for the future), and by isDraft
+  // (drafts have no real schedule and must never surface to users).
+  const notifications = await db.platformNotification.findMany({
     where: {
       surface: "WEBAPP",
+      isDraft: false,
       payload: { path: ["data", "type"], equals: "changelog" },
       startsAt: { lte: new Date() },
       OR: [
@@ -367,7 +388,8 @@ function isCliNotificationExpired(
     id: string;
     cliMaxDaysAfterFirstSeen: number | null;
     cliMaxShowCount: number | null;
-  }
+  },
+  db: PrismaClientOrTransaction = prisma
 ): boolean {
   if (!interaction) return false;
 
@@ -391,7 +413,7 @@ function isCliNotificationExpired(
   // For time-based expiration, persist the dismiss on the next request
   // (showCount-based dismissal is handled inline at display time)
   if (expired && !interaction.cliDismissedAt) {
-    void prisma.platformNotificationInteraction.update({
+    void db.platformNotificationInteraction.update({
       where: {
         notificationId_userId: {
           notificationId: notification.id,
@@ -405,15 +427,18 @@ function isCliNotificationExpired(
   return expired;
 }
 
-export async function getNextCliNotification({
-  userId,
-  projectRef,
-  cliVersion,
-}: {
-  userId: string;
-  projectRef?: string;
-  cliVersion?: string;
-}): Promise<{
+export async function getNextCliNotification(
+  {
+    userId,
+    projectRef,
+    cliVersion,
+  }: {
+    userId: string;
+    projectRef?: string;
+    cliVersion?: string;
+  },
+  db: PrismaClientOrTransaction = prisma
+): Promise<{
   id: string;
   payload: PayloadV1;
   showCount: number;
@@ -426,7 +451,7 @@ export async function getNextCliNotification({
   let projectId: string | undefined;
 
   if (projectRef) {
-    const project = await prisma.project.findFirst({
+    const project = await db.project.findFirst({
       where: {
         externalRef: projectRef,
         deletedAt: null,
@@ -446,7 +471,7 @@ export async function getNextCliNotification({
 
   // If no projectRef or project not found, get org from membership
   if (!organizationId) {
-    const membership = await prisma.orgMember.findFirst({
+    const membership = await db.orgMember.findFirst({
       where: { userId },
       select: { organizationId: true },
     });
@@ -468,10 +493,11 @@ export async function getNextCliNotification({
     scopeFilter.push({ scope: "PROJECT", projectId });
   }
 
-  const notifications = await prisma.platformNotification.findMany({
+  const notifications = await db.platformNotification.findMany({
     where: {
       surface: "CLI",
       archivedAt: null,
+      isDraft: false,
       startsAt: { lte: now },
       endsAt: { gt: now },
       AND: [{ OR: scopeFilter }],
@@ -499,7 +525,7 @@ export async function getNextCliNotification({
     const parsed = PayloadV1Schema.safeParse(n.payload);
     if (!parsed.success) continue;
     if (!isCliVersionEligible(parsed.data.data.minimumCliVersion, cliVersion)) continue;
-    if (isCliNotificationExpired(interaction, n)) continue;
+    if (isCliNotificationExpired(interaction, n, db)) continue;
 
     // Check cliShowEvery using the global request counter
     if (n.cliShowEvery !== null && requestCounter % n.cliShowEvery !== 0) {
@@ -512,7 +538,7 @@ export async function getNextCliNotification({
     const reachedMaxShows =
       n.cliMaxShowCount !== null && (interaction?.showCount ?? 0) + 1 >= n.cliMaxShowCount;
 
-    const updated = await prisma.platformNotificationInteraction.upsert({
+    const updated = await db.platformNotificationInteraction.upsert({
       where: { notificationId_userId: { notificationId: n.id, userId } },
       update: {
         showCount: { increment: 1 },
@@ -540,7 +566,10 @@ export async function getNextCliNotification({
 
 // --- Create and update: admin endpoint support ---
 
-type CreateError = { type: "validation"; issues: z.ZodIssue[] } | { type: "db"; message: string };
+type CreateError =
+  | { type: "validation"; issues: z.ZodIssue[] }
+  | { type: "db"; message: string }
+  | { type: "conflict"; message: string };
 
 export function createPlatformNotification(
   input: CreatePlatformNotificationInput
@@ -615,6 +644,131 @@ export function updatePlatformNotification(
       type: "db",
       message: e instanceof Error ? e.message : String(e),
     })
+  );
+}
+
+export function createDraftPlatformNotification(
+  input: CreateDraftPlatformNotificationInput,
+  db: PrismaClientOrTransaction = prisma
+): ResultAsync<{ id: string; friendlyId: string }, CreateError> {
+  const parseResult = CreateDraftPlatformNotificationSchema.safeParse(input);
+
+  if (!parseResult.success) {
+    return errAsync({ type: "validation", issues: parseResult.error.issues });
+  }
+
+  const data = parseResult.data;
+
+  // Drafts carry no real schedule. Store placeholder dates (ignored while
+  // isDraft is true) — publishing sets the real startsAt/endsAt.
+  const now = new Date();
+
+  return fromPromise(
+    db.platformNotification.create({
+      data: {
+        title: data.title,
+        payload: data.payload,
+        surface: data.surface as PlatformNotificationSurface,
+        scope: data.scope as PlatformNotificationScope,
+        userId: data.userId,
+        organizationId: data.organizationId,
+        projectId: data.projectId,
+        startsAt: now,
+        endsAt: now,
+        priority: data.priority,
+        cliMaxDaysAfterFirstSeen: data.cliMaxDaysAfterFirstSeen,
+        cliMaxShowCount: data.cliMaxShowCount,
+        cliShowEvery: data.cliShowEvery,
+        isDraft: true,
+      },
+      select: { id: true, friendlyId: true },
+    }),
+    (e): CreateError => ({
+      type: "db",
+      message: e instanceof Error ? e.message : String(e),
+    })
+  );
+}
+
+export function updateDraftPlatformNotification(
+  input: UpdateDraftPlatformNotificationInput,
+  db: PrismaClientOrTransaction = prisma
+): ResultAsync<{ id: string }, CreateError> {
+  const parseResult = UpdateDraftPlatformNotificationSchema.safeParse(input);
+
+  if (!parseResult.success) {
+    return errAsync({ type: "validation", issues: parseResult.error.issues });
+  }
+
+  const data = parseResult.data;
+
+  // Editing a draft touches content only; startsAt/endsAt/isDraft are left as-is
+  // so the notification stays an unscheduled draft until it is published.
+  // `isDraft: true` in the predicate makes this a no-op against a non-draft row,
+  // so draft-only semantics can never be applied to an active/pending/archived one.
+  return fromPromise(
+    db.platformNotification.updateMany({
+      where: { id: data.id, isDraft: true },
+      data: {
+        title: data.title,
+        payload: data.payload,
+        surface: data.surface as PlatformNotificationSurface,
+        scope: data.scope as PlatformNotificationScope,
+        userId: data.scope === "USER" ? data.userId : null,
+        organizationId: data.scope === "ORGANIZATION" ? data.organizationId : null,
+        projectId: data.scope === "PROJECT" ? data.projectId : null,
+        priority: data.priority,
+        cliMaxDaysAfterFirstSeen:
+          data.surface === "CLI" ? (data.cliMaxDaysAfterFirstSeen ?? null) : null,
+        cliMaxShowCount: data.surface === "CLI" ? (data.cliMaxShowCount ?? null) : null,
+        cliShowEvery: data.surface === "CLI" ? (data.cliShowEvery ?? null) : null,
+      },
+    }),
+    (e): CreateError => ({
+      type: "db",
+      message: e instanceof Error ? e.message : String(e),
+    })
+  ).andThen(({ count }) =>
+    count === 0
+      ? errAsync<{ id: string }, CreateError>({
+          type: "conflict",
+          message: "Notification not found or is not a draft",
+        })
+      : okAsync({ id: data.id })
+  );
+}
+
+export function publishDraftPlatformNotification(
+  input: PublishDraftPlatformNotificationInput,
+  db: PrismaClientOrTransaction = prisma
+): ResultAsync<{ id: string }, CreateError> {
+  const parseResult = PublishDraftPlatformNotificationSchema.safeParse(input);
+
+  if (!parseResult.success) {
+    return errAsync({ type: "validation", issues: parseResult.error.issues });
+  }
+
+  const data = parseResult.data;
+
+  // `isDraft: true` in the predicate ensures we only publish an actual draft:
+  // a request naming a non-draft id updates zero rows and reports a conflict
+  // rather than resetting a live notification's schedule.
+  return fromPromise(
+    db.platformNotification.updateMany({
+      where: { id: data.id, isDraft: true },
+      data: { startsAt: data.startsAt, endsAt: data.endsAt, isDraft: false },
+    }),
+    (e): CreateError => ({
+      type: "db",
+      message: e instanceof Error ? e.message : String(e),
+    })
+  ).andThen(({ count }) =>
+    count === 0
+      ? errAsync<{ id: string }, CreateError>({
+          type: "conflict",
+          message: "Notification not found or is not a draft",
+        })
+      : okAsync({ id: data.id })
   );
 }
 

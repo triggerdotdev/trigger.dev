@@ -12,7 +12,7 @@ import {
 } from "./RateLimitSection.server";
 import type { EffectiveRateLimit } from "./RateLimitSection";
 
-export const apiRateLimitDomain: RateLimitDomain = {
+const apiRateLimitDomain: RateLimitDomain = {
   intent: API_RATE_LIMIT_INTENT,
   systemDefault: () => ({
     type: "tokenBucket",

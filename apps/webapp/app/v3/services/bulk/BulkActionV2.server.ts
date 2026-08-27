@@ -115,7 +115,7 @@ export class BulkActionService extends BaseService {
     // Count the runs that will be affected by the bulk action
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       organizationId,
-      "standard"
+      "runsList"
     );
     const runsRepository = new RunsRepository({
       clickhouse,
@@ -275,7 +275,7 @@ export class BulkActionService extends BaseService {
 
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       group.project.organizationId,
-      "standard"
+      "runsList"
     );
     const runsRepository = new RunsRepository({
       clickhouse,
@@ -534,7 +534,7 @@ export class BulkActionService extends BaseService {
   }
 }
 
-export function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
+function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
   const {
     cursor: _cursor,
     direction: _direction,

@@ -6,7 +6,7 @@
 export const UNREAD_POLL_INTERVAL_MS = 60_000;
 
 // Added to each delay so open tabs never settle into polling on the same second.
-export const UNREAD_POLL_JITTER_MS = 15_000;
+const UNREAD_POLL_JITTER_MS = 15_000;
 
 /**
  * Which of the feed's wakes this tab should toast. The feed is recent deliveries, not

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { AgentSpinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
-import { useApiOrigin } from "~/hooks/useApiOrigin";
+import { useDashboardAgentBaseUrl } from "~/hooks/useDashboardAgentBaseUrl";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -104,7 +104,7 @@ export function DashboardAgentPanel({
   const project = useProject();
   const environment = useEnvironment();
   const user = useUser();
-  const apiOrigin = useApiOrigin();
+  const apiOrigin = useDashboardAgentBaseUrl();
   const location = useLocation();
   const pageContext = useAgentPageContext();
   const toast = useToast();
@@ -194,7 +194,7 @@ export function DashboardAgentPanel({
           toast.error("We couldn't load your previous chats. Try again in a moment.");
         }
       }),
-    [actionPath, organization.id, toast]
+    [actionPath, organization.id, toast, justRead, visibleChatId]
   );
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one.
@@ -341,6 +341,7 @@ export function DashboardAgentPanel({
     handledOpenChatSeq.current = openChatRequest.seq;
     // Reloading the visible transcript would drop a turn in flight.
     if (openChatRequest.chatId === active?.chatId) return;
+
     void openChat(openChatRequest.chatId);
     // `active` is read, not tracked: a later change must not re-run the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -357,6 +358,7 @@ export function DashboardAgentPanel({
     onChatRead?.(chatId, { leaving: false });
     visibleChatId.current = nextVisibleChat(chatId, { leaving: false });
     justRead.current.add(chatId);
+
     setChats((previous) => markChatListRead(previous, chatId));
     // Read again on the way out: a wake can land while the chat is open.
     return () => {
@@ -416,6 +418,7 @@ export function DashboardAgentPanel({
   }, []);
 
   const dismissWatchCard = () => dispatchWatchCard({ type: "dismissed" });
+  const activeChatId = active?.chatId;
 
   const submitWatch = useCallback(async () => {
     const draft = watchCard.draft;
@@ -429,7 +432,7 @@ export function DashboardAgentPanel({
       body.set("draft", JSON.stringify(draft));
       body.set("clientRequestId", clientRequestId);
       // A watch is chat-bound: with no chat open the server creates one.
-      if (active?.chatId) body.set("chatId", active.chatId);
+      if (activeChatId) body.set("chatId", activeChatId);
 
       const res = await fetch(actionPath, { method: "POST", body });
       const data = (await res.json()) as {
@@ -446,7 +449,7 @@ export function DashboardAgentPanel({
       }
 
       const messages = data.messages;
-      if (active?.chatId === data.chatId) {
+      if (activeChatId === data.chatId) {
         setAppendedMessages((current) => ({
           chatId: data.chatId!,
           messages,
@@ -474,8 +477,9 @@ export function DashboardAgentPanel({
   }, [
     watchCard.draft,
     watchCard.requestId,
-    active?.chatId,
+    activeChatId,
     actionPath,
+    organization.id,
     claimChatSlot,
     loadHistory,
   ]);
@@ -581,6 +585,7 @@ export function DashboardAgentPanel({
   // Not filtered to active: the wake banner needs watches that already fired.
   const chatWatches = activeChat?.watches ?? [];
 
+  /* oxlint-disable jsx-a11y/no-static-element-interactions -- Escape handling intentionally bubbles from focused controls inside the panel. */
   return (
     <div
       ref={panelRef}
@@ -667,3 +672,4 @@ export function DashboardAgentPanel({
     </div>
   );
 }
+/* oxlint-enable jsx-a11y/no-static-element-interactions */

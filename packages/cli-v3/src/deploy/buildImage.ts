@@ -153,7 +153,7 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
   });
 }
 
-export interface DepotBuildImageOptions {
+interface DepotBuildImageOptions {
   auth: string;
   buildId: string;
   buildToken: string;
@@ -1158,11 +1158,11 @@ function shouldPush(imageTag: string, push?: boolean) {
       return false;
     }
     case undefined: {
-      return imageTag.startsWith("localhost") ||
+      return !(
+        imageTag.startsWith("localhost") ||
         imageTag.startsWith("127.0.0.1") ||
         imageTag.startsWith("0.0.0.0")
-        ? false
-        : true;
+      );
     }
     default: {
       assertExhaustive(push);
@@ -1180,7 +1180,7 @@ function shouldLoad(load?: boolean, push?: boolean) {
       return false;
     }
     case undefined: {
-      return push ? false : true;
+      return !push;
     }
     default: {
       assertExhaustive(load);

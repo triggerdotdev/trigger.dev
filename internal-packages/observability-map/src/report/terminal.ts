@@ -33,7 +33,7 @@ export const fixFirst = (entries: ScoredEntry[]): ScoredEntry[] =>
 /** An entry whose only finding is `request-context`, which fails almost everything, so it is
  * collapsed into the `CONTEXT` figure rather than listed. An entry that fails something else as well
  * keeps all of its findings and stays in the list. */
-export const contextOnly = (e: ScoredEntry) => {
+const contextOnly = (e: ScoredEntry) => {
   const failures = scoredFailures(e);
   return failures.length === 1 && failures[0]!.id === "request-context";
 };

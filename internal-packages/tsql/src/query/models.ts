@@ -15,19 +15,9 @@ export interface DatabaseField extends FieldOrTable {
   get_constant_type?(): ConstantType;
   default_value?(): any;
 }
-
-export interface IntegerDatabaseField extends DatabaseField {}
-export interface FloatDatabaseField extends DatabaseField {}
-export interface DecimalDatabaseField extends DatabaseField {}
-export interface StringDatabaseField extends DatabaseField {}
 export interface UnknownDatabaseField extends DatabaseField {}
-export interface StringJSONDatabaseField extends DatabaseField {}
-export interface StringArrayDatabaseField extends DatabaseField {}
-export interface FloatArrayDatabaseField extends DatabaseField {}
-export interface DateDatabaseField extends DatabaseField {}
 export interface DateTimeDatabaseField extends DatabaseField {}
 export interface BooleanDatabaseField extends DatabaseField {}
-export interface UUIDDatabaseField extends DatabaseField {}
 
 export interface ExpressionField extends DatabaseField {
   expr: Expr;
@@ -56,14 +46,6 @@ export interface LazyJoin extends FieldOrTable {
 export interface LazyTable extends Table {}
 
 export interface VirtualTable extends Table {}
-
-export interface SavedQuery extends Table {
-  query: Expr;
-}
-
-export interface FunctionCallTable extends Table {
-  call_function?(context: TSQLContext): Expr;
-}
 
 export interface TableNode {
   name: "root" | string;
@@ -237,17 +219,4 @@ export class TableNodeImpl implements TableNode {
     current.table = table;
     return start;
   }
-}
-
-export interface LazyTableToAdd {
-  lazy_table: LazyTable;
-  fields_accessed: Record<string, Array<string | number>>;
-}
-
-export interface LazyJoinToAdd {
-  from_table: string;
-  to_table: string;
-  lazy_join: LazyJoin;
-  lazy_join_type: any; // LazyJoinType from ast.ts
-  fields_accessed: Record<string, Array<string | number>>;
 }

@@ -1,5 +1,5 @@
 import { CheckIcon, SparklesIcon } from "@heroicons/react/20/solid";
-import { createContext, useContext, useRef, useState } from "react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
 import { useTriggerCliTag } from "~/hooks/useTriggerCliTag";
@@ -24,10 +24,13 @@ const PackageManagerContext = createContext<PackageManagerContextType | undefine
 export function PackageManagerProvider({ children }: { children: React.ReactNode }) {
   const [activePackageManager, setActivePackageManager] = useState("npm");
 
+  const contextValue = useMemo(
+    () => ({ activePackageManager, setActivePackageManager }),
+    [activePackageManager]
+  );
+
   return (
-    <PackageManagerContext.Provider value={{ activePackageManager, setActivePackageManager }}>
-      {children}
-    </PackageManagerContext.Provider>
+    <PackageManagerContext.Provider value={contextValue}>{children}</PackageManagerContext.Provider>
   );
 }
 
@@ -54,7 +57,7 @@ function useApiUrl() {
   }
 }
 
-function getApiUrlArg() {
+function useApiUrlArg() {
   const apiUrl = useApiUrl();
   return apiUrl ? `-a ${apiUrl}` : undefined;
 }
@@ -67,7 +70,7 @@ type TabsProps = {
 export function InitCommandV3({ title }: TabsProps) {
   const project = useProject();
   const projectRef = project.externalRef;
-  const apiUrlArg = getApiUrlArg();
+  const apiUrlArg = useApiUrlArg();
   const triggerCliTag = useTriggerCliTag();
 
   const initCommandParts = [`trigger.dev@${triggerCliTag}`, "init", `-p ${projectRef}`, apiUrlArg];
@@ -237,52 +240,6 @@ export function TriggerDevStepV3({ title }: TabsProps) {
           iconButton
           className="mb-4"
           value={`yarn dlx trigger.dev@${triggerCliTag} dev`}
-        />
-      </ClientTabsContent>
-    </ClientTabs>
-  );
-}
-
-export function TriggerLoginStepV3({ title }: TabsProps) {
-  const triggerCliTag = useTriggerCliTag();
-  const { activePackageManager, setActivePackageManager } = usePackageManager();
-
-  return (
-    <ClientTabs
-      defaultValue="npm"
-      value={activePackageManager}
-      onValueChange={setActivePackageManager}
-    >
-      <div className="flex items-center gap-4">
-        {title && <span>{title}</span>}
-        <ClientTabsList className={title ? "ml-auto" : ""}>
-          <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
-          <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
-          <ClientTabsTrigger value={"yarn"}>yarn</ClientTabsTrigger>
-        </ClientTabsList>
-      </div>
-      <ClientTabsContent value={"npm"}>
-        <ClipboardField
-          variant="secondary/medium"
-          iconButton
-          className="mb-4"
-          value={`npx trigger.dev@${triggerCliTag} login`}
-        />
-      </ClientTabsContent>
-      <ClientTabsContent value={"pnpm"}>
-        <ClipboardField
-          variant="secondary/medium"
-          iconButton
-          className="mb-4"
-          value={`pnpm dlx trigger.dev@${triggerCliTag} login`}
-        />
-      </ClientTabsContent>
-      <ClientTabsContent value={"yarn"}>
-        <ClipboardField
-          variant="secondary/medium"
-          iconButton
-          className="mb-4"
-          value={`yarn dlx trigger.dev@${triggerCliTag} login`}
         />
       </ClientTabsContent>
     </ClientTabs>

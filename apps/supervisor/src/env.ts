@@ -1,7 +1,13 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv, NodeLabelValue, Tolerations } from "./envUtil.js";
+import {
+  AdditionalEnvVars,
+  BoolEnv,
+  NodeLabelValue,
+  OrgPlacementOverrides,
+  Tolerations,
+} from "./envUtil.js";
 
 export const Env = z
   .object({
@@ -179,6 +185,9 @@ export const Env = z
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
     KUBERNETES_STRIP_IMAGE_DIGEST: BoolEnv.default(false),
+    KUBERNETES_IMAGE_REGISTRY_REWRITE_FROM: z.string().optional(),
+    KUBERNETES_IMAGE_REGISTRY_REWRITE_TO: z.string().optional(),
+    KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME: z.string().optional(),
     KUBERNETES_CPU_REQUEST_MIN_CORES: z.coerce.number().min(0).default(0),
     KUBERNETES_CPU_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(0.75), // Ratio of CPU limit, so 0.75 = 75% of CPU limit
     KUBERNETES_MEMORY_REQUEST_MIN_GB: z.coerce.number().min(0).default(0),
@@ -204,6 +213,16 @@ export const Env = z
 
     KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
+    KUBERNETES_RUNNER_SECCOMP_PROFILE_PATH: z
+      .string()
+      .trim()
+      .min(1)
+      .default("profiles/block-io-uring.json"),
+    KUBERNETES_RUNNER_SECCOMP_PROFILE_RUNTIMES: z
+      .enum(["none", "node-24-plus", "all"])
+      .default("node-24-plus"),
+    KUBERNETES_RUNNER_SECURITY_CONTEXT: z.enum(["off", "baseline", "restricted"]).default("off"),
+    KUBERNETES_RUNNER_RUN_AS_USER: z.coerce.number().int().min(1).default(1000),
 
     // Pod DNS config — override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
     // Default k8s ndots is 5: any name with fewer than 5 dots (e.g. `api.example.com`, 2 dots) is first walked
@@ -260,6 +279,11 @@ export const Env = z
     KUBERNETES_RUNNER_TOLERATIONS: Tolerations.optional(), // every run pod
     KUBERNETES_SCHEDULED_RUN_TOLERATIONS: Tolerations.optional(), // schedule-tree runs only
 
+    // Per-org placement overrides, JSON keyed by the internal org id
+    // (the `org` label on run pods):
+    // {"<orgId>": {"nodeSelector": {"<key>": "<value>"}, "tolerations": "<csv or array>"}}
+    KUBERNETES_ORG_PLACEMENT_OVERRIDES: OrgPlacementOverrides,
+
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
     PLACEMENT_TAGS_PREFIX: z.string().default("node.cluster.x-k8s.io"),
@@ -304,6 +328,22 @@ export const Env = z
           "TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE must be less than TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE",
         path: ["TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE"],
       });
+    }
+    if (data.KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED && data.KUBERNETES_ORG_PLACEMENT_OVERRIDES) {
+      // Non-large presets carry a hard NotIn on the large-machine pool, so an org
+      // pinned to that pool could never schedule its non-large runs.
+      for (const [orgId, override] of Object.entries(data.KUBERNETES_ORG_PLACEMENT_OVERRIDES)) {
+        const pinnedPool =
+          override.nodeSelector?.[data.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY];
+
+        if (pinnedPool === data.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Org "${orgId}" pins run pods to the large-machine pool, but non-large presets are required to stay off it, so those runs would never schedule. Use a different pool or disable KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED.`,
+            path: ["KUBERNETES_ORG_PLACEMENT_OVERRIDES"],
+          });
+        }
+      }
     }
     if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_METADATA_URL) {
       ctx.addIssue({

@@ -170,7 +170,11 @@ export function organizationSettingsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings`;
 }
 
-export function organizationIntegrationsPath(organization: OrgForPath) {
+export function organizationProjectsPath(organization: OrgForPath) {
+  return `${organizationSettingsPath(organization)}/projects`;
+}
+
+function organizationIntegrationsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings/integrations`;
 }
 
@@ -216,10 +220,6 @@ export function vercelAppInstallPath(organizationSlug: string, projectSlug: stri
   return `/vercel/install?org_slug=${organizationSlug}&project_slug=${projectSlug}`;
 }
 
-export function vercelCallbackPath() {
-  return `/vercel/callback`;
-}
-
 export function vercelResourcePath(
   organizationSlug: string,
   projectSlug: string,
@@ -236,14 +236,6 @@ export function v3EnvironmentPath(
   return `/orgs/${organizationParam(organization)}/projects/${projectParam(
     project
   )}/env/${environmentParam(environment)}`;
-}
-
-export function v3TasksDashboardPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath
-) {
-  return `${v3EnvironmentPath(organization, project, environment)}/tasks/dashboard`;
 }
 
 export function v3TasksStreamingPath(
@@ -374,7 +366,7 @@ export function v3TestTaskPath(
   )}`;
 }
 
-export function v3PlaygroundPath(
+function v3PlaygroundPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath
@@ -678,7 +670,7 @@ export function v3BatchRunsPath(
   return `${v3RunsPath(organization, project, environment, { batchId: batch.friendlyId })}`;
 }
 
-export function v3ProjectSettingsPath(
+function v3ProjectSettingsPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath
@@ -735,15 +727,6 @@ export function v3ModelsPath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/models`;
-}
-
-export function v3ModelDetailPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath,
-  modelId: string
-) {
-  return `${v3ModelsPath(organization, project, environment)}/${modelId}`;
 }
 
 export function v3ModelComparePath(
@@ -857,17 +840,8 @@ export function v3BillingLimitsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings/billing-limits`;
 }
 
-/** @deprecated Use v3BillingLimitsPath — redirects from billing-alerts are preserved */
-export function v3BillingAlertsPath(organization: OrgForPath) {
-  return v3BillingLimitsPath(organization);
-}
-
 export function v3PrivateConnectionsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings/private-connections`;
-}
-
-export function v3NewPrivateConnectionPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/settings/private-connections/new`;
 }
 
 export function v3StripePortalPath(organization: OrgForPath) {
@@ -879,16 +853,12 @@ export function v3UsagePath(organization: OrgForPath) {
 }
 
 // Docs
-export function docsRoot() {
+function docsRoot() {
   return "https://trigger.dev/docs";
 }
 
 export function docsPath(path: string) {
   return `${docsRoot()}/${path.replace(/^\//, "")}`;
-}
-
-export function docsTroubleshootingPath(path: string) {
-  return `${docsRoot()}/v3/troubleshooting`;
 }
 
 export function adminPath() {
