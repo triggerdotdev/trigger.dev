@@ -1311,8 +1311,8 @@ async function resolveServerBuildPath(
       }
       break;
     case "server":
-      if (resolved.buildPath === "depot") {
-        logger.debug("Build path depot (server)");
+      if (resolved.buildPath === "depot" || options.dryRun) {
+        logger.debug(`Build path ${resolved.buildPath} (server)`);
       } else {
         log.info(BUILD_PATH_LABEL[resolved.buildPath]);
       }
