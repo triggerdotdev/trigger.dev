@@ -9,7 +9,7 @@ import { getSnapshotStoreConfig, getSnapshotSweepClient } from "./snapshotStoreI
  * default config evicts the slots it owns while every other node stays safe. `unknown` covers a
  * managed endpoint that refuses CONFIG GET, which is evidence of nothing either way.
  */
-export type EvictionPolicyReport =
+type EvictionPolicyReport =
   | { kind: "unknown"; reason: string }
   | { kind: "known"; nodes: { node: string; policy: string }[] };
 
