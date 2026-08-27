@@ -34,6 +34,7 @@ import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useToast } from "~/components/primitives/Toast";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import {
   SETTINGS_ROW_TITLE_GAP,
@@ -502,15 +503,25 @@ function ChangeProfilePhotoButton() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        title="Change your profile picture"
-        aria-label="Change your profile picture"
-        className="focus-custom group cursor-pointer rounded-full outline-hidden"
-      >
-        <UserProfilePhoto className="size-8 transition group-hover:opacity-60" strokeWidth={1.5} />
-      </button>
+      <SimpleTooltip
+        asChild
+        tabbable
+        disableHoverableContent
+        content="Change your profile picture"
+        button={
+          <button
+            type="button"
+            onClick={() => setIsOpen(true)}
+            aria-label="Change your profile picture"
+            className="focus-custom group cursor-pointer rounded-full outline-hidden"
+          >
+            <UserProfilePhoto
+              className="size-8 transition group-hover:opacity-60"
+              strokeWidth={1.5}
+            />
+          </button>
+        }
+      />
       <ProfilePhotoEditor
         open={isOpen}
         onOpenChange={setIsOpen}
