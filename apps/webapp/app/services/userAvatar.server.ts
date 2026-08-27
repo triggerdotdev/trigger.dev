@@ -8,6 +8,7 @@ import {
   isAvatarContentType,
   MAX_AVATAR_SIZE_IN_BYTES,
 } from "~/utils/avatarLimits";
+import { imageOriginFromUrl } from "~/utils/cspImageOrigins";
 import { getObjectStoreClient } from "~/v3/objectStore.server";
 
 /** Avatars always live in plain S3, never the default/R2 protocol. */
@@ -16,6 +17,11 @@ const AVATAR_PRESIGN_EXPIRY_IN_SECONDS = 300;
 
 const AVATAR_FILENAME_REGEX = /^[0-9a-f]{32}\.(png|jpg|webp)$/;
 const USER_ID_REGEX = /^[A-Za-z0-9_-]+$/;
+
+/** Undefined when no avatar store is configured, so the policy stays unchanged. */
+export function avatarObjectStoreImageOrigin() {
+  return imageOriginFromUrl(env.OBJECT_STORE_S3_BASE_URL);
+}
 
 /** The first segment of a logical key is the bucket, as with `packets/…`. */
 function requireAvatarObjectStore() {

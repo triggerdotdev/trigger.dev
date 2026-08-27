@@ -20,6 +20,7 @@ import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
 import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
+import { avatarObjectStoreImageOrigin } from "./services/userAvatar.server";
 import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
@@ -66,8 +67,8 @@ const ABORT_DELAY = 30000;
  * ships in the stacked UI PR, so on this branch the policy is the only thing stopping
  * a model- or customer-authored image from reaching a remote host.
  *
- * The hosts we store avatar URLs for, plus whatever `CSP_IMG_SRC_ALLOWLIST` adds
- * (e.g. a self-hosted SSO avatar host).
+ * The hosts we store avatar URLs for, the object store uploaded avatars are presigned
+ * from, plus whatever `CSP_IMG_SRC_ALLOWLIST` adds (e.g. a self-hosted SSO avatar host).
  */
 const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
   singleton("CspImageOrigins", () => {
@@ -81,7 +82,9 @@ const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
       );
     }
 
-    return origins;
+    const avatarOrigin = avatarObjectStoreImageOrigin();
+
+    return avatarOrigin && !origins.includes(avatarOrigin) ? [...origins, avatarOrigin] : origins;
   })
 );
 

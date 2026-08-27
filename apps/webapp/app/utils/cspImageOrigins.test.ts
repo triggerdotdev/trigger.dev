@@ -3,6 +3,7 @@ import { faviconUrl } from "./favicon";
 import {
   BASE_IMG_SRC_SOURCES,
   buildImgSrcDirective,
+  imageOriginFromUrl,
   parseCspImageOrigins,
   withImgSrc,
 } from "./cspImageOrigins";
@@ -187,5 +188,41 @@ describe("withImgSrc", () => {
     expect(withImgSrc("default-src 'self'; img-src 'none'", directive)).toBe(
       "default-src 'self'; img-src 'none'"
     );
+  });
+});
+
+describe("imageOriginFromUrl", () => {
+  it("keeps a plain http object store, which local and self-hosted setups run", () => {
+    expect(imageOriginFromUrl("http://localhost:9005")).toBe("http://localhost:9005");
+  });
+
+  it("drops the path and query a presigned URL carries", () => {
+    expect(imageOriginFromUrl("https://s3.example.com/bucket/key.png?X-Amz-Signature=abc")).toBe(
+      "https://s3.example.com"
+    );
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+    ["not a URL", "s3.example.com"],
+    ["a non-http scheme", "s3://bucket"],
+  ])("is undefined when the base URL is %s", (_case, value) => {
+    expect(imageOriginFromUrl(value)).toBeUndefined();
+  });
+
+  it("permits a presigned image once it is in the directive", () => {
+    const origin = imageOriginFromUrl("http://localhost:9005");
+    const directive = buildImgSrcDirective(origin ? [origin] : []);
+
+    expect(
+      directivePermits(
+        directive,
+        "http://localhost:9005/avatars-local/avatars/usr_1/abc.png?X-Amz-Expires=300"
+      )
+    ).toBe(true);
+    expect(
+      directivePermits(buildImgSrcDirective(), "http://localhost:9005/avatars-local/a.png")
+    ).toBe(false);
   });
 });

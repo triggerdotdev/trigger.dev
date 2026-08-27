@@ -112,6 +112,28 @@ function rejectionReason(value: string, allowHttp: boolean): string | undefined 
   return undefined;
 }
 
+/**
+ * The origin of a URL the operator configured themselves, keeping its scheme: an object
+ * store on plain http is a normal local or self-hosted setup. Origin only — CSP matches
+ * the host and ignores the presigned query string.
+ */
+export function imageOriginFromUrl(baseUrl: string | undefined | null): string | undefined {
+  if (!baseUrl) return undefined;
+
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return undefined;
+  }
+
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.host.length === 0) {
+    return undefined;
+  }
+
+  return `${url.protocol}//${url.host}`;
+}
+
 /** The full directive: the base sources plus any configured extra origins. */
 export function buildImgSrcDirective(extraOrigins: readonly string[] = []): string {
   return ["img-src", ...BASE_IMG_SRC_SOURCES, ...extraOrigins].join(" ");

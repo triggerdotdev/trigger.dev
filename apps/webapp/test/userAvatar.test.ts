@@ -5,6 +5,7 @@ import {
   buildUserAvatarUrl,
   isAvatarUploadRejection,
   absoluteUserAvatarUrl,
+  avatarObjectStoreImageOrigin,
   parseAvatarUpload,
   presignUserAvatarUrl,
   resolveStaleAvatarObjectPath,
@@ -263,5 +264,31 @@ describe("the avatar object store", () => {
     expect(url).toContain(`/avatars-bucket/avatars/${USER_ID}/a.png`);
     expect(url).toContain("X-Amz-Expires=300");
     expect(url).toContain("X-Amz-Signature=");
+  });
+});
+
+describe("avatarObjectStoreImageOrigin", () => {
+  const originalBaseUrl = env.OBJECT_STORE_S3_BASE_URL;
+
+  afterEach(() => {
+    env.OBJECT_STORE_S3_BASE_URL = originalBaseUrl;
+  });
+
+  it("is the store's origin when one is configured, http included", () => {
+    env.OBJECT_STORE_S3_BASE_URL = "http://localhost:9005";
+
+    expect(avatarObjectStoreImageOrigin()).toBe("http://localhost:9005");
+  });
+
+  it("keeps only the origin of a store URL that carries a path", () => {
+    env.OBJECT_STORE_S3_BASE_URL = "https://s3.eu-west-1.amazonaws.com/avatars";
+
+    expect(avatarObjectStoreImageOrigin()).toBe("https://s3.eu-west-1.amazonaws.com");
+  });
+
+  it("is undefined when no avatar store is configured", () => {
+    env.OBJECT_STORE_S3_BASE_URL = undefined;
+
+    expect(avatarObjectStoreImageOrigin()).toBeUndefined();
   });
 });
