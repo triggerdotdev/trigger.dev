@@ -226,13 +226,15 @@ export function configureDeployCommand(program: Command) {
           .implies({
             localBuild: true,
           })
-          .conflicts(["nativeBuild", "nativeBuildServer"])
+          .conflicts(["nativeBuild", "nativeBuildServer", "localBundle", "detach"])
           .hideHelp()
       )
       .addOption(
         new CommandOption("--local-build", "Build the deployment image locally").conflicts([
           "nativeBuild",
           "nativeBuildServer",
+          "localBundle",
+          "detach",
         ])
       )
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
@@ -286,7 +288,7 @@ export function configureDeployCommand(program: Command) {
           "Internal: build the image from a pre-built bundle directory. Implies a local build."
         )
           .implies({ localBuild: true })
-          .conflicts(["nativeBuildServer", "localBundle"])
+          .conflicts(["nativeBuild", "nativeBuildServer", "depotBuild", "localBundle", "detach"])
           .hideHelp()
       )
       .addOption(
@@ -1272,9 +1274,9 @@ function getTriggeredVia(): DeploymentTriggeredVia {
 const DEPLOY_SETTINGS_TIMEOUT_MS = 5_000;
 
 const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
-  depot: "Depot",
-  native: "native build server",
-  native_local_bundle: "native build server (local bundle)",
+  depot: "Building with Depot",
+  native: "Building on the native build server",
+  native_local_bundle: "Building on the native build server from a local bundle",
 };
 
 const BUILD_PATH_SOURCE_LABEL: Record<DeployBuildPathSource, string> = {
@@ -1319,19 +1321,30 @@ async function resolveBuildPath(
     const failure = error ?? (result && !result.success ? result : undefined);
     logger.debug("Failed to fetch deploy settings", { failure });
 
-    // A 404 is an older server without the endpoint; depot is exactly what it expects.
-    if (!error && result && !result.success && result.statusCode === 404) {
-      return "depot";
+    // --detach and --local-bundle only exist on the native path, so the user's intent is
+    // clear without the server; everyone else gets Depot, the path older CLIs always used.
+    const fallback: DeployBuildPath = options.detach || options.localBundle ? "native" : "depot";
+    const is404 = !error && result && !result.success && result.statusCode === 404;
+
+    // A 404 is an older server without the endpoint; nothing to warn about.
+    if (!is404) {
+      log.warn(
+        `Could not fetch the deploy settings from the server, ${
+          fallback === "native" ? "using the native build server" : "using the Depot build path"
+        }`
+      );
     }
 
-    log.warn("Could not fetch the deploy settings from the server, using the Depot build path");
-    return "depot";
+    return fallback;
   }
 
   const { path, source } = result.data.build;
 
   if (path !== "depot") {
-    log.info(`Using the ${BUILD_PATH_LABEL[path]} build path (${BUILD_PATH_SOURCE_LABEL[source]})`);
+    const sourceLabel =
+      BUILD_PATH_SOURCE_LABEL[source as DeployBuildPathSource] ??
+      `configured on the server: ${source}`;
+    log.info(`${BUILD_PATH_LABEL[path]} (${sourceLabel})`);
   } else {
     logger.debug(`Build path depot (${source})`);
   }

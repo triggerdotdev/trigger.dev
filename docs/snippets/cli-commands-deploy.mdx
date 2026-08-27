@@ -102,6 +102,14 @@ npx trigger.dev@latest deploy [path]
   Force building the deployment image locally using your local Docker. This is automatic when self-hosting.
 </ParamField>
 
+<ParamField body="Native build" type="--native-build">
+  Build the image on the native build server, ignoring the build path configured for the project on the server.
+</ParamField>
+
+<ParamField body="Depot build" type="--depot-build">
+  Build the image with Depot, ignoring the build path configured for the project on the server.
+</ParamField>
+
 ### Common options
 
 These options are available on most commands.

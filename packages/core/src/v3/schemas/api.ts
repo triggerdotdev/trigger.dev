@@ -855,10 +855,11 @@ export const DeployBuildPathSource = z.enum([
 
 export type DeployBuildPathSource = z.infer<typeof DeployBuildPathSource>;
 
+// `source` is informational, so the CLI accepts values newer servers may add.
 export const GetDeploySettingsResponseBody = z.object({
   build: z.object({
     path: DeployBuildPath,
-    source: DeployBuildPathSource,
+    source: z.string(),
   }),
 });
 
