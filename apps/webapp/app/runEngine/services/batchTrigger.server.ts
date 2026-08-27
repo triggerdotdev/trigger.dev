@@ -1,3 +1,4 @@
+import { resolveWaitpointMintKind } from "~/v3/waitpointMigration/waitpointMintKind.server";
 import {
   type BatchTriggerTaskV2RequestBody,
   type BatchTriggerTaskV3RequestBody,
@@ -194,6 +195,11 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           environmentId: environment.id,
           projectId: environment.projectId,
           organizationId: environment.organizationId,
+          waitpointMintKind: await resolveWaitpointMintKind({
+            organizationId: environment.organizationId,
+            id: environment.id,
+            orgFeatureFlags: environment.organization.featureFlags,
+          }),
         });
       }
 
@@ -285,6 +291,11 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           environmentId: environment.id,
           projectId: environment.projectId,
           organizationId: environment.organizationId,
+          waitpointMintKind: await resolveWaitpointMintKind({
+            organizationId: environment.organizationId,
+            id: environment.id,
+            orgFeatureFlags: environment.organization.featureFlags,
+          }),
         });
       }
 

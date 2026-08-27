@@ -6,7 +6,12 @@ import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { computeWaitpointMintKind, type WaitpointMintKind } from "./waitpointMintKind.js";
 
-export { computeWaitpointMintKind, type WaitpointMintKind };
+export type { WaitpointMintKind };
+
+// The two unions are declared separately, because the engine never imports from the
+// webapp. Nothing pins them together here on purpose: every call site passes this value
+// into an engine method, so a drift fails at those call sites, where the error is local
+// to the code that actually broke.
 
 type WaitpointSystemFlag = "legacy" | "redis";
 

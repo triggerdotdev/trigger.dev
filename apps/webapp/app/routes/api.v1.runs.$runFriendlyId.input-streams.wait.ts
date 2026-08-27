@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { resolveWaitpointMintKind } from "~/v3/waitpointMigration/waitpointMintKind.server";
 import { z } from "zod";
 import {
   CreateInputStreamWaitpointRequestBody,
@@ -82,7 +83,14 @@ const { action, loader } = createActionApiRoute(
 
       // Create the waitpoint. Co-locate it with the owning run (run-ops split) so a run-ops id
       // run's input-stream waitpoint lands on the run's DB and its block edge resolves.
+      const waitpointMintKind = await resolveWaitpointMintKind({
+        organizationId: authentication.environment.organizationId,
+        id: authentication.environment.id,
+        orgFeatureFlags: authentication.environment.organization.featureFlags,
+      });
+
       const result = await engine.createManualWaitpoint({
+        waitpointMintKind,
         runId: run.id,
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,

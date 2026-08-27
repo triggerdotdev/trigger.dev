@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { resolveWaitpointMintKind } from "~/v3/waitpointMigration/waitpointMintKind.server";
 import {
   CreateWaitpointTokenRequestBody,
   type CreateWaitpointTokenResponseBody,
@@ -93,7 +94,14 @@ const { action } = createActionApiRoute(
         }
       }
 
+      const waitpointMintKind = await resolveWaitpointMintKind({
+        organizationId: authentication.environment.organizationId,
+        id: authentication.environment.id,
+        orgFeatureFlags: authentication.environment.organization.featureFlags,
+      });
+
       const result = await engine.createManualWaitpoint({
+        waitpointMintKind,
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
         idempotencyKey: body.idempotencyKey,
