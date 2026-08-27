@@ -8,8 +8,7 @@
 // its no-keyspace refusal are proved against a real Redis in redisSnapshotStore.test.ts, and this
 // file asserts that the repair routes into those two outcomes rather than around them.
 import { describe, expect, it } from "vitest";
-import type { AppendResult, SnapshotRead } from "./redisSnapshotStore.js";
-import { RedisSnapshotStore } from "./redisSnapshotStore.js";
+import type { AppendResult, RedisSnapshotStore, SnapshotRead } from "./redisSnapshotStore.js";
 import {
   TaskRunExecutionSnapshotStore,
   type SnapshotStoreMode,

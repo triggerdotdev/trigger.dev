@@ -28,6 +28,7 @@ import {
   entryFromExpire,
   entryFromLock,
   entryFromReschedule,
+  entryFromSnapshotRow,
   isTerminalEntry,
 } from "./snapshotEntry.js";
 import { isInjectedFault, type SnapshotFaultInjector } from "./snapshotFaultInjection.js";
@@ -98,6 +99,30 @@ export type SnapshotRepairEnqueuer = (args: {
  * resync-before-reads control, not a rollback. `off` is the lossless way down.
  */
 export type SnapshotStoreHaltCheck = () => boolean;
+
+/**
+ * What one repair attempt did. Bounded so it can be a metric tag, and every value is an outcome the
+ * caller only logs: no value here means the run needs anything further done to it.
+ */
+export type SnapshotRepairOutcome =
+  | "off"
+  | "notLatest"
+  | "notResident"
+  | "alreadyCurrent"
+  | "redisAhead"
+  | "reappended"
+  | "duplicate"
+  | "forked";
+
+/** The two seams the snapshot repair job needs, present only when the mirror is wired up. */
+export type SnapshotMirrorRepair = {
+  authoritativeStore(): RunStore;
+  repairRedisHead(runId: string, snapshotId: string): Promise<SnapshotRepairOutcome>;
+};
+
+export function asSnapshotMirrorRepair(store: RunStore): SnapshotMirrorRepair | undefined {
+  return store instanceof TaskRunExecutionSnapshotStore ? store : undefined;
+}
 
 export type DecoratorMetrics = {
   recordWrite(site: string, outcome: string): void;
@@ -650,6 +675,77 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   /**
+   * The undecorated store. A repair MUST read through this and not through `this`: once reads are
+   * served from Redis, reading through the decorator hands the repair the very stale head it exists
+   * to replace, so it sees the id it was asked about missing and concludes there is nothing to do.
+   */
+  authoritativeStore(): RunStore {
+    return this.delegate;
+  }
+
+  /**
+   * Re-appends the Postgres head of a run whose mirror append was lost.
+   *
+   * Additive only, and neither of the append script's guards is reimplemented here: an entry that
+   * already landed comes back `duplicate`, and a run with no keyspace comes back
+   * `skippedNoKeyspace`, which is how a run that was never resident stays non-resident.
+   *
+   * No compare-and-set: asserting cur would refuse exactly when the mirror is furthest behind and a
+   * stale head is doing the most damage. The one ordering rule kept is that the repair will not
+   * append behind a mirror head already newer than Postgres.
+   */
+  async repairRedisHead(runId: string, snapshotId: string): Promise<SnapshotRepairOutcome> {
+    if (!this.writesRedisForTransition()) {
+      return "off";
+    }
+
+    const row = await this.delegate.findLatestExecutionSnapshot(runId);
+
+    // Only the head is repairable. Once the run has moved on, the gap is mid-history and appending
+    // the current head would put an entry that landed normally at the tail a second time.
+    if (!row || row.id !== snapshotId) {
+      return "notLatest";
+    }
+
+    const head = await this.redis.getLatest(runId);
+
+    if (head?.id === snapshotId) {
+      return "alreadyCurrent";
+    }
+
+    if (head && headIsNewerThan(head, row.createdAt)) {
+      return "redisAhead";
+    }
+
+    const entry = entryFromSnapshotRow(row);
+    const refs = lockCycleRefs(
+      row.completedWaitpoints.map((waitpoint) => waitpoint.id),
+      row.completedWaitpointOrder
+    );
+    const cycle = await this.#resolveCycle(runId, refs);
+
+    const result = await this.redis.append({
+      entry,
+      kind: "transition",
+      isTerminal: isTerminalEntry(entry),
+      ...(cycle && { cycle }),
+    });
+
+    this.metrics?.recordWrite("repairRedisHead", result.outcome);
+
+    switch (result.outcome) {
+      case "written":
+        return "reappended";
+      case "duplicate":
+        return "duplicate";
+      case "skippedNoKeyspace":
+        return "notResident";
+      case "forked":
+        return "forked";
+    }
+  }
+
+  /**
    * Decides whether this append mints a new wait cycle or points at the one already there.
    *
    * A resume append carries a newly-differing id set, so it mints a cycle and the record set is
@@ -1044,6 +1140,19 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.logger.error("snapshot repair enqueue failed", { runId: entry.runId, error });
     }
   }
+}
+
+/**
+ * A mirror head with no readable timestamp cannot be shown to be newer, so the repair proceeds. The
+ * alternative is refusing on an unparseable value, which would strand the run with a stale head.
+ */
+function headIsNewerThan(head: SnapshotRead, createdAt: Date): boolean {
+  const raw = head.entry["createdAt"];
+  if (typeof raw !== "string") {
+    return false;
+  }
+  const headMs = Date.parse(raw);
+  return Number.isFinite(headMs) && headMs > createdAt.getTime();
 }
 
 /** Position-sensitive: the same ids in a different order are a different wait cycle. */

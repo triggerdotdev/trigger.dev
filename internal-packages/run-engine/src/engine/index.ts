@@ -86,7 +86,7 @@ import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import type { SystemResources } from "./systems/systems.js";
-import { type RunStore, PostgresRunStore } from "@internal/run-store";
+import { type RunStore, asSnapshotMirrorRepair, PostgresRunStore } from "@internal/run-store";
 import {
   type ControlPlaneResolver,
   PassthroughControlPlaneResolver,
@@ -3013,7 +3013,13 @@ export class RunEngine {
     executionStatus: string;
   }) {
     return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
-      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
+      // The mirror, when wired up. Every read below goes through its undecorated store: once reads
+      // are served from Redis, reading through `this.runStore` hands the repair the same stale head
+      // it was enqueued to replace, so it would conclude the snapshot is gone and stop.
+      const mirror = asSnapshotMirrorRepair(this.runStore);
+      const readStore = mirror?.authoritativeStore() ?? this.runStore;
+
+      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId, readStore);
 
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
@@ -3029,7 +3035,19 @@ export class RunEngine {
         return;
       }
 
-      // Okay, so this means we haven't transitioned to a new status yes, so we need to do something
+      // Runs first and for every status, because the two things a repair can heal are independent:
+      // the mirror can be missing this snapshot whatever the run's queue state is, and the queue
+      // recovery below cannot put it back. Idempotent, so a snapshot that did land is a no-op.
+      if (mirror) {
+        const outcome = await mirror.repairRedisHead(runId, snapshotId);
+        this.logger.log("RunEngine.handleRepairSnapshot mirror", {
+          runId,
+          snapshotId,
+          executionStatus: latestSnapshot.executionStatus,
+          outcome,
+        });
+      }
+
       switch (latestSnapshot.executionStatus) {
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS":
@@ -3038,7 +3056,8 @@ export class RunEngine {
         case "QUEUED_EXECUTING":
         case "RUN_CREATED":
         case "DELAYED": {
-          // Do nothing;
+          // The mirror repair above is the whole repair for these: the run is live and the queue
+          // needs no correction.
           return;
         }
         case "QUEUED": {
