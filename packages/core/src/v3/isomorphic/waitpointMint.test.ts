@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { mintWaitpointIdFor, mintWaitpointIdForShard } from "./waitpointMint.js";
-import { isValidShardChar, parseRunOpsIdV2Body } from "./friendlyId.js";
+import {
+  generateRunOpsId,
+  generateRunOpsIdV2,
+  isValidShardChar,
+  parseRunOpsIdBody,
+  parseRunOpsIdV2Body,
+} from "./friendlyId.js";
 import { resolveShard } from "./runOpsResidency.js";
 
 const GEN2_RUN = `run_${"a".repeat(24)}a2`; // shard "a", version "2"
@@ -66,5 +72,46 @@ describe("mintWaitpointIdFor", () => {
 
   it("no anchor mints a cuid", () => {
     expect(mintWaitpointIdFor(undefined).id.length).toBe(25);
+  });
+});
+
+describe("resolveShard shape checks match the decoding parsers", () => {
+  // resolveShard used to decode the 24-char core to recover a timestamp and then discard
+  // it, which cost ~10x a shape check on the router's hot path. The alphabet is [0-9a-v],
+  // so "the shape matches" and "the decode would not throw" are the same predicate. These
+  // pin that equivalence, because a drift here misroutes rather than erroring.
+  const classifyByDecode = (body: string): string => {
+    const genTwo = parseRunOpsIdV2Body(body);
+    if (genTwo) return genTwo.shard;
+    return parseRunOpsIdBody(body) !== undefined ? "new" : "legacy";
+  };
+
+  it("agrees on freshly minted gen-1 and gen-2 bodies", () => {
+    for (let i = 0; i < 500; i++) {
+      const one = generateRunOpsId();
+      const two = generateRunOpsIdV2("abcdefghijklmnopqrstuvwxyz0123456789"[i % 36]!);
+      expect(resolveShard(one)).toBe(classifyByDecode(one));
+      expect(resolveShard(two)).toBe(classifyByDecode(two));
+    }
+  });
+
+  it("agrees on 26-char strings carrying out-of-alphabet characters", () => {
+    const alpha = "0123456789abcdefghijklmnopqrstuvwxyz-_.ZW!";
+    for (let i = 0; i < 2000; i++) {
+      let s = "";
+      for (let j = 0; j < 26; j++) s += alpha[(i * 7 + j * 13) % alpha.length];
+      for (const body of [s, s.slice(0, 25) + "1", s.slice(0, 25) + "2"]) {
+        expect({ body, shape: resolveShard(body) }).toEqual({
+          body,
+          shape: classifyByDecode(body),
+        });
+      }
+    }
+  });
+
+  it("agrees on the shapes the plan pins as legacy", () => {
+    for (const body of ["", "a", "a".repeat(25), "a".repeat(27), `${"a".repeat(24)}e2`]) {
+      expect(resolveShard(body)).toBe(classifyByDecode(body));
+    }
   });
 });

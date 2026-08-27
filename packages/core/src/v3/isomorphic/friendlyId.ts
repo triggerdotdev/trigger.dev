@@ -229,6 +229,31 @@ export function isRunOpsIdBody(body: string): boolean {
   return parseRunOpsIdBody(body) !== undefined;
 }
 
+// Shape-only core check: exactly the alphabet base32hexDecode accepts, without decoding.
+// RUN_OPS_ID_ALPHABET is [0-9a-v], so this and "the decode would not throw" are the same
+// predicate. Routing only needs the shape; decoding the core to recover a timestamp and
+// then discarding it costs ~30x more, on a path the router takes for every routed call.
+const RUN_OPS_ID_CORE_PATTERN = /^[0-9a-v]{24}$/;
+
+/** Shape-only v1 body check for routing: 26 chars, version "1", region and core in range. */
+export function isRunOpsIdBodyShape(body: string): boolean {
+  return (
+    body.length === RUN_OPS_ID_LENGTH &&
+    body[RUN_OPS_ID_VERSION_INDEX] === RUN_OPS_ID_VERSION &&
+    REGION_CHAR_PATTERN.test(body[RUN_OPS_ID_REGION_INDEX] ?? "") &&
+    RUN_OPS_ID_CORE_PATTERN.test(body.slice(0, RUN_OPS_ID_CORE_LENGTH))
+  );
+}
+
+/** Shape-only gen-2 body check for routing. Returns the shard char, or undefined. */
+export function runOpsIdV2ShardShape(body: string): string | undefined {
+  if (body.length !== RUN_OPS_ID_LENGTH) return undefined;
+  if (body[RUN_OPS_ID_VERSION_INDEX] !== RUN_OPS_ID_VERSION_2) return undefined;
+  const shard = body[RUN_OPS_ID_SHARD_INDEX] ?? "";
+  if (!SHARD_CHAR_PATTERN.test(shard)) return undefined;
+  return RUN_OPS_ID_CORE_PATTERN.test(body.slice(0, RUN_OPS_ID_CORE_LENGTH)) ? shard : undefined;
+}
+
 /** Parse a `run_`-prefixed friendly id; anything not a well-formed v1/gen-2 id is legacy. */
 export function parseRunId(id: string): ParsedRunId {
   if (!id.startsWith("run_")) return LEGACY_RUN_ID;
