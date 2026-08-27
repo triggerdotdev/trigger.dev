@@ -4,6 +4,7 @@ import {
   buildUserAvatarUrl,
   isAvatarUploadRejection,
   parseAvatarUpload,
+  resolveStaleAvatarObjectPath,
   resolveUserAvatarObjectPath,
 } from "~/services/userAvatar.server";
 import { MAX_AVATAR_SIZE_IN_BYTES } from "~/utils/avatarLimits";
@@ -110,5 +111,50 @@ describe("parseAvatarUpload", () => {
     );
 
     expect(isAvatarUploadRejection(await parseAvatarUpload(form))).toBe(false);
+  });
+});
+
+describe("resolveStaleAvatarObjectPath", () => {
+  const previous = filenameFor([1, 2, 3]);
+  const next = filenameFor([4, 5, 6]);
+
+  it("derives the old object from the stored URL", () => {
+    expect(
+      resolveStaleAvatarObjectPath({
+        previousAvatarUrl: buildUserAvatarUrl(USER_ID, previous),
+        userId: USER_ID,
+        filename: next,
+      })
+    ).toBe(`avatars/${USER_ID}/${previous}`);
+  });
+
+  it("keeps the object when the content hash is unchanged", () => {
+    expect(
+      resolveStaleAvatarObjectPath({
+        previousAvatarUrl: buildUserAvatarUrl(USER_ID, previous),
+        userId: USER_ID,
+        filename: previous,
+      })
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ["no previous avatar", null],
+    ["an OAuth avatar hosted elsewhere", "https://avatars.githubusercontent.com/u/1?v=4"],
+    [
+      "an absolute URL onto our own path",
+      `https://evil.test/resources/account/avatar/${USER_ID}/${previous}`,
+    ],
+    ["another user's avatar", `/resources/account/avatar/usr_other/${previous}`],
+    [
+      "a filename that is not content-addressed",
+      `/resources/account/avatar/${USER_ID}/../../secret.png`,
+    ],
+    ["a deeper path", `/resources/account/avatar/${USER_ID}/${previous}/extra`],
+    ["an unrelated app path", "/resources/account/photo"],
+  ])("leaves %s alone", (_case, previousAvatarUrl) => {
+    expect(
+      resolveStaleAvatarObjectPath({ previousAvatarUrl, userId: USER_ID, filename: next })
+    ).toBeUndefined();
   });
 });

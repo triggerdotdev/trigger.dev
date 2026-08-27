@@ -1,5 +1,10 @@
 import { AwsClient } from "aws4fetch";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
@@ -19,6 +24,7 @@ interface IObjectStoreClient {
     contentType: string
   ): Promise<string>;
   getObject(key: string): Promise<string>;
+  deleteObject(key: string): Promise<void>;
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string>;
 }
 
@@ -74,6 +80,13 @@ class Aws4FetchClient implements IObjectStoreClient {
       throw new Error(`Failed to download from object store: ${response.statusText}`);
     }
     return response.text();
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const response = await this.awsClient.fetch(this.buildUrl(key), { method: "DELETE" });
+    if (!response.ok) {
+      throw new Error(`Failed to delete from object store: ${response.statusText}`);
+    }
   }
 
   async presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
@@ -151,6 +164,12 @@ class AwsSdkClient implements IObjectStoreClient {
     return response.Body.transformToString();
   }
 
+  async deleteObject(key: string): Promise<void> {
+    await this.s3Client.send(
+      new DeleteObjectCommand({ Bucket: this.config.bucket, Key: this.toS3ObjectKey(key) })
+    );
+  }
+
   async presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
     const s3Key = this.toS3ObjectKey(key);
     const command =
@@ -219,6 +238,10 @@ export class ObjectStoreClient implements IObjectStoreClient {
 
   getObject(key: string): Promise<string> {
     return this.impl.getObject(key);
+  }
+
+  deleteObject(key: string): Promise<void> {
+    return this.impl.deleteObject(key);
   }
 
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {

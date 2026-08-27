@@ -2,6 +2,7 @@ import { json, type ActionFunctionArgs } from "@remix-run/node";
 import { updateUserAvatarUrl } from "~/models/user.server";
 import { requireUser } from "~/services/session.server";
 import {
+  deleteStaleUserAvatar,
   isAvatarUploadRejection,
   parseAvatarUpload,
   uploadUserAvatar,
@@ -20,9 +21,13 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: upload.error }, { status: upload.status });
   }
 
-  const { avatarUrl } = await uploadUserAvatar({ userId: user.id, ...upload });
+  const previousAvatarUrl = user.avatarUrl;
+
+  const { avatarUrl, filename } = await uploadUserAvatar({ userId: user.id, ...upload });
 
   await updateUserAvatarUrl({ id: user.id, avatarUrl });
+
+  await deleteStaleUserAvatar({ previousAvatarUrl, userId: user.id, filename });
 
   return json({ avatarUrl });
 }

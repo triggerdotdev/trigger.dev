@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { logger } from "~/services/logger.server";
 import {
   AVATAR_EXTENSIONS,
   type AvatarContentType,
@@ -98,7 +99,60 @@ export async function uploadUserAvatar({
   const { client, objectKey } = requireAvatarObjectStore();
   await client.putObject(objectKey(path), data, contentType);
 
-  return { avatarUrl: buildUserAvatarUrl(userId, filename) };
+  return { filename, avatarUrl: buildUserAvatarUrl(userId, filename) };
+}
+
+const AVATAR_URL_REGEX = /^\/resources\/account\/avatar\/([^/]+)\/([^/]+)$/;
+
+/**
+ * Undefined unless the stored URL is this user's own avatar route and names a different object:
+ * an OAuth avatar elsewhere is not ours to delete, and the same content hash is the same file.
+ */
+export function resolveStaleAvatarObjectPath({
+  previousAvatarUrl,
+  userId,
+  filename,
+}: {
+  previousAvatarUrl: string | null;
+  userId: string;
+  filename: string;
+}): string | undefined {
+  const match = previousAvatarUrl?.match(AVATAR_URL_REGEX);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const [, previousUserId, previousFilename] = match;
+
+  if (previousUserId !== userId || previousFilename === filename) {
+    return undefined;
+  }
+
+  return resolveUserAvatarObjectPath(previousUserId, previousFilename);
+}
+
+export async function deleteStaleUserAvatar(options: {
+  previousAvatarUrl: string | null;
+  userId: string;
+  filename: string;
+}) {
+  const path = resolveStaleAvatarObjectPath(options);
+
+  if (!path) {
+    return;
+  }
+
+  try {
+    const { client, objectKey } = requireAvatarObjectStore();
+    await client.deleteObject(objectKey(path));
+  } catch (error) {
+    logger.warn("Failed to delete the previous avatar", {
+      userId: options.userId,
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export function presignUserAvatarUrl(objectPath: string) {
