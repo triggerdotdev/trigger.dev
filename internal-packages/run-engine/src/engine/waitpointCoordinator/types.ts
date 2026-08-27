@@ -114,7 +114,17 @@ export type CreateWaitpointResult =
   | { kind: "created"; waitpoint: Waitpoint };
 
 export type CreateDateTimeWaitpointParams = {
-  /** When set, the waitpoint co-locates with this run's DB and the dedup probe targets it. */
+  /**
+   * When set, the waitpoint co-locates with this run's DB and the dedup probe targets it.
+   *
+   * Optional in the type, but every production caller supplies it: the only entry point is the
+   * wait.duration route, which is keyed on a run friendly id. There is deliberately NO standalone
+   * arm here — unlike `createManualWaitpoint`, this type carries no `standaloneShardKey`, so a
+   * caller that omits `runId` on a gen-2 environment mints a cuid and routes by residency, landing
+   * the row on a gen-1 store while the run that waits on it lives on a shard. Nothing would fail at
+   * write time. Before adding a caller that omits `runId`, give this type a shard hint the way the
+   * MANUAL path has one.
+   */
   runId?: string;
   projectId: string;
   environmentId: string;
