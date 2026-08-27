@@ -310,6 +310,7 @@ async function triggerSessionRun(params: {
       ...(config.maxDuration !== undefined ? { maxDuration: config.maxDuration } : {}),
       ...(config.lockToVersion ? { lockToVersion: config.lockToVersion } : {}),
       ...(config.region ? { region: config.region } : {}),
+      ...(config.ttl !== undefined ? { ttl: config.ttl } : {}),
     },
   };
 
