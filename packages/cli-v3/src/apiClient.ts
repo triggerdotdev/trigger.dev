@@ -495,7 +495,8 @@ export class CliApiClient {
         method: "GET",
         headers: this.getHeaders(),
         signal,
-      }
+      },
+      { retry: { maxAttempts: 1 } }
     );
   }
 

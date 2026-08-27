@@ -1306,14 +1306,26 @@ async function resolveBuildPath(
   );
 
   if (error || !result.success) {
-    logger.debug("Failed to fetch deploy settings", {
-      error: error ?? (result && !result.success ? result.error : undefined),
-    });
+    const failure = error ?? (result && !result.success ? result : undefined);
+    logger.debug("Failed to fetch deploy settings", { failure });
+
+    // A 404 is an older server without the endpoint; depot is exactly what it expects.
+    if (!error && result && !result.success && result.statusCode === 404) {
+      return "depot";
+    }
+
     log.warn("Could not fetch the deploy settings from the server, using the Depot build path");
     return "depot";
   }
 
   const { path, source } = result.data.build;
+
+  if (path === "native" && options.dryRun) {
+    log.info(
+      "Dry run is not supported on the native build server path, using the Depot build path"
+    );
+    return "depot";
+  }
 
   if (path !== "depot") {
     log.info(`Using the ${BUILD_PATH_LABEL[path]} build path (${BUILD_PATH_SOURCE_LABEL[source]})`);
