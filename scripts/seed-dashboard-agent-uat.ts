@@ -201,6 +201,76 @@ async function upsertQueue(
   });
 }
 
+// get_queue's `consumerTasks` (internal-packages/dashboard-agent/src/tool-api.ts,
+// consumerTasksForQueue) is read off the env's CURRENT worker's tasks - for a
+// DEVELOPMENT env that's the latest BackgroundWorker by createdAt (never a deployment;
+// see findCurrentWorkerFromEnvironment in workerDeployment.server.ts) - matching a
+// BackgroundWorkerTask whose queueConfig.name equals the queue name. Without one, the
+// queue looks unconsumed and the agent's honest "no deployed consumer" diagnosis
+// preempts whatever the scenario is actually testing.
+async function ensureConsumerTask(
+  ctx: Ctx,
+  env: RuntimeEnvironment,
+  queue: { id: string; name: string; concurrencyLimit: number | null },
+  taskSlug: string
+) {
+  let currentWorker = await ctx.prisma.backgroundWorker.findFirst({
+    where: { runtimeEnvironmentId: env.id },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!currentWorker) {
+    // A fresh per-member dev env (no `trigger dev` session yet) has no worker at all -
+    // mint a minimal one so the scenario is seedable without that manual step. Tagged
+    // "uat-dev-worker-1" so `clean` can remove it; a real `trigger dev` session
+    // afterward naturally supersedes it as the env's current worker.
+    currentWorker = await ctx.prisma.backgroundWorker.upsert({
+      where: {
+        projectId_runtimeEnvironmentId_version: {
+          projectId: ctx.projectId,
+          runtimeEnvironmentId: env.id,
+          version: "uat-dev-worker-1",
+        },
+      },
+      create: {
+        friendlyId: generateFriendlyId("worker"),
+        // engine defaults to V1 - determineEngineVersion() reads the LATEST worker's engine
+        // to gate every queue/run route for the env, so an unset engine here would 400
+        // every queue lookup in this dev env, not just this fixture's own queue.
+        engine: "V2",
+        contentHash: "uat-dev-worker-hash",
+        sdkVersion: "0.0.0-uat",
+        cliVersion: "0.0.0-uat",
+        projectId: ctx.projectId,
+        runtimeEnvironmentId: env.id,
+        version: "uat-dev-worker-1",
+        metadata: {},
+      },
+      update: {},
+    });
+  }
+
+  await ctx.prisma.backgroundWorkerTask.upsert({
+    where: { workerId_slug: { workerId: currentWorker.id, slug: taskSlug } },
+    create: {
+      friendlyId: generateFriendlyId("task"),
+      projectId: ctx.projectId,
+      runtimeEnvironmentId: env.id,
+      workerId: currentWorker.id,
+      slug: taskSlug,
+      filePath: "src/trigger/uat-fixtures.ts",
+      queueConfig: { name: queue.name, concurrencyLimit: queue.concurrencyLimit },
+      queueId: queue.id,
+      triggerSource: "STANDARD",
+    },
+    update: {
+      queueConfig: { name: queue.name, concurrencyLimit: queue.concurrencyLimit },
+      queueId: queue.id,
+    },
+  });
+
+  return currentWorker;
+}
+
 type RunFields = {
   idempotencyKey: string;
   env: RuntimeEnvironment;
@@ -343,6 +413,9 @@ async function seedCkInvisible(ctx: Ctx) {
   const concurrencyKeyValue = "uat-ck-fastpath";
   const queue = await upsertQueue(ctx, ctx.devEnv, queueName, 3);
   record("S3", "queue", queue.friendlyId, `${queueName} (concurrencyKey, limit 3)`);
+
+  const consumerWorker = await ensureConsumerTask(ctx, ctx.devEnv, queue, "uat-ck-consumer-task");
+  record("S3", "consumer task", "uat-ck-consumer-task", `on worker ${consumerWorker.version}`);
 
   const run = await upsertRun(ctx, {
     idempotencyKey: "uat-ck-admitted",
@@ -623,27 +696,44 @@ async function seedRecurred(ctx: Ctx) {
     },
     update: { status: "RESOLVED", resolvedAt, resolvedInVersion: "uat", resolvedBy: user?.id },
   });
+  // get_error/list_errors ask for the friendly `error_<fingerprint>` id (ErrorId.toFriendlyId,
+  // apps/webapp/app/presenters/v3/ApiErrorGroupPresenter.server.ts) - name it explicitly so
+  // the tester doesn't have to fish it out of a list_errors call first.
+  const askableId = `error_${errorFingerprint}`;
   record("S10", "ErrorGroupState", errorGroup.id, `resolvedAt=${resolvedAt.toISOString()}`);
+  record("S10", "ask-able id", askableId, `taskIdentifier=${taskIdentifier}`);
 
   const version = Date.now();
+  // ClickHouse SQL string literals backslash-unescape before the JSON parser ever sees the
+  // value, so JSON.stringify's `\n` (2 chars) becomes a raw newline byte inside the JSON
+  // text - invalid JSON. Escape backslashes first so ClickHouse's unescape leaves `\n`
+  // intact for the JSON parser; escape quotes after (order matters, or '' would double-escape).
   const errorJson = JSON.stringify({
     data: {
       type: "Error",
       message: "uat recurred fixture error",
       stack: "Error: uat recurred fixture error\n    at uatFixture (uat.ts:1:1)",
     },
-  }).replace(/'/g, "''");
+  })
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "''");
 
-  console.log("\nS10: Postgres side done. ClickHouse errors_v1 is a materialized view over");
-  console.log("task_runs_v2 - run this manually to make the error 'recur' after resolvedAt:\n");
+  console.log("\nS10: Postgres side done. ClickHouse errors_v1 AND error_occurrences_v1 are both");
+  console.log(
+    "materialized views over task_runs_v2 (matched on error_fingerprint != '' + a failure"
+  );
+  console.log("status) - run this manually to make the error 'recur' after resolvedAt. Omitting");
+  console.log("error_fingerprint here silently excludes the row from BOTH views, so get_error and");
+  console.log(`list_errors both miss it. Ask about: ${askableId}\n`);
   console.log(
     `clickhouse-client --query "INSERT INTO trigger_dev.task_runs_v2 ` +
       `(environment_id, organization_id, project_id, run_id, friendly_id, environment_type, ` +
-      `engine, status, task_identifier, queue, task_version, error, created_at, updated_at, _version) ` +
+      `engine, status, task_identifier, error_fingerprint, queue, task_version, error, ` +
+      `created_at, updated_at, _version) ` +
       `VALUES ('${ctx.devEnv.id}', '${ctx.orgId}', '${ctx.projectId}', 'uat-recurred-run', ` +
       `'run_uatrecurred', 'DEVELOPMENT', 'V2', 'COMPLETED_WITH_ERRORS', '${taskIdentifier}', ` +
-      `'uat-recurred-task', 'uat', '${errorJson}', '${formatChDateTime(lastSeen)}', ` +
-      `'${formatChDateTime(lastSeen)}', ${version})"\n`
+      `'${errorFingerprint}', 'uat-recurred-task', 'uat', '${errorJson}', ` +
+      `'${formatChDateTime(lastSeen)}', '${formatChDateTime(lastSeen)}', ${version})"\n`
   );
 }
 
@@ -724,14 +814,6 @@ async function clean(ctx: ProjectCtx) {
     },
   });
 
-  // BackgroundWorker -> WorkerDeployment is onDelete: Cascade.
-  await ctx.prisma.backgroundWorker.deleteMany({
-    where: {
-      runtimeEnvironmentId: { in: boundedIn(envs.map((e) => e.id)) },
-      version: "uat-dirty-1",
-    },
-  });
-
   await ctx.prisma.errorGroupState.deleteMany({
     where: {
       environmentId: { in: boundedIn(envs.map((e) => e.id)) },
@@ -739,8 +821,26 @@ async function clean(ctx: ProjectCtx) {
     },
   });
 
+  // The consumer-task fixture row first: ensureConsumerTask may have attached it to the
+  // env's REAL current worker (not a fixture), so this must run before any worker delete.
+  await ctx.prisma.backgroundWorkerTask.deleteMany({
+    where: {
+      runtimeEnvironmentId: { in: boundedIn(envs.map((e) => e.id)) },
+      slug: "uat-ck-consumer-task",
+    },
+  });
+
+  // Fixture workers only ("uat-dirty-1" for S6, "uat-dev-worker-1" when ensureConsumerTask
+  // had to mint one). BackgroundWorker -> WorkerDeployment/BackgroundWorkerTask is Cascade.
+  await ctx.prisma.backgroundWorker.deleteMany({
+    where: {
+      runtimeEnvironmentId: { in: boundedIn(envs.map((e) => e.id)) },
+      version: { in: ["uat-dirty-1", "uat-dev-worker-1"] },
+    },
+  });
+
   console.log(
-    `Cleaned ${runIds.length} runs, uat-* queues, dirty-deploy worker, error group ` +
+    `Cleaned ${runIds.length} runs, uat-* queues, dirty-deploy worker, consumer task, error group ` +
       `(swept ${envs.length} envs in the project).`
   );
 }
