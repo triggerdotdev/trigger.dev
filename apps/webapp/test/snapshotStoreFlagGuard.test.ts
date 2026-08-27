@@ -3,6 +3,7 @@ import {
   globalOnlySnapshotStoreFlagError,
   snapshotStoreFlagSaveError,
 } from "~/v3/snapshotStoreFlagGuard.server";
+import { FEATURE_FLAG, GLOBAL_LOCKED_FLAGS } from "~/v3/featureFlags";
 
 describe("snapshotStoreFlagSaveError", () => {
   it("refuses a flip past off when no host is configured", () => {
@@ -78,5 +79,21 @@ describe("globalOnlySnapshotStoreFlagError", () => {
 
   it("ignores unrelated payloads", () => {
     expect(globalOnlySnapshotStoreFlagError({ runOpsMintKind: "cuid" })).toBeUndefined();
+  });
+});
+
+describe("the global page and the save guard agree", () => {
+  it("locks every flag the global save path refuses", () => {
+    // A flag the guard rejects but the page leaves editable renders a control whose only outcome is
+    // a 400. The convention above GLOBAL_LOCKED_FLAGS states this; the assertion enforces it.
+    for (const key of [FEATURE_FLAG.snapshotStoreOrgMode] as const) {
+      expect(globalOnlySnapshotStoreFlagError({ [key]: "dual-write" })).toBeDefined();
+      expect(GLOBAL_LOCKED_FLAGS).toContain(key);
+    }
+  });
+
+  it("leaves the deployment-wide dial editable on the global page", () => {
+    expect(globalOnlySnapshotStoreFlagError({ snapshotStoreMode: "dual-write" })).toBeUndefined();
+    expect(GLOBAL_LOCKED_FLAGS).not.toContain(FEATURE_FLAG.snapshotStoreMode);
   });
 });

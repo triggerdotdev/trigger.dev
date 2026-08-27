@@ -181,6 +181,9 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintKindFlippedAt,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  // Read from the org blob only, and refused outright on a global save, so an editable control here
+  // would offer a setting whose only outcome is a 400.
+  FEATURE_FLAG.snapshotStoreOrgMode,
 ];
 
 // Flags that are read-only on the org-level dialog.
