@@ -1,4 +1,7 @@
 import type { RedisOptions } from "@internal/redis";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
+import { WaitpointStoreCoordinator } from "../../waitpointCoordinator/storeCoordinator.js";
+import { toPrismaWaitpoint } from "../../waitpointCoordinator/waitpointShape.js";
 import { generateRunOpsId, parseWaitpointId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { RunEngine } from "../../index.js";
 import type { RunEngineOptions } from "../../types.js";
@@ -57,5 +60,31 @@ export function assertStoreResident(waitpointId: string): void {
       `expected ${waitpointId} to be store resident; a store-arm test that mints a legacy ` +
         `waitpoint asserts nothing about the store path`
     );
+  }
+}
+
+/**
+ * Read a waitpoint from wherever the arm keeps it.
+ *
+ * A test that reads `prisma.waitpoint` directly is asserting against Postgres, which the
+ * store arm does not write for RUN, BATCH or DATETIME. Routing status and output
+ * assertions through here lets one expectation hold on both arms.
+ */
+export async function readWaitpointForArm(args: {
+  arm: WaitpointArm;
+  prisma: PrismaClient;
+  redisOptions: RedisOptions;
+  waitpointId: string;
+}): Promise<Waitpoint | null> {
+  if (args.arm === "legacy" || parseWaitpointId(args.waitpointId).format === "legacy") {
+    return args.prisma.waitpoint.findFirst({ where: { id: args.waitpointId } });
+  }
+
+  const store = new WaitpointStoreCoordinator({ redisOptions: args.redisOptions });
+  try {
+    const held = await store.readWaitpoint(args.waitpointId);
+    return held ? toPrismaWaitpoint(held.record, held.status, held.completion) : null;
+  } finally {
+    await store.quit();
   }
 }
