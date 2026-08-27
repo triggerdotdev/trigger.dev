@@ -839,6 +839,31 @@ export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFu
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
 
+export const DeployBuildPath = z.enum(["depot", "native", "native_local_bundle"]);
+
+export type DeployBuildPath = z.infer<typeof DeployBuildPath>;
+
+export const DeployBuildPathSource = z.enum([
+  "default",
+  "global",
+  "global_environment",
+  "organization",
+  "organization_environment",
+  "project_opt_out",
+  "unavailable",
+]);
+
+export type DeployBuildPathSource = z.infer<typeof DeployBuildPathSource>;
+
+export const GetDeploySettingsResponseBody = z.object({
+  build: z.object({
+    path: DeployBuildPath,
+    source: DeployBuildPathSource,
+  }),
+});
+
+export type GetDeploySettingsResponseBody = z.infer<typeof GetDeploySettingsResponseBody>;
+
 export const RemoteBuildProviderStatusResponseBody = z.object({
   status: z.enum(["operational", "degraded", "unknown"]),
   message: z.string(),
