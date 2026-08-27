@@ -91,6 +91,10 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
   const [croppedArea, setCroppedArea] = useState<Area>();
   const [error, setError] = useState<string>();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  // Holding the url rather than a flag resets the fallback when it changes.
+  const [failedUrl, setFailedUrl] = useState<string>();
+
+  const savedPhotoUrl = currentAvatarUrl === failedUrl ? undefined : currentAvatarUrl;
 
   useEffect(() => {
     if (!imageSrc) return;
@@ -200,7 +204,7 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
               TrailingIcon={MagnifyingGlassPlusIcon}
             />
           </>
-        ) : currentAvatarUrl ? (
+        ) : savedPhotoUrl ? (
           <div
             className={cn(
               "flex h-64 w-full items-center justify-center rounded-md bg-charcoal-900 ring-1",
@@ -209,10 +213,11 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
           >
             {/* Fills the box like the cropper's circle, so switching doesn't jump. */}
             <img
-              src={currentAvatarUrl}
+              src={savedPhotoUrl}
               alt=""
               className="aspect-square h-full rounded-full object-cover"
               draggable={false}
+              onError={() => setFailedUrl(savedPhotoUrl)}
             />
           </div>
         ) : (
@@ -240,10 +245,11 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
           onClick={() => fileInputRef.current?.click()}
           disabled={isSaving}
         >
-          {imageSrc || currentAvatarUrl ? "Choose another" : "Choose image"}
+          {imageSrc || savedPhotoUrl ? "Choose another" : "Choose image"}
         </Button>
         {/* Nothing to save until a new file is cropped, so the saved photo offers
-            Remove in the same slot instead. */}
+            Remove in the same slot instead. Still offered when the preview failed
+            to load: there is a stored photo worth removing. */}
         {imageSrc ? (
           <Button
             variant="primary/medium"

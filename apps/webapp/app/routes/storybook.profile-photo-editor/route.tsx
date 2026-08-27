@@ -57,6 +57,9 @@ export default function Story_() {
           <Story label="Saved picture, removable">
             <EditorStory currentAvatarUrl={PLACEHOLDER_AVATAR} withRemove />
           </Story>
+          <Story label="Saved picture that fails to load">
+            <EditorStory currentAvatarUrl="/storybook-missing-avatar.png" withRemove />
+          </Story>
           <Story label="Submitting, buttons disabled">
             <EditorStory currentAvatarUrl={PLACEHOLDER_AVATAR} withRemove isSaving />
           </Story>
