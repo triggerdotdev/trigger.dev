@@ -1,12 +1,7 @@
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
-import {
-  createTestEngine,
-  freshRunFriendlyId,
-  readWaitpointForArm,
-  type WaitpointArm,
-} from "./helpers/engineFactory.js";
+import { createTestEngine } from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import type { EventBusEventArgs } from "../eventBus.js";
 import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3";
@@ -14,13 +9,12 @@ import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (arm) => {
+describe("RunEngine Waitpoints", () => {
   containerTest("waitForDuration", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = createTestEngine({
-      waitpointArm: arm,
       prisma,
       worker: {
         redis: redisOptions,
@@ -59,7 +53,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const run = await engine.trigger(
         {
           number: 1,
-          friendlyId: freshRunFriendlyId(arm),
+          friendlyId: "run_p1234",
           environment: authenticatedEnvironment,
           taskIdentifier,
           payload: "{}",
@@ -95,7 +89,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       //waitForDuration
       const date = new Date(Date.now() + durationMs);
       const { waitpoint } = await engine.createDateTimeWaitpoint({
-        waitpointMintKind: arm,
         projectId: authenticatedEnvironment.project.id,
         environmentId: authenticatedEnvironment.id,
         completedAfter: date,
@@ -125,11 +118,10 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
         { timeout: 10_000, interval: 100 }
       );
 
-      const waitpoint2 = await readWaitpointForArm({
-        arm,
-        prisma,
-        redisOptions,
-        waitpointId: waitpoint.id,
+      const waitpoint2 = await prisma.waitpoint.findFirst({
+        where: {
+          id: waitpoint.id,
+        },
       });
       expect(waitpoint2?.status).toBe("COMPLETED");
       expect(waitpoint2?.completedAt?.getTime()).toBeLessThanOrEqual(date.getTime() + 200);
@@ -146,7 +138,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = createTestEngine({
-      waitpointArm: arm,
       prisma,
       worker: {
         redis: redisOptions,
@@ -185,7 +176,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const run = await engine.trigger(
         {
           number: 1,
-          friendlyId: freshRunFriendlyId(arm),
+          friendlyId: "run_p1234",
           environment: authenticatedEnvironment,
           taskIdentifier,
           payload: "{}",
@@ -219,7 +210,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       //waitForDuration
       const date = new Date(Date.now() + 60_000);
       const { waitpoint } = await engine.createDateTimeWaitpoint({
-        waitpointMintKind: arm,
         projectId: authenticatedEnvironment.project.id,
         environmentId: authenticatedEnvironment.id,
         completedAfter: date,
@@ -290,7 +280,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = createTestEngine({
-        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -329,7 +318,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
         const run = await engine.trigger(
           {
             number: 1,
-            friendlyId: freshRunFriendlyId(arm),
+            friendlyId: "run_p1234",
             environment: authenticatedEnvironment,
             taskIdentifier,
             payload: "{}",
@@ -362,7 +351,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
 
         //create a manual waitpoint
         const result = await engine.createManualWaitpoint({
-          waitpointMintKind: arm,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
         });
@@ -430,7 +418,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = createTestEngine({
-      waitpointArm: arm,
       prisma,
       worker: {
         redis: redisOptions,
@@ -469,7 +456,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const run = await engine.trigger(
         {
           number: 1,
-          friendlyId: freshRunFriendlyId(arm),
+          friendlyId: "run_p1234",
           environment: authenticatedEnvironment,
           taskIdentifier,
           payload: "{}",
@@ -502,7 +489,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
 
       //create a manual waitpoint
       const result = await engine.createManualWaitpoint({
-        waitpointMintKind: arm,
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         //fail after 200ms
@@ -556,7 +542,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = createTestEngine({
-        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -595,7 +580,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
         const run = await engine.trigger(
           {
             number: 1,
-            friendlyId: freshRunFriendlyId(arm),
+            friendlyId: "run_p1234",
             environment: authenticatedEnvironment,
             taskIdentifier,
             payload: "{}",
@@ -635,7 +620,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
           const results = await Promise.all(
             Array.from({ length: waitpointCount }).map(() =>
               engine.createManualWaitpoint({
-                waitpointMintKind: arm,
                 environmentId: authenticatedEnvironment.id,
                 projectId: authenticatedEnvironment.projectId,
               })
@@ -707,7 +691,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = createTestEngine({
-        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -746,7 +729,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
         const run = await engine.trigger(
           {
             number: 1,
-            friendlyId: freshRunFriendlyId(arm),
+            friendlyId: "run_p1234",
             environment: authenticatedEnvironment,
             taskIdentifier,
             payload: "{}",
@@ -780,7 +763,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
         //create a manual waitpoint with timeout
         const timeout = new Date(Date.now() + 1_000);
         const result = await engine.createManualWaitpoint({
-          waitpointMintKind: arm,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           timeout,
@@ -844,11 +826,10 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
         });
         expect(runWaitpoint).toBeNull();
 
-        const waitpoint2 = await readWaitpointForArm({
-          arm,
-          prisma,
-          redisOptions,
-          waitpointId: result.waitpoint.id,
+        const waitpoint2 = await prisma.waitpoint.findUnique({
+          where: {
+            id: result.waitpoint.id,
+          },
         });
         assertNonNullable(waitpoint2);
         expect(waitpoint2.status).toBe("COMPLETED");
@@ -867,7 +848,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = createTestEngine({
-      waitpointArm: arm,
       prisma,
       worker: {
         redis: redisOptions,
@@ -906,7 +886,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const run = await engine.trigger(
         {
           number: 1,
-          friendlyId: freshRunFriendlyId(arm),
+          friendlyId: "run_p1234",
           environment: authenticatedEnvironment,
           taskIdentifier,
           payload: "{}",
@@ -941,7 +921,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
 
       //create a manual waitpoint with timeout
       const result = await engine.createManualWaitpoint({
-        waitpointMintKind: arm,
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
@@ -1002,11 +981,10 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       });
       expect(runWaitpoint).toBeNull();
 
-      const waitpoint2 = await readWaitpointForArm({
-        arm,
-        prisma,
-        redisOptions,
-        waitpointId: result.waitpoint.id,
+      const waitpoint2 = await prisma.waitpoint.findUnique({
+        where: {
+          id: result.waitpoint.id,
+        },
       });
       assertNonNullable(waitpoint2);
       expect(waitpoint2.status).toBe("COMPLETED");
@@ -1021,7 +999,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = createTestEngine({
-      waitpointArm: arm,
       prisma,
       worker: {
         redis: redisOptions,
@@ -1060,7 +1037,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const run = await engine.trigger(
         {
           number: 1,
-          friendlyId: freshRunFriendlyId(arm),
+          friendlyId: "run_p1234",
           environment: authenticatedEnvironment,
           taskIdentifier,
           payload: "{}",
@@ -1095,7 +1072,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
 
       //create a manual waitpoint with timeout
       const result = await engine.createManualWaitpoint({
-        waitpointMintKind: arm,
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
@@ -1106,7 +1082,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       expect(result.waitpoint.userProvidedIdempotencyKey).toBe(true);
 
       const sameWaitpointResult = await engine.createManualWaitpoint({
-        waitpointMintKind: arm,
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
@@ -1166,11 +1141,10 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       });
       expect(runWaitpoint).toBeNull();
 
-      const waitpoint2 = await readWaitpointForArm({
-        arm,
-        prisma,
-        redisOptions,
-        waitpointId: result.waitpoint.id,
+      const waitpoint2 = await prisma.waitpoint.findUnique({
+        where: {
+          id: result.waitpoint.id,
+        },
       });
       assertNonNullable(waitpoint2);
       expect(waitpoint2.status).toBe("COMPLETED");
@@ -1187,7 +1161,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = createTestEngine({
-        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -1222,7 +1195,7 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
         const run = await engine.trigger(
           {
             number: 1,
-            friendlyId: freshRunFriendlyId(arm),
+            friendlyId: "run_snapshotsince",
             environment: authenticatedEnvironment,
             taskIdentifier,
             payload: "{}",
@@ -1252,7 +1225,6 @@ describe.each<WaitpointArm>(["legacy", "store"])("RunEngine Waitpoints (%s)", (a
 
         // Block the run with a waitpoint (snapshot 2)
         const { waitpoint } = await engine.createDateTimeWaitpoint({
-          waitpointMintKind: arm,
           projectId: authenticatedEnvironment.project.id,
           environmentId: authenticatedEnvironment.id,
           completedAfter: new Date(Date.now() + 100),
