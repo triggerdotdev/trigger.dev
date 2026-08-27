@@ -105,6 +105,7 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     startedAt: true;
     lockedAt: true;
     delayUntil: true;
+    queuedAt: true;
     updatedAt: true;
     completedAt: true;
     isTest: true;

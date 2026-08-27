@@ -141,6 +141,7 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
 });
 
 const DEFAULT_SLOT_HOLDER_LIMIT = 20;
+const DEFAULT_SLOT_HOLDER_MAX_VARIANTS = 50;
 
 /**
  * "admitted": the run holds a concurrency slot (member of currentConcurrency).
@@ -691,19 +692,28 @@ export class RunQueue {
   public async slotHoldersOfQueue(
     env: MinimalAuthenticatedEnvironment,
     queue: string,
-    options?: { limit?: number }
+    options?: { limit?: number; maxVariants?: number }
   ): Promise<QueueSlotHolders> {
     const limit = options?.limit ?? DEFAULT_SLOT_HOLDER_LIMIT;
+    const maxVariants = options?.maxVariants ?? DEFAULT_SLOT_HOLDER_MAX_VARIANTS;
     const baseQueueKey = this.keys.queueKey(env, queue);
 
-    const [admittedCount, dequeuedCount, runningReported, orphanCount, truncated, rawHolders] =
-      await this.redis.slotHoldersOfQueue(
-        baseQueueKey,
-        this.keys.ckIndexKeyFromQueue(baseQueueKey),
-        this.keys.queueRunningCounterKey(env, queue),
-        this.options.redis.keyPrefix ?? "",
-        String(limit)
-      );
+    const [
+      admittedCount,
+      dequeuedCount,
+      runningReported,
+      orphanCount,
+      truncated,
+      rawHolders,
+      skippedVariants,
+    ] = await this.redis.slotHoldersOfQueue(
+      baseQueueKey,
+      this.keys.ckIndexKeyFromQueue(baseQueueKey),
+      this.keys.queueRunningCounterKey(env, queue),
+      this.options.redis.keyPrefix ?? "",
+      String(limit),
+      String(maxVariants)
+    );
 
     const holders = rawHolders.map(([runId, variant, phase]) => ({
       runId,
@@ -716,7 +726,8 @@ export class RunQueue {
       admittedCount,
       dequeuedCount,
       runningReported,
-      truncated: truncated === 1,
+      // A CK-variant scan cap also makes the snapshot incomplete, same as a holder-list cap.
+      truncated: truncated === 1 || skippedVariants > 0,
       unlistedRunning: Math.max(0, runningReported - dequeuedCount),
       consistency:
         dequeuedCount === runningReported && orphanCount === 0 ? "consistent" : "mismatch",
@@ -5637,6 +5648,7 @@ local runningCounterKey = KEYS[3]
 
 local keyPrefix = ARGV[1]
 local maxHolders = tonumber(ARGV[2])
+local maxVariants = tonumber(ARGV[3])
 
 local admittedCount = 0
 local dequeuedCount = 0
@@ -5687,7 +5699,14 @@ end
 
 collect(baseQueueKey, '')
 
-local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+-- Capped so a queue with many CK variants can't turn this into an unbounded
+-- per-request scan; skippedVariants makes the cap visible to the caller.
+local totalVariants = redis.call('ZCARD', ckIndexKey)
+local variants = redis.call('ZRANGE', ckIndexKey, 0, maxVariants - 1)
+local skippedVariants = totalVariants - #variants
+if skippedVariants < 0 then
+  skippedVariants = 0
+end
 for _, v in ipairs(variants) do
   collect(keyPrefix .. v, v)
 end
@@ -5702,6 +5721,7 @@ return {
   orphanCount,
   truncated,
   holders,
+  skippedVariants,
 }
 `,
     });
@@ -5727,6 +5747,7 @@ type SlotHoldersReply = [
   orphanCount: number,
   truncated: number,
   holders: [runId: string, variant: string, phase: string][],
+  skippedVariants: number,
 ];
 
 declare module "@internal/redis" {
@@ -5840,6 +5861,7 @@ declare module "@internal/redis" {
       // args
       keyPrefix: string,
       maxHolders: string,
+      maxVariants: string,
       callback?: Callback<SlotHoldersReply>
     ): Result<SlotHoldersReply, Context>;
 

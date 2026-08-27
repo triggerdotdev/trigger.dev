@@ -62,6 +62,7 @@ const ALWAYS_SELECTED_FIELDS = [
   "status",
   "createdAt",
   "queueTimestamp",
+  "queuedAt",
   "scheduleId",
   "startedAt",
   "lockedAt",

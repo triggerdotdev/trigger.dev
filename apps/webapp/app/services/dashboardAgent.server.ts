@@ -59,9 +59,9 @@ export function dashboardAgentUserApiOrigin(): string {
 // mint a token for themselves. The `in` proxy injects this into the turn's
 // metadata so the token reaches the agent without ever touching the browser.
 //
-// Endpoints that bind something to one environment read `environmentId` off the token,
-// so the agent can't name a different one in a request body. `organizationId` is the outer
-// boundary: it never widens what `environmentId` already pins.
+// `environmentId` is the default environment for the turn. `organizationId` is the actual
+// authorization boundary: an org-wide token lets a request body override the environment
+// to any env within that org.
 export function mintDashboardAgentUserActorToken(
   userId: string,
   opts: { environmentId: string; organizationId: string }

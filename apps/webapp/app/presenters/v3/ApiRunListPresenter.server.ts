@@ -329,6 +329,8 @@ export class ApiRunListPresenter extends BasePresenter {
             startedAt: run.startedAt ? new Date(run.startedAt) : undefined,
             finishedAt: run.finishedAt ? new Date(run.finishedAt) : undefined,
             delayedUntil: run.delayUntil ? new Date(run.delayUntil) : undefined,
+            queuedAt: run.queuedAt ? new Date(run.queuedAt) : undefined,
+            queueWaitReliable: run.queueWaitReliable,
             isTest: run.isTest,
             ttl: run.ttl ?? undefined,
             expiredAt: run.expiredAt ? new Date(run.expiredAt) : undefined,

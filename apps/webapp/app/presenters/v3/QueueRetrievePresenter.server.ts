@@ -1,5 +1,5 @@
 import { formatTriggerUri } from "@internal/dashboard-agent-contracts";
-import { assertExhaustive } from "@trigger.dev/core";
+import { assertExhaustive } from "@trigger.dev/core/utils";
 import { type Prettify, type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
 import {
   boundedIn,
@@ -21,6 +21,7 @@ export type SlotHolderStatus = TaskRunStatus | "not_found";
 /** Env-scope concurrency, alongside the queue row — the queue can show headroom while the env is saturated. */
 export type EnvConcurrency = {
   limit: number;
+  /** The displayed dequeued count (envCurrentDequeuedKey), not the gated envCurrentConcurrencyKey — can trail it. */
   current: number;
   /** The dequeue gate is `current < limit * burstFactor`, not `current < limit`. */
   burstFactor: number;

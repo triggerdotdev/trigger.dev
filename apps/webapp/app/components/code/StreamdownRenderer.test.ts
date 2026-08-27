@@ -128,15 +128,18 @@ describe("loadStreamdownRenderer", () => {
       process.once("unhandledRejection", (err) => resolve(err as Error));
     });
 
-    const mod = await loadStreamdownRenderer(() => Promise.reject(new Error("boom")), [0, 0]);
-    const html = renderToStaticMarkup(createElement(mod.default, null, "hello **world**"));
-    expect(html).toContain("hello");
+    try {
+      const mod = await loadStreamdownRenderer(() => Promise.reject(new Error("boom")), [0, 0]);
+      const html = renderToStaticMarkup(createElement(mod.default, null, "hello **world**"));
+      expect(html).toContain("hello");
 
-    const dispatched = await caught;
-    expect(dispatched.message).toMatch(/boom/);
-
-    for (const listener of priorListeners) {
-      process.on("unhandledRejection", listener as NodeJS.UnhandledRejectionListener);
+      const dispatched = await caught;
+      expect(dispatched.message).toMatch(/boom/);
+    } finally {
+      process.removeAllListeners("unhandledRejection");
+      for (const listener of priorListeners) {
+        process.on("unhandledRejection", listener as NodeJS.UnhandledRejectionListener);
+      }
     }
   });
 });

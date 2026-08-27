@@ -725,15 +725,19 @@ async function seedRecurred(ctx: Ctx) {
   console.log("status) - run this manually to make the error 'recur' after resolvedAt. Omitting");
   console.log("error_fingerprint here silently excludes the row from BOTH views, so get_error and");
   console.log(`list_errors both miss it. Ask about: ${askableId}\n`);
+  // Piped via a quoted heredoc (not --query) so the JSON's double quotes can't break out
+  // of a shell-quoted argument - paste-and-run works with no manual escaping.
   console.log(
-    `clickhouse-client --query "INSERT INTO trigger_dev.task_runs_v2 ` +
+    `cat <<'SQL' | clickhouse-client --multiquery\n` +
+      `INSERT INTO trigger_dev.task_runs_v2 ` +
       `(environment_id, organization_id, project_id, run_id, friendly_id, environment_type, ` +
       `engine, status, task_identifier, error_fingerprint, queue, task_version, error, ` +
       `created_at, updated_at, _version) ` +
       `VALUES ('${ctx.devEnv.id}', '${ctx.orgId}', '${ctx.projectId}', 'uat-recurred-run', ` +
       `'run_uatrecurred', 'DEVELOPMENT', 'V2', 'COMPLETED_WITH_ERRORS', '${taskIdentifier}', ` +
       `'${errorFingerprint}', 'uat-recurred-task', 'uat', '${errorJson}', ` +
-      `'${formatChDateTime(lastSeen)}', '${formatChDateTime(lastSeen)}', ${version})"\n`
+      `'${formatChDateTime(lastSeen)}', '${formatChDateTime(lastSeen)}', ${version});\n` +
+      `SQL\n`
   );
 }
 

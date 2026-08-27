@@ -24,6 +24,7 @@ import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
+import { STALE_QUEUED_AT_STATUSES } from "~/services/dashboardAgentWatchRunChecks";
 import { runTriggeredAt } from "~/v3/runTimestamps";
 import {
   deriveRunSelect,
@@ -331,6 +332,12 @@ export class NextRunListPresenter {
           updatedAt: run.updatedAt.toISOString(),
           startedAt: startedAt ? startedAt.toISOString() : undefined,
           delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
+          queuedAt: run.queuedAt ? run.queuedAt.toISOString() : undefined,
+          // A resumed, retried or paused run's stale queuedAt doesn't measure this attempt's wait.
+          queueWaitReliable:
+            run.queuedAt !== null && run.queuedAt !== undefined
+              ? !STALE_QUEUED_AT_STATUSES.has(run.status)
+              : false,
           hasFinished,
           finishedAt: hasFinished
             ? (run.completedAt?.toISOString() ?? run.updatedAt.toISOString())

@@ -33,6 +33,7 @@ const LIST_RUN_DEFAULT_SELECT = {
   status: true,
   createdAt: true,
   queueTimestamp: true,
+  queuedAt: true,
   scheduleId: true,
   startedAt: true,
   lockedAt: true,

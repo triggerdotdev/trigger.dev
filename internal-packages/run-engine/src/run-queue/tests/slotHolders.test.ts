@@ -261,4 +261,44 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "caps the number of CK variants scanned and reports it as truncated",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        // Per variant: a fast-path holder plus a slow-path message, so the variant lands
+        // in ckIndex (enumerable) and has one admitted holder.
+        for (let i = 0; i < 3; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId: `r${i}a`, concurrencyKey: `ck-${i}` }),
+            workerQueue: WORKER_QUEUE,
+            skipDequeueProcessing: true,
+            enableFastPath: true,
+          });
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId: `r${i}b`, concurrencyKey: `ck-${i}` }),
+            workerQueue: WORKER_QUEUE,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const capped = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE, {
+          maxVariants: 2,
+        });
+        expect(capped.holders).toHaveLength(2);
+        expect(capped.truncated).toBe(true);
+
+        const uncapped = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE, {
+          maxVariants: 10,
+        });
+        expect(uncapped.holders).toHaveLength(3);
+        expect(uncapped.truncated).toBe(false);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });
