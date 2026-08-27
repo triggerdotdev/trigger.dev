@@ -211,6 +211,10 @@ describe("chat.agent declined steering message", () => {
     try {
       const first = harness.sendMessage(userMessage("m1", "u-1"));
       await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      // A delta having arrived does not prove the turn is still open, and a
+      // message landing after it would take the ordinary next-turn path and
+      // pass this test without exercising the mid-turn one.
+      expect(turnCompleteCount(harness)).toBe(0);
       void harness.sendMessage(userMessage("m2", "u-2"));
       await first;
 
@@ -251,6 +255,10 @@ describe("chat.agent pendingMessages with nothing wired to drain it", () => {
     try {
       const first = harness.sendMessage(userMessage("m1", "u-1"));
       await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      // A delta having arrived does not prove the turn is still open, and a
+      // message landing after it would take the ordinary next-turn path and
+      // pass this test without exercising the mid-turn one.
+      expect(turnCompleteCount(harness)).toBe(0);
       void harness.sendMessage(userMessage("m2", "u-2"));
       await first;
 

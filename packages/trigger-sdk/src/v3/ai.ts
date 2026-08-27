@@ -3648,42 +3648,56 @@ async function drainSteeringQueue(
 
   if (!shouldInject) return [];
 
-  // Extract message texts for span attributes
-  const messageTexts = uiMessages.map(
-    (m) =>
-      (m.parts ?? [])
-        .filter((p: any) => p.type === "text")
-        .map((p: any) => p.text)
-        .join("") || ""
-  );
+  const textOfUIMessage = (m: UIMessage) =>
+    (m.parts ?? [])
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text)
+      .join("") || "";
+  // Span attributes describe the offered batch; the chunk and callback below
+  // describe what was actually claimed and injected.
+  const messageTexts = uiMessages.map(textOfUIMessage);
   const _previewText =
     messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
     "pending message injected",
     async () => {
-      // Transform the batch — default: concatenate all pre-converted model messages
-      const injected = config.prepare
-        ? await config.prepare(batchEvent)
-        : batch.flatMap((e) => e.modelMessages);
-
       /**
-       * Injection is the point of consumption. The records were only observed
+       * Claim before transforming, and inject only what was claimed.
+       *
+       * Injection is the point of consumption: the records were only observed
        * on arrival, so they are still queued on the router and still holding
-       * the resume floor; taking them here is what stops the same message also
-       * being answered as a later turn. A batch that was declined never reaches
+       * the resume floor, and taking them here is what stops the same message
+       * also being answered as a later turn. A declined batch never reaches
        * this line, so its records stay queued and become later turns, which is
        * what "messages queue for the next turn" means.
+       *
+       * A failed claim means something else already consumed that record while
+       * `shouldInject` was awaiting, so it is already being answered as a turn
+       * of its own. Injecting it as well would process the same message twice.
+       * An entry with no `seqNum` did not come from a channel record (the
+       * accumulator's own queue), so there is nothing to claim and it is kept.
        */
       const router = chatInputRouter();
-      for (const entry of batch) {
-        if (entry.seqNum !== undefined) router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
-        const at = queue.indexOf(entry);
-        if (at !== -1) queue.splice(at, 1);
-      }
+      const claimed = batch.filter((entry) => {
+        const mine = entry.seqNum === undefined || router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
+        if (mine) {
+          const at = queue.indexOf(entry);
+          if (at !== -1) queue.splice(at, 1);
+        }
+        return mine;
+      });
+
+      if (claimed.length === 0) return [];
+
+      const claimedUIMessages = claimed.map((e) => e.uiMessage);
+      const injected = config.prepare
+        ? await config.prepare({ ...batchEvent, messages: claimedUIMessages })
+        : claimed.flatMap((e) => e.modelMessages);
+
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
-        for (const m of uiMessages) injectedIds.add(m.id);
+        for (const m of claimedUIMessages) injectedIds.add(m.id);
       }
 
       // Write injection confirmation chunk to the stream so the frontend
@@ -3697,10 +3711,10 @@ async function drainSteeringQueue(
                 type: PENDING_MESSAGE_INJECTED_TYPE,
                 id: generateMessageId(),
                 data: {
-                  messageIds: uiMessages.map((m) => m.id),
-                  messages: uiMessages.map((m, idx) => ({
+                  messageIds: claimedUIMessages.map((m) => m.id),
+                  messages: claimedUIMessages.map((m) => ({
                     id: m.id,
-                    text: messageTexts[idx] ?? "",
+                    text: textOfUIMessage(m),
                   })),
                 },
               });
@@ -3716,7 +3730,7 @@ async function drainSteeringQueue(
       if (config.onInjected && injected.length > 0) {
         try {
           await config.onInjected({
-            messages: uiMessages,
+            messages: claimedUIMessages,
             injectedModelMessages: injected,
             chatId: ctx?.chatId ?? "",
             turn: ctx?.turn ?? 0,
