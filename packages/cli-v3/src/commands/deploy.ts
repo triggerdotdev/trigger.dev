@@ -226,13 +226,14 @@ export function configureDeployCommand(program: Command) {
           .implies({
             localBuild: true,
           })
-          .conflicts("nativeBuildServer")
+          .conflicts(["nativeBuild", "nativeBuildServer"])
           .hideHelp()
       )
       .addOption(
-        new CommandOption("--local-build", "Build the deployment image locally").conflicts(
-          "nativeBuildServer"
-        )
+        new CommandOption("--local-build", "Build the deployment image locally").conflicts([
+          "nativeBuild",
+          "nativeBuildServer",
+        ])
       )
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
@@ -264,11 +265,13 @@ export function configureDeployCommand(program: Command) {
           "--depot-build",
           "Build the image with Depot, ignoring the build path configured for this project on the server"
         ).conflicts([
+          "nativeBuild",
           "nativeBuildServer",
           "localBundle",
           "localBuild",
           "forceLocalBuild",
           "fromBundle",
+          "detach",
         ])
       )
       .addOption(
@@ -1266,7 +1269,7 @@ function getTriggeredVia(): DeploymentTriggeredVia {
   return "cli:manual";
 }
 
-const DEPLOY_SETTINGS_TIMEOUT_MS = 3_000;
+const DEPLOY_SETTINGS_TIMEOUT_MS = 5_000;
 
 const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
   depot: "Depot",
