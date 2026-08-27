@@ -12,6 +12,15 @@ processors:
 exporters:
   logging:
     verbosity: normal
+  # Serves the collected metrics on :8889/metrics, which docker-compose.extras.yml publishes and
+  # config/prometheus.yml already scrapes. Without this pipeline that scrape target returns nothing,
+  # so no OTel metric is visible locally.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # Keeps the metric names as OpenTelemetry emitted them, so a rule written against
+    # run_engine_snapshot_store_* matches without a namespace guess.
+    resource_to_telemetry_conversion:
+      enabled: false
   otlphttp:
     endpoint: "http://host.docker.internal:3030/otel"
     compression: none
@@ -26,3 +35,7 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlphttp]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

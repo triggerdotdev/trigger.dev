@@ -95,6 +95,7 @@ services:
     restart: always
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     ports:
       - "${PROMETHEUS_HOST_PORT:-9090}:9090"

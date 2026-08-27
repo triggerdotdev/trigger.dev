@@ -1,0 +1,48 @@
+# Alerting rules for the execution-snapshot store.
+#
+# These are paging rules, not dashboard panels. A sustained append failure burns an attempt number
+# on every state transition, so runs exhaust their retry budget from an infrastructure fault rather
+# than from anything the task did. That is silent to the customer until their run fails for good.
+groups:
+  - name: snapshot-store
+    interval: 30s
+    rules:
+      - alert: SnapshotStoreAppendFailing
+        # Any sustained failure at all, not a rate threshold: one failed append per minute still
+        # burns one attempt per minute on the runs it touches.
+        expr: sum(rate(run_engine_snapshot_store_append_failed_total[5m])) > 0
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Execution-snapshot appends to Redis are failing"
+          description: >-
+            Appends have failed continuously for 10 minutes. Each failure burns an attempt number on
+            the run it touches, so runs will exhaust their retry budget from infrastructure rather
+            than task failure. Turn the snapshotStoreMode flag down to off, which takes effect
+            without a deploy, then investigate the Redis endpoint.
+
+      - alert: SnapshotStoreQuarantineFailing
+        # A quarantine that cannot be applied leaves a run's Redis head permanently behind Postgres.
+        expr: sum(rate(run_engine_snapshot_store_quarantine_total{outcome="failed"}[10m])) > 0
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          summary: "Execution-snapshot keyspaces cannot be quarantined"
+          description: >-
+            A divergent Redis head could not be dropped, so that run keeps a head that is behind
+            Postgres. Do not move the dial to redis-read while this is firing: a frozen head is
+            served as if it were current.
+
+      - alert: SnapshotStoreSweepNotCompleting
+        # The sweep is the only reaper for orphaned keyspaces. Its absence is silent by nature.
+        expr: sum(increase(run_engine_snapshot_store_sweep_pass_total{outcome="completed"}[24h])) == 0
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No execution-snapshot sweep pass completed in 24 hours"
+          description: >-
+            The sweep runs every 6 hours by default, so 24 hours with no completed pass means the
+            job is not running, is failing, or is losing its lock every pass.

@@ -5,6 +5,11 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Paging rules live in the repo so they are reviewable and can be checked locally with
+# `promtool check rules`. Mounted read-only by docker-compose.extras.yml.
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
 scrape_configs:
   # Scrape OpenTelemetry Collector's Prometheus exporter
   # This includes all OTel metrics (batch queue, fair queue, etc.)
