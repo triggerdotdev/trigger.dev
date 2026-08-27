@@ -235,23 +235,16 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
         )}
       </div>
       <DialogFooter>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="tertiary/medium"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isSaving}
-          >
-            {imageSrc || currentAvatarUrl ? "Choose another" : "Choose image"}
-          </Button>
-          {/* Only while the saved photo is showing, or it would discard a pending crop. */}
-          {onRemove && currentAvatarUrl && !imageSrc && (
-            <Button variant="danger/medium" onClick={onRemove} disabled={isSaving}>
-              Remove
-            </Button>
-          )}
-        </div>
-        {/* Nothing to save until a new file is cropped. */}
-        {imageSrc && (
+        <Button
+          variant="tertiary/medium"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isSaving}
+        >
+          {imageSrc || currentAvatarUrl ? "Choose another" : "Choose image"}
+        </Button>
+        {/* Nothing to save until a new file is cropped, so the saved photo offers
+            Remove in the same slot instead. */}
+        {imageSrc ? (
           <Button
             variant="primary/medium"
             onClick={save}
@@ -260,6 +253,13 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
           >
             Save
           </Button>
+        ) : (
+          onRemove &&
+          currentAvatarUrl && (
+            <Button variant="danger/medium" onClick={onRemove} disabled={isSaving}>
+              Remove
+            </Button>
+          )
         )}
       </DialogFooter>
     </div>
