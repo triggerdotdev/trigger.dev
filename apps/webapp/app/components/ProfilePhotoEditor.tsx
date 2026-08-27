@@ -243,7 +243,7 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
           >
             {imageSrc ? "Choose another" : "Choose image"}
           </Button>
-          {onRemove && currentAvatarUrl && (
+          {onRemove && currentAvatarUrl && !imageSrc && (
             <Button variant="danger/medium" onClick={onRemove} disabled={isSaving}>
               Remove
             </Button>
