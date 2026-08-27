@@ -351,3 +351,101 @@ describe("chat.agent injection claims only its own batch", () => {
     }
   });
 });
+
+/**
+ * Whether an injected message survives into the next turn's model context.
+ *
+ * Recorded here because the deployed QA lane finds the two surfaces disagree:
+ * a `chat.createSession()` recap in the same run recalls a mid-turn steer,
+ * while the managed `chat.agent` loop denies it. That difference is
+ * pre-existing and is the surface-specific half of the accumulator gap.
+ *
+ * `it.fails` because the managed path does not carry it: turn 2's prompt comes
+ * back as the original and the following message only, with the injected one
+ * absent. Held here so the day that changes is noticed, and so the gap has a
+ * repro that does not need a deployed environment.
+ */
+describe("chat.agent injected message in the next turn's context", () => {
+  it.fails(
+    "carries an injected message into the following turn's prompt",
+    { timeout: 30_000 },
+    async () => {
+      const chatId = "inject-next-turn";
+      const toolGate = makeGate();
+      let toolEntered = false;
+      const prompts: string[][] = [];
+
+      const gateTool = tool({
+        description: "blocks until the test opens it",
+        inputSchema: z.object({ q: z.string() }),
+        execute: async () => {
+          toolEntered = true;
+          await toolGate.promise;
+          return "ok";
+        },
+      });
+
+      let step = 0;
+      const recordingModel = new MockLanguageModelV3({
+        doStream: async ({ prompt }) => {
+          prompts.push(
+            prompt
+              .filter((m) => m.role === "user")
+              .flatMap((m) =>
+                Array.isArray(m.content)
+                  ? (m.content as { type: string; text?: string }[])
+                      .filter((c) => c.type === "text")
+                      .map((c) => c.text ?? "")
+                  : []
+              )
+          );
+          const isToolStep = step++ % 2 === 0;
+          return {
+            stream: simulateReadableStream({
+              chunks: isToolStep ? toolCallChunks(`tc-${step}`) : textChunks("done"),
+              initialDelayInMs: 10,
+              chunkDelayInMs: 2,
+            }),
+          };
+        },
+      });
+
+      const agent = chat.agent({
+        id: "steering-injection.next-turn",
+        pendingMessages: { shouldInject: () => true },
+        run: async ({ messages, signal }) =>
+          streamText({
+            model: recordingModel,
+            messages,
+            abortSignal: signal,
+            ...chat.toStreamTextOptions(),
+            tools: { gate: gateTool },
+            stopWhen: stepCountIs(5),
+          }),
+      });
+
+      const harness = mockChatAgent(agent, { chatId });
+      try {
+        const first = harness.sendMessage(userMessage("m1", "u-1"));
+        await waitFor(() => toolEntered, "tool entered");
+        await sendAndLand(harness, chatId, "steer-me", "u-2");
+        toolGate.open();
+        await first;
+
+        await waitFor(() => turnCompleteCount(harness) >= 1, "turn 1 complete");
+        const promptsAfterTurn1 = prompts.length;
+
+        // A fresh turn. Its prompt is built from accumulated history, so it
+        // should still contain the message that was injected into turn 1.
+        await harness.sendMessage(userMessage("m3", "u-3"));
+        await waitFor(() => prompts.length > promptsAfterTurn1, "turn 2 prompt built");
+
+        const turn2Prompt = prompts[promptsAfterTurn1]!;
+        expect(turn2Prompt).toContain("steer-me");
+      } finally {
+        toolGate.open();
+        await harness.close();
+      }
+    }
+  );
+});
