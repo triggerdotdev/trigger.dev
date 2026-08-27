@@ -129,6 +129,7 @@ const AVATAR_URL_REGEX = /^\/resources\/account\/avatar\/([^/]+)\/([^/]+)$/;
 /**
  * Undefined unless the stored URL is this user's own avatar route and names a different object:
  * an OAuth avatar elsewhere is not ours to delete, and the same content hash is the same file.
+ * Without a replacement filename the object is always stale — the avatar is being removed.
  */
 export function resolveStaleAvatarObjectPath({
   previousAvatarUrl,
@@ -137,7 +138,7 @@ export function resolveStaleAvatarObjectPath({
 }: {
   previousAvatarUrl: string | null;
   userId: string;
-  filename: string;
+  filename?: string;
 }): string | undefined {
   const match = previousAvatarUrl?.match(AVATAR_URL_REGEX);
 
@@ -157,7 +158,7 @@ export function resolveStaleAvatarObjectPath({
 export async function deleteStaleUserAvatar(options: {
   previousAvatarUrl: string | null;
   userId: string;
-  filename: string;
+  filename?: string;
 }) {
   const path = resolveStaleAvatarObjectPath(options);
 

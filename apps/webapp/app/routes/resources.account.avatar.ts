@@ -9,11 +9,21 @@ import {
 } from "~/services/userAvatar.server";
 
 export async function action({ request }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "POST") {
+  const method = request.method.toUpperCase();
+
+  if (method !== "POST" && method !== "DELETE") {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
   const user = await requireUser(request);
+
+  if (method === "DELETE") {
+    await updateUserAvatarUrl({ id: user.id, avatarUrl: null });
+
+    await deleteStaleUserAvatar({ previousAvatarUrl: user.avatarUrl, userId: user.id });
+
+    return json({ avatarUrl: null });
+  }
 
   const upload = await parseAvatarUpload(await request.formData());
 

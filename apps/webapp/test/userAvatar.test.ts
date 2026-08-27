@@ -292,3 +292,25 @@ describe("avatarObjectStoreImageOrigin", () => {
     expect(avatarObjectStoreImageOrigin()).toBeUndefined();
   });
 });
+
+describe("resolveStaleAvatarObjectPath on removal", () => {
+  const stored = filenameFor([1, 2, 3]);
+
+  it("derives the object to drop when there is no replacement", () => {
+    expect(
+      resolveStaleAvatarObjectPath({
+        previousAvatarUrl: buildUserAvatarUrl(USER_ID, stored),
+        userId: USER_ID,
+      })
+    ).toBe(`avatars/${USER_ID}/${stored}`);
+  });
+
+  it.each([
+    ["no avatar", null],
+    ["an OAuth avatar", "https://avatars.githubusercontent.com/u/1?v=4"],
+    ["another user's avatar", `/resources/account/avatar/usr_other/${stored}`],
+    ["a traversal filename", `/resources/account/avatar/${USER_ID}/../../secret.png`],
+  ])("deletes nothing for %s", (_case, previousAvatarUrl) => {
+    expect(resolveStaleAvatarObjectPath({ previousAvatarUrl, userId: USER_ID })).toBeUndefined();
+  });
+});
