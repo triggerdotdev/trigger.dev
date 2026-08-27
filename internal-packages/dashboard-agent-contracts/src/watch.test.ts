@@ -20,6 +20,7 @@ import {
   watchRunDisposition,
   watchSpecSchema,
   watchStatusSchema,
+  watchDraftSchema,
   type WatchKind,
   type WatchSpec,
 } from "./watch.js";
@@ -614,6 +615,31 @@ describe("watchResolvedBlockBody", () => {
         },
       }).outcome
     ).toBe("impossible");
+  });
+});
+
+describe("watchDraftSchema", () => {
+  const draft = {
+    spec: specs.backlog_drain,
+    followUp: { investigateOnAttention: false, notifyExternally: false },
+  };
+
+  it("accepts a draft with no target, unchanged", () => {
+    const parsed = watchDraftSchema.safeParse(draft);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.target).toBeUndefined();
+  });
+
+  it("round-trips an optional target as { environmentId }", () => {
+    const withTarget = { ...draft, target: { environmentId: "env_sibling" } };
+    const parsed = watchDraftSchema.safeParse(withTarget);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.target).toEqual({ environmentId: "env_sibling" });
+  });
+
+  it("rejects a target missing environmentId", () => {
+    const invalid = { ...draft, target: {} };
+    expect(watchDraftSchema.safeParse(invalid).success).toBe(false);
   });
 });
 

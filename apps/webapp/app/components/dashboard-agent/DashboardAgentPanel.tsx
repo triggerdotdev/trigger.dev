@@ -409,10 +409,10 @@ export function DashboardAgentPanel({
   }, [watchRequest]);
 
   // Nothing is posted or persisted until the card is submitted.
-  const openWatchCard = useCallback((spec: WatchSpec) => {
+  const openWatchCard = useCallback((spec: WatchSpec, target?: { environmentId: string }) => {
     dispatchWatchCard({
       type: "open",
-      draft: watchDraftFor(spec),
+      draft: watchDraftFor(spec, target),
       requestId: generateFriendlyId("wreq"),
     });
   }, []);

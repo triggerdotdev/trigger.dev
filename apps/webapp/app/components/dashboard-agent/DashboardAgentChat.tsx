@@ -114,8 +114,9 @@ export function DashboardAgentChat({
   pagePaths?: Record<string, string>;
   watchCard?: React.ReactNode;
   appendedMessages?: { messages: UIMessage[]; seq: number };
-  /** Nothing is persisted until the user submits the card. */
-  onWatchIntent?: (spec: WatchSpec) => void;
+  /** Nothing is persisted until the user submits the card. `target` is set only when
+   * the watch targets another project/environment than this chat's own. */
+  onWatchIntent?: (spec: WatchSpec, target?: { environmentId: string }) => void;
   onCancelWatch: (watchId: string) => void;
   onTurnSettled: () => void;
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
@@ -431,7 +432,10 @@ export function DashboardAgentChat({
           submit(intent.prompt);
           return;
         case "watch":
-          onWatchIntent?.(intent.spec);
+          onWatchIntent?.(
+            intent.spec,
+            intent.target ? { environmentId: intent.target.environmentId } : undefined
+          );
           return;
         case "navigate":
           void goTo(intent);
@@ -469,7 +473,12 @@ export function DashboardAgentChat({
   useEffect(() => {
     const pending = pendingWatchIntents(messages, watchProposedRef.current!);
     const proposed = pending.at(-1);
-    if (proposed) onWatchIntent?.(proposed.spec);
+    if (proposed) {
+      onWatchIntent?.(
+        proposed.spec,
+        proposed.target ? { environmentId: proposed.target.environmentId } : undefined
+      );
+    }
   }, [messages, onWatchIntent]);
 
   const stop = useCallback(() => {

@@ -27,8 +27,12 @@ import {
 import { noteFor } from "~/presenters/v3/dashboardAgent";
 
 /** A brand-new draft: the recommendation, with both opt-ins off. */
-export function watchDraftFor(spec: WatchSpec): WatchDraft {
-  return { spec, followUp: { investigateOnAttention: false, notifyExternally: false } };
+export function watchDraftFor(spec: WatchSpec, target?: { environmentId: string }): WatchDraft {
+  return {
+    spec,
+    followUp: { investigateOnAttention: false, notifyExternally: false },
+    ...(target ? { target } : {}),
+  };
 }
 
 /**

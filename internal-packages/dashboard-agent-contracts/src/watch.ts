@@ -580,6 +580,9 @@ export type WatchFollowUp = z.infer<typeof watchFollowUpSchema>;
 export const watchDraftSchema = z.object({
   spec: watchSpecSchema,
   followUp: watchFollowUpSchema,
+  // Set only when the watch targets another project/environment than the one the chat
+  // is open in, already resolved (never guessed) by the tool that proposed it.
+  target: z.object({ environmentId: z.string() }).optional(),
 });
 
 export type WatchDraft = z.infer<typeof watchDraftSchema>;

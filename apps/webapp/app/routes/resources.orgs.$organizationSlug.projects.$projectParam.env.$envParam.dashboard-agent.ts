@@ -531,15 +531,33 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
     }
 
-    const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
-    if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+    // `draft.target` names another environment than the URL's — resolved by the tool
+    // that proposed the watch, never trusted here. Re-authorize it exactly like the
+    // URL's own environment, then require it to stay inside this same org: a user's
+    // membership elsewhere is not license to watch across orgs from this chat.
+    let environment: Awaited<ReturnType<typeof authorizeWatchEnvironmentById>>;
+    if (draft.target) {
+      environment = await authorizeWatchEnvironmentById({
+        userId,
+        environmentId: draft.target.environmentId,
+      });
+      if (!environment) {
+        return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+      }
+      if (environment.organizationId !== project.organizationId) {
+        return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+      }
+    } else {
+      const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
+      if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
 
-    const environment = await authorizeWatchEnvironmentById({
-      userId,
-      environmentId: runtimeEnv.id,
-    });
-    if (!environment) {
-      return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+      environment = await authorizeWatchEnvironmentById({
+        userId,
+        environmentId: runtimeEnv.id,
+      });
+      if (!environment) {
+        return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+      }
     }
 
     // A watch is chat-bound, so a card submitted from a fresh panel creates a chat.
