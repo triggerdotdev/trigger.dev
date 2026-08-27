@@ -8,6 +8,7 @@ import {
 } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
+import { ProfilePhotoEditor } from "~/components/ProfilePhotoEditor";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -445,6 +446,62 @@ function useProfileFieldUpdate({
   }, [fetcher.state, fetcher.data, toast, successMessage, onSuccess]);
 
   return { fetcher, error, setError, isSubmitting: fetcher.state !== "idle" };
+}
+
+function ChangeProfilePhotoButton() {
+  const [isOpen, setIsOpen] = useState(false);
+  const fetcher = useFetcher<{ avatarUrl?: string; error?: string }>();
+  const toast = useToast();
+  const isSaving = fetcher.state !== "idle";
+  const submitSeenRef = useRef(false);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") {
+      submitSeenRef.current = true;
+      return;
+    }
+    if (!submitSeenRef.current) return;
+    submitSeenRef.current = false;
+
+    if (fetcher.data?.avatarUrl) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Closes the modal once the upload has landed.
+      setIsOpen(false);
+      toast.success("Your profile picture has been updated.");
+      return;
+    }
+
+    toast.error(fetcher.data?.error ?? "Something went wrong. Please try again.");
+  }, [fetcher.state, fetcher.data, toast]);
+
+  const save = (blob: Blob) => {
+    const formData = new FormData();
+    formData.append("image", blob, "avatar.png");
+    fetcher.submit(formData, {
+      method: "post",
+      action: "/resources/account/avatar",
+      encType: "multipart/form-data",
+    });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        title="Change your profile picture"
+        aria-label="Change your profile picture"
+        className="focus-custom group cursor-pointer rounded-full outline-hidden"
+      >
+        <UserProfilePhoto className="size-8 transition group-hover:opacity-60" strokeWidth={1.5} />
+      </button>
+      <ProfilePhotoEditor
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        onSave={save}
+        isSaving={isSaving}
+      />
+    </>
+  );
 }
 
 function EditNameButton() {
@@ -900,7 +957,7 @@ export default function Page() {
                 <Label>Profile picture</Label>
               </InputGroup>
               <div className="flex flex-none items-center">
-                <UserProfilePhoto className="size-8" strokeWidth={1.5} />
+                <ChangeProfilePhotoButton />
               </div>
             </div>
           </div>
