@@ -709,11 +709,18 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   /**
-   * None of the four append outcomes is a failure, and none of them enqueues a repair.
+   * None of the append outcomes is a thrown failure, and none enqueues a repair.
    *
-   * `skippedNoKeyspace` is every pre-cutover run's transitions. `forked` means another writer
-   * advanced the head, which a repair cannot help. `duplicate` is a retry that already landed.
-   * `cycleMismatch` means the store refused an untrustworthy waitpoint pointer on purpose.
+   * `skippedNoKeyspace` is a run that is not resident: every pre-cutover run's transitions, and
+   * every run whose organisation was at `off` when it was born. `duplicate` is a retry that already
+   * landed. `cycleMismatch` means the store refused an untrustworthy waitpoint pointer on purpose.
+   *
+   * `forked` is none of those. It was read as expected contention, from a model where any writer
+   * could append to any run. With a run's store fixed at birth the writer set per run is stable, so
+   * a fork is either a lost append or a genuinely concurrent writer, and by the time it is seen the
+   * head already disagrees with Postgres. It is logged at error and paged on, not repaired: a repair
+   * re-derives the head from Postgres, and two previous attempts at that in this area were withdrawn
+   * as unsafe, so an operator decides. See the SnapshotStoreAppendForked rule.
    */
   #recordOutcome(
     site: string,
@@ -723,7 +730,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     this.metrics?.recordWrite(site, result.outcome);
 
     if (result.outcome === "forked") {
-      this.logger.warn("snapshot append forked", {
+      this.logger.error("snapshot append forked", {
         runId: entry.runId,
         snapshotId: entry.id,
         site,

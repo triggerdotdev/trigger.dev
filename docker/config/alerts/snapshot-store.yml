@@ -23,8 +23,29 @@ groups:
           description: >-
             Appends have failed continuously for 10 minutes. Each failure burns an attempt number on
             the run it touches, so runs will exhaust their retry budget from infrastructure rather
-            than task failure. Turn the snapshotStoreMode flag down to off, which takes effect
-            without a deploy, then investigate the Redis endpoint.
+            than task failure. Turning the snapshotStoreMode flag down to off stops new runs
+            entering Redis but leaves resident runs mirroring, so the failures continue until they
+            finish; the snapshotStoreHalt flag stops every append at once, at the cost of freezing
+            resident heads and requiring a resync. Both take effect without a deploy. Then
+            investigate the Redis endpoint.
+
+      - alert: SnapshotStoreAppendForked
+        # A fork is a divergence that has already happened, and nothing heals it: the head moved
+        # under an append that was refused, so Redis and Postgres now disagree about that run's
+        # latest snapshot. With a run's store fixed at birth the writer set per run is stable, so
+        # this is a lost append or a genuine concurrent writer, not steady-state noise.
+        expr: sum(rate({__name__=~".*run_engine_snapshot_store_write_total",outcome="forked"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Execution-snapshot appends are being refused as forked"
+          description: >-
+            One or more runs have a Redis head that disagrees with Postgres, and no repair is
+            enqueued for a fork. Below redis-only Postgres is authoritative, so turn the
+            snapshotStoreMode flag down to off to stop new runs entering Redis, then resync the
+            affected runs before trusting a Redis read. Do NOT halt: that freezes every resident
+            run's head instead of just the forked ones.
 
       - alert: SnapshotStoreSweepNotCompleting
         # The sweep is the only reaper for orphaned keyspaces. Its absence is silent by nature.

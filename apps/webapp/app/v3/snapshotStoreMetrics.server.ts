@@ -64,12 +64,15 @@ function bounded(value: string, allowed: readonly string[]): string {
  * Every instrument is created inside this function. At module scope they would register on every
  * boot, including deployments with no snapshot-store Redis configured.
  */
+/** Exported so the paging rule for a forked append is written against the real name. */
+export const SNAPSHOT_STORE_WRITE_TOTAL = "run_engine.snapshot_store.write_total";
+
 export function createSnapshotStoreMetrics(meter: Meter) {
   // Two layers, two counters. Sharing one would count a single logical write twice and mix
   // {outcome, ttl} points with {site, outcome} points under one name, so no sum or grouping over it
   // would mean anything.
   const appendTotal = meter.createCounter("run_engine.snapshot_store.append_total");
-  const writeTotal = meter.createCounter("run_engine.snapshot_store.write_total");
+  const writeTotal = meter.createCounter(SNAPSHOT_STORE_WRITE_TOTAL);
   const appendFailed = meter.createCounter("run_engine.snapshot_store.append_failed");
   const readSource = meter.createCounter("run_engine.snapshot_store.read_source");
   const skippedNoKeyspace = meter.createCounter("run_engine.snapshot_store.skipped_no_keyspace");
