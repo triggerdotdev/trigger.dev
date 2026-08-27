@@ -6116,7 +6116,7 @@ type ChatCustomAgentOptions<
    * this only governs the stream-visible error. The frame is never delivered as
    * a turn in either mode.
    */
-  clientDataValidationErrorTiming?: "turn-end" | "arrival";
+  clientDataReportErrorAt?: "turn-end" | "arrival";
   run: TaskOptions<
     TIdentifier,
     ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
@@ -6134,7 +6134,7 @@ function chatCustomAgent<
   const {
     clientDataSchema,
     onClientDataValidationError,
-    clientDataValidationErrorTiming,
+    clientDataReportErrorAt,
     run: userRun,
     ...restOptions
   } = options;
@@ -6181,10 +6181,7 @@ function chatCustomAgent<
           onClientDataValidationError as ChatCustomAgentClientDataErrorHandler
         );
       }
-      locals.set(
-        chatCustomAgentClientDataErrorTimingKey,
-        clientDataValidationErrorTiming ?? "turn-end"
-      );
+      locals.set(chatCustomAgentClientDataErrorTimingKey, clientDataReportErrorAt ?? "turn-end");
       // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
       // trims `session.out` back to the previous turn boundary. Without
       // this the slot is undefined and the trim never runs, so `.out`
@@ -9014,9 +9011,29 @@ export interface ChatBuilder<
     config?: ChatWithUIMessageConfig<TUIM>
   ): ChatBuilder<TUIM, TClientDataSchema>;
 
-  /** Fix the client data schema. Returns a new builder preserving all accumulated state. */
+  /**
+   * Fix the client data schema, and how validation failures are handled.
+   * Returns a new builder preserving all accumulated state.
+   */
   withClientData<TSchema extends TaskSchema>(config: {
     schema: TSchema;
+    /**
+     * When a frame that arrived mid-turn fails validation, decides when the
+     * client-visible error is written.
+     *
+     * `"turn-end"` (default) waits for the turn to close, so a bad send cannot
+     * truncate an answer already being read. `"arrival"` writes it as soon as
+     * validation fails, ending the response in progress.
+     *
+     * `onValidationError` and the task log fire on arrival either way, and the
+     * frame is never delivered as a turn.
+     */
+    reportErrorAt?: "turn-end" | "arrival";
+    /** Called when an input fails validation. Composes with the task-level hook. */
+    onValidationError?: (event: {
+      error: unknown;
+      payload: ChatTaskWirePayload<TUIMessage, unknown>;
+    }) => Promise<void> | void;
   }): ChatBuilder<TUIMessage, TSchema>;
 
   /** Register a builder-level `onBoot` hook. Runs before the task-level hook if both are set. */
@@ -9140,6 +9157,8 @@ type ChatBuilderHooks = {
 type ChatBuilderConfig = {
   uiStreamOptions?: ChatUIMessageStreamOptions<any>;
   clientDataSchema?: TaskSchema;
+  clientDataReportErrorAt?: "turn-end" | "arrival";
+  clientDataOnValidationError?: ChatCustomAgentClientDataErrorHandler;
   hooks: ChatBuilderHooks;
 };
 
@@ -9167,10 +9186,17 @@ function createChatBuilder<
       });
     },
 
-    withClientData<TSchema extends TaskSchema>(cdConfig: { schema: TSchema }) {
+    withClientData<TSchema extends TaskSchema>(cdConfig: {
+      schema: TSchema;
+      reportErrorAt?: "turn-end" | "arrival";
+      onValidationError?: ChatCustomAgentClientDataErrorHandler;
+    }) {
       return createChatBuilder<TUIMessage, TSchema>({
         ...config,
         clientDataSchema: cdConfig.schema,
+        clientDataReportErrorAt: cdConfig.reportErrorAt ?? config.clientDataReportErrorAt,
+        clientDataOnValidationError:
+          cdConfig.onValidationError ?? config.clientDataOnValidationError,
       });
     },
 
@@ -9283,6 +9309,13 @@ function createChatBuilder<
       return chatCustomAgent({
         ...options,
         ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
+        ...(config.clientDataReportErrorAt
+          ? { clientDataReportErrorAt: config.clientDataReportErrorAt }
+          : {}),
+        onClientDataValidationError: composeHooks(
+          config.clientDataOnValidationError,
+          options.onClientDataValidationError
+        ),
       });
     },
   } as unknown as ChatBuilder<TUIMessage, TClientDataSchema>;
@@ -9338,9 +9371,13 @@ function withUIMessage<TUIM extends UIMessage = UIMessage>(
  */
 function withClientData<TSchema extends TaskSchema>(config: {
   schema: TSchema;
+  reportErrorAt?: "turn-end" | "arrival";
+  onValidationError?: ChatCustomAgentClientDataErrorHandler;
 }): ChatBuilder<UIMessage, TSchema> {
   return createChatBuilder<UIMessage, TSchema>({
     clientDataSchema: config.schema,
+    clientDataReportErrorAt: config.reportErrorAt,
+    clientDataOnValidationError: config.onValidationError,
     hooks: {},
   });
 }

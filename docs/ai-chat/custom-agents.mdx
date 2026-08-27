@@ -33,7 +33,17 @@ An invalid [head-start handover](/ai-chat/fast-starts#handover-with-custom-agent
 
 `chat.messages.on()` is different because a subscribed frame can arrive while the current response is still streaming. Ending the turn at that point would cut off the response. While the subscription is active, the SDK skips an invalid frame, logs the validation error, and calls `onClientDataValidationError` if you set it. This also applies to the steering subscription created by `chat.createSession({ pendingMessages })`.
 
-By default the client-visible `Invalid client data` error for such a frame is held until the turn ends, so a bad send cannot truncate an answer the user is already reading. Set `clientDataValidationErrorTiming: "arrival"` if you would rather surface it as soon as validation fails, accepting that it ends the response in progress. `onClientDataValidationError` and the task log fire on arrival in both modes, and the frame is never delivered as a turn either way.
+By default the client-visible `Invalid client data` error for such a frame is held until the turn ends, so a bad send cannot truncate an answer the user is already reading. Pass `reportErrorAt: "arrival"` to `withClientData` if you would rather surface it as soon as validation fails, accepting that it ends the response in progress:
+
+```ts
+chat.withClientData({
+  schema: z.object({ userId: z.string() }),
+  reportErrorAt: "arrival",
+  onValidationError: ({ error, payload }) => logger.warn("bad client data", { error }),
+});
+```
+
+The validation callback and the task log fire on arrival in both modes, and the frame is never delivered as a turn either way.
 
 Calling `off()` stops the subscription from accepting new frames. A valid frame accepted before `off()` still finishes validation and is delivered to the handler. An invalid frame that finishes validation after `off()` is logged without calling the handler or error callback.
 

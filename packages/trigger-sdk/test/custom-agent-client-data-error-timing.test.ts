@@ -56,13 +56,13 @@ describe("chat.customAgent clientDataValidationErrorTiming", () => {
           }
           return { sequence };
         },
+        ...(timing ? { reportErrorAt: timing } : {}),
+        onValidationError: ({ error }) => {
+          validationErrors.push(error);
+        },
       })
       .customAgent({
         id: `custom-agent-client-data-timing-${timing ?? "default"}`,
-        ...(timing ? { clientDataValidationErrorTiming: timing } : {}),
-        onClientDataValidationError: ({ error }) => {
-          validationErrors.push(error);
-        },
         run: async (payload, { signal }) => {
           started = true;
           const session = chat.createSession(payload, {
