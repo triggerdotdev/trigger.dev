@@ -395,7 +395,7 @@ describe("realtime-svc — replica-lag guards", () => {
           environmentType: "DEVELOPMENT",
           organizationId: seed.organization.id,
           taskIdentifier: "my-task",
-          triggerConfig: { basePayload: {} },
+          triggerConfig: { basePayload: {}, ttl: "2m" },
           currentRunId: callingRunId,
           currentRunVersion: 0,
           streamBasinName: "session-pinned-basin",
@@ -429,6 +429,8 @@ describe("realtime-svc — replica-lag guards", () => {
       // previousRunId forwarded to the triggered run is the calling run's cuid (documented fallback).
       expect(triggerState.calls).toHaveLength(1);
       expect(triggerState.calls[0]!.body.payload.previousRunId).toBe(callingRunId);
+      // The session's ttl reaches the trigger options, so an undequeued run expires.
+      expect(triggerState.calls[0]!.body.options.ttl).toBe("2m");
       expect(versionCalls.at(-1)).toEqual({ requested: "v2", basin: null });
       expect(replica.wasHit("taskRun")).toBe(true);
 
