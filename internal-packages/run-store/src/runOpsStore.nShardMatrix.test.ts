@@ -303,3 +303,103 @@ describe("RoutingRunStore four-store matrix — pagination merge", () => {
     }
   );
 });
+
+// A tag row is the one run-ops row with no id the router can read and no owning row to follow.
+// The residency hint can only ever name a gen-1 store, so before the caller passed an explicit
+// shard key these landed on a gen-1 database while the tokens they describe lived on the shard.
+// Nothing failed and nothing was logged: reads fan out over every store, so the row was still
+// found afterwards. Only a per-database count can see it, which is why this test is here and not
+// in the fake-store suite.
+describe("four-store matrix — a waitpoint tag lands on its environment's shard", () => {
+  matrixTest(
+    "the shard key routes the tag to shard a, and no gen-1 store receives it",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_shard_a");
+
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "tag-on-a", projectId: env.projectId },
+        undefined,
+        // The residency an environment minting gen-2 ids reports. On its own this names the gen-1
+        // NEW store, so it is exactly the value that used to misplace the row.
+        "NEW",
+        "a"
+      );
+
+      expect(await shardPrismas[0]!.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(1);
+      expect(await newPrisma.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(0);
+      expect(await legacyPrisma.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(0);
+      expect(await shardPrismas[1]!.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(0);
+    }
+  );
+
+  matrixTest(
+    "two environments on different shards do not share a database",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const envA = await seedLegacyEnv(legacyPrisma, "tag_two_a");
+      const envB = await seedLegacyEnv(legacyPrisma, "tag_two_b");
+
+      await router.upsertWaitpointTag(
+        { environmentId: envA.environmentId, name: "shared-name", projectId: envA.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+      await router.upsertWaitpointTag(
+        { environmentId: envB.environmentId, name: "shared-name", projectId: envB.projectId },
+        undefined,
+        "NEW",
+        "b"
+      );
+
+      // Same tag NAME on both shards, each scoped to its own environment. The unique constraint
+      // is (environmentId, name), so a collapse onto one database would still insert two rows —
+      // the failure to catch is placement, not a constraint violation.
+      const onA = await shardPrismas[0]!.waitpointTag.findMany({ where: { name: "shared-name" } });
+      const onB = await shardPrismas[1]!.waitpointTag.findMany({ where: { name: "shared-name" } });
+      expect(onA.map((r) => r.environmentId)).toEqual([envA.environmentId]);
+      expect(onB.map((r) => r.environmentId)).toEqual([envB.environmentId]);
+      expect(await newPrisma.waitpointTag.count({ where: { name: "shared-name" } })).toBe(0);
+    }
+  );
+
+  matrixTest(
+    "with no shard key the tag still routes by residency, exactly as before",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_gen1");
+
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "tag-gen1", projectId: env.projectId },
+        undefined,
+        "NEW"
+      );
+
+      expect(await newPrisma.waitpointTag.count({ where: { name: "tag-gen1" } })).toBe(1);
+      expect(await shardPrismas[0]!.waitpointTag.count({ where: { name: "tag-gen1" } })).toBe(0);
+    }
+  );
+
+  matrixTest(
+    "a tag written to a shard is found by the read fan-out",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_readback");
+
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "tag-readback", projectId: env.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+
+      // The read side takes no shard hint, so this is what proves the write is still reachable
+      // through the normal path rather than only by querying the shard directly.
+      const found = await router.findManyWaitpointTags({
+        where: { environmentId: env.environmentId },
+      });
+      expect(found.map((r) => r.name)).toEqual(["tag-readback"]);
+    }
+  );
+});
