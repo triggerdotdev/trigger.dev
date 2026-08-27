@@ -372,6 +372,17 @@ function extractProviderCost(
     }
   }
 
+  // OrcaRouter: { orcarouter: { usage: { cost: 4.94e-06 } } } — same shape as OpenRouter
+  const orcarouter = meta.orcarouter;
+  if (orcarouter && typeof orcarouter === "object") {
+    const orc = orcarouter as Record<string, unknown>;
+    const usage = orc.usage;
+    if (usage && typeof usage === "object") {
+      const cost = Number((usage as Record<string, unknown>).cost ?? 0);
+      if (cost > 0) return { totalCost: cost, source: "orcarouter" };
+    }
+  }
+
   return null;
 }
 

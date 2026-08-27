@@ -156,6 +156,27 @@ describe("enrichLlmMetrics — provider-reported cost", () => {
     expect(out.properties["trigger.llm.cost_source"]).toBe("openrouter");
   });
 
+  it("prefers the orcarouter-reported cost over catalog pricing", () => {
+    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.02 })));
+
+    const out = enrichOne(
+      makeEvent({
+        "gen_ai.system": "orcarouter",
+        "gen_ai.request.model": "orcarouter/fusion-flash",
+        "gen_ai.response.model": "openai/gpt-oss-120b",
+        "gen_ai.usage.input_tokens": 74,
+        "gen_ai.usage.output_tokens": 16,
+        "ai.response.providerMetadata": JSON.stringify({
+          orcarouter: { provider: "OpenAI", usage: { cost: 0.00000494 } },
+        }),
+      })
+    );
+
+    expect(out.properties["trigger.llm.total_cost"]).toBe(0.00000494);
+    expect(out.properties["trigger.llm.cost_source"]).toBe("orcarouter");
+    expect(out._llmMetrics?.costSource).toBe("orcarouter");
+  });
+
   it("falls back to catalog pricing when no provider cost is reported", () => {
     setLlmPricingRegistry(
       registryReturning(

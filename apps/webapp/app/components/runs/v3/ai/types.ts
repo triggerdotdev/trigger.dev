@@ -72,7 +72,7 @@ export type AISpanData = {
   // Categorical tags
   finishReason?: string;
   serviceTier?: string;
-  /** Resolved downstream provider for gateway/openrouter spans (e.g. "xAI", "mistral") */
+  /** Resolved downstream provider for gateway/openrouter/orcarouter spans (e.g. "xAI", "mistral") */
   resolvedProvider?: string;
   toolChoice?: string;
   toolCount?: number;

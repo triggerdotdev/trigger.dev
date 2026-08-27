@@ -1039,7 +1039,7 @@ const llmMetricsSchema: TableSchema = {
     cost_source: {
       name: "cost_source",
       ...column("LowCardinality(String)", {
-        description: "Where cost data came from (registry, gateway, openrouter)",
+        description: "Where cost data came from (registry, gateway, openrouter, orcarouter)",
         example: "registry",
       }),
     },
@@ -1133,7 +1133,7 @@ const llmMetricsSchema: TableSchema = {
     provider_cost: {
       name: "provider_cost",
       ...column("Decimal64(12)", {
-        description: "Provider-reported cost in USD (from gateway or openrouter)",
+        description: "Provider-reported cost in USD (from gateway, openrouter, or orcarouter)",
         customRenderType: "costInDollars",
       }),
     },

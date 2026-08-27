@@ -292,7 +292,7 @@ function getNestedObj(
 // ---------------------------------------------------------------------------
 
 type ProviderCostInfo = {
-  source: string; // "gateway" or "openrouter"
+  source: string; // "gateway", "openrouter", or "orcarouter"
   cost: number;
   inputTokens: number;
   outputTokens: number;
@@ -347,6 +347,17 @@ function extractProviderCosts(samples: MissingModelSample[]): ProviderCostInfo[]
       const cost = Number(orUsage.cost ?? 0);
       if (cost > 0) {
         costs.push({ source: "openrouter", cost, inputTokens, outputTokens });
+        continue;
+      }
+    }
+
+    // OrcaRouter: { orcarouter: { usage: { cost: 4.94e-06 } } } — same shape as OpenRouter
+    const orc = getNestedObj(providerMeta, ["orcarouter"]);
+    const orcUsage = orc ? getNestedObj(orc, ["usage"]) : null;
+    if (orcUsage) {
+      const cost = Number(orcUsage.cost ?? 0);
+      if (cost > 0) {
+        costs.push({ source: "orcarouter", cost, inputTokens, outputTokens });
         continue;
       }
     }

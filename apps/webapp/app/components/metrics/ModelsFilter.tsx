@@ -28,9 +28,9 @@ interface ModelsFilterProps {
 }
 
 function modelIcon(system: string, model: string): ReactNode {
-  // For gateway/openrouter, derive provider from model prefix
+  // For gateway/openrouter/orcarouter, derive provider from model prefix
   let provider = system.split(".")[0];
-  if (provider === "gateway" || provider === "openrouter") {
+  if (provider === "gateway" || provider === "openrouter" || provider === "orcarouter") {
     if (model.includes("/")) {
       provider = model.split("/")[0].replace(/-/g, "");
     }

@@ -30,7 +30,7 @@ export function formatDuration(ms: number): string {
 
 /**
  * Parse provider metadata from a JSON string.
- * Handles Anthropic, Azure, OpenAI, Gateway, and OpenRouter formats.
+ * Handles Anthropic, Azure, OpenAI, Gateway, OpenRouter, and OrcaRouter formats.
  */
 export function parseProviderMetadata(raw: unknown):
   | {
@@ -72,6 +72,11 @@ export function parseProviderMetadata(raw: unknown):
     // OpenRouter: { openrouter: { provider: "xAI" } }
     if (!resolvedProvider) {
       resolvedProvider = str(rec(parsed.openrouter).provider);
+    }
+
+    // OrcaRouter: { orcarouter: { provider: "xAI" } } — same shape as OpenRouter
+    if (!resolvedProvider) {
+      resolvedProvider = str(rec(parsed.orcarouter).provider);
     }
 
     if (!serviceTier && !resolvedProvider && !gatewayCost && !responseId) return undefined;
