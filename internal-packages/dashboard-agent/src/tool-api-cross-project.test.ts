@@ -180,6 +180,47 @@ describe("list_projects org scoping", () => {
   });
 });
 
+describe("the sweep survives a sibling whose environments list is inaccessible", () => {
+  // The real failure this reproduces: list_environments 403s cross-project on the
+  // delegated token, but the JWT exchange (env-scoped) is unrelated to it — a
+  // direct project/environment lookup still works.
+  function stubSweepFetch() {
+    return vi.fn(async (input: any, init: any = {}) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url === `${ORIGIN}/api/v1/projects/proj_other/environments`) {
+        return new Response("nope", { status: 403 });
+      }
+      if (url.endsWith("/jwt")) {
+        const match = url.match(/\/api\/v1\/projects\/([^/]+)\/([^/]+)\/jwt$/);
+        return Response.json({ token: `jwt:${match![1]}/${match![2]}` });
+      }
+      if (init.method !== "POST" && url.includes("/api/v1/queues/")) {
+        return Response.json({ data: { queued: 3, paused: false } });
+      }
+      return Response.json({ data: [] });
+    });
+  }
+
+  it("returns a structured, non-fatal shape for list_environments, and a direct sibling lookup still succeeds", async () => {
+    vi.stubGlobal("fetch", stubSweepFetch());
+    const t = tools();
+
+    const envs = await (t.list_environments as any).execute(
+      { projectRef: "proj_other" },
+      {} as any
+    );
+    const queue = await (t.get_queue as any).execute(
+      { queue: "my-queue", project: "proj_other", environment: "staging" },
+      {} as any
+    );
+
+    expect(envs).toEqual({ inaccessible: true, projectRef: "proj_other" });
+    expect(envs.error).toBeUndefined();
+    expect(queue.error).toBeUndefined();
+    expect(queue.exists).toBe(true);
+  });
+});
+
 describe("project/environment schema round-trip", () => {
   it.each([
     ["list_runs", listRunsSchema, {}],

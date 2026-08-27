@@ -266,7 +266,15 @@ export function buildApiTools(args: {
           `/api/v1/projects/${encodeURIComponent(ref)}/environments`,
           userActorToken!
         );
-        if (!result.ok) return { error: `Couldn't list environments${fetchReason(result)}.` };
+        if (!result.ok) {
+          // A 403/404 here means this project's environment list isn't reachable —
+          // not that a lookup in one of its environments will fail too. A structured,
+          // non-fatal shape keeps the sweep going instead of reading as a dead end.
+          if ("status" in result && (result.status === 403 || result.status === 404)) {
+            return { inaccessible: true, projectRef: ref };
+          }
+          return { error: `Couldn't list environments${fetchReason(result)}.` };
+        }
         return curateEnvironments(result.data);
       },
     }),
