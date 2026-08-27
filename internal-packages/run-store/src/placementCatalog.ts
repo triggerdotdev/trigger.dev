@@ -201,14 +201,14 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     basis: "own-id",
     missMode: "silent",
     routes: ["#waitpointWriteStore("],
-    why: "Prefers a co-location anchor (the owning run or batch), then the waitpoint's own stamped id, and only then the residency hint. The router refuses an unstamped id against a gen-2 shard, which is what makes the last arm safe to keep.",
+    why: "Prefers a co-location anchor (the owning run or batch), then the waitpoint's own stamped id, and only then the residency hint. The anchor arm refuses an unstamped id against a gen-2 shard, and the residency arm is skipped entirely when the id names a gen-2 shard, because the hint cannot express that answer.",
   },
   {
     method: "upsertWaitpoint",
     basis: "own-id",
     missMode: "silent",
     routes: ["#waitpointWriteStore(opts?.coLocateWithRunId, opts?.residency, waitpointId)"],
-    why: "As createWaitpoint: anchor, then the waitpoint's own id, then residency, with the router refusing an unstamped id on a gen-2 shard.",
+    why: "As createWaitpoint: anchor, then the waitpoint's own stamped id, then residency. A residency hint never wins over an id naming a gen-2 shard.",
   },
   {
     method: "updateWaitpoint",

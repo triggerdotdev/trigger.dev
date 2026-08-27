@@ -1565,14 +1565,20 @@ export class RoutingRunStore implements RunStore {
       }
       return this.#shardStore(key);
     }
-    if (residency !== undefined) {
+    // A gen-2-stamped id names the only database this row can live on, and `residency` can only
+    // say NEW or LEGACY, so when the two disagree the hint is not a candidate answer — it is
+    // unable to express one. Let the id win rather than trusting every caller to withhold the
+    // hint. Unlike the owner arm above, nothing is ambiguous here: that arm throws because a
+    // mismatch means the mint layer failed and there is no correct destination to fall back to,
+    // whereas here the correct destination is written on the row itself.
+    const stamped = typeof waitpointId === "string" ? this.#shardKeyOfSafe(waitpointId) : undefined;
+    const isGen2Stamped =
+      stamped !== undefined && stamped !== NEW_SHARD && stamped !== LEGACY_SHARD;
+
+    if (residency !== undefined && !isGen2Stamped) {
       return this.#shardStore(residency === "NEW" ? NEW_SHARD : LEGACY_SHARD);
     }
-    return this.#shardStore(
-      typeof waitpointId === "string"
-        ? this.#shardKeyOfSafe(waitpointId)
-        : this.#idlessWaitpointShard
-    );
+    return this.#shardStore(stamped ?? this.#idlessWaitpointShard);
   }
 
   upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(

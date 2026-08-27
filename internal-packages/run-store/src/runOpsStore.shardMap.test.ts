@@ -115,6 +115,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       return Promise.resolve((config.batch ?? null) as never);
     }) as FakeStore["findBatchTaskRunById"],
 
+    upsertWaitpoint: ((args: { create?: { id?: string } }) => {
+      record("upsertWaitpoint");
+      return Promise.resolve((args.create ?? {}) as never);
+    }) as FakeStore["upsertWaitpoint"],
+
     upsertWaitpointTag: ((data: { name: string }) => {
       record("upsertWaitpointTag");
       return Promise.resolve({ id: `tag_${slot}`, name: data.name } as never);
@@ -963,5 +968,73 @@ describe("RoutingRunStore waitpoint tags follow their environment's shard", () =
     const { router, log } = shardedRouter();
     await router.upsertWaitpointTag(tag as never, undefined, "LEGACY");
     expect(trace(log)).toEqual(["legacy:upsertWaitpointTag"]);
+  });
+});
+
+describe("RoutingRunStore waitpoint writes: a stamped gen-2 id outranks a residency hint", () => {
+  // `residency` can only ever say NEW or LEGACY. When the waitpoint's own id names a gen-2
+  // shard the hint is not a worse answer, it is an answer that cannot be expressed, so the
+  // stamped id has to win. Before this, safety rested on every caller knowing to withhold the
+  // hint for a gen-2 id: one call site did know, and a second one would have written the row
+  // to a gen-1 database while its id said otherwise, silently, because a create never misses.
+  const GEN2 = `${"a".repeat(24)}a2`;
+  const GEN1 = `${"a".repeat(24)}01`;
+  const CUID = "c".repeat(25);
+
+  const shardedRouter = () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+    });
+    return { router, log };
+  };
+
+  const upsert = (router: RoutingRunStore, id: string, residency?: "NEW" | "LEGACY") =>
+    router.upsertWaitpoint(
+      { create: { id }, update: {}, where: { id } } as never,
+      undefined,
+      residency === undefined ? undefined : ({ residency } as never)
+    );
+
+  it("routes to the shard the id names even when the hint says NEW", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN2, "NEW");
+    expect(trace(log)).toEqual(["a:upsertWaitpoint"]);
+  });
+
+  it("routes to the shard the id names even when the hint says LEGACY", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN2, "LEGACY");
+    expect(trace(log)).toEqual(["a:upsertWaitpoint"]);
+  });
+
+  it("still honours the hint for a gen-1 run-ops id, which the hint can express", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN1, "NEW");
+    expect(trace(log)).toEqual(["new:upsertWaitpoint"]);
+  });
+
+  it("still honours the hint for a cuid, and does not read it as a shard", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, CUID, "NEW");
+    expect(trace(log)).toEqual(["new:upsertWaitpoint"]);
+  });
+
+  it("with no hint at all, a gen-1 id still routes by its own shape", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN1);
+    expect(trace(log)).toEqual(["new:upsertWaitpoint"]);
+  });
+
+  it("an owning run still outranks both, so a co-located waitpoint follows its run", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpoint(
+      { create: { id: GEN2 }, update: {}, where: { id: GEN2 } } as never,
+      undefined,
+      { coLocateWithRunId: GEN2, residency: "NEW" } as never
+    );
+    expect(trace(log)).toEqual(["a:upsertWaitpoint"]);
   });
 });
