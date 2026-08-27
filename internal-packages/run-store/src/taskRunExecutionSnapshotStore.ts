@@ -160,14 +160,38 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return this.modeResolver?.resolve(organizationId) ?? this.#staticMode;
   }
 
-  /** True in every position that appends to Redis, for this entry's organisation. */
-  protected writesRedisFor(organizationId?: string): boolean {
+  /**
+   * Whether a BIRTH mirrors to Redis. This is the only decision the per-organisation override gets
+   * to make, and it fixes the run's store for the rest of its life.
+   */
+  protected writesRedisForBirth(organizationId?: string): boolean {
     return this.modeFor(organizationId) !== "off";
   }
 
-  /** Test seam for the per-organisation predicate. Not for production callers. */
-  writesRedisForTest(organizationId?: string): boolean {
-    return this.writesRedisFor(organizationId);
+  /**
+   * Whether a TRANSITION mirrors to Redis. Deliberately blind to the organisation.
+   *
+   * A transition belongs to a run that is already resident or already absent, and the append script
+   * refuses a transition into a keyspace that does not exist. So the keyspace IS the per-run
+   * residency record, and asking the organisation again would only introduce the one thing the
+   * design forbids: a run changing stores half way through its life. That is not a hypothetical.
+   * The override is served from a short-lived cache that falls back to the deployment-wide position
+   * on a miss, so a run could be born into Redis during one window and have its next transitions
+   * refused in the next, freezing its head while Postgres moved on, with no fault and no log line.
+   *
+   * The deployment-wide position is still honoured, because it is the kill switch.
+   */
+  protected writesRedisForTransition(): boolean {
+    return this.modeFor(undefined) !== "off";
+  }
+
+  /** Test seams for the two predicates. Not for production callers. */
+  writesRedisForBirthTest(organizationId?: string): boolean {
+    return this.writesRedisForBirth(organizationId);
+  }
+
+  writesRedisForTransitionTest(_organizationId?: string): boolean {
+    return this.writesRedisForTransition();
   }
 
   /** Test seam for the resolved position. Not for production callers. */
@@ -256,7 +280,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
-    if (!this.writesRedisFor(params.snapshot?.organizationId)) {
+    if (!this.writesRedisForBirth(params.snapshot?.organizationId)) {
       return this.delegate.createRun(params, tx);
     }
 
@@ -272,7 +296,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateCancelledRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
-    if (!this.writesRedisFor(params.snapshot?.organizationId)) {
+    if (!this.writesRedisForBirth(params.snapshot?.organizationId)) {
       return this.delegate.createCancelledRun(params, tx);
     }
 
@@ -301,7 +325,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
+    if (!this.writesRedisForTransition()) {
       return this.delegate.completeAttemptSuccess(runId, data, args, tx);
     }
 
@@ -326,7 +350,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
+    if (!this.writesRedisForTransition()) {
       return this.delegate.expireRun(runId, data as never, args, tx);
     }
 
@@ -353,7 +377,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     },
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
-    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
+    if (!this.writesRedisForTransition()) {
       return this.delegate.expireParkedRun(runId, data as never, tx);
     }
 
@@ -379,7 +403,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<TaskRun> {
     // The delegate writes a snapshot only when one is supplied, so an absent snapshot is a plain run
     // update with nothing for Redis to mirror.
-    if (!data.snapshot || !this.writesRedisFor(data.snapshot?.organizationId)) {
+    if (!data.snapshot || !this.writesRedisForTransition()) {
       return this.delegate.rescheduleRun(runId, data, tx);
     }
 
@@ -400,7 +424,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     data: LockRunData,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<Record<string, never>>> {
-    if (!this.writesRedisFor(data.snapshot?.organizationId)) {
+    if (!this.writesRedisForTransition()) {
       return this.delegate.lockRunToWorker(runId, data, tx);
     }
 
@@ -430,7 +454,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
-    if (!this.writesRedisFor(input?.organizationId)) {
+    if (!this.writesRedisForTransition()) {
       return this.delegate.createExecutionSnapshot(input, tx);
     }
 

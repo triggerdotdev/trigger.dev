@@ -19,6 +19,9 @@ function resolverOf(perOrg: Record<string, SnapshotStoreMode>, global: SnapshotS
   return { resolve: (orgId?: string) => (orgId ? (perOrg[orgId] ?? global) : global) };
 }
 
+// These assert the per-organisation contract, which now governs BIRTHS only: a birth fixes the
+// run's store for life. Transitions deliberately ignore the organisation, and that is asserted in
+// taskRunExecutionSnapshotStore.residency.test.ts.
 describe("TaskRunExecutionSnapshotStore mode resolution", () => {
   it("prefers the resolver over the static mode", () => {
     const store = storeWith({ mode: "off", modeResolver: resolverOf({}, "dual-write") });
@@ -35,14 +38,14 @@ describe("TaskRunExecutionSnapshotStore mode resolution", () => {
 
   it("resolves per organisation", () => {
     const store = storeWith({ modeResolver: resolverOf({ org_a: "dual-write" }, "off") });
-    expect(store.writesRedisForTest("org_a")).toBe(true);
-    expect(store.writesRedisForTest("org_b")).toBe(false);
+    expect(store.writesRedisForBirthTest("org_a")).toBe(true);
+    expect(store.writesRedisForBirthTest("org_b")).toBe(false);
   });
 
   it("lets an organisation be off while the global answer is on", () => {
     const store = storeWith({ modeResolver: resolverOf({ org_a: "off" }, "dual-write") });
-    expect(store.writesRedisForTest("org_a")).toBe(false);
-    expect(store.writesRedisForTest("org_b")).toBe(true);
+    expect(store.writesRedisForBirthTest("org_a")).toBe(false);
+    expect(store.writesRedisForBirthTest("org_b")).toBe(true);
   });
 
   it("sees a resolver answer that changes after construction", () => {
@@ -55,7 +58,7 @@ describe("TaskRunExecutionSnapshotStore mode resolution", () => {
 
   it("resolves the global answer when no organisation is supplied", () => {
     const store = storeWith({ modeResolver: resolverOf({ org_a: "off" }, "redis-read") });
-    expect(store.writesRedisForTest()).toBe(true);
+    expect(store.writesRedisForBirthTest()).toBe(true);
   });
 
   it("resolves the fatal-birth decision per organisation, not globally", () => {
