@@ -449,11 +449,13 @@ function useProfileFieldUpdate({
 }
 
 function ChangeProfilePhotoButton() {
+  const user = useUser();
   const [isOpen, setIsOpen] = useState(false);
-  const fetcher = useFetcher<{ avatarUrl?: string; error?: string }>();
+  const fetcher = useFetcher<{ avatarUrl?: string | null; error?: string }>();
   const toast = useToast();
   const isSaving = fetcher.state !== "idle";
   const submitSeenRef = useRef(false);
+  const actionRef = useRef<"save" | "remove">("save");
 
   useEffect(() => {
     if (fetcher.state !== "idle") {
@@ -463,10 +465,19 @@ function ChangeProfilePhotoButton() {
     if (!submitSeenRef.current) return;
     submitSeenRef.current = false;
 
-    if (fetcher.data?.avatarUrl) {
-      // oxlint-disable-next-line react/set-state-in-effect -- Closes the modal once the upload has landed.
+    const removing = actionRef.current === "remove";
+    const succeeded = removing
+      ? fetcher.data?.avatarUrl === null
+      : Boolean(fetcher.data?.avatarUrl);
+
+    if (succeeded) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Closes the modal once the change has landed.
       setIsOpen(false);
-      toast.success("Your profile picture has been updated.");
+      toast.success(
+        removing
+          ? "Your profile picture has been removed."
+          : "Your profile picture has been updated."
+      );
       return;
     }
 
@@ -474,6 +485,7 @@ function ChangeProfilePhotoButton() {
   }, [fetcher.state, fetcher.data, toast]);
 
   const save = (blob: Blob) => {
+    actionRef.current = "save";
     const formData = new FormData();
     formData.append("image", blob, "avatar.png");
     fetcher.submit(formData, {
@@ -481,6 +493,11 @@ function ChangeProfilePhotoButton() {
       action: "/resources/account/avatar",
       encType: "multipart/form-data",
     });
+  };
+
+  const remove = () => {
+    actionRef.current = "remove";
+    fetcher.submit(null, { method: "delete", action: "/resources/account/avatar" });
   };
 
   return (
@@ -498,6 +515,8 @@ function ChangeProfilePhotoButton() {
         open={isOpen}
         onOpenChange={setIsOpen}
         onSave={save}
+        currentAvatarUrl={user.avatarUrl ?? undefined}
+        onRemove={remove}
         isSaving={isSaving}
       />
     </>
