@@ -13,7 +13,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { getSnapshotRepairEnqueuer } from "./snapshotStoreBindings.server";
-import { snapshotStoreModeResolver } from "./snapshotStoreMode.server";
+import { snapshotStoreHalted, snapshotStoreModeResolver } from "./snapshotStoreMode.server";
 import { createSnapshotStoreMetrics } from "./snapshotStoreMetrics.server";
 import { meter } from "./tracer.server";
 
@@ -106,6 +106,7 @@ const instance = singleton<Instance | undefined>("snapshotStoreInstance", () => 
       new TaskRunExecutionSnapshotStore(store, {
         store: redisSnapshotStore,
         modeResolver: snapshotStoreModeResolver,
+        halted: snapshotStoreHalted,
         // Pinned: the field defaults to 0, which would mean no read ever reaches Redis. The
         // organisation is the ramp unit, so there is no percentage to ramp.
         readPercent: 100,

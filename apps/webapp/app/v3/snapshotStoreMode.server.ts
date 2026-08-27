@@ -80,6 +80,22 @@ export function buildSnapshotStoreModeResolver(deps: {
   };
 }
 
+/**
+ * The hard stop. Either source halts; only the environment can hold a halt the flag cannot lift,
+ * which is what a deployment needs while it resyncs.
+ */
+export function buildSnapshotStoreHaltCheck(deps: {
+  flag: () => boolean | undefined;
+  envHalt: boolean;
+}): () => boolean {
+  return () => deps.envHalt || deps.flag() === true;
+}
+
+export const snapshotStoreHalted = buildSnapshotStoreHaltCheck({
+  flag: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreHalt],
+  envHalt: env.RUN_ENGINE_SNAPSHOT_STORE_HALT === "1",
+});
+
 const DEFAULT_CACHE_MAX = 10_000;
 const DEFAULT_CACHE_TTL_MS = 30_000;
 

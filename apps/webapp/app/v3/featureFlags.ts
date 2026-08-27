@@ -48,6 +48,10 @@ export const FEATURE_FLAG = {
   // a sustained append failure burns a task attempt per transition, so dial-down is a correctness
   // control and cannot wait for a deploy.
   snapshotStoreMode: "snapshotStoreMode",
+  // The hard stop for the execution-snapshot store, deployment-wide. Separate from the dial because
+  // the dial governs births only: turning it down cannot stop a resident run from mirroring, and
+  // must not, or every resident head freezes while Postgres advances.
+  snapshotStoreHalt: "snapshotStoreHalt",
   // Per-org override, read from the org blob only. Deliberately narrower than the global key:
   // snapshot reads are global, so an org at a read position would read state its own writes never
   // created. Stripped from org payloads by withoutOrgForbiddenSnapshotKeys.
@@ -163,6 +167,9 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write"]),
+  // Strict, like the other kill switches: a stringified "false" read as true would freeze every
+  // resident run's Redis head.
+  [FEATURE_FLAG.snapshotStoreHalt]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -201,8 +208,9 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
-  // The dial is deployment-wide; only snapshotStoreOrgMode is per-org.
+  // The dial and the hard stop are deployment-wide; only snapshotStoreOrgMode is per-org.
   FEATURE_FLAG.snapshotStoreMode,
+  FEATURE_FLAG.snapshotStoreHalt,
 ];
 
 /**
@@ -210,9 +218,14 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
  * consults it, so the line is held here — the same way the mint grace stamps are stripped.
  */
 export function withoutOrgForbiddenSnapshotKeys<T extends Record<string, unknown>>(values: T): T {
-  if (!(FEATURE_FLAG.snapshotStoreMode in values)) return values;
-  const { [FEATURE_FLAG.snapshotStoreMode]: _dropped, ...rest } = values;
-  return rest as T;
+  const forbidden = [FEATURE_FLAG.snapshotStoreMode, FEATURE_FLAG.snapshotStoreHalt] as const;
+  if (!forbidden.some((key) => key in values)) return values;
+
+  const rest = { ...values };
+  for (const key of forbidden) {
+    delete rest[key];
+  }
+  return rest;
 }
 
 /**
