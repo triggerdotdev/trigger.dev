@@ -306,7 +306,13 @@ export class StoreWaitpointCoordinatorArm implements WaitpointCoordinator {
       tags: params.tags,
     });
 
-    await this.#writeManualProjection(result.waitpoint);
+    // Only the call that actually created the waitpoint writes the projection. A cached
+    // idempotency hit returns a waitpoint that already has its row, and inserting it again
+    // violates the primary key.
+    if (result.kind === "created") {
+      await this.#writeManualProjection(result.waitpoint);
+    }
+
     return result;
   }
 
