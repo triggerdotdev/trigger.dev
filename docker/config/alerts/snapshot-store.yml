@@ -22,19 +22,6 @@ groups:
             than task failure. Turn the snapshotStoreMode flag down to off, which takes effect
             without a deploy, then investigate the Redis endpoint.
 
-      - alert: SnapshotStoreQuarantineFailing
-        # A quarantine that cannot be applied leaves a run's Redis head permanently behind Postgres.
-        expr: sum(rate(run_engine_snapshot_store_quarantine_total{outcome="failed"}[10m])) > 0
-        for: 15m
-        labels:
-          severity: page
-        annotations:
-          summary: "Execution-snapshot keyspaces cannot be quarantined"
-          description: >-
-            A divergent Redis head could not be dropped, so that run keeps a head that is behind
-            Postgres. Do not move the dial to redis-read while this is firing: a frozen head is
-            served as if it were current.
-
       - alert: SnapshotStoreSweepNotCompleting
         # The sweep is the only reaper for orphaned keyspaces. Its absence is silent by nature.
         expr: sum(increase(run_engine_snapshot_store_sweep_pass_total{outcome="completed"}[24h])) == 0
