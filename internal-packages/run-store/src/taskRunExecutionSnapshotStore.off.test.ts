@@ -1,6 +1,8 @@
-// Mode off is the merge-test position: the decorator must be indistinguishable from its delegate and
-// must not touch Redis at all. A Redis store whose every member throws proves the second half, and
-// enumerating the generated name list proves the first for every method rather than a chosen few.
+// Mode off with the halt switch thrown is the merge-test position: the decorator must be
+// indistinguishable from its delegate and must not touch Redis at all. Plain `off` no longer
+// promises that, because a resident run's transitions must keep mirroring; see the hardStop suite.
+// A Redis store whose every member throws proves the second half, and enumerating the generated name
+// list proves the first for every method rather than a chosen few.
 import { describe, expect, it } from "vitest";
 import { RUN_STORE_METHOD_NAMES } from "./runStoreMethodNames.js";
 import type { RedisSnapshotStore } from "./redisSnapshotStore.js";
@@ -46,11 +48,12 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
     expect(decorated.mode).toBe("off");
   });
 
-  it("forwards every method to the delegate and never calls Redis", async () => {
+  it("forwards every method to the delegate and never calls Redis when halted", async () => {
     const { store, calls } = forwardingProbe();
     const decorated = new TaskRunExecutionSnapshotStore(store, {
       store: explodingRedisStore(),
       mode: "off",
+      halted: () => true,
     }) as unknown as Record<string, (...args: unknown[]) => unknown>;
 
     // Both exceptions return a wrapped handle rather than the delegate's value verbatim, because
@@ -92,6 +95,7 @@ describe("TaskRunExecutionSnapshotStore at mode off", () => {
     const decorated = new TaskRunExecutionSnapshotStore(delegate, {
       store: explodingRedisStore(),
       mode: "off",
+      halted: () => true,
     });
 
     await decorated.runInTransaction("run_1", async (store) => {

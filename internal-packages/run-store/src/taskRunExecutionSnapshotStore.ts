@@ -89,6 +89,16 @@ export type SnapshotRepairEnqueuer = (args: {
   executionStatus: string;
 }) => Promise<void>;
 
+/**
+ * The hard stop, orthogonal to the dial because it answers a different question: the dial says how
+ * far the rollout has got, this says whether to write at all right now. Re-read on every write so it
+ * can be thrown without a deploy.
+ *
+ * Throwing it freezes every resident run's Redis head while Postgres advances, so it is a
+ * resync-before-reads control, not a rollback. `off` is the lossless way down.
+ */
+export type SnapshotStoreHaltCheck = () => boolean;
+
 export type DecoratorMetrics = {
   recordWrite(site: string, outcome: string): void;
   recordAppendFailed(site: string): void;
@@ -103,6 +113,8 @@ export type TaskRunExecutionSnapshotStoreOptions = {
   modeResolver?: SnapshotStoreModeResolver;
   /** Percentage of runs whose reads come from Redis at `redis-read` and `redis-only`. Defaults to 0. */
   readPercent?: number;
+  /** Defaults to never halted. */
+  halted?: SnapshotStoreHaltCheck;
   onAppendFailure?: SnapshotRepairEnqueuer;
   faults?: SnapshotFaultInjector;
   metrics?: DecoratorMetrics;
@@ -132,6 +144,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   protected readonly modeResolver?: SnapshotStoreModeResolver;
   protected readonly redis: RedisSnapshotStore;
   protected readonly readPercent: number;
+  protected readonly haltCheck?: SnapshotStoreHaltCheck;
   protected readonly onAppendFailure?: SnapshotRepairEnqueuer;
   protected readonly faults?: SnapshotFaultInjector;
   protected readonly metrics?: DecoratorMetrics;
@@ -144,6 +157,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     this.#staticMode = options.mode ?? "off";
     this.modeResolver = options.modeResolver;
     this.readPercent = options.readPercent ?? 0;
+    this.haltCheck = options.halted;
     this.onAppendFailure = options.onAppendFailure;
     this.faults = options.faults;
     this.metrics = options.metrics;
@@ -160,11 +174,24 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return this.modeResolver?.resolve(organizationId) ?? this.#staticMode;
   }
 
+  /** Whether the hard stop is thrown. A halt beats every dial position, in both directions. */
+  protected halted(): boolean {
+    try {
+      return this.haltCheck?.() === true;
+    } catch {
+      // An unreadable switch must not decide anything. Halting on an error would freeze every
+      // resident run's head, which is the outcome this whole area exists to avoid.
+      return false;
+    }
+  }
+
   /**
    * Whether a BIRTH mirrors to Redis. This is the only decision the per-organisation override gets
    * to make, and it fixes the run's store for the rest of its life.
    */
   protected writesRedisForBirth(organizationId?: string): boolean {
+    if (this.halted()) return false;
+
     return this.modeFor(organizationId) !== "off";
   }
 
@@ -179,10 +206,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * on a miss, so a run could be born into Redis during one window and have its next transitions
    * refused in the next, freezing its head while Postgres moved on, with no fault and no log line.
    *
-   * The deployment-wide position is still honoured, because it is the kill switch.
+   * The deployment-wide dial is blind here for the same reason. An operator turning it down to `off`
+   * mid-incident would otherwise inflict that identical freeze on every resident run at once, which
+   * makes the remedy indistinguishable from the fault. `off` therefore stops new residency only:
+   * births stop, resident runs keep mirroring, and the mirror drains as they finish. Stopping
+   * outright is the halt switch, and it is a resync control rather than a rollback.
    */
   protected writesRedisForTransition(): boolean {
-    return this.modeFor(undefined) !== "off";
+    return !this.halted();
   }
 
   /** Test seams for the two predicates. Not for production callers. */
@@ -190,8 +221,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return this.writesRedisForBirth(organizationId);
   }
 
-  writesRedisForTransitionTest(_organizationId?: string): boolean {
+  writesRedisForTransitionTest(): boolean {
     return this.writesRedisForTransition();
+  }
+
+  haltedTest(): boolean {
+    return this.halted();
   }
 
   /** Test seam for the resolved position. Not for production callers. */
@@ -215,9 +250,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     runId: string | undefined,
     fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
   ): Promise<R> {
-    // Always stage. This method holds only a runId, and a per-organisation dial lives in that
-    // organisation's blob, so "can any write in here reach Redis" cannot be answered here. Each
-    // entry resolves its own mode as it is staged, and an organisation at `off` stages nothing.
+    // Always stage. This method holds only a runId, so it cannot know whether the writes inside
+    // belong to a resident run. A birth inside the callback still resolves its own organisation's
+    // dial as it is staged; a transition stages unconditionally, as it does outside a transaction.
     const staged: StagedAppend[] = [];
 
     const result = await this.delegate.runInTransaction(runId, (store, tx) =>
@@ -263,6 +298,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       store: this.redis,
       mode: this.#staticMode,
       readPercent: this.readPercent,
+      ...(this.haltCheck && { halted: this.haltCheck }),
       ...(this.modeResolver && { modeResolver: this.modeResolver }),
       logger: this.logger,
       ...(this.onAppendFailure && { onAppendFailure: this.onAppendFailure }),
@@ -716,6 +752,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     // position, so a run routed away from Redis reads nothing at all. Ignoring the percentage here
     // makes that misconfiguration unreachable rather than merely documented.
     if (this.mode === "redis-only") return true;
+
+    // Halted heads are frozen, and below `redis-only` Postgres still holds the whole log, so serving
+    // reads from it is strictly better than serving a head that stopped moving.
+    if (this.halted()) return false;
 
     if (this.readPercent >= 100) return true;
     if (this.readPercent <= 0) return false;
