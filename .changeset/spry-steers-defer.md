@@ -13,7 +13,14 @@ chat.agent({
     // Only interrupt once the agent has started calling tools.
     shouldInject: ({ steps }) => steps.length > 0,
   },
-  run: async ({ messages, signal }) => streamText({ ... }),
+  run: async ({ messages, signal }) =>
+    streamText({
+      model,
+      messages,
+      abortSignal: signal,
+      // Required for pendingMessages to be wired up at all.
+      ...chat.toStreamTextOptions(),
+    }),
 });
 ```
 

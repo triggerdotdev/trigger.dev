@@ -3624,7 +3624,14 @@ async function drainSteeringQueue(
 
   const ctx = locals.get(chatTurnContextKey);
   const stepNumber = steps.length - 1;
-  const uiMessages = queue.map((e) => e.uiMessage);
+  /**
+   * Snapshot, because `shouldInject` and `prepare` can await. A record arriving
+   * during either is not in this batch, so it must not be consumed by it: the
+   * callbacks never saw it and could not have injected it, and taking it would
+   * lose a message that should become a later turn instead.
+   */
+  const batch = [...queue];
+  const uiMessages = batch.map((e) => e.uiMessage);
 
   const batchEvent: PendingMessagesBatchEvent = {
     messages: uiMessages,
@@ -3658,7 +3665,7 @@ async function drainSteeringQueue(
       // Transform the batch — default: concatenate all pre-converted model messages
       const injected = config.prepare
         ? await config.prepare(batchEvent)
-        : queue.flatMap((e) => e.modelMessages);
+        : batch.flatMap((e) => e.modelMessages);
 
       /**
        * Injection is the point of consumption. The records were only observed
@@ -3669,10 +3676,11 @@ async function drainSteeringQueue(
        * what "messages queue for the next turn" means.
        */
       const router = chatInputRouter();
-      for (const entry of queue) {
+      for (const entry of batch) {
         if (entry.seqNum !== undefined) router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
+        const at = queue.indexOf(entry);
+        if (at !== -1) queue.splice(at, 1);
       }
-      queue.length = 0;
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
         for (const m of uiMessages) injectedIds.add(m.id);

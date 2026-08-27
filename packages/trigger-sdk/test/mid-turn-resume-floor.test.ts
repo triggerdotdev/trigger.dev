@@ -99,11 +99,20 @@ describe("chat.agent resume floor with a message buffered mid-turn", () => {
       const firstTurn = harness.sendMessage(userMessage("m1", "u-1"));
       await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
 
+      /**
+       * m1's own record has already advanced the channel, so waiting for a
+       * sequence to merely exist would pass on the first check and capture m1's
+       * sequence instead of m2's. Wait for it to move.
+       */
+      const seqs = sessionStreams as unknown as SeqReader;
+      const seqBeforeM2 = seqs.lastSeqNum(chatId, "in");
       void harness.sendMessage(userMessage("m2", "u-2"));
-      await waitFor(
-        () => (sessionStreams as unknown as SeqReader).lastSeqNum(chatId, "in") !== undefined
-      );
-      const m2Seq = (sessionStreams as unknown as SeqReader).lastSeqNum(chatId, "in")!;
+      await waitFor(() => {
+        const now = seqs.lastSeqNum(chatId, "in");
+        return now !== undefined && (seqBeforeM2 === undefined || now > seqBeforeM2);
+      });
+      const m2Seq = seqs.lastSeqNum(chatId, "in")!;
+      expect(m2Seq).toBeGreaterThan(seqBeforeM2 ?? -1);
       await firstTurn;
 
       await waitFor(() => turnCompletes(harness).length >= 1);
