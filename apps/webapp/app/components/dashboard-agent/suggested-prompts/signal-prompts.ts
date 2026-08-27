@@ -72,12 +72,17 @@ function promptForSignal(signal: AgentPageSignal, now: number): SuggestedPrompt 
       );
     }
 
-    case "concurrency_saturation":
+    case "concurrency_saturation": {
+      const why =
+        signal.scope === "queue" && signal.queueName
+          ? `Why is the ${signal.queueName} queue at its concurrency limit?`
+          : "Concurrency is saturated right now.";
       return ctx(
         "concurrency-saturation",
         "Tell me when the backlog drains",
-        "Concurrency is saturated right now. Watch it and tell me when the backlog drains."
+        `${why} Watch it and tell me when the backlog drains.`
       );
+    }
   }
 }
 
