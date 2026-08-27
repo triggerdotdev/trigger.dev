@@ -393,6 +393,7 @@ export class WaitpointSystem {
     timeout,
     spanIdToComplete,
     batch,
+    batchWaitpointId,
   }: {
     runId: string;
     waitpoints: string | string[];
@@ -400,6 +401,8 @@ export class WaitpointSystem {
     timeout?: Date;
     spanIdToComplete?: string;
     batch: { id: string; index?: number };
+    /** The parent's BATCH waitpoint, so the store arm can assert it is still pending. */
+    batchWaitpointId?: string;
   }): Promise<void> {
     const $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
@@ -413,6 +416,7 @@ export class WaitpointSystem {
       spanIdToComplete,
       batchId: batch.id,
       batchIndex: batch.index,
+      batchWaitpointId,
     });
 
     // Schedule timeout jobs if needed
@@ -743,19 +747,18 @@ export class WaitpointSystem {
     }); // end of runlock
   }
 
-  /**
-   * The BATCH waitpoint for a batch. Returns null when the batch already has one.
-   *
-   * mintKind is pinned to legacy until the mint flag is threaded through the batch entry
-   * point; the store arm is unreachable from here until then.
-   */
+  /** The BATCH waitpoint for a batch. Returns null when the batch already has one. */
   public async createBatchWaitpoint(params: {
     batchId: string;
     environmentId: string;
     projectId: string;
+    mintKind?: WaitpointMintKind;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
-    return this.coordinator.createBatchWaitpoint({ ...params, mintKind: "legacy" });
+    return this.coordinator.createBatchWaitpoint({
+      ...params,
+      mintKind: params.mintKind ?? "legacy",
+    });
   }
 
   /**

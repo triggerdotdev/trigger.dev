@@ -24,6 +24,7 @@ import {
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
   generateInternalId,
+  deriveWaitpointIdFromAnchor,
   parseNaturalLanguageDurationInMs,
   parseWaitpointId,
   RunId,
@@ -1200,6 +1201,10 @@ export class RunEngine {
               waitpoints: associatedWaitpointData.id,
               projectId: associatedWaitpointData.projectId,
               batch,
+              // Derived, not looked up: the parent's BATCH waitpoint id is a pure function
+              // of the batch id, and the store arm needs it to assert the parent's pending
+              // set stays open for the whole absorb.
+              batchWaitpointId: deriveWaitpointIdFromAnchor(batch.id, "BATCH"),
             });
           } else {
             // Single triggerAndWait: acquire the parent run lock to safely transition
@@ -1920,6 +1925,7 @@ export class RunEngine {
     environmentId,
     projectId,
     organizationId,
+    waitpointMintKind,
     tx,
   }: {
     runId: string;
@@ -1927,12 +1933,14 @@ export class RunEngine {
     environmentId: string;
     projectId: string;
     organizationId: string;
+    waitpointMintKind?: WaitpointMintKind;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
     const waitpoint = await this.waitpointSystem.createBatchWaitpoint({
       batchId,
       environmentId,
       projectId,
+      mintKind: waitpointMintKind,
       tx,
     });
 
