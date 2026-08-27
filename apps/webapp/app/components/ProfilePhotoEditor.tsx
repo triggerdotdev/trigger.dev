@@ -1,6 +1,7 @@
 import { MagnifyingGlassMinusIcon, MagnifyingGlassPlusIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef, useState } from "react";
 import Cropper, { type Area, type Point } from "react-easy-crop";
+import { cn } from "~/utils/cn";
 import { Button } from "./primitives/Buttons";
 import {
   Dialog,
@@ -56,14 +57,16 @@ type ProfilePhotoEditorProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (blob: Blob) => void;
+  currentAvatarUrl?: string;
+  onRemove?: () => void;
   isSaving?: boolean;
 };
 
 export function ProfilePhotoEditor({
   open,
   onOpenChange,
-  onSave,
   isSaving = false,
+  ...editorProps
 }: ProfilePhotoEditorProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -72,26 +75,42 @@ export function ProfilePhotoEditor({
           <DialogTitle>Profile picture</DialogTitle>
         </DialogHeader>
         {/* Radix unmounts the content when closed, so the crop state resets with it. */}
-        <Editor onSave={onSave} isSaving={isSaving} />
+        <Editor {...editorProps} isSaving={isSaving} />
       </DialogContent>
     </Dialog>
   );
 }
 
-function Editor({ onSave, isSaving }: Pick<ProfilePhotoEditorProps, "onSave" | "isSaving">) {
+type EditorProps = Omit<ProfilePhotoEditorProps, "open" | "onOpenChange">;
+
+function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageSrc, setImageSrc] = useState<string>();
   const [crop, setCrop] = useState<Point>(CENTER);
   const [zoom, setZoom] = useState(MIN_ZOOM);
   const [croppedArea, setCroppedArea] = useState<Area>();
   const [error, setError] = useState<string>();
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   useEffect(() => {
     if (!imageSrc) return;
     return () => URL.revokeObjectURL(imageSrc);
   }, [imageSrc]);
 
+  // A drop landing outside our own handlers would navigate the tab to the file
+  // and lose the crop. Editor only exists while the dialog is open.
+  useEffect(() => {
+    const suppress = (event: DragEvent) => event.preventDefault();
+    window.addEventListener("dragover", suppress);
+    window.addEventListener("drop", suppress);
+    return () => {
+      window.removeEventListener("dragover", suppress);
+      window.removeEventListener("drop", suppress);
+    };
+  }, []);
+
   function selectFile(file: File | undefined) {
+    if (isSaving) return;
     if (!file) return;
 
     if (!ACCEPTED_TYPES.includes(file.type)) {
@@ -117,7 +136,23 @@ function Editor({ onSave, isSaving }: Pick<ProfilePhotoEditorProps, "onSave" | "
   }
 
   return (
-    <>
+    <div
+      className="flex flex-col gap-4"
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDraggingOver(true);
+      }}
+      onDragLeave={(event) => {
+        // Moving between children fires dragleave too, so ignore inside targets.
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setIsDraggingOver(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDraggingOver(false);
+        selectFile(event.dataTransfer.files[0]);
+      }}
+    >
       <div className="flex flex-col gap-4 pt-4">
         <input
           ref={fileInputRef}
@@ -132,7 +167,12 @@ function Editor({ onSave, isSaving }: Pick<ProfilePhotoEditorProps, "onSave" | "
         />
         {imageSrc ? (
           <>
-            <div className="relative h-64 w-full overflow-hidden rounded-md bg-charcoal-900">
+            <div
+              className={cn(
+                "relative h-64 w-full overflow-hidden rounded-md bg-charcoal-900 ring-1",
+                isDraggingOver ? "ring-primary" : "ring-transparent"
+              )}
+            >
               <Cropper
                 image={imageSrc}
                 crop={crop}
@@ -160,13 +200,31 @@ function Editor({ onSave, isSaving }: Pick<ProfilePhotoEditorProps, "onSave" | "
               TrailingIcon={MagnifyingGlassPlusIcon}
             />
           </>
+        ) : currentAvatarUrl ? (
+          <div
+            className={cn(
+              "flex h-64 w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed",
+              isDraggingOver ? "border-primary" : "border-grid-bright"
+            )}
+          >
+            <img
+              src={currentAvatarUrl}
+              alt=""
+              className="size-32 rounded-full object-cover"
+              draggable={false}
+            />
+            <Paragraph variant="extra-small">Drop an image here to replace it</Paragraph>
+          </div>
         ) : (
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-grid-bright text-text-dimmed transition hover:border-text-dimmed hover:text-text-bright"
+            className={cn(
+              "flex h-64 w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed text-text-dimmed transition hover:border-text-dimmed hover:text-text-bright",
+              isDraggingOver ? "border-primary" : "border-grid-bright"
+            )}
           >
-            <Paragraph variant="small">Choose an image</Paragraph>
+            <Paragraph variant="small">Choose or drop an image</Paragraph>
             <Paragraph variant="extra-small">PNG, JPEG or WebP</Paragraph>
           </button>
         )}
@@ -177,13 +235,20 @@ function Editor({ onSave, isSaving }: Pick<ProfilePhotoEditorProps, "onSave" | "
         )}
       </div>
       <DialogFooter>
-        <Button
-          variant="tertiary/medium"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isSaving}
-        >
-          {imageSrc ? "Choose another" : "Choose image"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="tertiary/medium"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isSaving}
+          >
+            {imageSrc ? "Choose another" : "Choose image"}
+          </Button>
+          {onRemove && currentAvatarUrl && (
+            <Button variant="danger/medium" onClick={onRemove} disabled={isSaving}>
+              Remove
+            </Button>
+          )}
+        </div>
         <Button
           variant="primary/medium"
           onClick={save}
@@ -193,6 +258,6 @@ function Editor({ onSave, isSaving }: Pick<ProfilePhotoEditorProps, "onSave" | "
           Save
         </Button>
       </DialogFooter>
-    </>
+    </div>
   );
 }
