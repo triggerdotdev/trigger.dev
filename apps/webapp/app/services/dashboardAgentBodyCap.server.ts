@@ -24,8 +24,8 @@ export const DASHBOARD_AGENT_MAX_INGRESS_BYTES = MAX_MESSAGE_BODY_BYTES + INGRES
 const AGENT_PATH =
   /^(?:\/api\/v1\/dashboard-agent|\/resources\/orgs\/[^/]+\/projects\/[^/]+\/env\/[^/]+\/dashboard-agent)(\/|$)/;
 
-/** Headroom over the avatar cap for multipart framing. */
-const AVATAR_INGRESS_SLACK_BYTES = 8 * 1024;
+/** Headroom over the avatar cap: multipart framing, part headers and the crop metadata. */
+const AVATAR_INGRESS_SLACK_BYTES = 64 * 1024;
 
 export const AVATAR_MAX_INGRESS_BYTES = MAX_AVATAR_SIZE_IN_BYTES + AVATAR_INGRESS_SLACK_BYTES;
 
@@ -52,11 +52,12 @@ const AVATAR_CAP: Cap = {
 
 /**
  * Matched against the path Remix will route, not the raw one: the express adapter rebuilds the
- * request through `new URL`, so `/…/avatar/.` reaches the action as `/…/avatar/`.
+ * request as `new URL(origin + originalUrl)`, so `/…/avatar/.` reaches the action as `/…/avatar/`.
+ * Built the same way here, or a protocol-relative path would normalize to a different one.
  */
 function pathToMatch(req: Request): string {
   try {
-    return new URL(req.originalUrl || req.url, "http://localhost").pathname.toLowerCase();
+    return new URL(`http://localhost${req.originalUrl || req.url}`).pathname.toLowerCase();
   } catch {
     return req.path.toLowerCase();
   }

@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import {
   AVATAR_EXTENSIONS,
   type AvatarContentType,
+  hasAvatarMagicBytes,
   isAvatarContentType,
   MAX_AVATAR_SIZE_IN_BYTES,
 } from "~/utils/avatarLimits";
@@ -71,7 +73,21 @@ export async function parseAvatarUpload(
     return { error: "Image is too large", status: 413 };
   }
 
-  return { contentType: image.type, data: new Uint8Array(await image.arrayBuffer()) };
+  const data = new Uint8Array(await image.arrayBuffer());
+
+  if (!hasAvatarMagicBytes(image.type, data)) {
+    return { error: "Unsupported image type", status: 415 };
+  }
+
+  return { contentType: image.type, data };
+}
+
+export function absoluteUserAvatarUrl(avatarUrl: string | null) {
+  if (!avatarUrl || !avatarUrl.startsWith("/")) {
+    return avatarUrl;
+  }
+
+  return `${env.APP_ORIGIN}${avatarUrl}`;
 }
 
 export function isAvatarUploadRejection(

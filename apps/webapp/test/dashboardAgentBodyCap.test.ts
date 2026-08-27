@@ -231,6 +231,22 @@ describe("the dashboard agent's ingress cap", () => {
     expect(buffered()).toBe(MAX_AVATAR_SIZE_IN_BYTES);
   });
 
+  it("passes a real multipart upload whose image is exactly at the cap", async () => {
+    const { url, buffered } = await listen();
+
+    const form = new FormData();
+    form.set(
+      "image",
+      new File([new Uint8Array(MAX_AVATAR_SIZE_IN_BYTES)], "avatar.png", { type: "image/png" })
+    );
+
+    const response = await fetch(`${url}/resources/account/avatar`, { method: "POST", body: form });
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBeGreaterThan(MAX_AVATAR_SIZE_IN_BYTES);
+    expect(buffered()).toBeLessThanOrEqual(AVATAR_MAX_INGRESS_BYTES);
+  });
+
   it("leaves the presigned avatar GET path uncapped", async () => {
     const { url, buffered } = await listen();
     const size = AVATAR_MAX_INGRESS_BYTES + 1024;

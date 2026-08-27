@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { env } from "~/env.server";
 import {
   buildUserAvatarFilename,
   buildUserAvatarUrl,
   isAvatarUploadRejection,
+  absoluteUserAvatarUrl,
   parseAvatarUpload,
+  presignUserAvatarUrl,
   resolveStaleAvatarObjectPath,
   resolveUserAvatarObjectPath,
 } from "~/services/userAvatar.server";
@@ -11,8 +14,23 @@ import { MAX_AVATAR_SIZE_IN_BYTES } from "~/utils/avatarLimits";
 
 const USER_ID = "clzabc123";
 
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+
 function filenameFor(bytes: number[]) {
   return buildUserAvatarFilename("image/png", new Uint8Array(bytes));
+}
+
+function imageFile(type: string, bytes: number[], padTo = 0) {
+  const data = new Uint8Array(Math.max(padTo, bytes.length));
+  data.set(bytes);
+  return new File([data], "avatar.bin", { type });
+}
+
+function formWith(file: File) {
+  const form = new FormData();
+  form.set("image", file);
+  return form;
 }
 
 describe("resolveUserAvatarObjectPath", () => {
@@ -53,23 +71,16 @@ describe("buildUserAvatarFilename", () => {
   });
 });
 
-/** The route's whole body handling, minus the session lookup it wraps. */
-function pngForm(bytes: number[], extra?: Record<string, string>) {
-  const form = new FormData();
-  for (const [key, value] of Object.entries(extra ?? {})) form.set(key, value);
-  form.set("image", new File([new Uint8Array(bytes)], "avatar.png", { type: "image/png" }));
-  return form;
-}
-
 describe("parseAvatarUpload", () => {
   it("takes nothing from the body that could name the key's user", async () => {
-    const upload = await parseAvatarUpload(
-      pngForm([1, 2, 3], { userId: "usr_attacker", avatarUrl: "/resources/account/avatar/x/y" })
-    );
+    const form = formWith(imageFile("image/png", PNG_MAGIC));
+    form.set("userId", "usr_attacker");
+    form.set("avatarUrl", "/resources/account/avatar/x/y");
+
+    const upload = await parseAvatarUpload(form);
 
     if (isAvatarUploadRejection(upload)) throw new Error("expected the upload to be accepted");
 
-    // Only the caller's authenticated id reaches the key and the URL.
     const filename = buildUserAvatarFilename(upload.contentType, upload.data);
     const url = buildUserAvatarUrl(USER_ID, filename);
 
@@ -87,30 +98,59 @@ describe("parseAvatarUpload", () => {
   });
 
   it("rejects a disallowed content type with 415", async () => {
-    const form = new FormData();
-    form.set("image", new File(["<svg/>"], "a.svg", { type: "image/svg+xml" }));
+    const form = formWith(new File(["<svg/>"], "a.svg", { type: "image/svg+xml" }));
 
     expect(await parseAvatarUpload(form)).toMatchObject({ status: 415 });
   });
 
   it("rejects an image over the cap with 413", async () => {
-    const form = new FormData();
-    form.set(
-      "image",
-      new File([new Uint8Array(MAX_AVATAR_SIZE_IN_BYTES + 1)], "a.png", { type: "image/png" })
-    );
+    const form = formWith(imageFile("image/png", PNG_MAGIC, MAX_AVATAR_SIZE_IN_BYTES + 1));
 
     expect(await parseAvatarUpload(form)).toMatchObject({ status: 413 });
   });
 
   it("accepts an image exactly at the cap", async () => {
-    const form = new FormData();
-    form.set(
-      "image",
-      new File([new Uint8Array(MAX_AVATAR_SIZE_IN_BYTES)], "a.png", { type: "image/png" })
-    );
+    const form = formWith(imageFile("image/png", PNG_MAGIC, MAX_AVATAR_SIZE_IN_BYTES));
 
     expect(isAvatarUploadRejection(await parseAvatarUpload(form))).toBe(false);
+  });
+
+  it.each([
+    ["png", "image/png", PNG_MAGIC],
+    ["jpeg", "image/jpeg", JPEG_MAGIC],
+    ["webp", "image/webp", [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]],
+  ])("accepts %s bytes matching their declared type", async (_case, type, magic) => {
+    const form = formWith(imageFile(type, magic));
+
+    expect(isAvatarUploadRejection(await parseAvatarUpload(form))).toBe(false);
+  });
+
+  it.each([
+    ["png bytes declared as jpeg", "image/jpeg", PNG_MAGIC],
+    ["jpeg bytes declared as png", "image/png", JPEG_MAGIC],
+    ["garbage declared as png", "image/png", [1, 2, 3, 4, 5, 6, 7, 8]],
+    ["an html payload declared as webp", "image/webp", [0x3c, 0x21, 0x64, 0x6f, 0x63, 0x74]],
+    ["a truncated png header", "image/png", PNG_MAGIC.slice(0, 4)],
+    ["an empty file", "image/png", []],
+  ])("rejects %s with 415", async (_case, type, bytes) => {
+    const form = formWith(imageFile(type, bytes));
+
+    expect(await parseAvatarUpload(form)).toMatchObject({ status: 415 });
+  });
+});
+
+describe("absoluteUserAvatarUrl", () => {
+  it("absolutises an uploaded avatar so an API client can fetch it", () => {
+    expect(absoluteUserAvatarUrl(`/resources/account/avatar/${USER_ID}/a.png`)).toBe(
+      `${env.APP_ORIGIN}/resources/account/avatar/${USER_ID}/a.png`
+    );
+  });
+
+  it.each([
+    ["an OAuth avatar", "https://avatars.githubusercontent.com/u/1?v=4"],
+    ["no avatar", null],
+  ])("leaves %s untouched", (_case, avatarUrl) => {
+    expect(absoluteUserAvatarUrl(avatarUrl)).toBe(avatarUrl);
   });
 });
 
@@ -156,5 +196,72 @@ describe("resolveStaleAvatarObjectPath", () => {
     expect(
       resolveStaleAvatarObjectPath({ previousAvatarUrl, userId: USER_ID, filename: next })
     ).toBeUndefined();
+  });
+});
+
+const S3_ENV_KEYS = [
+  "OBJECT_STORE_S3_BASE_URL",
+  "OBJECT_STORE_S3_BUCKET",
+  "OBJECT_STORE_S3_ACCESS_KEY_ID",
+  "OBJECT_STORE_S3_SECRET_ACCESS_KEY",
+  "OBJECT_STORE_S3_REGION",
+] as const;
+
+describe("the avatar object store", () => {
+  const originalS3Env = Object.fromEntries(S3_ENV_KEYS.map((key) => [key, process.env[key]]));
+  const originalDefaultBaseUrl = env.OBJECT_STORE_BASE_URL;
+  const originalDefaultBucket = env.OBJECT_STORE_BUCKET;
+
+  function setS3Env(values: Partial<Record<(typeof S3_ENV_KEYS)[number], string>>) {
+    for (const key of S3_ENV_KEYS) delete process.env[key];
+    for (const [key, value] of Object.entries(values)) process.env[key] = value;
+  }
+
+  afterEach(() => {
+    for (const key of S3_ENV_KEYS) {
+      const original = originalS3Env[key];
+      if (original === undefined) delete process.env[key];
+      else process.env[key] = original;
+    }
+    env.OBJECT_STORE_BASE_URL = originalDefaultBaseUrl;
+    env.OBJECT_STORE_BUCKET = originalDefaultBucket;
+  });
+
+  it("reads OBJECT_STORE_S3_*, never the default protocol", () => {
+    setS3Env({});
+    env.OBJECT_STORE_BASE_URL = "https://default-store.test";
+    env.OBJECT_STORE_BUCKET = "packets";
+    process.env.OBJECT_STORE_BASE_URL = "https://default-store.test";
+    process.env.OBJECT_STORE_BUCKET = "packets";
+
+    expect(() => presignUserAvatarUrl(`avatars/${USER_ID}/a.png`)).toThrow(/protocol: s3/);
+  });
+
+  it("requires its own bucket", () => {
+    setS3Env({
+      OBJECT_STORE_S3_BASE_URL: "https://s3-no-bucket.test",
+      OBJECT_STORE_S3_ACCESS_KEY_ID: "key",
+      OBJECT_STORE_S3_SECRET_ACCESS_KEY: "secret",
+    });
+
+    expect(() => presignUserAvatarUrl(`avatars/${USER_ID}/a.png`)).toThrow(
+      /OBJECT_STORE_S3_BUCKET/
+    );
+  });
+
+  it("signs a short-lived URL under the S3 bucket", async () => {
+    setS3Env({
+      OBJECT_STORE_S3_BASE_URL: "https://s3-signing.test",
+      OBJECT_STORE_S3_BUCKET: "avatars-bucket",
+      OBJECT_STORE_S3_ACCESS_KEY_ID: "key",
+      OBJECT_STORE_S3_SECRET_ACCESS_KEY: "secret",
+      OBJECT_STORE_S3_REGION: "us-east-1",
+    });
+
+    const url = await presignUserAvatarUrl(`avatars/${USER_ID}/a.png`);
+
+    expect(url).toContain(`/avatars-bucket/avatars/${USER_ID}/a.png`);
+    expect(url).toContain("X-Amz-Expires=300");
+    expect(url).toContain("X-Amz-Signature=");
   });
 });
