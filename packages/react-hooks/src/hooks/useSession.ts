@@ -275,7 +275,7 @@ export function useSession<TRecord = unknown>(
     return () => {
       stop();
     };
-  }, [sessionIdOrExternalId, stop, options?.enabled, requestSubscription]);
+  }, [sessionIdOrExternalId, io, stop, options?.enabled, requestSubscription]);
 
   return { records: records ?? initialRecordsFallback, lastEventId, lastControl, error, stop };
 }
@@ -296,13 +296,25 @@ async function processSessionStream<TRecord>(
   lastEventId?: string,
   throttleInMs?: number
 ) {
+  // Published with the throttled record flush, so consumers re-render once per
+  // batch instead of once per record.
+  let lastSeenEventId: string | undefined;
+  let publishedEventId: string | undefined;
+
+  const publishLastEventId = () => {
+    if (lastSeenEventId !== publishedEventId) {
+      publishedEventId = lastSeenEventId;
+      setLastEventId(lastSeenEventId);
+    }
+  };
+
   try {
     const stream = await apiClient.subscribeToSessionStream<TRecord>(sessionIdOrExternalId, io, {
       signal: abortControllerRef.current?.signal,
       timeoutInSeconds,
       lastEventId,
       onPart: (part) => {
-        setLastEventId(part.id);
+        lastSeenEventId = part.id;
         onRecord(part);
       },
       onControl: (event) => {
@@ -314,14 +326,17 @@ async function processSessionStream<TRecord>(
     // Throttle the records
     const recordsQueue = createThrottledQueue<TRecord>(async (newRecords) => {
       mutateRecordsData([...existingRecordsRef.current, ...newRecords]);
+      publishLastEventId();
     }, throttleInMs);
 
     for await (const record of stream) {
       recordsQueue.add(record);
     }
 
-    // The last batch can be smaller than the throttle window, so flush it.
+    // The last batch can be smaller than the throttle window, so flush it. The
+    // cursor is published even when that batch is empty (control records only).
     await recordsQueue.flush();
+    publishLastEventId();
   } catch (err) {
     if ((err as any).name === "AbortError") {
       return;
