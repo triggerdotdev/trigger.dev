@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request as ExpressRequest } from "express";
 import http, { type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
@@ -16,9 +16,18 @@ import { MAX_AVATAR_SIZE_IN_BYTES } from "~/utils/avatarLimits";
 let server: Server | undefined;
 
 /** A server whose route stands in for Remix: it reads the whole body, like `text()` would. */
-async function listen(): Promise<{ url: string; buffered: () => number }> {
+async function listen(): Promise<{
+  url: string;
+  buffered: () => number;
+  requestDestroyed: () => boolean;
+}> {
   let buffered = 0;
+  let lastRequest: ExpressRequest | undefined;
   const app = express();
+  app.use((req, _res, next) => {
+    lastRequest = req;
+    next();
+  });
   app.use(dashboardAgentBodyCap);
   app.all("*", async (req, res) => {
     try {
@@ -35,7 +44,17 @@ async function listen(): Promise<{ url: string; buffered: () => number }> {
   return {
     url: `http://127.0.0.1:${(server!.address() as AddressInfo).port}`,
     buffered: () => buffered,
+    requestDestroyed: () => lastRequest?.destroyed === true,
   };
+}
+
+/** Teardown happens on the response's "finish", which lands just after `fetch` resolves. */
+async function eventually(assertion: () => boolean) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (assertion()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return assertion();
 }
 
 /** A chunked POST: `fetch` omits `content-length` for a stream body. */
@@ -66,24 +85,41 @@ function postChunked(url: string, totalBytes: number, chunkBytes = 16 * 1024) {
  * `node:http` sends the path verbatim; `fetch` resolves dot segments client-side, so it cannot
  * express this request at all.
  */
-function postRawPath(url: string, path: string, bytes: number) {
+function postRawPath(url: string, path: string, declaredBytes: number) {
   return new Promise<number>((resolve, reject) => {
     let settled = false;
+    const finish = (status: number) => {
+      if (settled) return;
+      settled = true;
+      resolve(status);
+    };
+
     const request = http.request(
-      { port: Number(new URL(url).port), method: "POST", path },
+      {
+        port: Number(new URL(url).port),
+        method: "POST",
+        path,
+        headers: { "content-length": String(declaredBytes) },
+      },
       (response) => {
         response.resume();
-        settled = true;
-        resolve(response.statusCode ?? 0);
+        finish(response.statusCode ?? 0);
         request.destroy();
       }
     );
 
-    // A refusal tears the socket down mid-write; that is the pass, not an error.
+    // A refusal answers and then tears the socket down; a write error after that is
+    // expected. Anything else still fails the test.
     request.on("error", (error) => {
-      if (!settled) reject(error);
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EPIPE" || code === "ECONNRESET") finish(0);
+      else if (!settled) reject(error);
     });
-    request.end(Buffer.alloc(bytes, "a"));
+
+    // Only a token of the declared body: an uncapped server waits for the rest, which
+    // resolves as 0 rather than hanging the test.
+    request.write(Buffer.alloc(1024, "a"));
+    setTimeout(() => finish(0), 1500).unref();
   });
 }
 
@@ -133,6 +169,21 @@ describe("the dashboard agent's ingress cap", () => {
 
     expect(response.status).toBe(413);
     expect(buffered()).toBe(0);
+  });
+
+  it("drops a refused client that never sends the body it declared", async () => {
+    const { url, buffered, requestDestroyed } = await listen();
+
+    const status = await postRawPath(
+      url,
+      "/api/v1/dashboard-agent/watches/batch-check",
+      DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1
+    );
+
+    expect(status).toBe(413);
+    expect(buffered()).toBe(0);
+    // Otherwise the connection stays occupied while the client trickles the rest.
+    expect(await eventually(requestDestroyed)).toBe(true);
   });
 
   it("passes a body under the cap through untouched", async () => {

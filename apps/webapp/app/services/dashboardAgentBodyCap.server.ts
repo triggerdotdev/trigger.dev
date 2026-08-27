@@ -84,6 +84,9 @@ function capRequestBody(req: Request, res: Response, cap: Cap): void {
   const declared = Number.parseInt(req.headers["content-length"] ?? "", 10);
   if (Number.isFinite(declared) && declared > limit) {
     refuse(res, cap);
+    // Same teardown as the overflow branch: a refused client must not keep the
+    // connection open trickling a body nobody will read.
+    res.once("finish", () => req.destroy());
     return;
   }
 

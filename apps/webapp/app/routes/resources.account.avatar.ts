@@ -17,6 +17,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const user = await requireUser(request);
 
+  if (user.isImpersonating) {
+    return json(
+      { error: "You can't change this while impersonating another user." },
+      { status: 403 }
+    );
+  }
+
   if (method === "DELETE") {
     await updateUserAvatarUrl({ id: user.id, avatarUrl: null });
 
