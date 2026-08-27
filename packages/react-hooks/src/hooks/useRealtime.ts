@@ -15,17 +15,7 @@ import { useSWR } from "../utils/trigger-swr.js";
 import type { UseApiClientOptions } from "./useApiClient.js";
 import { useApiClient } from "./useApiClient.js";
 import { createThrottledQueue } from "../utils/throttle.js";
-
-// Keep subscription lifecycles controlled by their effects while using the latest request inputs.
-function useStableRequestCallback(callback: () => Promise<void>) {
-  const callbackRef = useRef(callback);
-
-  useEffect(() => {
-    callbackRef.current = callback;
-  }, [callback]);
-
-  return useCallback(() => callbackRef.current(), []);
-}
+import { useStableRequestCallback } from "../utils/useStableRequestCallback.js";
 
 export type UseRealtimeRunOptions = UseApiClientOptions & {
   id?: string;

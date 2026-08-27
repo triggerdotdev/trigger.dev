@@ -5,3 +5,4 @@ export * from "./hooks/useRealtime.js";
 export * from "./hooks/useTaskTrigger.js";
 export * from "./hooks/useWaitToken.js";
 export * from "./hooks/useInputStreamSend.js";
+export * from "./hooks/useSession.js";

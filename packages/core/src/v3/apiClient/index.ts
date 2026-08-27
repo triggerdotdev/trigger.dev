@@ -195,6 +195,7 @@ export type {
   AnyRealtimeRun,
   AnyRunShape,
   ApiRequestOptions,
+  ControlEvent,
   RealtimeRun,
   RunShape,
   RunStreamCallback,
