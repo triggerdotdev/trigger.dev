@@ -843,24 +843,8 @@ export const DeployBuildPath = z.enum(["depot", "native", "native_local_bundle"]
 
 export type DeployBuildPath = z.infer<typeof DeployBuildPath>;
 
-export const DeployBuildPathSource = z.enum([
-  "default",
-  "global",
-  "global_environment",
-  "organization",
-  "organization_environment",
-  "project_opt_out",
-  "unavailable",
-]);
-
-export type DeployBuildPathSource = z.infer<typeof DeployBuildPathSource>;
-
-// `source` is informational, so the CLI accepts values newer servers may add.
 export const GetDeploySettingsResponseBody = z.object({
-  build: z.object({
-    path: DeployBuildPath,
-    source: z.string(),
-  }),
+  build_path: DeployBuildPath,
 });
 
 export type GetDeploySettingsResponseBody = z.infer<typeof GetDeploySettingsResponseBody>;

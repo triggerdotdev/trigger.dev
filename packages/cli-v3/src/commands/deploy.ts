@@ -7,7 +7,6 @@ import {
 } from "@trigger.dev/core/v3";
 import type {
   DeployBuildPath,
-  DeployBuildPathSource,
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   GitMeta,
@@ -1284,22 +1283,6 @@ const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
   native_local_bundle: "Building on the native build server from a local bundle",
 };
 
-const BUILD_PATH_SOURCE_LABEL: Record<DeployBuildPathSource, string> = {
-  default: "server default",
-  global: "configured on the server",
-  global_environment: "configured on the server for this environment type",
-  organization: "configured for your organization",
-  organization_environment: "configured for your organization's environments of this type",
-  project_opt_out: "the native build server is disabled in the project settings",
-  unavailable: "the native build server is not available on this server",
-};
-
-/**
- * Explicit path flags (--native-build, --depot-build, --local-build) win and skip the server
- * round-trip; --local-bundle and --detach require --native-build, so they never depend on the
- * server either. Otherwise the server decides (org/env-type feature flags); any failure to ask
- * falls open to Depot, the path older CLIs use unconditionally.
- */
 async function resolveBuildPath(
   apiClient: CliApiClient,
   projectRef: string,
@@ -1336,18 +1319,15 @@ async function resolveBuildPath(
     return "depot";
   }
 
-  const { path, source } = result.data.build;
+  const buildPath = result.data.build_path;
 
-  if (path !== "depot") {
-    const sourceLabel =
-      BUILD_PATH_SOURCE_LABEL[source as DeployBuildPathSource] ??
-      `configured on the server: ${source}`;
-    log.info(`${BUILD_PATH_LABEL[path]} (${sourceLabel})`);
+  if (buildPath === "depot") {
+    logger.debug("Build path depot (server)");
   } else {
-    logger.debug(`Build path depot (${source})`);
+    log.info(BUILD_PATH_LABEL[buildPath]);
   }
 
-  return path;
+  return buildPath;
 }
 
 async function handleNativeBuildServerDeploy({

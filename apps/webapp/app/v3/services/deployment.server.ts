@@ -4,16 +4,25 @@ import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { Prisma, type WorkerDeployment, type Project, boundedIn } from "@trigger.dev/database";
 import {
   BuildServerMetadata,
+  DeployBuildPath,
   logger,
   type GitMeta,
   type DeploymentEvent,
+  type RuntimeEnvironmentType,
 } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
-import { enqueueBuild, generateRegistryCredentials } from "~/services/platform.v3.server";
+import {
+  enqueueBuild,
+  generateRegistryCredentials,
+  isBillingConfigured,
+} from "~/services/platform.v3.server";
+import { FEATURE_FLAG, type FeatureFlagKey } from "../featureFlags";
+import { flags } from "../featureFlags.server";
+import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
 import { AppendInput, AppendRecord, S2 } from "@s2-dev/streamstore";
 import { createRedisClient } from "~/redis.server";
 
@@ -27,6 +36,20 @@ const s2TokenRedis = createRedisClient("s2-token-cache", {
   clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
 });
 const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
+
+const DEPLOY_BUILD_PATH_ENV_FLAG: Partial<Record<RuntimeEnvironmentType, FeatureFlagKey>> = {
+  PREVIEW: FEATURE_FLAG.deployBuildPathPreview,
+  STAGING: FEATURE_FLAG.deployBuildPathStaging,
+  PRODUCTION: FEATURE_FLAG.deployBuildPathProduction,
+};
+
+export type DeployBuildPathSource =
+  | "unavailable"
+  | "organization_environment"
+  | "organization"
+  | "global_environment"
+  | "global"
+  | "default";
 
 export class DeploymentService extends BaseService {
   /**
@@ -280,6 +303,51 @@ export class DeploymentService extends BaseService {
       )
       .andThen(({ deployment }) => deleteTimeout(deployment))
       .map(() => undefined);
+  }
+
+  public getDeploySettings(
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "type" | "organization">
+  ): ResultAsync<
+    { buildPath: DeployBuildPath; buildPathSource: DeployBuildPathSource },
+    { type: "other"; cause: unknown }
+  > {
+    if (!isBillingConfigured()) {
+      return okAsync({ buildPath: "depot" as const, buildPathSource: "unavailable" as const });
+    }
+
+    const loadGlobalFlags = () =>
+      fromPromise(Promise.resolve(globalFlagsRegistry.current() ?? flags()), (error) => ({
+        type: "other" as const,
+        cause: error,
+      }));
+
+    const envKey = DEPLOY_BUILD_PATH_ENV_FLAG[authenticatedEnv.type];
+    const orgFlags = authenticatedEnv.organization.featureFlags;
+    const orgFlagSet: Record<string, unknown> =
+      orgFlags && typeof orgFlags === "object" && !Array.isArray(orgFlags)
+        ? (orgFlags as Record<string, unknown>)
+        : {};
+
+    return loadGlobalFlags().map((globalFlagSet: Record<string, unknown>) => {
+      const candidates: Array<
+        [Record<string, unknown>, FeatureFlagKey | undefined, DeployBuildPathSource]
+      > = [
+        [orgFlagSet, envKey, "organization_environment"],
+        [orgFlagSet, FEATURE_FLAG.deployBuildPath, "organization"],
+        [globalFlagSet, envKey, "global_environment"],
+        [globalFlagSet, FEATURE_FLAG.deployBuildPath, "global"],
+      ];
+
+      for (const [flagSet, key, buildPathSource] of candidates) {
+        if (!key) continue;
+        const parsed = DeployBuildPath.safeParse(flagSet[key]);
+        if (parsed.success) {
+          return { buildPath: parsed.data, buildPathSource };
+        }
+      }
+
+      return { buildPath: "depot" as const, buildPathSource: "default" as const };
+    });
   }
 
   /**

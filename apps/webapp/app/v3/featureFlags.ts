@@ -38,8 +38,7 @@ export const FEATURE_FLAG = {
   // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
   runOpsMintShardOverride: "runOpsMintShardOverride",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
-  // Build path for CLI deploys (see deployBuildPath.ts). The env-type keys beat the plain
-  // key, org values beat global ones, and unset everywhere means depot.
+  // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
   deployBuildPath: "deployBuildPath",
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
