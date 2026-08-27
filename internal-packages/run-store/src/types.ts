@@ -12,7 +12,7 @@ import type {
   WaitpointTag,
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
-import type { Residency } from "@trigger.dev/core/v3/isomorphic";
+import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
 
 /**
  * Client accepted by the read methods. Reads route through the replica by
@@ -958,7 +958,11 @@ export interface RunStore {
     // A tag has no owning run to co-locate with; when no minted `id` pins it by id-shape, a
     // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
     // instead of defaulting to LEGACY. Single-store impls ignore it.
-    residency?: Residency
+    residency?: Residency,
+    // The environment's gen-2 mint shard, when it has one. A tag carries no id the router can
+    // read, so this is the only way its row can follow its environment's tokens onto a shard.
+    // Takes precedence over `residency`, which can only ever name a gen-1 store.
+    shardKey?: ShardKey
   ): Promise<WaitpointTag>;
   findManyWaitpointTags(
     args: {

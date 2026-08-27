@@ -115,6 +115,11 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       return Promise.resolve((config.batch ?? null) as never);
     }) as FakeStore["findBatchTaskRunById"],
 
+    upsertWaitpointTag: ((data: { name: string }) => {
+      record("upsertWaitpointTag");
+      return Promise.resolve({ id: `tag_${slot}`, name: data.name } as never);
+    }) as FakeStore["upsertWaitpointTag"],
+
     countPendingWaitpointsWithPresence: ((waitpointIds: string[], _client?: ReadClient) => {
       record("countPendingWaitpointsWithPresence");
       const pending = new Set(config.pendingWaitpointIds ?? []);
@@ -922,5 +927,41 @@ describe("RoutingRunStore batch probe tolerates legitimate dual-residency", () =
     });
     await router.findRun({ spanId: "span_x" });
     expect(seen).toEqual([["legacy", "a"]]);
+  });
+});
+
+describe("RoutingRunStore waitpoint tags follow their environment's shard", () => {
+  // A tag row carries no id the router can read, and `residency` only ever names a gen-1 store.
+  // Without the shard hint an environment's tags land on a different database from the tokens
+  // they describe. Reads fan out over every store, so the row is still found later: the symptom
+  // is a tag attributed to the wrong database, not an error, which is why this needs a test.
+  const tag = { environmentId: "env_1", name: "tag", projectId: "proj_1" };
+
+  const shardedRouter = () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+    });
+    return { router, log };
+  };
+
+  it("routes a tag to the gen-2 shard the environment mints on", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpointTag(tag as never, undefined, "NEW", "a");
+    expect(trace(log)).toEqual(["a:upsertWaitpointTag"]);
+  });
+
+  it("a gen-1 shard key still routes by residency", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpointTag(tag as never, undefined, "NEW", "new");
+    expect(trace(log)).toEqual(["new:upsertWaitpointTag"]);
+  });
+
+  it("no shard hint keeps today's behaviour exactly", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpointTag(tag as never, undefined, "LEGACY");
+    expect(trace(log)).toEqual(["legacy:upsertWaitpointTag"]);
   });
 });

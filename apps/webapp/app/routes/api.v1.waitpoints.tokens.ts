@@ -97,6 +97,7 @@ const { action } = createActionApiRoute(
             environmentId: authentication.environment.id,
             projectId: authentication.environment.projectId,
             residency,
+            shardKey: standaloneShardKey,
           });
           if (tagRecord) {
             tags.push(tagRecord);

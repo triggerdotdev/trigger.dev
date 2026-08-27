@@ -2243,11 +2243,20 @@ export class RoutingRunStore implements RunStore {
   upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
     tx?: PrismaClientOrTransaction,
-    residency?: Residency
+    residency?: Residency,
+    shardKey?: ShardKey
   ): Promise<WaitpointTag> {
     // No owning run; route by the env's residency hint when present, else a minted id-shape, else
     // fall back to LEGACY (same precedence as a standalone waitpoint). Caller tx is never forwarded.
-    const store = this.#waitpointWriteStore(undefined, residency, data.id);
+    //
+    // A gen-2 shard hint wins outright. Callers never mint a tag id, so id-shape cannot route one,
+    // and `residency` collapses to a gen-1 store — which would leave an environment's tags on a
+    // different database from the tokens they describe. The read side already fans out over every
+    // store, so a misplaced row is found but attributed to the wrong environment's database.
+    const store =
+      shardKey !== undefined && shardKey !== NEW_SHARD && shardKey !== LEGACY_SHARD
+        ? this.#shardStore(shardKey)
+        : this.#waitpointWriteStore(undefined, residency, data.id);
     return store.upsertWaitpointTag(data, undefined);
   }
 
