@@ -59,7 +59,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       environmentType: environment.type,
       orgFeatureFlags: environment.organization.featureFlags,
       globalFlags: globalFlagsRegistry.current() ?? (await flags()),
-      projectBuildSettings: BuildSettingsSchema.safeParse(project?.buildSettings).data,
+      // Only the opt-out matters here; an unrelated invalid key must not make it fail open.
+      projectBuildSettings: BuildSettingsSchema.pick({ disableNativeBuildServer: true }).safeParse(
+        project?.buildSettings
+      ).data,
       nativeBuildServerAvailable: isBillingConfigured(),
     });
 

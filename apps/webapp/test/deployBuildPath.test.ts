@@ -97,6 +97,62 @@ describe("resolveDeployBuildPath", () => {
     ).toEqual({ path: "depot", source: "project_opt_out" });
   });
 
+  it("treats a cold registry, a null blob and an array blob as unset", () => {
+    expect(resolveDeployBuildPath({ ...base, globalFlags: undefined })).toEqual({
+      path: "depot",
+      source: "default",
+    });
+    expect(resolveDeployBuildPath({ ...base, orgFeatureFlags: null })).toEqual({
+      path: "depot",
+      source: "default",
+    });
+    expect(resolveDeployBuildPath({ ...base, orgFeatureFlags: ["native"] })).toEqual({
+      path: "depot",
+      source: "default",
+    });
+  });
+
+  it("applies the plain global flag to preview and staging environments", () => {
+    for (const environmentType of ["PREVIEW", "STAGING"] as const) {
+      expect(
+        resolveDeployBuildPath({
+          ...base,
+          environmentType,
+          globalFlags: { deployBuildPath: "native" },
+        })
+      ).toEqual({ path: "native", source: "global" });
+    }
+  });
+
+  it("never lets another environment type's key leak", () => {
+    expect(
+      resolveDeployBuildPath({
+        ...base,
+        environmentType: "PRODUCTION",
+        orgFeatureFlags: { deployBuildPathStaging: "native" },
+      })
+    ).toEqual({ path: "depot", source: "default" });
+  });
+
+  it("skips an invalid env-type value and still honors the org plain flag", () => {
+    expect(
+      resolveDeployBuildPath({
+        ...base,
+        orgFeatureFlags: { deployBuildPathProduction: "nope", deployBuildPath: "native" },
+      })
+    ).toEqual({ path: "native", source: "organization" });
+  });
+
+  it("does not treat an explicit disableNativeBuildServer: false as an opt-out", () => {
+    expect(
+      resolveDeployBuildPath({
+        ...base,
+        orgFeatureFlags: { deployBuildPath: "native" },
+        projectBuildSettings: { disableNativeBuildServer: false },
+      })
+    ).toEqual({ path: "native", source: "organization" });
+  });
+
   it("falls back to depot when the native build server is not available", () => {
     expect(
       resolveDeployBuildPath({
