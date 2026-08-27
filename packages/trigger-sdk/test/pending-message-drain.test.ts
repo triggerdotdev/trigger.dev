@@ -224,6 +224,46 @@ describe("chat.agent declined steering message", () => {
   });
 });
 
+/**
+ * The shape a developer reaches by following the docs for `onReceived` alone:
+ * a `pendingMessages` config, no `shouldInject`, and no
+ * `chat.toStreamTextOptions()` spread, so nothing can ever drain the steering
+ * queue. The message must still be answered. It used to be taken off the
+ * channel by the arrival handler and then stranded in a queue with no consumer.
+ */
+describe("chat.agent pendingMessages with nothing wired to drain it", () => {
+  it("still answers a mid-turn message as its own turn", async () => {
+    const received: string[] = [];
+
+    const agent = chat.agent({
+      id: "pending-drain.unwired",
+      pendingMessages: {
+        onReceived: ({ message }) => {
+          received.push(message.id);
+        },
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model: echoModel(), messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "pending-drain-unwired" });
+    try {
+      const first = harness.sendMessage(userMessage("m1", "u-1"));
+      await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      void harness.sendMessage(userMessage("m2", "u-2"));
+      await first;
+
+      await waitFor(() => turnCompleteCount(harness) >= 2);
+
+      expect(received).toContain("u-2");
+      expect(streamedText(harness)).toContain("ANSWER(m2)");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
 describe("chat.agent errored turn", () => {
   it(
     "does not duplicate messages buffered after a turn that threw",

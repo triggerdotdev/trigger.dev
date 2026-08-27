@@ -12,7 +12,7 @@ By default (without `pendingMessages`), a message sent while the agent is respon
 
 The `pendingMessages` option enables steering instead, injecting user messages between tool-call steps via the AI SDK's `prepareStep`. Messages that arrive during streaming are queued and injected at the next step boundary. A message that is not injected becomes the next turn instead, whether that is because `shouldInject` returned `false` or because there were no more step boundaries (single-step response or final text generation). The backend handles that, so no client-side re-send is involved.
 
-This requires the `pendingMessages` options to actually reach `streamText`, by spreading `chat.toStreamTextOptions()` (or passing `prepareStep`). Configuring `pendingMessages` without that wiring leaves nothing to drain the queue, and mid-turn messages are lost.
+Injection is what needs wiring: the `pendingMessages` options only reach `streamText` if you spread `chat.toStreamTextOptions()` (or pass `prepareStep`). Without that, nothing injects, so every mid-turn message is answered as the next turn. Deferral does not depend on it.
 
 ## How it works
 

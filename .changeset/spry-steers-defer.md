@@ -18,7 +18,8 @@ chat.agent({
       model,
       messages,
       abortSignal: signal,
-      // Required for pendingMessages to be wired up at all.
+      // Required for injection. Without it nothing injects, and every
+      // mid-turn message is answered as the next turn instead.
       ...chat.toStreamTextOptions(),
     }),
 });
