@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildShardHandleMaps } from "./shardHandles.server";
+import { buildShardHandleMaps, nonAliasedShardReplicas } from "./shardHandles.server";
 
 // Two distinct sentinels per shard: the maps must not cross writer and replica.
 function handle(key: string) {
@@ -33,5 +33,30 @@ describe("buildShardHandleMaps", () => {
     const { replicas } = buildShardHandleMaps([handle("a")]);
 
     expect(replicas.get("a")).not.toEqual({ tag: "a-writer" });
+  });
+});
+
+describe("nonAliasedShardReplicas", () => {
+  it("yields an empty list when no shard is configured", () => {
+    expect(nonAliasedShardReplicas([])).toEqual([]);
+  });
+
+  it("keeps the configured order and carries each shard's replica", () => {
+    expect(nonAliasedShardReplicas([handle("b"), handle("a")])).toEqual([
+      { key: "b", replica: { tag: "b-replica" } },
+      { key: "a", replica: { tag: "a-replica" } },
+    ]);
+  });
+
+  // An aliased shard shares its target's client BY REFERENCE, so a leg for it scans one database
+  // twice. The router drops it the same way, on the DECLARATION rather than object identity.
+  it("drops a shard that declares aliasOf", () => {
+    expect(nonAliasedShardReplicas([{ ...handle("a"), aliasOf: "new" }, handle("b")])).toEqual([
+      { key: "b", replica: { tag: "b-replica" } },
+    ]);
+  });
+
+  it("never carries a writer in place of a replica", () => {
+    expect(nonAliasedShardReplicas([handle("a")])[0]?.replica).not.toEqual({ tag: "a-writer" });
   });
 });
