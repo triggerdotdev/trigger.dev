@@ -2266,37 +2266,53 @@ export class RoutingRunStore implements RunStore {
     return store.upsertWaitpointTag(data, undefined);
   }
 
-  // Merge tag legs, keeping one row per (environmentId, name) rather than per id.
+  // Tag rows need BOTH dedupe keys, in this order, because two different collisions exist.
   //
-  // A tag row has no id the router can read, so the SAME logical tag gets an independent cuid on
-  // every store that ever wrote it: the unique index is `(environmentId, name)` and it is
-  // per-database. Deduping by id therefore returns the same tag name once per store holding it,
-  // which surfaces as a name listed two or three times. That was already reachable for a
-  // dual-resident environment across the gen-1 pair, and stamping the mint shard onto the write
-  // widens it to every configured shard.
+  // By id, first: drain can mirror a tag onto NEW while it keeps its id, so the same id appears on
+  // two stores and NEW is authoritative. #mergeById owns that, along with the duplicate alarm.
   //
-  // Dropping a row is safe here because nothing consumes a tag's id: a waitpoint carries its tags
-  // as a string array (`tags: { hasSome: [...] }`) and `WaitpointTag` is a name registry for
-  // listing and autocomplete. Legs arrive in #precedence order and the last write wins, matching
-  // #mergeById. A row whose projection omits `environmentId` or `name` cannot be keyed and passes
-  // through, exactly as #mergeById treats a row with no `id`.
-  static #mergeTagsByName<R extends Record<string, unknown>>(
-    legs: Array<{ key: ShardKey; rows: R[] }>
-  ): R[] {
-    const byName = new Map<string, R>();
-    const passthrough: R[] = [];
+  // By (environmentId, name), second: a tag row has no id the router can read, so a store that has
+  // never seen the tag mints an independent cuid for it. The unique index is (environmentId, name)
+  // and it is per-database, so one logical tag can hold a different id on every store, and the id
+  // pass cannot see that they are the same tag. Left alone, a name is listed once per store holding
+  // it. That was already reachable across the gen-1 pair for a dual-resident environment, and
+  // stamping the mint shard onto the write widens it to every configured shard.
+  //
+  // Dropping a row is safe because nothing consumes a tag's id: a waitpoint carries its tags as a
+  // string array (`tags: { hasSome: [...] }`) and this table is a name registry for listing and
+  // autocomplete.
+  #mergeTags<R extends Record<string, unknown>>(legs: Array<{ key: ShardKey; rows: R[] }>): R[] {
+    const survivors = this.#mergeById(legs);
+    const survivorSet = new Set<R>(survivors as R[]);
+
+    // Legs arrive in #precedence order, so the last write wins and the highest-authority store
+    // takes the name. Restricted to rows that survived the id pass, so a row already dropped as a
+    // stale mirror cannot win its name back.
+    const winnerByName = new Map<string, R>();
     for (const { rows } of legs) {
       for (const row of rows) {
-        const environmentId = row.environmentId;
-        const name = row.name;
-        if (typeof environmentId !== "string" || typeof name !== "string") {
-          passthrough.push(row);
-          continue;
-        }
-        byName.set(`${environmentId}\u0000${name}`, row);
+        if (!survivorSet.has(row)) continue;
+        const key = RoutingRunStore.#tagNameKey(row);
+        if (key !== undefined) winnerByName.set(key, row);
       }
     }
-    return [...byName.values(), ...passthrough];
+
+    // Filter rather than rebuild, so a winner keeps the POSITION #mergeById gave it: callers
+    // observe row order whenever `orderBy` is absent.
+    return (survivors as R[]).filter((row) => {
+      const key = RoutingRunStore.#tagNameKey(row);
+      return key === undefined || winnerByName.get(key) === row;
+    });
+  }
+
+  // A row whose projection omits either field cannot be keyed by name, and passes through — the
+  // same treatment #mergeById gives a row with no `id`.
+  static #tagNameKey(row: Record<string, unknown>): string | undefined {
+    const environmentId = row.environmentId;
+    const name = row.name;
+    return typeof environmentId === "string" && typeof name === "string"
+      ? `${environmentId}\u0000${name}`
+      : undefined;
   }
 
   // A tag keyed by (environmentId, name) can exist on BOTH DBs for one env (dual-resident, no
@@ -2329,7 +2345,7 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       )) as unknown as Array<Record<string, unknown>>,
     }));
-    const deduped = RoutingRunStore.#mergeTagsByName(legs) as unknown as WaitpointTag[];
+    const deduped = this.#mergeTags(legs) as unknown as WaitpointTag[];
     const merged = args.orderBy
       ? (sortByOrderBy(
           deduped as unknown as Array<Record<string, unknown>>,
