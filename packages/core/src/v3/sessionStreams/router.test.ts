@@ -516,3 +516,32 @@ describe("SessionChannelRouter: clearRoute guard", () => {
     expect(r.hasPending("handover")).toBe(false);
   });
 });
+
+describe("SessionChannelRouter: observe versus a waiting consumer", () => {
+  it("notifies the observer even when a parked puller takes the record", async () => {
+    const r = router();
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+
+    const pull = r.next("messages");
+    r.ingest(rec(0, "message"));
+    const taken = await pull;
+
+    expect(seen).toEqual([0]);
+    expect(taken?.seqNum).toBe(0);
+    expect(r.hasPending("messages")).toBe(false);
+  });
+
+  it("reports a failed take for a record a puller already consumed", async () => {
+    const r = router();
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+
+    const pull = r.next("messages");
+    r.ingest(rec(0, "message"));
+    await pull;
+
+    expect(seen).toEqual([0]);
+    expect(r.take("messages", 0)).toBe(false);
+  });
+});
