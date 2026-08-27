@@ -73,14 +73,19 @@ function formatWaitMs(ms: number): string {
   return `${Math.round(totalHours / 24)}d`;
 }
 
-export function curateProjects(data: unknown) {
+/**
+ * The route lists projects across every org the user belongs to (it's identity-only,
+ * no per-org authorization gate), so this is the only thing that scopes the result to
+ * the conversation's organization. Missing `organizationId` fails closed to an empty
+ * list rather than leaking every org's projects.
+ */
+export function curateProjects(data: unknown, organizationId?: string) {
   const projects = Array.isArray(data) ? data : [];
+  const scoped = projects.filter((p: any) => p.organization?.id === organizationId);
   return {
-    projects: projects.map((p: any) => ({
+    projects: scoped.map((p: any) => ({
       ref: p.externalRef,
       name: p.name,
-      slug: p.slug,
-      organization: p.organization?.title,
     })),
   };
 }

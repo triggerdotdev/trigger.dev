@@ -137,6 +137,46 @@ describe("the project/environment override", () => {
   });
 });
 
+describe("list_projects org scoping", () => {
+  // /api/v1/projects is identity-only: it lists every project the user's account
+  // touches, across every org they belong to, with no per-org authorization gate.
+  // The sweep's own org must be the only thing that narrows that down.
+  const MULTI_ORG_PROJECTS = [
+    { externalRef: "proj_same_org_a", name: "hello-world", organization: { id: "org_this" } },
+    { externalRef: "proj_same_org_b", name: "other-project", organization: { id: "org_this" } },
+    { externalRef: "proj_foreign", name: "hello-world", organization: { id: "org_other" } },
+  ];
+
+  function stubProjectsFetch() {
+    return vi.fn(async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/api/v1/projects")) return Response.json(MULTI_ORG_PROJECTS);
+      return Response.json({ data: [] });
+    });
+  }
+
+  it("excludes a same-named project from a different org", async () => {
+    vi.stubGlobal("fetch", stubProjectsFetch());
+    const t = tools({ organizationId: "org_this" });
+
+    const result = await (t.list_projects as any).execute({}, {} as any);
+
+    expect(result.projects.map((p: { ref: string }) => p.ref)).toEqual([
+      "proj_same_org_a",
+      "proj_same_org_b",
+    ]);
+  });
+
+  it("fails closed to an empty list when the turn has no organizationId", async () => {
+    vi.stubGlobal("fetch", stubProjectsFetch());
+    const t = tools();
+
+    const result = await (t.list_projects as any).execute({}, {} as any);
+
+    expect(result.projects).toEqual([]);
+  });
+});
+
 describe("project/environment schema round-trip", () => {
   it.each([
     ["list_runs", listRunsSchema, {}],

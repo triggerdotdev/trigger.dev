@@ -226,7 +226,7 @@ export function buildApiTools(args: {
   spanLedger: Pick<SourceReadLedger, "recordTraceSpans">;
 }): ToolSet {
   const { ctx, client, renderInvestigations, spanLedger } = args;
-  const { userActorToken, projectRef, environmentName, environmentBranch } = ctx;
+  const { userActorToken, organizationId, projectRef, environmentName, environmentBranch } = ctx;
   const { origin, hasAuth, envApiGet, postQuery, validateChartQuery } = client;
 
   // A failed query hands the model the database error to fix, and it usually does. When it
@@ -242,7 +242,7 @@ export function buildApiTools(args: {
         if (!hasAuth) return NO_AUTH;
         const result = await apiGet(origin, "/api/v1/projects", userActorToken!);
         if (!result.ok) return { error: `Couldn't list projects${fetchReason(result)}.` };
-        return curateProjects(result.data);
+        return curateProjects(result.data, organizationId);
       },
     }),
 

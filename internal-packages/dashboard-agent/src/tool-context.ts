@@ -12,6 +12,9 @@ import type { InvestigationsCapability } from "./tool-investigations";
 export type DashboardAgentToolContext = {
   userActorToken?: string;
   apiOrigin?: string;
+  // Scopes list_projects: the projects route is identity-only (every org the user
+  // belongs to), so this is what keeps a sweep inside the conversation's own org.
+  organizationId?: string;
   projectRef?: string;
   // Canonical API env name (dev/staging/prod/preview), resolved by the proxy.
   environmentName?: string;

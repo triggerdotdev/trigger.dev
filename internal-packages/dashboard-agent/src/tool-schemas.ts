@@ -40,7 +40,7 @@ const environmentOverrideField = z
 
 export const listProjectsSchema = tool({
   description:
-    "List the Trigger.dev projects the user can access, with each project's ref, name, slug, and organization. Only for answering a question about which projects exist — your other tools already target the current project, so this is never a context lookup to prepare another call.",
+    "List the Trigger.dev projects of THIS organization, with each project's ref and name. Only for answering a question about which projects exist — your other tools already target the current project, so this is never a context lookup to prepare another call.",
   inputSchema: z.object({}),
 });
 
