@@ -3,8 +3,8 @@ import { ProfilePhotoEditor } from "~/components/ProfilePhotoEditor";
 import { Button } from "~/components/primitives/Buttons";
 import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
 
-// A data URI skips the `?raw` fetch, so the story needs no backend. Explicit
-// width/height too, or the SVG has no intrinsic size to crop against.
+// Data URI, not a remote image: the document `img-src` CSP allowlist has no
+// placeholder host.
 const PLACEHOLDER_AVATAR =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -44,20 +44,20 @@ export default function Story_() {
     <StoryPage
       componentNames={["ProfilePhotoEditor.tsx"]}
       title="Profile photo editor"
-      description="Choose or drop an image, drag and zoom it inside a circular mask, then save the cropped result."
+      description="The saved picture shows as it is. Choose or drop a new image to crop and zoom it inside a circular mask, then save."
     >
       <StorySection title="Editor">
         <StoryGrid min="13rem">
           <Story label="No picture yet">
             <EditorStory />
           </Story>
-          <Story label="Existing picture in the cropper">
+          <Story label="Saved picture, shown statically">
             <EditorStory currentAvatarUrl={PLACEHOLDER_AVATAR} />
           </Story>
-          <Story label="Existing picture, removable">
+          <Story label="Saved picture, removable">
             <EditorStory currentAvatarUrl={PLACEHOLDER_AVATAR} withRemove />
           </Story>
-          <Story label="Saving">
+          <Story label="Submitting, buttons disabled">
             <EditorStory currentAvatarUrl={PLACEHOLDER_AVATAR} withRemove isSaving />
           </Story>
         </StoryGrid>
