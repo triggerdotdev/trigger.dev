@@ -729,6 +729,12 @@ export class RedisSnapshotStore {
       local eKey, idxKey, curKey, seqKey = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
       local base = string.sub(eKey, 1, #eKey - 2)
       local function wpKey(n) return base .. ':wp:' .. n end
+      -- The ONE liveness test, shared by the write guard and every read. Two anchors, because keys
+      -- expire independently and eviction takes whole keys: seq can be gone while e and cur
+      -- survive, and a read answering from cur there serves a frozen head no write can advance.
+      local function keyspaceAlive()
+        return redis.call('EXISTS', eKey) == 1 and redis.call('EXISTS', seqKey) == 1
+      end
       local function orderFor(pointer)
         if not pointer then return '' end
         local cs = string.match(pointer, '^(%d+):')
@@ -776,11 +782,10 @@ export class RedisSnapshotStore {
         -- index, and those ids still have to come back on a read.
         local distinctJson = ARGV[14]
 
-        -- Liveness is TWO anchors: e and seq. All keys get the same PEXPIRE but expire independently
-        -- (or seq can vanish under maxmemory eviction while e survives), so checking e alone lets a
-        -- late transition recreate seq with no TTL and restart it at 1 beside a surviving idx. A
-        -- birth always creates both in this same script, so this never rejects a live keyspace.
-        if kind == 'transition' and (redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', seqKey) == 0) then
+        -- Checking e alone would let a late transition recreate seq with no TTL and restart it at 1
+        -- beside a surviving idx. A birth always creates both in this same script, so this never
+        -- rejects a live keyspace.
+        if kind == 'transition' and not keyspaceAlive() then
           return { '${SKIPPED}' }
         end
 
@@ -903,6 +908,7 @@ export class RedisSnapshotStore {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
+        if not keyspaceAlive() then return nil end
         local id = ARGV[1]
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
         if not vals[1] then return nil end
@@ -915,6 +921,7 @@ export class RedisSnapshotStore {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
+        if not keyspaceAlive() then return nil end
         local cur = redis.call('GET', curKey)
         if not cur then return nil end
         local vals = redis.call('HMGET', eKey, cur, cur .. '#s', cur .. '#c')
@@ -928,6 +935,9 @@ export class RedisSnapshotStore {
       lua: `
         ${PRELUDE}
         local id = ARGV[1]
+        -- Not present, which is what sends the caller to Postgres. An empty id set from an
+        -- incomplete keyspace would read as authoritative.
+        if not keyspaceAlive() then return { '0', '' } end
         if redis.call('HEXISTS', eKey, id) == 0 then
           return { '0', '' }
         end
@@ -949,7 +959,7 @@ export class RedisSnapshotStore {
         -- Both anchors, for the reason the append script gives: keys expire independently, and an
         -- index lost to eviction while the entry hash survives would otherwise report an empty HIT
         -- on every poll for the rest of the run's life, with Postgres holding the transitions.
-        if redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', idxKey) == 0 then return nil end
+        if not keyspaceAlive() or redis.call('EXISTS', idxKey) == 0 then return nil end
 
         -- STRICTLY greater than the cursor, and same-millisecond entries are dropped. Postgres
         -- serves this window with createdAt > cursor and drops them too; a Redis read that is more
@@ -1013,6 +1023,10 @@ export class RedisSnapshotStore {
         ${PRELUDE}
         local sinceId = ARGV[1]
         local limit = tonumber(ARGV[2])
+
+        -- Same gate as the sibling window command: without it a lost index reports an empty HIT,
+        -- so the caller stops asking Postgres for a window Postgres alone still holds.
+        if not keyspaceAlive() or redis.call('EXISTS', idxKey) == 0 then return nil end
 
         -- The index holds valid entries only, so an invalid since id misses ZSCORE. Its seq is still
         -- on its own '#s' field, which keeps the id resolvable without indexing invalid rows.
