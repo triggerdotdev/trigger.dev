@@ -93,6 +93,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
   nativeBuildServer: z.boolean().default(false),
+  nativeBuild: z.boolean().default(false),
   depotBuild: z.boolean().default(false),
   localBundle: z.boolean().default(false),
   fromBundle: z.string().optional(),
@@ -250,10 +251,13 @@ export function configureDeployCommand(program: Command) {
       )
       .addOption(
         new CommandOption(
-          "--native-build-server",
-          "Use the native build server for building the image"
+          "--native-build",
+          "Build the image on the native build server, ignoring the build path configured for this project on the server"
         )
+          .implies({ nativeBuildServer: true })
+          .conflicts(["localBuild", "forceLocalBuild", "depotBuild", "fromBundle"])
       )
+      .addOption(new CommandOption("--native-build-server", "Alias for --native-build").hideHelp())
       .addOption(
         new CommandOption(
           "--depot-build",
@@ -286,8 +290,8 @@ export function configureDeployCommand(program: Command) {
       .addOption(
         new CommandOption(
           "--detach",
-          "Return immediately after the deployment is queued, do not wait for the build to complete. Implies using the native build server."
-        ).implies({ nativeBuildServer: true })
+          "Return immediately after the deployment is queued, do not wait for the build to complete. Only available with the native build server."
+        )
       )
       .addOption(new CommandOption("--plain", "Plain output").hideHelp())
       .action(async (path, options) => {
@@ -461,6 +465,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   const buildPath = await resolveBuildPath(projectClient.client, resolvedConfig.project, options);
+  assertDetachSupported(buildPath, options);
 
   if (buildPath === "native_local_bundle") {
     await handleLocalBundleDeploy({
@@ -1256,6 +1261,14 @@ function getTriggeredVia(): DeploymentTriggeredVia {
 
 const DEPLOY_SETTINGS_TIMEOUT_MS = 3_000;
 
+function assertDetachSupported(buildPath: DeployBuildPath, options: DeployCommandOptions) {
+  if (options.detach && buildPath === "depot") {
+    throw new Error(
+      "--detach is only available with the native build server. Pass --native-build, or configure the native build path for this environment."
+    );
+  }
+}
+
 const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
   depot: "Depot",
   native: "native build server",
@@ -1288,7 +1301,7 @@ async function resolveBuildPath(
   }
 
   if (options.nativeBuildServer) {
-    logger.debug(`Build path from ${options.detach ? "--detach" : "--native-build-server"}`);
+    logger.debug("Build path from --native-build");
     return "native";
   }
 
