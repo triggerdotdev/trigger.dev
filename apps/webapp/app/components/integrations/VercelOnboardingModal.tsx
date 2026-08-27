@@ -4,7 +4,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
-import { useFetcher, useNavigation, useSearchParams } from "@remix-run/react";
+import { useFetcher, useSearchParams } from "@remix-run/react";
 import { useTypedFetcher } from "remix-typedjson";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -34,13 +34,11 @@ import {
   type EnvSlug,
   ALL_ENV_SLUGS,
   shouldSyncEnvVarForAnyEnvironment,
-  getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { type VercelCustomEnvironment } from "~/models/vercelIntegration.server";
 import { type VercelOnboardingData } from "~/presenters/v3/VercelSettingsPresenter.server";
 import {
-  vercelAppInstallPath,
   v3ProjectSettingsIntegrationsPath,
   githubAppInstallPath,
   vercelResourcePath,
@@ -78,7 +76,6 @@ function formatVercelTargets(targets: string[]): string {
 
 type OnboardingState =
   | "idle"
-  | "installing"
   | "loading-projects"
   | "project-selection"
   | "loading-env-mapping"
@@ -99,6 +96,7 @@ export function VercelOnboardingModal({
   hasStagingEnvironment,
   hasPreviewEnvironment,
   hasOrgIntegration,
+  onboardingDataUnavailable = false,
   nextUrl,
   onDataReload,
   vercelManageAccessUrl,
@@ -112,16 +110,15 @@ export function VercelOnboardingModal({
   hasStagingEnvironment: boolean;
   hasPreviewEnvironment: boolean;
   hasOrgIntegration: boolean;
+  onboardingDataUnavailable?: boolean;
   nextUrl?: string;
   onDataReload?: (vercelStagingEnvironment?: string) => void;
   vercelManageAccessUrl?: string;
 }) {
   const { capture, startSessionRecording } = usePostHogTracking();
-  const navigation = useNavigation();
   const fetcher = useTypedFetcher<typeof loader>();
   const envMappingFetcher = useFetcher();
   const completeOnboardingFetcher = useFetcher();
-  const { Form: _CompleteOnboardingForm } = completeOnboardingFetcher;
   const [searchParams] = useSearchParams();
   const origin = searchParams.get("origin");
   const fromMarketplaceContext = origin === "marketplace";
@@ -130,7 +127,6 @@ export function VercelOnboardingModal({
     () => onboardingData?.availableProjects ?? [],
     [onboardingData?.availableProjects]
   );
-  const _hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
   const customEnvironments = useMemo(
     () => onboardingData?.customEnvironments ?? [],
     [onboardingData?.customEnvironments]
@@ -224,10 +220,6 @@ export function VercelOnboardingModal({
     environmentId: string;
     displayName: string;
   } | null>(null);
-  const _availableEnvSlugsForOnboarding = getAvailableEnvSlugs(
-    hasStagingEnvironment,
-    hasPreviewEnvironment
-  );
   const availableEnvSlugsForOnboardingBuildSettings = getAvailableEnvSlugsForBuildSettings(
     hasStagingEnvironment,
     hasPreviewEnvironment
@@ -375,7 +367,6 @@ export function VercelOnboardingModal({
         }
         break;
 
-      case "installing":
       case "project-selection":
       case "env-mapping":
       case "env-var-sync":
@@ -458,8 +449,6 @@ export function VercelOnboardingModal({
   );
 
   const overlappingEnvVarsCount = enabledEnvVars.filter((v) => existingVars[v.key]).length;
-
-  const _isSubmitting = navigation.state === "submitting" || navigation.state === "loading";
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
@@ -634,19 +623,6 @@ export function VercelOnboardingModal({
     gitHubAppInstallations.length,
   ]);
 
-  const _handleFinishOnboarding = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      const form = e.currentTarget;
-      const formData = new FormData(form);
-      completeOnboardingFetcher.submit(formData, {
-        method: "post",
-        action: actionUrl,
-      });
-    },
-    [completeOnboardingFetcher, actionUrl]
-  );
-
   useEffect(() => {
     if (
       completeOnboardingFetcher.data &&
@@ -699,13 +675,6 @@ export function VercelOnboardingModal({
   }, [state, onClose, trackOnboarding, isGitHubConnectedForOnboarding]);
 
   useEffect(() => {
-    if (state === "installing") {
-      const installUrl = vercelAppInstallPath(organizationSlug, projectSlug);
-      window.location.href = installUrl;
-    }
-  }, [state, organizationSlug, projectSlug]);
-
-  useEffect(() => {
     if (
       envMappingFetcher.data &&
       typeof envMappingFetcher.data === "object" &&
@@ -749,7 +718,6 @@ export function VercelOnboardingModal({
     state === "loading-projects" ||
     state === "loading-env-mapping" ||
     state === "loading-env-vars" ||
-    state === "installing" ||
     (state === "idle" && !onboardingData);
 
   if (isLoadingState) {
@@ -758,9 +726,7 @@ export function VercelOnboardingModal({
         open={isOpen}
         onOpenChange={(open) => {
           if (!open && !fromMarketplaceContext) {
-            if ((state as string) !== "completed") {
-              trackOnboarding("vercel onboarding abandoned");
-            }
+            trackOnboarding("vercel onboarding abandoned");
             onClose();
           }
         }}
@@ -772,9 +738,30 @@ export function VercelOnboardingModal({
               <span>Set up Vercel Integration</span>
             </div>
           </DialogHeader>
-          <div className="flex items-center justify-center py-8">
-            <Spinner color="blue" className="size-6" />
-          </div>
+          {onboardingDataUnavailable ? (
+            <div className="flex flex-col items-start gap-3 py-4">
+              <Paragraph variant="small">
+                We couldn't load your Vercel projects. The integration may have been removed or lost
+                access to this organization on Vercel.
+              </Paragraph>
+              <div className="flex items-center gap-2">
+                {onDataReload && (
+                  <Button variant="secondary/small" onClick={() => onDataReload()}>
+                    Try again
+                  </Button>
+                )}
+                {vercelManageAccessUrl && (
+                  <LinkButton to={vercelManageAccessUrl} target="_blank" variant="tertiary/small">
+                    Manage access on Vercel
+                  </LinkButton>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <Spinner color="blue" className="size-6" />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     );

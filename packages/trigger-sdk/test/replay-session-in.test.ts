@@ -4,7 +4,7 @@ import "../src/v3/test/index.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClientManager } from "@trigger.dev/core/v3";
 import {
-  __findLatestSessionInCursorForTests as findLatestSessionInCursor,
+  __findLatestSessionInCheckpointForTests as findLatestSessionInCheckpoint,
   __replaySessionInTailProductionPathForTests as replaySessionInTail,
 } from "../src/v3/ai.js";
 
@@ -167,8 +167,8 @@ function stubReadRecordsWithHeaders(
   return spy;
 }
 
-describe("findLatestSessionInCursor", () => {
-  it("returns the LAST turn-complete's session-in-event-id", async () => {
+describe("findLatestSessionInCheckpoint", () => {
+  it("returns the LAST turn-complete's cursors", async () => {
     const spy = stubReadRecordsWithHeaders([
       { data: { type: "text-delta", delta: "hi" } },
       {
@@ -182,13 +182,15 @@ describe("findLatestSessionInCursor", () => {
         headers: [
           ["trigger-control", "turn-complete"],
           ["session-in-event-id", "7"],
+          ["session-in-consumed-id", "9"],
         ],
       },
     ]);
 
-    const cursor = await findLatestSessionInCursor("sess");
-    expect(cursor).toBe(7);
-    // Non-blocking records read on `.out`, no SSE subscribe.
+    const checkpoint = await findLatestSessionInCheckpoint("sess");
+    expect(checkpoint).toEqual({ resumeFrom: 7, appliedThrough: 9 });
+    // One non-blocking records read on `.out` covers both cursors.
+    expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith("sess", "out");
   });
 
@@ -209,8 +211,22 @@ describe("findLatestSessionInCursor", () => {
       },
     ]);
 
-    const cursor = await findLatestSessionInCursor("sess");
-    expect(cursor).toBe(4);
+    const checkpoint = await findLatestSessionInCheckpoint("sess");
+    expect(checkpoint.resumeFrom).toBe(4);
+  });
+
+  it("leaves the replay window absent when only the resume cursor was written", async () => {
+    stubReadRecordsWithHeaders([
+      {
+        headers: [
+          ["trigger-control", "turn-complete"],
+          ["session-in-event-id", "5"],
+        ],
+      },
+    ]);
+
+    const checkpoint = await findLatestSessionInCheckpoint("sess");
+    expect(checkpoint).toEqual({ resumeFrom: 5 });
   });
 
   it("returns undefined when records carry no headers (older server)", async () => {
@@ -219,7 +235,7 @@ describe("findLatestSessionInCursor", () => {
       { data: { type: "finish" } },
     ]);
 
-    const cursor = await findLatestSessionInCursor("sess");
-    expect(cursor).toBeUndefined();
+    const checkpoint = await findLatestSessionInCheckpoint("sess");
+    expect(checkpoint).toEqual({});
   });
 });

@@ -6,12 +6,15 @@
  */
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { probeDistinctDatabases as defaultProbe } from "./distinctDbSentinel.server";
+import { probeDistinctStores as defaultProbe } from "./distinctDbSentinel.server";
+import { nonAliasedShards, type ShardTarget } from "~/v3/runOpsShards.server";
 
 export type SplitModeConfig = {
   flagEnabled: boolean;
   legacyUrl?: string;
   newUrl?: string;
+  /** Gen-2 shards that own their own database. Empty (the default) is today's gen-1 pair. */
+  shards?: ShardTarget[];
 };
 
 export type SplitModeDeps = {
@@ -34,9 +37,16 @@ export async function computeSplitEnabled(
     );
     return false;
   }
-  // Hard gate #2: runtime sentinel must confirm physically-distinct DBs.
+  // Hard gate #2: runtime sentinel must confirm physically-distinct DBs. At N stores this is set
+  // uniqueness over every store that owns its own database, not a compare of the gen-1 pair. An
+  // aliased shard is already absent from `shards` — it shares its target's client by reference.
   const probe = deps.probe ?? defaultProbe;
-  const result = await probe(config.legacyUrl, config.newUrl, { logger: deps.logger });
+  const targets = [
+    { id: "legacy", url: config.legacyUrl },
+    { id: "new", url: config.newUrl },
+    ...(config.shards ?? []).map((shard) => ({ id: `shard-${shard.key}`, url: shard.url })),
+  ];
+  const result = await probe(targets, { logger: deps.logger });
   return result.distinct === true;
 }
 
@@ -72,6 +82,7 @@ export function isSplitEnabled(): Promise<boolean> {
         flagEnabled: env.RUN_OPS_SPLIT_ENABLED,
         legacyUrl: env.RUN_OPS_LEGACY_DATABASE_URL,
         newUrl: env.RUN_OPS_DATABASE_URL,
+        shards: nonAliasedShards(env.RUN_OPS_SHARDS),
       },
       { logger }
     );

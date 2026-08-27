@@ -179,6 +179,12 @@ for await (const turn of session) {
 
 The frontend stops a turn with [`transport.stopGeneration(chatId)`](/ai-chat/frontend#stop-generation), which writes a stop signal to the session's input stream. It aborts the current turn's generation but keeps the run alive, so the next message continues on the same session.
 
+A stop only applies to the turn that was live when it arrived. If the run crashes
+and a later run recovers a message that had not been answered yet, a stop that
+was already applied before the crash is not applied again, so the turn answering
+the recovered message runs to completion. A stop sent after the recovery is live
+and aborts that turn as normal.
+
 `turn.signal` is a combined stop-and-cancel `AbortSignal`, fresh each turn. Pass it to `streamText` so the stop reaches the model, then let `turn.complete()` finish the turn:
 
 ```ts trigger/my-chat.ts
@@ -213,13 +219,64 @@ For full control, skip `createSession` and compose the primitives directly:
 
 | Primitive                       | Description                                                                                  |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| `chat.messages`                 | Input stream for incoming messages — use `.waitWithIdleTimeout()` to wait for the next turn  |
+| `chat.messages`                 | Mailbox for incoming messages — inspect buffered input, consume one record, or suspend until the next turn |
 | `chat.createStopSignal()`       | Create a managed stop signal wired to the stop input stream                                  |
 | `chat.pipeAndCapture(result)`   | Pipe a stream and capture the response; returns `{ message, status, error }`                 |
 | `chat.writeTurnComplete()`      | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors             |
 | `chat.MessageAccumulator`       | Accumulates conversation messages across turns                                               |
 | `chat.pipe(stream)`             | Pipe a stream to the frontend (no response capture)                                          |
 | `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response                                            |
+
+### `chat.messages` mailbox
+
+`chat.messages` exposes the incoming message mailbox for hand-rolled loops:
+
+| Method | Behavior |
+| --- | --- |
+| `peek()` | Return the next queued message without consuming it, or `undefined` when none is queued |
+| `hasPending()` | Resolve `true` when a message is queued; does not consume it |
+| `next({ timeoutInSeconds? })` | Consume exactly one message record in channel order, or resolve `undefined` when the optional timeout elapses |
+| `on(handler)` | Consume messages as they arrive and invoke the handler |
+| `waitWithIdleTimeout(options)` | Wait warm, then suspend the run until the next message arrives |
+
+`hasPending()` checks whether a message has already been delivered locally and is
+waiting for `next()` to take it. It does not query the remote Session channel or
+start a subscription. Use `waitWithIdleTimeout()` when the loop needs to idle
+until future input arrives.
+
+`next({ timeoutInSeconds: 0 })` is also a local, non-blocking read. Call
+`next()` without a timeout, or with a positive timeout, to subscribe for future
+input.
+
+`next()` returns a readonly record envelope:
+
+```ts
+const record = await chat.messages.next({ timeoutInSeconds: 5 });
+if (record) {
+  console.log(record.id, record.seqNum);
+  currentPayload = record.payload;
+}
+```
+
+- `id` is the append's stable idempotency key.
+- `seqNum` is the monotonic sequence on this Session's `.in` channel.
+- `payload` is the existing `ChatTaskWirePayload` delivered by the other mailbox methods.
+
+Both identifiers remain the same if the record is delivered again after a
+reconnect. Each `next()` call commits only the record it returns, so a loop that
+owns its own turn sequencing never advances past input it has not taken. By
+contrast, `on()` commits a record as soon as it dispatches the handler; avoid
+mixing `on()` and `next()` when a single loop owns mailbox consumption.
+
+The Session `.in` channel also carries control records such as stops and
+handovers. Those are routed to their own consumers and never block messages: a
+message that arrived behind one is still reported by `hasPending()` and still
+returned by `next()`, in channel order. The same holds for a record kind this
+version of the SDK does not recognise, which is discarded rather than left where
+it would make every message behind it undeliverable.
+
+`next()` returns `undefined` when no message became consumable before the
+timeout.
 
 A complete loop:
 

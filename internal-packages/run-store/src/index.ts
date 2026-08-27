@@ -5,3 +5,8 @@ export * from "./readReplicaClient.js";
 export * from "./redisSnapshotStore.js";
 export * from "./routingStoreMetrics.js";
 export * from "./snapshotComparator.js";
+export * from "./delegatingRunStore.js";
+export * from "./taskRunExecutionSnapshotStore.js";
+export * from "./snapshotEntry.js";
+export * from "./snapshotFaultInjection.js";
+export * from "./snapshotOrphanSweeper.js";

@@ -36,7 +36,8 @@ export async function readRunForEvent<S extends Prisma.TaskRunSelect>(
   deps: EventReadDeps
 ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null> {
   const result = await readThroughRun<Prisma.TaskRunGetPayload<{ select: S }>>({
-    runId,
+    id: runId,
+    idKind: "run",
     environmentId,
     readNew: (client) => deps.store.findRun({ id: runId }, { select }, client),
     readLegacy: (replica) => deps.store.findRun({ id: runId }, { select }, replica),
@@ -48,7 +49,7 @@ export async function readRunForEvent<S extends Prisma.TaskRunSelect>(
     },
   });
 
-  return result.source === "not-found" || result.source === "past-retention" ? null : result.value;
+  return result.found ? result.value : null;
 }
 
 /**

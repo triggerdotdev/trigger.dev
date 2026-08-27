@@ -170,6 +170,9 @@ export interface StreamSubscriptionFactory {
 }
 
 export type SSEStreamPart<TChunk = unknown> = {
+  /** Stable logical record id from the S2 data envelope (`X-Part-Id` on append). */
+  recordId?: string;
+  /** S2 sequence number in decimal-string form. */
   id: string;
   chunk: TChunk;
   timestamp: number;
@@ -502,6 +505,7 @@ export class SSEStreamSubscription implements StreamSubscription {
                     chunkController.enqueue({
                       type: "part",
                       part: {
+                        recordId: parsedBody?.id,
                         id: record.seq_num.toString(),
                         chunk: parsedBody?.data,
                         timestamp: record.timestamp,

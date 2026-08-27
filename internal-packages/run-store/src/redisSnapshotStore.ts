@@ -1,7 +1,7 @@
 import {
   createRedisClient,
   type Callback,
-  type Redis,
+  type RedisClient,
   type RedisOptions,
   type Result,
 } from "@internal/redis";
@@ -27,6 +27,19 @@ export function deriveOrder(completedWaitpoints: CompletedWaitpointRef[]): strin
     .filter((w) => w.index !== undefined)
     .sort((a, b) => a.index! - b.index!)
     .map((w) => w.id);
+}
+
+/**
+ * The COMPLETE distinct set of completed-waitpoint ids, including those with no batch index.
+ *
+ * This is deliberately not `deriveOrder` deduped. `order` is the index oracle and carries only
+ * batch-indexed ids, because its positions ARE the indexes. A wait with no batch index (every
+ * `wait.for`, every single `triggerAndWait`, every token) has no position and is absent from it,
+ * while Postgres records it in the completed-waitpoint join like any other. Reading the id set back
+ * from `order` therefore loses exactly those waits, and a run resumed from Redis loses their results.
+ */
+export function deriveDistinctIds(completedWaitpoints: CompletedWaitpointRef[]): string[] {
+  return [...new Set(completedWaitpoints.map((w) => w.id))];
 }
 
 // isValid is derived, never stored, so the entry JSON stays byte-identical to the caller's document.
@@ -162,6 +175,12 @@ export type SnapshotRead = {
   raw: string;
   cycle?: CompletedWaitpointsPointer;
   completedWaitpointIds?: WaitpointIds;
+  /**
+   * The entry points at a cycle key that no longer exists, so its waitpoints are unreachable rather
+   * than absent. A caller must not treat this as an empty set: it has to fall back to Postgres,
+   * which still holds the join rows.
+   */
+  danglingCycle?: boolean;
 };
 
 export type AppendResult =
@@ -186,8 +205,20 @@ export type SnapshotStoreMetrics = {
   recordLatency(op: string, ms: number): void;
 };
 
-export type RedisSnapshotStoreOptions = {
-  redisOptions: RedisOptions;
+/**
+ * How the store reaches Redis. Exactly one of the two, enforced by the type rather than a runtime
+ * check: `never` on the opposite member makes both "neither" and "both" a compile error.
+ *
+ * `client` exists because production points at a Valkey/Redis CLUSTER, and cluster topology is not
+ * this package's business. Every command the store issues is key-addressed and every key carries a
+ * `{runId}` hashtag, so one slot serves a whole run and both endpoint shapes behave identically.
+ * A caller-supplied client is owned by the caller: `quit()` leaves it open.
+ */
+export type RedisSnapshotStoreConnection =
+  | { client: RedisClient; redisOptions?: never }
+  | { client?: never; redisOptions: RedisOptions };
+
+export type RedisSnapshotStoreOptions = RedisSnapshotStoreConnection & {
   completedTtlMs: number;
   sinceLimit?: number;
   highWater?: { entryBytes?: number; cycleKeyBytes?: number; cycleCount?: number };
@@ -195,13 +226,25 @@ export type RedisSnapshotStoreOptions = {
   logger?: Logger;
 };
 
+/**
+ * Both window scripts return four leading slots before the first row: the id-cursor variant's
+ * `sinceRaw`, the head's order, the head's distinct set, and the head's dangling flag. Rows follow
+ * in four-element groups, so the head row is the group at this offset.
+ *
+ * Named because the offset drifted out of the comments describing it twice, and the second drift
+ * arrived in the change that fixed the first.
+ */
+const WINDOW_HEAD_ROW_INDEX = 4;
+
 const SKIPPED = "skipped";
 const FORKED = "forked";
 const WRITTEN = "written";
 const DUPLICATE = "duplicate";
 
 export class RedisSnapshotStore {
-  private readonly redis: Redis;
+  private readonly redis: RedisClient;
+  /** Only a client this class opened may be closed by it. */
+  private readonly ownsClient: boolean;
   private readonly logger: Logger;
   private readonly completedTtlMs: number;
   private readonly sinceLimit: number;
@@ -215,15 +258,22 @@ export class RedisSnapshotStore {
     this.sinceLimit = options.sinceLimit ?? 50;
     this.metrics = options.metrics;
     this.highWater = options.highWater ?? {};
-    this.redis = createRedisClient(options.redisOptions, {
-      onError: (error) => this.logger.error("RedisSnapshotStore redis client error", { error }),
-    });
+    this.ownsClient = options.client === undefined;
+    this.redis =
+      options.client ??
+      createRedisClient(options.redisOptions, {
+        onError: (error) => this.logger.error("RedisSnapshotStore redis client error", { error }),
+      });
     this.#registerCommands();
   }
 
   async quit(): Promise<void> {
     // Idempotent and error-swallowing: every test calls this in a `finally`, and a double quit()
     // (or one after a failed connect) must never mask the real assertion failure.
+    //
+    // An injected client is the caller's. Closing it here would take down a connection shared with
+    // the sweeper or with another component, so a borrowed client is left open.
+    if (!this.ownsClient) return;
     if (!this.#quit) {
       this.#quit = this.redis.quit().then(
         () => undefined,
@@ -253,7 +303,19 @@ export class RedisSnapshotStore {
           completedWaitpoints: CompletedWaitpointRef[];
           records?: CompletedWaitpointRecord[];
         }
-      | { kind: "carryForward"; cycleSeq: number };
+      | {
+          kind: "carryForward";
+          cycleSeq: number;
+          /**
+           * The same refs a `new` cycle would carry. A carry the store refuses falls back to
+           * minting inside the same call, and it cannot do that without them: with no refs there is
+           * nothing to mint from, so the entry is written with no pointer, as before.
+           *
+           * Every production caller supplies them. Omitting them gives up the fallback.
+           */
+          completedWaitpoints?: CompletedWaitpointRef[];
+          records?: CompletedWaitpointRecord[];
+        };
   }): Promise<AppendResult> {
     if (args.entry.completedWaitpoints !== undefined) {
       throw new Error(
@@ -270,17 +332,29 @@ export class RedisSnapshotStore {
       let cycleMode = "none";
       let cycleSeqIn = "0";
       let orderJson = "";
+      let distinctJson = "";
       let records = "";
       let orderCount = "0";
       if (args.cycle?.kind === "new") {
         const order = deriveOrder(args.cycle.completedWaitpoints);
         cycleMode = "new";
         orderJson = JSON.stringify(order);
+        distinctJson = JSON.stringify(deriveDistinctIds(args.cycle.completedWaitpoints));
         records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
         orderCount = String(order.length);
       } else if (args.cycle?.kind === "carryForward") {
         cycleMode = "carry";
         cycleSeqIn = String(args.cycle.cycleSeq);
+
+        // Carried for the refusal path only. The script uses these solely when it declines the
+        // pointer and mints a replacement, and can only do that when the caller supplied them.
+        if (args.cycle.completedWaitpoints) {
+          const order = deriveOrder(args.cycle.completedWaitpoints);
+          orderJson = JSON.stringify(order);
+          records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
+          orderCount = String(order.length);
+          distinctJson = JSON.stringify(deriveDistinctIds(args.cycle.completedWaitpoints));
+        }
       }
 
       const reply = (await this.redis.appendSnapshotEntry(
@@ -300,7 +374,8 @@ export class RedisSnapshotStore {
         records,
         orderCount,
         args.expectedCur ?? "",
-        args.expectedCur !== undefined ? "1" : "0"
+        args.expectedCur !== undefined ? "1" : "0",
+        distinctJson
       )) as string[];
 
       return this.#interpretAppend(reply, raw, orderJson, records, args.entry.runId);
@@ -407,7 +482,17 @@ export class RedisSnapshotStore {
     return this.#timed("getSnapshotWaitpointIds", async () => {
       const k = snapshotKeys(runId);
       const reply = await this.redis.readSnapshotWaitpointIds(k.e, k.idx, k.cur, k.seq, snapshotId);
-      return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "");
+      // A dangling pointer means this entry's waitpoints are unreachable, not absent. Reporting
+      // `present: false` is what sends the caller to Postgres, which still holds the join rows.
+      if (reply[3] === "1") {
+        this.metrics?.recordCycleMismatch();
+        this.logger.warn("RedisSnapshotStore snapshot points at a cycle key that is gone", {
+          runId,
+          snapshotId,
+        });
+        return { present: false, distinctIds: [], order: [] };
+      }
+      return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "", reply[2] ?? "");
     });
   }
 
@@ -441,11 +526,13 @@ export class RedisSnapshotStore {
       }
 
       const headOrder = reply[1] ?? "";
+      const headDistinct = reply[2] ?? "";
+      const headDangling = reply[3] ?? "";
       const rows: SnapshotRead[] = [];
-      // Tracks whether the Lua-chosen head row (always the first, i === 2) itself survives the
+      // Tracks whether the Lua-chosen head row (always the first, WINDOW_HEAD_ROW_INDEX) survives the
       // env filter below -- headOrder must never be attributed to a different, surviving row.
       let headSurvived = false;
-      for (let i = 2; i + 3 < reply.length; i += 4) {
+      for (let i = WINDOW_HEAD_ROW_INDEX; i + 3 < reply.length; i += 4) {
         // orderKnown is false here: headOrder covers only the head row, resolved separately below.
         const decoded = this.#decode(
           [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
@@ -455,15 +542,97 @@ export class RedisSnapshotStore {
         );
         if (decoded) {
           rows.push(decoded);
-          if (i === 2) headSurvived = true;
+          if (i === WINDOW_HEAD_ROW_INDEX) headSurvived = true;
         }
       }
 
       rows.reverse();
       const head = headSurvived ? rows[rows.length - 1] : undefined;
-      const headWaitpointIds = decodeWaitpointIds(head !== undefined, head ? headOrder : "");
+      const headWaitpointIds = decodeWaitpointIds(
+        head !== undefined,
+        head ? headOrder : "",
+        head ? headDistinct : ""
+      );
       if (head) {
         head.completedWaitpointIds = headWaitpointIds;
+        // A head whose cycle key has expired carries an empty order that means "unknown", not
+        // "none". The caller cannot distinguish those, so it has to be told, or it resumes a batch
+        // with every position lost. This is what makes the decorator's Postgres fallback reachable
+        // on the since-window path as well as the hot read.
+        if (headDangling === "1") {
+          head.danglingCycle = true;
+        }
+        if (head.cycle) {
+          this.#checkCycleMismatch(runId, head.cycle.count, headWaitpointIds.order.length);
+        }
+      }
+      return { kind: "hit", entries: rows, headWaitpointIds };
+    });
+  }
+
+  /**
+   * The same window as {@link getSince}, addressed by a createdAt cursor instead of a snapshot id.
+   *
+   * `getExecutionSnapshotsSince` resolves its cursor to a createdAt before it asks for the window,
+   * so the snapshot id is gone by the time this call is made and `getSince` cannot serve it. The
+   * cursor is exclusive and keeps Postgres's same-millisecond blind spot, so the two reads agree.
+   */
+  async getSinceCreatedAt(
+    runId: string,
+    createdAt: Date | string,
+    opts?: { environmentId?: string; limit?: number }
+  ): Promise<GetSinceResult> {
+    return this.#timed("getSinceCreatedAt", async () => {
+      const k = snapshotKeys(runId);
+      const limit = opts?.limit ?? this.sinceLimit;
+      const cursor = typeof createdAt === "string" ? createdAt : createdAt.toISOString();
+
+      const reply = await this.redis.readSnapshotsSinceCreatedAt(
+        k.e,
+        k.idx,
+        k.cur,
+        k.seq,
+        cursor,
+        String(limit)
+      );
+      if (reply === null) return { kind: "miss" };
+
+      const headOrder = reply[1] ?? "";
+      const headDistinct = reply[2] ?? "";
+      const headDangling = reply[3] ?? "";
+      const rows: SnapshotRead[] = [];
+      // Tracks whether the Lua-chosen head row (always the first, WINDOW_HEAD_ROW_INDEX) survives the env filter,
+      // so headOrder is never attributed to a different, surviving row.
+      let headSurvived = false;
+      for (let i = WINDOW_HEAD_ROW_INDEX; i + 3 < reply.length; i += 4) {
+        const decoded = this.#decode(
+          [reply[i], reply[i + 1], reply[i + 2], reply[i + 3], ""],
+          opts?.environmentId,
+          runId,
+          false
+        );
+        if (decoded) {
+          rows.push(decoded);
+          if (i === WINDOW_HEAD_ROW_INDEX) headSurvived = true;
+        }
+      }
+
+      rows.reverse();
+      const head = headSurvived ? rows[rows.length - 1] : undefined;
+      const headWaitpointIds = decodeWaitpointIds(
+        head !== undefined,
+        head ? headOrder : "",
+        head ? headDistinct : ""
+      );
+      if (head) {
+        head.completedWaitpointIds = headWaitpointIds;
+        // A head whose cycle key has expired carries an empty order that means "unknown", not
+        // "none". The caller cannot distinguish those, so it has to be told, or it resumes a batch
+        // with every position lost. This is what makes the decorator's Postgres fallback reachable
+        // on the since-window path as well as the hot read.
+        if (headDangling === "1") {
+          head.danglingCycle = true;
+        }
         if (head.cycle) {
           this.#checkCycleMismatch(runId, head.cycle.count, headWaitpointIds.order.length);
         }
@@ -494,7 +663,7 @@ export class RedisSnapshotStore {
     orderKnown: boolean
   ): SnapshotRead | null {
     if (!reply || reply.length === 0) return null;
-    const [id, raw, seqStr, pointer, orderJson] = reply;
+    const [id, raw, seqStr, pointer, orderJson, distinctJson, dangling] = reply;
     const entry = JSON.parse(raw) as Record<string, unknown>;
     if (environmentId !== undefined && entry.environmentId !== environmentId) return null;
     const read: SnapshotRead = {
@@ -507,8 +676,16 @@ export class RedisSnapshotStore {
     if (pointer) {
       const [cs, count] = pointer.split(":");
       read.cycle = { cycleSeq: Number(cs), count: Number(count) };
+      if (dangling === "1") {
+        read.danglingCycle = true;
+        this.metrics?.recordCycleMismatch();
+        this.logger.warn("RedisSnapshotStore entry points at a cycle key that is gone", {
+          runId,
+          snapshotId: id,
+        });
+      }
       if (orderKnown) {
-        const ids = decodeWaitpointIds(true, orderJson);
+        const ids = decodeWaitpointIds(true, orderJson, distinctJson ?? "");
         read.completedWaitpointIds = ids;
         this.#checkCycleMismatch(runId, Number(count), ids.order.length);
       }
@@ -530,6 +707,24 @@ export class RedisSnapshotStore {
         if not cs then return '' end
         return redis.call('HGET', wpKey(cs), 'order') or ''
       end
+      -- A pointer whose cycle key is GONE. Not the same as having no pointer: this entry should
+      -- have waitpoints and cannot produce them, so a read must refuse rather than answer empty.
+      -- Reachable by eviction, and by the completion TTL, which is applied to every key for a run
+      -- at the same moment but lets them expire independently.
+      local function danglingFor(pointer)
+        if not pointer then return '0' end
+        local cs = string.match(pointer, '^(%d+):')
+        if not cs then return '0' end
+        if redis.call('EXISTS', wpKey(cs)) == 0 then return '1' end
+        return '0'
+      end
+      -- The complete id set, which is NOT the order deduped: order holds only batch-indexed ids.
+      local function distinctFor(pointer)
+        if not pointer then return '' end
+        local cs = string.match(pointer, '^(%d+):')
+        if not cs then return '' end
+        return redis.call('HGET', wpKey(cs), 'distinct') or ''
+      end
     `;
 
     this.redis.defineCommand("appendSnapshotEntry", {
@@ -549,6 +744,9 @@ export class RedisSnapshotStore {
         local orderCount  = ARGV[11]
         local expectedCur = ARGV[12]
         local casEnabled  = ARGV[13] == '1'
+        -- The COMPLETE distinct id set. Not the order deduped: order omits every id with no batch
+        -- index, and those ids still have to come back on a read.
+        local distinctJson = ARGV[14]
 
         -- Liveness is TWO anchors: e and seq. All keys get the same PEXPIRE but expire independently
         -- (or seq can vanish under maxmemory eviction while e survives), so checking e alone lets a
@@ -579,27 +777,43 @@ export class RedisSnapshotStore {
 
         local cycleSeq = 0
         local mismatch = 0
-        if cycleMode == 'new' then
-          -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
-          -- PEXPIRE loop from 1..c is correct.
-          cycleSeq = redis.call('HINCRBY', seqKey, 'c', 1)
-          redis.call('HSET', wpKey(cycleSeq), 'order', orderJson, 'count', orderCount)
+
+        -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
+        -- PEXPIRE loop from 1..c is correct.
+        local function mintCycle()
+          local minted = redis.call('HINCRBY', seqKey, 'c', 1)
+          redis.call('HSET', wpKey(minted), 'order', orderJson, 'count', orderCount, 'distinct', distinctJson)
           if records ~= '' then
-            redis.call('HSET', wpKey(cycleSeq), 'records', records)
+            redis.call('HSET', wpKey(minted), 'records', records)
           else
             -- A new cycle owns the whole key: a lost seq counter can re-mint a cycleSeq whose key
             -- still holds another cycle's records, and order/count stay mutually consistent so the
             -- mismatch check cannot see it. No-op on a fresh key.
-            redis.call('HDEL', wpKey(cycleSeq), 'records')
+            redis.call('HDEL', wpKey(minted), 'records')
           end
+          return minted
+        end
+
+        if cycleMode == 'new' then
+          cycleSeq = mintCycle()
         elseif cycleMode == 'carry' then
-          -- Attach a pointer only if this incarnation actually minted the cycle. seq can be
-          -- evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
+          -- Attach the CARRIED pointer only if this incarnation actually minted that cycle. seq can
+          -- be evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
           -- incarnation's order and records under a consistent count, invisibly.
           local minted = tonumber(redis.call('HGET', seqKey, 'c') or '0')
           local c = redis.call('HGET', wpKey(cycleSeqIn), 'count')
           if not c or minted < cycleSeqIn then
+            -- Refusing the pointer is right. Writing the entry WITHOUT one is not: it becomes the
+            -- head with no waitpoints, and a read of it answers present-with-nothing, which is the
+            -- one answer that tells the engine's repair it need not look. Mint a fresh cycle from
+            -- the refs the caller carried, in this same atomic call, so the entry always has a
+            -- pointer that can be trusted. The mismatch is still reported, for the metric.
             mismatch = 1
+            -- Only possible when the caller carried the refs. With none there is nothing to mint
+            -- from, and the entry is written with no pointer, which is the older behaviour.
+            if distinctJson ~= '' then
+              cycleSeq = mintCycle()
+            end
           else
             cycleSeq = cycleSeqIn
             orderCount = c
@@ -653,7 +867,7 @@ export class RedisSnapshotStore {
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
         if not vals[1] then return nil end
         -- Coerce every element: a Lua false TRUNCATES the returned array at that position.
-        return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]) }
+        return { id, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]), danglingFor(vals[3]) }
       `,
     });
 
@@ -665,7 +879,7 @@ export class RedisSnapshotStore {
         if not cur then return nil end
         local vals = redis.call('HMGET', eKey, cur, cur .. '#s', cur .. '#c')
         if not vals[1] then return nil end
-        return { cur, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]) }
+        return { cur, vals[1], vals[2] or '', vals[3] or '', orderFor(vals[3]), distinctFor(vals[3]), danglingFor(vals[3]) }
       `,
     });
 
@@ -678,7 +892,78 @@ export class RedisSnapshotStore {
           return { '0', '' }
         end
         local pointer = redis.call('HGET', eKey, id .. '#c')
-        return { '1', orderFor(pointer) }
+        return { '1', orderFor(pointer), distinctFor(pointer), danglingFor(pointer) }
+      `,
+    });
+
+    this.redis.defineCommand("readSnapshotsSinceCreatedAt", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        local cursor = ARGV[1]
+        local limit = tonumber(ARGV[2])
+
+        -- A run with no keyspace is a MISS, so the caller falls back to Postgres. A run that has one
+        -- and nothing newer is an empty HIT, so it does not fall back for a window it owns.
+        --
+        -- Both anchors, for the reason the append script gives: keys expire independently, and an
+        -- index lost to eviction while the entry hash survives would otherwise report an empty HIT
+        -- on every poll for the rest of the run's life, with Postgres holding the transitions.
+        if redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', idxKey) == 0 then return nil end
+
+        -- STRICTLY greater than the cursor, and same-millisecond entries are dropped. Postgres
+        -- serves this window with createdAt > cursor and drops them too; a Redis read that is more
+        -- correct than the Postgres read shows up as divergence in compare mode.
+        --
+        -- createdAt is always toISOString() output, one fixed-width UTC format, so a lexicographic
+        -- compare is a chronological compare. Walking newest-first lets the scan stop at the first
+        -- entry at or before the cursor, which makes its length the length of the ANSWER rather
+        -- than the length of the run's history.
+        local out = { '', '', '', '' }
+        local headId = nil
+        local offset = 0
+        local page = limit
+        local done = false
+
+        while not done do
+          local ids = redis.call('ZREVRANGE', idxKey, offset, offset + page - 1)
+          if #ids == 0 then break end
+
+          for i = 1, #ids do
+            local id = ids[i]
+            local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
+            if vals[1] then
+              local createdAt = cjson.decode(vals[1])['createdAt']
+              if not createdAt or createdAt <= cursor then
+                done = true
+                break
+              end
+              if not headId then headId = id end
+              out[#out + 1] = id
+              out[#out + 1] = vals[1]
+              out[#out + 1] = vals[2] or ''
+              out[#out + 1] = vals[3] or ''
+              if (#out - 2) / 4 >= limit then
+                done = true
+                break
+              end
+            end
+          end
+
+          offset = offset + page
+        end
+
+        if headId then
+          local headPointer = redis.call('HGET', eKey, headId .. '#c')
+          out[2] = orderFor(headPointer)
+          out[3] = distinctFor(headPointer)
+          -- The head's cycle key can expire while its entry survives: the completion TTL is applied
+          -- per key. Without this flag the head returns an EMPTY order and the caller cannot tell
+          -- that from a head that genuinely had no indexed waitpoints, so a batched resume loses
+          -- every position instead of falling back to Postgres.
+          out[4] = danglingFor(headPointer)
+        end
+        return out
       `,
     });
 
@@ -708,7 +993,7 @@ export class RedisSnapshotStore {
         -- The head is the newest SURVIVING entry, and it is the only one whose cycle key is read.
         -- Deriving the order after the loop keeps it paired with the row it is attached to: a row
         -- dropped for a missing body must not donate its cycle data to the next one.
-        local out = { sinceRaw, '' }
+        local out = { sinceRaw, '', '', '' }
         local headId = nil
         for i = 1, #ids do
           local id = ids[i]
@@ -722,7 +1007,14 @@ export class RedisSnapshotStore {
           end
         end
         if headId then
-          out[2] = orderFor(redis.call('HGET', eKey, headId .. '#c'))
+          local headPointer = redis.call('HGET', eKey, headId .. '#c')
+          out[2] = orderFor(headPointer)
+          out[3] = distinctFor(headPointer)
+          -- The head's cycle key can expire while its entry survives: the completion TTL is applied
+          -- per key. Without this flag the head returns an EMPTY order and the caller cannot tell
+          -- that from a head that genuinely had no indexed waitpoints, so a batched resume loses
+          -- every position instead of falling back to Postgres.
+          out[4] = danglingFor(headPointer)
         end
         return out
       `,
@@ -730,9 +1022,26 @@ export class RedisSnapshotStore {
   }
 }
 
-export function decodeWaitpointIds(present: boolean, orderJson: string): WaitpointIds {
+export function decodeWaitpointIds(
+  present: boolean,
+  orderJson: string,
+  distinctJson = ""
+): WaitpointIds {
   const order: string[] = orderJson === "" ? [] : (JSON.parse(orderJson) as string[]);
-  return { present, distinctIds: [...new Set(order)], order };
+
+  // The complete set is stored separately, because `order` omits every id with no batch index, so
+  // deduping the order to recover it silently drops every wait that has none.
+  //
+  // A cycle key always holds both fields, written by one command, so a missing `distinct` beside a
+  // NON-EMPTY `order` means the invariant is broken. Reconstructing from the order there would be
+  // the same lossy shortcut this field exists to remove, and the loss would be silent. Report the
+  // entry as not present instead, which sends the caller to Postgres.
+  if (distinctJson === "" && order.length > 0) {
+    return { present: false, distinctIds: [], order: [] };
+  }
+
+  const distinctIds: string[] = distinctJson === "" ? [] : (JSON.parse(distinctJson) as string[]);
+  return { present, distinctIds, order };
 }
 
 declare module "@internal/redis" {
@@ -755,6 +1064,7 @@ declare module "@internal/redis" {
       orderCount: string,
       expectedCur: string,
       casEnabled: string,
+      distinctJson: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     readSnapshotById(
@@ -780,6 +1090,15 @@ declare module "@internal/redis" {
       id: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+    readSnapshotsSinceCreatedAt(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      createdAtCursor: string,
+      limit: string,
+      callback?: Callback<string[] | null>
+    ): Result<string[] | null, Context>;
     readSnapshotsSince(
       eKey: string,
       idxKey: string,

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
+import {
+  nonAliasedShards,
+  parseRunOpsShards,
+  validateShardListAgainstNewUrl,
+  type RunOpsShardDescriptor,
+} from "~/v3/runOpsShards.server";
 
 function run(raw: string | undefined) {
   const schema = z.string().optional().transform(parseRunOpsShards);
@@ -80,5 +85,54 @@ describe("validateShardListAgainstNewUrl", () => {
   });
   it("fails when the list is non-empty and new url is unset", () => {
     expect(validateShardListAgainstNewUrl([valid as never], undefined)).toBe(false);
+  });
+});
+
+describe("nonAliasedShards", () => {
+  const shardA: RunOpsShardDescriptor = {
+    key: "a",
+    region: "us-east-1",
+    url: "postgres://h/a",
+    replication: { slotName: "sa", publicationName: "pa", originGeneration: 2 },
+  };
+  const shardB: RunOpsShardDescriptor = {
+    key: "b",
+    region: "us-west-2",
+    url: "postgres://h/b",
+    replicaUrl: "postgres://h/b-replica",
+    directUrl: "postgres://h/b-direct",
+    replication: { slotName: "sb", publicationName: "pb", originGeneration: 3 },
+  };
+  const aliased: RunOpsShardDescriptor = {
+    key: "z",
+    region: "us-east-1",
+    aliasOf: "new",
+  };
+
+  it("returns [] for no descriptors", () => {
+    expect(nonAliasedShards([])).toEqual([]);
+  });
+
+  it("keeps a shard that owns its own database", () => {
+    expect(nonAliasedShards([shardA])).toEqual([{ key: "a", url: "postgres://h/a" }]);
+  });
+
+  it("carries the replica and direct URLs when the descriptor sets them", () => {
+    expect(nonAliasedShards([shardB])).toEqual([
+      {
+        key: "b",
+        url: "postgres://h/b",
+        replicaUrl: "postgres://h/b-replica",
+        directUrl: "postgres://h/b-direct",
+      },
+    ]);
+  });
+
+  it("drops an aliased shard, because it shares its target's database", () => {
+    expect(nonAliasedShards([aliased])).toEqual([]);
+  });
+
+  it("keeps declaration order across a mixed list", () => {
+    expect(nonAliasedShards([shardA, aliased, shardB]).map((s) => s.key)).toEqual(["a", "b"]);
   });
 });

@@ -5,7 +5,7 @@ import { commonWorker } from "../commonWorker.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { DeploymentService } from "./deployment.server";
-import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {
@@ -17,6 +17,9 @@ export class TimeoutDeploymentService extends BaseService {
         environment: {
           include: {
             project: true,
+            organization: {
+              select: { slug: true },
+            },
           },
         },
       },
@@ -38,25 +41,51 @@ export class TimeoutDeploymentService extends BaseService {
       return;
     }
 
-    const timedOutDeployment = await this._prisma.workerDeployment.update({
+    const failedAt = new Date();
+    const errorData = { message: errorMessage, name: "TimeoutError" };
+
+    // Guarded: keeps the fromStatus check atomic with the write
+    const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
+        status: deployment.status,
       },
       data: {
         status: "TIMED_OUT",
-        failedAt: new Date(),
-        errorData: { message: errorMessage, name: "TimeoutError" },
+        failedAt,
+        errorData,
         buildEnvVars: Prisma.DbNull,
       },
     });
 
-    recordDeploymentOutcome({
+    if (updatedCount === 0) {
+      logger.warn("Deployment moved out of the expected state concurrently, skipping timeout", {
+        id: deployment.id,
+        fromStatus,
+      });
+      return;
+    }
+
+    const timedOutDeployment = {
+      ...deployment,
+      status: "TIMED_OUT" as const,
+      failedAt,
+      errorData,
+      buildEnvVars: null,
+    };
+
+    recordDeploymentFinished({
       status: "TIMED_OUT",
-      deploymentFriendlyId: deployment.friendlyId,
-      organizationId: deployment.environment.project.organizationId,
-      projectId: deployment.environment.projectId,
-      environmentId: deployment.environmentId,
-      environmentType: deployment.environment.type,
+      deployment: timedOutDeployment,
+      environment: {
+        organizationId: deployment.environment.project.organizationId,
+        organizationSlug: deployment.environment.organization.slug,
+        projectId: deployment.environment.projectId,
+        projectName: deployment.environment.project.name,
+        projectRef: deployment.environment.project.externalRef,
+        environmentId: deployment.environmentId,
+        environmentType: deployment.environment.type,
+      },
       reason: errorMessage,
     });
 

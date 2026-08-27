@@ -138,7 +138,8 @@ describe("public wait-token resolution across the split boundary", () => {
       expect(gated?.id).toBe(waitpointId);
 
       const passthrough = await readThroughRun({
-        runId: waitpointId,
+        id: waitpointId,
+        idKind: "waitpoint",
         environmentId: environment.id,
         readNew: (c) => read(c),
         readLegacy: (r) => read(r),
@@ -150,7 +151,7 @@ describe("public wait-token resolution across the split boundary", () => {
       });
 
       expect(gated).not.toBeNull();
-      expect(passthrough.source).toBe("not-found");
+      expect(passthrough.found === false && passthrough.reason).toBe("not-found");
     }
   );
 });
