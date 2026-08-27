@@ -21,7 +21,12 @@ import { env } from "./env.server";
 import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
 import { avatarObjectStoreImageOrigin } from "./services/userAvatar.server";
-import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
+import {
+  appendImageOrigin,
+  buildImgSrcDirective,
+  parseCspImageOrigins,
+  withImgSrc,
+} from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 import {
@@ -82,9 +87,7 @@ const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
       );
     }
 
-    const avatarOrigin = avatarObjectStoreImageOrigin();
-
-    return avatarOrigin && !origins.includes(avatarOrigin) ? [...origins, avatarOrigin] : origins;
+    return appendImageOrigin(origins, avatarObjectStoreImageOrigin());
   })
 );
 

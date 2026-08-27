@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { faviconUrl } from "./favicon";
 import {
+  appendImageOrigin,
   BASE_IMG_SRC_SOURCES,
   buildImgSrcDirective,
   imageOriginFromUrl,
@@ -207,6 +208,10 @@ describe("imageOriginFromUrl", () => {
     ["empty", ""],
     ["not a URL", "s3.example.com"],
     ["a non-http scheme", "s3://bucket"],
+    ["a wildcard host", "http://*.evil.com"],
+    ["a host carrying a directive separator", "http://evil.com;script-src"],
+    ["a host carrying a source separator", "http://evil.com,https://other.test"],
+    ["a host with whitespace", "http://evil.com script-src"],
   ])("is undefined when the base URL is %s", (_case, value) => {
     expect(imageOriginFromUrl(value)).toBeUndefined();
   });
@@ -224,5 +229,24 @@ describe("imageOriginFromUrl", () => {
     expect(
       directivePermits(buildImgSrcDirective(), "http://localhost:9005/avatars-local/a.png")
     ).toBe(false);
+  });
+});
+
+describe("appendImageOrigin", () => {
+  it("leaves the directive unchanged when no origin is configured", () => {
+    expect(buildImgSrcDirective(appendImageOrigin([], undefined))).toBe(buildImgSrcDirective());
+  });
+
+  it("does not list an origin twice", () => {
+    expect(appendImageOrigin(["http://localhost:9005"], "http://localhost:9005")).toEqual([
+      "http://localhost:9005",
+    ]);
+  });
+
+  it("appends a new origin after the configured ones", () => {
+    expect(appendImageOrigin(["https://sso.example.com"], "http://localhost:9005")).toEqual([
+      "https://sso.example.com",
+      "http://localhost:9005",
+    ]);
   });
 });

@@ -120,6 +120,10 @@ function rejectionReason(value: string, allowHttp: boolean): string | undefined 
 export function imageOriginFromUrl(baseUrl: string | undefined | null): string | undefined {
   if (!baseUrl) return undefined;
 
+  // `new URL` keeps these in the host, and a ";" or "," would truncate or inject a
+  // directive once the sources are space-joined.
+  if (/[*;,]|\s/.test(baseUrl)) return undefined;
+
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -132,6 +136,15 @@ export function imageOriginFromUrl(baseUrl: string | undefined | null): string |
   }
 
   return `${url.protocol}//${url.host}`;
+}
+
+/** Adds an optional origin to a source list, keeping it free of duplicates. */
+export function appendImageOrigin(
+  origins: readonly string[],
+  origin: string | undefined
+): string[] {
+  if (!origin || origins.includes(origin)) return [...origins];
+  return [...origins, origin];
 }
 
 /** The full directive: the base sources plus any configured extra origins. */
