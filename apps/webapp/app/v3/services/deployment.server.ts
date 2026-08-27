@@ -43,6 +43,15 @@ const DEPLOY_BUILD_PATH_ENV_FLAG: Partial<Record<RuntimeEnvironmentType, Feature
   PRODUCTION: FEATURE_FLAG.deployBuildPathProduction,
 };
 
+const DEPLOY_ENV_SLUG_FOR_TYPE: Record<RuntimeEnvironmentType, DeployEnvSlug> = {
+  DEVELOPMENT: "dev",
+  STAGING: "staging",
+  PRODUCTION: "prod",
+  PREVIEW: "preview",
+};
+
+export type DeployEnvSlug = "dev" | "staging" | "prod" | "preview";
+
 export type DeployBuildPathSource =
   | "unavailable"
   | "organization_environment"
@@ -50,6 +59,8 @@ export type DeployBuildPathSource =
   | "global_environment"
   | "global"
   | "default";
+
+type DeploySettings = { buildPath: DeployBuildPath; buildPathSource: DeployBuildPathSource };
 
 export class DeploymentService extends BaseService {
   /**
@@ -306,29 +317,33 @@ export class DeploymentService extends BaseService {
   }
 
   public getDeploySettings(
-    authenticatedEnv: Pick<AuthenticatedEnvironment, "type" | "organization">
-  ): ResultAsync<
-    { buildPath: DeployBuildPath; buildPathSource: DeployBuildPathSource },
-    { type: "other"; cause: unknown }
-  > {
-    if (!isBillingConfigured()) {
-      return okAsync({ buildPath: "depot" as const, buildPathSource: "unavailable" as const });
-    }
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "type" | "organization" | "project">,
+    target: { projectRef: string; envSlug: DeployEnvSlug }
+  ) {
+    const validateTarget = (): ResultAsync<undefined, { type: "environment_mismatch" }> => {
+      if (
+        authenticatedEnv.project.externalRef !== target.projectRef ||
+        DEPLOY_ENV_SLUG_FOR_TYPE[authenticatedEnv.type] !== target.envSlug
+      ) {
+        return errAsync({ type: "environment_mismatch" as const });
+      }
+      return okAsync(undefined);
+    };
 
     const loadGlobalFlags = () =>
       fromPromise(Promise.resolve(globalFlagsRegistry.current() ?? flags()), (error) => ({
-        type: "other" as const,
+        type: "failed_to_load_global_flags" as const,
         cause: error,
       }));
 
-    const envKey = DEPLOY_BUILD_PATH_ENV_FLAG[authenticatedEnv.type];
-    const orgFlags = authenticatedEnv.organization.featureFlags;
-    const orgFlagSet: Record<string, unknown> =
-      orgFlags && typeof orgFlags === "object" && !Array.isArray(orgFlags)
-        ? (orgFlags as Record<string, unknown>)
-        : {};
+    const pickBuildPath = (globalFlagSet: Record<string, unknown>): DeploySettings => {
+      const envKey = DEPLOY_BUILD_PATH_ENV_FLAG[authenticatedEnv.type];
+      const orgFlags = authenticatedEnv.organization.featureFlags;
+      const orgFlagSet: Record<string, unknown> =
+        orgFlags && typeof orgFlags === "object" && !Array.isArray(orgFlags)
+          ? (orgFlags as Record<string, unknown>)
+          : {};
 
-    return loadGlobalFlags().map((globalFlagSet: Record<string, unknown>) => {
       const candidates: Array<
         [Record<string, unknown>, FeatureFlagKey | undefined, DeployBuildPathSource]
       > = [
@@ -346,8 +361,20 @@ export class DeploymentService extends BaseService {
         }
       }
 
-      return { buildPath: "depot" as const, buildPathSource: "default" as const };
-    });
+      return { buildPath: "depot", buildPathSource: "default" };
+    };
+
+    const resolveBuildPath = (): ResultAsync<
+      DeploySettings,
+      { type: "failed_to_load_global_flags"; cause: unknown }
+    > => {
+      if (!isBillingConfigured()) {
+        return okAsync({ buildPath: "depot" as const, buildPathSource: "unavailable" as const });
+      }
+      return loadGlobalFlags().map(pickBuildPath);
+    };
+
+    return validateTarget().andThen(resolveBuildPath);
   }
 
   /**

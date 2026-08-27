@@ -21,12 +21,28 @@ vi.mock("~/v3/featureFlags.server", async (importOriginal) => ({
 import { DeploymentService } from "~/v3/services/deployment.server";
 
 type EnvType = "DEVELOPMENT" | "PREVIEW" | "STAGING" | "PRODUCTION";
+type EnvSlug = "dev" | "staging" | "prod" | "preview";
 
-function resolve(type: EnvType, orgFeatureFlags: unknown = {}) {
-  return new DeploymentService().getDeploySettings({
-    type,
-    organization: { featureFlags: orgFeatureFlags },
-  } as any);
+const SLUG: Record<EnvType, EnvSlug> = {
+  DEVELOPMENT: "dev",
+  STAGING: "staging",
+  PRODUCTION: "prod",
+  PREVIEW: "preview",
+};
+
+function resolve(
+  type: EnvType,
+  orgFeatureFlags: unknown = {},
+  target = { projectRef: "proj_ref", envSlug: SLUG[type] }
+) {
+  return new DeploymentService().getDeploySettings(
+    {
+      type,
+      project: { externalRef: "proj_ref" },
+      organization: { featureFlags: orgFeatureFlags },
+    } as any,
+    target
+  );
 }
 
 async function path(type: EnvType, orgFeatureFlags: unknown = {}) {
@@ -40,6 +56,25 @@ describe("DeploymentService.getDeploySettings", () => {
     mocks.isBillingConfigured.mockReset().mockReturnValue(true);
     mocks.current.mockReset().mockReturnValue({});
     mocks.flags.mockReset().mockResolvedValue({});
+  });
+
+  it("rejects a target that is not the key's project or environment type", async () => {
+    mocks.current.mockReturnValue({ deployBuildPath: "native" });
+    for (const target of [
+      { projectRef: "proj_other", envSlug: "prod" as const },
+      { projectRef: "proj_ref", envSlug: "staging" as const },
+      { projectRef: "proj_ref", envSlug: "preview" as const },
+    ]) {
+      const result = await resolve("PRODUCTION", {}, target);
+      expect(result.isErr() && result.error).toEqual({ type: "environment_mismatch" });
+    }
+    expect(mocks.flags).not.toHaveBeenCalled();
+  });
+
+  it("accepts every environment type on its own slug", async () => {
+    for (const type of ["DEVELOPMENT", "PREVIEW", "STAGING", "PRODUCTION"] as const) {
+      expect(await path(type)).toEqual(["depot", "default"]);
+    }
   });
 
   it("is depot when the native build server is unavailable, whatever the flags say", async () => {
@@ -142,6 +177,6 @@ describe("DeploymentService.getDeploySettings", () => {
     mocks.flags.mockRejectedValue(new Error("db down"));
     const result = await resolve("PRODUCTION");
     expect(result.isErr()).toBe(true);
-    expect(result.isErr() && result.error).toMatchObject({ type: "other" });
+    expect(result.isErr() && result.error).toMatchObject({ type: "failed_to_load_global_flags" });
   });
 });

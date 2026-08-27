@@ -26,7 +26,11 @@ import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
-import { applyBuildPathOptions, nativeOnlyFlagError } from "../deploy/buildPath.js";
+import {
+  applyBuildPathOptions,
+  nativeOnlyFlagError,
+  resolveBuildPath,
+} from "../deploy/buildPath.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -472,7 +476,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
-  const resolvedBuildPath = await resolveBuildPath(
+  const resolvedBuildPath = await resolveServerBuildPath(
     projectClient.client,
     resolvedConfig.project,
     options
@@ -1283,22 +1287,12 @@ const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
   native_local_bundle: "Building on the native build server from a local bundle",
 };
 
-async function resolveBuildPath(
+async function resolveServerBuildPath(
   apiClient: CliApiClient,
   projectRef: string,
   options: DeployCommandOptions
 ): Promise<DeployBuildPath> {
-  if (options.nativeBuildServer) {
-    logger.debug("Build path from --native-build");
-    return "native";
-  }
-
-  if (options.depotBuild || options.localBuild) {
-    logger.debug(`Build path from ${options.localBuild ? "--local-build" : "--depot-build"}`);
-    return "depot";
-  }
-
-  const [error, result] = await tryCatch(
+  const resolved = await resolveBuildPath(options, () =>
     apiClient.getDeploySettings(
       projectRef,
       options.env,
@@ -1306,28 +1300,26 @@ async function resolveBuildPath(
     )
   );
 
-  if (error || !result.success) {
-    const failure = error ?? (result && !result.success ? result : undefined);
-    logger.debug("Failed to fetch deploy settings", { failure });
-
-    // A 404 is an older server without the endpoint; Depot is exactly what it expects.
-    const is404 = !error && result && !result.success && result.statusCode === 404;
-    if (!is404) {
-      log.warn("Could not fetch the deploy settings from the server, using the Depot build path");
-    }
-
-    return "depot";
+  switch (resolved.from) {
+    case "flag":
+      logger.debug(`Build path ${resolved.buildPath} from ${resolved.flag}`);
+      break;
+    case "fallback":
+      logger.debug("Failed to fetch deploy settings", { failure: resolved.failure });
+      if (!resolved.silent) {
+        log.warn("Could not read the deploy settings from the server, using the Depot build path");
+      }
+      break;
+    case "server":
+      if (resolved.buildPath === "depot") {
+        logger.debug("Build path depot (server)");
+      } else {
+        log.info(BUILD_PATH_LABEL[resolved.buildPath]);
+      }
+      break;
   }
 
-  const buildPath = result.data.build_path;
-
-  if (buildPath === "depot") {
-    logger.debug("Build path depot (server)");
-  } else {
-    log.info(BUILD_PATH_LABEL[buildPath]);
-  }
-
-  return buildPath;
+  return resolved.buildPath;
 }
 
 async function handleNativeBuildServerDeploy({

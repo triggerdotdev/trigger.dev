@@ -71,10 +71,14 @@ describe("deploy settings route", () => {
     expect(mocks.getDeploySettings).not.toHaveBeenCalled();
   });
 
-  it("refuses a key that belongs to another project or environment type", async () => {
-    expect((await load("prod", "proj_other")).status).toBe(403);
-    expect((await load("staging")).status).toBe(403);
-    expect(mocks.getDeploySettings).not.toHaveBeenCalled();
+  it("maps an environment mismatch to 403", async () => {
+    mocks.getDeploySettings.mockReturnValue(errAsync({ type: "environment_mismatch" }));
+    const response = await load("prod", "proj_other");
+    expect(response.status).toBe(403);
+    expect(mocks.getDeploySettings).toHaveBeenCalledWith(environment(), {
+      projectRef: "proj_other",
+      envSlug: "prod",
+    });
   });
 
   it("returns only the build path, resolved for the authenticated environment", async () => {
@@ -90,15 +94,28 @@ describe("deploy settings route", () => {
     const response = await load("preview");
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ build_path: "native" });
-    expect(mocks.getDeploySettings).toHaveBeenCalledWith(env);
+    expect(mocks.getDeploySettings).toHaveBeenCalledWith(env, {
+      projectRef: "proj_ref",
+      envSlug: "preview",
+    });
+    expect(mocks.authenticateApiKeyWithScope).toHaveBeenCalledWith(expect.any(Request), {
+      action: "read",
+      resource: { type: "deployments" },
+    });
   });
 
-  it("returns 500 when the service fails", async () => {
+  it("returns 500 when the global flags cannot be loaded", async () => {
     mocks.getDeploySettings.mockReturnValue(
-      errAsync({ type: "other", cause: new Error("db down") })
+      errAsync({ type: "failed_to_load_global_flags", cause: new Error("db down") })
     );
     const response = await load();
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: "Internal server error" });
+    expect(await response.json()).toEqual({ error: "Internal Server Error" });
+  });
+
+  it("rethrows a Response thrown by authentication", async () => {
+    const thrown = new Response(null, { status: 429 });
+    mocks.authenticateApiKeyWithScope.mockRejectedValue(thrown);
+    await expect(load()).rejects.toBe(thrown);
   });
 });

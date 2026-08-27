@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBuildPathOptions, nativeOnlyFlagError } from "./buildPath.js";
+import { applyBuildPathOptions, nativeOnlyFlagError, resolveBuildPath } from "./buildPath.js";
 
 const none = { nativeBuildServer: false, localBundle: false, detach: false, dryRun: false };
 const native = { ...none, nativeBuildServer: true };
@@ -52,5 +52,63 @@ describe("applyBuildPathOptions", () => {
     expect(applyBuildPathOptions("native_local_bundle", { ...none, dryRun: true })).toBe(
       "native_local_bundle"
     );
+  });
+});
+
+describe("resolveBuildPath", () => {
+  const noFlags = { nativeBuildServer: false, depotBuild: false, localBuild: false };
+  const neverFetch = () => {
+    throw new Error("fetchSettings must not be called");
+  };
+
+  it("lets explicit flags decide without asking the server", async () => {
+    expect(await resolveBuildPath({ ...noFlags, nativeBuildServer: true }, neverFetch)).toEqual({
+      buildPath: "native",
+      from: "flag",
+      flag: "--native-build",
+    });
+    expect(await resolveBuildPath({ ...noFlags, depotBuild: true }, neverFetch)).toEqual({
+      buildPath: "depot",
+      from: "flag",
+      flag: "--depot-build",
+    });
+    expect(await resolveBuildPath({ ...noFlags, localBuild: true }, neverFetch)).toEqual({
+      buildPath: "depot",
+      from: "flag",
+      flag: "--local-build",
+    });
+  });
+
+  it("uses the server's build path", async () => {
+    for (const build_path of ["depot", "native", "native_local_bundle"] as const) {
+      expect(
+        await resolveBuildPath(noFlags, async () => ({ success: true, data: { build_path } }))
+      ).toEqual({ buildPath: build_path, from: "server" });
+    }
+  });
+
+  it("falls back to depot silently on a 404", async () => {
+    const resolved = await resolveBuildPath(noFlags, async () => ({
+      success: false,
+      statusCode: 404,
+    }));
+    expect(resolved).toMatchObject({ buildPath: "depot", from: "fallback", silent: true });
+  });
+
+  it("falls back to depot loudly on any other failure", async () => {
+    const failures: Array<() => Promise<any>> = [
+      async () => ({ success: false, statusCode: 500 }),
+      async () => ({ success: false }),
+      async () => {
+        throw new Error("timeout");
+      },
+    ];
+    for (const fetchSettings of failures) {
+      expect(await resolveBuildPath(noFlags, fetchSettings)).toMatchObject({
+        buildPath: "depot",
+        from: "fallback",
+        silent: false,
+      });
+    }
   });
 });
