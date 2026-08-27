@@ -407,3 +407,169 @@ describe("SessionChannelRouter: exactly-once across a crash", () => {
     }
   });
 });
+
+describe("SessionChannelRouter: observe", () => {
+  it("notifies without consuming, so the record still queues and holds the floor", () => {
+    const r = router();
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+
+    r.ingest(rec(0, "message"));
+
+    expect(seen).toEqual([0]);
+    expect(r.hasPending("messages")).toBe(true);
+    expect(r.resumeFloor()).toBeUndefined();
+  });
+
+  it("does not satisfy a queue route's handler delivery", () => {
+    const r = router();
+    const observed: number[] = [];
+    const handled: number[] = [];
+    r.observe("messages", (record) => observed.push(record.seqNum));
+
+    r.ingest(rec(0, "message"));
+    expect(handled).toEqual([]);
+
+    r.on("messages", (record) => handled.push(record.seqNum));
+    expect(handled).toEqual([0]);
+    expect(observed).toEqual([0]);
+  });
+
+  it("rejects an at-arrival route, so a stop with only an observer is still discarded", () => {
+    const r = router();
+    expect(() => r.observe("stop", () => {})).toThrow(/at-arrival/);
+  });
+
+  it("does not re-offer records that were already queued when it attached", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+    expect(seen).toEqual([]);
+
+    r.ingest(rec(1, "message"));
+    expect(seen).toEqual([1]);
+  });
+
+  it("stops notifying after off()", () => {
+    const r = router();
+    const seen: number[] = [];
+    const sub = r.observe("messages", (record) => seen.push(record.seqNum));
+
+    r.ingest(rec(0, "message"));
+    sub.off();
+    r.ingest(rec(1, "message"));
+
+    expect(seen).toEqual([0]);
+  });
+});
+
+describe("SessionChannelRouter: take", () => {
+  it("removes one queued record by sequence and releases the floor", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+    r.ingest(rec(1, "message"));
+
+    expect(r.take("messages", 0)?.seqNum).toBe(0);
+    expect(r.pendingCount("messages")).toBe(1);
+    expect(r.peek("messages")?.seqNum).toBe(1);
+  });
+
+  it("reports false for a record that is no longer queued", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+
+    expect(r.take("messages", 0)?.seqNum).toBe(0);
+    expect(r.take("messages", 0)).toBeUndefined();
+    expect(r.take("messages", 99)).toBeUndefined();
+  });
+
+  it("leaves an untaken observed record to be delivered as normal", async () => {
+    const r = router();
+    r.observe("messages", () => {});
+    r.ingest(rec(0, "message"));
+    r.ingest(rec(1, "message"));
+
+    r.take("messages", 0);
+
+    const next = await r.next("messages", { timeoutMs: 0 });
+    expect(next?.seqNum).toBe(1);
+  });
+});
+
+describe("SessionChannelRouter: clearRoute guard", () => {
+  it("refuses to clear a replayable route", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+
+    expect(() => r.clearRoute("messages")).toThrow(/replayable/);
+    expect(r.hasPending("messages")).toBe(true);
+  });
+
+  it("still clears a non-replayable route", () => {
+    const r = router();
+    r.ingest(rec(0, "handover"));
+    expect(r.hasPending("handover")).toBe(true);
+
+    r.clearRoute("handover");
+    expect(r.hasPending("handover")).toBe(false);
+  });
+});
+
+describe("SessionChannelRouter: observe versus a waiting consumer", () => {
+  it("notifies the observer even when a parked puller takes the record", async () => {
+    const r = router();
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+
+    const pull = r.next("messages");
+    r.ingest(rec(0, "message"));
+    const taken = await pull;
+
+    expect(seen).toEqual([0]);
+    expect(taken?.seqNum).toBe(0);
+    expect(r.hasPending("messages")).toBe(false);
+  });
+
+  it("reports a failed take for a record a puller already consumed", async () => {
+    const r = router();
+    const seen: number[] = [];
+    r.observe("messages", (record) => seen.push(record.seqNum));
+
+    const pull = r.next("messages");
+    r.ingest(rec(0, "message"));
+    await pull;
+
+    expect(seen).toEqual([0]);
+    expect(r.take("messages", 0)).toBeUndefined();
+  });
+});
+
+describe("SessionChannelRouter: untake", () => {
+  it("puts a claimed record back in sequence order", async () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+    r.ingest(rec(2, "message"));
+
+    const taken = r.take("messages", 0)!;
+    expect(r.peek("messages")?.seqNum).toBe(2);
+
+    r.untake("messages", taken);
+
+    expect(r.pendingCount("messages")).toBe(2);
+    expect(r.peek("messages")?.seqNum).toBe(0);
+    expect(r.resumeFloor()).toBeUndefined();
+  });
+
+  it("is idempotent, so a double return cannot duplicate a record", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+    const taken = r.take("messages", 0)!;
+
+    r.untake("messages", taken);
+    r.untake("messages", taken);
+
+    expect(r.pendingCount("messages")).toBe(1);
+  });
+});

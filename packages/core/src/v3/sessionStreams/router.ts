@@ -101,6 +101,7 @@ class RouteState {
   readonly queue: SessionStreamRecord[] = [];
   readonly waiters: QueueWaiter[] = [];
   readonly handlers = new Set<RouteHandler>();
+  readonly observers = new Set<RouteHandler>();
 
   constructor(readonly route: SessionRoute) {}
 
@@ -239,6 +240,14 @@ export class SessionChannelRouter {
       return this.#drop(record, "no-handler", routeName);
     }
 
+    for (const observer of state.observers) {
+      try {
+        observer(record);
+      } catch {
+        void 0;
+      }
+    }
+
     const waiter = state.waiters.shift();
     if (waiter) {
       if (waiter.timer) clearTimeout(waiter.timer);
@@ -356,6 +365,70 @@ export class SessionChannelRouter {
     };
   }
 
+  /**
+   * Watch a route without consuming from it.
+   *
+   * Notification and consumption are separate concerns: an observer is told
+   * that a record arrived and the record still queues, so the resume floor
+   * stays held behind it until something actually takes it. A push handler
+   * registered with {@link on} is the opposite, and a record handed to one
+   * counts as terminally decided.
+   *
+   * Only meaningful on a replayable route. On an `at-arrival` route an observer
+   * would either have to count as a listener, which would stop an unconsumed
+   * record being discarded, or watch records it cannot affect, so it is
+   * rejected rather than given one of those two meanings.
+   *
+   * Records already queued are not re-offered: an observer reports arrivals
+   * from the moment it attaches, so re-offering would fire twice for a record
+   * that arrived before a later consumer attached.
+   */
+  observe(name: string, observer: RouteHandler): { off: () => void } {
+    const state = this.#stateOrThrow(name);
+    if (state.route.delivery === "at-arrival") {
+      throw new Error(
+        `Route "${name}" is at-arrival, which cannot be observed: an observer must not decide whether a record is discarded, and cannot be offered one that already was`
+      );
+    }
+    state.observers.add(observer);
+    return {
+      off: () => {
+        state.observers.delete(observer);
+      },
+    };
+  }
+
+  /**
+   * Remove one queued record, identified by sequence.
+   *
+   * For a consumer that decided to take a record it had only observed. Returns
+   * whether it was still queued, so a caller can tell a real take from a record
+   * something else had already consumed.
+   */
+  take(name: string, seqNum: number): SessionStreamRecord | undefined {
+    const state = this.#stateOrThrow(name);
+    const index = state.queue.findIndex((record) => record.seqNum === seqNum);
+    if (index === -1) return undefined;
+    return state.queue.splice(index, 1)[0];
+  }
+
+  /**
+   * Put a taken record back, in sequence order.
+   *
+   * For a consumer that claimed a record and then could not use it. Returning
+   * it leaves the route as though the claim never happened, so the record is
+   * delivered later and goes back to holding the resume floor. Without this a
+   * failed claim-then-use is indistinguishable from a delivery, and the record
+   * is lost.
+   */
+  untake(name: string, record: SessionStreamRecord): void {
+    const state = this.#stateOrThrow(name);
+    if (state.queue.some((queued) => queued.seqNum === record.seqNum)) return;
+    const at = state.queue.findIndex((queued) => queued.seqNum > record.seqNum);
+    if (at === -1) state.queue.push(record);
+    else state.queue.splice(at, 0, record);
+  }
+
   /** Whether an `at-arrival` route currently has anywhere to deliver. */
   hasHandler(name: string): boolean {
     return this.#stateOrThrow(name).handlers.size > 0;
@@ -417,6 +490,11 @@ export class SessionChannelRouter {
    */
   clearRoute(name: string): void {
     const state = this.#stateOrThrow(name);
+    if (state.route.replayable) {
+      throw new Error(
+        `Route "${name}" is replayable, so its queue cannot be cleared: anything queued on it is still owed to a later boot, and discarding it would lose records the resume floor is holding back`
+      );
+    }
     state.queue.length = 0;
     for (const waiter of state.waiters) {
       if (waiter.timer) clearTimeout(waiter.timer);
@@ -430,6 +508,7 @@ export class SessionChannelRouter {
     for (const state of this.#routes.values()) {
       state.queue.length = 0;
       state.handlers.clear();
+      state.observers.clear();
       for (const waiter of state.waiters) {
         if (waiter.timer) clearTimeout(waiter.timer);
         waiter.resolve(undefined);
