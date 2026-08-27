@@ -27,6 +27,7 @@ import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
+import { applyBuildPathOptions } from "../deploy/buildPath.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -462,10 +463,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
-  const buildPath = applyNativeOnlyOptions(
-    await resolveBuildPath(projectClient.client, resolvedConfig.project, options),
+  const resolvedBuildPath = await resolveBuildPath(
+    projectClient.client,
+    resolvedConfig.project,
     options
   );
+  const buildPath = applyBuildPathOptions(resolvedBuildPath, options);
+
+  if (options.dryRun && resolvedBuildPath === "native" && buildPath === "depot") {
+    log.info("Dry run is not supported on the native build server path, bundling locally instead");
+  }
 
   if (buildPath === "native_local_bundle") {
     await handleLocalBundleDeploy({
@@ -1261,29 +1268,6 @@ function getTriggeredVia(): DeploymentTriggeredVia {
 
 const DEPLOY_SETTINGS_TIMEOUT_MS = 3_000;
 
-/**
- * --local-bundle and --detach modify the native path rather than select it: with the
- * native build server they apply, on Depot they are an error.
- */
-function applyNativeOnlyOptions(
-  buildPath: DeployBuildPath,
-  options: DeployCommandOptions
-): DeployBuildPath {
-  const nativeOnly = options.localBundle
-    ? "--local-bundle"
-    : options.detach
-      ? "--detach"
-      : undefined;
-
-  if (nativeOnly && buildPath === "depot") {
-    throw new Error(
-      `${nativeOnly} is only available with the native build server. Pass --native-build, or configure the native build path for this environment.`
-    );
-  }
-
-  return options.localBundle ? "native_local_bundle" : buildPath;
-}
-
 const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
   depot: "Depot",
   native: "native build server",
@@ -1342,13 +1326,6 @@ async function resolveBuildPath(
   }
 
   const { path, source } = result.data.build;
-
-  if (path === "native" && options.dryRun) {
-    log.info(
-      "Dry run is not supported on the native build server path, using the Depot build path"
-    );
-    return "depot";
-  }
 
   if (path !== "depot") {
     log.info(`Using the ${BUILD_PATH_LABEL[path]} build path (${BUILD_PATH_SOURCE_LABEL[source]})`);
