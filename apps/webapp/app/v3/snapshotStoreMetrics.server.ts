@@ -106,7 +106,10 @@ export function createSnapshotStoreMetrics(meter: Meter) {
     recordRead: (method, source) =>
       readSource.add(1, {
         method: bounded(method, READ_METHODS),
-        source: bounded(source, READ_SOURCES),
+        // NOT `source`. Every exported series already carries a `source` label describing the
+        // telemetry pipeline, and a data point that repeats the name is dropped, so the whole
+        // metric was silently absent while the counter was being incremented.
+        served_by: bounded(source, READ_SOURCES),
       }),
   };
 

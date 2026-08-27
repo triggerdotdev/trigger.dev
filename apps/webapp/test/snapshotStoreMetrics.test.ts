@@ -44,6 +44,15 @@ describe("snapshotStoreMetrics module shape", () => {
     }
   });
 
+  it("never names an attribute `source`", () => {
+    // Every exported series already carries a `source` label naming the telemetry pipeline. A data
+    // point that repeats the name is dropped, so the metric vanishes while its counter is still
+    // being incremented. This cost an hour of chasing a phantom read path.
+    const recorders = source.slice(source.indexOf("const decorator"));
+    expect(recorders).not.toMatch(/^\s*source:/m);
+    expect(recorders).toMatch(/served_by:/);
+  });
+
   it("declares no counter whose only producer is unreachable", () => {
     // recordWrite is called once, with an AppendResult outcome. "staged" and "post_expiry" are not
     // in that vocabulary, so both counters sat at zero and both branches were dead.
