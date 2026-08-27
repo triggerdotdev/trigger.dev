@@ -402,4 +402,75 @@ describe("four-store matrix — a waitpoint tag lands on its environment's shard
       expect(found.map((r) => r.name)).toEqual(["tag-readback"]);
     }
   );
+
+  // The scenario a real rollout produces: an environment has tags, then it is pinned to a shard.
+  // Its existing tag rows stay on the gen-1 store, and its next write of the SAME name goes to the
+  // shard with an independent cuid, because the unique index is per-database. Deduping the read by
+  // id would then list one tag name twice.
+  matrixTest(
+    "the same tag name on a gen-1 store and a shard is listed once",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_dupe");
+
+      // Before the pin: the tag lands on the gen-1 new store by residency.
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "prod", projectId: env.projectId },
+        undefined,
+        "NEW"
+      );
+      // After the pin: the same name lands on shard a, with its own id.
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "prod", projectId: env.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+
+      // Two physical rows, one per database, with different ids. That is expected and is what the
+      // per-database unique index permits.
+      const onNew = await newPrisma.waitpointTag.findMany({ where: { name: "prod" } });
+      const onShard = await shardPrismas[0]!.waitpointTag.findMany({ where: { name: "prod" } });
+      expect(onNew).toHaveLength(1);
+      expect(onShard).toHaveLength(1);
+      expect(onNew[0]!.id).not.toBe(onShard[0]!.id);
+
+      // One logical tag through the read path.
+      const found = await router.findManyWaitpointTags({
+        where: { environmentId: env.environmentId },
+      });
+      expect(found.map((r) => r.name)).toEqual(["prod"]);
+    }
+  );
+
+  matrixTest(
+    "two environments keep their own tag of the same name",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const envA = await seedLegacyEnv(legacyPrisma, "tag_dupe_a");
+      const envB = await seedLegacyEnv(legacyPrisma, "tag_dupe_b");
+
+      await router.upsertWaitpointTag(
+        { environmentId: envA.environmentId, name: "prod", projectId: envA.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+      await router.upsertWaitpointTag(
+        { environmentId: envB.environmentId, name: "prod", projectId: envB.projectId },
+        undefined,
+        "NEW",
+        "b"
+      );
+
+      // Queried WITHOUT an environment filter, so both rows reach the merge together. Filtering by
+      // environmentId per call would hide a name-only dedupe: each result set would hold one row
+      // and collapse to itself, so the test would pass whatever the key was.
+      const both = await router.findManyWaitpointTags({ where: { name: "prod" } });
+
+      expect(both.map((r) => r.environmentId).sort()).toEqual(
+        [envA.environmentId, envB.environmentId].sort()
+      );
+    }
+  );
 });

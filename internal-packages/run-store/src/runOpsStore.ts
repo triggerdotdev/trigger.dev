@@ -2266,6 +2266,39 @@ export class RoutingRunStore implements RunStore {
     return store.upsertWaitpointTag(data, undefined);
   }
 
+  // Merge tag legs, keeping one row per (environmentId, name) rather than per id.
+  //
+  // A tag row has no id the router can read, so the SAME logical tag gets an independent cuid on
+  // every store that ever wrote it: the unique index is `(environmentId, name)` and it is
+  // per-database. Deduping by id therefore returns the same tag name once per store holding it,
+  // which surfaces as a name listed two or three times. That was already reachable for a
+  // dual-resident environment across the gen-1 pair, and stamping the mint shard onto the write
+  // widens it to every configured shard.
+  //
+  // Dropping a row is safe here because nothing consumes a tag's id: a waitpoint carries its tags
+  // as a string array (`tags: { hasSome: [...] }`) and `WaitpointTag` is a name registry for
+  // listing and autocomplete. Legs arrive in #precedence order and the last write wins, matching
+  // #mergeById. A row whose projection omits `environmentId` or `name` cannot be keyed and passes
+  // through, exactly as #mergeById treats a row with no `id`.
+  static #mergeTagsByName<R extends Record<string, unknown>>(
+    legs: Array<{ key: ShardKey; rows: R[] }>
+  ): R[] {
+    const byName = new Map<string, R>();
+    const passthrough: R[] = [];
+    for (const { rows } of legs) {
+      for (const row of rows) {
+        const environmentId = row.environmentId;
+        const name = row.name;
+        if (typeof environmentId !== "string" || typeof name !== "string") {
+          passthrough.push(row);
+          continue;
+        }
+        byName.set(`${environmentId}\u0000${name}`, row);
+      }
+    }
+    return [...byName.values(), ...passthrough];
+  }
+
   // A tag keyed by (environmentId, name) can exist on BOTH DBs for one env (dual-resident, no
   // id-shape signal), so fan out NEW→LEGACY and de-dupe by id (NEW wins, matching the router's
   // NEW-wins invariant). take/skip are widened per-leg then re-imposed globally after the merge,
@@ -2296,7 +2329,7 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(store, client)
       )) as unknown as Array<Record<string, unknown>>,
     }));
-    const deduped = this.#mergeById(legs) as unknown as WaitpointTag[];
+    const deduped = RoutingRunStore.#mergeTagsByName(legs) as unknown as WaitpointTag[];
     const merged = args.orderBy
       ? (sortByOrderBy(
           deduped as unknown as Array<Record<string, unknown>>,

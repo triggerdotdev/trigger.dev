@@ -131,10 +131,19 @@ describe("run-store placement census — every write states what it routes by", 
 
   // Anchors the catalog to the source. Weakening a route — dropping the shard hint, swapping
   // an id for a residency fallback, renaming a helper — fails here rather than in production.
+  // Scoped to the method's own body, not the whole file. Three creates share
+  // `#routeOrNew(params.data.id)`, so a file-wide search still passes when one of them loses its
+  // route and a sibling keeps it — which is the exact hole this census exists to close.
   it.each(PLACEMENT_SITES)("$method still contains the routes the catalog claims", (site) => {
-    const source = read(STORE);
+    const body = methodBody(read(STORE), site.method);
+
+    expect({ method: site.method, found: body !== undefined }).toEqual({
+      method: site.method,
+      found: true,
+    });
+
     for (const route of site.routes) {
-      expect({ method: site.method, route, present: source.includes(route) }).toEqual({
+      expect({ method: site.method, route, present: body!.includes(route) }).toEqual({
         method: site.method,
         route,
         present: true,
