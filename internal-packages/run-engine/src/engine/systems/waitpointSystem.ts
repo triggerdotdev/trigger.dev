@@ -198,13 +198,6 @@ export class WaitpointSystem {
     // the token lands on the run-ops DB (NEW) in a fully-minted-new deployment instead of defaulting
     // to LEGACY by its cuid id-shape. Ignored when `runId` is set (co-location wins).
     standaloneResidency?: "NEW" | "LEGACY";
-    /**
-     * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
-     * shard the token's id is stamped for. When it names a gen-2 shard the implementation must
-     * IGNORE `standaloneResidency`: a residency hint outranks the id shape in the router and
-     * can only name a gen-1 store, so honouring it would land the row there while its
-     * completion routes to the shard. Only a Postgres implementation reads this.
-     */
     standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const result = await this.coordinator.createManualWaitpoint({

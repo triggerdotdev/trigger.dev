@@ -1565,12 +1565,8 @@ export class RoutingRunStore implements RunStore {
       }
       return this.#shardStore(key);
     }
-    // A gen-2-stamped id names the only database this row can live on, and `residency` can only
-    // say NEW or LEGACY, so when the two disagree the hint is not a candidate answer — it is
-    // unable to express one. Let the id win rather than trusting every caller to withhold the
-    // hint. Unlike the owner arm above, nothing is ambiguous here: that arm throws because a
-    // mismatch means the mint layer failed and there is no correct destination to fall back to,
-    // whereas here the correct destination is written on the row itself.
+    // A gen-2-stamped id names the only database this row can live on, and `residency` can name
+    // only NEW or LEGACY, so the id wins rather than every caller having to withhold the hint.
     const stamped = typeof waitpointId === "string" ? this.#shardKeyOfSafe(waitpointId) : undefined;
     const isGen2Stamped =
       stamped !== undefined && stamped !== NEW_SHARD && stamped !== LEGACY_SHARD;
@@ -2255,10 +2251,8 @@ export class RoutingRunStore implements RunStore {
     // No owning run; route by the env's residency hint when present, else a minted id-shape, else
     // fall back to LEGACY (same precedence as a standalone waitpoint). Caller tx is never forwarded.
     //
-    // A gen-2 shard hint wins outright. Callers never mint a tag id, so id-shape cannot route one,
-    // and `residency` collapses to a gen-1 store — which would leave an environment's tags on a
-    // different database from the tokens they describe. The read side already fans out over every
-    // store, so a misplaced row is found but attributed to the wrong environment's database.
+    // A gen-2 shard hint wins outright: a tag has no id to route by, and `residency` names only a
+    // gen-1 store, which would leave the row on a different database from the tokens it describes.
     const store =
       shardKey !== undefined && shardKey !== NEW_SHARD && shardKey !== LEGACY_SHARD
         ? this.#shardStore(shardKey)
@@ -2266,28 +2260,19 @@ export class RoutingRunStore implements RunStore {
     return store.upsertWaitpointTag(data, undefined);
   }
 
-  // Tag rows need BOTH dedupe keys, in this order, because two different collisions exist.
+  // Two collisions exist, so both keys are needed in this order. By id first: drain can mirror a
+  // tag onto NEW while it keeps its id, and NEW is authoritative. By (environmentId, name) second:
+  // the unique index is per-database, so a store that never saw the tag minted its own cuid for it
+  // and the id pass cannot tell they are one tag.
   //
-  // By id, first: drain can mirror a tag onto NEW while it keeps its id, so the same id appears on
-  // two stores and NEW is authoritative. #mergeById owns that, along with the duplicate alarm.
-  //
-  // By (environmentId, name), second: a tag row has no id the router can read, so a store that has
-  // never seen the tag mints an independent cuid for it. The unique index is (environmentId, name)
-  // and it is per-database, so one logical tag can hold a different id on every store, and the id
-  // pass cannot see that they are the same tag. Left alone, a name is listed once per store holding
-  // it. That was already reachable across the gen-1 pair for a dual-resident environment, and
-  // stamping the mint shard onto the write widens it to every configured shard.
-  //
-  // Dropping a row is safe because nothing consumes a tag's id: a waitpoint carries its tags as a
-  // string array (`tags: { hasSome: [...] }`) and this table is a name registry for listing and
-  // autocomplete.
+  // Dropping a row is safe because nothing reads a tag's id: a waitpoint holds its tags as a string
+  // array and this table is a name registry.
   #mergeTags<R extends Record<string, unknown>>(legs: Array<{ key: ShardKey; rows: R[] }>): R[] {
     const survivors = this.#mergeById(legs);
     const survivorSet = new Set<R>(survivors as R[]);
 
-    // Legs arrive in #precedence order, so the last write wins and the highest-authority store
-    // takes the name. Restricted to rows that survived the id pass, so a row already dropped as a
-    // stale mirror cannot win its name back.
+    // Legs arrive in #precedence order, so the last write wins. Restricted to id-pass survivors so
+    // a stale mirror cannot win its name back.
     const winnerByName = new Map<string, R>();
     for (const { rows } of legs) {
       for (const row of rows) {
@@ -2297,16 +2282,14 @@ export class RoutingRunStore implements RunStore {
       }
     }
 
-    // Filter rather than rebuild, so a winner keeps the POSITION #mergeById gave it: callers
-    // observe row order whenever `orderBy` is absent.
+    // Filter rather than rebuild: a winner keeps the position #mergeById gave it, which callers
+    // observe when `orderBy` is absent.
     return (survivors as R[]).filter((row) => {
       const key = RoutingRunStore.#tagNameKey(row);
       return key === undefined || winnerByName.get(key) === row;
     });
   }
 
-  // A row whose projection omits either field cannot be keyed by name, and passes through — the
-  // same treatment #mergeById gives a row with no `id`.
   static #tagNameKey(row: Record<string, unknown>): string | undefined {
     const environmentId = row.environmentId;
     const name = row.name;

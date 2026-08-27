@@ -1,26 +1,20 @@
-// If you add a site that creates a Postgres `Waitpoint` row, add a matching entry here or
-// `waitpointMint.proof.test.ts` fails. Entries are one per site, anchored by symbol name,
-// never by line number.
+// Add a site that creates a Postgres `Waitpoint` row and add an entry here, or
+// `waitpointMint.proof.test.ts` fails. One entry per site, anchored by symbol, never by line.
 //
-// Why: a site that mints a cuid for a gen-2 run writes a row the completion path cannot
-// find. Three of the sites below fail loudly, because the routing store refuses an
-// unstamped id on a gen-2 shard. The RUN row written through `createRun` does NOT — that
-// write happens inside the run store, which has no such check — so a missed site there
-// strands a parent run with no error.
+// A site that mints a cuid for a gen-2 run writes a row the completion path cannot find. Most
+// fail loudly, because the router refuses an unstamped id on a gen-2 shard. The RUN row written
+// through `createRun` does not: that write is inside the run store, which has no such check.
 //
-// PURE module — no engine import, no env, no Prisma.
+// Pure module: no engine import, no env, no Prisma.
 export type WaitpointMintSite = {
   id: string;
   type: "DATETIME" | "MANUAL" | "RUN" | "BATCH";
-  /** Repo-relative source path. */
   site: string;
   /** Enclosing method or symbol name — NEVER a line number. */
   symbol: string;
   /**
-   * The exact mint expressions this site contains, verbatim. The proof test counts each one
-   * per file, so both a new mint inside an already-catalogued file and a swapped anchor
-   * (`mintWaitpointIdFor(undefined)` in place of the run id) fail until reconciled here.
-   * Empty for a site that writes a row from an id minted elsewhere.
+   * Mint expressions this site contains, verbatim, counted per file, so a new mint and a swapped
+   * anchor both fail until reconciled. Empty for a site writing an id minted elsewhere.
    */
   mints: readonly string[];
 };

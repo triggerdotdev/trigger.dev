@@ -1,69 +1,39 @@
-// Every method on the `RunStore` interface must appear exactly once below, as a read or as a
-// write. `placement.proof.test.ts` diffs this catalog against the interface, so a method added
-// to `RunStore` fails the build until somebody classifies it.
+// Every method on the `RunStore` interface appears exactly once below, as a read or as a write.
+// `placement.proof.test.ts` diffs this catalog against the interface, so a new method fails the
+// build until somebody classifies it.
 //
-// Why this exists, and why it is separate from the waitpoint mint census: that census is
-// exhaustive over id PRODUCTION and asks "is this id stamped with a shard?". A row with no
-// minted id of its own is invisible to it. `WaitpointTag` was exactly that row, and it wrote
-// to a gen-1 store for a gen-2 environment while every functional test passed, because the
-// read path fans out over every store and found it anyway. This catalog is exhaustive over row
-// PLACEMENT instead, and asks a different question of each write: what does it route by?
+// The waitpoint mint census is exhaustive over id production and cannot see a row with no minted
+// id, which is how `WaitpointTag` wrote to a gen-1 store for a gen-2 environment with every
+// functional test passing. This is exhaustive over placement instead: what does each write route
+// by? The combination that must never exist is residency-only routing with a silent miss.
 //
-// The one combination that must never exist is a write which routes by nothing better than the
-// binary residency hint AND whose miss is silent. A silent miss puts a row on a database its
-// owner does not live on, with no error at write time and no symptom at read time.
-//
-// PURE module: no store import, no Prisma, no env. It is data about the source, checked
-// against the source by the proof test.
+// Pure module: no store import, no Prisma, no env.
 
-/** What the routing decision is made from. */
-type PlacementBasis =
-  /** The row's own id, which carries its shard. Safe: the row lands where its id says. */
-  | "own-id"
-  /** An owning row's id (a run, a batch). Safe: the row follows its owner. */
-  | "owner-id"
-  /** An explicit shard key passed by the caller, for rows with no routable id at all. */
-  | "shard-hint"
-  /** Partitioned or summed across every store, gen-2 shards included. Safe: nothing to miss. */
-  | "fan-out"
-  /** Nothing but the binary NEW/LEGACY residency hint. Cannot name a gen-2 shard. */
-  | "residency";
+/** What the routing decision is made from. `residency` cannot name a gen-2 shard. */
+type PlacementBasis = "own-id" | "owner-id" | "shard-hint" | "fan-out" | "residency";
 
 /**
- * What happens when a write is routed to a database that does not hold the row.
- *
- * `loud` — Prisma raises "no record was found for an update" and the caller sees it. Still a
- * defect, but a visible one: this is how the gen-2 batch-completion hang was found.
- *
- * `silent` — the write succeeds against the wrong database. A create or an upsert inserts a
- * new row there; an `updateMany` reports zero rows affected, which callers read as "nothing
- * to do". Nothing is logged and nothing fails.
+ * `loud` — Prisma raises "no record was found for an update" and the caller sees it.
+ * `silent` — the write succeeds on the wrong database. A create inserts a row there; an
+ * `updateMany` reports zero rows affected, which callers read as "nothing to do".
  */
 type MissMode = "loud" | "silent";
 
 export type PlacementSite = {
-  /** Method name on the `RunStore` interface. */
   method: string;
   basis: PlacementBasis;
   missMode: MissMode;
   /**
-   * Routing expressions this method's implementation contains, verbatim, as they appear in
-   * `runOpsStore.ts`. The proof test requires each one to still be present, so weakening a
-   * route (dropping a shard hint, swapping an id for a residency fallback) fails here first.
-   *
-   * A method with several arms lists all of them: the FIRST arm that matches at runtime is
-   * what routes, so a set that looks safe on its last arm is not evidence of anything.
+   * Routing expressions the implementation contains, verbatim. The proof test requires each to
+   * still be present, so weakening a route fails here first. List every arm: the first arm that
+   * matches is what routes, so a set that looks safe on its last arm proves nothing.
    */
   routes: readonly string[];
   /** Required for `residency` and `fan-out`, where safety is a claim rather than a mechanism. */
   why?: string;
 };
 
-/**
- * The unremarkable majority: a method handed a run id, routing on it. Listed by name rather
- * than as 30 identical entries, because 30 identical entries get rubber-stamped in review and
- * a census nobody reads is decorative.
- */
+/** Handed a run id, routing on it. Listed by name; 20 identical entries would be rubber-stamped. */
 export const ROUTES_BY_GIVEN_RUN_ID: readonly string[] = [
   "startAttempt",
   "completeAttemptSuccess",
@@ -87,10 +57,8 @@ export const ROUTES_BY_GIVEN_RUN_ID: readonly string[] = [
   "pushRealtimeStream",
 ];
 
-/** The shared routing expression every member of the list above contains. */
 export const GIVEN_RUN_ID_ROUTE = "#routeForWrite(runId)";
 
-/** Writes whose routing is worth stating one by one. */
 export const PLACEMENT_SITES: readonly PlacementSite[] = [
   {
     method: "runInTransaction",
@@ -237,10 +205,9 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
 ];
 
 /**
- * Reads. Listed only so that the union of reads and writes covers the interface exactly: a new
- * method called `getOrCreateThing` would otherwise pass for a read on the strength of its name.
- * Read routing is not audited here; a read that probes the wrong store finds nothing and moves
- * on, which is a latency and correctness question rather than a placement one.
+ * Reads, listed only so the union covers the interface exactly: a new method named
+ * `getOrCreateThing` would otherwise pass for a read on the strength of its name. Read routing is
+ * not audited here, because a read that probes the wrong store finds nothing and moves on.
  */
 export const READ_ONLY_METHODS: readonly string[] = [
   "findRun",

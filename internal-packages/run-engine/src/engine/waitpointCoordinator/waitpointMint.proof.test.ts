@@ -21,13 +21,8 @@ function count(source: string, pattern: RegExp): number {
   return (source.match(pattern) ?? []).length;
 }
 
-// Every production `.ts` under a root, walked rather than listed: a mint added in a new
-// file, or moved back into `systems/` where these all lived until the coordinator seam was
-// extracted, has to be visible here or the census is decorative.
-//
-// Test-support trees are excluded deliberately. A helper that writes a row through raw
-// Prisma never reaches the routing store, so it cannot misroute; requiring it to be
-// catalogued would fill the census with sites that carry no risk.
+// Walked rather than listed, so a mint added in a new file is still visible. Test-support trees
+// are excluded: a helper writing through raw Prisma never reaches the routing store.
 const TEST_SUPPORT_DIRS = new Set(["tests", "__tests__", "fixtures"]);
 
 function walk(relativeRoot: string): string[] {
@@ -76,9 +71,7 @@ describe("waitpoint mint census — the catalog matches the source", () => {
     expect(SCANNED).toContain("internal-packages/run-engine/src/engine/systems/waitpointSystem.ts");
   });
 
-  // Per EXPRESSION, not per file: this fails for a fifth mint added inside an
-  // already-catalogued file, AND for a swapped anchor — mintWaitpointIdFor(undefined) in
-  // place of the run id — which a bare call-count would wave through.
+  // Per expression, not per file, so a swapped anchor fails too and not just a new site.
   it.each(SCANNED)("%s has exactly the mint expressions the catalog claims", (file) => {
     const source = read(file);
     const expected = expectedMints(file);
@@ -90,20 +83,17 @@ describe("waitpoint mint census — the catalog matches the source", () => {
       });
     }
 
-    // No mint in the file beyond the ones the catalog accounts for.
     const accounted = [...expected.values()].reduce((a, b) => a + b, 0);
     expect(count(source, MINT_CALL)).toBe(accounted);
   });
 
   it.each(SCANNED)("%s mints no waitpoint id with the un-stamped helper", (file) => {
-    // The regex matches tokens inside comments too — deliberate. Any textual addition
-    // forces the census to be reconciled, so a new site cannot land unnoticed.
+    // Matches inside comments too, deliberately: any textual addition forces a reconcile.
     expect(count(read(file), UNSTAMPED_MINT)).toBe(0);
   });
 
   it.each(SCANNED)("%s writes a waitpoint row only if it is catalogued", (file) => {
-    // A create with NO id is the worst case: Prisma's @default(cuid()) then mints a cuid on
-    // a gen-2 shard after the write, which no stamp check can see.
+    // A create with no id is the worst case: @default(cuid()) then mints one after the write.
     const writes = count(read(file), WAITPOINT_WRITE);
     const catalogued = WAITPOINT_MINT_SITES.some((s) => s.site === file);
     expect(writes === 0 || catalogued).toBe(true);

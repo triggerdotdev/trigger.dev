@@ -76,10 +76,8 @@ describe("mintWaitpointIdFor", () => {
 });
 
 describe("resolveShard shape checks match the decoding parsers", () => {
-  // resolveShard used to decode the 24-char core to recover a timestamp and then discard
-  // it, which cost ~10x a shape check on the router's hot path. The alphabet is [0-9a-v],
-  // so "the shape matches" and "the decode would not throw" are the same predicate. These
-  // pin that equivalence, because a drift here misroutes rather than erroring.
+  // The alphabet is [0-9a-v], so "the shape matches" and "the decode would not throw" are the
+  // same predicate. These pin that equivalence: a drift misroutes rather than erroring.
   const classifyByDecode = (body: string): string => {
     const genTwo = parseRunOpsIdV2Body(body);
     if (genTwo) return genTwo.shard;

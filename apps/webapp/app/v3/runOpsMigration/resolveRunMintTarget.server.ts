@@ -14,11 +14,8 @@ const defaultDeps: RunMintDeps = {
 };
 
 /**
- * Where one run mints. Two stages, and the second runs only for a ROOT run already on the
- * run-ops path: a child inherits its parent's shard by id-shape, so a tree never splits.
- *
- * Every run-mint path routes through here. The branch used to be duplicated per service,
- * and one copy had already drifted into minting gen-1 for a gen-2 parent.
+ * Where one run mints. The second stage runs only for a root run already on the run-ops path: a
+ * child inherits its parent's shard by id-shape, so a tree never splits across shards.
  */
 export async function resolveRunMintTarget(args: {
   environment: { organizationId: string; id: string; orgFeatureFlags?: unknown };
@@ -27,8 +24,8 @@ export async function resolveRunMintTarget(args: {
   deps?: Partial<RunMintDeps>;
 }): Promise<MintTarget> {
   if (args.parentRunFriendlyId) {
-    // The region still travels: it takes index 24 for an inherited gen-1 parent, exactly as
-    // it did before this branch. A gen-2 parent's shardChar outranks it.
+    // The region still travels: it takes index 24 for an inherited gen-1 parent, and a gen-2
+    // parent's shardChar outranks it.
     return { ...resolveInheritedMintKind(args.parentRunFriendlyId), region: args.region };
   }
 
@@ -49,8 +46,7 @@ export async function resolveRunMintTarget(args: {
     orgFeatureFlags: args.environment.orgFeatureFlags,
   });
 
-  // A reserved key means gen-1, which is the state of every deployment that has configured
-  // no shard. Only a single-char key names a gen-2 shard.
+  // A reserved key means gen-1, the state of every deployment with no shard configured.
   return shard === "new" || shard === "legacy"
     ? { kind, region: args.region }
     : { kind, shardChar: shard, region: args.region };

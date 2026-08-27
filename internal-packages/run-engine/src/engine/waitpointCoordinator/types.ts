@@ -25,10 +25,7 @@ export type WaitpointCoordinator = {
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
-    /**
-     * The run this waitpoint belongs to. Its id names the shard the row must land on, and
-     * this write bypasses the routing store's stamp check, so an unstamped id is silent here.
-     */
+    /** Names the shard the row lands on. This write skips the router's stamp check. */
     anchorRunId: string;
   }): AssociatedWaitpointData;
   createAssociatedWaitpoint(params: {
@@ -117,13 +114,9 @@ export type CreateDateTimeWaitpointParams = {
   /**
    * When set, the waitpoint co-locates with this run's DB and the dedup probe targets it.
    *
-   * Optional in the type, but every production caller supplies it: the only entry point is the
-   * wait.duration route, which is keyed on a run friendly id. There is deliberately NO standalone
-   * arm here — unlike `createManualWaitpoint`, this type carries no `standaloneShardKey`, so a
-   * caller that omits `runId` on a gen-2 environment mints a cuid and routes by residency, landing
-   * the row on a gen-1 store while the run that waits on it lives on a shard. Nothing would fail at
-   * write time. Before adding a caller that omits `runId`, give this type a shard hint the way the
-   * MANUAL path has one.
+   * Every production caller supplies it, and there is deliberately no standalone arm. Omitting it
+   * on a gen-2 environment mints a cuid and lands the row on a gen-1 store, silently. A standalone
+   * caller needs a shard hint here first, as `createManualWaitpointParams` has.
    */
   runId?: string;
   projectId: string;
@@ -147,11 +140,8 @@ export type CreateManualWaitpointParams = {
    */
   standaloneResidency?: "NEW" | "LEGACY";
   /**
-   * The environment's mint shard, for a STANDALONE token with no owning run. It selects the
-   * shard the token's id is stamped for. When it names a gen-2 shard the implementation must
-   * IGNORE `standaloneResidency`: a residency hint outranks the id shape in the router and
-   * can only name a gen-1 store, so honouring it would land the row there while its
-   * completion routes to the shard. Only a Postgres implementation reads this.
+   * The environment's mint shard, for a standalone token with no owning run. When it names a gen-2
+   * shard the implementation must ignore `standaloneResidency`, which can only name a gen-1 store.
    */
   standaloneShardKey?: ShardKey;
 };

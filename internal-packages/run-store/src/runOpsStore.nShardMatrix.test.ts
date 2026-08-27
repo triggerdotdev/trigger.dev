@@ -304,12 +304,9 @@ describe("RoutingRunStore four-store matrix — pagination merge", () => {
   );
 });
 
-// A tag row is the one run-ops row with no id the router can read and no owning row to follow.
-// The residency hint can only ever name a gen-1 store, so before the caller passed an explicit
-// shard key these landed on a gen-1 database while the tokens they describe lived on the shard.
-// Nothing failed and nothing was logged: reads fan out over every store, so the row was still
-// found afterwards. Only a per-database count can see it, which is why this test is here and not
-// in the fake-store suite.
+// A tag has no id to route by and no owning row to follow, and `residency` names only a gen-1
+// store. Nothing fails when the row is misplaced, because reads fan out and find it anyway, so
+// only a per-database count can see it. Hence container tests rather than the fake-store suite.
 describe("four-store matrix — a waitpoint tag lands on its environment's shard", () => {
   matrixTest(
     "the shard key routes the tag to shard a, and no gen-1 store receives it",
@@ -353,9 +350,8 @@ describe("four-store matrix — a waitpoint tag lands on its environment's shard
         "b"
       );
 
-      // Same tag NAME on both shards, each scoped to its own environment. The unique constraint
-      // is (environmentId, name), so a collapse onto one database would still insert two rows —
-      // the failure to catch is placement, not a constraint violation.
+      // The unique constraint is per-database, so a collapse onto one database still inserts two
+      // rows. The failure to catch is placement, not a constraint violation.
       const onA = await shardPrismas[0]!.waitpointTag.findMany({ where: { name: "shared-name" } });
       const onB = await shardPrismas[1]!.waitpointTag.findMany({ where: { name: "shared-name" } });
       expect(onA.map((r) => r.environmentId)).toEqual([envA.environmentId]);
@@ -394,8 +390,7 @@ describe("four-store matrix — a waitpoint tag lands on its environment's shard
         "a"
       );
 
-      // The read side takes no shard hint, so this is what proves the write is still reachable
-      // through the normal path rather than only by querying the shard directly.
+      // The read takes no shard hint, so this proves the write is reachable the normal way.
       const found = await router.findManyWaitpointTags({
         where: { environmentId: env.environmentId },
       });
@@ -403,23 +398,20 @@ describe("four-store matrix — a waitpoint tag lands on its environment's shard
     }
   );
 
-  // The scenario a real rollout produces: an environment has tags, then it is pinned to a shard.
-  // Its existing tag rows stay on the gen-1 store, and its next write of the SAME name goes to the
-  // shard with an independent cuid, because the unique index is per-database. Deduping the read by
-  // id would then list one tag name twice.
+  // What a real rollout produces: an environment has tags, then it is pinned. Its old rows stay on
+  // the gen-1 store and the same name goes to the shard with its own cuid, so an id-keyed dedupe
+  // would list the name twice.
   matrixTest(
     "the same tag name on a gen-1 store and a shard is listed once",
     async ({ legacyPrisma, newPrisma, shardPrismas }) => {
       const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
       const env = await seedLegacyEnv(legacyPrisma, "tag_dupe");
 
-      // Before the pin: the tag lands on the gen-1 new store by residency.
       await router.upsertWaitpointTag(
         { environmentId: env.environmentId, name: "prod", projectId: env.projectId },
         undefined,
         "NEW"
       );
-      // After the pin: the same name lands on shard a, with its own id.
       await router.upsertWaitpointTag(
         { environmentId: env.environmentId, name: "prod", projectId: env.projectId },
         undefined,
@@ -427,15 +419,13 @@ describe("four-store matrix — a waitpoint tag lands on its environment's shard
         "a"
       );
 
-      // Two physical rows, one per database, with different ids. That is expected and is what the
-      // per-database unique index permits.
+      // Two physical rows with different ids, which the per-database unique index permits.
       const onNew = await newPrisma.waitpointTag.findMany({ where: { name: "prod" } });
       const onShard = await shardPrismas[0]!.waitpointTag.findMany({ where: { name: "prod" } });
       expect(onNew).toHaveLength(1);
       expect(onShard).toHaveLength(1);
       expect(onNew[0]!.id).not.toBe(onShard[0]!.id);
 
-      // One logical tag through the read path.
       const found = await router.findManyWaitpointTags({
         where: { environmentId: env.environmentId },
       });
@@ -463,9 +453,8 @@ describe("four-store matrix — a waitpoint tag lands on its environment's shard
         "b"
       );
 
-      // Queried WITHOUT an environment filter, so both rows reach the merge together. Filtering by
-      // environmentId per call would hide a name-only dedupe: each result set would hold one row
-      // and collapse to itself, so the test would pass whatever the key was.
+      // No environment filter, so both rows reach the merge together. Filtering per call would
+      // hide a name-only dedupe: each result set would hold one row and collapse to itself.
       const both = await router.findManyWaitpointTags({ where: { name: "prod" } });
 
       expect(both.map((r) => r.environmentId).sort()).toEqual(

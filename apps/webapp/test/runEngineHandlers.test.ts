@@ -490,15 +490,11 @@ describe("runEngineHandlers batch completion", () => {
 });
 
 describe("runEngineHandlers batch residency routing", () => {
-  // A gen-2 batch lives on its own shard. The binary probe below it looks only on the
-  // NEW store and then assumes LEGACY, so without a shard arm the completion update runs
-  // on a database that has no such row: Prisma throws "no record was found for an
-  // update", the callback dies before tryCompleteBatch, the BATCH waitpoint stays
-  // PENDING and the parent run waits forever with nothing logged as a hang.
-  // Real clients on two real databases, so the assertion is where the rows landed rather
-  // than which object came back. The shard is prisma14 and BOTH gen-1 slots are prisma17:
-  // every wrong resolution therefore lands on a database that holds no such batch, which is
-  // the production failure this arm exists to prevent.
+  // See resolveBatchRunOpsWriter: without a shard arm a gen-2 batch resolves to a store holding
+  // no such row, and the parent waits forever with nothing logged.
+  // Real databases, so the assertion is where the rows landed rather than which object came back.
+  // The shard is prisma14 and both gen-1 slots are prisma17, so every wrong resolution lands on a
+  // database holding no such batch.
   heteroPostgresTest(
     "a gen-2 batch commits on its shard, and the gen-1 store stays empty",
     async ({ prisma14, prisma17 }) => {
@@ -541,8 +537,7 @@ describe("runEngineHandlers batch residency routing", () => {
         }
       );
 
-      // Committed on the shard, and the callback survived to run — the hang was the callback
-      // dying on "no record was found for an update" before it could reach this.
+      // The hang was the callback dying on "no record was found for an update" before this.
       const onShard = await prisma14.batchTaskRun.findFirstOrThrow({ where: { id: gen2BatchId } });
       expect(onShard.status).toBe("PARTIAL_FAILED");
       expect(
@@ -550,7 +545,6 @@ describe("runEngineHandlers batch residency routing", () => {
       ).toHaveLength(1);
       expect(completed).toBe(gen2BatchId);
 
-      // Nothing for this batch reached the gen-1 database.
       expect(await prisma17.batchTaskRun.findMany({ where: { id: gen2BatchId } })).toHaveLength(0);
       expect(
         await prisma17.batchTaskRunError.findMany({ where: { batchTaskRunId: gen2BatchId } })
@@ -558,9 +552,8 @@ describe("runEngineHandlers batch residency routing", () => {
     }
   );
 
-  // Kept on a throwing double deliberately: "the NEW store is never probed" is an assertion
-  // about a call that must not happen, and only a client that throws when touched can make
-  // that observable. A real client would simply return null and the test would still pass.
+  // A throwing double deliberately: this asserts a call that must NOT happen, and a real client
+  // would return null and pass either way.
   it("a gen-2 batch id never probes the gen-1 store", async () => {
     const shardWriter = {} as never;
 

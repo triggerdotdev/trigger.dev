@@ -8,9 +8,8 @@ import {
 import { batchIdForMintKind } from "./mintBatchFriendlyId.server";
 import { resolveRunMintTarget } from "./resolveRunMintTarget.server";
 
-// The gate is off when RUN_OPS_SHARDS is unset OR runOpsMintShardSet is empty. Either way
-// resolveMintShard answers "new", so no shard char reaches a MintTarget. Every assertion
-// below is "the id is what it was before gen-2 existed".
+// The gate is off when RUN_OPS_SHARDS is unset or runOpsMintShardSet is empty; either way
+// resolveMintShard answers "new". Every assertion is "the id is what it was before gen-2".
 const offShard = vi.fn().mockResolvedValue("new" as const);
 const environment = { organizationId: "org_1", id: "env_1", orgFeatureFlags: {} };
 
@@ -42,8 +41,8 @@ describe("gate off — run mint paths", () => {
   });
 
   it("a child of a gen-1 parent keeps the caller's region char", async () => {
-    // The pre-split code passed the region on BOTH arms, so a child run stamped the
-    // requested region. Dropping it on the inherited arm would silently stamp the default.
+    // The pre-split code passed the region on both arms; dropping it on the inherited arm would
+    // silently stamp the default.
     const target = await resolveRunMintTarget({
       environment,
       parentRunFriendlyId: `run_${"a".repeat(24)}01`,

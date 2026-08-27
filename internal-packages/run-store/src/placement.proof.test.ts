@@ -24,18 +24,16 @@ const TYPES = "internal-packages/run-store/src/types.ts";
 const STORE = "internal-packages/run-store/src/runOpsStore.ts";
 
 /**
- * Method names declared on the `RunStore` interface, overloads collapsed. Parsed from the
- * source rather than imported as a type, because a type-level check cannot fail a build with
- * a message naming the method somebody forgot to classify.
+ * Method names on the `RunStore` interface, overloads collapsed. Parsed from source rather than
+ * imported as a type, so a failure can name the method somebody forgot to classify.
  */
 function interfaceMethods(): string[] {
   const source = read(TYPES);
   const start = source.indexOf("export interface RunStore {");
   expect(start).toBeGreaterThan(-1);
 
-  // Declarations sit at exactly two-space indent inside the interface. Trailing members of
-  // later declarations in the file are harmless: the union check below is what matters, and a
-  // stray name would show up as uncatalogued rather than being quietly dropped.
+  // Declarations sit at two-space indent. A stray name from later in the file shows up as
+  // uncatalogued rather than being dropped.
   const body = source.slice(start);
   const names = new Set<string>();
   for (const match of body.matchAll(/^ {2}([a-zA-Z][A-Za-z0-9]*)(<[^\n]*?>)?\(/gm)) {
@@ -45,14 +43,11 @@ function interfaceMethods(): string[] {
 }
 
 /**
- * The source of one method implementation: from its declaration to the next member at the same
- * indent. Deliberately not brace-matching — a signature carrying an inline object type makes
- * that fiddly, and getting it subtly wrong is how a census ends up reporting that a method has
- * no routing call when it has one on the next line.
+ * One method implementation: its declaration to the next member at the same indent. Not
+ * brace-matching, which a signature carrying an inline object type makes fiddly to get right.
  */
 function methodBody(source: string, method: string): string | undefined {
-  // The LAST declaration, not the first: an overloaded method leads with bodiless signatures,
-  // and picking one of those reports the implementation as having no routing call at all.
+  // The last declaration: an overloaded method leads with bodiless signatures.
   const declaration = new RegExp(`^ {2}(?:async )?${method}(?:<[^\\n]*?>)?\\(`, "gm");
   const matches = [...source.matchAll(declaration)];
   const start = matches.at(-1)?.index;
@@ -76,8 +71,7 @@ describe("run-store placement census — every write states what it routes by", 
     expect(methods).toContain("findRun");
   });
 
-  // The whole point of the census. A method added to `RunStore` is uncatalogued, and
-  // uncatalogued fails: nobody gets to add a write without saying how it is placed.
+  // The point of the census: nobody adds a write without saying how it is placed.
   it("classifies every interface method as exactly one of read or write", () => {
     const methods = interfaceMethods();
     const { all } = catalogued();
@@ -102,8 +96,7 @@ describe("run-store placement census — every write states what it routes by", 
     expect({ duplicates }).toEqual({ duplicates: [] });
   });
 
-  // The forbidden cell. A write that can only name NEW or LEGACY, whose miss produces no
-  // error, is a row placed on a database its owner does not live on with nothing to detect
+  // The forbidden cell: a row on a database its owner does not live on, with nothing to detect
   // it. `upsertWaitpointTag` sat here and every functional test passed.
   it("has no write that routes on residency alone and misses silently", () => {
     const forbidden = PLACEMENT_SITES.filter(
@@ -113,9 +106,7 @@ describe("run-store placement census — every write states what it routes by", 
     expect({ residencyOnlySilentWrites: forbidden }).toEqual({ residencyOnlySilentWrites: [] });
   });
 
-  // `residency` and `fan-out` are both claims about safety rather than mechanisms that
-  // enforce it, so each one has to be argued in the catalog. Writing that sentence honestly
-  // for a tag is what would have caught the defect this census exists for.
+  // Both are claims about safety rather than mechanisms, so each has to be argued in the catalog.
   it("requires a written justification wherever safety is a claim, not a mechanism", () => {
     const unjustified = PLACEMENT_SITES.filter(
       (s) => (s.basis === "residency" || s.basis === "fan-out") && (s.why ?? "").trim().length < 40
@@ -129,11 +120,8 @@ describe("run-store placement census — every write states what it routes by", 
     expect({ withoutRoutes: empty }).toEqual({ withoutRoutes: [] });
   });
 
-  // Anchors the catalog to the source. Weakening a route — dropping the shard hint, swapping
-  // an id for a residency fallback, renaming a helper — fails here rather than in production.
-  // Scoped to the method's own body, not the whole file. Three creates share
-  // `#routeOrNew(params.data.id)`, so a file-wide search still passes when one of them loses its
-  // route and a sibling keeps it — which is the exact hole this census exists to close.
+  // Scoped to the method's own body, not the whole file: three creates share
+  // `#routeOrNew(params.data.id)`, so a file-wide search passes when one loses its route.
   it.each(PLACEMENT_SITES)("$method still contains the routes the catalog claims", (site) => {
     const body = methodBody(read(STORE), site.method);
 

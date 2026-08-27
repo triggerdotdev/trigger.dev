@@ -239,8 +239,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // The two `nanoid(24)` calls below are deliberately separate and produce DIFFERENT values:
     // the upsert `where` key must not match the `create` key, or a guaranteed-miss upsert becomes
     // a possible update. Do not hoist either to a shared constant.
-    // The id is stamped for the anchor run's shard, so the waitpoint's own row is routable
-    // and its completion write needs no probe. A gen-1 or legacy anchor keeps a cuid.
+    // Stamped for the anchor run's shard, so the row is routable and completion needs no probe.
     const upsertArgs = {
       where: {
         environmentId_idempotencyKey: {
@@ -282,8 +281,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // owner, blocked later by whichever run waits on it (possibly cross-DB, resolved by the
     // run-co-resident block edge + completion fan-out). With no owner it reads the env mint kind via
     // `standaloneResidency` so a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
-    // A gen-2 standalone token carries its shard in its own id, so it passes NO hint and lets
-    // the id route: `residency` outranks the id shape and can only name a gen-1 store.
+    // A gen-2 standalone token carries its shard in its own id, so it passes no residency hint.
     const standaloneShard = runId ? undefined : standaloneShardKey;
     const isGen2Standalone =
       standaloneShard !== undefined && standaloneShard !== "new" && standaloneShard !== "legacy";

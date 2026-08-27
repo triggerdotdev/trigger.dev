@@ -959,9 +959,8 @@ export interface RunStore {
     // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
     // instead of defaulting to LEGACY. Single-store impls ignore it.
     residency?: Residency,
-    // The environment's gen-2 mint shard, when it has one. A tag carries no id the router can
-    // read, so this is the only way its row can follow its environment's tokens onto a shard.
-    // Takes precedence over `residency`, which can only ever name a gen-1 store.
+    // The environment's gen-2 mint shard. A tag has no id to route by, so this is the only way its
+    // row follows its environment's tokens onto a shard. Outranks `residency`.
     shardKey?: ShardKey
   ): Promise<WaitpointTag>;
   findManyWaitpointTags(

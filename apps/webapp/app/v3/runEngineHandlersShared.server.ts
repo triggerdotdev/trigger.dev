@@ -87,10 +87,9 @@ export async function resolveBatchRunOpsWriter(
     shards?: ReadonlyArray<{ key: string; writer: RunOpsPrismaClient }>;
   }
 ): Promise<RunOpsPrismaClient> {
-  // A gen-2 batch names its own shard in its id, so route by that and never probe. The
-  // probe below is binary — NEW, else assume LEGACY — so a gen-2 batch would fall through
-  // to a store that holds no such row, and the completion update would throw before the
-  // batch waitpoint could complete, leaving the parent run blocked with nothing logged.
+  // A gen-2 batch names its shard in its id. The probe below is binary, so without this a gen-2
+  // batch resolves to a store holding no such row and the update throws before the batch waitpoint
+  // completes, leaving the parent blocked with nothing logged.
   const shardKey = resolveShard(batchId);
   if (shardKey !== "new" && shardKey !== "legacy") {
     const shard = deps.shards?.find((s) => s.key === shardKey);
