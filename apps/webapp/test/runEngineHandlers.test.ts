@@ -495,11 +495,76 @@ describe("runEngineHandlers batch residency routing", () => {
   // on a database that has no such row: Prisma throws "no record was found for an
   // update", the callback dies before tryCompleteBatch, the BATCH waitpoint stays
   // PENDING and the parent run waits forever with nothing logged as a hang.
-  it("a gen-2 batch resolves to its own shard writer", async () => {
-    const shardWriter = {} as never; // identity is the whole assertion; no database is touched
-    const gen2BatchId = `${"a".repeat(24)}a2`;
+  // Real clients on two real databases, so the assertion is where the rows landed rather
+  // than which object came back. The shard is prisma14 and BOTH gen-1 slots are prisma17:
+  // every wrong resolution therefore lands on a database that holds no such batch, which is
+  // the production failure this arm exists to prevent.
+  heteroPostgresTest(
+    "a gen-2 batch commits on its shard, and the gen-1 store stays empty",
+    async ({ prisma14, prisma17 }) => {
+      const shardSeed = await seedEnvironment(prisma14, "g2shard");
+      const gen2BatchId = `${"a".repeat(24)}a2`;
+      await seedBatch(prisma14, {
+        id: gen2BatchId,
+        friendlyId: `batch_${gen2BatchId}`,
+        runtimeEnvironmentId: shardSeed.environment.id,
+      });
 
-    const writer = await resolveBatchRunOpsWriter(gen2BatchId, {
+      const shards = [{ key: "a", writer: prisma14 }] as const;
+
+      const writer = await resolveBatchRunOpsWriter(gen2BatchId, {
+        newReplica: prisma17,
+        newWriter: prisma17,
+        legacyWriter: prisma17,
+        shards: shards as never,
+      });
+      expect(writer).toBe(prisma14);
+
+      let completed: string | undefined;
+      await handleBatchCompletion(
+        {
+          batchId: gen2BatchId,
+          runIds: ["run_friendly_1"],
+          successfulRunCount: 1,
+          failedRunCount: 1,
+          failures: [failure(0, "TRIGGER_ERROR")],
+        },
+        {
+          splitEnabled: true,
+          newReplica: prisma17,
+          newWriter: prisma17,
+          legacyWriter: prisma17,
+          shards: shards as never,
+          tryCompleteBatch: async (id) => {
+            completed = id;
+          },
+        }
+      );
+
+      // Committed on the shard, and the callback survived to run — the hang was the callback
+      // dying on "no record was found for an update" before it could reach this.
+      const onShard = await prisma14.batchTaskRun.findFirstOrThrow({ where: { id: gen2BatchId } });
+      expect(onShard.status).toBe("PARTIAL_FAILED");
+      expect(
+        await prisma14.batchTaskRunError.findMany({ where: { batchTaskRunId: gen2BatchId } })
+      ).toHaveLength(1);
+      expect(completed).toBe(gen2BatchId);
+
+      // Nothing for this batch reached the gen-1 database.
+      expect(await prisma17.batchTaskRun.findMany({ where: { id: gen2BatchId } })).toHaveLength(0);
+      expect(
+        await prisma17.batchTaskRunError.findMany({ where: { batchTaskRunId: gen2BatchId } })
+      ).toHaveLength(0);
+    }
+  );
+
+  // Kept on a throwing double deliberately: "the NEW store is never probed" is an assertion
+  // about a call that must not happen, and only a client that throws when touched can make
+  // that observable. A real client would simply return null and the test would still pass.
+  it("a gen-2 batch id never probes the gen-1 store", async () => {
+    const shardWriter = {} as never;
+
+    const writer = await resolveBatchRunOpsWriter(`${"a".repeat(24)}a2`, {
       newReplica: {
         batchTaskRun: {
           findFirst: async () => {
