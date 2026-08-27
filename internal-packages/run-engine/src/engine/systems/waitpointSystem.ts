@@ -1,4 +1,5 @@
 import { timeoutError } from "@trigger.dev/core/v3";
+import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
   TaskRun,
@@ -184,6 +185,7 @@ export class WaitpointSystem {
     timeout,
     tags,
     standaloneResidency,
+    standaloneShardKey,
   }: {
     runId?: string;
     environmentId: string;
@@ -196,6 +198,7 @@ export class WaitpointSystem {
     // the token lands on the run-ops DB (NEW) in a fully-minted-new deployment instead of defaulting
     // to LEGACY by its cuid id-shape. Ignored when `runId` is set (co-location wins).
     standaloneResidency?: "NEW" | "LEGACY";
+    standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const result = await this.coordinator.createManualWaitpoint({
       runId,
@@ -206,6 +209,7 @@ export class WaitpointSystem {
       timeout,
       tags,
       standaloneResidency,
+      standaloneShardKey,
     });
 
     if (result.kind === "cached") {
@@ -721,11 +725,17 @@ export class WaitpointSystem {
   public buildRunAssociatedWaitpoint({
     projectId,
     environmentId,
+    anchorRunId,
   }: {
     projectId: string;
     environmentId: string;
+    anchorRunId: string;
   }) {
-    return this.coordinator.mintAssociatedWaitpointData({ projectId, environmentId });
+    return this.coordinator.mintAssociatedWaitpointData({
+      projectId,
+      environmentId,
+      anchorRunId,
+    });
   }
 
   /**
@@ -807,7 +817,11 @@ export class WaitpointSystem {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
       // Create waitpoint and link to run atomically
-      const waitpointData = this.buildRunAssociatedWaitpoint({ projectId, environmentId });
+      const waitpointData = this.buildRunAssociatedWaitpoint({
+        projectId,
+        environmentId,
+        anchorRunId: runId,
+      });
 
       const waitpoint = await this.coordinator.createAssociatedWaitpoint({
         runId,

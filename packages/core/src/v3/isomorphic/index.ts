@@ -1,5 +1,6 @@
 export * from "./friendlyId.js";
 export * from "./runOpsResidency.js";
+export * from "./waitpointMint.js";
 export * from "./duration.js";
 export * from "./maxDuration.js";
 export * from "./queueName.js";
