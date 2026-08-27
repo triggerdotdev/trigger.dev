@@ -1,4 +1,7 @@
 import type { RedisOptions } from "@internal/redis";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
+import { WaitpointStoreCoordinator } from "../../waitpointCoordinator/storeCoordinator.js";
+import { toPrismaWaitpoint } from "../../waitpointCoordinator/waitpointShape.js";
 import { generateRunOpsId, parseWaitpointId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { RunEngine } from "../../index.js";
 import type { RunEngineOptions } from "../../types.js";
@@ -58,4 +61,79 @@ export function assertStoreResident(waitpointId: string): void {
         `waitpoint asserts nothing about the store path`
     );
   }
+}
+
+type ArmRead = { arm: WaitpointArm; prisma: PrismaClient; redisOptions: RedisOptions };
+
+/**
+ * Read a waitpoint from whichever system holds it.
+ *
+ * A test that reads `prisma.waitpoint` directly is asserting against Postgres, and the
+ * store path writes no row there for RUN, BATCH or DATETIME. Going through here lets one
+ * expectation hold on both arms.
+ */
+export async function readWaitpointForArm(
+  args: ArmRead & { waitpointId: string }
+): Promise<Waitpoint | null> {
+  if (parseWaitpointId(args.waitpointId).format === "legacy") {
+    return args.prisma.waitpoint.findFirst({ where: { id: args.waitpointId } });
+  }
+
+  const store = new WaitpointStoreCoordinator({ redisOptions: args.redisOptions });
+  try {
+    const held = await store.readWaitpoint(args.waitpointId);
+    return held ? toPrismaWaitpoint(held.record, held.status, held.completion) : null;
+  } finally {
+    await store.quit();
+  }
+}
+
+export type ArmBlockEdge = {
+  waitpointId: string;
+  batchIndex: number | null;
+  waitpoint: Waitpoint;
+};
+
+/**
+ * A run's blocking edges, from both systems.
+ *
+ * Always unions the two rather than switching on the arm, because a run can hold one edge
+ * in each at the same time and a test that saw only half would report the wrong count.
+ */
+export async function readRunBlockEdgesForArm(
+  args: ArmRead & { runId: string }
+): Promise<ArmBlockEdge[]> {
+  const legacy = await args.prisma.taskRunWaitpoint.findMany({
+    where: { taskRunId: args.runId },
+    include: { waitpoint: true },
+  });
+
+  const edges: ArmBlockEdge[] = legacy.map((edge) => ({
+    waitpointId: edge.waitpointId,
+    batchIndex: edge.batchIndex,
+    waitpoint: edge.waitpoint,
+  }));
+
+  if (args.arm !== "store") {
+    return edges;
+  }
+
+  const store = new WaitpointStoreCoordinator({ redisOptions: args.redisOptions });
+  try {
+    const state = await store.readBlockState(args.runId);
+    for (const edge of state.edges) {
+      const held = await store.readWaitpoint(edge.waitpointId);
+      if (held) {
+        edges.push({
+          waitpointId: edge.waitpointId,
+          batchIndex: edge.batchIndex ?? null,
+          waitpoint: toPrismaWaitpoint(held.record, held.status, held.completion),
+        });
+      }
+    }
+  } finally {
+    await store.quit();
+  }
+
+  return edges;
 }
