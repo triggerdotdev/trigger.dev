@@ -13,7 +13,11 @@ export function normalizeObjectStoreLogicalKeyPathname(logicalKey: string): stri
 }
 
 interface IObjectStoreClient {
-  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string>;
+  putObject(
+    key: string,
+    body: ReadableStream | Uint8Array | string,
+    contentType: string
+  ): Promise<string>;
   getObject(key: string): Promise<string>;
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string>;
 }
@@ -48,14 +52,15 @@ class Aws4FetchClient implements IObjectStoreClient {
 
   async putObject(
     key: string,
-    body: ReadableStream | string,
+    body: ReadableStream | Uint8Array | string,
     contentType: string
   ): Promise<string> {
     const objectUrl = this.buildUrl(key);
     const response = await this.awsClient.fetch(objectUrl, {
       method: "PUT",
       headers: { "Content-Type": contentType },
-      body,
+      // Byte bodies are valid BodyInit at runtime; the ambient fetch types don't say so.
+      body: body instanceof Uint8Array ? (body as unknown as BodyInit) : body,
     });
     if (!response.ok) {
       throw new Error(`Failed to upload to object store: ${response.statusText}`);
@@ -120,7 +125,7 @@ class AwsSdkClient implements IObjectStoreClient {
 
   async putObject(
     key: string,
-    body: ReadableStream | string,
+    body: ReadableStream | Uint8Array | string,
     contentType: string
   ): Promise<string> {
     const s3Key = this.toS3ObjectKey(key);
@@ -204,7 +209,11 @@ export class ObjectStoreClient implements IObjectStoreClient {
     );
   }
 
-  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
+  putObject(
+    key: string,
+    body: ReadableStream | Uint8Array | string,
+    contentType: string
+  ): Promise<string> {
     return this.impl.putObject(key, body, contentType);
   }
 

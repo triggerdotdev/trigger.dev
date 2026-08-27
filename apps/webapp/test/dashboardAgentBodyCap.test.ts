@@ -1,12 +1,14 @@
 import express from "express";
-import type { Server } from "node:http";
+import http, { type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  AVATAR_MAX_INGRESS_BYTES,
   DASHBOARD_AGENT_MAX_INGRESS_BYTES,
   dashboardAgentBodyCap,
 } from "~/services/dashboardAgentBodyCap.server";
+import { MAX_AVATAR_SIZE_IN_BYTES } from "~/utils/avatarLimits";
 
 // The cap has to hold for a body with no `content-length`: that is the case a route-level
 // check can't cover, because by then the body is already in memory.
@@ -57,6 +59,31 @@ function postChunked(url: string, totalBytes: number, chunkBytes = 16 * 1024) {
     body: Readable.toWeb(body) as ReadableStream,
     // @ts-expect-error — undici needs this for a streamed request body.
     duplex: "half",
+  });
+}
+
+/**
+ * `node:http` sends the path verbatim; `fetch` resolves dot segments client-side, so it cannot
+ * express this request at all.
+ */
+function postRawPath(url: string, path: string, bytes: number) {
+  return new Promise<number>((resolve, reject) => {
+    let settled = false;
+    const request = http.request(
+      { port: Number(new URL(url).port), method: "POST", path },
+      (response) => {
+        response.resume();
+        settled = true;
+        resolve(response.statusCode ?? 0);
+        request.destroy();
+      }
+    );
+
+    // A refusal tears the socket down mid-write; that is the pass, not an error.
+    request.on("error", (error) => {
+      if (!settled) reject(error);
+    });
+    request.end(Buffer.alloc(bytes, "a"));
   });
 }
 
@@ -161,6 +188,54 @@ describe("the dashboard agent's ingress cap", () => {
     const size = DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1024;
 
     const response = await fetch(`${url}/api/v1/runs/env/dev/dashboard-agent`, {
+      method: "POST",
+      body: "x".repeat(size),
+    });
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBe(size);
+  });
+
+  it("refuses an oversized avatar upload before it is buffered", async () => {
+    const { url, buffered } = await listen();
+    const oversized = AVATAR_MAX_INGRESS_BYTES + 512 * 1024;
+
+    const response = await postChunked(`${url}/resources/account/avatar`, oversized).catch(
+      () => undefined
+    );
+
+    if (response) expect(response.status).toBe(413);
+    expect(buffered()).toBeLessThan(oversized);
+  });
+
+  it("caps a dot segment, which the adapter normalizes away before the action runs", async () => {
+    const { url, buffered } = await listen();
+
+    // `/…/avatar/.` reaches the route as `/…/avatar/`, so the cap has to see it that way too.
+    const status = await postRawPath(
+      url,
+      "/resources/account/avatar/.",
+      AVATAR_MAX_INGRESS_BYTES + 1
+    );
+
+    expect(status).toBe(413);
+    expect(buffered()).toBe(0);
+  });
+
+  it("passes an avatar body exactly at the image cap through untouched", async () => {
+    const { url, buffered } = await listen();
+
+    const response = await postChunked(`${url}/resources/account/avatar`, MAX_AVATAR_SIZE_IN_BYTES);
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBe(MAX_AVATAR_SIZE_IN_BYTES);
+  });
+
+  it("leaves the presigned avatar GET path uncapped", async () => {
+    const { url, buffered } = await listen();
+    const size = AVATAR_MAX_INGRESS_BYTES + 1024;
+
+    const response = await fetch(`${url}/resources/account/avatar/user_1/abc.png`, {
       method: "POST",
       body: "x".repeat(size),
     });
