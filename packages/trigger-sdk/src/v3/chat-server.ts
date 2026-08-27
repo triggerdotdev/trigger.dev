@@ -550,6 +550,7 @@ async function openHandoverSession(opts: {
       ? { maxDuration: opts.triggerConfig.maxDuration }
       : {}),
     ...(opts.triggerConfig?.region ? { region: opts.triggerConfig.region } : {}),
+    ...(opts.triggerConfig?.ttl !== undefined ? { ttl: opts.triggerConfig.ttl } : {}),
     ...(opts.triggerConfig?.lockToVersion
       ? { lockToVersion: opts.triggerConfig.lockToVersion }
       : {}),
