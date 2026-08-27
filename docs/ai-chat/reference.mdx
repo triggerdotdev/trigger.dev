@@ -550,10 +550,13 @@ Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data
 Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. Managed-agent hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options. Custom agents parse `payload.metadata` on the initial payload and later input frames before passing it to user code.
 
 ```ts
-chat.withClientData<TSchema>({
+chat.withClientData<TSchema extends TaskSchema>(config: {
   schema: TSchema;
   reportErrorAt?: "turn-end" | "arrival";
-  onValidationError?: (event: { error: unknown; payload: ChatTaskWirePayload }) => Promise<void> | void;
+  onValidationError?: (event: {
+    error: unknown;
+    payload: ChatTaskWirePayload;
+  }) => Promise<void> | void;
 }): ChatBuilder<UIMessage, TSchema>;
 ```
 
