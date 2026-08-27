@@ -26,7 +26,7 @@ export type TimelineEventVariant =
   | "end-cap";
 
 // Timeline item type definitions
-export type TimelineEventDefinition = {
+type TimelineEventDefinition = {
   type: "event";
   id: string;
   title: string;
@@ -38,7 +38,7 @@ export type TimelineEventDefinition = {
   helpText?: string;
 };
 
-export type TimelineLineDefinition = {
+type TimelineLineDefinition = {
   type: "line";
   id: string;
   title: React.ReactNode;
@@ -581,8 +581,6 @@ export type SpanTimelineProps = {
   style?: TimelineStyle;
 };
 
-export type SpanTimelineState = "error" | "pending" | "complete";
-
 export function SpanTimeline({
   startTime,
   duration,
@@ -596,86 +594,84 @@ export function SpanTimeline({
   const visibleEvents = events ?? [];
 
   return (
-    <>
-      <div className="min-w-fit max-w-80">
-        {visibleEvents.map((event, index) => {
-          // Store previous date to compare
-          const prevDate = index === 0 ? null : visibleEvents[index - 1].timestamp;
+    <div className="min-w-fit max-w-80">
+      {visibleEvents.map((event, index) => {
+        // Store previous date to compare
+        const prevDate = index === 0 ? null : visibleEvents[index - 1].timestamp;
 
-          return (
-            <Fragment key={index}>
-              <RunTimelineEvent
-                title={event.name}
-                subtitle={<DateTimeAccurate date={event.timestamp} previousDate={prevDate} />}
-                variant={event.markerVariant}
-                state={state}
-                helpText={event.helpText}
-                style={style}
-              />
-              <RunTimelineLine
-                title={
-                  index === visibleEvents.length - 1
-                    ? // Last event - calculate duration until span start time
-                      formatDuration(event.timestamp, startTime)
-                    : // Calculate duration until next event
-                      formatDuration(event.timestamp, visibleEvents[index + 1].timestamp)
-                }
-                variant={event.lineVariant}
-                state={state}
-                style={style}
-              />
-            </Fragment>
-          );
-        })}
-        <RunTimelineEvent
-          title="Started"
-          subtitle={
-            <DateTimeAccurate
-              date={startTime}
-              previousDate={
-                visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].timestamp : null
-              }
+        return (
+          <Fragment key={index}>
+            <RunTimelineEvent
+              title={event.name}
+              subtitle={<DateTimeAccurate date={event.timestamp} previousDate={prevDate} />}
+              variant={event.markerVariant}
+              state={state}
+              helpText={event.helpText}
+              style={style}
             />
-          }
-          variant={"start-cap-thick"}
+            <RunTimelineLine
+              title={
+                index === visibleEvents.length - 1
+                  ? // Last event - calculate duration until span start time
+                    formatDuration(event.timestamp, startTime)
+                  : // Calculate duration until next event
+                    formatDuration(event.timestamp, visibleEvents[index + 1].timestamp)
+              }
+              variant={event.lineVariant}
+              state={state}
+              style={style}
+            />
+          </Fragment>
+        );
+      })}
+      <RunTimelineEvent
+        title="Started"
+        subtitle={
+          <DateTimeAccurate
+            date={startTime}
+            previousDate={
+              visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].timestamp : null
+            }
+          />
+        }
+        variant={"start-cap-thick"}
+        state={state}
+        helpText={getHelpTextForEvent("Started")}
+        style={style}
+      />
+      {state === "inprogress" ? (
+        <RunTimelineLine
+          title={<LiveTimer startTime={startTime} />}
           state={state}
-          helpText={getHelpTextForEvent("Started")}
+          variant="normal"
           style={style}
         />
-        {state === "inprogress" ? (
+      ) : (
+        <>
           <RunTimelineLine
-            title={<LiveTimer startTime={startTime} />}
-            state={state}
+            title={formatDuration(
+              startTime,
+              new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
+            )}
+            state={isError ? "error" : undefined}
             variant="normal"
             style={style}
           />
-        ) : (
-          <>
-            <RunTimelineLine
-              title={formatDuration(
-                startTime,
-                new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
-              )}
-              state={isError ? "error" : undefined}
-              variant="normal"
-              style={style}
-            />
-            <RunTimelineEvent
-              title="Finished"
-              subtitle={
-                <DateTimeAccurate
-                  date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
-                  previousDate={startTime}
-                />
-              }
-              state={isError ? "error" : undefined}
-              variant="end-cap-thick"
-              helpText={getHelpTextForEvent("Finished")}
-              style={style}
-            />
-          </>
-        )}
-      </div>
-    </>
+          <RunTimelineEvent
+            title="Finished"
+            subtitle={
+              <DateTimeAccurate
+                date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
+                previousDate={startTime}
+              />
+            }
+            state={isError ? "error" : undefined}
+            variant="end-cap-thick"
+            helpText={getHelpTextForEvent("Finished")}
+            style={style}
+          />
+        </>
+      )}
+    </div>
   );
 }

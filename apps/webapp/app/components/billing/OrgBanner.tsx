@@ -157,14 +157,14 @@ function NoLimitConfiguredBanner() {
             to={v3BillingLimitsPath(organization)}
           >
             <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
-              Configure billing limit
+              Billing limit settings
             </span>
           </LinkButton>
         ) : undefined
       }
     >
       {canManageBillingLimits
-        ? "Protect your organization from unexpected usage spikes."
+        ? "Add a billing limit to your account to prevent overspending"
         : "Billing limits are not configured for this organization. Contact an organization administrator to configure them."}
     </AnimatedOrgBannerBar>
   );

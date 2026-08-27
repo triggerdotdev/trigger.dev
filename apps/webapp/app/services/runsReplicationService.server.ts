@@ -36,6 +36,7 @@ import {
 } from "@trigger.dev/core/v3/serverOnly";
 import { RunAnnotations } from "@trigger.dev/core/v3";
 import { type TaskRun } from "@trigger.dev/database";
+import { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "@internal/run-engine";
 import { nanoid } from "nanoid";
 import EventEmitter from "node:events";
 import pLimit from "p-limit";
@@ -1356,11 +1357,28 @@ export class RunsReplicationService {
       annotations?.rootTriggerSource ?? "", // root_trigger_source
       annotations?.taskKind ?? "", // task_kind
       run.isWarmStart ?? null, // is_warm_start
+      this.#readExternalDeploymentId(run),
     ];
   }
 
   #parseAnnotations(annotations: unknown) {
     return RunAnnotations.safeParse(annotations).data;
+  }
+
+  #readExternalDeploymentId(run: TaskRun): string {
+    if (run.statusReason !== PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON) {
+      return "";
+    }
+
+    const annotations = run.annotations;
+
+    if (typeof annotations !== "object" || annotations === null) {
+      return "";
+    }
+
+    const value = (annotations as Record<string, unknown>).externalDeploymentId;
+
+    return typeof value === "string" ? value : "";
   }
 
   async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<PayloadInsertArray> {

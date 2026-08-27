@@ -1,4 +1,5 @@
 import { type EnvironmentVariable } from "./environmentVariables/repository";
+import { SKEW_PROTECTION_ENV_VAR_KEY } from "./vercel/vercelProjectIntegrationSchema";
 
 type VariableRule =
   | { type: "exact"; key: string }
@@ -10,7 +11,11 @@ const blacklistedVariables: VariableRule[] = [
   { type: "exact", key: "TRIGGER_API_URL" },
 ];
 
-const additionalExternalSyncReservedKeys = ["TRIGGER_VERSION", "TRIGGER_PREVIEW_BRANCH"];
+const additionalExternalSyncReservedKeys = [
+  "TRIGGER_VERSION",
+  "TRIGGER_PREVIEW_BRANCH",
+  SKEW_PROTECTION_ENV_VAR_KEY,
+];
 
 export function isBlacklistedVariable(key: string): boolean {
   const whitelisted = blacklistedVariables.find((bv) => bv.type === "whitelist" && bv.key === key);

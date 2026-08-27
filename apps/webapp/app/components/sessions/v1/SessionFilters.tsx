@@ -52,7 +52,7 @@ const StringOrStringArray = z.preprocess(
   z.array(z.string()).optional()
 );
 
-export const SessionStatus = z.enum(allSessionStatuses);
+const SessionStatus = z.enum(allSessionStatuses);
 
 export const SessionListSearchFilters = z.object({
   cursor: z.string().optional(),
@@ -71,7 +71,6 @@ export const SessionListSearchFilters = z.object({
 });
 
 export type SessionListSearchFilters = z.infer<typeof SessionListSearchFilters>;
-export type SessionListSearchFilterKey = keyof SessionListSearchFilters;
 
 export function getSessionFiltersFromSearchParams(
   searchParams: URLSearchParams
@@ -237,6 +236,7 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
           {filtered.map((type, index) => (
             <SelectButtonItem
               key={type.name}
+              accessibleLabel={type.title}
               onClick={() => {
                 clearSearchValue();
                 setFilterType(type.name);

@@ -27,7 +27,7 @@ export const BASE_IMG_SRC_SOURCES = [
   "https://trigger.dev/changelog/",
 ] as const;
 
-export type RejectedOrigin = { value: string; reason: string };
+type RejectedOrigin = { value: string; reason: string };
 
 export type ParsedImageOrigins = {
   /** Accepted, canonicalised (`scheme://host[:port]`) and deduplicated. */

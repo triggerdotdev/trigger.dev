@@ -126,7 +126,9 @@ export function winningInvestigationOccurrences(messages: UIMessage[]): Map<stri
 function useInvestigationWinners(messages: UIMessage[]): Map<string, string> {
   const previous = useRef<Map<string, string>>();
   const next = useMemo(() => winningInvestigationOccurrences(messages), [messages]);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   previous.current = reuseWinners(previous.current, next);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   return previous.current;
 }
 
@@ -259,8 +261,8 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
 }) {
   if (message.role === "user") {
     return (
-      <ChatTurn role="user">
-        <ChatText role="user" text={userText(message)} />
+      <ChatTurn speaker="user">
+        <ChatText speaker="user" text={userText(message)} />
       </ChatTurn>
     );
   }

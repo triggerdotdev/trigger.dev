@@ -1,7 +1,7 @@
 import { isOk, maxSeverity, type Finding, type Metric } from "../report-view-model";
 import { HEALTH_THRESHOLDS, metricById, type HealthInput } from "./health-core";
 
-export const EXECUTION_METRIC_IDS = ["failures", "dur_p95"];
+const EXECUTION_METRIC_IDS = ["failures", "dur_p95"];
 
 export function interpretExecution(metrics: Metric[], input: HealthInput): Finding {
   const exec = EXECUTION_METRIC_IDS.map((id) => metricById(metrics, id));

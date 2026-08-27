@@ -61,6 +61,77 @@ describe("computeSplitEnabled (pure)", () => {
   });
 });
 
+describe("computeSplitEnabled shard targets", () => {
+  const shardA = { key: "a", url: "postgres://shard-a" };
+  const shardB = { key: "b", url: "postgres://shard-b" };
+
+  it("probes the gen-1 pair only when no shard is configured", async () => {
+    const probe = vi.fn().mockResolvedValue({ distinct: true });
+    await computeSplitEnabled(
+      { flagEnabled: true, legacyUrl: "postgres://a", newUrl: "postgres://b" },
+      { probe }
+    );
+    expect(probe).toHaveBeenCalledWith(
+      [
+        { id: "legacy", url: "postgres://a" },
+        { id: "new", url: "postgres://b" },
+      ],
+      expect.anything()
+    );
+  });
+
+  it("appends one target per shard, keyed by shard id", async () => {
+    const probe = vi.fn().mockResolvedValue({ distinct: true });
+    await computeSplitEnabled(
+      {
+        flagEnabled: true,
+        legacyUrl: "postgres://a",
+        newUrl: "postgres://b",
+        shards: [shardA, shardB],
+      },
+      { probe }
+    );
+    expect(probe).toHaveBeenCalledWith(
+      [
+        { id: "legacy", url: "postgres://a" },
+        { id: "new", url: "postgres://b" },
+        { id: "shard-a", url: "postgres://shard-a" },
+        { id: "shard-b", url: "postgres://shard-b" },
+      ],
+      expect.anything()
+    );
+  });
+
+  it("stays single-DB when a shard duplicates another store", async () => {
+    const probe = vi.fn().mockResolvedValue({ distinct: false, reason: "same DB" });
+    expect(
+      await computeSplitEnabled(
+        {
+          flagEnabled: true,
+          legacyUrl: "postgres://a",
+          newUrl: "postgres://b",
+          shards: [shardA],
+        },
+        { probe }
+      )
+    ).toBe(false);
+  });
+
+  it("never probes a shard when the flag is off", async () => {
+    const probe = vi.fn();
+    await computeSplitEnabled(
+      {
+        flagEnabled: false,
+        legacyUrl: "postgres://a",
+        newUrl: "postgres://b",
+        shards: [shardA],
+      },
+      { probe }
+    );
+    expect(probe).not.toHaveBeenCalled();
+  });
+});
+
 describe("assertSplitRealtimeInterlock (pure)", () => {
   it("throws when split is on but the native realtime backend is off", () => {
     expect(() =>

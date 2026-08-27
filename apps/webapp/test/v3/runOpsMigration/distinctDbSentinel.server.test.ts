@@ -1,7 +1,10 @@
 import { heteroPostgresTest } from "@internal/testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
-import { probeDistinctDatabases } from "~/v3/runOpsMigration/distinctDbSentinel.server";
+import {
+  probeDistinctDatabases,
+  probeDistinctStores,
+} from "~/v3/runOpsMigration/distinctDbSentinel.server";
 
 // Spinning up two separate postgres clusters and probing each can exceed the 5s default.
 vi.setConfig({ testTimeout: 60_000 });
@@ -58,6 +61,116 @@ describe("probeDistinctDatabases", () => {
     async ({ uri14 }) => {
       const unreachable = "postgresql://nobody:nobody@127.0.0.1:1/does_not_exist";
       const result = await probeDistinctDatabases(uri14, unreachable);
+      expect(result.distinct).toBe(false);
+    }
+  );
+});
+
+describe("probeDistinctStores (set uniqueness at N)", () => {
+  heteroPostgresTest(
+    "reports distinct for two separate physical clusters",
+    async ({ uri14, uri17 }) => {
+      const result = await probeDistinctStores([
+        { id: "legacy", url: uri14 },
+        { id: "new", url: uri17 },
+      ]);
+      expect(result).toEqual({ distinct: true });
+    }
+  );
+
+  heteroPostgresTest("reports distinct for a single target", async ({ uri14 }) => {
+    const result = await probeDistinctStores([{ id: "legacy", url: uri14 }]);
+    expect(result).toEqual({ distinct: true });
+  });
+
+  heteroPostgresTest("reports distinct for an empty target list", async () => {
+    const result = await probeDistinctStores([]);
+    expect(result).toEqual({ distinct: true });
+  });
+
+  heteroPostgresTest(
+    "reports NOT distinct, naming both ids, when two targets resolve to one database",
+    async ({ uri14, uri17 }) => {
+      const result = await probeDistinctStores([
+        { id: "legacy", url: uri14 },
+        { id: "new", url: uri17 },
+        { id: "shard-a", url: uri14 },
+      ]);
+      expect(result.distinct).toBe(false);
+      if (result.distinct === false) {
+        expect(result.reason).toMatch(/same physical database/i);
+        expect(result.reason).toMatch(/legacy/);
+        expect(result.reason).toMatch(/shard-a/);
+      }
+    }
+  );
+
+  // A pairwise implementation that only ever compares the first two targets passes every other
+  // case in this file and fails this one: legacy vs new is clean, and the duplicate pair is
+  // shard against shard on a third database.
+  heteroPostgresTest(
+    "catches a duplicate between two SHARDS while the gen-1 pair is clean",
+    async ({ postgresContainer14, uri14, uri17 }) => {
+      const shardDb = `sentinel_shard_dupe_${Date.now()}`;
+      const admin = new PrismaClient({
+        datasources: {
+          db: { url: urlWithDatabase(postgresContainer14.getConnectionUri(), "postgres") },
+        },
+      });
+      try {
+        await admin.$executeRawUnsafe(`CREATE DATABASE "${shardDb}"`);
+      } finally {
+        await admin.$disconnect();
+      }
+      const shardUrl = urlWithDatabase(uri14, shardDb);
+
+      const result = await probeDistinctStores([
+        { id: "legacy", url: uri14 },
+        { id: "new", url: uri17 },
+        { id: "shard-a", url: shardUrl },
+        { id: "shard-b", url: shardUrl },
+      ]);
+      expect(result.distinct).toBe(false);
+      if (result.distinct === false) {
+        expect(result.reason).toMatch(/shard-a/);
+        expect(result.reason).toMatch(/shard-b/);
+      }
+    }
+  );
+
+  heteroPostgresTest(
+    "reports distinct for two databases in the SAME cluster",
+    async ({ postgresContainer14, uri14, uri17 }) => {
+      const otherDb = `sentinel_set_other_${Date.now()}`;
+      const admin = new PrismaClient({
+        datasources: {
+          db: { url: urlWithDatabase(postgresContainer14.getConnectionUri(), "postgres") },
+        },
+      });
+      try {
+        await admin.$executeRawUnsafe(`CREATE DATABASE "${otherDb}"`);
+      } finally {
+        await admin.$disconnect();
+      }
+
+      const result = await probeDistinctStores([
+        { id: "legacy", url: uri14 },
+        { id: "new", url: uri17 },
+        { id: "shard-a", url: urlWithDatabase(uri14, otherDb) },
+      ]);
+      expect(result).toEqual({ distinct: true });
+    }
+  );
+
+  heteroPostgresTest(
+    "fails closed to NOT distinct when one target cannot be reached",
+    async ({ uri14, uri17 }) => {
+      const unreachable = "postgresql://nobody:nobody@127.0.0.1:1/does_not_exist";
+      const result = await probeDistinctStores([
+        { id: "legacy", url: uri14 },
+        { id: "new", url: uri17 },
+        { id: "shard-a", url: unreachable },
+      ]);
       expect(result.distinct).toBe(false);
     }
   );

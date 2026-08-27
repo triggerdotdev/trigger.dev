@@ -140,6 +140,50 @@ To use imperative schedules you need to do two things:
 1. Define a task in your code using `schedules.task()`.
 2. Attach 1+ schedules to the task either using the dashboard or the SDK.
 
+## Spreading runs with windows
+
+By default a schedule runs at its exact cron time. When many schedules share the same cron pattern, such as a daily `0 9 * * *`, they all fire at the same time and load your downstream systems as well as ours. A **window** spreads those runs out: each schedule is assigned a stable time within the window after its cron time, so the load is smoothed while each schedule keeps firing at a predictable, repeatable moment.
+
+The assigned time is deterministic. A given schedule always lands at the same offset for a given interval, so runs don't jump around between occurrences. And you can always see exactly when the next run will start.
+
+Set a `window` as either:
+
+- **An absolute duration** in whole minutes or hours, up to 24 hours: `"30m"`, `"2h"`, `"24h"`. Absolute windows are capped at the next cron time, so a run is never delayed past its following occurrence.
+- **A percentage** of the interval between runs: `"30%"`, `"100%"`. A `"50%"` window on an hourly schedule spreads runs across the first 30 minutes of each hour.
+
+Set `"0m"` (or `"0%"`) for no spreading — the run fires at its exact cron time.
+
+Declarative schedules set the window on the `cron` object:
+
+```ts
+export const dailyReport = schedules.task({
+  id: "daily-report",
+  cron: {
+    pattern: "0 0 * * *",
+    // spread this run across the 30 minutes after midnight
+    window: "30m",
+  },
+  run: async (payload) => {},
+});
+```
+
+Imperative schedules set it when creating or updating a schedule, either in the dashboard form or through the SDK:
+
+```ts
+const createdSchedule = await schedules.create({
+  task: dailyReport.id,
+  cron: "0 0 * * *",
+  window: "30m",
+  deduplicationKey: "user_123456-daily-report",
+});
+```
+
+<Note>
+  The payload `timestamp` and `upcoming` values are always the nominal cron times, not the assigned
+  times. When you retrieve a schedule, `nextRun` is the nominal cron time and `nextRunEffectiveAt`
+  is the assigned time the run will actually start.
+</Note>
+
 ## Supported cron syntax
 
 ```
@@ -198,6 +242,7 @@ These are the options when creating a schedule:
 | Task              | The id of the task you want to attach to.                                                     |
 | Cron pattern      | The schedule in cron format. You can also describe it in natural language and press "Generate" to fill this in. |
 | Timezone          | The timezone the schedule will run in. Defaults to "UTC"                                      |
+| Window            | An optional [window](#spreading-runs-with-windows) to spread runs after their cron time, e.g. `30m`, `2h`, or `50%`. |
 | External id       | An optional external id, usually you'd use a userId.                                          |
 | Deduplication key | An optional deduplication key. If you pass the same value, it will update rather than create. Scoped per project, not per environment. |
 | Environments      | The environments this schedule will run in.                                                   |

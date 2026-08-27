@@ -4,7 +4,7 @@ import { demoId } from "../ids";
 
 type Part = UIMessage["parts"][number];
 
-export function demoMessageId(name: string): string {
+function demoMessageId(name: string): string {
   return demoId(`msg-${name}`);
 }
 

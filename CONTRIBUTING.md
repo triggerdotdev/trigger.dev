@@ -214,6 +214,19 @@ pnpm exec trigger dev --log-level debug
 5. Commit the generated migration files as well as the changes to `schema.prisma`.
 6. If you're using VSCode you may need to restart the TypeScript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
 
+## Git hooks (lefthook)
+
+We use [lefthook](https://lefthook.dev) for local git hooks, configured in `lefthook.yml` (the source of truth for what runs and when). Today that's a pre-push hook mirroring the CI `code-quality` checks; the set may grow, so check `lefthook.yml` rather than this guide.
+
+Hooks install automatically on `pnpm install`. A failing hook prints exactly what to run to fix it.
+
+**Opting out**
+
+- GitButler skips hooks on `but push` unless you enable **Run hooks** in the project settings (off by default).
+- Plain git: `LEFTHOOK=0 git push` / `--no-verify` to skip once; `pnpm exec lefthook uninstall` to remove.
+
+This never affects correctness — CI enforces the same checks on every PR; the hooks just give you faster feedback.
+
 ## Making a pull request
 
 **If you get errors, be sure to fix them before committing.**
@@ -225,10 +238,11 @@ pnpm exec trigger dev --log-level debug
 1. **Always open your PR in draft status first.** Do not mark it as "Ready for Review" until the steps below are complete.
 2. **Run format and lint locally before pushing:**
    ```bash
-   pnpm run format      # auto-fixes formatting (oxfmt)
-   pnpm run lint:fix    # auto-fixes lint violations (oxlint)
+   pnpm run format
+   pnpm run lint
+   pnpm run knip
    ```
-   Both are enforced by CI — the `code-quality` check will fail if either produces a diff or errors.
+   These are enforced by CI — the `code-quality` check will fail if either produces a diff or errors.
 3. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
 4. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
 5. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.

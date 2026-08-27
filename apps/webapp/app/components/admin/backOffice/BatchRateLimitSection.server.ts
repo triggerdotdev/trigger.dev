@@ -12,7 +12,7 @@ import {
 } from "./RateLimitSection.server";
 import type { EffectiveRateLimit } from "./RateLimitSection";
 
-export const batchRateLimitDomain: RateLimitDomain = {
+const batchRateLimitDomain: RateLimitDomain = {
   intent: BATCH_RATE_LIMIT_INTENT,
   systemDefault: () => ({
     type: "tokenBucket",

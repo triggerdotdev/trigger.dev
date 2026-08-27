@@ -13,7 +13,7 @@ import { json } from "@remix-run/server-runtime";
 import { type UserActorClaims } from "@trigger.dev/rbac";
 import { $replica } from "~/db.server";
 
-export const FORBIDDEN_ENVIRONMENT_CODE = "forbidden_environment";
+const FORBIDDEN_ENVIRONMENT_CODE = "forbidden_environment";
 
 const DASHBOARD_AGENT_CLIENT = "dashboard-agent";
 

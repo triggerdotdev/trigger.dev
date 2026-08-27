@@ -2,6 +2,7 @@ import { json } from "@remix-run/node";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { useFetcher, type ShouldRevalidateFunction } from "@remix-run/react";
 import { useEffect, useRef } from "react";
+import { useLatest } from "react-use";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { getRecentChangelogs, verifyOrgMembership } from "~/services/platformNotifications.server";
@@ -42,28 +43,31 @@ const POLL_INTERVAL_MS = 60_000;
 
 export function useRecentChangelogs(organizationId?: string, projectId?: string) {
   const fetcher = useFetcher<typeof loader>();
+  const { load, state } = fetcher;
+  const stateRef = useLatest(state);
   const lastLoadedUrl = useRef<string | null>(null);
+  const params = new URLSearchParams();
+  if (organizationId) params.set("organizationId", organizationId);
+  if (projectId) params.set("projectId", projectId);
+  const qs = params.toString();
+  const url = `/resources/platform-changelogs${qs ? `?${qs}` : ""}`;
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (organizationId) params.set("organizationId", organizationId);
-    if (projectId) params.set("projectId", projectId);
-    const qs = params.toString();
-    const url = `/resources/platform-changelogs${qs ? `?${qs}` : ""}`;
-
-    if (lastLoadedUrl.current !== url && fetcher.state === "idle") {
+    if (lastLoadedUrl.current !== url && state === "idle") {
       lastLoadedUrl.current = url;
-      fetcher.load(url);
+      load(url);
     }
+  }, [load, state, url]);
 
+  useEffect(() => {
     const interval = setInterval(() => {
-      if (fetcher.state === "idle") {
-        fetcher.load(url);
+      if (stateRef.current === "idle") {
+        load(url);
       }
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [organizationId, projectId]);
+  }, [load, stateRef, url]);
 
   return {
     changelogs: fetcher.data?.changelogs ?? [],

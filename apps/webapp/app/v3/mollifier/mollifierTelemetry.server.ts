@@ -2,7 +2,7 @@ import { getMeter } from "@internal/tracing";
 
 const meter = getMeter("mollifier");
 
-export const mollifierDecisionsCounter = meter.createCounter("mollifier.decisions", {
+const mollifierDecisionsCounter = meter.createCounter("mollifier.decisions", {
   description: "Count of mollifier gate decisions by outcome",
 });
 
@@ -49,22 +49,6 @@ export function recordDecision(outcome: DecisionOutcome, opts: RecordDecisionOpt
 // the Electric stream anyway so the eventual drainer-INSERT propagates
 // to the client; this counter is the signal of how often customers
 // subscribe inside the buffered window.
-export const realtimeBufferedSubscriptionsCounter = meter.createCounter(
-  "mollifier.realtime_subscriptions.buffered",
-  {
-    description:
-      "Realtime subscriptions opened against a runId that exists only in the mollifier buffer",
-  }
-);
-
-// No `envId` attribute — `envId` is a banned high-cardinality metric
-// label per the repo's OTel rules. The structured warn log emitted
-// alongside the counter tick (in `mollifierStaleSweep.server.ts`)
-// carries the envId / orgId / runId for forensic drill-down; the
-// metric stays an aggregate.
-export function recordRealtimeBufferedSubscription(): void {
-  realtimeBufferedSubscriptionsCounter.add(1);
-}
 
 // Counts buffer entries that have been waiting in the queue ZSET longer
 // than the configured stale threshold. Useful for historical "stale
@@ -72,7 +56,7 @@ export function recordRealtimeBufferedSubscription(): void {
 // single stuck entry observed by N sweep ticks adds N to the counter,
 // so `rate()` over an alerting window reflects (entries × ticks), not
 // "entries that are stale right now".
-export const staleEntriesCounter = meter.createCounter("mollifier.stale_entries", {
+const staleEntriesCounter = meter.createCounter("mollifier.stale_entries", {
   description: "Mollifier buffer entries whose dwell exceeds the stale threshold (per sweep pass)",
 });
 
@@ -86,7 +70,7 @@ export function recordStaleEntry(): void {
 // the gauge drops back to 0 when the drainer catches up instead of
 // staying latched. Recommended alert:
 //   mollifier_stale_entries_current > 0 for 5m
-export const staleEntriesGauge = meter.createObservableGauge("mollifier.stale_entries.current", {
+const staleEntriesGauge = meter.createObservableGauge("mollifier.stale_entries.current", {
   description:
     "Buffer entries whose dwell exceeds the stale threshold, as observed by the latest sweep pass",
 });
@@ -123,7 +107,7 @@ meter.addBatchObservableCallback(
 //
 // No `envId` attribute — same high-cardinality constraint as the other
 // mollifier gauges. The per-entry hash carries env/org for drill-down.
-export const drainingCountGauge = meter.createObservableGauge("mollifier.draining.current", {
+const drainingCountGauge = meter.createObservableGauge("mollifier.draining.current", {
   description:
     "Mollifier buffer entries currently in DRAINING state (popped but not yet acked/failed/requeued)",
 });
@@ -140,13 +124,3 @@ meter.addBatchObservableCallback(
   },
   [drainingCountGauge]
 );
-
-// Electric SQL's shape-stream protocol adds a `handle=` query param on
-// every reconnect after the initial GET. Gating the realtime-buffered
-// log/counter on its absence keeps the signal at one tick per
-// subscription instead of one tick per ~20s live-poll iteration —
-// without it the counter would over-count by the long-poll factor.
-export function isInitialBufferedSubscriptionRequest(url: string | URL): boolean {
-  const u = typeof url === "string" ? new URL(url) : url;
-  return !u.searchParams.has("handle");
-}

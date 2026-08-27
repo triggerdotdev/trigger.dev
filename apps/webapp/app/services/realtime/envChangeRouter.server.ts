@@ -9,7 +9,7 @@ import { logger } from "~/services/logger.server";
  * serializes each row's wire value once, and resolves each matched feed's pending wait. Stateless across reconnects.
  */
 
-export type WakeReason = "notify" | "timeout" | "abort";
+type WakeReason = "notify" | "timeout" | "abort";
 
 /** A feed's membership predicate over the env stream. */
 export type FeedFilter =
@@ -21,7 +21,7 @@ export type FeedFilter =
  * its wire `value` serialized once for this feed's column set (shared across feeds). */
 export type MatchedRow = { row: RealtimeRunRow; value: Record<string, string | null> };
 
-export type WaitResult = { reason: WakeReason; rows: MatchedRow[] };
+type WaitResult = { reason: WakeReason; rows: MatchedRow[] };
 
 /** Minimal deps so the router is unit-testable without Redis/Postgres. */
 export interface EnvChangeSource {
@@ -64,7 +64,7 @@ export type EnvChangeRouterOptions = {
   replicaLag?: ReplicaLagGate;
 };
 
-export type ReplicaLagGate = {
+type ReplicaLagGate = {
   /** Current replica-lag estimate (ms). */
   getLagMs(): number;
   /** Feedback: a hydrate provably read at least this far behind the primary. */

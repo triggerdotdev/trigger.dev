@@ -25,7 +25,7 @@ import { useThemeMode } from "~/hooks/useThemeMode";
 //   into it. The default playlist is sequenced so every consecutive pair of
 //   shapes shares dots.
 
-export const MATRIX = 5;
+const MATRIX = 5;
 
 // --- shapes (5-line bitmaps: "o" = dot on) ---------------------------------
 
@@ -97,7 +97,7 @@ export const EXTRA_FACE_SHAPES: DotShapeName[] = [
 
 // Sequenced so every consecutive pair (including the wrap) shares dots — the
 // head hands off between shapes without ever jumping.
-export const DEFAULT_PLAYLIST: DotShapeName[] = [
+const DEFAULT_PLAYLIST: DotShapeName[] = [
   "square",
   "rectH",
   "circle",
@@ -288,6 +288,12 @@ export function AgentDotMatrix({
     typeof palette === "string" ? DOT_MATRIX_PALETTES[palette] : palette;
   const paletteKey = paletteObj.stops.join(",") + (paletteObj.glow ?? "");
   const playlistKey = playlist.join(",");
+  const paletteObjRef = useRef(paletteObj);
+  const playlistRef = useRef(playlist);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+  paletteObjRef.current = paletteObj;
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+  playlistRef.current = playlist;
 
   useEffect(() => {
     activeRef.current = active;
@@ -295,6 +301,10 @@ export function AgentDotMatrix({
   }, [active]);
 
   useEffect(() => {
+    // The serialized keys restart this animation when contents change; refs avoid restarting for
+    // equivalent array/object identities while still exposing the matching current values.
+    const paletteObj = paletteObjRef.current;
+    const playlist = playlistRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;

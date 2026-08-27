@@ -47,7 +47,7 @@ type EnvironmentRow = React.ComponentProps<typeof EnvironmentCombo>["environment
   id: string;
 };
 
-export type ScheduleInspectorData = {
+type ScheduleInspectorData = {
   id: string;
   friendlyId: string;
   type: "DECLARATIVE" | "IMPERATIVE";
@@ -184,6 +184,7 @@ export function ScheduleInspector({
           <div className="flex flex-col gap-1">
             <Header3 className="pb-1 pl-3">Last 5 runs</Header3>
             <TaskRunsTable
+              enableSmartColumns={false}
               total={schedule.runs.length}
               hasFilters={false}
               filters={{

@@ -29,15 +29,6 @@ export function AlphaBadge({
   );
 }
 
-export function AlphaTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <span>{children}</span>
-      <AlphaBadge />
-    </>
-  );
-}
-
 export function BetaBadge({ inline = false, className }: { inline?: boolean; className?: string }) {
   return (
     <SimpleTooltip
@@ -56,15 +47,6 @@ export function BetaBadge({ inline = false, className }: { inline?: boolean; cla
       content="This feature is in Beta"
       disableHoverableContent
     />
-  );
-}
-
-export function BetaTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <span>{children}</span>
-      <BetaBadge />
-    </>
   );
 }
 

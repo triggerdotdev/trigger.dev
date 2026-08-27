@@ -89,7 +89,7 @@ export type RunShapeStreamOptions = {
   onFetchError?: (e: Error) => void;
 };
 
-export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
+type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
   [K in keyof TStreams]: {
     type: K;
     chunk: TStreams[K];
@@ -170,6 +170,9 @@ export interface StreamSubscriptionFactory {
 }
 
 export type SSEStreamPart<TChunk = unknown> = {
+  /** Stable logical record id from the S2 data envelope (`X-Part-Id` on append). */
+  recordId?: string;
+  /** S2 sequence number in decimal-string form. */
   id: string;
   chunk: TChunk;
   timestamp: number;
@@ -502,6 +505,7 @@ export class SSEStreamSubscription implements StreamSubscription {
                     chunkController.enqueue({
                       type: "part",
                       part: {
+                        recordId: parsedBody?.id,
                         id: record.seq_num.toString(),
                         chunk: parsedBody?.data,
                         timestamp: record.timestamp,
@@ -663,10 +667,6 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
       ...options,
     });
   }
-}
-
-export interface RunShapeProvider {
-  onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void>;
 }
 
 export type RunSubscriptionOptions = RunShapeStreamOptions & {

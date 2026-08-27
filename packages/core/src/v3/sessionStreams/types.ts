@@ -13,6 +13,21 @@ export type { InputStreamOnceResult };
 export type SessionChannelIO = "out" | "in";
 
 /**
+ * One durable Session channel record.
+ *
+ * `id` is the append's stable idempotency key. `seqNum` is the record's
+ * monotonic S2 sequence within the Session channel. Both stay stable when
+ * the same record is delivered again after a reconnect.
+ */
+export type SessionStreamRecord<T = unknown> = Readonly<{
+  id: string;
+  seqNum: number;
+  data: T;
+}>;
+
+export type SessionStreamRecordPredicate = (record: SessionStreamRecord) => boolean;
+
+/**
  * Manager for Session channel reads: a session-scoped parallel to
  * {@link InputStreamManager} keyed on `(sessionId, io)` instead of
  * `(runId, streamId)`. Used by {@link SessionChannel} to implement
@@ -35,6 +50,16 @@ export interface SessionStreamManager {
     handler: (data: unknown) => void | boolean | Promise<void>
   ): { off: () => void };
 
+  /**
+   * Register a handler that receives the full record, including its sequence
+   * number. Same consume semantics as {@link on}.
+   */
+  onRecord?(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: (record: SessionStreamRecord) => void | boolean | Promise<void>
+  ): { off: () => void };
+
   /** Wait for the next record on the given channel (buffered or live). */
   once(
     sessionId: string,
@@ -42,8 +67,30 @@ export interface SessionStreamManager {
     options?: InputStreamOnceOptions
   ): InputStreamOncePromise<unknown>;
 
+  /** Wait for and consume the next record, including its durable metadata. */
+  onceRecord?(
+    sessionId: string,
+    io: SessionChannelIO,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord>;
+
+  /**
+   * Wait for and consume the next record accepted by `predicate`.
+   * Earlier unmatched records stay buffered and block consumption so the
+   * committed cursor never advances past them.
+   */
+  onceRecordWhere?(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate,
+    options?: InputStreamOnceOptions
+  ): InputStreamOncePromise<SessionStreamRecord>;
+
   /** Non-blocking peek at the head of the channel buffer. */
   peek(sessionId: string, io: SessionChannelIO): unknown | undefined;
+
+  /** Non-blocking peek at the head record, including its durable metadata. */
+  peekRecord?(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined;
 
   /** Last S2 sequence number seen on the given channel. */
   lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
@@ -51,11 +98,15 @@ export interface SessionStreamManager {
   /** Advance the last-seen sequence number (prevents SSE replay after `.wait` resume). */
   setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 
+  /** Consume one exact record delivered through the waitpoint path. */
+  consumeRecord?(sessionId: string, io: SessionChannelIO, seqNum: number): void;
+
   /**
-   * Highest sequence number that has been *consumed* on the channel —
-   * delivered to a `once()` waiter or shifted off the buffer into one.
-   * Distinct from {@link lastSeqNum}, which advances on every received
-   * record regardless of whether anything consumed it. Used by
+   * Highest sequence number that is safe to persist as consumed. When a later
+   * record is handled while an earlier record remains unconsumed, this stays
+   * behind the earliest unconsumed record. Distinct from {@link lastSeqNum},
+   * which advances on every received record regardless of whether anything
+   * consumed it. Used by
    * `chat.agent` to persist the `.in` resume cursor on each
    * `turn-complete` control record so the next worker boot can resume
    * the channel from this point without replaying processed messages.
@@ -65,7 +116,8 @@ export interface SessionStreamManager {
   /**
    * Seed the committed-consume cursor at worker boot — e.g. from the
    * `session-in-event-id` header on the latest `turn-complete` on
-   * `.out`. Monotonic: only ever advances forward, never backwards.
+   * `.out`. Monotonic: only ever advances forward, never backwards. Existing
+   * unconsumed records still constrain {@link lastDispatchedSeqNum}.
    */
   setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 
@@ -82,8 +134,11 @@ export interface SessionStreamManager {
   /** Remove and discard the first buffered record. Returns true if one was removed. */
   shiftBuffer(sessionId: string, io: SessionChannelIO): boolean;
 
-  /** Abort the SSE tail and clear the buffer. Called before `.wait` suspends. */
+  /** Abort the SSE tail while preserving buffered records. Called before `.wait` suspends. */
   disconnectStream(sessionId: string, io: SessionChannelIO): void;
+
+  /** Re-open a channel closed by {@link disconnectStream}, registering nothing. */
+  reconnectStream?(sessionId: string, io: SessionChannelIO): void;
 
   /** Clear all `.on` handlers; abort tails without pending once-waiters. */
   clearHandlers(): void;

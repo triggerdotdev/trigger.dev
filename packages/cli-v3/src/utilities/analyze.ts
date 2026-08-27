@@ -139,7 +139,7 @@ export function printBundleSummaryTable(
   console.log(table.toString());
 }
 
-export function printWarnings(workerManifest: WorkerManifest) {
+function printWarnings(workerManifest: WorkerManifest) {
   if (!workerManifest.timings) {
     return;
   }

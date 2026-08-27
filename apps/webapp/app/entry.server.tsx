@@ -10,6 +10,7 @@ import { PassThrough } from "stream";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
+import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
 import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
@@ -17,7 +18,7 @@ import type { OperatingSystemPlatform } from "./components/primitives/OperatingS
 import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
 import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
-import { eventLoopMonitor } from "./eventLoopMonitor.server";
+import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
 import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
@@ -277,6 +278,7 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
 initBillingLimitWorker();
+initLogsSearchProjectorWorker();
 initQueueMetricsEmitter();
 initQueueMetricsConsumer();
 
@@ -356,6 +358,10 @@ export { wss } from "./v3/handleWebsockets.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
+}
+
+if (env.EVENT_LOOP_UTILIZATION_MONITOR_ENABLED === "1") {
+  eventLoopUtilizationMonitor.enable();
 }
 
 if (remoteBuildsEnabled()) {

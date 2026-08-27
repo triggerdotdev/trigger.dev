@@ -195,4 +195,76 @@ describe("readRunForEvent tolerates replica lag on its event-enrichment read", (
       expect(onPrimary.friendlyId).toBe("run_rrfe_missing");
     }
   );
+
+  // (c) SPLIT MODE, the gen-1 run fast path. A cuid run id classifies legacy, and there is no cuid
+  // run migration, so the new-store probe cannot find it. readRunForEvent declares idKind "run",
+  // which reads the legacy replica ONLY. The observable difference is the number of reads: one on
+  // the fast path, two on the old new-then-legacy pair probe. Counted by delegating through the
+  // real store rather than replacing it.
+  containerTest(
+    "readRunForEvent takes ONE read for a cuid run id under split, not a new-then-legacy pair",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma, "rrfe_split");
+
+      const runId = "d".repeat(25); // cuid-shaped -> classifies legacy
+      const friendlyId = "run_rrfe_split";
+
+      await prisma.taskRun.create({
+        data: {
+          id: runId,
+          engine: "V2",
+          status: "COMPLETED_SUCCESSFULLY",
+          friendlyId,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceId: "trace_split",
+          spanId: "span_split",
+          queue: "task/my-task",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          isTest: false,
+          taskEventStore: "taskEvent",
+        },
+      });
+
+      const realStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma as never });
+      let findRunCalls = 0;
+      const countingStore = new Proxy(realStore, {
+        get(target, prop, receiver) {
+          if (prop === "findRun") {
+            return (...args: unknown[]) => {
+              findRunCalls += 1;
+              return (target.findRun as (...a: unknown[]) => unknown)(...args);
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+
+      // The new side MUST miss for the two arms to be distinguishable: a pair probe that finds the
+      // row on its first read short-circuits and looks identical to the fast path. `missing` makes
+      // the new-store read return nothing, exactly as it would for a legacy-resident run.
+      const missingOnNew = laggingReplica(prisma, [{ model: "taskRun", mode: "missing" }]);
+
+      const deps: EventReadDeps = {
+        store: countingStore as never,
+        newReplica: missingOnNew.client as never,
+        legacyReplica: prisma as never,
+        splitEnabled: true,
+      };
+
+      const run = await readRunForEvent(runId, environment.id, EVENT_SELECT, deps);
+
+      // The run still resolves — the fast path must not cost the read.
+      expect(run).not.toBeNull();
+      expect(run!.id).toBe(runId);
+      expect(run!.friendlyId).toBe(friendlyId);
+
+      // ONE read. Two would mean the new store was probed first, which is the arm this removes.
+      expect(findRunCalls).toBe(1);
+    }
+  );
 });

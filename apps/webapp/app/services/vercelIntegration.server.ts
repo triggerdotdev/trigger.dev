@@ -20,6 +20,9 @@ import {
   VercelProjectIntegrationDataSchema,
   envTypeToSlug,
   createDefaultVercelIntegrationData,
+  getAvailableEnvSlugs,
+  restrictConfigToAvailableEnvSlugs,
+  SKEW_PROTECTION_ENV_VAR_KEY,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 export type VercelProjectIntegrationWithParsedData = OrganizationProjectIntegration & {
@@ -128,6 +131,17 @@ export class VercelIntegrationService {
       .filter((i): i is VercelProjectIntegrationWithProject => i !== null);
   }
 
+  async #getAvailableEnvSlugs(projectId: string): Promise<EnvSlug[]> {
+    const environments = await this.#prismaClient.runtimeEnvironment.findMany({
+      where: { projectId, type: { in: ["STAGING", "PREVIEW"] }, parentEnvironmentId: null },
+      select: { type: true },
+    });
+
+    const types = new Set(environments.map((environment) => environment.type));
+
+    return getAvailableEnvSlugs(types.has("STAGING"), types.has("PREVIEW"));
+  }
+
   async createVercelProjectIntegration(params: {
     organizationIntegrationId: string;
     projectId: string;
@@ -141,7 +155,8 @@ export class VercelIntegrationService {
       params.vercelProjectId,
       params.vercelProjectName,
       params.vercelTeamId,
-      params.vercelTeamSlug
+      params.vercelTeamSlug,
+      await this.#getAvailableEnvSlugs(params.projectId)
     );
 
     return this.#prismaClient.organizationProjectIntegration.create({
@@ -181,6 +196,8 @@ export class VercelIntegrationService {
         (slug) => slug,
         () => undefined
       );
+
+    const availableEnvSlugs = await this.#getAvailableEnvSlugs(params.projectId);
 
     // Use a serializable transaction to prevent duplicate project integrations
     // from concurrent selectVercelProject calls (read-then-write race condition).
@@ -225,6 +242,9 @@ export class VercelIntegrationService {
             vercelStagingEnvironment: parsedData.success
               ? parsedData.data.config.vercelStagingEnvironment
               : null,
+            atomicBuildsEnabled: parsedData.success
+              ? (parsedData.data.config.atomicBuilds ?? []).includes("prod")
+              : false,
           };
         }
 
@@ -232,7 +252,8 @@ export class VercelIntegrationService {
           params.vercelProjectId,
           params.vercelProjectName,
           teamId,
-          vercelTeamSlug
+          vercelTeamSlug,
+          availableEnvSlugs
         );
 
         const created = await tx.organizationProjectIntegration.create({
@@ -249,6 +270,7 @@ export class VercelIntegrationService {
           integration: created,
           wasCreated: true,
           vercelStagingEnvironment: null,
+          atomicBuildsEnabled: (integrationData.config.atomicBuilds ?? []).includes("prod"),
         };
       },
       { isolationLevel: "Serializable" }
@@ -258,7 +280,7 @@ export class VercelIntegrationService {
       throw new Error("Failed to select Vercel project: transaction returned undefined");
     }
 
-    const { integration, wasCreated, vercelStagingEnvironment } = txResult;
+    const { integration, wasCreated, vercelStagingEnvironment, atomicBuildsEnabled } = txResult;
 
     const syncResultAsync = await VercelIntegrationRepository.syncApiKeysToVercel({
       projectId: params.projectId,
@@ -272,22 +294,24 @@ export class VercelIntegrationService {
       : { success: false, errors: [syncResultAsync.error.message] };
 
     if (wasCreated) {
-      const disableResult = await VercelIntegrationRepository.getVercelClient(
-        orgIntegration
-      ).andThen((client) =>
-        VercelIntegrationRepository.disableAutoAssignCustomDomains(
-          client,
-          params.vercelProjectId,
-          teamId
-        )
-      );
+      if (atomicBuildsEnabled) {
+        const disableResult = await VercelIntegrationRepository.getVercelClient(
+          orgIntegration
+        ).andThen((client) =>
+          VercelIntegrationRepository.disableAutoAssignCustomDomains(
+            client,
+            params.vercelProjectId,
+            teamId
+          )
+        );
 
-      if (disableResult.isErr()) {
-        logger.warn("Failed to disable autoAssignCustomDomains during project selection", {
-          projectId: params.projectId,
-          vercelProjectId: params.vercelProjectId,
-          error: disableResult.error.message,
-        });
+        if (disableResult.isErr()) {
+          logger.warn("Failed to disable autoAssignCustomDomains during project selection", {
+            projectId: params.projectId,
+            vercelProjectId: params.vercelProjectId,
+            error: disableResult.error.message,
+          });
+        }
       }
 
       logger.info("Vercel project selected and API keys synced", {
@@ -313,7 +337,10 @@ export class VercelIntegrationService {
 
     const updatedConfig = {
       ...existing.parsedIntegrationData.config,
-      ...configUpdates,
+      ...restrictConfigToAvailableEnvSlugs(
+        configUpdates,
+        await this.#getAvailableEnvSlugs(projectId)
+      ),
     };
 
     const updatedData: VercelProjectIntegrationData = {
@@ -422,6 +449,32 @@ export class VercelIntegrationService {
           projectId,
           newCustomEnvironmentId,
           error: upsertResult.error.message,
+        });
+      }
+
+      const skewResult = await VercelIntegrationRepository.ensureEnvVarForCustomEnvironment({
+        orgIntegration,
+        vercelProjectId,
+        teamId,
+        key: SKEW_PROTECTION_ENV_VAR_KEY,
+        value: "1",
+        type: "plain",
+        customEnvironmentId: newCustomEnvironmentId,
+      });
+
+      if (skewResult.isErr()) {
+        logger.error("Failed to write skew protection env var to staging custom environment", {
+          projectId,
+          newCustomEnvironmentId,
+          key: SKEW_PROTECTION_ENV_VAR_KEY,
+          error: skewResult.error.message,
+        });
+      } else if (skewResult.value.unresolved.length > 0 || skewResult.value.failed.length > 0) {
+        logger.error("Skew protection env var did not reach the staging custom environment", {
+          projectId,
+          newCustomEnvironmentId,
+          key: SKEW_PROTECTION_ENV_VAR_KEY,
+          ...skewResult.value,
         });
       }
     }
@@ -545,14 +598,20 @@ export class VercelIntegrationService {
       prod: {},
       preview: {},
     };
+    const availableEnvSlugs = await this.#getAvailableEnvSlugs(projectId);
     const updatedData: VercelProjectIntegrationData = {
       ...existing.parsedIntegrationData,
       config: {
         ...existing.parsedIntegrationData.config,
-        pullEnvVarsBeforeBuild: params.pullEnvVarsBeforeBuild ?? null,
-        atomicBuilds: params.atomicBuilds ?? null,
-        discoverEnvVars: params.discoverEnvVars ?? null,
-        vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
+        ...restrictConfigToAvailableEnvSlugs(
+          {
+            pullEnvVarsBeforeBuild: params.pullEnvVarsBeforeBuild ?? null,
+            atomicBuilds: params.atomicBuilds ?? null,
+            discoverEnvVars: params.discoverEnvVars ?? null,
+            vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
+          },
+          availableEnvSlugs
+        ),
       },
       //This is intentionally not updated here, in case of resetting the onboarding it should not override the existing mapping with an empty one
       syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping,
@@ -577,7 +636,7 @@ export class VercelIntegrationService {
         projectId,
         vercelProjectId: updatedData.vercelProjectId,
         teamId,
-        vercelStagingEnvironment: params.vercelStagingEnvironment,
+        vercelStagingEnvironment: updatedData.config.vercelStagingEnvironment,
         syncEnvVarsMapping,
         orgIntegration,
       });

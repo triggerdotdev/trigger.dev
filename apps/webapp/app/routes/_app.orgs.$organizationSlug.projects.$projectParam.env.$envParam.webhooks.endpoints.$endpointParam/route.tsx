@@ -614,6 +614,7 @@ function SetSecretDialog({
   // Close on a successful save; the loader revalidates and the state flips to "Set".
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.success) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);

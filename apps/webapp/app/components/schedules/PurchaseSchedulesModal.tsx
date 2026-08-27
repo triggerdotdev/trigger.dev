@@ -67,12 +67,16 @@ export function PurchaseSchedulesModal({
   const isLoading = fetcher.state !== "idle";
 
   const [open, setOpen] = useState(false);
-  // Reset the bundle stepper to the user's current extra-schedules count on
-  // each open. Earlier this only re-synced when `extraSchedules`/`stepSize`
-  // props changed, so if the user opened the modal, typed a value, cancelled,
-  // and reopened without purchasing, the stale draft persisted.
+  // Reset the bundle stepper to the user's current extra-schedules count on each open.
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setBundles(Math.round(extraSchedules / stepSize));
+    setOpen(nextOpen);
+  };
+
   useEffect(() => {
-    if (open) setBundles(Math.round(extraSchedules / stepSize));
+    if (!open) return;
+    // oxlint-disable-next-line react/set-state-in-effect -- Keep the open draft aligned with authoritative billing values.
+    setBundles(Math.round(extraSchedules / stepSize));
   }, [open, extraSchedules, stepSize]);
 
   useEffect(() => {
@@ -84,6 +88,7 @@ export function PurchaseSchedulesModal({
       "ok" in data &&
       data.ok
     ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);
@@ -113,7 +118,7 @@ export function PurchaseSchedulesModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {triggerButton ?? (
           <Button variant="primary/small" onClick={() => setOpen(true)}>
@@ -240,7 +245,7 @@ export function PurchaseSchedulesModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                    <span className="tabular-nums">{`Send request for ${formatNumber(
                       amountValue
                     )}`}</span>
                   </Button>
@@ -254,7 +259,7 @@ export function PurchaseSchedulesModal({
                     disabled={isLoading || state === "need_to_delete"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                    <span className="tabular-nums">{`Remove ${formatNumber(
                       extraSchedules - amountValue
                     )} ${extraSchedules - amountValue === 1 ? "schedule" : "schedules"}`}</span>
                   </Button>
@@ -268,7 +273,7 @@ export function PurchaseSchedulesModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                    <span className="tabular-nums">{`Purchase ${formatNumber(
                       amountValue - extraSchedules
                     )} ${amountValue - extraSchedules === 1 ? "schedule" : "schedules"}`}</span>
                   </Button>

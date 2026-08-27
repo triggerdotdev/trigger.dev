@@ -73,7 +73,7 @@ export function transcriptLooksUnfinished(messages: ReadonlyArray<unknown>): boo
  * closes, so the first re-read can legitimately land before it. Retry a few times,
  * then leave it: a reload and the between-turns sweep are both still backstops.
  */
-export const SETTLE_REFETCH_DELAYS_MS = [200, 800, 2_500];
+const SETTLE_REFETCH_DELAYS_MS = [200, 800, 2_500];
 
 export async function pollSettledTranscript<T extends Identified>(deps: {
   fetchTranscript: () => Promise<T[] | null>;

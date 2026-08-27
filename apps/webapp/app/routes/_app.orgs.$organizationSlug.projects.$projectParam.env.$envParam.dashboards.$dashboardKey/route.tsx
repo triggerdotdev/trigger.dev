@@ -63,7 +63,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // URL), so gate it per-org like the rest of the Queue Metrics view.
   if (
     dashboardKey === "queues" &&
-    !(await canAccessQueueMetricsUi({ userId: user.id, organizationSlug }))
+    !(await canAccessQueueMetricsUi({ request, userId: user.id, organizationSlug }))
   ) {
     throw new Response(undefined, { status: 404, statusText: "Not found" });
   }
@@ -444,6 +444,7 @@ function useContainerWidth(initialWidth = 1280) {
 
   useEffect(() => {
     measureWidth();
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setMounted(true);
 
     const element = containerRef.current;

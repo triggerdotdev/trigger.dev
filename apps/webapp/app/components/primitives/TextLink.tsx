@@ -6,15 +6,26 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
+/* Hover shifts colour, never adds an underline: that's reserved for the
+   "Underline links" preference, so its presence always means the preference. */
+const colors = {
+  primary: "text-text-link transition hover:text-text-link-hover",
+  secondary: "text-text-dimmed transition hover:text-text-bright",
+} as const;
+
+const layout = "inline-flex gap-0.5 items-center group";
+
+/**
+ * A link's colour plus the `inline-text-link` marker, without the layout - for
+ * links that must stay in the inline flow, and triggers that aren't anchors.
+ */
+export function textLinkClassName(variant: keyof typeof colors = "primary") {
+  return cn("inline-text-link focus-visible:focus-custom", colors[variant]);
+}
+
 const variations = {
-  primary:
-    "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group focus-visible:focus-custom",
-  secondary:
-    "text-text-dimmed transition hover:text-text-bright inline-flex gap-0.5 items-center group focus-visible:focus-custom",
-  // The theme-remapped link token, for links inside themed surfaces where the
-  // raw indigo of `primary` is dark-theme only.
-  token:
-    "text-text-link transition hover:underline inline-flex gap-0.5 items-center group focus-visible:focus-custom",
+  primary: cn(textLinkClassName("primary"), layout),
+  secondary: cn(textLinkClassName("secondary"), layout),
 } as const;
 
 type TextLinkProps = {
@@ -28,6 +39,8 @@ type TextLinkProps = {
   shortcut?: ShortcutDefinition;
   hideShortcutKey?: boolean;
   tooltip?: React.ReactNode;
+  /** Forwarded to `Link`: forces a full document load rather than a client nav. */
+  reloadDocument?: boolean;
 } & React.AnchorHTMLAttributes<HTMLAnchorElement>;
 
 export function TextLink({
@@ -41,21 +54,20 @@ export function TextLink({
   shortcut,
   hideShortcutKey,
   tooltip,
+  reloadDocument,
   ...props
 }: TextLinkProps) {
   const innerRef = useRef<HTMLAnchorElement>(null);
   const classes = variations[variant];
 
-  if (shortcut) {
-    useShortcutKeys({
-      shortcut: shortcut,
-      action: () => {
-        if (innerRef.current) {
-          innerRef.current.click();
-        }
-      },
-    });
-  }
+  useShortcutKeys({
+    shortcut,
+    action: () => {
+      if (innerRef.current) {
+        innerRef.current.click();
+      }
+    },
+  });
 
   const renderShortcutKey = () =>
     shortcut &&
@@ -70,7 +82,13 @@ export function TextLink({
   );
 
   const linkElement = to ? (
-    <Link ref={innerRef} to={to} className={cn(classes, className)} {...props}>
+    <Link
+      ref={innerRef}
+      to={to}
+      reloadDocument={reloadDocument}
+      className={cn(classes, className)}
+      {...props}
+    >
       {linkContent}
     </Link>
   ) : href ? (

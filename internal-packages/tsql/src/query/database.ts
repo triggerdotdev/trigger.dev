@@ -28,50 +28,13 @@ export interface DatabaseSchemaTable {
   name: string;
 }
 
-export interface DatabaseSchemaSystemTable extends DatabaseSchemaTable {
+interface DatabaseSchemaSystemTable extends DatabaseSchemaTable {
   fields: Record<string, DatabaseSchemaField>;
   id: string;
   name: string;
 }
 
-export interface DatabaseSchemaDataWarehouseTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  format?: string;
-  url_pattern?: string;
-  schema?: DatabaseSchemaSchema;
-  source?: DatabaseSchemaSource;
-  row_count?: number;
-}
-
-export interface DatabaseSchemaViewTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  query: { query: string };
-  row_count?: number;
-}
-
-export interface DatabaseSchemaManagedViewTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  kind: string;
-  source_id?: string;
-  query: { query: string };
-}
-
-export interface DatabaseSchemaEndpointTable extends DatabaseSchemaTable {
-  fields: Record<string, DatabaseSchemaField>;
-  id: string;
-  name: string;
-  query: { query: string };
-  row_count?: number;
-  status?: string;
-}
-
-export interface DatabaseSchemaField {
+interface DatabaseSchemaField {
   name: string;
   tsql_value: string;
   type: DatabaseSerializedFieldType;
@@ -82,24 +45,7 @@ export interface DatabaseSchemaField {
   id?: string;
 }
 
-export interface DatabaseSchemaSchema {
-  id: string;
-  name: string;
-  should_sync: boolean;
-  incremental: boolean;
-  status: string;
-  last_synced_at: string;
-}
-
-export interface DatabaseSchemaSource {
-  id: string;
-  status: string;
-  source_type: string;
-  prefix: string;
-  last_synced_at?: string | null;
-}
-
-export enum DatabaseSerializedFieldType {
+enum DatabaseSerializedFieldType {
   STRING = "string",
   INTEGER = "integer",
   FLOAT = "float",
@@ -117,16 +63,6 @@ export enum DatabaseSerializedFieldType {
   LAZY_TABLE = "lazy_table",
   VIRTUAL_TABLE = "virtual_table",
   FIELD_TRAVERSER = "field_traverser",
-}
-
-export interface SerializedField {
-  key: string;
-  name: string;
-  type: DatabaseSerializedFieldType;
-  schema_valid: boolean;
-  fields?: string[];
-  table?: string;
-  chain?: Array<string | number>;
 }
 
 import { TableNodeImpl } from "./models";
@@ -467,7 +403,7 @@ function constantTypeToSerializedFieldType(
   return null;
 }
 
-export function serializeFields(
+function serializeFields(
   fieldInput: Record<string, FieldOrTable>,
   context: TSQLContext,
   tableChain: string[],

@@ -13,7 +13,7 @@ export const uiPreferencesStorage = createCookieSessionStorage({
   },
 });
 
-export function getUiPreferencesSession(request: Request) {
+function getUiPreferencesSession(request: Request) {
   return uiPreferencesStorage.getSession(request.headers.get("Cookie"));
 }
 

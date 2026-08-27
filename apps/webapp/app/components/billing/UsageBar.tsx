@@ -106,7 +106,7 @@ type LegendProps = {
 
 function Legend({ text, value, position, percentage, tooltipContent }: LegendProps) {
   const flipLegendPositionValue = 80;
-  const flipLegendPosition = percentage > flipLegendPositionValue ? true : false;
+  const flipLegendPosition = percentage > flipLegendPositionValue;
   return (
     <div
       className={cn(

@@ -52,7 +52,7 @@ function extractRawValue(error: unknown): unknown | undefined {
  *
  * Returns the validated data on success, or `undefined` if recovery fails.
  */
-export function recoverFromVercelSdkError<T>(
+function recoverFromVercelSdkError<T>(
   error: unknown,
   schema: z.ZodType<any>,
   options?: { context?: string }
@@ -147,6 +147,7 @@ export const VercelSchemas = {
         .object({
           envs: z.array(z.record(z.unknown())),
           pagination: z.unknown().optional(),
+          hiddenProductionEnvCount: z.number().optional(),
         })
         .passthrough(),
       z.array(z.record(z.unknown())),

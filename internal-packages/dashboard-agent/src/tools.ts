@@ -10,9 +10,7 @@ import { buildWatchTools } from "./watch-tools";
 import type { DashboardAgentToolContext } from "./tool-context";
 
 export type { DashboardAgentToolContext } from "./tool-context";
-export type { InvestigationsCapability } from "./tool-investigations";
 export { showCodeAskPrompt } from "./tool-investigations";
-export { getReportModelOutput, renderViewModelOutput } from "./tool-curation";
 
 /**
  * Assembles the ready adapters into one tool set. The key order below is frozen:

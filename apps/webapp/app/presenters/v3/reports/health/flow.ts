@@ -19,7 +19,7 @@ import {
   type HealthInput,
 } from "./health-core";
 
-export const FLOW_METRIC_IDS = ["start_latency_p95", "pending", "throughput"];
+const FLOW_METRIC_IDS = ["start_latency_p95", "pending", "throughput"];
 
 /** Unmeasurable backlog: verdict is unassessable. Distinct from "unknown", the staleness guard. */
 export const FLOW_UNMEASURED = "flow_unmeasured";

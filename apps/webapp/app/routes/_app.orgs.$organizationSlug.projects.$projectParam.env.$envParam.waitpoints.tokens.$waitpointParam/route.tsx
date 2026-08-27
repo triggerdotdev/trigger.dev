@@ -136,6 +136,7 @@ export default function Page() {
             <InfoIconTooltip content="These runs have been blocked by this waitpoint." />
           </div>
           <TaskRunsTable
+            enableSmartColumns={false}
             total={waitpoint.connectedRuns.length}
             hasFilters={false}
             filters={{

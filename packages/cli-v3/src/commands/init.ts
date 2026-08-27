@@ -50,7 +50,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   overrideConfig: z.boolean().default(false),
   tag: z.string().default(cliVersion),
   skipPackageInstall: z.boolean().default(false),
-  runtime: z.string().default("node"),
+  runtime: z.string().default("node-24"),
   pkgArgs: z.string().optional(),
   gitRef: z.string().default("main"),
   javascript: z.boolean().default(false),
@@ -94,8 +94,8 @@ Examples:
       )
       .option(
         "-r, --runtime <runtime>",
-        "Which runtime to use for the project. Supported: node, node-22, bun",
-        "node"
+        "Which runtime to use for the project. Supported: node, node-22, node-24, node-26, bun",
+        "node-24"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -123,7 +123,7 @@ Examples:
     });
 }
 
-export async function initCommand(dir: string, options: unknown) {
+async function initCommand(dir: string, options: unknown) {
   return await wrapCommandAction("initCommand", InitCommandOptions, options, async (opts) => {
     return await _initCommand(dir, opts);
   });
@@ -595,7 +595,7 @@ async function addConfigFileToTsConfig(tsconfigPath: string, options: InitComman
   });
 }
 
-export interface InstallPackagesOutputter {
+interface InstallPackagesOutputter {
   startSDK: () => void;
   installedSDK: () => void;
   startBuild: () => void;
@@ -648,7 +648,7 @@ class SilentInstallPackagesOutputter implements InstallPackagesOutputter {
   stoppedWithError() {}
 }
 
-export async function installPackages(
+async function installPackages(
   projectDir: string,
   tag: string,
   outputter: InstallPackagesOutputter = new SilentInstallPackagesOutputter()

@@ -10,7 +10,7 @@ import {
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -570,7 +570,7 @@ function VariableFields({
     insertAfter,
   } = useList<Variable>([{ key: "", value: "" }]);
 
-  const handlePaste = useCallback((index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
@@ -593,7 +593,7 @@ function VariableFields({
       form.insert({ name: variablesFields.name });
     }
     insertAfter(index, rest);
-  }, []);
+  };
 
   const fields = variablesFields.getFieldList();
 
@@ -677,6 +677,7 @@ function VariableField({
             onChange={(e) => onChange({ ...value, key: e.currentTarget.value })}
             autoFocus={index === 0}
             onPaste={onPaste}
+            autoComplete="off"
           />
           <FormError id={fields.key.errorId}>{fields.key.errors}</FormError>
         </div>
@@ -689,6 +690,7 @@ function VariableField({
               placeholder="Not set"
               value={value.value}
               onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
+              autoComplete="off"
             />
             <FormError id={fields.value.errorId}>{fields.value.errors}</FormError>
           </div>

@@ -4,7 +4,7 @@ import _m0 from "protobufjs/minimal";
 import { InstrumentationScope, KeyValue } from "../../common/v1/common";
 import { Resource } from "../../resource/v1/resource";
 
-export const protobufPackage = "opentelemetry.proto.trace.v1";
+const protobufPackage = "opentelemetry.proto.trace.v1";
 
 /**
  * SpanFlags represents constants used to interpret the
@@ -40,7 +40,7 @@ export enum SpanFlags {
   UNRECOGNIZED = -1,
 }
 
-export function spanFlagsFromJSON(object: any): SpanFlags {
+function spanFlagsFromJSON(object: any): SpanFlags {
   switch (object) {
     case 0:
     case "SPAN_FLAGS_DO_NOT_USE":
@@ -61,7 +61,7 @@ export function spanFlagsFromJSON(object: any): SpanFlags {
   }
 }
 
-export function spanFlagsToJSON(object: SpanFlags): string {
+function spanFlagsToJSON(object: SpanFlags): string {
   switch (object) {
     case SpanFlags.DO_NOT_USE:
       return "SPAN_FLAGS_DO_NOT_USE";
@@ -89,7 +89,7 @@ export function spanFlagsToJSON(object: SpanFlags): string {
  * When new fields are added into this message, the OTLP request MUST be updated
  * as well.
  */
-export interface TracesData {
+interface TracesData {
   /**
    * An array of ResourceSpans.
    * For data coming from a single resource this array will typically contain
@@ -318,7 +318,7 @@ export enum Span_SpanKind {
   UNRECOGNIZED = -1,
 }
 
-export function span_SpanKindFromJSON(object: any): Span_SpanKind {
+function span_SpanKindFromJSON(object: any): Span_SpanKind {
   switch (object) {
     case 0:
     case "SPAN_KIND_UNSPECIFIED":
@@ -345,7 +345,7 @@ export function span_SpanKindFromJSON(object: any): Span_SpanKind {
   }
 }
 
-export function span_SpanKindToJSON(object: Span_SpanKind): string {
+function span_SpanKindToJSON(object: Span_SpanKind): string {
   switch (object) {
     case Span_SpanKind.UNSPECIFIED:
       return "SPAN_KIND_UNSPECIFIED";
@@ -467,7 +467,7 @@ export enum Status_StatusCode {
   UNRECOGNIZED = -1,
 }
 
-export function status_StatusCodeFromJSON(object: any): Status_StatusCode {
+function status_StatusCodeFromJSON(object: any): Status_StatusCode {
   switch (object) {
     case 0:
     case "STATUS_CODE_UNSET":
@@ -485,7 +485,7 @@ export function status_StatusCodeFromJSON(object: any): Status_StatusCode {
   }
 }
 
-export function status_StatusCodeToJSON(object: Status_StatusCode): string {
+function status_StatusCodeToJSON(object: Status_StatusCode): string {
   switch (object) {
     case Status_StatusCode.UNSET:
       return "STATUS_CODE_UNSET";
@@ -503,7 +503,7 @@ function createBaseTracesData(): TracesData {
   return { resourceSpans: [] };
 }
 
-export const TracesData = {
+const TracesData = {
   encode(message: TracesData, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     for (const v of message.resourceSpans) {
       ResourceSpans.encode(v!, writer.uint32(10).fork()).ldelim();
@@ -1441,7 +1441,7 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin
+type DeepPartial<T> = T extends Builtin
   ? T
   : T extends globalThis.Array<infer U>
     ? globalThis.Array<DeepPartial<U>>
@@ -1452,7 +1452,7 @@ export type DeepPartial<T> = T extends Builtin
         : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin
+type Exact<P, I extends P> = P extends Builtin
   ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 

@@ -2,7 +2,7 @@ import type { RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { createRedisClient } from "~/redis.server";
 import { logger } from "../logger.server";
 
-export const CHANGE_RECORD_VERSION = 1;
+const CHANGE_RECORD_VERSION = 1;
 
 /**
  * A self-describing run-change fact published once to the run's environment channel; row state is

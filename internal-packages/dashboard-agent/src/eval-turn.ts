@@ -1,4 +1,3 @@
-import { anthropic } from "@ai-sdk/anthropic";
 import {
   createDashboardAgentDb,
   insertTurnEval,
@@ -6,6 +5,7 @@ import {
 } from "@internal/dashboard-agent-db";
 import { logger, task } from "@trigger.dev/sdk";
 import { EVAL_ERROR_CATEGORIES, redactedEvalOutputErrored } from "./eval-policy";
+import { resolveDashboardAgentModel } from "./model-provider";
 import { generateObject } from "ai";
 import { z } from "zod";
 
@@ -164,7 +164,7 @@ export const evalTurn = task({
   id: "dashboard-agent-eval-turn",
   run: async (payload: EvalTurnPayload, { ctx }) => {
     const { object } = await generateObject({
-      model: anthropic(JUDGE_MODEL),
+      model: resolveDashboardAgentModel(`anthropic:${JUDGE_MODEL}`),
       schema: TurnEval,
       system: JUDGE_SYSTEM,
       prompt: [

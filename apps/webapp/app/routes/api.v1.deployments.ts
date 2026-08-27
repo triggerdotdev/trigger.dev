@@ -42,29 +42,47 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new InitializeDeploymentService();
 
   try {
-    const { deployment, imageRef, eventStream } = await service.call(authenticatedEnv, body.data);
+    const result = await service.call(authenticatedEnv, body.data, {
+      cliVersion: parseCliVersionHeader(request),
+    });
+    const { deployment, imageRef } = result;
 
     const responseBody: InitializeDeploymentResponseBody = {
       id: deployment.friendlyId,
       contentHash: deployment.contentHash,
       shortCode: deployment.shortCode,
       version: deployment.version,
-      externalBuildData:
-        deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
       imageTag: imageRef,
       imagePlatform: deployment.imagePlatform,
-      eventStream,
+      externalId: deployment.externalId ?? undefined,
+      outcome: result.outcome,
+      ...(result.outcome === "created"
+        ? {
+            externalBuildData: result.deployment
+              .externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
+            eventStream: result.eventStream,
+            canceledDeployments: result.canceledDeployments,
+          }
+        : { isPromoted: result.isPromoted }),
     };
 
     return json(responseBody, { status: 200 });
   } catch (error) {
     if (error instanceof ServiceValidationError) {
-      return json({ error: error.message }, { status: 400 });
+      return json({ error: error.message }, { status: error.status ?? 400 });
     }
 
     logger.error("Error initializing deployment", { error });
     return json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+// Client-controlled and persisted, so cap what we accept
+const CLI_VERSION_MAX_LENGTH = 128;
+
+function parseCliVersionHeader(request: Request): string | undefined {
+  const value = request.headers.get("x-trigger-cli-version");
+  return value && value.length <= CLI_VERSION_MAX_LENGTH ? value : undefined;
 }
 
 export const loader = createLoaderApiRoute(

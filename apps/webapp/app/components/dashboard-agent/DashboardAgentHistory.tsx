@@ -80,17 +80,17 @@ export function DashboardAgentHistoryMenu({
   chats,
   currentChatId,
   thinkingChatId,
+  now,
   onSelect,
   onRequestDelete,
 }: {
   chats: DashboardAgentChat[];
   currentChatId: string;
   thinkingChatId?: string | null;
+  now: number;
   onSelect: (chatId: string) => void;
   onRequestDelete: (chat: DashboardAgentChat) => void;
 }) {
-  const now = Date.now();
-
   return (
     <div className="max-h-80 overflow-y-auto p-1.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       {chats.length === 0 ? (

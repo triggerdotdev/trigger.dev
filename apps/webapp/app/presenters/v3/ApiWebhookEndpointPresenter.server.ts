@@ -80,7 +80,7 @@ export class ApiWebhookEndpointListPresenter extends BasePresenter {
   }
 }
 
-export class ApiWebhookEndpointPresenter extends BasePresenter {
+class ApiWebhookEndpointPresenter extends BasePresenter {
   public async call(
     environmentId: string,
     endpointFriendlyId: string

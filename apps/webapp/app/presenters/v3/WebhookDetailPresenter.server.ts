@@ -18,7 +18,7 @@ import {
   type WebhookComposerEndpointData,
 } from "./webhookComposerEndpoints.server";
 
-export type WebhookEndpointSummary = {
+type WebhookEndpointSummary = {
   id: string;
   opaqueId: string;
   status: string;
@@ -35,7 +35,7 @@ export type WebhookDetail = {
   endpoint: WebhookEndpointSummary;
 };
 
-export type WebhookActivityPoint = {
+type WebhookActivityPoint = {
   bucket: number; // epoch ms
 } & Record<string, number>;
 

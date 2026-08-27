@@ -43,10 +43,13 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { logger } from "~/services/logger.server";
 import {
   archivePlatformNotification,
+  createDraftPlatformNotification,
   createPlatformNotification,
   deletePlatformNotification,
   getAdminNotificationsList,
+  publishDraftPlatformNotification,
   publishNowPlatformNotification,
+  updateDraftPlatformNotification,
   updatePlatformNotification,
 } from "~/services/platformNotifications.server";
 import { createSearchParams } from "~/utils/searchParams";
@@ -94,6 +97,10 @@ export const action = dashboardAction(
       return handleCreateAction(formData, userId, _action === "create-preview");
     }
 
+    if (_action === "create-draft") {
+      return handleCreateDraftAction(formData);
+    }
+
     if (_action === "archive") {
       return handleArchiveAction(formData);
     }
@@ -106,8 +113,16 @@ export const action = dashboardAction(
       return handlePublishNowAction(formData);
     }
 
+    if (_action === "publish-draft") {
+      return handlePublishDraftAction(formData);
+    }
+
     if (_action === "edit") {
       return handleEditAction(formData);
+    }
+
+    if (_action === "edit-draft") {
+      return handleEditDraftAction(formData);
     }
 
     return typedjson({ error: "Unknown action" }, { status: 400 });
@@ -209,9 +224,10 @@ async function handleCreateAction(formData: FormData, userId: string, isPreview:
     !fields.adminLabel ||
     !fields.title ||
     !fields.description ||
-    !fields.endsAt ||
     !fields.surface ||
-    !fields.payloadType
+    !fields.payloadType ||
+    // A preview synthesizes its own dates, so endsAt is only required for a real create.
+    (!isPreview && !fields.endsAt)
   ) {
     return typedjson({ error: "Missing required fields" }, { status: 400 });
   }
@@ -270,6 +286,57 @@ async function handleCreateAction(formData: FormData, userId: string, isPreview:
   return typedjson({ success: true, id: result.value.id });
 }
 
+async function handleCreateDraftAction(formData: FormData) {
+  const fields = parseNotificationFormData(formData);
+
+  // Drafts don't need a schedule yet, so startsAt/endsAt are not required here.
+  if (
+    !fields.adminLabel ||
+    !fields.title ||
+    !fields.description ||
+    !fields.surface ||
+    !fields.payloadType
+  ) {
+    return typedjson({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  const result = await createDraftPlatformNotification({
+    title: fields.adminLabel,
+    payload: buildPayloadInput(fields),
+    surface: fields.surface as "CLI" | "WEBAPP",
+    scope: fields.scope as "USER" | "PROJECT" | "ORGANIZATION" | "GLOBAL",
+    ...(fields.scope === "USER" && fields.scopeUserId ? { userId: fields.scopeUserId } : {}),
+    ...(fields.scope === "ORGANIZATION" && fields.scopeOrganizationId
+      ? { organizationId: fields.scopeOrganizationId }
+      : {}),
+    ...(fields.scope === "PROJECT" && fields.scopeProjectId
+      ? { projectId: fields.scopeProjectId }
+      : {}),
+    priority: fields.priority,
+    ...(fields.surface === "CLI"
+      ? {
+          cliMaxShowCount: fields.cliMaxShowCount,
+          cliMaxDaysAfterFirstSeen: fields.cliMaxDaysAfterFirstSeen,
+          cliShowEvery: fields.cliShowEvery,
+        }
+      : {}),
+  });
+
+  if (result.isErr()) {
+    const err = result.error;
+    if (err.type === "validation") {
+      return typedjson(
+        { error: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
+    }
+    logger.error("Failed to create draft platform notification", { error: err });
+    return typedjson({ error: "Something went wrong, please try again." }, { status: 500 });
+  }
+
+  return typedjson({ success: true, id: result.value.id });
+}
+
 async function handleArchiveAction(formData: FormData) {
   const notificationId = formData.get("notificationId") as string;
   if (!notificationId) {
@@ -322,6 +389,42 @@ async function handlePublishNowAction(formData: FormData) {
       { status: 500 }
     );
   }
+}
+
+async function handlePublishDraftAction(formData: FormData) {
+  const notificationId = formData.get("notificationId") as string;
+  const startsAt = formData.get("startsAt") as string;
+  const endsAt = formData.get("endsAt") as string;
+
+  if (!notificationId || !startsAt || !endsAt) {
+    return typedjson({ error: "Start and end dates are required to publish." }, { status: 400 });
+  }
+
+  const result = await publishDraftPlatformNotification({
+    id: notificationId,
+    startsAt: new Date(startsAt + "Z").toISOString(),
+    endsAt: new Date(endsAt + "Z").toISOString(),
+  });
+
+  if (result.isErr()) {
+    const err = result.error;
+    if (err.type === "validation") {
+      return typedjson(
+        { error: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
+    }
+    if (err.type === "conflict") {
+      return typedjson({ error: err.message }, { status: 409 });
+    }
+    logger.error("Failed to publish draft platform notification", { error: err, notificationId });
+    return typedjson(
+      { error: "Failed to publish notification, please try again." },
+      { status: 500 }
+    );
+  }
+
+  return typedjson({ success: true, id: result.value.id });
 }
 
 async function handleEditAction(formData: FormData) {
@@ -381,6 +484,64 @@ async function handleEditAction(formData: FormData) {
   return typedjson({ success: true, id: result.value.id });
 }
 
+async function handleEditDraftAction(formData: FormData) {
+  const notificationId = formData.get("notificationId") as string;
+  const fields = parseNotificationFormData(formData);
+
+  // Editing a draft keeps it a draft: dates are collected at publish time, so
+  // startsAt/endsAt are not required here.
+  if (
+    !notificationId ||
+    !fields.adminLabel ||
+    !fields.title ||
+    !fields.description ||
+    !fields.surface ||
+    !fields.payloadType
+  ) {
+    return typedjson({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  const result = await updateDraftPlatformNotification({
+    id: notificationId,
+    title: fields.adminLabel,
+    payload: buildPayloadInput(fields),
+    surface: fields.surface as "CLI" | "WEBAPP",
+    scope: fields.scope as "USER" | "PROJECT" | "ORGANIZATION" | "GLOBAL",
+    ...(fields.scope === "USER" && fields.scopeUserId ? { userId: fields.scopeUserId } : {}),
+    ...(fields.scope === "ORGANIZATION" && fields.scopeOrganizationId
+      ? { organizationId: fields.scopeOrganizationId }
+      : {}),
+    ...(fields.scope === "PROJECT" && fields.scopeProjectId
+      ? { projectId: fields.scopeProjectId }
+      : {}),
+    priority: fields.priority,
+    ...(fields.surface === "CLI"
+      ? {
+          cliMaxShowCount: fields.cliMaxShowCount,
+          cliMaxDaysAfterFirstSeen: fields.cliMaxDaysAfterFirstSeen,
+          cliShowEvery: fields.cliShowEvery,
+        }
+      : {}),
+  });
+
+  if (result.isErr()) {
+    const err = result.error;
+    if (err.type === "validation") {
+      return typedjson(
+        { error: err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
+    }
+    if (err.type === "conflict") {
+      return typedjson({ error: err.message }, { status: 409 });
+    }
+    logger.error("Failed to update draft platform notification", { error: err });
+    return typedjson({ error: "Something went wrong, please try again." }, { status: 500 });
+  }
+
+  return typedjson({ success: true, id: result.value.id });
+}
+
 export default function AdminNotificationsRoute() {
   const { notifications, total, page, pageCount } = useTypedLoaderData<typeof loader>();
   const [showCreate, setShowCreate] = useState(false);
@@ -434,8 +595,11 @@ export default function AdminNotificationsRoute() {
           <Paragraph className="text-text-dimmed">
             {total} notifications (page {page} of {pageCount || 1})
           </Paragraph>
-          <label className="flex items-center gap-2 text-xs text-text-dimmed">
-            <Checkbox checked={hideInactive} onChange={toggleHideInactive} />
+          <label
+            htmlFor="hideInactive"
+            className="flex items-center gap-2 text-xs text-text-dimmed"
+          >
+            <Checkbox id="hideInactive" checked={hideInactive} onChange={toggleHideInactive} />
             Hide inactive
           </label>
         </div>
@@ -453,7 +617,7 @@ export default function AdminNotificationsRoute() {
               <TableHeaderCell>Clicked</TableHeaderCell>
               <TableHeaderCell>Dismissed</TableHeaderCell>
               <TableHeaderCell>Status</TableHeaderCell>
-              <TableHeaderCell></TableHeaderCell>
+              <TableHeaderCell />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -505,15 +669,19 @@ export default function AdminNotificationsRoute() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover/row:opacity-100">
+                        {status === "draft" && <PublishDraftButton notificationId={n.id} />}
                         {status === "pending" && <PublishNowButton notificationId={n.id} />}
-                        {(status === "pending" ||
+                        {(status === "draft" ||
+                          status === "pending" ||
                           status === "releasing" ||
                           status === "active") && (
                           <Button variant="tertiary/small" onClick={() => setEditNotification(n)}>
                             Edit
                           </Button>
                         )}
-                        {status !== "archived" && <ArchiveButton notificationId={n.id} />}
+                        {status !== "archived" && status !== "draft" && (
+                          <ArchiveButton notificationId={n.id} />
+                        )}
                         <DeleteConfirmationButton notificationId={n.id} />
                       </div>
                     </TableCell>
@@ -617,6 +785,87 @@ function PublishNowButton({ notificationId }: { notificationId: string }) {
   );
 }
 
+function PublishDraftButton({ notificationId }: { notificationId: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button variant="secondary/small" onClick={() => setOpen(true)}>
+        Publish
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Publish notification</DialogTitle>
+          </DialogHeader>
+          <PublishDraftForm notificationId={notificationId} onClose={() => setOpen(false)} />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// Split out so the "close on success" effect calls the `onClose` prop rather than a
+// local state setter — the latter trips react/set-state-in-effect.
+function PublishDraftForm({
+  notificationId,
+  onClose,
+}: {
+  notificationId: string;
+  onClose: () => void;
+}) {
+  const fetcher = useFetcher<{ success?: boolean; error?: string }>();
+
+  useEffect(() => {
+    if (fetcher.data?.success) onClose();
+  }, [fetcher.data, onClose]);
+
+  return (
+    <fetcher.Form method="post" className="space-y-3">
+      <input type="hidden" name="_action" value="publish-draft" />
+      <input type="hidden" name="notificationId" value={notificationId} />
+      <Paragraph variant="small" className="text-text-dimmed">
+        Set the schedule for this notification. It becomes visible to users at the start time.
+      </Paragraph>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label variant="small">
+            Starts at (UTC) <span className="text-red-400">*</span>
+          </Label>
+          <input
+            name="startsAt"
+            type="datetime-local"
+            defaultValue={toDatetimeLocalUTC(new Date())}
+            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
+            required
+          />
+        </div>
+        <div>
+          <Label variant="small">
+            Ends at (UTC) <span className="text-red-400">*</span>
+          </Label>
+          <input
+            name="endsAt"
+            type="datetime-local"
+            defaultValue={defaultEndsAt()}
+            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
+            required
+          />
+        </div>
+      </div>
+      <DialogFooter className="items-center">
+        {fetcher.data?.error && <span className="text-xs text-red-400">{fetcher.data.error}</span>}
+        <Button type="button" variant="tertiary/medium" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary/medium" disabled={fetcher.state !== "idle"}>
+          {fetcher.state !== "idle" ? "Publishing..." : "Publish"}
+        </Button>
+      </DialogFooter>
+    </fetcher.Form>
+  );
+}
+
 function DeleteConfirmationButton({ notificationId }: { notificationId: string }) {
   const [open, setOpen] = useState(false);
   const fetcher = useFetcher();
@@ -655,6 +904,7 @@ function DeleteConfirmationButton({ notificationId }: { notificationId: string }
 
 type NotificationFormDefaults = {
   id?: string;
+  isDraft?: boolean;
   title?: string;
   surface?: string;
   scope?: string;
@@ -721,15 +971,13 @@ function NotificationForm({
   }, [fetcher.data, onClose]);
 
   const isEdit = mode === "edit";
+  // Editing a draft stays a draft (dates are set at publish time), so it routes
+  // to a distinct action and hides the schedule fields.
+  const isDraftEdit = isEdit && !!n?.isDraft;
 
   return (
     <fetcher.Form method="post" className="space-y-3">
-      {isEdit && (
-        <>
-          <input type="hidden" name="_action" value="edit" />
-          <input type="hidden" name="notificationId" value={n?.id} />
-        </>
-      )}
+      {isEdit && <input type="hidden" name="notificationId" value={n?.id} />}
 
       <input type="hidden" name="surface" value={surface} />
       <input type="hidden" name="payloadType" value={payloadType} />
@@ -998,34 +1246,40 @@ function NotificationForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label variant="small">
-            Starts at (UTC) {isEdit && <span className="text-red-400">*</span>}
-          </Label>
-          <input
-            name="startsAt"
-            type="datetime-local"
-            defaultValue={
-              n?.startsAt ? toDatetimeLocalUTC(new Date(n.startsAt)) : defaultStartsAt()
-            }
-            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
-            required={isEdit}
-          />
+      {isDraftEdit ? (
+        <Paragraph variant="small" className="text-text-dimmed">
+          This is a draft — you'll set the start and end dates when you publish it.
+        </Paragraph>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label variant="small">
+              Starts at (UTC) {isEdit && <span className="text-red-400">*</span>}
+            </Label>
+            <input
+              name="startsAt"
+              type="datetime-local"
+              defaultValue={
+                n?.startsAt ? toDatetimeLocalUTC(new Date(n.startsAt)) : defaultStartsAt()
+              }
+              className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
+              required={isEdit}
+            />
+          </div>
+          <div>
+            <Label variant="small">
+              Ends at (UTC) <span className="text-red-400">*</span>
+            </Label>
+            <input
+              name="endsAt"
+              type="datetime-local"
+              defaultValue={n?.endsAt ? toDatetimeLocalUTC(new Date(n.endsAt)) : defaultEndsAt()}
+              className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
+              required
+            />
+          </div>
         </div>
-        <div>
-          <Label variant="small">
-            Ends at (UTC) <span className="text-red-400">*</span>
-          </Label>
-          <input
-            name="endsAt"
-            type="datetime-local"
-            defaultValue={n?.endsAt ? toDatetimeLocalUTC(new Date(n.endsAt)) : defaultEndsAt()}
-            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
-            required
-          />
-        </div>
-      </div>
+      )}
 
       {surface === "CLI" && (
         <>
@@ -1149,41 +1403,68 @@ function NotificationForm({
           {!isEdit && fetcher.data?.success && !fetcher.data.previewId && (
             <span className="text-xs text-green-400">Created successfully</span>
           )}
-          {!isEdit && fetcher.data?.previewId && (
+          {fetcher.data?.previewId && (
             <span className="text-xs text-green-400">
               Preview sent (ID: {fetcher.data.previewId})
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {isEdit ? (
-            <Button type="submit" variant="primary/medium" disabled={fetcher.state !== "idle"}>
+        {isEdit ? (
+          // "Save changes" is first in DOM so pressing Enter in a field saves
+          // (HTML implicit submission uses the first submit button); flex-row-reverse
+          // keeps the preview button on the left and the primary action on the right.
+          <div className="flex flex-row-reverse items-center gap-2">
+            <Button
+              type="submit"
+              name="_action"
+              value={isDraftEdit ? "edit-draft" : "edit"}
+              variant="primary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
               {fetcher.state !== "idle" ? "Saving..." : "Save changes"}
             </Button>
-          ) : (
-            <>
-              <Button
-                type="submit"
-                name="_action"
-                value="create-preview"
-                variant="tertiary/medium"
-                disabled={fetcher.state !== "idle"}
-              >
-                Send preview to me
-              </Button>
-              <Button
-                type="submit"
-                name="_action"
-                value="create"
-                variant="primary/medium"
-                disabled={fetcher.state !== "idle"}
-              >
-                {fetcher.state !== "idle" ? "Creating..." : "Create"}
-              </Button>
-            </>
-          )}
-        </div>
+            <Button
+              type="submit"
+              name="_action"
+              value="create-preview"
+              variant="tertiary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              Send preview to me
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              type="submit"
+              name="_action"
+              value="create-preview"
+              variant="tertiary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              Send preview to me
+            </Button>
+            <Button
+              type="submit"
+              name="_action"
+              value="create-draft"
+              variant="secondary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              Save as draft
+            </Button>
+            <Button
+              type="submit"
+              name="_action"
+              value="create"
+              variant="primary/medium"
+              disabled={fetcher.state !== "idle"}
+            >
+              {fetcher.state !== "idle" ? "Creating..." : "Create"}
+            </Button>
+          </div>
+        )}
       </DialogFooter>
     </fetcher.Form>
   );
@@ -1383,7 +1664,7 @@ function CliColorMarkup({ text, fallbackClass }: { text: string; fallbackClass?:
     pos = closeIdx + 1;
   }
 
-  return <>{parts}</>;
+  return parts;
 }
 
 function Badge({
@@ -1436,15 +1717,17 @@ function defaultEndsAt(): string {
   return toDatetimeLocalUTC(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
 }
 
-type NotificationStatus = "active" | "pending" | "releasing" | "expired" | "archived";
+type NotificationStatus = "draft" | "active" | "pending" | "releasing" | "expired" | "archived";
 
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
 function getNotificationStatus(n: {
+  isDraft?: boolean;
   archivedAt: string | Date | null;
   startsAt: string | Date;
   endsAt: string | Date;
 }): NotificationStatus {
+  if (n.isDraft) return "draft";
   if (n.archivedAt) return "archived";
   const now = new Date();
   const starts = typeof n.startsAt === "string" ? new Date(n.startsAt) : n.startsAt;
@@ -1458,6 +1741,7 @@ function getNotificationStatus(n: {
 
 function StatusBadge({ status }: { status: NotificationStatus }) {
   const styles: Record<NotificationStatus, string> = {
+    draft: "bg-purple-500/20 text-purple-400",
     active: "bg-green-500/20 text-green-400",
     pending: "bg-blue-500/20 text-blue-400",
     releasing: "bg-amber-500/20 text-amber-400",

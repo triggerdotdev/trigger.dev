@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { ArrowTrendingUpIcon } from "@heroicons/react/20/solid";
 import { IconTimeline } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
@@ -21,6 +22,7 @@ import SegmentedControl from "~/components/primitives/SegmentedControl";
 // Date formatters for chart display
 const xAxisTickFormatter = (value: string) => formatISODate(value);
 const tooltipLabelFormatter = (label: string) => formatISODateLong(label);
+const MINI_LINE_BUCKET_START_MS = Date.UTC(2025, 0, 1);
 
 /**
  * Helper function to filter chart data by date range.
@@ -361,6 +363,7 @@ function ChartsDashboard() {
                   <td className="py-1.5">
                     <MiniLineChart
                       data={API_DATA.miniLineData}
+                      bucketStartMs={MINI_LINE_BUCKET_START_MS}
                       peak={Math.max(...API_DATA.miniLineData)}
                       unitLabel={{ singular: "queued", plural: "queued" }}
                       color="var(--color-tasks)"
@@ -372,6 +375,7 @@ function ChartsDashboard() {
                   <td className="py-1.5">
                     <MiniLineChart
                       data={API_DATA.miniLineThrottledData}
+                      bucketStartMs={MINI_LINE_BUCKET_START_MS}
                       throttled={API_DATA.miniLineThrottledBuckets}
                       peak={Math.max(...API_DATA.miniLineThrottledData)}
                       unitLabel={{ singular: "queued", plural: "queued" }}
@@ -394,6 +398,9 @@ export default function Story() {
       defaultStartDate={API_DATA.defaultDateRange.startDate}
       defaultEndDate={API_DATA.defaultDateRange.endDate}
     >
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Chart.tsx", "ChartCompound.tsx", "BigNumberCard.tsx"]} />
+      </div>
       <ChartsDashboard />
     </DateRangeProvider>
   );

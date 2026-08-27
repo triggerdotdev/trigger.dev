@@ -76,7 +76,7 @@ function useAskAIState() {
       next.delete(ASK_AI_DEEP_LINK_PARAM);
       setSearchParams(next);
     }
-  }, [searchParams, openAskAI]);
+  }, [searchParams, setSearchParams, openAskAI]);
 
   return { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI };
 }
@@ -273,6 +273,7 @@ function ChatMessages({
   // Reset feedback state when conversation is reset
   useEffect(() => {
     if (conversation.length === 0) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setFeedbackGivenForQAs(new Set());
     }
   }, [conversation.length]);
@@ -543,8 +544,12 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
           />
           {isGeneratingAnswer ? (
             <SimpleTooltip
+              asChild
+              tabbable
               button={
-                <span
+                <button
+                  type="button"
+                  aria-label="Stop generating"
                   onClick={() => stopGeneration()}
                   className="group relative z-10 flex size-10 min-w-10 cursor-pointer items-center justify-center"
                 >
@@ -553,7 +558,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
                     className="absolute inset-0 animate-spin"
                     hoverEffect
                   />
-                </span>
+                </button>
               }
               content="Stop generating"
             />

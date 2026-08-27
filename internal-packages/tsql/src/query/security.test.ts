@@ -191,6 +191,30 @@ describe("Cross-Tenant Security", () => {
     });
   });
 
+  describe("PREWHERE", () => {
+    it.each([
+      ["top-level query", "SELECT count(*) FROM task_runs PREWHERE toUInt8(task_identifier) = 1"],
+      [
+        "case and whitespace variant",
+        "SELECT count(*) FROM task_runs\nPrEwHeRe\n  toUInt8(task_identifier) = 1",
+      ],
+      [
+        "nested query",
+        `SELECT id FROM task_runs WHERE id IN (
+          SELECT run_id FROM task_events PREWHERE event_type = 'completed'
+        )`,
+      ],
+      [
+        "set query",
+        `SELECT id FROM task_runs
+         UNION ALL
+         SELECT id FROM task_runs PREWHERE status = 'completed'`,
+      ],
+    ])("should reject PREWHERE in a %s", (_, query) => {
+      expect(() => compile(query)).toThrowError("PREWHERE is not supported. Use WHERE instead.");
+    });
+  });
+
   describe("Table allowlisting", () => {
     it("should reject queries to unknown tables", () => {
       expect(() => {

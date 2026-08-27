@@ -74,6 +74,7 @@ import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
+  useIsMetricResponseFresh,
   useMetricResourceQuery,
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
@@ -169,7 +170,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Per-org gate for the metrics UI. When off, this org gets the classic Queues page and
   // no metrics query fires.
-  const queueMetricsUiEnabled = await canAccessQueueMetricsUi({ userId, organizationSlug });
+  const queueMetricsUiEnabled = await canAccessQueueMetricsUi({
+    request,
+    userId,
+    organizationSlug,
+  });
 
   const maxPeriodDays = queueMetricsUiEnabled
     ? await queueMetricsMaxPeriodDays(environment.organizationId)
@@ -420,27 +425,30 @@ function QueuesWithMetricsView() {
   // Empty rows (quiet env, or the very first fetch still in flight) fall back to the loader values,
   // so we never flash a stale 0. Fixed 15m window, env-wide (no queue filter), CH-only recurring
   // load; pauses while the tab is hidden (handled inside the hook).
-  const { rows: liveBlockRows } = useMetricResourceQuery(QUEUE_LIVE_BLOCKS_QUERY, {
-    organizationId: organization.id,
-    projectId: project.id,
-    environmentId: env.id,
-    timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
-    defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
-    fillGaps: false,
-    refreshIntervalMs: 15_000,
-  });
+  const { rows: liveBlockRows, responseReceivedAt } = useMetricResourceQuery(
+    QUEUE_LIVE_BLOCKS_QUERY,
+    {
+      organizationId: organization.id,
+      projectId: project.id,
+      environmentId: env.id,
+      timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
+      defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
+      fillGaps: false,
+      refreshIntervalMs: 15_000,
+    }
+  );
   const lastLiveBlockRow =
     liveBlockRows.length > 0 ? liveBlockRows[liveBlockRows.length - 1] : null;
   // Only trust the gauge while its newest bucket is fresh. A row painted from the hook's cache on
   // client-side nav-back (responseCache), or a quiet env whose latest bucket is minutes old, must
   // not override the loader's Redis-exact live values with a stale count.
   const lastLiveBucketMs = lastLiveBlockRow ? tileTimeToMs(lastLiveBlockRow.t) : NaN;
-  const freshLiveBlockRow =
-    lastLiveBlockRow &&
-    Number.isFinite(lastLiveBucketMs) &&
-    Date.now() - lastLiveBucketMs < LIVE_GAUGE_FRESH_MS
-      ? lastLiveBlockRow
-      : null;
+  const liveBlockIsFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    lastLiveBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
+  const freshLiveBlockRow = lastLiveBlockRow && liveBlockIsFresh ? lastLiveBlockRow : null;
   const envQueuedLive = freshLiveBlockRow
     ? tileNumber(freshLiveBlockRow.env_queued)
     : environment.queued;
@@ -1031,6 +1039,7 @@ function EnvironmentPauseResumeButton({
 
   useEffect(() => {
     if (navigation.state === "loading" || navigation.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);
@@ -1426,10 +1435,7 @@ function QueueEnvMetricChart({
     [tile.id, tile.label, lineColor]
   );
 
-  const { tickFormatter, tooltipLabelFormatter } = useMemo(
-    () => buildActivityTimeAxis(data),
-    [data]
-  );
+  const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(data);
   const hasData = data.length > 0 && data.some((p) => Number(p[tile.id] ?? 0) > 0);
 
   // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty
@@ -1572,11 +1578,11 @@ function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): Queu
 
 // Tint + colored text, sized like the error status chips (see ErrorStatusBadge).
 const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
-  Paused: "bg-warning/10 text-warning",
-  "At capacity": "bg-warning/10 text-warning",
-  Backlogged: "bg-blue-500/10 text-blue-500",
-  Active: "bg-success/10 text-success",
-  Idle: "bg-charcoal-500/10 text-text-dimmed",
+  Paused: "bg-warning/10 text-warning system:bg-warning system:text-white",
+  "At capacity": "bg-warning/10 text-warning system:bg-warning system:text-white",
+  Backlogged: "bg-blue-500/10 text-blue-500 system:bg-blue-500 system:text-white",
+  Active: "bg-success/10 text-success system:bg-success system:text-white",
+  Idle: "bg-charcoal-500/10 text-text-dimmed system:bg-charcoal-500 system:text-white",
 };
 
 function QueueHealthBadge(health: QueueHealth) {
@@ -1584,7 +1590,7 @@ function QueueHealthBadge(health: QueueHealth) {
   return (
     <span
       className={cn(
-        "contrast-chip ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
+        "ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
         QUEUE_HEALTH_STYLES[label]
       )}
     >

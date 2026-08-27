@@ -1,6 +1,6 @@
 import type { BackpressureMetrics } from "./backpressureMetrics.js";
 
-export interface BackpressureLogger {
+interface BackpressureLogger {
   info(message: string, meta?: Record<string, unknown>): void;
   error(message: string, meta?: Record<string, unknown>): void;
 }

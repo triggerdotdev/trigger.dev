@@ -23,6 +23,11 @@ export const RUN_OPS_ID_LENGTH = 26;
 export const RUN_OPS_ID_REGION_INDEX = 24;
 export const RUN_OPS_ID_VERSION_INDEX = 25;
 export const RUN_OPS_ID_VERSION = "1";
+// Gen-2 id: same 26-char layout, but index 24 carries a routing SHARD KEY rather
+// than a region char. MUST stay 26 chars: a 27-char shape could collide with the
+// pre-cutover base62 format, which must keep classifying legacy.
+export const RUN_OPS_ID_VERSION_2 = "2";
+export const RUN_OPS_ID_SHARD_INDEX = RUN_OPS_ID_REGION_INDEX;
 const RUN_OPS_ID_CORE_BYTES = 15; // 6 timestamp + 9 random → exactly 24 base32hex chars
 const RUN_OPS_ID_CORE_LENGTH = 24;
 const RUN_OPS_ID_TIMESTAMP_BYTES = 6;
@@ -33,6 +38,13 @@ export const DEFAULT_REGION_CHAR = "0";
 // decoding), NOT part of the base32hex core — so it may use the full DNS-safe
 // lowercase [a-z0-9] range (e.g. "w" for us-west-2, which is outside [0-9a-v]).
 const REGION_CHAR_PATTERN = /^[a-z0-9]$/;
+// Same slot, same range: the gen-2 shard key is a region char's positional twin.
+const SHARD_CHAR_PATTERN = REGION_CHAR_PATTERN;
+/** True iff `value` is a single valid gen-2 shard char. The descriptor validator and
+ * `resolveShard` share this so a configured key and a decoded key cannot drift. */
+export function isValidShardChar(value: string): boolean {
+  return SHARD_CHAR_PATTERN.test(value);
+}
 /** One lowercase [a-z0-9] char per supported region, at RUN_OPS_ID_REGION_INDEX. */
 export const REGION_CODES: Readonly<Record<string, string>> = {
   "us-east-1": "e",
@@ -110,13 +122,9 @@ export function base32hexDecode(s: string): Uint8Array {
   return Uint8Array.from(out);
 }
 
-/**
- * Mint a run-ops v1 id body (26 chars, no prefix): 24-char base32hex core
- * (6-byte ms timestamp + 9 CSPRNG bytes) + region char + version char "1".
- * The trailing version char at RUN_OPS_ID_VERSION_INDEX is the residency
- * discriminator — see runOpsResidency.ts.
- */
-export function generateRunOpsId(region?: string): string {
+// Shared by both generations. The buffer MUST be per-call — a hoisted one would
+// let concurrent mints overwrite each other's bytes.
+function mintRunOpsIdCore(): string {
   const core = new Uint8Array(RUN_OPS_ID_CORE_BYTES);
 
   let ms = Date.now();
@@ -126,11 +134,35 @@ export function generateRunOpsId(region?: string): string {
   }
   getRandomValues(core.subarray(RUN_OPS_ID_TIMESTAMP_BYTES));
 
-  return `${base32hexEncode(core)}${regionCharForRegion(region)}${RUN_OPS_ID_VERSION}`;
+  return base32hexEncode(core);
+}
+
+/**
+ * Mint a run-ops v1 id body (26 chars, no prefix): 24-char base32hex core
+ * (6-byte ms timestamp + 9 CSPRNG bytes) + region char + version char "1".
+ * The trailing version char at RUN_OPS_ID_VERSION_INDEX is the residency
+ * discriminator — see runOpsResidency.ts.
+ */
+export function generateRunOpsId(region?: string): string {
+  return `${mintRunOpsIdCore()}${regionCharForRegion(region)}${RUN_OPS_ID_VERSION}`;
+}
+
+/**
+ * Mint a gen-2 id body (26 chars, no prefix): the same core, then the shard key,
+ * then version char "2". Throws on a shard char outside [a-z0-9] — an id that
+ * cannot be routed must never be minted.
+ */
+export function generateRunOpsIdV2(shardChar: string): string {
+  if (!SHARD_CHAR_PATTERN.test(shardChar)) {
+    throw new Error(`invalid run-ops shard char: ${JSON.stringify(shardChar)}`);
+  }
+
+  return `${mintRunOpsIdCore()}${shardChar}${RUN_OPS_ID_VERSION_2}`;
 }
 
 export type ParsedRunId =
   | { format: "b32hex"; table: "partitioned"; timestamp: Date; region: string; version: string }
+  | { format: "b32hexV2"; table: "partitioned"; timestamp: Date; shard: string; version: string }
   | { format: "legacy"; table: "legacy" };
 
 const LEGACY_RUN_ID: ParsedRunId = { format: "legacy", table: "legacy" };
@@ -149,6 +181,15 @@ export function parseRunOpsIdBody(
   const region = body[RUN_OPS_ID_REGION_INDEX] ?? "";
   if (!REGION_CHAR_PATTERN.test(region)) return undefined;
 
+  const timestamp = parseRunOpsIdCoreTimestamp(body);
+  if (timestamp === undefined) return undefined;
+
+  return { timestamp, region, version: RUN_OPS_ID_VERSION };
+}
+
+// Decode the leading 24-char core and recover its embedded ms timestamp.
+// Returns undefined (never throws) when the core is outside the base32hex alphabet.
+function parseRunOpsIdCoreTimestamp(body: string): Date | undefined {
   let core: Uint8Array;
   try {
     core = base32hexDecode(body.slice(0, RUN_OPS_ID_CORE_LENGTH));
@@ -161,7 +202,26 @@ export function parseRunOpsIdBody(
     ms = ms * 256 + (core[i] ?? 0);
   }
 
-  return { timestamp: new Date(ms), region, version: RUN_OPS_ID_VERSION };
+  return new Date(ms);
+}
+
+/**
+ * Parse a gen-2 id body (no prefix): the mirror of {@link parseRunOpsIdBody},
+ * requiring version "2" at index 25 and a shard key in [a-z0-9] at index 24.
+ * Total: returns undefined for any other string, and never throws.
+ */
+export function parseRunOpsIdV2Body(
+  body: string
+): { timestamp: Date; shard: string; version: string } | undefined {
+  if (body.length !== RUN_OPS_ID_LENGTH) return undefined;
+  if (body[RUN_OPS_ID_VERSION_INDEX] !== RUN_OPS_ID_VERSION_2) return undefined;
+  const shard = body[RUN_OPS_ID_SHARD_INDEX] ?? "";
+  if (!SHARD_CHAR_PATTERN.test(shard)) return undefined;
+
+  const timestamp = parseRunOpsIdCoreTimestamp(body);
+  if (timestamp === undefined) return undefined;
+
+  return { timestamp, shard, version: RUN_OPS_ID_VERSION_2 };
 }
 
 /** True if the (prefixless) id body is a well-formed run-ops v1 id. */
@@ -169,11 +229,117 @@ export function isRunOpsIdBody(body: string): boolean {
   return parseRunOpsIdBody(body) !== undefined;
 }
 
-/** Parse a `run_`-prefixed friendly id; anything not a well-formed v1 id is legacy. */
+/** Parse a `run_`-prefixed friendly id; anything not a well-formed v1/gen-2 id is legacy. */
 export function parseRunId(id: string): ParsedRunId {
   if (!id.startsWith("run_")) return LEGACY_RUN_ID;
-  const parsed = parseRunOpsIdBody(id.slice(4));
-  return parsed ? { format: "b32hex", table: "partitioned", ...parsed } : LEGACY_RUN_ID;
+  const body = id.slice(4);
+
+  const v1 = parseRunOpsIdBody(body);
+  if (v1) return { format: "b32hex", table: "partitioned", ...v1 };
+
+  const v2 = parseRunOpsIdV2Body(body);
+  if (v2) return { format: "b32hexV2", table: "partitioned", ...v2 };
+
+  return LEGACY_RUN_ID;
+}
+
+// Waitpoint ids reuse the run-ops body layout — 24-char base32hex core, then a
+// positional char, then a version char — so the body parses positionally instead of
+// splitting on "_". Index 24 carries the TYPE (the slot a run uses for its region or
+// shard char), which leaves room to move to a shard char under a later version.
+export const WAITPOINT_ID_VERSION = "w";
+export const WAITPOINT_ID_TYPE_INDEX = RUN_OPS_ID_REGION_INDEX;
+
+export type WaitpointIdType = "RUN" | "BATCH" | "DATETIME" | "MANUAL";
+
+// "w" sits OUTSIDE the base32hex alphabet [0-9a-v], so the version char can never be
+// mistaken for a core char, and it can never collide with a numeric run generation.
+const WAITPOINT_TYPE_CHARS: Readonly<Record<WaitpointIdType, string>> = {
+  RUN: "r",
+  BATCH: "b",
+  DATETIME: "d",
+  MANUAL: "m",
+};
+
+const WAITPOINT_TYPES_BY_CHAR: Readonly<Record<string, WaitpointIdType>> = {
+  r: "RUN",
+  b: "BATCH",
+  d: "DATETIME",
+  m: "MANUAL",
+};
+
+export type ParsedWaitpointId =
+  | { format: "b32hexW"; type: WaitpointIdType; timestamp: Date }
+  | { format: "legacy" };
+
+const LEGACY_WAITPOINT_ID: ParsedWaitpointId = { format: "legacy" };
+
+/**
+ * Mint a standalone waitpoint id body (26 chars, no prefix) for DATETIME and MANUAL: a
+ * fresh core, the type char, then the waitpoint version char.
+ */
+export function generateWaitpointId(type: WaitpointIdType): string {
+  return `${mintRunOpsIdCore()}${WAITPOINT_TYPE_CHARS[type]}${WAITPOINT_ID_VERSION}`;
+}
+
+/**
+ * Derive the 1:1 waitpoint id body for a RUN or BATCH anchor by reusing the anchor's
+ * 24-char core. Pure, so create-if-absent is idempotent without a lock. Returns
+ * undefined when the anchor is not a run-ops id, which is the caller's signal to mint a
+ * legacy waitpoint instead.
+ *
+ * Only the core survives: the anchor's region or shard char and its version char are
+ * both replaced. So the anchor id is NOT recoverable from the waitpoint id — the reverse
+ * direction uses the completedBy* back-pointer.
+ */
+export function deriveWaitpointIdFromAnchor(
+  anchorId: string,
+  type: WaitpointIdType
+): string | undefined {
+  const body = stripAnchorPrefix(anchorId);
+  if (!parseRunOpsIdBody(body) && !parseRunOpsIdV2Body(body)) {
+    return undefined;
+  }
+
+  return `${body.slice(0, RUN_OPS_ID_CORE_LENGTH)}${WAITPOINT_TYPE_CHARS[type]}${WAITPOINT_ID_VERSION}`;
+}
+
+/**
+ * Classify a waitpoint id. Accepts the prefixed (`waitpoint_<body>`) and bare forms, but
+ * NOT another entity's prefix (`run_`, `batch_`, ...) — this is the discriminator a
+ * later ticket uses to route a possibly customer-supplied id, so a foreign prefix must
+ * classify legacy rather than have its body reinterpreted as a waitpoint id. Total:
+ * never throws.
+ */
+export function parseWaitpointId(id: string): ParsedWaitpointId {
+  const body = stripWaitpointIdPrefix(id);
+  if (body.length !== RUN_OPS_ID_LENGTH) return LEGACY_WAITPOINT_ID;
+  if (body[RUN_OPS_ID_VERSION_INDEX] !== WAITPOINT_ID_VERSION) return LEGACY_WAITPOINT_ID;
+
+  const type = WAITPOINT_TYPES_BY_CHAR[body[WAITPOINT_ID_TYPE_INDEX] ?? ""];
+  if (!type) return LEGACY_WAITPOINT_ID;
+
+  const timestamp = parseRunOpsIdCoreTimestamp(body);
+  if (timestamp === undefined) return LEGACY_WAITPOINT_ID;
+
+  return { format: "b32hexW", type, timestamp };
+}
+
+// Strip any `<prefix>_` if present. Prefix-agnostic is correct ONLY here: the caller
+// already knows anchorId names a run or batch anchor, so there is no foreign prefix to
+// guard against. Do not reuse for parseWaitpointId — see stripWaitpointIdPrefix.
+function stripAnchorPrefix(id: string): string {
+  const underscore = id.indexOf("_");
+  return underscore === -1 ? id : id.slice(underscore + 1);
+}
+
+const WAITPOINT_ID_PREFIX = "waitpoint_";
+
+// Strip the `waitpoint_` prefix if present; any other prefix, or a bare body, is left
+// as-is. Unlike stripAnchorPrefix, this must never strip a foreign prefix down to a body
+// that then happens to pass the run-ops shape check.
+function stripWaitpointIdPrefix(id: string): string {
+  return id.startsWith(WAITPOINT_ID_PREFIX) ? id.slice(WAITPOINT_ID_PREFIX.length) : id;
 }
 
 export function generateInternalId(): string {

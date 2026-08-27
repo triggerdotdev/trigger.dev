@@ -1,21 +1,43 @@
-import { ownerEngine, RunId, type Residency } from "@trigger.dev/core/v3/isomorphic";
+import { resolveShard, RunId, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 
 type MintKind = "cuid" | "runOpsId";
 
+type Logger = { error: (message: string, meta?: Record<string, unknown>) => void };
+
 export type ResolveIdempotencyClientDeps = {
   isSplitEnabled: () => Promise<boolean>;
   fallbackClient: PrismaClientOrTransaction;
-  newClient: PrismaClientOrTransaction;
-  legacyClient: PrismaClientOrTransaction;
+  /** The store that owns a shard key: the reserved `legacy`/`new`, or a gen-2 shard. */
+  clientFor: (shardKey: ShardKey) => PrismaClientOrTransaction | undefined;
   resolveMintKind: (environment: {
     organizationId: string;
     id: string;
     orgFeatureFlags?: unknown;
   }) => Promise<MintKind>;
-  classify?: (id: string) => Residency;
-  isMigrated?: (id: string) => Promise<boolean>;
+  classify?: (id: string) => ShardKey;
+  logger?: Logger;
 };
+
+/**
+ * The one place an id becomes a client. `ShardKey` collapses to `string`, so the compiler
+ * cannot catch a wrong key here — an absent key takes an explicit logged branch to the
+ * fallback rather than a silent `?? legacy`. The configured set is not repeated in the log:
+ * boot already prints the shard table.
+ */
+export function clientForShardKey(
+  shardKey: ShardKey,
+  clientFor: (shardKey: ShardKey) => PrismaClientOrTransaction | undefined,
+  fallback: PrismaClientOrTransaction,
+  logger?: Logger
+): PrismaClientOrTransaction {
+  const client = clientFor(shardKey);
+  if (client === undefined) {
+    logger?.error("idempotency: no client configured for shard key", { shardKey });
+    return fallback;
+  }
+  return client;
+}
 
 export async function resolveIdempotencyDedupClient(
   args: {
@@ -28,9 +50,9 @@ export async function resolveIdempotencyDedupClient(
     return deps.fallbackClient;
   }
 
-  const classify = deps.classify ?? ownerEngine;
-  const clientFor = (residency: Residency): PrismaClientOrTransaction =>
-    residency === "NEW" ? deps.newClient : deps.legacyClient;
+  const classify = deps.classify ?? resolveShard;
+  const clientFor = (shardKey: ShardKey): PrismaClientOrTransaction =>
+    clientForShardKey(shardKey, deps.clientFor, deps.fallbackClient, deps.logger);
 
   if (args.parentRunFriendlyId) {
     let parentInternalId: string;
@@ -39,18 +61,18 @@ export async function resolveIdempotencyDedupClient(
     } catch {
       return deps.fallbackClient;
     }
-    let residency: Residency;
+    let shardKey: ShardKey;
     try {
-      residency = classify(parentInternalId);
+      shardKey = classify(parentInternalId);
     } catch {
       return deps.fallbackClient;
     }
-    if (residency === "LEGACY" && deps.isMigrated && (await deps.isMigrated(parentInternalId))) {
-      return deps.newClient;
-    }
-    return clientFor(residency);
+    return clientFor(shardKey);
   }
 
+  // Mint kind, not an id: there is no shard to decode, so this keeps resolving to the
+  // gen-1 pair exactly as before. Which shard a gen-2 env mints into is the mint layer's
+  // decision, and this client is a read-your-writes signal rather than a correctness gate.
   const kind = await deps.resolveMintKind(args.environmentForMint);
-  return clientFor(kind === "runOpsId" ? "NEW" : "LEGACY");
+  return clientFor(kind === "runOpsId" ? "new" : "legacy");
 }

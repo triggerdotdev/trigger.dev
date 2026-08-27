@@ -451,6 +451,7 @@ function EnvironmentVariablesListPage({
   const [isVirtualized, setIsVirtualized] = useState(false);
 
   useLayoutEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsVirtualized(shouldVirtualize);
   }, [shouldVirtualize]);
 
@@ -756,6 +757,7 @@ function EnvironmentVariablesVirtualTableBody({
   vercelIntegration: PageVercelIntegration | null;
   columnCount: number;
 }) {
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: groupedEnvironmentVariables.length,
     getScrollElement: () => scrollRef.current,
@@ -814,6 +816,7 @@ function EditEnvironmentVariablePanel({
   // Close dialog on successful submission
   useEffect(() => {
     if (lastSubmission?.success && fetcher.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [lastSubmission?.success, fetcher.state]);
@@ -831,12 +834,7 @@ function EditEnvironmentVariablePanel({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          LeadingIcon={PencilSquareIcon}
-          fullWidth
-          textAlignLeft
-        ></Button>
+        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft />
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>Edit environment variable</DialogHeader>
@@ -867,6 +865,7 @@ function EditEnvironmentVariablePanel({
                 placeholder={variable.isSecret ? "Set new secret value" : "Not set"}
                 defaultValue={variable.value}
                 type={"text"}
+                autoComplete="off"
               />
               <FormError id={value.errorId}>{value.errors}</FormError>
             </InputGroup>

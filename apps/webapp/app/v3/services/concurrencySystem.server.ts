@@ -11,14 +11,14 @@ export type ConcurrencySystemOptions = {
   reader: PrismaClientOrTransaction;
 };
 
-export type QueueInput = string | { type: "task" | "custom"; name: string };
+type QueueInput = string | { type: "task" | "custom"; name: string };
 
 /**
  * The concurrency-limit override to apply to a queue. Either an absolute `limit` or a `percent`
  * of the environment's maximum concurrency limit. A bare `number` is accepted for backwards
  * compatibility and is treated as an absolute limit.
  */
-export type ConcurrencyLimitOverride = number | { limit: number } | { percent: number };
+type ConcurrencyLimitOverride = number | { limit: number } | { percent: number };
 
 /**
  * Materializes an absolute concurrency limit from a percentage of the environment limit.

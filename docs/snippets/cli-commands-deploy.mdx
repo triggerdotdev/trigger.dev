@@ -77,6 +77,27 @@ npx trigger.dev@latest deploy [path]
   Turn off syncing environment variables with the Trigger.dev instance.
 </ParamField>
 
+<ParamField body="External id" type="--external-id">
+  Attach your own identifier to this deployment — a commit SHA, release tag or CI run id, up to 128
+  characters. Your app can then send the same id when triggering, and runs are pinned to this
+  deployment. See [version skew protection](/deployment/version-skew-protection).
+
+  Repeating an id that is already deployed doesn't build again: the CLI reports the existing version,
+  sets the same outputs, and exits successfully. Repeating an id that has a build in flight is an
+  error. An id whose build failed rebuilds normally.
+
+  The short-circuit is keyed on the id, not on the build inputs — so redeploying the same id after
+  changing a synced environment variable produces no new build.
+</ParamField>
+
+<ParamField body="Force" type="--force">
+  Start a new build for an `--external-id` that already has one. Non-destructive with respect to
+  deployments that already succeeded — both remain and the newer version wins. If a build for that
+  id is still in flight, `--force` **cancels** it first, so one id never has two live builds. A
+  cancelled build usually stops within seconds, but one running on another machine can keep going
+  briefly before it notices. Requires `--external-id`.
+</ParamField>
+
 <ParamField body="Local build" type="--local-build">
   Force building the deployment image locally using your local Docker. This is automatic when self-hosting.
 </ParamField>

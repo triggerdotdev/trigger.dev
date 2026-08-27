@@ -4,21 +4,23 @@ import { type UserFromSession } from "./session.server";
 import {
   type DashboardPreferences,
   type FavoritePage,
+  mergeHiddenItems,
+  preserveUnknownKeys,
   parseDashboardPreferences,
   SideMenuPreferences,
 } from "~/utils/dashboardPreferences";
 
-export type {
-  DashboardPreferences,
-  FavoritePage,
-  SideMenuPreferences,
-} from "~/utils/dashboardPreferences";
+export type { DashboardPreferences, FavoritePage } from "~/utils/dashboardPreferences";
 
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
-import { type ThemePreference } from "~/utils/themePreference";
-export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
+import {
+  type SystemDarkTheme,
+  type SystemLightTheme,
+  type ThemePreference,
+} from "~/utils/themePreference";
+export { type ThemePreference } from "~/utils/themePreference";
 
 export function getDashboardPreferences(data?: any | null): DashboardPreferences {
   return parseDashboardPreferences(data, (error) => {
@@ -50,7 +52,8 @@ async function mutateDashboardPreferences(
         return undefined;
       }
 
-      const updated = mutate(getDashboardPreferences(rows[0].dashboardPreferences));
+      const raw = rows[0].dashboardPreferences;
+      const updated = mutate(getDashboardPreferences(raw));
       if (!updated) {
         return undefined;
       }
@@ -60,7 +63,7 @@ async function mutateDashboardPreferences(
           id: userId,
         },
         data: {
-          dashboardPreferences: updated,
+          dashboardPreferences: preserveUnknownKeys(raw, updated),
         },
       });
     },
@@ -173,6 +176,100 @@ export async function updateContrastPreference({
       ),
       '{contrast}',
       to_jsonb(${contrast}::int)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
+export async function updateIconContrastPreference({
+  user,
+  iconContrast,
+}: {
+  user: UserFromSession;
+  iconContrast: boolean;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if ((user.dashboardPreferences.iconContrast ?? false) === iconContrast) {
+    return;
+  }
+
+  // Narrow jsonb_set write: see updateThemePreference.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      '{iconContrast}',
+      to_jsonb(${iconContrast}::boolean)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
+export async function updateUnderlineLinksPreference({
+  user,
+  underlineLinks,
+}: {
+  user: UserFromSession;
+  underlineLinks: boolean;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if ((user.dashboardPreferences.underlineLinks ?? false) === underlineLinks) {
+    return;
+  }
+
+  // Narrow jsonb_set write: see updateThemePreference.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      '{underlineLinks}',
+      to_jsonb(${underlineLinks}::boolean)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
+/** `end` names the key, so both ends share this one narrow jsonb_set write. */
+export async function updateSystemThemePreference({
+  user,
+  end,
+  theme,
+}: {
+  user: UserFromSession;
+  end: "systemLightTheme" | "systemDarkTheme";
+  theme: SystemLightTheme | SystemDarkTheme;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if (user.dashboardPreferences[end] === theme) {
+    return;
+  }
+
+  // Narrow jsonb_set write. The key is a checked union, never caller text.
+  const key = end === "systemLightTheme" ? "{systemLightTheme}" : "{systemDarkTheme}";
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      ${key}::text[],
+      to_jsonb(${theme}::text)
     )
     WHERE id = ${user.id}
   `;
@@ -374,6 +471,7 @@ export async function updateSideMenuCustomization({
   sectionItemOrder,
   favorites,
   removedFavoriteIds,
+  knownItemIds,
 }: {
   user: UserFromSession;
   /** undefined = leave unchanged, null = reset to default */
@@ -386,6 +484,13 @@ export async function updateSideMenuCustomization({
   favorites?: Array<{ id: string; label: string }>;
   /** Favorites deleted from the customize modal. */
   removedFavoriteIds?: string[];
+  /**
+   * Item ids the submitting dialog rendered. `hiddenItems` only describes these,
+   * so ids outside the list keep whatever they had: the dialog's section list
+   * depends on the org whose feature flags were in scope, and a narrower list
+   * must not un-hide items belonging to a wider one.
+   */
+  knownItemIds?: string[];
 }) {
   if (user.isImpersonating) {
     return;
@@ -400,8 +505,7 @@ export async function updateSideMenuCustomization({
     }
 
     if (hiddenItems !== undefined) {
-      next.hiddenItems =
-        hiddenItems && Object.keys(hiddenItems).length > 0 ? hiddenItems : undefined;
+      next.hiddenItems = mergeHiddenItems(currentSideMenu.hiddenItems, hiddenItems, knownItemIds);
     }
 
     if (sectionItemOrder !== undefined) {
@@ -435,15 +539,6 @@ export async function updateSideMenuCustomization({
 
     return { ...prefs, sideMenu: SideMenuPreferences.parse(next) };
   });
-}
-
-/** Get the stored item order for a specific list within an organization */
-export function getItemOrder(
-  sideMenu: SideMenuPreferences | undefined,
-  organizationId: string,
-  listId: string
-): string[] | undefined {
-  return sideMenu?.organizations?.[organizationId]?.orderedItems?.[listId];
 }
 
 export async function updateItemOrder({

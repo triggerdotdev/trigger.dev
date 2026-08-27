@@ -1,10 +1,10 @@
-export type QueueListFilteredPagination = {
+type QueueListFilteredPagination = {
   mode: "filtered";
   currentPage: number;
   hasMore: boolean;
 };
 
-export type QueueListUnfilteredPagination = {
+type QueueListUnfilteredPagination = {
   mode: "unfiltered";
   currentPage: number;
   totalPages: number;

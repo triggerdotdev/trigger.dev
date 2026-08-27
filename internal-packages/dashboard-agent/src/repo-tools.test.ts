@@ -194,6 +194,27 @@ describe("repo-tools", () => {
     expect(res.error).toMatch(/Couldn't resolve the source/);
   });
 
+  // The snapshot fetch runs on an internal worker, so only GitHub's archive host is
+  // allowed; anything else must fail before a request leaves the worker.
+  it("refuses to fetch a snapshot whose tarballUrl is not an allowed host", async () => {
+    for (const tarballUrl of [
+      "http://codeload.github.com/acme/attacker/tar.gz/abc",
+      "https://attacker.example.com/x.tar.gz",
+      "https://github.com.evil.example/x.tar.gz",
+      "not a url",
+    ]) {
+      const bad: RepoSnapshot = {
+        tarballUrl,
+        owner: "acme",
+        repo: "attacker",
+        sha: "b".repeat(40),
+      };
+      const res: any = await call(buildRepoTools(bad).read_file, { path: "README.md" });
+      expect(res.error).toMatch(/Couldn't load the repository/);
+      expect(res.error).toMatch(/not a valid URL|not allowed/);
+    }
+  });
+
   it.runIf(hasRg)("search_code finds a match (and does not hang on stdin)", async () => {
     const res: any = await call(tools.search_code, { query: "const LIMIT" });
     expect(res.error).toBeUndefined();

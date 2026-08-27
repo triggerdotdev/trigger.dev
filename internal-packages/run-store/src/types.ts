@@ -23,12 +23,19 @@ import type { Residency } from "@trigger.dev/core/v3/isomorphic";
 export type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
 
 export type IdempotencyKeyRunMatch = {
+  id: string;
+  createdAt: Date;
   friendlyId: string;
   idempotencyKey: string | null;
   idempotencyKeyExpiresAt: Date | null;
 };
 
 export type CreateRunSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   id?: string;
   engine: "V2";
   executionStatus: TaskRunExecutionStatus;
@@ -43,6 +50,14 @@ export type CreateRunSnapshotInput = {
 };
 
 export type CompletionSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   executionStatus: "FINISHED";
   description: string;
   runStatus: TaskRunStatus;
@@ -55,7 +70,23 @@ export type CompletionSnapshotInput = {
   runnerId?: string;
 };
 
+export type PromotePendingVersionArgs = {
+  status?: Extract<TaskRunStatus, "PENDING" | "DELAYED">;
+  lockedToVersionId?: string;
+  taskVersion?: string;
+  sdkVersion?: string;
+  cliVersion?: string;
+};
+
 export type ExpireSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   engine: "V2";
   executionStatus: "FINISHED";
   description: string;
@@ -67,13 +98,29 @@ export type ExpireSnapshotInput = {
 };
 
 export type RescheduleSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   environmentId: string;
   environmentType: RuntimeEnvironmentType;
   projectId: string;
   organizationId: string;
+  executionStatus?: TaskRunExecutionStatus;
+  runStatus?: TaskRunStatus;
+  description?: string;
 };
 
 export type LockSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
   id: string;
   previousSnapshotId: string;
   attemptNumber?: number;
@@ -105,6 +152,7 @@ export type CreateRunData = {
   id: string;
   engine: "V2";
   status: TaskRunStatus;
+  statusReason?: string;
   friendlyId: string;
   runtimeEnvironmentId: string;
   environmentType: RuntimeEnvironmentType;
@@ -280,6 +328,14 @@ export type TaskRunWithWaitpoint = TaskRun & { associatedWaitpoint: Waitpoint | 
  * input — callers pass the high-level shape, not a raw Prisma `data`/`include`.
  */
 export type CreateExecutionSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
   run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
   snapshot: {
     executionStatus: TaskRunExecutionStatus;
@@ -486,6 +542,18 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   promotePendingVersionRuns(
     runId: string,
+    args?: PromotePendingVersionArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
+  expireParkedRun(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      statusReason: string;
+      snapshot: ExpireSnapshotInput;
+    },
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }>;
   suspendForCheckpoint<I extends Prisma.TaskRunInclude>(

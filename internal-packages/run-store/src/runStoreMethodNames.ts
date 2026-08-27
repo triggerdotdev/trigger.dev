@@ -1,0 +1,115 @@
+// The member names of RunStore, as data.
+//
+// The decorator suites enumerate this to drive one call per member. Member PRESENCE is not proved
+// here: that is the compiler's job, through `implements RunStore` on the pass-through base and the
+// assertions at the foot of this file.
+//
+import type { RunStore } from "./types.js";
+
+// Every method the RunStore interface declares. The forwarding probe enumerates this to drive one
+// call per member; member PRESENCE is proved by the compiler, in the assertions at the foot of this
+// file and by `implements RunStore` on the generated class.
+export const RUN_STORE_METHOD_NAMES = [
+  "runInTransaction",
+  "createRun",
+  "createCancelledRun",
+  "createFailedRun",
+  "startAttempt",
+  "completeAttemptSuccess",
+  "recordRetryOutcome",
+  "requeueRun",
+  "recordBulkActionMembership",
+  "cancelRun",
+  "failRunPermanently",
+  "finalizeRun",
+  "expireRun",
+  "expireRunsBatch",
+  "lockRunToWorker",
+  "parkPendingVersion",
+  "promotePendingVersionRuns",
+  "expireParkedRun",
+  "suspendForCheckpoint",
+  "resumeFromCheckpoint",
+  "rescheduleRun",
+  "enqueueDelayedRun",
+  "rewriteDebouncedRun",
+  "updateMetadata",
+  "clearIdempotencyKey",
+  "pushTags",
+  "pushRealtimeStream",
+  "findRun",
+  "findRunOrThrow",
+  "findRunOnPrimary",
+  "findRunOrThrowOnPrimary",
+  "findRuns",
+  "findRunsByIds",
+  "findRunsByIdempotencyKeys",
+  "createBatchTaskRunItem",
+  "findLatestExecutionSnapshot",
+  "findExecutionSnapshot",
+  "findManyExecutionSnapshots",
+  "createExecutionSnapshot",
+  "findSnapshotCompletedWaitpointIds",
+  "findSnapshotCompletedWaitpointIdsWithPresence",
+  "findWaitpointConnectedRunIds",
+  "findWaitpointCompletedSnapshotIds",
+  "blockRunWithWaitpointEdges",
+  "countPendingWaitpoints",
+  "countPendingWaitpointsWithPresence",
+  "createWaitpoint",
+  "upsertWaitpoint",
+  "findWaitpoint",
+  "findWaitpointOnPrimary",
+  "findManyWaitpoints",
+  "updateWaitpoint",
+  "updateManyWaitpoints",
+  "forWaitpointCompletion",
+  "findManyTaskRunWaitpoints",
+  "deleteManyTaskRunWaitpoints",
+  "findTaskRunAttempt",
+  "createTaskRunCheckpoint",
+  "createBatchTaskRun",
+  "updateBatchTaskRun",
+  "findBatchTaskRunById",
+  "findBatchTaskRunByFriendlyId",
+  "findBatchTaskRunByIdempotencyKey",
+  "updateManyBatchTaskRun",
+  "countBatchTaskRunItems",
+  "updateManyBatchTaskRunItems",
+  "findManyBatchTaskRunItems",
+  "findBatchTaskRunItem",
+  "upsertWaitpointTag",
+  "findManyWaitpointTags",
+] as const;
+
+// Data properties the base exposes as getters over the delegate, not as forwarders.
+export const RUN_STORE_PROPERTY_NAMES = ["primaryReadClient"] as const;
+
+// ---------------------------------------------------------------------------
+// Parity with the interface, checked by the compiler.
+//
+// The lists above are produced by parsing types.ts. These assertions compare them
+// against `keyof RunStore`, which the compiler derives from the interface itself,
+// so a name this generator failed to parse, or invented, is a build failure rather
+// than a silent gap. Both directions are checked: a missing name and an extra one.
+// ---------------------------------------------------------------------------
+
+type RunStoreMemberName =
+  | (typeof RUN_STORE_METHOD_NAMES)[number]
+  | (typeof RUN_STORE_PROPERTY_NAMES)[number];
+
+/** Fails when the interface declares a member the generator did not emit. */
+type _EveryInterfaceMemberIsListed = [Exclude<keyof RunStore, RunStoreMemberName>] extends [never]
+  ? true
+  : never;
+const _everyInterfaceMemberIsListed: _EveryInterfaceMemberIsListed = true;
+void _everyInterfaceMemberIsListed;
+
+/** Fails when the generator emitted a name the interface does not declare. */
+type _EveryListedNameIsOnTheInterface = [Exclude<RunStoreMemberName, keyof RunStore>] extends [
+  never,
+]
+  ? true
+  : never;
+const _everyListedNameIsOnTheInterface: _EveryListedNameIsOnTheInterface = true;
+void _everyListedNameIsOnTheInterface;

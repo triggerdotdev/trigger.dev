@@ -42,7 +42,7 @@ export type WatchTickStore = {
   }): Promise<{ tickCount: number; lastCheckedAt: Date | null } | null>;
 };
 
-export type WatchWakeAck = { appended: boolean };
+type WatchWakeAck = { appended: boolean };
 
 export type WatchDeliveryDeps = {
   store: Pick<
