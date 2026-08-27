@@ -3,12 +3,12 @@ import { ProfilePhotoEditor } from "~/components/ProfilePhotoEditor";
 import { Button } from "~/components/primitives/Buttons";
 import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
 
-// Data URI, not a remote image: the document `img-src` CSP allowlist has no
-// placeholder host.
+// A data URI skips the `?raw` fetch, so the story needs no backend. Explicit
+// width/height too, or the SVG has no intrinsic size to crop against.
 const PLACEHOLDER_AVATAR =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" fill="#5850EC"/><circle cx="64" cy="50" r="24" fill="#E1E1E6"/><circle cx="64" cy="124" r="42" fill="#E1E1E6"/></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><rect width="256" height="256" fill="#5850EC"/><circle cx="128" cy="100" r="48" fill="#E1E1E6"/><circle cx="128" cy="248" r="84" fill="#E1E1E6"/></svg>`
   );
 
 function EditorStory({
@@ -51,10 +51,10 @@ export default function Story_() {
           <Story label="No picture yet">
             <EditorStory />
           </Story>
-          <Story label="Current picture">
+          <Story label="Existing picture in the cropper">
             <EditorStory currentAvatarUrl={PLACEHOLDER_AVATAR} />
           </Story>
-          <Story label="Current picture, removable">
+          <Story label="Existing picture, removable">
             <EditorStory currentAvatarUrl={PLACEHOLDER_AVATAR} withRemove />
           </Story>
           <Story label="Saving">

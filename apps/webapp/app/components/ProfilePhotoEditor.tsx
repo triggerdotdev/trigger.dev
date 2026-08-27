@@ -12,6 +12,7 @@ import {
 } from "./primitives/Dialog";
 import { Paragraph } from "./primitives/Paragraph";
 import { Slider } from "./primitives/Slider";
+import { Spinner } from "./primitives/Spinner";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const OUTPUT_SIZE = 512;
@@ -62,6 +63,10 @@ type ProfilePhotoEditorProps = {
   isSaving?: boolean;
 };
 
+function isInlineImage(url: string) {
+  return url.startsWith("data:");
+}
+
 export function ProfilePhotoEditor({
   open,
   onOpenChange,
@@ -85,17 +90,59 @@ type EditorProps = Omit<ProfilePhotoEditorProps, "open" | "onOpenChange">;
 
 function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [imageSrc, setImageSrc] = useState<string>();
+  // Ref for the async load guard, state for rendering.
+  const hasPickedRef = useRef(false);
+  const [hasPicked, setHasPicked] = useState(false);
+  const isInline = currentAvatarUrl !== undefined && isInlineImage(currentAvatarUrl);
+  const [imageSrc, setImageSrc] = useState(isInline ? currentAvatarUrl : undefined);
   const [crop, setCrop] = useState<Point>(CENTER);
   const [zoom, setZoom] = useState(MIN_ZOOM);
   const [croppedArea, setCroppedArea] = useState<Area>();
   const [error, setError] = useState<string>();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isLoadingCurrent, setIsLoadingCurrent] = useState(
+    currentAvatarUrl !== undefined && !isInline
+  );
 
   useEffect(() => {
     if (!imageSrc) return;
     return () => URL.revokeObjectURL(imageSrc);
   }, [imageSrc]);
+
+  // The cropper exports through a canvas, so the current photo has to come in as
+  // same-origin bytes rather than a remote URL. A missing one is just no photo.
+  useEffect(() => {
+    if (currentAvatarUrl === undefined || isInlineImage(currentAvatarUrl)) return;
+
+    let cancelled = false;
+
+    async function loadCurrentAvatar(url: string) {
+      try {
+        const response = await fetch(`${url}?raw`);
+        if (!response.ok) return;
+
+        const blob = await response.blob();
+        if (cancelled || hasPickedRef.current) return;
+        // An expired session redirects to the login HTML, which fetch follows
+        // with response.ok still true and would leave a blank cropper.
+        if (response.redirected || !ACCEPTED_TYPES.includes(blob.type)) return;
+
+        setImageSrc(URL.createObjectURL(blob));
+      } catch {
+        // Leaves the empty state in place.
+      } finally {
+        if (!cancelled) {
+          setIsLoadingCurrent(false);
+        }
+      }
+    }
+
+    void loadCurrentAvatar(currentAvatarUrl);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAvatarUrl]);
 
   // A drop landing outside our own handlers would navigate the tab to the file
   // and lose the crop. Editor only exists while the dialog is open.
@@ -118,10 +165,13 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
       return;
     }
 
+    hasPickedRef.current = true;
+    setHasPicked(true);
     setCrop(CENTER);
     setZoom(MIN_ZOOM);
     setCroppedArea(undefined);
     setError(undefined);
+    setIsLoadingCurrent(false);
     setImageSrc(URL.createObjectURL(file));
   }
 
@@ -200,20 +250,9 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
               TrailingIcon={MagnifyingGlassPlusIcon}
             />
           </>
-        ) : currentAvatarUrl ? (
-          <div
-            className={cn(
-              "flex h-64 w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed",
-              isDraggingOver ? "border-primary" : "border-grid-bright"
-            )}
-          >
-            <img
-              src={currentAvatarUrl}
-              alt=""
-              className="size-32 rounded-full object-cover"
-              draggable={false}
-            />
-            <Paragraph variant="extra-small">Drop an image here to replace it</Paragraph>
+        ) : isLoadingCurrent ? (
+          <div className="flex h-64 w-full items-center justify-center rounded-md border border-dashed border-grid-bright">
+            <Spinner />
           </div>
         ) : (
           <button
@@ -243,7 +282,8 @@ function Editor({ onSave, currentAvatarUrl, onRemove, isSaving }: EditorProps) {
           >
             {imageSrc ? "Choose another" : "Choose image"}
           </Button>
-          {onRemove && currentAvatarUrl && !imageSrc && (
+          {/* Only while the existing photo is showing, or it would discard a pending crop. */}
+          {onRemove && imageSrc && !hasPicked && (
             <Button variant="danger/medium" onClick={onRemove} disabled={isSaving}>
               Remove
             </Button>
