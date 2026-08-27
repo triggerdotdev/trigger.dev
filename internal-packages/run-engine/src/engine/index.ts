@@ -3013,13 +3013,26 @@ export class RunEngine {
     executionStatus: string;
   }) {
     return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
-      // The mirror, when wired up. Every read below goes through its undecorated store: once reads
-      // are served from Redis, reading through `this.runStore` hands the repair the same stale head
-      // it was enqueued to replace, so it would conclude the snapshot is gone and stop.
       const mirror = asSnapshotMirrorRepair(this.runStore);
-      const readStore = mirror?.authoritativeStore() ?? this.runStore;
 
-      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId, readStore);
+      // Ahead of the staleness guard below, and for every status, because the two things a repair
+      // can heal are independent. The queue recovery only applies while this snapshot is still the
+      // latest, but a mirror missing an entry stays wrong however far the run has moved on, and the
+      // queue recovery cannot put that entry back. Idempotent, so a snapshot that did land is a
+      // no-op.
+      if (mirror) {
+        const outcome = await mirror.repairRedisHead(runId, snapshotId);
+        this.logger.log("RunEngine.handleRepairSnapshot mirror", { runId, snapshotId, outcome });
+      }
+
+      // Through the mirror's UNDECORATED store: once reads are served from Redis, reading through
+      // `this.runStore` hands this the same stale head the repair was enqueued to replace, so it
+      // would decide the snapshot is no longer current and stop.
+      const latestSnapshot = await getLatestExecutionSnapshot(
+        this.prisma,
+        runId,
+        mirror?.authoritativeStore() ?? this.runStore
+      );
 
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
@@ -3033,19 +3046,6 @@ export class RunEngine {
         );
 
         return;
-      }
-
-      // Runs first and for every status, because the two things a repair can heal are independent:
-      // the mirror can be missing this snapshot whatever the run's queue state is, and the queue
-      // recovery below cannot put it back. Idempotent, so a snapshot that did land is a no-op.
-      if (mirror) {
-        const outcome = await mirror.repairRedisHead(runId, snapshotId);
-        this.logger.log("RunEngine.handleRepairSnapshot mirror", {
-          runId,
-          snapshotId,
-          executionStatus: latestSnapshot.executionStatus,
-          outcome,
-        });
       }
 
       switch (latestSnapshot.executionStatus) {

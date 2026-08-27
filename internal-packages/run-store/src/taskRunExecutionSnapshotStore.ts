@@ -106,7 +106,7 @@ export type SnapshotStoreHaltCheck = () => boolean;
  */
 export type SnapshotRepairOutcome =
   | "off"
-  | "notLatest"
+  | "noSnapshot"
   | "notResident"
   | "alreadyCurrent"
   | "redisAhead"
@@ -701,15 +701,25 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
 
     const row = await this.delegate.findLatestExecutionSnapshot(runId);
 
-    // Only the head is repairable. Once the run has moved on, the gap is mid-history and appending
-    // the current head would put an entry that landed normally at the tail a second time.
-    if (!row || row.id !== snapshotId) {
-      return "notLatest";
+    if (!row) {
+      return "noSnapshot";
+    }
+
+    // The target is the head Postgres holds NOW, not the snapshot the job names. The repair is
+    // delayed, so the run has usually moved on by the time it runs, and the entry that was lost is
+    // unreachable by then; the mirror head is still wrong, and a wrong head is what a Redis-served
+    // read returns.
+    if (row.id !== snapshotId) {
+      this.logger.log("snapshot repair target advanced", {
+        runId,
+        enqueuedFor: snapshotId,
+        head: row.id,
+      });
     }
 
     const head = await this.redis.getLatest(runId);
 
-    if (head?.id === snapshotId) {
+    if (head?.id === row.id) {
       return "alreadyCurrent";
     }
 

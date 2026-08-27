@@ -317,9 +317,10 @@ describe("repairRedisHead", () => {
     expect(redis.appends).toHaveLength(0);
   });
 
-  it("stops when the run has already transitioned past the lost snapshot", async () => {
-    // The gap is now mid-history, and the newest entry is not the one that was lost. Appending the
-    // current head here would be appending an entry that already landed normally.
+  it("heals the head even when the run has transitioned past the lost snapshot", async () => {
+    // The repair is delayed by a minute, so the run routinely moves on before it runs. The entry
+    // that was lost is unreachable by then, but the mirror head is still wrong, and a wrong head is
+    // what a Redis-served read returns. So the target is whatever Postgres holds now.
     const redis = new RecordingRedis(redisHead("snap_prev", new Date("2026-01-01T00:00:00.000Z")));
     const store = harness({
       pg: pgHead({
@@ -331,8 +332,16 @@ describe("repairRedisHead", () => {
       redis,
     });
 
-    await expect(store.repairRedisHead("run_1", "snap_lost")).resolves.toBe("notLatest");
-    expect(redis.appends).toHaveLength(0);
+    await expect(store.repairRedisHead("run_1", "snap_lost")).resolves.toBe("reappended");
+    expect(redis.appends[0]!.entry.id).toBe("snap_later");
+  });
+
+  it("reports that there is nothing to repair when Postgres holds no snapshot", async () => {
+    const redis = new RecordingRedis(redisHead("snap_prev", new Date("2026-01-01T00:00:00.000Z")));
+    const store = harness({ pg: null, redis });
+
+    await expect(store.repairRedisHead("run_1", "snap_lost")).resolves.toBe("noSnapshot");
+    expect(redis.calls).toHaveLength(0);
   });
 
   it("touches Redis for no run when the deployment-wide dial is off", async () => {
