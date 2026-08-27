@@ -21,7 +21,8 @@ import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { resolveThemePreference, useSystemThemeSync } from "./hooks/useSystemThemeSync";
-import { getImpersonationState } from "./services/impersonation.server";
+import { clearImpersonation } from "./models/admin.server";
+import { getImpersonationState, getRawImpersonationId } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import {
   normalizeIconContrast,
@@ -117,6 +118,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // the `user.isViewingAsUser` the server computes could disagree, and the
   // client-side admin UI would hide itself on a session that is not
   // impersonating.
+  // Flag off: terminate lingering impersonation sessions (audit + clear)
+  // rather than leaving a cookie that would resurrect on a later re-enable.
+  if (!env.ADMIN_DASHBOARD_ENABLED && (await getRawImpersonationId(request))) {
+    const url = new URL(request.url);
+    throw await clearImpersonation(request, `${url.pathname}${url.search}`);
+  }
+
   const { isViewingAsUser } = await getImpersonationState(request, user?.id);
 
   const headers = new Headers();
@@ -126,6 +134,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     {
       user,
       isViewingAsUser,
+      adminDashboardEnabled: env.ADMIN_DASHBOARD_ENABLED,
       toastMessage,
       posthogProjectKey,
       posthogUiHost,

@@ -20,6 +20,8 @@ import {
   VercelProjectIntegrationDataSchema,
   envTypeToSlug,
   createDefaultVercelIntegrationData,
+  getAvailableEnvSlugs,
+  restrictConfigToAvailableEnvSlugs,
   SKEW_PROTECTION_ENV_VAR_KEY,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
@@ -129,6 +131,17 @@ export class VercelIntegrationService {
       .filter((i): i is VercelProjectIntegrationWithProject => i !== null);
   }
 
+  async #getAvailableEnvSlugs(projectId: string): Promise<EnvSlug[]> {
+    const environments = await this.#prismaClient.runtimeEnvironment.findMany({
+      where: { projectId, type: { in: ["STAGING", "PREVIEW"] }, parentEnvironmentId: null },
+      select: { type: true },
+    });
+
+    const types = new Set(environments.map((environment) => environment.type));
+
+    return getAvailableEnvSlugs(types.has("STAGING"), types.has("PREVIEW"));
+  }
+
   async createVercelProjectIntegration(params: {
     organizationIntegrationId: string;
     projectId: string;
@@ -142,7 +155,8 @@ export class VercelIntegrationService {
       params.vercelProjectId,
       params.vercelProjectName,
       params.vercelTeamId,
-      params.vercelTeamSlug
+      params.vercelTeamSlug,
+      await this.#getAvailableEnvSlugs(params.projectId)
     );
 
     return this.#prismaClient.organizationProjectIntegration.create({
@@ -182,6 +196,8 @@ export class VercelIntegrationService {
         (slug) => slug,
         () => undefined
       );
+
+    const availableEnvSlugs = await this.#getAvailableEnvSlugs(params.projectId);
 
     // Use a serializable transaction to prevent duplicate project integrations
     // from concurrent selectVercelProject calls (read-then-write race condition).
@@ -236,7 +252,8 @@ export class VercelIntegrationService {
           params.vercelProjectId,
           params.vercelProjectName,
           teamId,
-          vercelTeamSlug
+          vercelTeamSlug,
+          availableEnvSlugs
         );
 
         const created = await tx.organizationProjectIntegration.create({
@@ -320,7 +337,10 @@ export class VercelIntegrationService {
 
     const updatedConfig = {
       ...existing.parsedIntegrationData.config,
-      ...configUpdates,
+      ...restrictConfigToAvailableEnvSlugs(
+        configUpdates,
+        await this.#getAvailableEnvSlugs(projectId)
+      ),
     };
 
     const updatedData: VercelProjectIntegrationData = {
@@ -578,14 +598,20 @@ export class VercelIntegrationService {
       prod: {},
       preview: {},
     };
+    const availableEnvSlugs = await this.#getAvailableEnvSlugs(projectId);
     const updatedData: VercelProjectIntegrationData = {
       ...existing.parsedIntegrationData,
       config: {
         ...existing.parsedIntegrationData.config,
-        pullEnvVarsBeforeBuild: params.pullEnvVarsBeforeBuild ?? null,
-        atomicBuilds: params.atomicBuilds ?? null,
-        discoverEnvVars: params.discoverEnvVars ?? null,
-        vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
+        ...restrictConfigToAvailableEnvSlugs(
+          {
+            pullEnvVarsBeforeBuild: params.pullEnvVarsBeforeBuild ?? null,
+            atomicBuilds: params.atomicBuilds ?? null,
+            discoverEnvVars: params.discoverEnvVars ?? null,
+            vercelStagingEnvironment: params.vercelStagingEnvironment ?? null,
+          },
+          availableEnvSlugs
+        ),
       },
       //This is intentionally not updated here, in case of resetting the onboarding it should not override the existing mapping with an empty one
       syncEnvVarsMapping: existing.parsedIntegrationData.syncEnvVarsMapping,
@@ -610,7 +636,7 @@ export class VercelIntegrationService {
         projectId,
         vercelProjectId: updatedData.vercelProjectId,
         teamId,
-        vercelStagingEnvironment: params.vercelStagingEnvironment,
+        vercelStagingEnvironment: updatedData.config.vercelStagingEnvironment,
         syncEnvVarsMapping,
         orgIntegration,
       });

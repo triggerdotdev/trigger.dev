@@ -49,7 +49,6 @@ type BuildSettingsFieldsProps = {
    * the pin status is unknown — distinct from "not set". */
   currentTriggerVersionFetchFailed?: boolean;
   /** Hide the section-level master toggles for "Pull env vars" and "Discover new env vars". */
-  hideSectionToggles?: boolean;
   showAtomicDeployments?: boolean;
   layout?: "settings" | "card";
 };
@@ -68,7 +67,6 @@ export function BuildSettingsFields({
   onAutoPromoteChange,
   currentTriggerVersion,
   currentTriggerVersionFetchFailed,
-  hideSectionToggles,
   showAtomicDeployments = true,
   layout = "card",
 }: BuildSettingsFieldsProps) {
@@ -222,7 +220,7 @@ export function BuildSettingsFields({
           <div className="mb-2">
             <div className="flex items-center justify-between">
               <Label>Pull env vars before build</Label>
-              {!hideSectionToggles && availableEnvSlugs.length > 1 && (
+              {availableEnvSlugs.length > 1 && (
                 <Switch
                   variant="small"
                   checked={
@@ -292,7 +290,7 @@ export function BuildSettingsFields({
           <div className="mb-2">
             <div className="flex items-center justify-between">
               <Label>Discover new env vars</Label>
-              {!hideSectionToggles && availableEnvSlugs.length > 1 && (
+              {availableEnvSlugs.length > 1 && (
                 <Switch
                   variant="small"
                   checked={

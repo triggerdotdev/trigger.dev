@@ -875,6 +875,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       this.activeStreams.delete(chatId);
     }
 
+    // A stop that never saw its TURN_COMPLETE leaves the flag set, and the new
+    // turn would be skipped record by record.
+    state.skipToTurnComplete = false;
+
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
@@ -1287,6 +1291,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       activeStream.abort();
       this.activeStreams.delete(chatId);
     }
+
+    // A stop that never saw its TURN_COMPLETE leaves the flag set, and the new
+    // turn would be skipped record by record.
+    state.skipToTurnComplete = false;
 
     // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
     // no-ops when the persisted session says isStreaming: false).
