@@ -273,10 +273,8 @@ export function configureDeployCommand(program: Command) {
       .addOption(
         new CommandOption(
           "--local-bundle",
-          "Experimental: install and bundle locally, upload only the build output, and build the image remotely. Implies using the native build server."
-        )
-          .implies({ nativeBuildServer: true })
-          .conflicts(["localBuild", "forceLocalBuild"])
+          "Experimental: install and bundle locally and upload only the build output. Only available with the native build server."
+        ).conflicts(["localBuild", "forceLocalBuild", "depotBuild"])
       )
       .addOption(
         new CommandOption(
@@ -464,8 +462,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
-  const buildPath = await resolveBuildPath(projectClient.client, resolvedConfig.project, options);
-  assertDetachSupported(buildPath, options);
+  const buildPath = applyNativeOnlyOptions(
+    await resolveBuildPath(projectClient.client, resolvedConfig.project, options),
+    options
+  );
 
   if (buildPath === "native_local_bundle") {
     await handleLocalBundleDeploy({
@@ -1261,12 +1261,27 @@ function getTriggeredVia(): DeploymentTriggeredVia {
 
 const DEPLOY_SETTINGS_TIMEOUT_MS = 3_000;
 
-function assertDetachSupported(buildPath: DeployBuildPath, options: DeployCommandOptions) {
-  if (options.detach && buildPath === "depot") {
+/**
+ * --local-bundle and --detach modify the native path rather than select it: with the
+ * native build server they apply, on Depot they are an error.
+ */
+function applyNativeOnlyOptions(
+  buildPath: DeployBuildPath,
+  options: DeployCommandOptions
+): DeployBuildPath {
+  const nativeOnly = options.localBundle
+    ? "--local-bundle"
+    : options.detach
+      ? "--detach"
+      : undefined;
+
+  if (nativeOnly && buildPath === "depot") {
     throw new Error(
-      "--detach is only available with the native build server. Pass --native-build, or configure the native build path for this environment."
+      `${nativeOnly} is only available with the native build server. Pass --native-build, or configure the native build path for this environment.`
     );
   }
+
+  return options.localBundle ? "native_local_bundle" : buildPath;
 }
 
 const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
@@ -1286,20 +1301,15 @@ const BUILD_PATH_SOURCE_LABEL: Record<DeployBuildPathSource, string> = {
 };
 
 /**
- * Explicit path flags always win and skip the server round-trip. Otherwise the server
- * decides (org/env-type feature flags); any failure to ask falls open to Depot, the path
- * older CLIs use unconditionally.
+ * Explicit path flags (--native-build, --depot-build, --local-build) win and skip the server
+ * round-trip. Otherwise the server decides (org/env-type feature flags); any failure to ask
+ * falls open to Depot, the path older CLIs use unconditionally.
  */
 async function resolveBuildPath(
   apiClient: CliApiClient,
   projectRef: string,
   options: DeployCommandOptions
 ): Promise<DeployBuildPath> {
-  if (options.localBundle) {
-    logger.debug("Build path from --local-bundle");
-    return "native_local_bundle";
-  }
-
   if (options.nativeBuildServer) {
     logger.debug("Build path from --native-build");
     return "native";
