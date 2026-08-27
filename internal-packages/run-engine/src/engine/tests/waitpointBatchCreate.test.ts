@@ -1,22 +1,16 @@
 import type { RedisOptions } from "@internal/redis";
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import {
-  BatchId,
-  generateRunOpsId,
-  parseWaitpointId,
-  RunId,
-} from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, generateRunOpsId, parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { RunEngine } from "../index.js";
+import { freshRunFriendlyId, type WaitpointArm } from "./helpers/engineFactory.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-type Arm = "legacy" | "store";
-
-function engineFor(arm: Arm, prisma: PrismaClient, redisOptions: RedisOptions) {
+function engineFor(arm: WaitpointArm, prisma: PrismaClient, redisOptions: RedisOptions) {
   return new RunEngine({
     prisma,
     worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
@@ -32,10 +26,6 @@ function engineFor(arm: Arm, prisma: PrismaClient, redisOptions: RedisOptions) {
     },
     tracer: trace.getTracer("test", "0.0.0"),
   });
-}
-
-function freshRunFriendlyId(arm: Arm) {
-  return arm === "store" ? RunId.toFriendlyId(generateRunOpsId()) : RunId.generate().friendlyId;
 }
 
 function triggerParams(friendlyId: string, environment: any, taskIdentifier: string) {
@@ -57,7 +47,7 @@ function triggerParams(friendlyId: string, environment: any, taskIdentifier: str
   };
 }
 
-async function seedBatch(prisma: PrismaClient, environment: any, arm: Arm) {
+async function seedBatch(prisma: PrismaClient, environment: any, arm: WaitpointArm) {
   // Mirrors batchIdForMintKind: a run-ops batch carries a run-ops ROW id, and the BATCH
   // waitpoint derives from that id, not from the friendly id.
   const { id, friendlyId } =
@@ -73,7 +63,7 @@ async function seedBatch(prisma: PrismaClient, environment: any, arm: Arm) {
   });
 }
 
-describe.each<Arm>(["legacy", "store"])("BATCH waitpoint create (%s arm)", (arm) => {
+describe.each<WaitpointArm>(["legacy", "store"])("BATCH waitpoint create (%s arm)", (arm) => {
   containerTest(
     "blockRunWithCreatedBatch suspends the parent",
     async ({ prisma, redisOptions }) => {

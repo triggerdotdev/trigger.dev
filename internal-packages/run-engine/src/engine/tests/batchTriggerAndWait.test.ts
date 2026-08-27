@@ -4,7 +4,6 @@ import {
 } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect, describe } from "vitest";
-import { RunEngine } from "../index.js";
 import { createTestEngine } from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import { generateFriendlyId, BatchId } from "@trigger.dev/core/v3/isomorphic";

@@ -4,7 +4,7 @@ import { PostgresRunStore } from "@internal/run-store";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
-import { RunEngine } from "../index.js";
+import type { RunEngine } from "../index.js";
 import { createTestEngine } from "./helpers/engineFactory.js";
 import type { CrossSeamGuardHook } from "../types.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";

@@ -1,7 +1,6 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
-import { RunEngine } from "../index.js";
 import { createTestEngine } from "./helpers/engineFactory.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { setTimeout } from "timers/promises";

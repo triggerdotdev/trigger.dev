@@ -5,13 +5,12 @@ import type { PrismaClient } from "@trigger.dev/database";
 import type { RedisOptions } from "@internal/redis";
 import { describe, expect } from "vitest";
 import { RunEngine } from "../index.js";
+import type { WaitpointArm } from "./helpers/engineFactory.js";
 import { setupAuthenticatedEnvironment } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-type Arm = "legacy" | "store";
-
-function engineFor(arm: Arm, prisma: PrismaClient, redisOptions: RedisOptions) {
+function engineFor(arm: WaitpointArm, prisma: PrismaClient, redisOptions: RedisOptions) {
   return new RunEngine({
     prisma,
     worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
@@ -31,9 +30,9 @@ function engineFor(arm: Arm, prisma: PrismaClient, redisOptions: RedisOptions) {
   });
 }
 
-const expectedFormat: Record<Arm, string> = { legacy: "legacy", store: "b32hexW" };
+const expectedFormat: Record<WaitpointArm, string> = { legacy: "legacy", store: "b32hexW" };
 
-describe.each<Arm>(["legacy", "store"])("standalone waitpoint creates (%s arm)", (arm) => {
+describe.each<WaitpointArm>(["legacy", "store"])("standalone waitpoint creates (%s arm)", (arm) => {
   containerTest(
     "createManualWaitpoint mints into the expected system",
     async ({ prisma, redisOptions }) => {

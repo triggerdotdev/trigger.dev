@@ -2,7 +2,6 @@ import { createRedisClient, type RedisOptions } from "@internal/redis";
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import {
-  generateRunOpsId,
   parseWaitpointId,
   RunId,
   deriveWaitpointIdFromAnchor,
@@ -10,14 +9,17 @@ import {
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { RunEngine } from "../index.js";
+import {
+  assertStoreResident,
+  freshRunFriendlyId,
+  type WaitpointArm,
+} from "./helpers/engineFactory.js";
 import { waitpointKeys } from "../waitpointCoordinator/keys.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-type Arm = "legacy" | "store";
-
-function engineFor(arm: Arm, prisma: PrismaClient, redisOptions: RedisOptions) {
+function engineFor(arm: WaitpointArm, prisma: PrismaClient, redisOptions: RedisOptions) {
   return new RunEngine({
     prisma,
     worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
@@ -33,15 +35,6 @@ function engineFor(arm: Arm, prisma: PrismaClient, redisOptions: RedisOptions) {
     },
     tracer: trace.getTracer("test", "0.0.0"),
   });
-}
-
-/**
- * A store RUN waitpoint derives its id from the anchor run's own id body, so a store-arm
- * run has to be triggered with a run-ops friendly id. A legacy-shaped run in a flipped
- * organization keeps a legacy waitpoint, which is a case worth its own test below.
- */
-function freshRunFriendlyId(arm: Arm) {
-  return arm === "store" ? RunId.toFriendlyId(generateRunOpsId()) : RunId.generate().friendlyId;
 }
 
 function triggerParams(friendlyId: string, environment: any, taskIdentifier: string) {
@@ -63,7 +56,7 @@ function triggerParams(friendlyId: string, environment: any, taskIdentifier: str
   };
 }
 
-describe.each<Arm>(["legacy", "store"])("trigger-time RUN waitpoint (%s arm)", (arm) => {
+describe.each<WaitpointArm>(["legacy", "store"])("trigger-time RUN waitpoint (%s arm)", (arm) => {
   containerTest("triggerAndWait suspends the parent", async ({ prisma, redisOptions }) => {
     const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const engine = engineFor(arm, prisma, redisOptions);
@@ -130,7 +123,9 @@ describe("trigger-time RUN waitpoint, store specifics", () => {
 
         const expected = deriveWaitpointIdFromAnchor(child.id, "RUN");
         assertNonNullable(expected);
-        expect(parseWaitpointId(expected).format).toBe("b32hexW");
+        // Guards the vacuous pass: a store-arm test whose waitpoint minted legacy would
+        // satisfy everything below while proving nothing about the store.
+        assertStoreResident(expected);
 
         // No Postgres row: the store owns this waitpoint entirely.
         const row = await prisma.waitpoint.findFirst({ where: { id: expected } });

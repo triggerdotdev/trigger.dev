@@ -1,7 +1,6 @@
 import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
-import { RunEngine } from "../index.js";
 import { createTestEngine } from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";

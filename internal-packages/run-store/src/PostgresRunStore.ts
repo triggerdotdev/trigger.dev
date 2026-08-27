@@ -30,6 +30,7 @@ import type {
   TaskRunWithWaitpoint,
 } from "./types.js";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 
 // Loose delegate method shape: each generated client types delegate methods as
@@ -1244,14 +1245,20 @@ export class PostgresRunStore implements RunStore {
     snapshotId: string,
     waitpointIds: string[]
   ): Promise<void> {
-    if (waitpointIds.length === 0) {
+    // This join has a foreign key to "Waitpoint", so it can only carry ids that have a row
+    // there. A waitpoint held outside Postgres has none, and its snapshot link travels with
+    // the snapshot entry instead. Inserting it here fails the constraint and takes the
+    // resume down with it, so those ids are dropped rather than offered to the insert.
+    const legacyIds = waitpointIds.filter((id) => parseWaitpointId(id).format === "legacy");
+
+    if (legacyIds.length === 0) {
       return;
     }
 
     await client.$executeRaw`
       INSERT INTO "_completedWaitpoints" ("A", "B")
       SELECT ${snapshotId}, w.id
-      FROM unnest(${waitpointIds}::text[]) AS w(id)
+      FROM unnest(${legacyIds}::text[]) AS w(id)
       ON CONFLICT DO NOTHING`;
   }
 
