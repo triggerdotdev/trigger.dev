@@ -73,6 +73,33 @@ describe("merging a re-read transcript", () => {
     const current = [OPEN, SETTLED];
     expect(mergeSettledMessages(current, [OPEN, SETTLED])).toBe(current);
   });
+
+  it("never re-appends the user's own turn under the settled copy's id", () => {
+    // The optimistic send stamps a client-generated id; the re-read carries the same
+    // question under whatever id the server settled on.
+    const OPTIMISTIC_USER = {
+      id: "client-generated-id",
+      role: "user",
+      parts: [{ type: "text", text: "why is this queue backed up?" }],
+    };
+    const SETTLED_USER = {
+      id: "stored-user-msg-id",
+      role: "user",
+      parts: [{ type: "text", text: "why is this queue backed up?" }],
+    };
+    const ASSISTANT_REPLY = {
+      id: "msg_reply",
+      role: "assistant",
+      parts: [{ type: "text", text: "Looking into it now." }],
+    };
+
+    const merged = mergeSettledMessages(
+      [OPTIMISTIC_USER, ASSISTANT_REPLY],
+      [SETTLED_USER, ASSISTANT_REPLY]
+    );
+
+    expect(merged.map((message) => message.id)).toEqual([OPTIMISTIC_USER.id, ASSISTANT_REPLY.id]);
+  });
 });
 
 describe("replacing a stale running step from the re-read", () => {

@@ -11,6 +11,24 @@ import { IN_FLIGHT_TOOL_STATES, inFlightToolName, liveInvestigation } from "./pr
 
 type Identified = { id: string };
 
+/**
+ * Fallback identity for a message the re-read carries under a different id than what is
+ * already rendered — a user turn is stamped with a client-generated id before the server
+ * ever assigns its stored one. `null` when there's nothing to key on, so a card or
+ * tool-only message is never matched by this.
+ */
+function textIdentity(message: Identified): string | null {
+  const role = (message as { role?: unknown }).role;
+  if (typeof role !== "string") return null;
+  const parts = (message as { parts?: ReadonlyArray<{ type?: string; text?: string }> }).parts;
+  if (!Array.isArray(parts)) return null;
+  const text = parts
+    .filter((part) => part?.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
+  return text ? `${role}:${text}` : null;
+}
+
 /** A message whose stream died mid-tool: a `tool-*` part still reads as running. */
 function stillRunning(message: unknown): boolean {
   const parts = (message as { parts?: ReadonlyArray<{ type?: string; state?: string }> })?.parts;
@@ -36,6 +54,9 @@ function stillRunning(message: unknown): boolean {
  */
 export function mergeSettledMessages<T extends Identified>(current: T[], fetched: T[]): T[] {
   const byId = new Map(fetched.map((message) => [message.id, message]));
+  const currentTextIdentities = new Set(
+    current.map((message) => textIdentity(message)).filter((key): key is string => key !== null)
+  );
 
   let replaced = false;
   const next = current.map((existing) => {
@@ -47,9 +68,13 @@ export function mergeSettledMessages<T extends Identified>(current: T[], fetched
     return existing;
   });
 
-  const missing = fetched.filter(
-    (message) => !current.some((existing) => existing.id === message.id)
-  );
+  const missing = fetched.filter((message) => {
+    if (current.some((existing) => existing.id === message.id)) return false;
+    // No id match: fall back to role+text so a settled copy re-read under a different id
+    // merges into its already-rendered copy instead of appending after the reply.
+    const identity = textIdentity(message);
+    return identity === null || !currentTextIdentities.has(identity);
+  });
   if (missing.length === 0) return replaced ? next : current;
   return [...next, ...missing];
 }
