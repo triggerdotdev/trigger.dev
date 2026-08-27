@@ -1,6 +1,7 @@
-import { json, type ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { updateUserAvatarUrl } from "~/models/user.server";
-import { requireUser } from "~/services/session.server";
+import { getImpersonationState } from "~/services/impersonation.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   deleteStaleUserAvatar,
   isAvatarUploadRejection,
@@ -8,16 +9,21 @@ import {
   uploadUserAvatar,
 } from "~/services/userAvatar.server";
 
-export async function action({ request }: ActionFunctionArgs) {
+/**
+ * No authorization block: every catalogue resource is org- or project-scoped, and this
+ * mutation is scoped to the session's own user.
+ */
+export const action = dashboardAction({}, async ({ request, user }) => {
   const method = request.method.toUpperCase();
 
   if (method !== "POST" && method !== "DELETE") {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const user = await requireUser(request);
+  // Read from the cookie: the builder's session user reports isImpersonating false.
+  const { isImpersonating } = await getImpersonationState(request, user.id);
 
-  if (user.isImpersonating) {
+  if (isImpersonating) {
     return json(
       { error: "You can't change this while impersonating another user." },
       { status: 403 }
@@ -47,4 +53,4 @@ export async function action({ request }: ActionFunctionArgs) {
   await deleteStaleUserAvatar({ previousAvatarUrl, userId: user.id, filename });
 
   return json({ avatarUrl });
-}
+});
