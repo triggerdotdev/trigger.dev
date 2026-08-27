@@ -31,6 +31,13 @@ function redisOptions(): RedisOptions {
     username: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_USERNAME ?? undefined,
     password: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_PASSWORD ?? undefined,
     enableAutoPipelining: true,
+    // A snapshot append sits on a request path, and a birth writes Redis before Postgres. With the
+    // offline queue on and no command timeout, an append issued while the endpoint is unreachable
+    // waits for a reconnect that may never come, so the trigger request hangs instead of falling
+    // back to Postgres. Both settings are local to this store: the shared defaults are used by
+    // every other Redis client in the app and are not ours to change.
+    enableOfflineQueue: false,
+    commandTimeout: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_COMMAND_TIMEOUT_MS,
     ...(env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   };
 }
@@ -57,6 +64,9 @@ function buildClient(name: string): RedisClient {
         },
       ],
       redisOptions: options,
+      // Setting this on `options` alone is not enough: a Cluster keeps its own offline queue, and
+      // while it cannot refresh its slot cache it queues there and the request waits.
+      failFast: true,
     },
     { onError }
   );
@@ -129,6 +139,9 @@ export function getSnapshotStoreConfig() {
     orphanAgeMs: env.RUN_ENGINE_SNAPSHOT_STORE_ORPHAN_AGE_MS,
     keyPrefix: KEY_PREFIX,
     clusterMode: isClusterMode(),
+    // Reported so the boot line records how an append behaves when Redis is unreachable.
+    commandTimeoutMs: env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_COMMAND_TIMEOUT_MS,
+    offlineQueue: false,
   };
 }
 

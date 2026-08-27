@@ -96,6 +96,11 @@ export type RedisClusterClientOptions = {
   nodes: ClusterNode[];
   clusterOptions?: Omit<ClusterOptions, "redisOptions">;
   redisOptions?: RedisOptions;
+  /**
+   * Fail a command while the cluster is unreachable instead of queueing it. For a caller on a
+   * request path, where a queued command means a hung request rather than a slow one.
+   */
+  failFast?: boolean;
 };
 
 /**
@@ -107,9 +112,15 @@ export function createRedisClusterClient(
   handlers?: { onError?: (err: Error) => void }
 ): Cluster {
   const client = new Redis.Cluster(options.nodes, {
+    // The offline queue is a CLUSTER-level setting, separate from the per-node one below. While a
+    // cluster cannot refresh its slot cache it queues commands here, so a caller that wants a
+    // failure during an outage rather than a wait has to turn THIS one off. Default stays `true`,
+    // matching ioredis, so only a caller that asks for it changes behaviour.
+    ...(options.failFast && { enableOfflineQueue: false }),
     ...options.clusterOptions,
     redisOptions: {
       ...defaultOptions,
+      ...(options.failFast && { enableOfflineQueue: false }),
       ...options.redisOptions,
     },
   });

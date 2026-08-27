@@ -1340,6 +1340,10 @@ const EnvironmentSchema = z
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_PASSWORD: z.string().optional(),
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_TLS_DISABLED: z.string().default("false"),
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    // Fails an append fast rather than letting it wait on an unreachable endpoint. Postgres is
+    // authoritative below the final dial position, so a refused append costs a mirrored write; a
+    // blocked one costs the request.
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_COMMAND_TIMEOUT_MS: z.coerce.number().int().default(500),
 
     RUN_ENGINE_DEV_PRESENCE_REDIS_HOST: z
       .string()

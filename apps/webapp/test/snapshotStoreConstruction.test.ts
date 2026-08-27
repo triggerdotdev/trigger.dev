@@ -66,4 +66,21 @@ describe("snapshot store construction gate", () => {
 
     await mod.quitSnapshotStoreClients();
   });
+
+  it("builds the clients to fail fast instead of queueing while Redis is unreachable", async () => {
+    // A birth writes Redis before Postgres. With the offline queue on and no command timeout, an
+    // append issued during a Redis outage waits for a reconnect and the trigger request hangs, so
+    // run creation stops rather than falling back to Postgres.
+    vi.stubEnv("RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST", "127.0.0.1");
+    vi.stubEnv("RUN_ENGINE_SNAPSHOT_STORE_REDIS_PORT", "6379");
+    vi.stubEnv("RUN_ENGINE_SNAPSHOT_STORE_REDIS_TLS_DISABLED", "true");
+
+    const mod = await importInstanceModule();
+    const config = mod.getSnapshotStoreConfig();
+
+    expect(config.commandTimeoutMs).toBeGreaterThan(0);
+    expect(config.offlineQueue).toBe(false);
+
+    await mod.quitSnapshotStoreClients();
+  });
 });
