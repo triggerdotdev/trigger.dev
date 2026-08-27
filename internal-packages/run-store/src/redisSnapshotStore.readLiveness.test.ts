@@ -5,11 +5,7 @@
 import { createRedisClient, type RedisOptions } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import { describe, expect } from "vitest";
-import {
-  RedisSnapshotStore,
-  snapshotKeys,
-  type SnapshotEntryInput,
-} from "./redisSnapshotStore.js";
+import { RedisSnapshotStore, snapshotKeys, type SnapshotEntryInput } from "./redisSnapshotStore.js";
 
 function entry(over: Partial<SnapshotEntryInput> = {}): SnapshotEntryInput {
   return {
@@ -158,9 +154,9 @@ describe("read liveness anchors", () => {
             present: false,
           });
           expect(await store.getSince(runId, "snap_1")).toEqual({ kind: "miss" });
-          expect(
-            await store.getSinceCreatedAt(runId, "2026-08-20T00:00:00.000Z")
-          ).toEqual({ kind: "miss" });
+          expect(await store.getSinceCreatedAt(runId, "2026-08-20T00:00:00.000Z")).toEqual({
+            kind: "miss",
+          });
         } finally {
           await store.quit();
         }
