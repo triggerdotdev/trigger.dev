@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -135,22 +136,28 @@ export default function Page() {
             <Header3>Related runs</Header3>
             <InfoIconTooltip content="These runs have been blocked by this waitpoint." />
           </div>
-          <TaskRunsTable
-            enableSmartColumns={false}
-            total={waitpoint.connectedRuns.length}
-            hasFilters={false}
-            filters={{
-              tasks: [],
-              versions: [],
-              statuses: [],
-              from: undefined,
-              to: undefined,
-            }}
-            runs={waitpoint.connectedRuns}
-            isLoading={false}
-            variant="bright"
-            disableAdjacentRows
-          />
+          {!waitpoint.connectedRunsAvailable ? (
+            <Paragraph variant="small" className="pl-3">
+              Related runs aren't available for this token.
+            </Paragraph>
+          ) : (
+            <TaskRunsTable
+              enableSmartColumns={false}
+              total={waitpoint.connectedRuns.length}
+              hasFilters={false}
+              filters={{
+                tasks: [],
+                versions: [],
+                statuses: [],
+                from: undefined,
+                to: undefined,
+              }}
+              runs={waitpoint.connectedRuns}
+              isLoading={false}
+              variant="bright"
+              disableAdjacentRows
+            />
+          )}
         </div>
       </div>
       {waitpoint.status === "WAITING" && (
