@@ -1,6 +1,10 @@
 import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
-import { UnclassifiableRunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  mintWaitpointIdFor,
+  mintWaitpointIdForShard,
+  UnclassifiableRunId,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
@@ -260,7 +264,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
         },
       },
       create: {
-        ...WaitpointId.generate(),
+        ...mintWaitpointIdFor(runId),
         type: "DATETIME" as const,
         idempotencyKey: idempotencyKey ?? nanoid(24),
         idempotencyKeyExpiresAt,
@@ -285,6 +289,7 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     timeout,
     tags,
     standaloneResidency,
+    standaloneShardKey,
   }: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
     // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the waitpoint
     // co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run (co-resident). A
@@ -292,11 +297,17 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     // owner, blocked later by whichever run waits on it (possibly cross-DB, resolved by the
     // run-co-resident block edge + completion fan-out). With no owner it reads the env mint kind via
     // `standaloneResidency` so a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
+    // A gen-2 standalone token carries its shard in its own id, so it passes no residency hint.
+    const standaloneShard = runId ? undefined : standaloneShardKey;
+    const isGen2Standalone =
+      standaloneShard !== undefined && standaloneShard !== "new" && standaloneShard !== "legacy";
     const colocate = runId
       ? { coLocateWithRunId: runId }
-      : standaloneResidency
-        ? { residency: standaloneResidency }
-        : undefined;
+      : isGen2Standalone
+        ? undefined
+        : standaloneResidency
+          ? { residency: standaloneResidency }
+          : undefined;
     const existingWaitpoint = idempotencyKey
       ? await this.runStore.findWaitpoint(
           {
@@ -343,8 +354,8 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     while (attempts < maxRetries) {
       try {
         // As in createDateTimeWaitpoint, the two `nanoid(24)` calls are deliberately separate and
-        // differ. Both, and `WaitpointId.generate()`, are re-evaluated on every attempt: that is
-        // what makes a retry after a unique-constraint conflict try a fresh key.
+        // differ. Both are re-evaluated per attempt, so a retry after a conflict tries a fresh
+        // key. The anchor does not change, so every attempt stays on the same shard.
         const waitpoint = await this.runStore.upsertWaitpoint(
           {
             where: {
@@ -354,7 +365,9 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
               },
             },
             create: {
-              ...WaitpointId.generate(),
+              ...(standaloneShard !== undefined
+                ? mintWaitpointIdForShard(standaloneShard)
+                : mintWaitpointIdFor(runId)),
               type: "MANUAL",
               idempotencyKey: idempotencyKey ?? nanoid(24),
               idempotencyKeyExpiresAt,
@@ -392,12 +405,14 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
   mintAssociatedWaitpointData({
     projectId,
     environmentId,
+    anchorRunId,
   }: {
     projectId: string;
     environmentId: string;
+    anchorRunId: string;
   }): AssociatedWaitpointData {
     return {
-      ...WaitpointId.generate(),
+      ...mintWaitpointIdFor(anchorRunId),
       type: "RUN" as const,
       status: "PENDING" as const,
       idempotencyKey: nanoid(24),

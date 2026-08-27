@@ -177,6 +177,7 @@ services:
       - clickhouse:/var/lib/clickhouse
       - ../clickhouse/data-paths.xml:/etc/clickhouse-server/config.d/data-paths.xml:ro
       - ../clickhouse/override.xml:/etc/clickhouse-server/config.d/override.xml:ro
+      - ../clickhouse/users-override.xml:/etc/clickhouse-server/users.d/override.xml:ro
     networks:
       - webapp
     healthcheck:

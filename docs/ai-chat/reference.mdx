@@ -396,7 +396,7 @@ Options for the `pendingMessages` field. See [Pending Messages](/ai-chat/pending
 
 | Option         | Type                                                                              | Required | Description                                                                               |
 | -------------- | --------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
-| `shouldInject` | `(event: PendingMessagesBatchEvent) => boolean \| Promise<boolean>`               | No       | Decide whether to inject the batch between tool-call steps. If absent, no injection.      |
+| `shouldInject` | `(event: PendingMessagesBatchEvent) => boolean \| Promise<boolean>`               | No       | Decide whether to inject the batch between tool-call steps. If absent, nothing is injected and the messages are answered as the next turn. Only consulted when `chat.toStreamTextOptions()` (or `prepareStep`) reaches `streamText`; without that nothing is injected and every mid-turn message becomes the next turn. |
 | `prepare`      | `(event: PendingMessagesBatchEvent) => ModelMessage[] \| Promise<ModelMessage[]>` | No       | Transform the batch before injection. Default: convert each via `convertToModelMessages`. |
 | `onReceived`   | `(event: PendingMessageReceivedEvent) => void \| Promise<void>`                   | No       | Called when a message arrives during streaming (per-message).                             |
 | `onInjected`   | `(event: PendingMessagesInjectedEvent) => void \| Promise<void>`                  | No       | Called after a batch is injected via prepareStep.                                         |
@@ -504,13 +504,14 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.createSession(payload, options)`      | Create an async iterator for chat turns                                                                                      |
 | `chat.pipe(source, options?)`               | Pipe a stream to the frontend (from anywhere inside a task)                                                                  |
 | `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response; returns `{ message, status, error }`                                                         |
-| `chat.writeTurnComplete(options?)`          | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors                                            |
+| `chat.writeTurnComplete(options?)`          | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors. `sessionInEventId` is a lower bound, not the sequence of the record the turn answered |
 | `chat.createStopSignal()`                   | Create a managed stop signal wired to the stop input stream                                                                  |
-| `chat.messages`                             | Input stream for incoming messages — use `.waitWithIdleTimeout()`                                                            |
+| `chat.messages`                             | Incoming message mailbox; supports non-consuming `.peek()` / `.hasPending()`, single-record `.next()`, `.on()`, and suspend-aware `.waitWithIdleTimeout()` |
 | `chat.local<T>({ id })`                     | Create a per-run typed local (see [`chat.local`](/ai-chat/chat-local))                             |
 | `chat.createStartSessionAction(taskId, options?)` | Returns a server action that creates a chat Session + triggers the first run + returns a session-scoped PAT. Idempotent on `(env, externalId)`.   |
 | `chat.waitForHandover(options)`             | Wait for a [`chat.headStart`](/ai-chat/fast-starts#handover-with-custom-agents) handover signal in a custom loop. Returns the signal or `null`. `chat.MessageAccumulator` wraps this as `consumeHandover()` / `applyHandover()` |
 | `chat.requestUpgrade()`                     | End the current run after this turn so the next message starts on the latest agent version. Server-orchestrated handoff.    |
+| `chat.endAndContinue()`                     | In a hand-rolled custom agent, hand off the Session to a fresh continuation run. Call between turns after detaching input listeners, then return immediately. The promise rejects if the handoff fails. |
 | `chat.setTurnTimeout(duration)`             | Override turn timeout at runtime (e.g. `"2h"`)                                                                               |
 | `chat.setTurnTimeoutInSeconds(seconds)`     | Override turn timeout at runtime (in seconds)                                                                                |
 | `chat.setIdleTimeoutInSeconds(seconds)`     | Override idle timeout at runtime                                                                                             |
@@ -645,7 +646,7 @@ The `onEvent` callback receives a `ChatTransportEvent` (exported from `@trigger.
 | `message-send-failed` | `messageId?`, `source`, `error`, `status?`, `durationMs`, `partId?`, `bodyBytes?` | A send definitively failed after internal retries. Fires in addition to `useChat`'s `onError`. |
 | `stream-connected` | `resumed`, `lastEventId?`, `messageId?` | The SSE subscription to the session's output stream started delivering. `resumed: true` when reconnecting from a stored cursor (page reload) rather than following a fresh send. `lastEventId` is the cursor it connected from. |
 | `first-chunk` | `chunkType?`, `lastEventId?`, `messageId?`, `sinceSendMs?` | The first response chunk of a turn arrived. `sinceSendMs` is the delta from the last turn-producing send — time to first token without any bookkeeping. |
-| `turn-completed` | `lastEventId?`, `sessionInEventId?`, `messageId?`, `sinceSendMs?` | The agent's turn-complete control record arrived — the "finished answering" signal. `sinceSendMs` is the full turn latency; `sessionInEventId` is the agent's committed input-stream cursor. |
+| `turn-completed` | `lastEventId?`, `sessionInEventId?`, `messageId?`, `sinceSendMs?` | The agent's turn-complete control record arrived — the "finished answering" signal. `sinceSendMs` is the full turn latency; `sessionInEventId` is the cursor the agent can safely resume its input stream from. Treat it as a lower bound: it is held back behind any message still waiting to be handled, so it can be below the sequence of the record this turn answered. Do not use it to decide whether a turn boundary belongs to your own send. |
 | `stream-error` | `error`, `status?` | The output stream failed unrecoverably. |
 
 `source` identifies the send path: `"submit-message"`, `"regenerate-message"`, `"steer"` (`sendPendingMessage`), `"action"` (`sendAction`), `"stop"` (`stopGeneration`), or `"head-start"`.

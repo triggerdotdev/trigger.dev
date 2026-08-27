@@ -2,6 +2,7 @@ import { z } from "zod";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
+import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDuration } from "./services/realtime/duration.server";
 
@@ -310,6 +311,8 @@ const EnvironmentSchema = z
     RUN_OPS_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER: z.string().default("0"),
     RUN_OPS_LEGACY_DATABASE_REPLICA_DRIVER_ADAPTER: z.string().default("0"),
+    // Gen-2 shard descriptors as a JSON array. Unset/"" -> [] (today). See runOpsShards.server.ts.
+    RUN_OPS_SHARDS: z.string().optional().transform(parseRunOpsShards),
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
@@ -332,6 +335,8 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
+    // Instance-level kill switch for the admin dashboard and user impersonation.
+    ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
@@ -816,6 +821,19 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 15), // 15 minutes
+    DEPLOYMENT_CONTEXT_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUNDLE_ARTIFACT_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES: z.coerce
+      .number()
+      .int()
+      .default(128 * 1024), // 128KB
+    DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS: z.coerce.number().int().default(400),
 
     // When enabled, reject deploys made by v3 CLI versions (i.e. payloads that
     // omit the `type` field). v4 CLI versions always send `type` ("MANAGED" or "V1"),
@@ -922,6 +940,10 @@ const EnvironmentSchema = z
     DISABLE_HTTP_INSTRUMENTATION: BoolEnv.default(false),
 
     INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+
+    // Second trace exporter receiving only `deployment.*` spans; they still flow to the main one
+    INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_URL: z.string().optional(),
+    INTERNAL_OTEL_DEPLOYMENT_EVENT_EXPORTER_AUTH_HEADERS: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_AUTH_HEADERS: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_ENABLED: z.string().default("0"),
@@ -2233,6 +2255,15 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(40_000),
+    RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().positive().default(35),
+    RUNS_LIST_CLICKHOUSE_MAX_THREADS: z.coerce.number().int().positive().default(4),
+    RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_073_741_824),
+    RUNS_LIST_CLICKHOUSE_READONLY: z.enum(["0", "1", "2"]).default("2"),
     /**
      * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every
      * queue-metrics read (dashboards, queue pages, run inspector, health report) go through it, so
@@ -2466,6 +2497,14 @@ const EnvironmentSchema = z
           message: `"${required}" is not in COMPUTE_TEMPLATE_MACHINE_PRESETS`,
         });
       }
+    }
+    if (!validateShardListAgainstNewUrl(env.RUN_OPS_SHARDS, env.RUN_OPS_DATABASE_URL)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["RUN_OPS_SHARDS"],
+        message:
+          "RUN_OPS_SHARDS is non-empty but RUN_OPS_DATABASE_URL is unset; a shard requires the gen-1 new store",
+      });
     }
   });
 

@@ -182,6 +182,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           where: {
             projectId,
             type: "STAGING",
+            parentEnvironmentId: null,
           },
         }),
         (error) => ({
@@ -199,6 +200,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           where: {
             projectId,
             type: "PREVIEW",
+            parentEnvironmentId: null,
           },
         }),
         (error) => ({

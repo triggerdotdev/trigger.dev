@@ -28,9 +28,8 @@ import { parseDelay } from "~/utils/delays";
 import { removeNullBytesFromKey } from "~/utils/nullBytes";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
-import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
-import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
+import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -218,15 +217,17 @@ export class RunEngineTriggerTaskService {
     parentRunFriendlyId?: string,
     region?: string
   ): Promise<string> {
-    const mintKind = parentRunFriendlyId
-      ? resolveInheritedMintKind(parentRunFriendlyId)
-      : await resolveRunIdMintKind({
+    return mintFriendlyIdForKind(
+      await resolveRunMintTarget({
+        environment: {
           organizationId: environment.organizationId,
           id: environment.id,
           orgFeatureFlags: environment.organization.featureFlags,
-        });
-
-    return mintFriendlyIdForKind(mintKind, region);
+        },
+        parentRunFriendlyId,
+        region,
+      })
+    );
   }
 
   public async call({

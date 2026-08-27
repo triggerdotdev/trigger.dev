@@ -58,7 +58,7 @@ function enhanceExecutionSnapshot(
  * Transforms a snapshot (with checkpoint but without waitpoints) into an EnhancedExecutionSnapshot
  * by combining it with pre-fetched waitpoints.
  */
-function enhanceExecutionSnapshotWithWaitpoints(
+export function enhanceExecutionSnapshotWithWaitpoints(
   snapshot: ExecutionSnapshotWithCheckpoint,
   waitpoints: Waitpoint[],
   completedWaitpointOrder: string[]

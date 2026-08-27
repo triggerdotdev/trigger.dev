@@ -59,8 +59,9 @@ export const loader = dashboardLoader(
   async ({ params, user, ability }) => {
     const { projectParam, organizationSlug } = params;
 
+    const canManageBuildSettings = ability.can("write", { type: "github" });
     const canManageIntegrations =
-      ability.can("write", { type: "github" }) || ability.can("write", { type: "vercel" });
+      canManageBuildSettings || ability.can("write", { type: "vercel" });
 
     if (!canManageIntegrations) {
       throwPermissionDenied("With your current role, you can't manage integrations.");
@@ -102,6 +103,7 @@ export const loader = dashboardLoader(
       githubAppEnabled: gitHubApp.enabled,
       buildSettings,
       vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
+      canManageBuildSettings,
     });
   }
 );
@@ -208,7 +210,7 @@ export const action = dashboardAction(
 );
 
 export default function IntegrationsSettingsPage() {
-  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
+  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled, canManageBuildSettings } =
     useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -223,6 +225,8 @@ export default function IntegrationsSettingsPage() {
   const loadVercelOnboarding = vercelFetcher.load;
   const onboardingData = vercelFetcher.data?.onboardingData ?? null;
   const hasVercelFetcherData = vercelFetcher.data !== undefined;
+  const onboardingDataUnavailable =
+    hasVercelFetcherData && vercelFetcher.state === "idle" && onboardingData === null;
   const vercelOnboardingPath = `${vercelResourcePath(
     organization.slug,
     project.slug,
@@ -375,24 +379,27 @@ export default function IntegrationsSettingsPage() {
                 />
               </SettingsSection>
             )}
-
-            <SettingsSection>
-              <SettingsHeader
-                title="Build settings"
-                description={
-                  <>
-                    Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
-                    <InlineCode variant="extra-small" className="whitespace-nowrap">
-                      --native-build-server
-                    </InlineCode>{" "}
-                    flag.
-                  </>
-                }
-              />
-              <BuildSettingsForm buildSettings={buildSettings ?? {}} />
-            </SettingsSection>
           </>
         )}
+
+        <SettingsSection>
+          <SettingsHeader
+            title="Build settings"
+            description={
+              <>
+                Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
+                <InlineCode variant="extra-small" className="whitespace-nowrap">
+                  --native-build-server
+                </InlineCode>{" "}
+                flag.
+              </>
+            }
+          />
+          <BuildSettingsForm
+            buildSettings={buildSettings ?? {}}
+            canManageBuildSettings={canManageBuildSettings}
+          />
+        </SettingsSection>
       </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
@@ -407,6 +414,7 @@ export default function IntegrationsSettingsPage() {
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
           hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          onboardingDataUnavailable={onboardingDataUnavailable}
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
@@ -424,7 +432,13 @@ export default function IntegrationsSettingsPage() {
   );
 }
 
-function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) {
+function BuildSettingsForm({
+  buildSettings,
+  canManageBuildSettings = true,
+}: {
+  buildSettings: BuildSettings;
+  canManageBuildSettings?: boolean;
+}) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
@@ -572,7 +586,12 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
           name="action"
           value="update-build-settings"
           variant="secondary/small"
-          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
+          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges || !canManageBuildSettings}
+          tooltip={
+            canManageBuildSettings
+              ? undefined
+              : "You don't have permission to manage build settings"
+          }
           LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
         >
           Save

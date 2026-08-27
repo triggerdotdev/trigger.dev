@@ -1,7 +1,24 @@
-import { Redis, type RedisOptions } from "ioredis";
+import { type Cluster, Redis, type RedisOptions } from "ioredis";
 import { Logger } from "@trigger.dev/core/logger";
 
-export { Redis, type Callback, type RedisOptions, type Result, type RedisCommander } from "ioredis";
+export {
+  Redis,
+  Cluster,
+  type Callback,
+  type RedisOptions,
+  type ClusterNode,
+  type ClusterOptions,
+  type Result,
+  type RedisCommander,
+} from "ioredis";
+
+/**
+ * Either endpoint shape. A component that only issues key-addressed commands works against both, so
+ * it should accept this rather than pin itself to a standalone connection. Commands with no key —
+ * SCAN above all — do NOT fan out across a cluster, so anything that issues one must iterate
+ * `cluster.nodes("master")` itself.
+ */
+export type RedisClient = Redis | Cluster;
 
 /**
  * Reply-error -> reconnect mapping. Without this hook, an ElastiCache

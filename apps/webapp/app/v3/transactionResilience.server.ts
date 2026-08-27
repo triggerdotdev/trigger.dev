@@ -17,8 +17,11 @@ export type TransactionResilienceConfig = {
   startRetry: TransactionStartRetryConfig;
 };
 
-function resolveTransactionResilience(
-  pool: "control-plane" | "run-ops" | "run-ops-legacy",
+// Exported so the topology singleton can build a per-shard config (each call creates its OWN
+// TokenBucketRetryBudget, so one shard's retry storm cannot drain another's). `pool` is a free
+// string — it only labels a log line, never keys any behaviour.
+export function resolveTransactionResilience(
+  pool: string,
   overrides: {
     maxWaitMs?: number;
     enabled?: boolean;
@@ -63,6 +66,44 @@ export const runOpsTransactionResilience = resolveTransactionResilience("run-ops
   budgetPerSec: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC,
   budgetBurst: env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
 });
+
+// A gen-2 shard's resilience. Defaults to the RUN_OPS_DATABASE_TRANSACTION_* values (so a shard with
+// no overrides matches the gen-1 new store), then applies the descriptor's per-shard overrides. Each
+// call builds its OWN budget, so a storm on one shard cannot drain another's.
+export function resolveShardResilience(
+  key: string,
+  overrides?: {
+    transactionMaxWaitMs?: number;
+    transactionStartRetryEnabled?: boolean;
+    transactionStartRetryMaxAttempts?: number;
+    transactionStartRetryBackoffMinMs?: number;
+    transactionStartRetryBackoffMaxMs?: number;
+    transactionStartRetryBudgetPerSec?: number;
+    transactionStartRetryBudgetBurst?: number;
+  }
+): TransactionResilienceConfig {
+  return resolveTransactionResilience(`run-ops-shard-${key}`, {
+    maxWaitMs: overrides?.transactionMaxWaitMs ?? env.RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS,
+    enabled:
+      overrides?.transactionStartRetryEnabled ??
+      env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED,
+    maxAttempts:
+      overrides?.transactionStartRetryMaxAttempts ??
+      env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS,
+    backoffMinMs:
+      overrides?.transactionStartRetryBackoffMinMs ??
+      env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MIN_MS,
+    backoffMaxMs:
+      overrides?.transactionStartRetryBackoffMaxMs ??
+      env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS,
+    budgetPerSec:
+      overrides?.transactionStartRetryBudgetPerSec ??
+      env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC,
+    budgetBurst:
+      overrides?.transactionStartRetryBudgetBurst ??
+      env.RUN_OPS_DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST,
+  });
+}
 
 export const runOpsLegacyTransactionResilience = resolveTransactionResilience("run-ops-legacy", {
   maxWaitMs: env.RUN_OPS_LEGACY_DATABASE_TRANSACTION_MAX_WAIT_MS,
