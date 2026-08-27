@@ -1996,11 +1996,18 @@ const messagesInput: ChatMessages = {
   },
   once(options) {
     return new InputStreamOncePromise<ChatTaskWirePayload>((resolve, reject) => {
-      // Same skip-and-wait rule as `waitWithIdleTimeout`: a payload that fails
-      // validation is reported and not surfaced.
+      /**
+       * Same skip-and-wait rule as `waitWithIdleTimeout`: a payload that fails
+       * validation is reported and not surfaced. The timeout is a total budget
+       * across retries, so skipping a frame cannot extend the wait forever.
+       */
+      const deadline =
+        options?.timeoutMs === undefined ? undefined : Date.now() + options.timeoutMs;
       const take = () => {
         chatInputRouter()
-          .next(CHAT_ROUTE_MESSAGES, { timeoutMs: options?.timeoutMs })
+          .next(CHAT_ROUTE_MESSAGES, {
+            timeoutMs: deadline === undefined ? undefined : Math.max(0, deadline - Date.now()),
+          })
           .then(async (record) => {
             if (!record) {
               resolve({
@@ -2055,9 +2062,18 @@ const messagesInput: ChatMessages = {
     // Consuming read, so it takes the same claim-and-validate path as the other
     // reads: a record the observer still owns is put back and awaited, and an
     // invalid payload is reported and skipped rather than surfaced raw.
+    const totalMs = timeoutInSeconds === undefined ? undefined : timeoutInSeconds * 1000;
+    /**
+     * The caller's timeout is a total budget, not a per-attempt one. Skipping an
+     * invalid frame must not buy another full wait, or a client sending invalid
+     * frames faster than the timeout would keep the read blocked indefinitely
+     * and it would never return.
+     */
+    const deadline = totalMs === undefined ? undefined : Date.now() + totalMs;
+
     while (true) {
       const record = await chatInputRouter().next(CHAT_ROUTE_MESSAGES, {
-        timeoutMs: timeoutInSeconds === undefined ? undefined : timeoutInSeconds * 1000,
+        timeoutMs: deadline === undefined ? undefined : Math.max(0, deadline - Date.now()),
       });
       if (!record) return undefined;
 
