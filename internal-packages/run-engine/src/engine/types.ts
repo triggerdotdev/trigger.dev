@@ -136,6 +136,13 @@ export type RunEngineOptions = {
   cache?: {
     redis: RedisOptions;
   };
+  /**
+   * The waitpoint store. Absent means the store arm is unreachable and every waitpoint
+   * operation routes to Postgres, whatever an organization's mint flag says.
+   */
+  waitpointStore?: {
+    redis: RedisOptions;
+  };
   batchQueue?: {
     redis: RedisOptions;
     drr?: Partial<DRRConfig>;

@@ -46,8 +46,6 @@ export type WaitpointCoordinator = {
  * WaitpointMintKind; re-declared because the engine never imports from the webapp.
  *
  * Read at the mint and never again — every later operation routes by the minted id's shape.
- *
- * @knipignore consumed by the mint-flag wiring commits later in this stack.
  */
 export type WaitpointMintKind = "legacy" | "store";
 

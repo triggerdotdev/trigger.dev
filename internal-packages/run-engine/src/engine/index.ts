@@ -91,6 +91,10 @@ import {
 } from "./controlPlaneResolver.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
+import { LegacyPostgresWaitpointCoordinator } from "./waitpointCoordinator/legacyPostgresCoordinator.js";
+import { WaitpointRouterCoordinator } from "./waitpointCoordinator/routerCoordinator.js";
+import { StoreWaitpointCoordinatorArm } from "./waitpointCoordinator/storeArm.js";
+import { WaitpointStoreCoordinator } from "./waitpointCoordinator/storeCoordinator.js";
 import type {
   EngineWorker,
   HeartbeatTimeouts,
@@ -129,6 +133,7 @@ export class RunEngine {
   runAttemptSystem: RunAttemptSystem;
   dequeueSystem: DequeueSystem;
   waitpointSystem: WaitpointSystem;
+  private waitpointStoreCoordinator?: WaitpointStoreCoordinator;
   batchSystem: BatchSystem;
   enqueueSystem: EnqueueSystem;
   checkpointSystem: CheckpointSystem;
@@ -411,10 +416,33 @@ export class RunEngine {
       externalDeploymentParkDeadlineMs: options.externalDeploymentParkDeadlineMs,
     });
 
+    this.waitpointStoreCoordinator = this.options.waitpointStore
+      ? new WaitpointStoreCoordinator({
+          redisOptions: this.options.waitpointStore.redis,
+          logger: this.logger,
+        })
+      : undefined;
+
     this.waitpointSystem = new WaitpointSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+      coordinator: new WaitpointRouterCoordinator({
+        legacy: new LegacyPostgresWaitpointCoordinator({
+          runStore: this.runStore,
+          prisma: this.prisma,
+          logger: this.logger,
+        }),
+        store: this.waitpointStoreCoordinator
+          ? new StoreWaitpointCoordinatorArm({
+              store: this.waitpointStoreCoordinator,
+              runStore: this.runStore,
+              logger: this.logger,
+              meter: this.meter,
+            })
+          : undefined,
+        logger: this.logger,
+      }),
     });
 
     this.ttlSystem = new TtlSystem({
@@ -2388,8 +2416,12 @@ export class RunEngine {
     const supportResults = await Promise.allSettled([
       this.runLock.quit(),
       this.debounceSystem.quit(),
+      this.waitpointStoreCoordinator?.quit(),
     ]);
-    this.#logShutdownFailures(["runLock.quit", "debounceSystem.quit"], supportResults);
+    this.#logShutdownFailures(
+      ["runLock.quit", "debounceSystem.quit", "waitpointStore.quit"],
+      supportResults
+    );
 
     // RunLocker/Redlock owns this client and normally closes it. Do not send a second QUIT,
     // but force-disconnect if Redlock failed to leave the connection in its terminal state.

@@ -11,7 +11,6 @@ import type {
 import { assertNever } from "assert-never";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
-import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
 import { buildCompletedWaitpointRecords } from "../waitpointCoordinator/completedWaitpointRecords.js";
 import type { RunBlockEdge, WaitpointCoordinator } from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
@@ -23,6 +22,8 @@ export type WaitpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
+  /** Which coordinator owns waitpoint state. The engine supplies a router over both arms. */
+  coordinator: WaitpointCoordinator;
 };
 
 type WaitpointContinuationWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter" | "status">;
@@ -51,11 +52,7 @@ export class WaitpointSystem {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-    this.coordinator = new LegacyPostgresWaitpointCoordinator({
-      runStore: this.$.runStore,
-      prisma: this.$.prisma,
-      logger: this.$.logger,
-    });
+    this.coordinator = options.coordinator;
   }
 
   public async clearBlockingWaitpoints({
