@@ -30,6 +30,12 @@ const FLAG_READY_TIMEOUT_MS = 10_000;
 
 export async function assertSnapshotStoreBoot(deps: SnapshotStoreBootDeps): Promise<void> {
   const pastOff = deps.mode !== "off";
+  // Configuration is validated as soon as a host is set, NOT only past off. The per-organisation
+  // override can put one organisation at dual-write while the deployment dial is still off, which is
+  // how a ramp starts, so keying these on the deployment dial let a ramped organisation run on a
+  // configuration nothing had checked. Reachability stays dial-gated below, because that one is a
+  // transient fault rather than bad config.
+  const configured = deps.hostConfigured;
 
   if (pastOff && !deps.hostConfigured) {
     throw new Error(
@@ -37,17 +43,17 @@ export async function assertSnapshotStoreBoot(deps: SnapshotStoreBootDeps): Prom
     );
   }
 
-  if (pastOff && !(deps.completedTtlMs > 0)) {
+  if (configured && !(deps.completedTtlMs > 0)) {
     throw new Error("RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS must be a positive integer.");
   }
 
-  if (pastOff && !(deps.orphanAgeMs > 0)) {
+  if (configured && !(deps.orphanAgeMs > 0)) {
     throw new Error("RUN_ENGINE_SNAPSHOT_STORE_ORPHAN_AGE_MS must be a positive integer.");
   }
 
   // Nothing enforces that a process which appends has imported the engine module, and an unbound
   // enqueuer loses every repair job silently — which burns a task attempt per lost repair.
-  if (pastOff && !deps.repairBound()) {
+  if (configured && !deps.repairBound()) {
     throw new Error(
       "Snapshot store dial is past off but the repair enqueuer is unbound; refusing to start."
     );

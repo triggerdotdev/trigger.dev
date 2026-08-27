@@ -157,4 +157,26 @@ describe("assertSnapshotStoreBoot", () => {
     await expect(assertSnapshotStoreBoot(d)).resolves.toBeUndefined();
     expect(d.recorded.warnings.join(" ")).toMatch(/Postgres/i);
   });
+
+  it("validates the configuration whenever a host is set, not only past off", async () => {
+    // The per-organisation override can put one organisation at dual-write while the deployment dial
+    // is still off, which is how the ramp starts. Keying these assertions on the deployment dial
+    // therefore lets a ramped organisation run on a configuration nothing checked.
+    await expect(
+      assertSnapshotStoreBoot(deps({ mode: "off", hostConfigured: true, completedTtlMs: 0 }))
+    ).rejects.toThrow(/COMPLETED_TTL_MS/);
+
+    await expect(
+      assertSnapshotStoreBoot(deps({ mode: "off", hostConfigured: true, orphanAgeMs: -1 }))
+    ).rejects.toThrow(/ORPHAN_AGE_MS/);
+
+    await expect(
+      assertSnapshotStoreBoot(deps({ mode: "off", hostConfigured: true, repairBound: () => false }))
+    ).rejects.toThrow(/repair/i);
+  });
+
+  it("still asks nothing of an unconfigured deployment", async () => {
+    const d = deps({ mode: "off", hostConfigured: false, completedTtlMs: 0, orphanAgeMs: -1 });
+    await expect(assertSnapshotStoreBoot(d)).resolves.toBeUndefined();
+  });
 });
