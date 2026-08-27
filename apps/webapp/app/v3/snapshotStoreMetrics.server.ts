@@ -39,6 +39,10 @@ const WRITE_SITES = [
   "lockRunToWorker",
   "createExecutionSnapshot",
   "runInTransaction",
+  // The repair's own writes. Without this they collapse to "other", so the one number that says
+  // whether the repair works is missing, and a repair racing a live transition is indistinguishable
+  // from a real divergence on the fork alert.
+  "repairRedisHead",
 ] as const;
 const READ_METHODS = [
   "findLatestExecutionSnapshot",
