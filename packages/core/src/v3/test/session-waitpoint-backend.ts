@@ -113,8 +113,12 @@ export class SessionWaitpointBackend {
         };
       }
 
-      const output = typeof result === "string" ? result : JSON.stringify(result);
-      return { ok: true, output, outputType: "application/json" };
+      // The waitpoint is a wake signal only. Production appends the record to
+      // the channel before draining any waitpoint, so the SDK re-attaches and
+      // reads it back from the channel with its real sequence. Returning the
+      // record here would let a test pass on output the SDK no longer reads.
+      void result;
+      return { ok: true };
     } catch {
       return {
         ok: false,
@@ -144,16 +148,23 @@ export class SessionWaitpointBackend {
    * which {@link wait} passes straight to the packet parser so it round-trips
    * to the same object `session.in.once()` returns.
    */
-  private async readNextRecord(pending: PendingWait): Promise<unknown> {
+  private async readNextRecord(pending: PendingWait): Promise<{ data: unknown; seqNum: number }> {
     const lastEventId =
       pending.lastSeqNum !== undefined && pending.lastSeqNum >= 0
         ? String(pending.lastSeqNum)
         : undefined;
 
+    let deliveredSeqNum: number | undefined;
     const stream = await this.apiClient.subscribeToSessionStream(pending.session, pending.io, {
       lastEventId,
       signal: pending.abort.signal,
       timeoutInSeconds: 120,
+      onPart: (part) => {
+        const seqNum = Number.parseInt(part.id, 10);
+        if (Number.isFinite(seqNum)) {
+          deliveredSeqNum = seqNum;
+        }
+      },
     });
 
     const reader = stream.getReader();
@@ -162,7 +173,10 @@ export class SessionWaitpointBackend {
       if (done) {
         throw new Error("session stream closed");
       }
-      return value;
+      if (deliveredSeqNum === undefined) {
+        throw new Error("session stream record is missing its sequence number");
+      }
+      return { data: value, seqNum: deliveredSeqNum };
     } finally {
       await reader.cancel().catch(() => {});
       pending.abort.abort();

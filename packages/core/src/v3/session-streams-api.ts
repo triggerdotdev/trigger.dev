@@ -7,3 +7,4 @@ export const sessionStreams = SessionStreamsAPI.getInstance();
 export * from "./sessionStreams/types.js";
 export * from "./sessionStreams/wireProtocol.js";
 export * from "./sessionStreams/chatSnapshot.js";
+export * from "./sessionStreams/router.js";
