@@ -88,10 +88,18 @@ export function isDashboardAgentConfigured(): boolean {
   return Boolean(env.DASHBOARD_AGENT_SECRET_KEY);
 }
 
+// With no agent worker available a turn's run would sit queued indefinitely and
+// could be dequeued much later with a stale token. Expire it instead — the turn
+// is long dead by then on the client.
+const DASHBOARD_AGENT_RUN_TTL = "2m";
+
 // Pins every agent session (and its continuation runs) to a deployed version
 // when DASHBOARD_AGENT_VERSION is set; unset runs on the env's current version.
-export function dashboardAgentTriggerConfig(): { lockToVersion: string } | undefined {
-  return env.DASHBOARD_AGENT_VERSION ? { lockToVersion: env.DASHBOARD_AGENT_VERSION } : undefined;
+export function dashboardAgentTriggerConfig(): { ttl: string; lockToVersion?: string } {
+  return {
+    ttl: DASHBOARD_AGENT_RUN_TTL,
+    ...(env.DASHBOARD_AGENT_VERSION ? { lockToVersion: env.DASHBOARD_AGENT_VERSION } : {}),
+  };
 }
 
 export async function startDashboardAgentSession(params: {
