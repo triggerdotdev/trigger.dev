@@ -497,3 +497,22 @@ describe("SessionChannelRouter: take", () => {
     expect(next?.seqNum).toBe(1);
   });
 });
+
+describe("SessionChannelRouter: clearRoute guard", () => {
+  it("refuses to clear a replayable route", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+
+    expect(() => r.clearRoute("messages")).toThrow(/replayable/);
+    expect(r.hasPending("messages")).toBe(true);
+  });
+
+  it("still clears a non-replayable route", () => {
+    const r = router();
+    r.ingest(rec(0, "handover"));
+    expect(r.hasPending("handover")).toBe(true);
+
+    r.clearRoute("handover");
+    expect(r.hasPending("handover")).toBe(false);
+  });
+});

@@ -474,6 +474,11 @@ export class SessionChannelRouter {
    */
   clearRoute(name: string): void {
     const state = this.#stateOrThrow(name);
+    if (state.route.replayable) {
+      throw new Error(
+        `Route "${name}" is replayable, so its queue cannot be cleared: anything queued on it is still owed to a later boot, and discarding it would lose records the resume floor is holding back`
+      );
+    }
     state.queue.length = 0;
     for (const waiter of state.waiters) {
       if (waiter.timer) clearTimeout(waiter.timer);
