@@ -12,7 +12,11 @@ import { assertNever } from "assert-never";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { buildCompletedWaitpointRecords } from "../waitpointCoordinator/completedWaitpointRecords.js";
-import type { RunBlockEdge, WaitpointCoordinator } from "../waitpointCoordinator/types.js";
+import type {
+  RunBlockEdge,
+  WaitpointCoordinator,
+  WaitpointMintKind,
+} from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
@@ -141,6 +145,7 @@ export class WaitpointSystem {
     completedAfter,
     idempotencyKey,
     idempotencyKeyExpiresAt,
+    waitpointMintKind,
   }: {
     runId?: string;
     projectId: string;
@@ -148,10 +153,10 @@ export class WaitpointSystem {
     completedAfter: Date;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
+    waitpointMintKind?: WaitpointMintKind;
   }) {
     const result = await this.coordinator.createDateTimeWaitpoint({
-      // Pinned until the mint flag reaches this entry point.
-      mintKind: "legacy",
+      mintKind: waitpointMintKind ?? "legacy",
       runId,
       projectId,
       environmentId,
@@ -186,10 +191,12 @@ export class WaitpointSystem {
     timeout,
     tags,
     standaloneResidency,
+    waitpointMintKind,
   }: {
     runId?: string;
     environmentId: string;
     projectId: string;
+    waitpointMintKind?: WaitpointMintKind;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
@@ -200,8 +207,7 @@ export class WaitpointSystem {
     standaloneResidency?: "NEW" | "LEGACY";
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const result = await this.coordinator.createManualWaitpoint({
-      // Pinned until the mint flag reaches this entry point.
-      mintKind: "legacy",
+      mintKind: waitpointMintKind ?? "legacy",
       runId,
       environmentId,
       projectId,

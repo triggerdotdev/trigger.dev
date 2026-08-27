@@ -95,6 +95,7 @@ import { LegacyPostgresWaitpointCoordinator } from "./waitpointCoordinator/legac
 import { WaitpointRouterCoordinator } from "./waitpointCoordinator/routerCoordinator.js";
 import { StoreWaitpointCoordinatorArm } from "./waitpointCoordinator/storeArm.js";
 import { WaitpointStoreCoordinator } from "./waitpointCoordinator/storeCoordinator.js";
+import type { WaitpointMintKind } from "./waitpointCoordinator/types.js";
 import type {
   EngineWorker,
   HeartbeatTimeouts,
@@ -1803,6 +1804,7 @@ export class RunEngine {
     completedAfter,
     idempotencyKey,
     idempotencyKeyExpiresAt,
+    waitpointMintKind,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1811,6 +1813,8 @@ export class RunEngine {
     completedAfter: Date;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
+    /** Which coordinator mints this waitpoint. Resolved from the org flag by the caller. */
+    waitpointMintKind?: WaitpointMintKind;
   }) {
     return this.waitpointSystem.createDateTimeWaitpoint({
       runId,
@@ -1819,6 +1823,7 @@ export class RunEngine {
       completedAfter,
       idempotencyKey,
       idempotencyKeyExpiresAt,
+      waitpointMintKind,
     });
   }
 
@@ -1834,6 +1839,7 @@ export class RunEngine {
     timeout,
     tags,
     standaloneResidency,
+    waitpointMintKind,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1845,6 +1851,8 @@ export class RunEngine {
     tags?: string[];
     /** Standalone-token residency (no owning run) from the env mint kind; ignored when `runId` is set. */
     standaloneResidency?: "NEW" | "LEGACY";
+    /** Which coordinator mints this waitpoint. Resolved from the org flag by the caller. */
+    waitpointMintKind?: WaitpointMintKind;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -1855,6 +1863,7 @@ export class RunEngine {
       timeout,
       tags,
       standaloneResidency,
+      waitpointMintKind,
     });
   }
 
