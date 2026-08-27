@@ -12,6 +12,15 @@ export function isAvatarContentType(contentType: string): contentType is AvatarC
   return contentType in AVATAR_EXTENSIONS;
 }
 
+/** The stored filename is content-hash + ext, so its ext is the only type signal we keep. */
+export function avatarContentTypeForFilename(filename: string): AvatarContentType | undefined {
+  const ext = filename.split(".").pop();
+
+  return (Object.keys(AVATAR_EXTENSIONS) as AvatarContentType[]).find(
+    (contentType) => AVATAR_EXTENSIONS[contentType] === ext
+  );
+}
+
 function startsWith(data: Uint8Array, signature: number[], offset = 0) {
   return signature.every((byte, index) => data[offset + index] === byte);
 }

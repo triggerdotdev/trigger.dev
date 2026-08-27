@@ -2,6 +2,7 @@ import { AwsClient } from "aws4fetch";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  NoSuchKey,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -24,6 +25,8 @@ interface IObjectStoreClient {
     contentType: string
   ): Promise<string>;
   getObject(key: string): Promise<string>;
+  /** Undefined when the object is not there, so a caller can 404 instead of throwing. */
+  getObjectBytes(key: string): Promise<Uint8Array | undefined>;
   deleteObject(key: string): Promise<void>;
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string>;
 }
@@ -80,6 +83,17 @@ class Aws4FetchClient implements IObjectStoreClient {
       throw new Error(`Failed to download from object store: ${response.statusText}`);
     }
     return response.text();
+  }
+
+  async getObjectBytes(key: string): Promise<Uint8Array | undefined> {
+    const response = await this.awsClient.fetch(this.buildUrl(key));
+    if (response.status === 404) {
+      return undefined;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to download from object store: ${response.statusText}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   async deleteObject(key: string): Promise<void> {
@@ -164,6 +178,20 @@ class AwsSdkClient implements IObjectStoreClient {
     return response.Body.transformToString();
   }
 
+  async getObjectBytes(key: string): Promise<Uint8Array | undefined> {
+    try {
+      const response = await this.s3Client.send(
+        new GetObjectCommand({ Bucket: this.config.bucket, Key: this.toS3ObjectKey(key) })
+      );
+      return await response.Body?.transformToByteArray();
+    } catch (error) {
+      if (error instanceof NoSuchKey || (error as { name?: string }).name === "NotFound") {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   async deleteObject(key: string): Promise<void> {
     await this.s3Client.send(
       new DeleteObjectCommand({ Bucket: this.config.bucket, Key: this.toS3ObjectKey(key) })
@@ -238,6 +266,10 @@ export class ObjectStoreClient implements IObjectStoreClient {
 
   getObject(key: string): Promise<string> {
     return this.impl.getObject(key);
+  }
+
+  getObjectBytes(key: string): Promise<Uint8Array | undefined> {
+    return this.impl.getObjectBytes(key);
   }
 
   deleteObject(key: string): Promise<void> {

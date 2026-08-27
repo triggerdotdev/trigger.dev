@@ -11,7 +11,7 @@ import {
   resolveStaleAvatarObjectPath,
   resolveUserAvatarObjectPath,
 } from "~/services/userAvatar.server";
-import { MAX_AVATAR_SIZE_IN_BYTES } from "~/utils/avatarLimits";
+import { avatarContentTypeForFilename, MAX_AVATAR_SIZE_IN_BYTES } from "~/utils/avatarLimits";
 
 const USER_ID = "clzabc123";
 
@@ -312,5 +312,31 @@ describe("resolveStaleAvatarObjectPath on removal", () => {
     ["a traversal filename", `/resources/account/avatar/${USER_ID}/../../secret.png`],
   ])("deletes nothing for %s", (_case, previousAvatarUrl) => {
     expect(resolveStaleAvatarObjectPath({ previousAvatarUrl, userId: USER_ID })).toBeUndefined();
+  });
+});
+
+describe("avatarContentTypeForFilename", () => {
+  it.each([
+    ["image/png", "png"],
+    ["image/jpeg", "jpg"],
+    ["image/webp", "webp"],
+  ])("serves %s for a stored .%s object", (contentType, ext) => {
+    const filename = `${"a".repeat(32)}.${ext}`;
+
+    expect(avatarContentTypeForFilename(filename)).toBe(contentType);
+  });
+
+  it("round-trips the filename the upload produced", () => {
+    const filename = buildUserAvatarFilename("image/webp", new Uint8Array([1, 2, 3]));
+
+    expect(avatarContentTypeForFilename(filename)).toBe("image/webp");
+  });
+
+  it.each([
+    ["an ext we never store", `${"a".repeat(32)}.svg`],
+    ["no ext at all", "a".repeat(32)],
+    ["an empty name", ""],
+  ])("is undefined for %s", (_case, filename) => {
+    expect(avatarContentTypeForFilename(filename)).toBeUndefined();
   });
 });

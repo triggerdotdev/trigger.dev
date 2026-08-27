@@ -178,6 +178,12 @@ export async function deleteStaleUserAvatar(options: {
   }
 }
 
+export function readUserAvatarBytes(objectPath: string) {
+  const { client, objectKey } = requireAvatarObjectStore();
+
+  return client.getObjectBytes(objectKey(objectPath));
+}
+
 export function presignUserAvatarUrl(objectPath: string) {
   const { client, objectKey } = requireAvatarObjectStore();
 
