@@ -656,23 +656,31 @@ export function buildApiTools(args: {
 
     correlate_version: tool({
       ...correlateVersionSchema,
-      execute: async ({ runId }) => {
+      execute: async ({ runId, project, environment }) => {
         if (!hasAuth) return NO_AUTH;
-        if (!projectRef || !environmentName) {
+        const effectiveProjectRef = project ?? projectRef;
+        const effectiveEnvironmentName = environment ?? environmentName;
+        if (!effectiveProjectRef || !effectiveEnvironmentName) {
           return { error: "No current environment is available to resolve the run's version." };
         }
+        const target = crossProjectTarget({ project, environment });
         // A user-level route, so this uses the delegated token rather than the env JWT.
+        // An override drops the branch: it names another project/environment, which
+        // the current branch can't be assumed to apply to.
         const result = await apiGet(
           origin,
-          `/api/v1/projects/${projectRef}/${environmentName}/runs/${encodeURIComponent(runId)}/commit`,
+          `/api/v1/projects/${effectiveProjectRef}/${effectiveEnvironmentName}/runs/${encodeURIComponent(runId)}/commit`,
           userActorToken!,
-          environmentBranch
+          target ? undefined : environmentBranch
         );
         if (!result.ok) {
-          // Only a real 404 says "no commit"; a transport failure says nothing.
+          // Only a real 404 says "no commit here"; a transport failure says nothing, and a
+          // 404 is never evidence the run isn't locked/deployed — only that this environment
+          // has no record of it. Asserting "dev run" or "no locked commit" from it is the bug.
           if ("status" in result && result.status === 404) {
+            const scope = target ? "that project/environment" : "the current environment";
             return {
-              error: `Run ${runId} isn't locked to a deployed version, so there's no commit to correlate (dev runs behave this way).`,
+              error: `No commit found for run ${runId} in ${scope}. That is not evidence the run isn't locked to a deployment — sweep (list_projects, then get_run with project/environment) before concluding, then retry this call with project/environment for wherever it's found.`,
             };
           }
           return { error: `Couldn't resolve the commit for ${runId}${fetchReason(result)}.` };

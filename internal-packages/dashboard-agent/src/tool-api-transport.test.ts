@@ -136,6 +136,7 @@ describe("a broken request reads as a broken request, never as an answer", () =>
 
     const result = await run("correlate_version", { runId: "run_1234" });
 
-    expect(result.error).toContain("isn't locked to a deployed version");
+    expect(result.error).toContain("No commit found for run run_1234 in the current environment");
+    expect(result.error).not.toContain("isn't locked to a deployed version");
   });
 });
