@@ -11,7 +11,13 @@ export const agentIntentSchema = z.discriminatedUnion("kind", [
     filters: runFiltersSchema.optional(),
   }),
   z.object({ kind: z.literal("ask"), prompt: z.string() }),
-  z.object({ kind: z.literal("watch"), spec: watchSpecSchema }),
+  z.object({
+    kind: z.literal("watch"),
+    spec: watchSpecSchema,
+    // Set only when the watch targets another project/environment than the chat's own,
+    // resolved (never guessed) through the same JWT exchange every env-scoped read uses.
+    target: z.object({ projectRef: z.string(), environmentId: z.string() }).optional(),
+  }),
   /** Reserved: nothing may emit or execute this until write actions ship. */
   z.object({ kind: z.literal("propose_fix"), investigationId: z.string() }),
 ]);

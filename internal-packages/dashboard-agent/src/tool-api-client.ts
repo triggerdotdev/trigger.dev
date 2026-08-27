@@ -109,6 +109,22 @@ async function exchangeEnvJwt(
   return { ok: true, token: data.token };
 }
 
+// The exchange mints the JWT with `sub: runtimeEnv.id` (see api.v1.projects.$projectRef.$env.jwt.ts).
+// We just minted it in this same request, so reading the id back off it is trusted —
+// no signature check needed for that.
+function decodeJwtSub(token: string): string | undefined {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return undefined;
+    const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      sub?: unknown;
+    };
+    return typeof json.sub === "string" ? json.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export type DashboardAgentApiClient = {
   /** The API origin with any trailing slash removed. Empty when none was injected. */
   origin: string;
@@ -118,6 +134,13 @@ export type DashboardAgentApiClient = {
   envApiGet(path: string, target?: ApiTarget): Promise<EnvFetchResult>;
   postQuery(query: string, period: string | undefined): Promise<QueryPostResult | EnvUnavailable>;
   validateChartQuery(query: string, period: string | undefined): Promise<string | null>;
+  /**
+   * The canonical RuntimeEnvironment id for a target, proven by the same JWT exchange
+   * every other env-scoped call uses — never guessed, and never a name/slug.
+   */
+  resolveEnvironmentId(
+    target?: ApiTarget
+  ): Promise<{ ok: true; environmentId: string } | EnvUnavailable>;
 };
 
 export type ApiClientContext = {
@@ -257,5 +280,15 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
     return result.error;
   }
 
-  return { origin, hasAuth, envApiGet, postQuery, validateChartQuery };
+  async function resolveEnvironmentId(
+    target?: ApiTarget
+  ): Promise<{ ok: true; environmentId: string } | EnvUnavailable> {
+    const jwt = await getEnvJwt(false, target);
+    if (!jwt.ok) return jwt;
+    const environmentId = decodeJwtSub(jwt.token);
+    if (!environmentId) return { ok: false, envUnavailable: "unknown" };
+    return { ok: true, environmentId };
+  }
+
+  return { origin, hasAuth, envApiGet, postQuery, validateChartQuery, resolveEnvironmentId };
 }

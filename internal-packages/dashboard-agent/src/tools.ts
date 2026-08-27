@@ -41,7 +41,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   const apiTools: ToolSet = {
     ...buildApiTools({ ctx, client, renderInvestigations, spanLedger: ledger }),
     ...buildNavigationTools(ctx),
-    ...buildWatchTools(),
+    ...buildWatchTools({ ctx, client }),
     ...buildAlertTools({ ctx, client }),
   };
 
