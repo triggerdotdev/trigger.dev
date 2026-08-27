@@ -405,12 +405,28 @@ export class SessionChannelRouter {
    * whether it was still queued, so a caller can tell a real take from a record
    * something else had already consumed.
    */
-  take(name: string, seqNum: number): boolean {
+  take(name: string, seqNum: number): SessionStreamRecord | undefined {
     const state = this.#stateOrThrow(name);
     const index = state.queue.findIndex((record) => record.seqNum === seqNum);
-    if (index === -1) return false;
-    state.queue.splice(index, 1);
-    return true;
+    if (index === -1) return undefined;
+    return state.queue.splice(index, 1)[0];
+  }
+
+  /**
+   * Put a taken record back, in sequence order.
+   *
+   * For a consumer that claimed a record and then could not use it. Returning
+   * it leaves the route as though the claim never happened, so the record is
+   * delivered later and goes back to holding the resume floor. Without this a
+   * failed claim-then-use is indistinguishable from a delivery, and the record
+   * is lost.
+   */
+  untake(name: string, record: SessionStreamRecord): void {
+    const state = this.#stateOrThrow(name);
+    if (state.queue.some((queued) => queued.seqNum === record.seqNum)) return;
+    const at = state.queue.findIndex((queued) => queued.seqNum > record.seqNum);
+    if (at === -1) state.queue.push(record);
+    else state.queue.splice(at, 0, record);
   }
 
   /** Whether an `at-arrival` route currently has anywhere to deliver. */

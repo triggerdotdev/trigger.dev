@@ -40,6 +40,7 @@ import {
   type StreamWriteResult,
   type RouterCheckpoint,
   type SessionRouteTable,
+  type SessionStreamRecord,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -3679,21 +3680,46 @@ async function drainSteeringQueue(
        * accumulator's own queue), so there is nothing to claim and it is kept.
        */
       const router = chatInputRouter();
-      const claimed = batch.filter((entry) => {
-        const mine = entry.seqNum === undefined || router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
-        if (mine) {
-          const at = queue.indexOf(entry);
-          if (at !== -1) queue.splice(at, 1);
+      const claimed: SteeringQueueEntry[] = [];
+      const takenRecords: SessionStreamRecord[] = [];
+      for (const entry of batch) {
+        if (entry.seqNum === undefined) {
+          claimed.push(entry);
+          continue;
         }
-        return mine;
-      });
+        const record = router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
+        if (!record) continue;
+        takenRecords.push(record);
+        claimed.push(entry);
+      }
+      for (const entry of claimed) {
+        const at = queue.indexOf(entry);
+        if (at !== -1) queue.splice(at, 1);
+      }
 
       if (claimed.length === 0) return [];
 
+      /**
+       * Give the claim back if the transform fails. `prepare` is caller code and
+       * can throw; the records have already left the router by this point, so
+       * without returning them a failed transform would consume the messages and
+       * they would never be answered at all.
+       */
+      const releaseClaim = () => {
+        for (const record of takenRecords) router.untake(CHAT_ROUTE_MESSAGES, record);
+        for (const entry of claimed) if (!queue.includes(entry)) queue.push(entry);
+      };
+
       const claimedUIMessages = claimed.map((e) => e.uiMessage);
-      const injected = config.prepare
-        ? await config.prepare({ ...batchEvent, messages: claimedUIMessages })
-        : claimed.flatMap((e) => e.modelMessages);
+      let injected: ModelMessage[];
+      try {
+        injected = config.prepare
+          ? await config.prepare({ ...batchEvent, messages: claimedUIMessages })
+          : claimed.flatMap((e) => e.modelMessages);
+      } catch (err) {
+        releaseClaim();
+        throw err;
+      }
 
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {

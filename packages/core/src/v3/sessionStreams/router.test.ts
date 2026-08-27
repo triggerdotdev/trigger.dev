@@ -471,7 +471,7 @@ describe("SessionChannelRouter: take", () => {
     r.ingest(rec(0, "message"));
     r.ingest(rec(1, "message"));
 
-    expect(r.take("messages", 0)).toBe(true);
+    expect(r.take("messages", 0)?.seqNum).toBe(0);
     expect(r.pendingCount("messages")).toBe(1);
     expect(r.peek("messages")?.seqNum).toBe(1);
   });
@@ -480,9 +480,9 @@ describe("SessionChannelRouter: take", () => {
     const r = router();
     r.ingest(rec(0, "message"));
 
-    expect(r.take("messages", 0)).toBe(true);
-    expect(r.take("messages", 0)).toBe(false);
-    expect(r.take("messages", 99)).toBe(false);
+    expect(r.take("messages", 0)?.seqNum).toBe(0);
+    expect(r.take("messages", 0)).toBeUndefined();
+    expect(r.take("messages", 99)).toBeUndefined();
   });
 
   it("leaves an untaken observed record to be delivered as normal", async () => {
@@ -542,6 +542,34 @@ describe("SessionChannelRouter: observe versus a waiting consumer", () => {
     await pull;
 
     expect(seen).toEqual([0]);
-    expect(r.take("messages", 0)).toBe(false);
+    expect(r.take("messages", 0)).toBeUndefined();
+  });
+});
+
+describe("SessionChannelRouter: untake", () => {
+  it("puts a claimed record back in sequence order", async () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+    r.ingest(rec(2, "message"));
+
+    const taken = r.take("messages", 0)!;
+    expect(r.peek("messages")?.seqNum).toBe(2);
+
+    r.untake("messages", taken);
+
+    expect(r.pendingCount("messages")).toBe(2);
+    expect(r.peek("messages")?.seqNum).toBe(0);
+    expect(r.resumeFloor()).toBeUndefined();
+  });
+
+  it("is idempotent, so a double return cannot duplicate a record", () => {
+    const r = router();
+    r.ingest(rec(0, "message"));
+    const taken = r.take("messages", 0)!;
+
+    r.untake("messages", taken);
+    r.untake("messages", taken);
+
+    expect(r.pendingCount("messages")).toBe(1);
   });
 });
