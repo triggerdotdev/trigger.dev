@@ -40,6 +40,18 @@ export const SESSION_STATE_LAST_EVENT_ID_HEADER = "last-event-id" as const;
  */
 export const SESSION_IN_EVENT_ID_HEADER = "session-in-event-id" as const;
 
+/**
+ * Sibling of {@link SESSION_IN_EVENT_ID_HEADER}: the highest `.in` sequence this
+ * run had actually consumed at the turn boundary, unclamped.
+ *
+ * The resume cursor is held back behind records still waiting to be handled, so
+ * resuming from it necessarily re-delivers records that WERE handled. A message
+ * re-delivered that way is the point. A control record re-delivered that way is
+ * a bug: it applies a second time to whatever turn is live on the new run. On
+ * boot this bound tells the run which control records it has already seen.
+ */
+export const SESSION_IN_CONSUMED_ID_HEADER = "session-in-consumed-id" as const;
+
 export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",

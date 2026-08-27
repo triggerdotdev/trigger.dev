@@ -228,6 +228,7 @@ describe("TriggerChatTransport", () => {
           "chat-1": {
             publicAccessToken: "hydrated-pat",
             lastEventId: "42",
+            activeInputSeq: 41,
             isStreaming: false,
           },
         },
@@ -237,6 +238,7 @@ describe("TriggerChatTransport", () => {
       expect(session).toEqual({
         publicAccessToken: "hydrated-pat",
         lastEventId: "42",
+        activeInputSeq: 41,
         isStreaming: false,
       });
     });
@@ -262,15 +264,21 @@ describe("TriggerChatTransport", () => {
       transport.setSession("chat-x", {
         publicAccessToken: "tok",
         lastEventId: "10",
+        activeInputSeq: 9,
       });
 
       expect(transport.getSession("chat-x")).toMatchObject({
         publicAccessToken: "tok",
         lastEventId: "10",
+        activeInputSeq: 9,
       });
       expect(onSessionChange).toHaveBeenCalledWith(
         "chat-x",
-        expect.objectContaining({ publicAccessToken: "tok", lastEventId: "10" })
+        expect.objectContaining({
+          publicAccessToken: "tok",
+          lastEventId: "10",
+          activeInputSeq: 9,
+        })
       );
     });
 
@@ -977,7 +985,9 @@ describe("TriggerChatTransport", () => {
     it("marks the session streaming and notifies before subscribing", async () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
-        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: 7 }), { status: 200 });
+        }
         if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
         throw new Error(`Unexpected URL: ${urlStr}`);
       });
@@ -994,7 +1004,9 @@ describe("TriggerChatTransport", () => {
       // isStreaming:true must be observed during the action — otherwise a reload
       // mid-action sees a persisted isStreaming:false and never resumes.
       expect(
-        onSessionChange.mock.calls.some(([, session]) => session && session.isStreaming === true)
+        onSessionChange.mock.calls.some(
+          ([, session]) => session && session.isStreaming === true && session.activeInputSeq === 7
+        )
       ).toBe(true);
       await drainChunks(stream);
     });

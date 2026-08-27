@@ -25,7 +25,7 @@ import type {
   WaitpointTag,
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
-import type { Residency } from "@trigger.dev/core/v3/isomorphic";
+import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type {
   ClearIdempotencyKeyInput,
   CompletionSnapshotInput,
@@ -715,9 +715,10 @@ export class DelegatingRunStore implements RunStore {
     // A tag has no owning run to co-locate with; when no minted `id` pins it by id-shape, a
     // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
     // instead of defaulting to LEGACY. Single-store impls ignore it.
-    residency?: Residency
+    residency?: Residency,
+    shardKey?: ShardKey
   ): Promise<WaitpointTag> {
-    return this.delegate.upsertWaitpointTag(data, tx, residency);
+    return this.delegate.upsertWaitpointTag(data, tx, residency, shardKey);
   }
 
   findManyWaitpointTags(

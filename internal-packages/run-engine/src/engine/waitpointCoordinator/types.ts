@@ -1,5 +1,6 @@
 import type { ReadClient } from "@internal/run-store";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
+import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 
 /**
  * The waitpoint and edge state operations that `WaitpointSystem` delegates.
@@ -24,6 +25,8 @@ export type WaitpointCoordinator = {
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
+    /** This write skips the router's stamp check. */
+    anchorRunId: string;
   }): AssociatedWaitpointData;
   createAssociatedWaitpoint(params: {
     runId: string;
@@ -108,7 +111,11 @@ export type CreateWaitpointResult =
   | { kind: "created"; waitpoint: Waitpoint };
 
 export type CreateDateTimeWaitpointParams = {
-  /** When set, the waitpoint co-locates with this run's DB and the dedup probe targets it. */
+  /**
+   * Co-locates the waitpoint with this run's DB. There is deliberately no standalone arm: omitting
+   * it on a gen-2 environment lands the row on a gen-1 store, silently. A standalone caller needs
+   * a shard hint here first, as `CreateManualWaitpointParams` has.
+   */
   runId?: string;
   projectId: string;
   environmentId: string;
@@ -130,6 +137,8 @@ export type CreateManualWaitpointParams = {
    * full rationale. Only a Postgres implementation reads this.
    */
   standaloneResidency?: "NEW" | "LEGACY";
+  /** For a standalone token. When it names a gen-2 shard, ignore `standaloneResidency`. */
+  standaloneShardKey?: ShardKey;
 };
 
 /** The RUN-waitpoint row data. Pure — no store touch — so the mint is coordinator-owned. */

@@ -25,8 +25,7 @@
         "vite/node-globals-shim.js",
         "app/v3/otlpTransformWorker.ts"
       ],
-      "ignoreDependencies": ["@sentry/cli", "assert", "util"],
-      "ignore": ["app/v3/runOpsMigration/runOpsMintShard.server.ts"]
+      "ignoreDependencies": ["@sentry/cli", "assert", "util"]
     },
     "internal-packages/dashboard-agent": {
       "entry": ["trigger.config.ts", "src/investigation-sweep.ts", "src/maintenance.ts"],
