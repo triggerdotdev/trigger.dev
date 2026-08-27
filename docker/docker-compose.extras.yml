@@ -14,6 +14,7 @@
 name: triggerdotdev-docker
 
 volumes:
+  redis-cluster-data:
   prometheus-data:
   grafana-data:
 
@@ -123,3 +124,39 @@ services:
       - app_network
     depends_on:
       - prometheus
+
+  # Six-node Redis cluster (3 masters, 3 replicas) for validating the execution-snapshot store.
+  # The store's single-slot guarantee only means anything against a cluster-mode endpoint, and the
+  # orphan sweeper's per-master fan-out is unreachable on a single node.
+  #
+  #   RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST=127.0.0.1
+  #   RUN_ENGINE_SNAPSHOT_STORE_REDIS_PORT=7001
+  #   RUN_ENGINE_SNAPSHOT_STORE_REDIS_CLUSTER_MODE_ENABLED=1
+  #
+  # ioredis discovers the other five nodes from that one seed.
+  redis-cluster:
+    container_name: ${CONTAINER_PREFIX:-}redis-cluster
+    image: redis:7.2
+    restart: always
+    volumes:
+      - ./config/redis-cluster-init.sh:/init.sh:ro
+      - redis-cluster-data:/data
+    command: sh /init.sh
+    ports:
+      - "${REDIS_CLUSTER_PORT_1:-7001}:7001"
+      - "${REDIS_CLUSTER_PORT_2:-7002}:7002"
+      - "${REDIS_CLUSTER_PORT_3:-7003}:7003"
+      - "${REDIS_CLUSTER_PORT_4:-7004}:7004"
+      - "${REDIS_CLUSTER_PORT_5:-7005}:7005"
+      - "${REDIS_CLUSTER_PORT_6:-7006}:7006"
+      - "17001:17001"
+      - "17002:17002"
+      - "17003:17003"
+      - "17004:17004"
+      - "17005:17005"
+      - "17006:17006"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 7001 cluster info | grep -q cluster_state:ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
