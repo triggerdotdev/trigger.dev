@@ -1281,12 +1281,6 @@ function getTriggeredVia(): DeploymentTriggeredVia {
 
 const DEPLOY_SETTINGS_TIMEOUT_MS = 5_000;
 
-const BUILD_PATH_LABEL: Record<DeployBuildPath, string> = {
-  depot: "Building with Depot",
-  native: "Building on the native build server",
-  native_local_bundle: "Building on the native build server from a local bundle",
-};
-
 async function resolveServerBuildPath(
   apiClient: CliApiClient,
   projectRef: string,
@@ -1311,11 +1305,7 @@ async function resolveServerBuildPath(
       }
       break;
     case "server":
-      if (resolved.buildPath === "depot" || options.dryRun) {
-        logger.debug(`Build path ${resolved.buildPath} (server)`);
-      } else {
-        log.info(BUILD_PATH_LABEL[resolved.buildPath]);
-      }
+      logger.debug(`Build path ${resolved.buildPath} (server)`);
       break;
   }
 
