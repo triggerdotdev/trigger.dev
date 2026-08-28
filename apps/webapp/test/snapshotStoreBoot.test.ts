@@ -179,4 +179,17 @@ describe("assertSnapshotStoreBoot", () => {
     const d = deps({ mode: "off", hostConfigured: false, completedTtlMs: 0, orphanAgeMs: -1 });
     await expect(assertSnapshotStoreBoot(d)).resolves.toBeUndefined();
   });
+  it("refuses to start when the retired halt environment variable still asks for a halt", async () => {
+    // Fail loud. The variable no longer does anything, so leaving it set means an operator believes
+    // the mirror is stopped when it is running.
+    const d = deps({ legacyEnvHalt: true });
+    await expect(assertSnapshotStoreBoot(d)).rejects.toThrow(/snapshotStoreHalt/i);
+  });
+
+  it("ignores the retired variable when it is pinned at its old default", async () => {
+    // "0" carries no intent, and refusing on it would break every deployment that still pins the
+    // old default while asking for nothing.
+    const d = deps({ legacyEnvHalt: false });
+    await expect(assertSnapshotStoreBoot(d)).resolves.toBeUndefined();
+  });
 });

@@ -81,19 +81,23 @@ export function buildSnapshotStoreModeResolver(deps: {
 }
 
 /**
- * The hard stop. Either source halts; only the environment can hold a halt the flag cannot lift,
- * which is what a deployment needs while it resyncs.
+ * The hard stop, and the flag is the whole of it.
+ *
+ * An environment half used to sit beside this, so a deployment could hold a halt the flag could not
+ * lift. It is gone. It converged over a rolling deploy rather than a flag interval, and for the
+ * length of that deploy the fleet is mixed: a halted process writes no transition, then an unhalted
+ * one asserts a head that was never written and forks. A control whose own convergence manufactures
+ * the divergence it exists to stop cannot be the way in. The guaranteed-inert state is an
+ * unconfigured host, which is bootstrap config and stays in the environment.
  */
 export function buildSnapshotStoreHaltCheck(deps: {
   flag: () => boolean | undefined;
-  envHalt: boolean;
 }): () => boolean {
-  return () => deps.envHalt || deps.flag() === true;
+  return () => deps.flag() === true;
 }
 
 export const snapshotStoreHalted = buildSnapshotStoreHaltCheck({
   flag: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreHalt],
-  envHalt: env.RUN_ENGINE_SNAPSHOT_STORE_HALT === "1",
 });
 
 const DEFAULT_CACHE_MAX = 10_000;

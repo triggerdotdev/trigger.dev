@@ -21,6 +21,12 @@ export type SnapshotStoreBootDeps = {
   ping: () => Promise<boolean>;
   evictionPolicy: () => Promise<EvictionPolicyReport>;
   repairBound: () => boolean;
+  /**
+   * Whether the retired RUN_ENGINE_SNAPSHOT_STORE_HALT still asks for a halt. Only "1" counts: the
+   * old default was "0", which carries no intent, and refusing on it would stop every deployment
+   * that pins the default while asking for nothing.
+   */
+  legacyEnvHalt: boolean;
   log: (message: string, fields?: Record<string, unknown>) => void;
   warn: (message: string, fields?: Record<string, unknown>) => void;
 };
@@ -29,6 +35,15 @@ const PING_TIMEOUT_MS = 5_000;
 const FLAG_READY_TIMEOUT_MS = 10_000;
 
 export async function assertSnapshotStoreBoot(deps: SnapshotStoreBootDeps): Promise<void> {
+  // Checked before anything else, and it does not depend on the dial or the host. The variable no
+  // longer halts anything, so leaving it set means an operator believes the mirror is stopped while
+  // it is running. That is the one failure mode worse than not starting.
+  if (deps.legacyEnvHalt) {
+    throw new Error(
+      "RUN_ENGINE_SNAPSHOT_STORE_HALT is set but no longer does anything; the hard stop is the snapshotStoreHalt feature flag. Set the flag, then unset this variable."
+    );
+  }
+
   const pastOff = deps.mode !== "off";
   // Configuration is validated as soon as a host is set, NOT only past off. The per-organisation
   // override can put one organisation at dual-write while the deployment dial is still off, which is
@@ -199,6 +214,9 @@ export async function assertSnapshotStoreBootFromEnv(): Promise<void> {
     ping: pingSweepClient,
     evictionPolicy: readEvictionPolicy,
     repairBound: () => !!getSnapshotRepairEnqueuer(),
+    // Read raw: the variable is out of the parsed env schema, and the point is to notice a value
+    // nothing consumes any more.
+    legacyEnvHalt: process.env.RUN_ENGINE_SNAPSHOT_STORE_HALT === "1",
     log: (message, fields) =>
       logger.info(message, {
         ...fields,
