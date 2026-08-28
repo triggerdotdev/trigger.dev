@@ -34,17 +34,3 @@ export type SessionChannelIn<C extends AnySessionChannel> = C extends SessionCha
     ? I
     : unknown
   : never;
-
-/**
- * Declare a named Session channel with typed `.in` / `.out` records, inferred
- * on both the producer (`chat.agent`) and consumer (client hook) sides.
- * Mirrors the `Task<TId, TIn, TOut>` + `defineSessionChannel` ergonomics: the
- * `const TName` capture preserves the channel name as a string literal so it
- * flows through `SessionChannelName`, exactly like a task id.
- */
-export function defineSessionChannel<
-  TShape extends SessionChannelShape = SessionChannelShape,
-  const TName extends string = string,
->(name: TName): SessionChannel<TName, TShape> {
-  return { name };
-}

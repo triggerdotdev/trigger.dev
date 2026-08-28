@@ -21,6 +21,12 @@ import type {
   UpdateSessionRequestBody,
   WriterStreamOptions,
   CursorPagePromise,
+  AnySessionChannel,
+  SessionChannel,
+  SessionChannelIn,
+  SessionChannelName,
+  SessionChannelOut,
+  SessionChannelShape,
 } from "@trigger.dev/core/v3";
 import {
   InputStreamOncePromise,
@@ -58,6 +64,7 @@ export const sessions = {
   close: closeSession,
   list: listSessions,
   open,
+  defineChannel,
 };
 
 // Test hook: lets `@trigger.dev/sdk/ai/test` replace `sessions.open()` with
@@ -256,11 +263,18 @@ export class SessionHandle {
   /**
    * Open a named side channel on this session: a durable, cross-run `.in`/`.out`
    * pair addressed by `name` rather than the reserved default pair. Writing a
-   * side channel's `.in` does not wake or trigger a run — a run observes it via
+   * side channel's `.in` does not wake or trigger a run; a run observes it via
    * `.in.on()` / `.in.once()`. Records outlive any single run and are bounded by
    * the channel's retention (a sensible default, overridable via `options`).
+   *
+   * Pass a `sessions.defineChannel(...)` definition to type `.in`/`.out` records;
+   * a bare name string works too, with records typed `unknown`.
    */
-  channel(name: string, options?: SessionChannelOptions): SessionChannelHandle {
+  channel<C extends AnySessionChannel = AnySessionChannel>(
+    channel: SessionChannelName<C> | C,
+    options?: SessionChannelOptions
+  ): SessionChannelHandleFor<C> {
+    const name = typeof channel === "string" ? channel : channel.name;
     if (!SESSION_CHANNEL_NAME_REGEX.test(name)) {
       throw new Error(
         `Invalid session channel name "${name}": use 1-128 chars from [A-Za-z0-9._-].`
@@ -270,17 +284,36 @@ export class SessionHandle {
       name,
       out: new SessionOutputChannel(this.id, name, options?.retention),
       in: new SessionInputChannel(this.id, name),
-    };
+    } as SessionChannelHandleFor<C>;
   }
 }
 
-export type SessionChannelHandle = {
+export type SessionChannelHandleFor<C extends AnySessionChannel> = {
   readonly name: string;
-  readonly out: SessionOutputChannel;
-  readonly in: SessionInputChannel;
+  readonly out: SessionOutputChannel<SessionChannelOut<C>>;
+  readonly in: SessionInputChannel<SessionChannelIn<C>>;
 };
 
+export type SessionChannelHandle = SessionChannelHandleFor<AnySessionChannel>;
+
 const SESSION_CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,128}$/;
+
+/**
+ * Declare a named Session channel with typed `.in` / `.out` records, inferred
+ * on both the producer and the consumer. The channel analogue of a task
+ * definition: pass the result to `session.channel(...)` / `chat.channel(...)`
+ * and to `useSessionStreamChannel<typeof channel>` so the record types line up
+ * on every side.
+ */
+function defineChannel<
+  TShape extends SessionChannelShape = SessionChannelShape,
+  const TName extends string = string,
+>(name: TName): SessionChannel<TName, TShape> {
+  if (!SESSION_CHANNEL_NAME_REGEX.test(name)) {
+    throw new Error(`Invalid session channel name "${name}": use 1-128 chars from [A-Za-z0-9._-].`);
+  }
+  return { name };
+}
 
 /**
  * Options accepted by {@link SessionOutputChannel.pipe}. Session-scoped,
@@ -312,7 +345,7 @@ export type SessionChannelOptions = {
  * consume via SSE. S2 credentials for direct writes are fetched
  * internally by `pipe`/`writer` — there's no public `initialize()`.
  */
-export class SessionOutputChannel {
+export class SessionOutputChannel<TOut = unknown> {
   // Cache of the in-flight / resolved `initializeSessionStream` PUT for
   // this channel. Every `pipe()` / `writer()` call needs the same S2
   // credentials, so we share a single promise instead of re-PUTing on
@@ -348,8 +381,8 @@ export class SessionOutputChannel {
    * which would give SSE consumers a JSON-string instead of an object.
    * Mirrors how `streams.define.append` delegates to `streams.writer`.
    */
-  async append<T>(value: T, options?: SessionPipeStreamOptions): Promise<void> {
-    const { waitUntilComplete } = this.writer<T>({
+  async append(value: TOut, options?: SessionPipeStreamOptions): Promise<void> {
+    const { waitUntilComplete } = this.writer({
       ...options,
       spanName: "sessions.append()",
       execute: ({ write }) => {
@@ -365,7 +398,7 @@ export class SessionOutputChannel {
    * {@link SessionStreamInstance}. Parallel to {@link streams.pipe} but
    * session-scoped — no `target` option because the session is the target.
    */
-  pipe<T>(
+  pipe<T = TOut>(
     value: AsyncIterable<T> | ReadableStream<T>,
     options?: SessionPipeStreamOptions
   ): PipeStreamResult<T> {
@@ -379,7 +412,7 @@ export class SessionOutputChannel {
    * stream and await completion. Span is collapsible via `options.spanName`
    * / `options.collapsed`.
    */
-  writer<T>(options: WriterStreamOptions<T>): PipeStreamResult<T> {
+  writer<T = TOut>(options: WriterStreamOptions<T>): PipeStreamResult<T> {
     let controller!: ReadableStreamDefaultController<T>;
     const ongoingStreamPromises: Promise<void>[] = [];
 
@@ -455,7 +488,7 @@ export class SessionOutputChannel {
    * shared {@link SSEStreamSubscription} plumbing used by run-scoped
    * realtime streams.
    */
-  async read<T = unknown>(options?: SessionSubscribeOptions<T>): Promise<AsyncIterableStream<T>> {
+  async read<T = TOut>(options?: SessionSubscribeOptions<T>): Promise<AsyncIterableStream<T>> {
     const apiClient = apiClientManager.clientOrThrow();
 
     return apiClient.subscribeToSessionStream<T>(this.sessionId, "out", {
@@ -658,7 +691,7 @@ export class SessionOutputChannel {
  * external clients. Keyed on the session rather than the run so a
  * conversation can survive across run boundaries.
  */
-export class SessionInputChannel {
+export class SessionInputChannel<TIn = unknown> {
   constructor(
     public readonly sessionId: string,
     public readonly channel?: string
@@ -678,7 +711,7 @@ export class SessionInputChannel {
    * Matches {@link streams.input.send} but session-scoped — the session
    * is the address, no `runId` required.
    */
-  async send(value: unknown, requestOptions?: ApiRequestOptions): Promise<void> {
+  async send(value: TIn, requestOptions?: ApiRequestOptions): Promise<void> {
     const apiClient = apiClientManager.clientOrThrow();
     const body = typeof value === "string" ? value : JSON.stringify(value);
 
@@ -712,7 +745,7 @@ export class SessionInputChannel {
    * won't be buffered for a later `once()` and won't be re-delivered on a
    * future `on()` attach. Plain observers should return nothing.
    */
-  on<T = unknown>(handler: (data: T) => void | boolean | Promise<void>): { off: () => void } {
+  on<T = TIn>(handler: (data: T) => void | boolean | Promise<void>): { off: () => void } {
     return sessionStreams.on(
       this.sessionId,
       "in",
@@ -726,7 +759,7 @@ export class SessionInputChannel {
    * Returns `{ ok: true, output }` on arrival or `{ ok: false, error }`
    * when the timeout fires. Chain `.unwrap()` to get the data directly.
    */
-  once<T = unknown>(options?: InputStreamOnceOptions): InputStreamOncePromise<T> {
+  once<T = TIn>(options?: InputStreamOnceOptions): InputStreamOncePromise<T> {
     const ctx = taskContext.ctx;
     const runId = ctx?.run.id;
 
@@ -771,7 +804,7 @@ export class SessionInputChannel {
   }
 
   /** Non-blocking peek at the head of the `.in` buffer. */
-  peek<T = unknown>(): T | undefined {
+  peek<T = TIn>(): T | undefined {
     return sessionStreams.peek(this.sessionId, "in", this.channel) as T | undefined;
   }
 

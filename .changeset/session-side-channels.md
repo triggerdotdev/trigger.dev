@@ -4,14 +4,13 @@
 "@trigger.dev/sdk": patch
 ---
 
-Named side channels on a Session: durable, two-way realtime streams that outlive a single run and are shared across runs. Open a channel with `session.channel(name)` to get an `.in`/`.out` pair addressed by name rather than the reserved default pair. Writing a side channel's `.in` does not wake or trigger a run, so a channel can carry out-of-band data (a stream of frames, a control signal) that many clients read while the agent produces it.
+Named side channels on a Session: durable, two-way realtime streams that outlive a single run and are shared across runs. Open a channel with `sessions.open(id).channel(name)` (or `chat.channel(name)` inside a `chat.agent`) to get an `.in`/`.out` pair addressed by name rather than the reserved default pair. Writing a side channel's `.in` does not wake or trigger a run, so a channel can carry out-of-band data (a stream of frames, a control signal) that many clients read while the agent produces it.
 
 ```ts
-// Producer (inside a task): stream frames on a named channel, wakes nothing
-await session.channel("screenshots").out.append(frame);
-
-// A run observes a side channel's .in without suspending
-session.channel("screenshots").in.on((data) => { /* ... */ });
+// Inside a chat.agent: stream frames on a named channel, wakes nothing
+const frames = chat.channel("screenshots");
+await frames.out.append(frame);
+frames.in.on((control) => { /* client control, no suspend */ });
 ```
 
-Define channel record types once and infer them on both sides with `defineSessionChannel`, and read a channel from React with `useSessionStreamChannel`. Channels get a default retention that keeps them bounded, overridable per channel.
+Declare channel record types once with `sessions.defineChannel(...)` and infer them on both the producer and the consumer, including `useSessionStreamChannel` in React. Channels get a default retention that keeps them bounded, overridable per channel.

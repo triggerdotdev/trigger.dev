@@ -107,13 +107,17 @@ type ToolCallOptions = {
 import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
 import {
-  type SessionChannelHandle,
+  type SessionChannelHandleFor,
   type SessionChannelOptions,
   type SessionHandle,
   type SessionPipeStreamOptions,
   sessions,
   type SessionSubscribeOptions,
 } from "./sessions.js";
+import type {
+  AnySessionChannel,
+  SessionChannelName,
+} from "@trigger.dev/core/v3";
 import { createTask } from "./shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
 import { tracer } from "./tracer.js";
@@ -11859,8 +11863,10 @@ export const chat = {
    * chat transcript. Writing its `.in` does not wake a run. Shortcut for
    * `chat.session().channel(name)`.
    */
-  channel: (name: string, options?: SessionChannelOptions): SessionChannelHandle =>
-    getChatSession().channel(name, options),
+  channel: <C extends AnySessionChannel = AnySessionChannel>(
+    channel: SessionChannelName<C> | C,
+    options?: SessionChannelOptions
+  ): SessionChannelHandleFor<C> => getChatSession().channel<C>(channel, options),
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
   createStopSignal,
   /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */
