@@ -308,6 +308,15 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.pushTags(runId, tags, where, tx);
   }
 
+  removeTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ updatedAt: Date } | null> {
+    return this.delegate.removeTags(runId, tags, where, tx);
+  }
+
   pushRealtimeStream(
     runId: string,
     streamId: string,
