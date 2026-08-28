@@ -17,20 +17,13 @@ export type SessionChannel<
 export type AnySessionChannel = SessionChannel<string, SessionChannelShape>;
 
 /** Extract a channel's literal name, the analogue of `TaskIdentifier`. */
-export type SessionChannelName<C extends AnySessionChannel> = C extends SessionChannel<infer N, any>
-  ? N
-  : never;
+export type SessionChannelName<C extends AnySessionChannel> =
+  C extends SessionChannel<infer N, any> ? N : never;
 
 /** Extract the `.out` record type, the analogue of `TaskOutput`. */
-export type SessionChannelOut<C extends AnySessionChannel> = C extends SessionChannel<any, infer S>
-  ? S extends { out: infer O }
-    ? O
-    : unknown
-  : never;
+export type SessionChannelOut<C extends AnySessionChannel> =
+  C extends SessionChannel<any, infer S> ? (S extends { out: infer O } ? O : unknown) : never;
 
 /** Extract the `.in` record type, the analogue of `TaskPayload`. */
-export type SessionChannelIn<C extends AnySessionChannel> = C extends SessionChannel<any, infer S>
-  ? S extends { in: infer I }
-    ? I
-    : unknown
-  : never;
+export type SessionChannelIn<C extends AnySessionChannel> =
+  C extends SessionChannel<any, infer S> ? (S extends { in: infer I } ? I : unknown) : never;

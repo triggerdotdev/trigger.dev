@@ -325,13 +325,11 @@ export type SessionPipeStreamOptions = Omit<PipeStreamOptions, "target">;
 /**
  * Retention for a named side channel. `maxAgeSeconds` and
  * `deleteOnEmptyMinAgeSeconds` are applied server-side as native S2 per-stream
- * config on first initialize; `keepLastN` is a producer-side trim floor the
- * writer enforces by appending an S2 trim command as records accumulate.
+ * config on first initialize.
  */
 export type SessionChannelRetention = {
   maxAgeSeconds?: number;
   deleteOnEmptyMinAgeSeconds?: number;
-  keepLastN?: number;
 };
 
 export type SessionChannelOptions = {
@@ -732,7 +730,13 @@ export class SessionInputChannel<TIn = unknown> {
       requestOptions
     );
 
-    await apiClient.appendToSessionStream(this.sessionId, "in", body, $requestOptions, this.channel);
+    await apiClient.appendToSessionStream(
+      this.sessionId,
+      "in",
+      body,
+      $requestOptions,
+      this.channel
+    );
   }
 
   /**

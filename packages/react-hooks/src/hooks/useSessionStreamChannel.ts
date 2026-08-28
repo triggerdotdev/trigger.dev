@@ -146,10 +146,9 @@ export function useSessionStreamChannel<
     }
   }, [idKey, sessionId, channelName, io, lastEventId]);
 
-  const { data: lastControl = undefined, mutate: setLastControl } = useSWR<undefined | ControlEvent>(
-    [idKey, sessionId, channelName, io, "lastControl"],
-    null
-  );
+  const { data: lastControl = undefined, mutate: setLastControl } = useSWR<
+    undefined | ControlEvent
+  >([idKey, sessionId, channelName, io, "lastControl"], null);
 
   const { data: _isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
     [idKey, sessionId, channelName, io, "complete"],
@@ -207,12 +206,13 @@ export function useSessionStreamChannel<
   }, [maxRecords, mutateRecords]);
 
   const triggerRequest = useCallback(async () => {
+    let abortController: AbortController | null = null;
     try {
       if (!sessionId || !apiClient) {
         return;
       }
 
-      const abortController = new AbortController();
+      abortController = new AbortController();
       abortControllerRef.current = abortController;
 
       await processSessionChannelStream<TRecord>(
@@ -236,13 +236,12 @@ export function useSessionStreamChannel<
       );
     } catch (err) {
       if ((err as any).name === "AbortError") {
-        abortControllerRef.current = null;
         return;
       }
 
       setError(err as Error);
     } finally {
-      if (abortControllerRef.current) {
+      if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null;
       }
 

@@ -100,7 +100,13 @@ const { action, loader } = createActionApiRoute(
     let appendSeq: number | undefined;
     if (wonClaim) {
       const [appendError, seq] = await tryCatch(
-        realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io, params.channel)
+        realtimeStream.appendPartToSessionStream(
+          part,
+          partId,
+          addressingKey,
+          params.io,
+          params.channel
+        )
       );
       appendSeq = seq ?? undefined;
 
@@ -125,7 +131,10 @@ const { action, loader } = createActionApiRoute(
           channel: params.channel,
           error: appendError,
         });
-        return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
+        return json(
+          { ok: false, error: "Something went wrong, please try again." },
+          { status: 500 }
+        );
       }
     }
 

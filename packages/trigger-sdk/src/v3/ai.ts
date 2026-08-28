@@ -114,10 +114,7 @@ import {
   sessions,
   type SessionSubscribeOptions,
 } from "./sessions.js";
-import type {
-  AnySessionChannel,
-  SessionChannelName,
-} from "@trigger.dev/core/v3";
+import type { AnySessionChannel, SessionChannelName } from "@trigger.dev/core/v3";
 import { createTask } from "./shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
 import { tracer } from "./tracer.js";

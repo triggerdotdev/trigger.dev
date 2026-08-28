@@ -78,9 +78,7 @@ const { action } = createActionApiRoute(
 
     const addressingKey = canonicalSessionAddressingKey(maybeSession, params.session);
 
-    const maxAgeSeconds = parsePositiveIntHeader(
-      request.headers.get("x-channel-max-age-seconds")
-    );
+    const maxAgeSeconds = parsePositiveIntHeader(request.headers.get("x-channel-max-age-seconds"));
     const deleteOnEmptyMinAgeSeconds = parsePositiveIntHeader(
       request.headers.get("x-channel-delete-on-empty-seconds")
     );
