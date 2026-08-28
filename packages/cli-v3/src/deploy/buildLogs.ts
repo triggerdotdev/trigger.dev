@@ -1,4 +1,5 @@
 import { log } from "@clack/prompts";
+import { stripVTControlCharacters } from "node:util";
 import {
   DeploymentEventFromString,
   type DeploymentFinalizedEvent,
@@ -14,10 +15,10 @@ export type BuildLogsMode = z.infer<typeof BuildLogsMode>;
 
 export function resolveBuildLogsMode(
   requested: BuildLogsMode,
-  env: { plain: boolean; ci: boolean; tty: boolean }
+  env: { plain: boolean; ci: boolean; tty: boolean; windows: boolean }
 ): BuildLogsMode {
-  // A spinner cannot redraw without a TTY, so CI and piped output always get every line.
-  if (env.plain || env.ci || !env.tty) {
+  // No redrawable spinner in CI, piped output, or the Windows fallback spinner.
+  if (env.plain || env.ci || !env.tty || env.windows) {
     return "full";
   }
   return requested;
@@ -31,7 +32,7 @@ export type BuildLogEntry = {
   message: string;
 };
 
-type BuildLogOutcome = "success" | "failure";
+type BuildLogOutcome = "success" | "failure" | "abandoned";
 
 export type BuildLogRenderer = {
   readonly started: boolean;
@@ -84,14 +85,15 @@ export function createBuildLogRenderer(options: BuildLogRendererOptions): BuildL
   const success = options.success ?? ((message: string) => log.success(message));
   const tailSize = options.tailSize ?? 20;
   const tail: string[] = [];
+  const notices: string[] = [];
   let started = false;
 
   $spinner.start("Build queued");
 
   const compactMessage = (message: string) => {
     const columns = options.columns ?? process.stdout.columns ?? 120;
-    const available = Math.max(columns - options.title.length - 6, 20);
-    const singleLine = message.replace(/\s+/g, " ").trim();
+    const available = Math.max(columns - options.title.length - 8, 20);
+    const singleLine = stripVTControlCharacters(message).replace(/\s+/g, " ").trim();
     return singleLine.length > available ? `${singleLine.slice(0, available - 1)}…` : singleLine;
   };
 
@@ -117,6 +119,9 @@ export function createBuildLogRenderer(options: BuildLogRendererOptions): BuildL
       if (tail.length > tailSize) {
         tail.shift();
       }
+      if ((entry.level === "warn" || entry.level === "error") && notices.length < tailSize) {
+        notices.push(line);
+      }
       const message = compactMessage(entry.message);
       if (message.length > 0 && !/^[-=#*_.\s]+$/.test(message)) {
         $spinner.message(`${options.title}: ${message}`);
@@ -130,16 +135,29 @@ export function createBuildLogRenderer(options: BuildLogRendererOptions): BuildL
         return;
       }
 
-      $spinner.stop(message, outcome === "failure" ? 2 : 0);
+      $spinner.stop(message, outcome === "failure" ? 2 : undefined);
 
-      if (options.mode === "compact" && outcome === "failure" && tail.length > 0) {
-        print("│");
-        print(`│  ${chalkGrey(`Last ${tail.length} lines of the build log:`)}`);
-        for (const line of tail) {
-          print(line);
-        }
-        print("│");
+      if (options.mode !== "compact") {
+        return;
       }
+
+      const lines = outcome === "failure" ? tail : outcome === "success" ? notices : [];
+      if (lines.length === 0) {
+        return;
+      }
+
+      print("│");
+      print(
+        `│  ${chalkGrey(
+          outcome === "failure"
+            ? `Last ${lines.length} lines of the build log:`
+            : `Build warnings (${lines.length}):`
+        )}`
+      );
+      for (const line of lines) {
+        print(line);
+      }
+      print("│");
     },
   };
 }

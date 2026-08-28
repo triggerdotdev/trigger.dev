@@ -6,13 +6,12 @@ import {
   type BuildLogEntry,
 } from "./buildLogs.js";
 
-function fakeSpinner() {
-  const calls: string[] = [];
+function fakeSpinner(calls: string[] = []) {
   return {
     calls,
     start: (m?: string) => void calls.push(`start:${m}`),
     message: (m?: string) => void calls.push(`message:${m}`),
-    stop: (m?: string, code?: number) => void calls.push(`stop:${m}:${code ?? 0}`),
+    stop: (m?: string, code?: number) => void calls.push(`stop:${m}:${code}`),
   };
 }
 
@@ -24,15 +23,17 @@ const entry = (message: string, level: BuildLogEntry["level"] = "info"): BuildLo
 
 describe("resolveBuildLogsMode", () => {
   it("honors the request in an interactive terminal", () => {
-    const tty = { plain: false, ci: false, tty: true };
+    const tty = { plain: false, ci: false, tty: true, windows: false };
     expect(resolveBuildLogsMode("compact", tty)).toBe("compact");
     expect(resolveBuildLogsMode("full", tty)).toBe("full");
   });
 
   it("forces full output for CI, --plain and piped output", () => {
-    expect(resolveBuildLogsMode("compact", { plain: false, ci: true, tty: true })).toBe("full");
-    expect(resolveBuildLogsMode("compact", { plain: true, ci: false, tty: true })).toBe("full");
-    expect(resolveBuildLogsMode("compact", { plain: false, ci: false, tty: false })).toBe("full");
+    const tty = { plain: false, ci: false, tty: true, windows: false };
+    expect(resolveBuildLogsMode("compact", { ...tty, ci: true })).toBe("full");
+    expect(resolveBuildLogsMode("compact", { ...tty, plain: true })).toBe("full");
+    expect(resolveBuildLogsMode("compact", { ...tty, tty: false })).toBe("full");
+    expect(resolveBuildLogsMode("compact", { ...tty, windows: true })).toBe("full");
   });
 });
 
@@ -56,7 +57,7 @@ describe("createBuildLogRenderer compact", () => {
       "start:Build queued",
       "message:Building version 1: Installing dependencies",
       "message:Building version 1: Building image",
-      "stop:Deployment completed successfully:0",
+      "stop:Deployment completed successfully:undefined",
     ]);
     expect(print).not.toHaveBeenCalled();
   });
@@ -130,7 +131,90 @@ describe("createBuildLogRenderer compact", () => {
   });
 });
 
+describe("createBuildLogRenderer compact extras", () => {
+  it("prints the tail after the spinner stops, in order", () => {
+    const calls: string[] = [];
+    const s = fakeSpinner(calls);
+    const r = createBuildLogRenderer({
+      mode: "compact",
+      title: "t",
+      spinner: s,
+      print: (l) => void calls.push(`print:${l.replace(/\u001b\[[0-9;]*m/g, "")}`),
+      columns: 200,
+    });
+    r.log(entry("a"));
+    r.finish("Deployment failed", "failure");
+    expect(calls[0]).toBe("start:Build queued");
+    expect(calls[1]).toBe("message:t: a");
+    expect(calls[2]).toBe("stop:Deployment failed:2");
+    expect(calls[3]).toBe("print:│");
+    expect(calls[4]).toContain("Last 1 lines of the build log");
+    expect(calls[5]).toMatch(/  a$/);
+  });
+
+  it("strips ANSI codes before fitting the spinner line", () => {
+    const s = fakeSpinner();
+    const r = createBuildLogRenderer({
+      mode: "compact",
+      title: "t",
+      spinner: s,
+      print: vi.fn(),
+      columns: 200,
+    });
+    r.log(entry("\u001b[32mgreen\u001b[0m and \u001b[1mbold\u001b[0m"));
+    expect(s.calls.at(-1)).toBe("message:t: green and bold");
+  });
+
+  it("surfaces warn and error lines after a successful build", () => {
+    const s = fakeSpinner();
+    const print = vi.fn();
+    const r = createBuildLogRenderer({
+      mode: "compact",
+      title: "t",
+      spinner: s,
+      print,
+      columns: 200,
+    });
+    r.log(entry("fine"));
+    r.log(entry("deprecated thing", "warn"));
+    r.finish("Deployment completed successfully", "success");
+    const printed = print.mock.calls.map((c) => String(c[0]).replace(/\u001b\[[0-9;]*m/g, ""));
+    expect(printed[1]).toContain("Build warnings (1)");
+    expect(printed[2]).toMatch(/deprecated thing$/);
+    expect(printed.some((l) => /  fine$/.test(l))).toBe(false);
+  });
+
+  it("stops without a tail when the stream was abandoned", () => {
+    const s = fakeSpinner();
+    const print = vi.fn();
+    const r = createBuildLogRenderer({
+      mode: "compact",
+      title: "t",
+      spinner: s,
+      print,
+      columns: 200,
+    });
+    r.log(entry("a", "error"));
+    r.finish("Failed to query build progress", "abandoned");
+    expect(s.calls.at(-1)).toBe("stop:Failed to query build progress:undefined");
+    expect(print).not.toHaveBeenCalled();
+  });
+});
+
 describe("createBuildLogRenderer full", () => {
+  it("stops the queued spinner with the outcome when nothing was logged", () => {
+    const s = fakeSpinner();
+    const r = createBuildLogRenderer({
+      mode: "full",
+      title: "t",
+      spinner: s,
+      print: vi.fn(),
+      success: vi.fn(),
+    });
+    r.finish("Log stream stopped", "failure");
+    expect(s.calls).toEqual(["start:Build queued", "stop:Log stream stopped:2"]);
+  });
+
   it("prints every line after stopping the queued spinner", () => {
     const s = fakeSpinner();
     const print = vi.fn();
@@ -139,7 +223,7 @@ describe("createBuildLogRenderer full", () => {
     r.log(entry("one"));
     r.log(entry("two", "warn"));
     r.finish("Deployment completed successfully", "success");
-    expect(s.calls).toEqual(["start:Build queued", "stop:Build started:0"]);
+    expect(s.calls).toEqual(["start:Build queued", "stop:Build started:undefined"]);
     const printed = print.mock.calls.map((c) => String(c[0]).replace(/\u001b\[[0-9;]*m/g, ""));
     expect(printed[0]).toBe("│");
     expect(printed[1]).toMatch(/^│  \d\d:\d\d:\d\d\.\d{3}  one$/);
@@ -159,7 +243,7 @@ describe("createBuildLogRenderer full", () => {
     });
     r.log(entry("one"));
     r.finish("Deployment failed", "failure");
-    expect(s.calls).toEqual(["start:Build queued", "stop:Build started:0"]);
+    expect(s.calls).toEqual(["start:Build queued", "stop:Build started:undefined"]);
     expect(print).toHaveBeenCalledTimes(2);
   });
 });

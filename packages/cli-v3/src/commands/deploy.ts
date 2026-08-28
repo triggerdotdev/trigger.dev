@@ -16,7 +16,7 @@ import { BuildManifest } from "@trigger.dev/core/v3/schemas";
 import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
-import { isCI } from "std-env";
+import { isCI, isWindows } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
 import chalk from "chalk";
@@ -726,7 +726,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (options.plain) {
     $spinner.start(`Building version ${version}${buildSuffix}`);
-  } else if (isCI) {
+  } else if (showFullBuildLogs(options)) {
     log.step(`Building version ${version}\n`);
   } else {
     if (isLinksSupported) {
@@ -863,7 +863,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (options.plain) {
     $spinner.message(`Deploying version ${version}${deploySuffix}`);
-  } else if (isCI) {
+  } else if (showFullBuildLogs(options)) {
     log.step(`Deploying version ${version}${deploySuffix}\n`);
   } else {
     if (isLinksSupported) {
@@ -910,7 +910,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (options.plain) {
     console.log(`Successfully deployed version ${version}${deploySuffix}`);
-  } else if (isCI) {
+  } else if (showFullBuildLogs(options)) {
     log.step(`Successfully deployed version ${version}${deploySuffix}`);
   } else {
     $spinner.stop(`Successfully deployed version ${version}${deploySuffix}`);
@@ -1892,7 +1892,7 @@ async function buildAndFinalizeFromBundle({
 
   if (options.plain) {
     $spinner.start(`Building version ${version}${buildSuffix}`);
-  } else if (isCI) {
+  } else if (showFullBuildLogs(options)) {
     log.step(`Building version ${version}\n`);
   } else {
     if (isLinksSupported) {
@@ -2029,7 +2029,7 @@ async function buildAndFinalizeFromBundle({
 
   if (options.plain) {
     $spinner.message(`Deploying version ${version}${deploySuffix}`);
-  } else if (isCI) {
+  } else if (showFullBuildLogs(options)) {
     log.step(`Deploying version ${version}${deploySuffix}\n`);
   } else {
     if (isLinksSupported) {
@@ -2076,7 +2076,7 @@ async function buildAndFinalizeFromBundle({
 
   if (options.plain) {
     console.log(`Successfully deployed version ${version}${deploySuffix}`);
-  } else if (isCI) {
+  } else if (showFullBuildLogs(options)) {
     log.step(`Successfully deployed version ${version}${deploySuffix}`);
   } else {
     $spinner.stop(`Successfully deployed version ${version}${deploySuffix}`);
@@ -2279,7 +2279,7 @@ async function handleFromBundleDeploy({
 }
 
 function buildLogsEnv(options: DeployCommandOptions) {
-  return { plain: options.plain, ci: isCI, tty: Boolean(process.stdout.isTTY) };
+  return { plain: options.plain, ci: isCI, tty: Boolean(process.stdout.isTTY), windows: isWindows };
 }
 
 function showFullBuildLogs(options: DeployCommandOptions) {
@@ -2321,7 +2321,7 @@ async function followBuildServerDeployment({
   );
 
   if (readSessionError) {
-    renderer.finish("Failed to query build progress", "failure");
+    renderer.finish("Failed to query build progress", "abandoned");
     log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
 
     outro(
