@@ -1,8 +1,13 @@
 import { json } from "@remix-run/server-runtime";
 import { STREAM_START_HEADER } from "@trigger.dev/core/v3";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
+import { logger } from "~/services/logger.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
-import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import {
+  DEFAULT_SESSION_CHANNEL_RETENTION,
+  S2RealtimeStreams,
+} from "~/services/realtime/s2realtimeStreams.server";
 import {
   SESSION_CHANNEL_NAME_REGEX,
   sessionChannelResources,
@@ -25,6 +30,12 @@ const ParamsSchema = z.object({
   io: z.enum(["out", "in"]),
 });
 
+function parsePositiveIntHeader(value: string | null): number | undefined {
+  if (value == null) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
@@ -36,7 +47,7 @@ const { action } = createActionApiRoute(
       resource: (params) => anyResource(sessionChannelResources(params.channel, [params.session])),
     },
   },
-  async ({ params, authentication }) => {
+  async ({ params, authentication, request }) => {
     if (params.io === "out" && authentication.type !== "PRIVATE") {
       return new Response("Initializing the out channel requires secret key authentication", {
         status: 403,
@@ -66,6 +77,34 @@ const { action } = createActionApiRoute(
     }
 
     const addressingKey = canonicalSessionAddressingKey(maybeSession, params.session);
+
+    const maxAgeSeconds = parsePositiveIntHeader(
+      request.headers.get("x-channel-max-age-seconds")
+    );
+    const deleteOnEmptyMinAgeSeconds = parsePositiveIntHeader(
+      request.headers.get("x-channel-delete-on-empty-seconds")
+    );
+    const retention =
+      maxAgeSeconds != null || deleteOnEmptyMinAgeSeconds != null
+        ? { maxAgeSeconds, deleteOnEmptyMinAgeSeconds }
+        : DEFAULT_SESSION_CHANNEL_RETENTION;
+
+    const [retentionError] = await tryCatch(
+      realtimeStream.ensureSessionChannelRetention(
+        addressingKey,
+        params.io,
+        params.channel,
+        retention
+      )
+    );
+    if (retentionError) {
+      logger.warn("Failed to ensure session channel retention", {
+        addressingKey,
+        channel: params.channel,
+        io: params.io,
+        error: retentionError,
+      });
+    }
 
     const { responseHeaders } = await realtimeStream.initializeSessionStream(
       addressingKey,

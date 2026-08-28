@@ -78,6 +78,11 @@ export type S2RealtimeStreamsOptions = {
 const S2_TOKEN_OPS = ["append", "create-stream", "trim"] as const;
 const S2_TOKEN_OPS_FINGERPRINT = [...S2_TOKEN_OPS].sort().join(",");
 
+export const DEFAULT_SESSION_CHANNEL_RETENTION = {
+  maxAgeSeconds: 60 * 60 * 24,
+  deleteOnEmptyMinAgeSeconds: 60 * 60,
+} as const;
+
 /**
  * Placeholder handed back as the S2 access token when `skipAccessTokens` is set
  * and no token is configured (self-hosted s2-lite ignores the token entirely).
@@ -117,6 +122,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   private readonly cache?: UnkeyCache<{
     accessToken: string;
   }>;
+
+  readonly #retentionEnsured = new Set<string>();
 
   constructor(opts: S2RealtimeStreamsOptions) {
     this.basin = opts.basin;
@@ -293,18 +300,30 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   /**
-   * Apply a per-stream native retention override to one direction of a named
-   * side channel. The durable bound that keeps a run-independent channel from
-   * growing without a turn loop trimming it. Server-side, webapp S2 token,
-   * called once per channel lifetime (cached by the caller).
+   * Ensure a named side channel's stream has native S2 retention applied: the
+   * durable bound that keeps a run-independent channel from growing without a
+   * turn loop trimming it. Creates the stream with the retention config (the
+   * common path — initialize runs before the first write), falling back to a
+   * reconfigure if it already exists. Idempotent and cached per stream so it
+   * runs at most once per channel per process; a control-plane op kept off the
+   * hot path.
    */
-  async reconfigureSessionChannelRetention(
+  async ensureSessionChannelRetention(
     friendlyId: string,
     io: "out" | "in",
     channel: string,
     retention: { maxAgeSeconds?: number; deleteOnEmptyMinAgeSeconds?: number }
   ): Promise<void> {
-    await this.#s2ReconfigureStream(this.toSessionStreamName(friendlyId, io, channel), retention);
+    if (this.skipAccessTokens) return;
+
+    const stream = this.toSessionStreamName(friendlyId, io, channel);
+    if (this.#retentionEnsured.has(stream)) return;
+
+    const created = await this.#s2CreateStreamWithConfig(stream, retention);
+    if (!created) {
+      await this.#s2ReconfigureStream(stream, retention);
+    }
+    this.#retentionEnsured.add(stream);
   }
 
   async #readRecordsByName(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
@@ -801,6 +820,34 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     }
 
     return names;
+  }
+
+  async #s2CreateStreamWithConfig(
+    stream: string,
+    retention: { maxAgeSeconds?: number; deleteOnEmptyMinAgeSeconds?: number }
+  ): Promise<boolean> {
+    const config: Record<string, unknown> = {};
+    if (retention.maxAgeSeconds != null) {
+      config.retention_policy = { age: retention.maxAgeSeconds };
+    }
+    if (retention.deleteOnEmptyMinAgeSeconds != null) {
+      config.delete_on_empty = { min_age_secs: retention.deleteOnEmptyMinAgeSeconds };
+    }
+
+    const res = await fetch(`${this.baseUrl}/streams`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        "S2-Basin": this.basin,
+      },
+      body: JSON.stringify({ stream, config }),
+    });
+
+    if (res.ok) return true;
+    if (res.status === 409) return false;
+    const text = await res.text().catch(() => "");
+    throw new Error(`S2 createStream failed: ${res.status} ${res.statusText} ${text}`);
   }
 
   async #s2ReconfigureStream(

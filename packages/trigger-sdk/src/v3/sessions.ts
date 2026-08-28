@@ -252,7 +252,35 @@ export class SessionHandle {
     this.out = overrides?.out ?? new SessionOutputChannel(id);
     this.in = overrides?.in ?? new SessionInputChannel(id);
   }
+
+  /**
+   * Open a named side channel on this session: a durable, cross-run `.in`/`.out`
+   * pair addressed by `name` rather than the reserved default pair. Writing a
+   * side channel's `.in` does not wake or trigger a run — a run observes it via
+   * `.in.on()` / `.in.once()`. Records outlive any single run and are bounded by
+   * the channel's retention (a sensible default, overridable via `options`).
+   */
+  channel(name: string, options?: SessionChannelOptions): SessionChannelHandle {
+    if (!SESSION_CHANNEL_NAME_REGEX.test(name)) {
+      throw new Error(
+        `Invalid session channel name "${name}": use 1-128 chars from [A-Za-z0-9._-].`
+      );
+    }
+    return {
+      name,
+      out: new SessionOutputChannel(this.id, name, options?.retention),
+      in: new SessionInputChannel(this.id, name),
+    };
+  }
 }
+
+export type SessionChannelHandle = {
+  readonly name: string;
+  readonly out: SessionOutputChannel;
+  readonly in: SessionInputChannel;
+};
+
+const SESSION_CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
  * Options accepted by {@link SessionOutputChannel.pipe}. Session-scoped,
@@ -260,6 +288,22 @@ export class SessionHandle {
  * {@link PipeStreamOptions} uses — the session is the target.
  */
 export type SessionPipeStreamOptions = Omit<PipeStreamOptions, "target">;
+
+/**
+ * Retention for a named side channel. `maxAgeSeconds` and
+ * `deleteOnEmptyMinAgeSeconds` are applied server-side as native S2 per-stream
+ * config on first initialize; `keepLastN` is a producer-side trim floor the
+ * writer enforces by appending an S2 trim command as records accumulate.
+ */
+export type SessionChannelRetention = {
+  maxAgeSeconds?: number;
+  deleteOnEmptyMinAgeSeconds?: number;
+  keepLastN?: number;
+};
+
+export type SessionChannelOptions = {
+  retention?: SessionChannelRetention;
+};
 
 /**
  * The `.out` side of a Session's bidirectional channel pair. Mirrors the
@@ -279,7 +323,11 @@ export class SessionOutputChannel {
   // Evicts on failure (so the next call retries) and on `reset()`.
   #initPromise?: Promise<InitializeSessionStreamResponseLike>;
 
-  constructor(public readonly sessionId: string) {}
+  constructor(
+    public readonly sessionId: string,
+    public readonly channel?: string,
+    private readonly retention?: SessionChannelRetention
+  ) {}
 
   /**
    * Drop the cached `initializeSessionStream` response. Surfaces for
@@ -412,6 +460,7 @@ export class SessionOutputChannel {
 
     return apiClient.subscribeToSessionStream<T>(this.sessionId, "out", {
       signal: options?.signal,
+      channel: this.channel,
       timeoutInSeconds: options?.timeoutInSeconds,
       lastEventId: options?.lastEventId != null ? String(options.lastEventId) : undefined,
       onPart: options?.onPart,
@@ -433,12 +482,18 @@ export class SessionOutputChannel {
       attributes: {
         session: this.sessionId,
         io: "out",
+        ...(this.channel ? { channel: this.channel } : {}),
         [SemanticInternalAttributes.ENTITY_TYPE]: "session-stream",
-        [SemanticInternalAttributes.ENTITY_ID]: `${this.sessionId}:out`,
+        [SemanticInternalAttributes.ENTITY_ID]: `${this.sessionId}:${this.channel ?? ""}:out`,
         [SemanticInternalAttributes.STYLE_ICON]: "sessions",
         ...(collapsed ? { [SemanticInternalAttributes.COLLAPSED]: true } : {}),
         ...accessoryAttributes({
-          items: [{ text: `${this.sessionId}.out`, variant: "normal" }],
+          items: this.channel
+            ? [
+                { text: this.channel, variant: "normal" },
+                { text: "out", variant: "normal" },
+              ]
+            : [{ text: `${this.sessionId}.out`, variant: "normal" }],
           style: "codepath",
         }),
       },
@@ -481,7 +536,9 @@ export class SessionOutputChannel {
       const fresh = apiClient.initializeSessionStream(
         this.sessionId,
         "out",
-        options?.requestOptions
+        options?.requestOptions,
+        this.channel,
+        this.retention
       );
       this.#initPromise = fresh;
       // Evict on failure so the next call retries instead of returning a
@@ -569,7 +626,14 @@ export class SessionOutputChannel {
     extraHeaders?: ReadonlyArray<readonly [string, string]>
   ): Promise<StreamWriteResult> {
     const apiClient = apiClientManager.clientOrThrow();
-    return writeSessionControlRecord(apiClient, this.sessionId, "out", subtype, extraHeaders);
+    return writeSessionControlRecord(
+      apiClient,
+      this.sessionId,
+      "out",
+      subtype,
+      extraHeaders,
+      this.channel
+    );
   }
 
   /**
@@ -583,7 +647,7 @@ export class SessionOutputChannel {
    */
   async trimTo(earliestSeqNum: number): Promise<void> {
     const apiClient = apiClientManager.clientOrThrow();
-    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum);
+    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum, this.channel);
   }
 }
 
@@ -595,7 +659,18 @@ export class SessionOutputChannel {
  * conversation can survive across run boundaries.
  */
 export class SessionInputChannel {
-  constructor(public readonly sessionId: string) {}
+  constructor(
+    public readonly sessionId: string,
+    public readonly channel?: string
+  ) {}
+
+  #assertReservedChannelForWait(method: string): void {
+    if (this.channel) {
+      throw new Error(
+        `session.channel("${this.channel}").in.${method} is not supported: a named side channel does not wake a run. Use .in.on() / .in.once() to observe it instead.`
+      );
+    }
+  }
 
   /**
    * Send a single record to the channel. Called by external clients
@@ -607,17 +682,24 @@ export class SessionInputChannel {
     const apiClient = apiClientManager.clientOrThrow();
     const body = typeof value === "string" ? value : JSON.stringify(value);
 
+    const spanName = this.channel
+      ? `sessions.open(${this.sessionId}).channel(${this.channel}).in.send()`
+      : `sessions.open(${this.sessionId}).in.send()`;
+
     const $requestOptions = mergeRequestOptions(
       {
         tracer,
-        name: `sessions.open(${this.sessionId}).in.send()`,
+        name: spanName,
         icon: "sessions",
-        attributes: sessionAttributes(this.sessionId, { io: "in" }),
+        attributes: sessionAttributes(this.sessionId, {
+          io: "in",
+          ...(this.channel ? { channel: this.channel } : {}),
+        }),
       },
       requestOptions
     );
 
-    await apiClient.appendToSessionStream(this.sessionId, "in", body, $requestOptions);
+    await apiClient.appendToSessionStream(this.sessionId, "in", body, $requestOptions, this.channel);
   }
 
   /**
@@ -634,7 +716,8 @@ export class SessionInputChannel {
     return sessionStreams.on(
       this.sessionId,
       "in",
-      handler as (data: unknown) => void | boolean | Promise<void>
+      handler as (data: unknown) => void | boolean | Promise<void>,
+      this.channel
     );
   }
 
@@ -647,7 +730,7 @@ export class SessionInputChannel {
     const ctx = taskContext.ctx;
     const runId = ctx?.run.id;
 
-    const innerPromise = sessionStreams.once(this.sessionId, "in", options);
+    const innerPromise = sessionStreams.once(this.sessionId, "in", options, this.channel);
 
     return new InputStreamOncePromise<T>((resolve, reject) => {
       tracer
@@ -662,12 +745,22 @@ export class SessionInputChannel {
               [SemanticInternalAttributes.STYLE_ICON]: "sessions",
               [SemanticInternalAttributes.ENTITY_TYPE]: "session-stream",
               ...(runId
-                ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${this.sessionId}:in` }
+                ? {
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${this.sessionId}:${
+                      this.channel ?? ""
+                    }:in`,
+                  }
                 : {}),
               session: this.sessionId,
               io: "in",
+              ...(this.channel ? { channel: this.channel } : {}),
               ...accessoryAttributes({
-                items: [{ text: `${this.sessionId}.in`, variant: "normal" }],
+                items: this.channel
+                  ? [
+                      { text: this.channel, variant: "normal" },
+                      { text: "in", variant: "normal" },
+                    ]
+                  : [{ text: `${this.sessionId}.in`, variant: "normal" }],
                 style: "codepath",
               }),
             },
@@ -679,7 +772,7 @@ export class SessionInputChannel {
 
   /** Non-blocking peek at the head of the `.in` buffer. */
   peek<T = unknown>(): T | undefined {
-    return sessionStreams.peek(this.sessionId, "in") as T | undefined;
+    return sessionStreams.peek(this.sessionId, "in", this.channel) as T | undefined;
   }
 
   /**
@@ -693,7 +786,7 @@ export class SessionInputChannel {
    * past already-processed user messages.
    */
   lastDispatchedSeqNum(): number | undefined {
-    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
+    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in", this.channel);
   }
 
   /**
@@ -717,6 +810,7 @@ export class SessionInputChannel {
   async awaitWake(
     options?: InputStreamWaitOptions & { lastSeqNum?: number }
   ): Promise<{ ok: true; waitpointId: string } | { ok: false; error: Error }> {
+    this.#assertReservedChannelForWait("awaitWake()");
     const ctx = taskContext.ctx;
 
     if (!ctx) {
@@ -774,6 +868,7 @@ export class SessionInputChannel {
   wait<T = unknown>(options?: InputStreamWaitOptions): ManualWaitpointPromise<T> {
     return new ManualWaitpointPromise<T>(async (resolve, reject) => {
       try {
+        this.#assertReservedChannelForWait("wait()");
         const apiClient = apiClientManager.clientOrThrow();
 
         const result = await tracer.startActiveSpan(
@@ -843,6 +938,7 @@ export class SessionInputChannel {
   async waitWithIdleTimeout<T = unknown>(
     options: InputStreamWaitWithIdleTimeoutOptions
   ): Promise<{ ok: true; output: T } | { ok: false; error?: Error }> {
+    this.#assertReservedChannelForWait("waitWithIdleTimeout()");
     // eslint-disable-next-line no-this-alias
     const self = this;
     const spanName =
