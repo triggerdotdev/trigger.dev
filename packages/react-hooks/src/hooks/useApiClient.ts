@@ -1,7 +1,8 @@
 "use client";
 
 import type { ApiRequestOptions } from "@trigger.dev/core/v3";
-import { ApiClient } from "@trigger.dev/core/v3";
+import { ApiClient, refreshAccessTokenOnce } from "@trigger.dev/core/v3";
+import { useCallback, useEffect, useRef } from "react";
 import { useTriggerAuthContextOptional } from "../contexts.js";
 
 /**
@@ -16,6 +17,11 @@ export type UseApiClientOptions = {
   previewBranch?: string;
   /** Optional additional request configuration */
   requestOptions?: ApiRequestOptions;
+  /**
+   * Optional callback that mints a fresh access token. Used to reconnect a
+   * realtime stream that the server rejected because its token expired.
+   */
+  refreshAccessToken?: () => Promise<string>;
 
   /**
    * Enable or disable the API client instance.
@@ -51,6 +57,25 @@ export function useApiClient(options?: UseApiClientOptions): ApiClient | undefin
   const baseUrl = options?.baseURL ?? auth?.baseURL ?? "https://api.trigger.dev";
   const accessToken = options?.accessToken ?? auth?.accessToken;
   const previewBranch = options?.previewBranch ?? auth?.previewBranch;
+  const refreshAccessToken = options?.refreshAccessToken ?? auth?.refreshAccessToken;
+
+  // A new ApiClient is built every render, so keep the refresher ref-stable and
+  // key the dedupe on the caller's own function — every hook sharing one
+  // refresher then shares one in-flight mint.
+  const refreshAccessTokenRef = useRef(refreshAccessToken);
+  useEffect(() => {
+    refreshAccessTokenRef.current = refreshAccessToken;
+  }, [refreshAccessToken]);
+  const stableRefreshAccessToken = useCallback(async () => {
+    const refresh = refreshAccessTokenRef.current;
+
+    if (!refresh) {
+      throw new Error("Missing refreshAccessToken in TriggerAuthContext or useApiClient options");
+    }
+
+    return refreshAccessTokenOnce(refresh);
+  }, []);
+
   if (!accessToken) {
     if (options?.enabled === false) {
       return undefined;
@@ -64,5 +89,12 @@ export function useApiClient(options?: UseApiClientOptions): ApiClient | undefin
     ...options?.requestOptions,
   };
 
-  return new ApiClient(baseUrl, accessToken, previewBranch, requestOptions);
+  return new ApiClient(
+    baseUrl,
+    accessToken,
+    previewBranch,
+    requestOptions,
+    undefined,
+    refreshAccessToken ? stableRefreshAccessToken : undefined
+  );
 }

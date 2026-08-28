@@ -208,6 +208,12 @@ export class SSEStreamSubscription implements StreamSubscription {
   private internalAbort: AbortController | null = null;
   private cancelledByConsumer = false;
   private completeNotified = false;
+  /** Headers for the next attempt. Replaced by `resolveHeaders` after an auth failure. */
+  private currentHeaders: Record<string, string> | undefined;
+  /** A refresh has already been tried on this connection; a second auth failure is terminal. */
+  private authRefreshed = false;
+  /** Headers were just refreshed for the auth error now unwinding — retry once instead of failing. */
+  private retryAfterAuthRefresh = false;
 
   /**
    * True when the most recent response carried `X-Session-Settled: true` —
@@ -257,8 +263,13 @@ export class SSEStreamSubscription implements StreamSubscription {
       // the SSE connect through a custom path (proxy, custom headers,
       // tracing). Defaults to global `fetch`.
       fetchClient?: typeof fetch;
+      // Mints a fresh set of headers after the server rejects the
+      // current ones with a 401/403. Without it an auth error stays
+      // terminal, as before.
+      resolveHeaders?: () => Promise<Record<string, string>>;
     }
   ) {
+    this.currentHeaders = options.headers;
     this.lastEventId = options.lastEventId;
     this.maxRetries = options.maxRetries ?? Infinity;
     this.retryDelayMs = options.retryDelayMs ?? 100;
@@ -388,7 +399,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     try {
       const headers: Record<string, string> = {
         Accept: "text/event-stream",
-        ...this.options.headers,
+        ...this.currentHeaders,
       };
       if (this.lastEventId) headers["Last-Event-ID"] = this.lastEventId;
       if (this.options.timeoutInSeconds) {
@@ -414,6 +425,7 @@ export class SSEStreamSubscription implements StreamSubscription {
           controller.error(error);
           return;
         }
+        await this.refreshHeadersForAuthError(response.status);
         throw error;
       }
 
@@ -426,6 +438,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
       this.sessionSettled = response.headers.get("X-Session-Settled") === "true";
       this.retryCount = 0; // reset on success
+      this.authRefreshed = false;
       armStall();
 
       // Dedup window for record ids. Bounded with FIFO eviction so a
@@ -556,11 +569,16 @@ export class SSEStreamSubscription implements StreamSubscription {
       }
 
       if (isTriggerRealtimeAuthError(error)) {
-        // `onError` was already invoked in the `!response.ok` branch above
-        // (where the auth ApiError was originally constructed and thrown).
-        // Auth errors are non-retryable: terminate the stream cleanly.
-        controller.error(error as Error);
-        return;
+        if (this.retryAfterAuthRefresh) {
+          // Fresh headers are in hand — retry the connect once with them.
+          this.retryAfterAuthRefresh = false;
+        } else {
+          // `onError` was already invoked in the `!response.ok` branch above
+          // (where the auth ApiError was originally constructed and thrown).
+          // Auth errors are non-retryable: terminate the stream cleanly.
+          controller.error(error as Error);
+          return;
+        }
       }
 
       cleanupAttempt();
@@ -568,6 +586,20 @@ export class SSEStreamSubscription implements StreamSubscription {
     } finally {
       cleanupAttempt();
     }
+  }
+
+  /**
+   * Re-resolve the headers after a 401/403 so the retry carries a fresh token.
+   * At most once per connection: if the refreshed token is rejected too, the
+   * auth error stays terminal.
+   */
+  private async refreshHeadersForAuthError(status: number): Promise<void> {
+    if (status !== 401 && status !== 403) return;
+    if (!this.options.resolveHeaders || this.authRefreshed) return;
+
+    this.authRefreshed = true;
+    this.currentHeaders = await this.options.resolveHeaders();
+    this.retryAfterAuthRefresh = true;
   }
 
   private async retryConnection(
@@ -648,6 +680,7 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
     private options: {
       headers?: Record<string, string>;
       signal?: AbortSignal;
+      resolveHeaders?: () => Promise<Record<string, string>>;
     }
   ) {}
 

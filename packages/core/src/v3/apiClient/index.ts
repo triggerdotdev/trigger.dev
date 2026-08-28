@@ -110,6 +110,7 @@ import {
   zodfetchOffsetLimitPage,
 } from "./core.js";
 import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
+import { refreshAccessTokenOnce, type RefreshAccessTokenFn } from "./refreshAccessToken.js";
 import {
   type AnyRealtimeRun,
   type AnyRunShape,
@@ -224,6 +225,7 @@ export class ApiClient {
   public readonly futureFlags: ApiClientFutureFlags;
   private readonly additionalHeaders?: Record<string, string>;
   private readonly defaultRequestOptions: ZodFetchOptions;
+  private readonly refreshAccessToken?: RefreshAccessTokenFn;
 
   constructor(
     baseUrl: string,
@@ -232,9 +234,11 @@ export class ApiClient {
     // x-trigger-branch header, and the server disambiguates by the token's env.
     previewBranch?: string,
     requestOptions: ApiRequestOptions = {},
-    futureFlags: ApiClientFutureFlags = {}
+    futureFlags: ApiClientFutureFlags = {},
+    refreshAccessToken?: RefreshAccessTokenFn
   ) {
     this.accessToken = accessToken;
+    this.refreshAccessToken = refreshAccessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
     const { additionalHeaders, ...restRequestOptions } = requestOptions;
@@ -278,6 +282,21 @@ export class ApiClient {
 
   getHeaders() {
     return this.#getHeaders(false);
+  }
+
+  /**
+   * Header resolver handed to stream subscriptions so a connection rejected with
+   * a 401/403 can reconnect with a freshly minted token. `undefined` when no
+   * `refreshAccessToken` was configured, which keeps auth errors terminal.
+   */
+  #resolveStreamHeaders(): (() => Promise<Record<string, string>>) | undefined {
+    const refreshAccessToken = this.refreshAccessToken;
+    if (!refreshAccessToken) return undefined;
+
+    return async () => {
+      const accessToken = await refreshAccessTokenOnce(refreshAccessToken);
+      return this.#getHeaders(false, { Authorization: `Bearer ${accessToken}` });
+    };
   }
 
   async getRunResult(
@@ -1462,6 +1481,7 @@ export class ApiClient {
 
     const subscription = new SSEStreamSubscription(url, {
       headers: this.getHeaders(),
+      resolveHeaders: this.#resolveStreamHeaders(),
       signal: options?.signal,
       onComplete: options?.onComplete,
       onError: options?.onError,
@@ -1785,6 +1805,7 @@ export class ApiClient {
     const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
       headers: this.getHeaders(),
       signal: options?.signal,
+      resolveHeaders: this.#resolveStreamHeaders(),
     });
 
     const subscription = streamFactory.createSubscription(runId, streamKey, {
