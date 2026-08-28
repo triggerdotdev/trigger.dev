@@ -342,6 +342,16 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
     if (!this.writesRedisForBirth(params.snapshot?.organizationId)) {
+      // Deliberately records NOTHING about residency here, though it is tempting: this run is
+      // almost certainly non-resident, and seeding that would save its first transition a probe.
+      //
+      // It is not safe. A birth path can be re-entered (createCancelledRun has an explicit
+      // "row already exists" path), so a birth that DID mirror on its first attempt can reach here
+      // on a retry once the short-lived override cache has moved to off. Seeding a negative from a
+      // local decision would then suppress every later transition of a run that is resident,
+      // freezing its head while Postgres moved on: the exact failure the residency model exists to
+      // prevent. Only the append script's own reply is authoritative about a keyspace, so only that
+      // reply may create a negative.
       return this.delegate.createRun(params, tx);
     }
 

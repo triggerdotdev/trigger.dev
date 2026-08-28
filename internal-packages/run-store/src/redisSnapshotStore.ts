@@ -7,6 +7,7 @@ import {
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
+import { ResidencyCache } from "./residencyCache.js";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
 
@@ -239,6 +240,8 @@ export type RedisSnapshotStoreConnection =
 
 export type RedisSnapshotStoreOptions = RedisSnapshotStoreConnection & {
   completedTtlMs: number;
+  /** Entries in the per-process residency cache. See {@link ResidencyCache}. */
+  residencyCacheMax?: number;
   sinceLimit?: number;
   highWater?: { entryBytes?: number; cycleKeyBytes?: number; cycleCount?: number };
   metrics?: SnapshotStoreMetrics;
@@ -269,6 +272,13 @@ export class RedisSnapshotStore {
   private readonly sinceLimit: number;
   private readonly metrics?: SnapshotStoreMetrics;
   private readonly highWater: NonNullable<RedisSnapshotStoreOptions["highWater"]>;
+  /**
+   * Which runs this process knows the mirror does not own, so a transition for one of them never
+   * reaches the network. Lives here rather than on the decorator because the decorator is re-minted
+   * per transaction while this store instance is shared, and because this class owns the append
+   * replies that are the cache's only ground truth.
+   */
+  readonly #residency: ResidencyCache;
   #quit?: Promise<void>;
 
   constructor(options: RedisSnapshotStoreOptions) {
@@ -277,6 +287,9 @@ export class RedisSnapshotStore {
     this.sinceLimit = options.sinceLimit ?? 50;
     this.metrics = options.metrics;
     this.highWater = options.highWater ?? {};
+    this.#residency = new ResidencyCache({
+      ...(options.residencyCacheMax !== undefined && { max: options.residencyCacheMax }),
+    });
     this.ownsClient = options.client === undefined;
     this.redis =
       options.client ??
@@ -311,6 +324,11 @@ export class RedisSnapshotStore {
     }
   }
 
+  /** Test seam. */
+  residencyFor(runId: string): "resident" | "non-resident" | undefined {
+    return this.#residency.get(runId);
+  }
+
   /**
    * Removes a run's whole keyspace, wait-cycle keys included. The caller must have established that
    * the head cannot be trusted and that Postgres still holds the run's rows.
@@ -318,6 +336,8 @@ export class RedisSnapshotStore {
   async dropRun(runId: string): Promise<void> {
     const keys = snapshotKeys(runId);
     await this.redis.dropSnapshotRun(keys.e, keys.idx, keys.cur, keys.seq);
+    // This process, at least, stops asking. Other processes learn it from their next append.
+    this.#residency.setNonResident(runId);
   }
 
   async append(args: {
@@ -352,6 +372,15 @@ export class RedisSnapshotStore {
           "Writing it into the entry JSON breaks byte-comparability with the Postgres row."
       );
     }
+    // The whole point of the cache. A transition into a keyspace this process already knows is gone
+    // is refused without a round trip. A birth deliberately never takes this path: a birth is what
+    // CREATES residency, so it must reach the script even when the run is currently unknown.
+    if (args.kind === "transition" && this.#residency.get(args.entry.runId) === "non-resident") {
+      this.metrics?.recordSkippedNoKeyspace();
+      this.metrics?.recordAppend("skippedNoKeyspace", "none");
+      return { outcome: "skippedNoKeyspace" };
+    }
+
     return this.#timed("append", async () => {
       const k = snapshotKeys(args.entry.runId);
       const raw = JSON.stringify(args.entry);
@@ -418,15 +447,22 @@ export class RedisSnapshotStore {
     runId: string
   ): AppendResult {
     if (reply[0] === SKIPPED) {
+      // Authoritative and final: the script looked and there is no keyspace. Only a birth could
+      // create one and this run's birth has already happened.
+      this.#residency.setNonResident(runId);
       this.metrics?.recordSkippedNoKeyspace();
       this.metrics?.recordAppend("skippedNoKeyspace", "none");
       return { outcome: "skippedNoKeyspace" };
     }
     if (reply[0] === FORKED) {
+      // A fork means the script found a keyspace and disagreed about its head, so the run IS
+      // resident.
+      this.#residency.setResident(runId);
       this.metrics?.recordAppend("forked", "none");
       return { outcome: "forked", actualCur: reply[1] ?? "" };
     }
     if (reply[0] === DUPLICATE) {
+      this.#residency.setResident(runId);
       this.metrics?.recordAppend("duplicate", "none");
       return { outcome: "duplicate", seq: Number(reply[1]) };
     }
@@ -437,6 +473,8 @@ export class RedisSnapshotStore {
     if (cycleMismatch) {
       this.metrics?.recordCycleMismatch();
     }
+    // A written entry proves the keyspace exists. For a birth this is what makes the run resident.
+    this.#residency.setResident(runId);
     this.#observeSizes(raw, orderJson, records, cycleSeq, runId);
     this.metrics?.recordAppend("written", ttl);
     return {
