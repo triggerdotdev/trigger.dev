@@ -2,4 +2,4 @@
 "trigger.dev": patch
 ---
 
-Native build server deploys now show build logs the same way Depot builds do: a single spinner line updated with the latest message, with the last 20 lines printed if the build fails. Pass `--build-logs full` to stream every line; CI, `--plain` and piped output always use full.
+Native build server deploys now show a single updating build log line by default; pass `--build-logs full` to stream every line (always used in CI and when output is not a terminal).
