@@ -64,6 +64,48 @@ export async function probeControlPlaneCoresidency(
 
 export type DistinctTarget = { id: string; url: string };
 
+/** Injection seam for the retry tests: no containers, no real waiting. */
+export type DistinctProbeOptions = {
+  logger?: { warn: (msg: string, meta?: Record<string, unknown>) => void };
+  readFingerprint?: (url: string) => Promise<DatabaseFingerprint>;
+  /** Total attempts per target, including the first. Bounded so boot latency stays bounded. */
+  attempts?: number;
+  sleep?: (ms: number) => Promise<void>;
+};
+
+const DEFAULT_PROBE_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 250;
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Read one fingerprint, retrying a bounded number of times.
+ *
+ * The probe fails CLOSED, and that must not change: "distinct" is a positive claim a failed probe
+ * cannot support. But failing closed on the first blip means one shard being briefly unreachable
+ * collapses the deployment to single-DB, and the boot interlock then refuses the boot for the whole
+ * fleet. A transient error deserves a retry; a persistent one still fails closed, just later.
+ */
+async function readFingerprintWithRetry(
+  url: string,
+  read: (url: string) => Promise<DatabaseFingerprint>,
+  attempts: number,
+  sleep: (ms: number) => Promise<void>
+): Promise<DatabaseFingerprint> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await read(url);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await sleep(RETRY_BASE_DELAY_MS * attempt);
+      }
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Set uniqueness over every store that owns its own database. Fail-closed: a probe that cannot
  * answer returns NOT distinct, because "distinct" is a positive claim a failed probe cannot support.
@@ -77,14 +119,22 @@ export type DistinctTarget = { id: string; url: string };
  */
 export async function probeDistinctStores(
   targets: DistinctTarget[],
-  opts?: { logger?: { warn: (msg: string, meta?: Record<string, unknown>) => void } }
+  opts?: DistinctProbeOptions
 ): Promise<{ distinct: true } | { distinct: false; reason: string }> {
   if (targets.length < 2) {
     return { distinct: true };
   }
 
+  const read = opts?.readFingerprint ?? readDatabaseFingerprint;
+  const attempts = opts?.attempts ?? DEFAULT_PROBE_ATTEMPTS;
+  const sleep = opts?.sleep ?? defaultSleep;
+
   try {
-    const fingerprints = await Promise.all(targets.map((t) => readDatabaseFingerprint(t.url)));
+    // Retry per TARGET, not around the whole set: one slow shard must not re-probe the stores that
+    // already answered. A duplicate verdict below is final and is never retried.
+    const fingerprints = await Promise.all(
+      targets.map((t) => readFingerprintWithRetry(t.url, read, attempts, sleep))
+    );
 
     const seen = new Map<string, string>();
     for (const [index, target] of targets.entries()) {
@@ -104,7 +154,9 @@ export async function probeDistinctStores(
 
     return { distinct: true };
   } catch (error) {
-    const reason = `distinct-db sentinel probe failed; failing closed (single-DB). ${String(error)}`;
+    const reason =
+      `distinct-db sentinel probe failed after ${opts?.attempts ?? DEFAULT_PROBE_ATTEMPTS} ` +
+      `attempt(s); failing closed (single-DB). ${String(error)}`;
     opts?.logger?.warn(reason, { error });
     return { distinct: false, reason };
   }
@@ -115,7 +167,7 @@ export async function probeDistinctStores(
 export async function probeDistinctDatabases(
   legacyUrl: string,
   newUrl: string,
-  opts?: { logger?: { warn: (msg: string, meta?: Record<string, unknown>) => void } }
+  opts?: DistinctProbeOptions
 ): Promise<{ distinct: true } | { distinct: false; reason: string }> {
   return probeDistinctStores(
     [
