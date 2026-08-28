@@ -1,6 +1,6 @@
 // Both class helpers apply to always-rendered wrappers, so switching display mode is a
 // class change only and the open chat's transport, session and transcript survive it.
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { motion, type PanInfo } from "framer-motion";
 import {
   draggableResizeHandleClassName,
@@ -31,6 +31,16 @@ export const FLOATING_HEIGHT = 600;
 export const FLOATING_MARGIN = 16;
 export const FLOATING_MIN_SIZE = { w: 320, h: 360 };
 const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
+
+// A dropped key (not just `undefined`) doesn't reliably clear on every style-application
+// layer, so docked/fullscreen explicitly resets every key the floating rect ever sets.
+const CLEARED_FLOATING_STYLE: CSSProperties = {
+  position: undefined,
+  left: undefined,
+  top: undefined,
+  width: undefined,
+  height: undefined,
+};
 
 export function initialFloatingRect() {
   if (typeof window === "undefined") {
@@ -138,7 +148,7 @@ export function FloatingAgentWindow({
   // never unmounts `children`; only className/style differ.
   return (
     <div
-      style={fullscreen || docked ? undefined : style}
+      style={fullscreen || docked ? CLEARED_FLOATING_STYLE : style}
       className={
         fullscreen
           ? agentTakeoverClassName(true)

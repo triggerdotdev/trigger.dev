@@ -267,6 +267,83 @@ function renderDashboardAgentGrid(rightPanel: boolean) {
   return container.firstElementChild as HTMLElement;
 }
 
+describe("FloatingAgentWindow clears floating geometry when it docks", () => {
+  it("leaves no stale position/left/top/width/height after a drag, then switching to rightPanel", () => {
+    stubViewport(1200, 900);
+    let latest!: FloatingDragProps;
+    function Harness({ mode }: { mode: DashboardAgentMode }) {
+      return createElement(FloatingAgentWindow, { mode }, (drag: FloatingDragProps) => {
+        // oxlint-disable-next-line react/globals -- test harness capturing the render-prop's value.
+        latest = drag;
+        return null;
+      });
+    }
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root!.render(createElement(Harness, { mode: "floating" }));
+    });
+    act(() => {
+      latest.dragHandleProps.onPanStart!(fakeEvent, fakePanInfo(0, 0));
+      latest.dragHandleProps.onPan!(fakeEvent, fakePanInfo(-40, -10));
+    });
+
+    act(() => {
+      root!.render(createElement(Harness, { mode: "rightPanel" }));
+    });
+
+    const node = container.firstElementChild as HTMLDivElement;
+    expect(node.style.position).toBe("");
+    expect(node.style.left).toBe("");
+    expect(node.style.top).toBe("");
+    expect(node.style.width).toBe("");
+    expect(node.style.height).toBe("");
+  });
+
+  // Mirrors FloatingAgentWindow's own style ternary directly against the resize path
+  // (which changes width/height, not just position — resizeHandleProps isn't exposed
+  // through the render prop, so this drives the same underlying hook instead).
+  it("leaves no stale geometry after a resize (width/height change), then docking", () => {
+    stubViewport(1200, 900);
+    let latest!: ReturnType<typeof useDraggableResizable>;
+    // Matches FloatingAgentWindow's own fix: an explicit reset object, not `undefined` —
+    // a dropped style key isn't guaranteed to clear on every style-application layer.
+    const clearedStyle = {
+      position: undefined,
+      left: undefined,
+      top: undefined,
+      width: undefined,
+      height: undefined,
+    };
+    function Mirror({ docked }: { docked: boolean }) {
+      // oxlint-disable-next-line react/globals -- test harness capturing the hook's return value.
+      latest = useDraggableResizable({
+        initial: initialFloatingRect(),
+        minSize: FLOATING_MIN_SIZE,
+        viewportPadding: FLOATING_MARGIN,
+      });
+      return createElement("div", { style: docked ? clearedStyle : latest.style });
+    }
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root!.render(createElement(Mirror, { docked: false }));
+    });
+    act(() => latest.resizeHandleProps("e").onPan(fakeEvent, fakePanInfo(60, 0)));
+
+    act(() => {
+      root!.render(createElement(Mirror, { docked: true }));
+    });
+
+    const node = container.firstElementChild as HTMLDivElement;
+    expect(node.style.position).toBe("");
+    expect(node.style.width).toBe("");
+    expect(node.style.height).toBe("");
+  });
+});
+
 describe("DashboardAgent's degenerate grid tracks outside rightPanel", () => {
   it("unmounts the handle and collapses the agent panel to a bare 0px track", () => {
     const group = renderDashboardAgentGrid(false);
