@@ -23,7 +23,11 @@ vi.setConfig({ testTimeout: 60_000 });
 // to NEW, a 25-char cuid to LEGACY.
 
 function buildRoutingStore(prisma17: PrismaClient, prisma14: PrismaClient) {
-  const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
+  const newStore = new PostgresRunStore({
+    prisma: prisma17,
+    readOnlyPrisma: prisma17,
+    schemaVariant: "dedicated",
+  });
   const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
   return new RoutingRunStore({ new: newStore, legacy: legacyStore });
 }
