@@ -1477,6 +1477,11 @@ export class ApiClient {
     options?: {
       signal?: AbortSignal;
       baseUrl?: string;
+      /**
+       * A named side channel on the session. When omitted, the session's
+       * reserved default channel (`session.in` / `session.out`) is used.
+       */
+      channel?: string;
       timeoutInSeconds?: number;
       onComplete?: () => void;
       onError?: (error: Error) => void;
@@ -1496,7 +1501,10 @@ export class ApiClient {
       onControl?: (event: ControlEvent) => void;
     }
   ): Promise<AsyncIterableStream<T>> {
-    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`;
+    const sessionSegment = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
+    const url = options?.channel
+      ? `${sessionSegment}/channels/${encodeURIComponent(options.channel)}/${io}`
+      : `${sessionSegment}/${io}`;
 
     const subscription = new SSEStreamSubscription(url, {
       headers: this.getHeaders(),
