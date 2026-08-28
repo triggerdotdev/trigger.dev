@@ -69,7 +69,7 @@ export function DashboardAgentLauncher() {
         <span className="relative inline-flex shrink-0">
           <Button
             variant="ask-trigger/small"
-            aria-label={hasUnread ? `${ASK_AGENT_LABEL}, unread updates` : ASK_AGENT_LABEL}
+            aria-label={open ? "Close chat" : hasUnread ? `${ASK_AGENT_LABEL}, unread updates` : ASK_AGENT_LABEL}
             onClick={() => setOpen(!open)}
           >
             {ASK_AGENT_LABEL}
