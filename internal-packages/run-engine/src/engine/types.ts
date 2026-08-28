@@ -64,6 +64,10 @@ export const SNAPSHOT_SWEEP_COUNT_FIELDS = [
   "deleted",
   "skipped",
   "pendingDeletion",
+  // Keyspaces the pass could not read. Reported because containment without a number is
+  // indistinguishable from nothing going wrong: a run that fails every pass leaks forever and the
+  // only other evidence is one log line per pass.
+  "failed",
   "nodes",
   "partial",
 ] as const;

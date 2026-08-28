@@ -80,6 +80,13 @@ export type SweepResult = {
    * on an observed sweep pass, so the observation has to carry its own coverage.
    */
   nodes: number;
+  /**
+   * Keyspaces whose own Redis commands raised, so the pass acted on neither rule for them. Contained
+   * per run on purpose: a single malformed keyspace used to abort the whole pass, and because the
+   * scan restarts from the same place every time, collection then stopped for EVERY run until a
+   * human removed the key. One bad keyspace now costs itself one pass.
+   */
+  failed: number;
   /** True when the pass stopped early on its deadline or abort signal, so coverage is incomplete. */
   partial: boolean;
 };
@@ -200,6 +207,7 @@ export class SnapshotOrphanSweeper {
       deleted: 0,
       skipped: 0,
       pendingDeletion: 0,
+      failed: 0,
       nodes: 0,
       partial: false,
     };
@@ -295,18 +303,31 @@ export class SnapshotOrphanSweeper {
     for (const runId of runIds) {
       const run = rows.get(runId);
 
-      if (!run) {
-        await this.#applyRuleTwo(runId, dryRun, result);
-        continue;
-      }
+      // Per run, not per batch. The rule bodies below issue their own Redis commands, and an error
+      // from any of them used to leave the whole pass. The run-row lookup above has had its own
+      // guard from the start; this gives the Redis half the same treatment, for the same reason.
+      try {
+        if (!run) {
+          await this.#applyRuleTwo(runId, dryRun, result);
+          continue;
+        }
 
-      if (!FINAL.has(run.status)) {
-        // A live run. A SUSPENDED run can legitimately wait for weeks, so this is never touched.
-        result.skipped += 1;
-        continue;
-      }
+        if (!FINAL.has(run.status)) {
+          // A live run. A SUSPENDED run can legitimately wait for weeks, so this is never touched.
+          result.skipped += 1;
+          continue;
+        }
 
-      await this.#applyRuleOne(runId, dryRun, result);
+        await this.#applyRuleOne(runId, dryRun, result);
+      } catch (error) {
+        // Never rethrown. A keyspace this pass cannot read is a keyspace the NEXT pass can try, and
+        // the alternative is losing collection for every other run as well.
+        this.#logger.error("SnapshotOrphanSweeper skipped a keyspace after a failed command", {
+          runId,
+          error,
+        });
+        result.failed += 1;
+      }
     }
   }
 
