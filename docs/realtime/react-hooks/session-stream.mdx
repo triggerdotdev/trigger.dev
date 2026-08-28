@@ -81,12 +81,13 @@ const { records } = useSessionStream<{ url: string }>(sessionId, {
 The hook resumes automatically across a component remount. A full page reload clears in-memory state, so to resume there, persist the returned `lastEventId` and pass it back on the next load. The channel then continues after that record with no replay and no gap:
 
 ```tsx
-const saved = localStorage.getItem("session-cursor") ?? undefined;
+const cursorKey = `session-cursor:${sessionId}:out`; // scope the key to this session and channel
+const saved = localStorage.getItem(cursorKey) ?? undefined;
 
 const { records, lastEventId } = useSessionStream<string>(sessionId, {
   accessToken,
   lastEventId: saved,
-  onRecords: (batch) => localStorage.setItem("session-cursor", batch.at(-1)!.id),
+  onRecords: (batch) => localStorage.setItem(cursorKey, batch.at(-1)!.id),
 });
 ```
 

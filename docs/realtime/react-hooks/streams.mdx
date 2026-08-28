@@ -180,12 +180,13 @@ state, so to resume there, persist the returned `lastEventId` and pass it back o
 subscription then continues after that record with no replay and no gap:
 
 ```tsx
-const saved = localStorage.getItem("frames-cursor") ?? undefined;
+const cursorKey = `frames-cursor:${runId}`; // scope the key to this stream
+const saved = localStorage.getItem(cursorKey) ?? undefined;
 
 const { parts, lastEventId } = useRealtimeStream<{ url: string }>(runId, "frames", {
   accessToken,
   lastEventId: saved, // resume where the previous session left off
-  onParts: (batch) => localStorage.setItem("frames-cursor", batch.at(-1)!.id),
+  onParts: (batch) => localStorage.setItem(cursorKey, batch.at(-1)!.id),
 });
 ```
 
