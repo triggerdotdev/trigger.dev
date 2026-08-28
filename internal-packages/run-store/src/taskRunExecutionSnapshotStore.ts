@@ -70,12 +70,33 @@ const WAITPOINT_CHUNK_SIZE = 100;
 export type SnapshotStoreMode = "off" | "dual-write" | "redis-read" | "redis-only";
 
 /**
- * Resolves the dial for one write. MUST be synchronous and MUST NOT query: seven methods here take
- * a caller-supplied `tx`, so this class cannot see a caller's transaction boundary, and a read
- * issued here could land inside someone else's open interactive transaction.
+ * Resolves the dial for one write. `resolve` MUST be synchronous and MUST NOT query: seven methods
+ * here take a caller-supplied `tx`, so this class cannot see a caller's transaction boundary, and a
+ * read issued there could land inside someone else's open interactive transaction.
  */
 export type SnapshotStoreModeResolver = {
   resolve(organizationId?: string): SnapshotStoreMode;
+  /**
+   * Optional, and awaited at BIRTH sites only. Resolves once the organisation's own dial value is
+   * known to `resolve`, or once the attempt has given up.
+   *
+   * Why a birth is different from every other call. The per-organisation dial is served from a
+   * short-lived cache, and on a miss the resolver answers with the deployment-wide position. For a
+   * read or a transition that is the right trade. For a birth it is not: residency is decided at
+   * birth and is permanent, so a run born during a cache miss is excluded from the mirror for its
+   * entire life and no later pass can adopt it.
+   *
+   * That was not theoretical. Three runs born back to back were all resident; after a 14 minute idle
+   * gap the next one was not, because the cache entry had expired. A miss is any gap longer than the
+   * cache lifetime, so on bursty traffic the first run of every burst was silently excluded, and a
+   * low-traffic canary organisation would have lost most of its runs.
+   *
+   * Implementations MUST bound this. A birth is on the trigger path and a caller may already hold an
+   * open transaction, so a slow flag read must give up and leave `resolve` answering as before
+   * rather than hold that transaction open. Failing is always allowed: the fallback is the previous
+   * behaviour, never an error.
+   */
+  warm?(organizationId: string): Promise<void>;
 };
 
 /**
@@ -214,6 +235,25 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * Whether a BIRTH mirrors to Redis. This is the only decision the per-organisation override gets
    * to make, and it fixes the run's store for the rest of its life.
    */
+  /**
+   * Waits for the organisation's real dial value before a birth decides residency. Never throws:
+   * a flag read that fails or times out leaves `resolve` answering exactly as it did before, which
+   * is the behaviour this replaces.
+   */
+  async #warmOrgMode(organizationId?: string): Promise<void> {
+    if (!organizationId || !this.modeResolver?.warm) {
+      return;
+    }
+    try {
+      await this.modeResolver.warm(organizationId);
+    } catch (error) {
+      this.logger.warn("snapshot store could not warm the organisation dial before a birth", {
+        organizationId,
+        error,
+      });
+    }
+  }
+
   protected writesRedisForBirth(organizationId?: string): boolean {
     if (this.halted()) return false;
 
@@ -341,6 +381,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
+    // Before the decision, not after: residency is permanent, so this is the one call where the
+    // organisation's real value is worth waiting for.
+    await this.#warmOrgMode(params.snapshot?.organizationId);
+
     if (!this.writesRedisForBirth(params.snapshot?.organizationId)) {
       // Deliberately records NOTHING about residency here, though it is tempting: this run is
       // almost certainly non-resident, and seeding that would save its first transition a probe.
@@ -367,6 +411,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateCancelledRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
+    await this.#warmOrgMode(params.snapshot?.organizationId);
+
     if (!this.writesRedisForBirth(params.snapshot?.organizationId)) {
       return this.delegate.createCancelledRun(params, tx);
     }

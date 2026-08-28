@@ -42,10 +42,16 @@ type OrgModeSource = {
   refresh(organizationId: string): void;
   /** Re-reads from the primary after a write, so replica lag cannot re-cache the old value. */
   invalidate(organizationId: string): void;
+  /**
+   * Awaits the organisation's value on a cache miss, bounded, and never throws. Used at BIRTH sites
+   * only: residency is permanent, so a run born during a miss is excluded from the mirror for life.
+   */
+  warm(organizationId: string): Promise<void>;
 };
 
 /** What resolution needs. Invalidation is a save-path concern, not a read-path one. */
-type ResolverOrgSource = Pick<OrgModeSource, "get" | "refresh">;
+type ResolverOrgSource = Pick<OrgModeSource, "get" | "refresh"> &
+  Partial<Pick<OrgModeSource, "warm">>;
 
 export function buildSnapshotStoreModeResolver(deps: {
   globalMode: () => DialMode | undefined;
@@ -53,6 +59,10 @@ export function buildSnapshotStoreModeResolver(deps: {
   envFloor: DialMode;
 }): SnapshotStoreModeResolver {
   return {
+    // Awaited at birth sites only. Absent org id means nothing to look up, so it is a no-op.
+    warm: async (organizationId: string): Promise<void> => {
+      await deps.orgMode.warm?.(organizationId);
+    },
     resolve(organizationId?: string): DialMode {
       const global = deps.globalMode() ?? deps.envFloor;
       if (!organizationId) {
@@ -99,6 +109,13 @@ export function buildSnapshotStoreHaltCheck(deps: {
 export const snapshotStoreHalted = buildSnapshotStoreHaltCheck({
   flag: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreHalt],
 });
+
+/**
+ * How long a birth will wait for its organisation's dial before proceeding without it. Short because
+ * the read is a single primary-key select, and because the cost of overrunning is a caller's
+ * transaction held open.
+ */
+const WARM_TIMEOUT_MS = 500;
 
 const DEFAULT_CACHE_MAX = 10_000;
 const DEFAULT_CACHE_TTL_MS = 30_000;
@@ -170,6 +187,34 @@ export function createOrgModeSource(clients?: {
         inFlight.delete(organizationId);
       });
     },
+    warm: async (organizationId) => {
+      // Already known, including a cached "no override". Costs nothing, which is the common case
+      // once an organisation has any traffic at all.
+      if (cache.get(organizationId) !== undefined) {
+        return;
+      }
+
+      // A save is mid-read: its answer is the authoritative one and is already on its way, so wait
+      // for that rather than starting a second read of the same row.
+      const pending = primaryPending.has(organizationId)
+        ? undefined
+        : load(organizationId, replicaClient, generationOf(organizationId));
+
+      // Bounded on purpose. A birth is on the trigger path and the caller may already hold an open
+      // transaction, so a slow flag read must give up rather than hold that transaction open. Giving
+      // up restores the previous behaviour (answer with the deployment-wide position) rather than
+      // failing the trigger.
+      let timer: NodeJS.Timeout | undefined;
+      const deadline = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, WARM_TIMEOUT_MS);
+      });
+
+      try {
+        await Promise.race([pending ?? deadline, deadline]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    },
   };
 
   function load(organizationId: string, client: OrgModeClient, generation: number) {
@@ -206,6 +251,7 @@ export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapsho
   orgMode: {
     get: (organizationId) => orgModeSource().get(organizationId),
     refresh: (organizationId) => orgModeSource().refresh(organizationId),
+    warm: (organizationId) => orgModeSource().warm(organizationId),
   },
   envFloor: env.RUN_ENGINE_SNAPSHOT_STORE_MODE ?? "off",
 });

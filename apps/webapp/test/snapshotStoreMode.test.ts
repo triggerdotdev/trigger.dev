@@ -193,3 +193,71 @@ describe("a saved organisation dial survives a lagging replica", () => {
     expect(source.get("org_1")).toBe("dual-write");
   });
 });
+
+describe("warming the organisation dial before a birth", () => {
+  type Deferred = { resolve: (v: unknown) => void; promise: Promise<unknown> };
+  function deferred(): Deferred {
+    let resolve!: (v: unknown) => void;
+    const promise = new Promise<unknown>((r) => (resolve = r));
+    return { resolve, promise };
+  }
+  function clientFor(read: () => Promise<unknown>) {
+    return { organization: { findFirst: () => read() as never } } as never;
+  }
+
+  it("resolves once the organisation's value is cached, so a birth sees the truth", async () => {
+    const replica = deferred();
+    const source = createOrgModeSource({
+      primary: clientFor(() => Promise.resolve({})),
+      replica: clientFor(() => replica.promise),
+    });
+
+    expect(source.get("org_1")).toBeUndefined();
+
+    const warming = source.warm("org_1");
+    replica.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
+    await warming;
+
+    // The point of the whole exercise: after warm, the cache holds the real value, so the
+    // synchronous resolve a birth then performs no longer falls back to the global position.
+    expect(source.get("org_1")).toBe("dual-write");
+  });
+
+  it("costs nothing when the value is already cached", async () => {
+    let reads = 0;
+    const source = createOrgModeSource({
+      primary: clientFor(() => Promise.resolve({})),
+      replica: clientFor(() => {
+        reads += 1;
+        return Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } });
+      }),
+    });
+
+    await source.warm("org_1");
+    expect(reads).toBe(1);
+    expect(source.get("org_1")).toBe("off");
+
+    // A warm organisation is the common case once it has any traffic, and must not re-read.
+    await source.warm("org_1");
+    expect(reads).toBe(1);
+  });
+
+  it("gives up rather than holding a birth open on a slow read", async () => {
+    // A birth is on the trigger path and the caller may already hold an open transaction, so this
+    // must be bounded. Giving up restores the previous behaviour, it does not fail the trigger.
+    const neverResolves = new Promise<unknown>(() => {});
+    const source = createOrgModeSource({
+      primary: clientFor(() => Promise.resolve({})),
+      replica: clientFor(() => neverResolves),
+    });
+
+    const started = Date.now();
+    await expect(source.warm("org_1")).resolves.toBeUndefined();
+    const elapsed = Date.now() - started;
+
+    // Bounded, and nowhere near indefinite.
+    expect(elapsed).toBeLessThan(2_000);
+    // Still unknown, so the synchronous resolve falls back exactly as it did before.
+    expect(source.get("org_1")).toBeUndefined();
+  });
+});
