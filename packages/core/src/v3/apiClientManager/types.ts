@@ -11,6 +11,12 @@ export type ApiClientConfiguration = {
    */
   accessToken?: string;
   /**
+   * Mints a fresh access token. Called when a realtime stream subscription is
+   * rejected with a 401/403, so a long-lived subscription can survive the
+   * expiry of the token it started with.
+   */
+  refreshAccessToken?: () => Promise<string>;
+  /**
    * The preview branch name (for preview environments)
    */
   previewBranch?: string;

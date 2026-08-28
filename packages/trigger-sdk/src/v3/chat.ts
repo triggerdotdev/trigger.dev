@@ -95,7 +95,10 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
     | "handover-prepare";
   messageId?: string;
   metadata?: TMetadata;
-  /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
+  /**
+   * Custom action payload when `trigger` is `"action"`. Managed agents validate
+   * this against `actionSchema`; raw custom agents must validate it themselves.
+   */
   action?: unknown;
   /** Whether this run is continuing an existing chat whose previous run ended. */
   continuation?: boolean;

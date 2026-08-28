@@ -7,7 +7,11 @@
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { probeDistinctStores as defaultProbe } from "./distinctDbSentinel.server";
-import { nonAliasedShards, type ShardTarget } from "~/v3/runOpsShards.server";
+import {
+  nonAliasedShards,
+  type RunOpsShardDescriptor,
+  type ShardTarget,
+} from "~/v3/runOpsShards.server";
 
 export type SplitModeConfig = {
   flagEnabled: boolean;
@@ -71,6 +75,35 @@ export function assertSplitRealtimeInterlock(config: SplitRealtimeInterlockConfi
       "RUN_OPS_SPLIT_ENABLED is on but the native realtime backend (REALTIME_BACKEND_NATIVE_ENABLED) is not enabled — Electric cannot serve NEW-resident runs; refusing to enable split."
     );
   }
+}
+
+export type ShardsRequireSplitConfig = {
+  splitFlagEnabled: boolean;
+  /** Raw descriptors. The alias exemption is applied here so no call site can forget it. */
+  shards: RunOpsShardDescriptor[];
+};
+
+/**
+ * Boot-time shard interlock (pure predicate). Shard clients are only built on the split-on arm of
+ * `selectRunOpsTopology`, so a shard configured while the split flag is off is dropped in silence:
+ * no client, no fan-out leg, and any row already resident on that database vanishes from every
+ * list with no error. The other two ways split can end up disabled (URLs missing, sentinel not
+ * distinct) already refuse to boot; this closes the one that does not.
+ */
+export function assertShardsRequireSplit(config: ShardsRequireSplitConfig): void {
+  if (config.splitFlagEnabled) {
+    return;
+  }
+  // An aliased shard owns no database: it shares its target's client by reference, so its rows are
+  // still read with the split off and nothing is dropped. Exempt here exactly as it is exempt from
+  // the distinctness sentinel, the coresidency loop and replication.
+  const owning = nonAliasedShards(config.shards).map((shard) => shard.key);
+  if (owning.length === 0) {
+    return;
+  }
+  throw new Error(
+    `RUN_OPS_SHARDS configures shard(s) ${owning.join(", ")} but RUN_OPS_SPLIT_ENABLED is off, so no shard client is built and rows on those databases would be silently missing; refusing to start.`
+  );
 }
 
 let cached: Promise<boolean> | undefined;

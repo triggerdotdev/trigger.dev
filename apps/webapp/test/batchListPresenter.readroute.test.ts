@@ -16,14 +16,18 @@ vi.mock("~/db.server", () => ({
 import {
   heteroPostgresTest,
   heteroRunOpsPostgresTest,
+  makeNShardRunOpsPostgresTest,
   postgresTest,
 } from "@internal/testcontainers";
+import { generateRunOpsId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
+  type BatchList,
   type BatchListOptions,
   BatchListPresenter,
 } from "~/presenters/v3/BatchListPresenter.server";
+import { nonAliasedShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -163,7 +167,7 @@ async function mirrorEnvParents(
 }
 
 async function createBatch(
-  prisma: PrismaClient,
+  prisma: PrismaClient | RunOpsPrismaClient,
   ctx: SeedContext,
   batch: {
     id: string;
@@ -174,7 +178,7 @@ async function createBatch(
     createdAt?: Date;
   }
 ) {
-  return prisma.batchTaskRun.create({
+  return (prisma as PrismaClient).batchTaskRun.create({
     data: {
       id: batch.id,
       friendlyId: batch.friendlyId,
@@ -618,6 +622,292 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
 
       const page = await presenter.call(baseCall(ctx, { pageSize: 10 }));
       expect(page.batches.map((b) => b.id)).toContain("rbatch00000000000000001");
+    }
+  );
+});
+
+describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard PG17 databases)", () => {
+  const twoShardTest = makeNShardRunOpsPostgresTest(2);
+
+  const shardPresenter = (
+    legacyPrisma: PrismaClient,
+    newPrisma: RunOpsPrismaClient,
+    shardReplicas: ReadonlyArray<{ key: string; replica: RunOpsPrismaClient }>
+  ) =>
+    new BatchListPresenter(legacyPrisma, legacyPrisma, {
+      runOpsNew: newPrisma,
+      runOpsLegacyReplica: legacyPrisma as unknown as RunOpsPrismaClient,
+      controlPlaneReplica: legacyPrisma,
+      splitEnabled: true,
+      shardReplicas,
+    });
+
+  twoShardTest(
+    "a gen-2 batch on its shard appears in the list alongside gen-1 and legacy batches",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardA = shardPrismas[0]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-visible");
+
+      const legacyId = "cmm00000000000000000legac";
+      const newId = generateRunOpsId();
+      const shardId = generateRunOpsIdV2("a");
+
+      await createBatch(legacyPrisma, ctx, {
+        id: legacyId,
+        friendlyId: "fr_legacy",
+        createdAt: new Date(Date.now() - 3 * 60_000),
+      });
+      await createBatch(newPrisma, ctx, {
+        id: newId,
+        friendlyId: "fr_new",
+        createdAt: new Date(Date.now() - 2 * 60_000),
+      });
+      await createBatch(shardA, ctx, {
+        id: shardId,
+        friendlyId: "fr_shard_a",
+        createdAt: new Date(Date.now() - 1 * 60_000),
+      });
+
+      const page = await shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+      ]).call(baseCall(ctx, { pageSize: 10 }));
+
+      expect(page.batches.map((b) => b.id)).toEqual([shardId, newId, legacyId]);
+      expect(page.batches.map((b) => b.friendlyId)).toContain("fr_shard_a");
+
+      const withoutShardLeg = await shardPresenter(legacyPrisma, newPrisma, []).call(
+        baseCall(ctx, { pageSize: 10 })
+      );
+      expect(withoutShardLeg.batches.map((b) => b.id)).toEqual([newId, legacyId]);
+    }
+  );
+
+  twoShardTest(
+    "a page spanning legacy, new and two shards is ordered by createdAt then id across all stores",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const [shardA, shardB] = [shardPrismas[0]!, shardPrismas[1]!];
+      const ctx = await seedParents(legacyPrisma, "gen2-order");
+
+      const t0 = new Date(Date.now() - 10 * 60_000);
+      const at = (minutes: number) => new Date(t0.getTime() + minutes * 60_000);
+
+      const legacyId = "cmm00000000000000000order";
+      const newId = generateRunOpsId();
+      const shardAId = generateRunOpsIdV2("a");
+      const shardBId = generateRunOpsIdV2("b");
+
+      await createBatch(legacyPrisma, ctx, {
+        id: legacyId,
+        friendlyId: "fr_o_legacy",
+        createdAt: at(0),
+      });
+      await createBatch(newPrisma, ctx, { id: newId, friendlyId: "fr_o_new", createdAt: at(1) });
+      await createBatch(shardA, ctx, { id: shardAId, friendlyId: "fr_o_a", createdAt: at(2) });
+      await createBatch(shardB, ctx, { id: shardBId, friendlyId: "fr_o_b", createdAt: at(3) });
+
+      const tieTime = at(4);
+      const tieOnNew = generateRunOpsId();
+      const tieOnShardB = generateRunOpsIdV2("b");
+      await createBatch(newPrisma, ctx, {
+        id: tieOnNew,
+        friendlyId: "fr_tie_new",
+        createdAt: tieTime,
+      });
+      await createBatch(shardB, ctx, {
+        id: tieOnShardB,
+        friendlyId: "fr_tie_b",
+        createdAt: tieTime,
+      });
+
+      const page = await shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+        { key: "b", replica: shardB },
+      ]).call(baseCall(ctx, { pageSize: 10 }));
+
+      const tieHead = tieOnNew > tieOnShardB ? tieOnNew : tieOnShardB;
+      const tieTail = tieOnNew > tieOnShardB ? tieOnShardB : tieOnNew;
+      expect(page.batches.map((b) => b.id)).toEqual([
+        tieHead,
+        tieTail,
+        shardBId,
+        shardAId,
+        newId,
+        legacyId,
+      ]);
+    }
+  );
+
+  twoShardTest(
+    "paging forward then backward across boundaries that span stores loses and repeats no batch",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const [shardA, shardB] = [shardPrismas[0]!, shardPrismas[1]!];
+      const ctx = await seedParents(legacyPrisma, "gen2-paging");
+
+      const t0 = Date.now() - 60 * 60_000;
+      const seeded: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        const store = [legacyPrisma, newPrisma, shardA, shardB][i % 4]!;
+        const id =
+          i % 4 === 0
+            ? `cmm0000000000000000pag${i}`
+            : i % 4 === 1
+              ? generateRunOpsId()
+              : generateRunOpsIdV2(i % 4 === 2 ? "a" : "b");
+        await createBatch(store, ctx, {
+          id,
+          friendlyId: `fr_pag_${i}`,
+          createdAt: new Date(t0 + i * 60_000),
+        });
+        seeded.push(id);
+      }
+      const newestFirst = [...seeded].reverse();
+
+      const presenter = shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+        { key: "b", replica: shardB },
+      ]);
+
+      const forward: string[][] = [];
+      let cursor: string | undefined;
+      for (let guard = 0; guard < 10; guard++) {
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 3, direction: "forward", cursor })
+        );
+        forward.push(page.batches.map((b) => b.id));
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+      expect(forward.flat()).toEqual(newestFirst);
+
+      let backCursor: string | undefined;
+      cursor = undefined;
+      for (let guard = 0; guard < 10; guard++) {
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 3, direction: "forward", cursor })
+        );
+        backCursor = page.pagination.previous;
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+
+      const backward: string[][] = [];
+      for (let guard = 0; guard < 10 && backCursor; guard++) {
+        const page: BatchList = await presenter.call(
+          baseCall(ctx, { pageSize: 3, direction: "backward", cursor: backCursor })
+        );
+        backward.unshift(page.batches.map((b) => b.id));
+        backCursor = page.pagination.previous;
+      }
+
+      const backwardIds = backward.flat();
+      expect(backwardIds).toHaveLength(6);
+      expect(new Set(backwardIds).size).toBe(backwardIds.length);
+      expect(backwardIds).toEqual(newestFirst.slice(0, 6));
+    }
+  );
+
+  twoShardTest(
+    "the empty-state probe reports batches present when only a shard holds batches",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardB = shardPrismas[1]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-probe");
+
+      await createBatch(shardB, ctx, {
+        id: generateRunOpsIdV2("b"),
+        friendlyId: "fr_probe_shard",
+      });
+
+      const presenter = shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardPrismas[0]! },
+        { key: "b", replica: shardB },
+      ]);
+
+      const page = await presenter.call(baseCall(ctx, { friendlyId: "fr_does_not_exist" }));
+      expect(page.batches).toHaveLength(0);
+      expect(page.hasAnyBatches).toBe(true);
+
+      const withoutShardLeg = await shardPresenter(legacyPrisma, newPrisma, []).call(
+        baseCall(ctx, { friendlyId: "fr_does_not_exist" })
+      );
+      expect(withoutShardLeg.hasAnyBatches).toBe(false);
+    }
+  );
+
+  twoShardTest(
+    "a duplicated id resolves by precedence: a shard copy outranks new, and new outranks legacy",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardA = shardPrismas[0]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-precedence");
+
+      const onBothGenOne = "cmm000000000000000000prec";
+      await createBatch(legacyPrisma, ctx, {
+        id: onBothGenOne,
+        friendlyId: "fr_prec_gen1",
+        status: "PENDING",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await createBatch(newPrisma, ctx, {
+        id: onBothGenOne,
+        friendlyId: "fr_prec_gen1",
+        status: "COMPLETED",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+
+      const onNewAndShard = generateRunOpsIdV2("a");
+      await createBatch(newPrisma, ctx, {
+        id: onNewAndShard,
+        friendlyId: "fr_prec_shard",
+        status: "PENDING",
+        createdAt: new Date(Date.now() - 30_000),
+      });
+      await createBatch(shardA, ctx, {
+        id: onNewAndShard,
+        friendlyId: "fr_prec_shard",
+        status: "COMPLETED",
+        createdAt: new Date(Date.now() - 30_000),
+      });
+
+      const page = await shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+      ]).call(baseCall(ctx, { pageSize: 10 }));
+
+      expect(page.batches.map((b) => b.id).filter((id) => id === onBothGenOne)).toHaveLength(1);
+      expect(page.batches.map((b) => b.id).filter((id) => id === onNewAndShard)).toHaveLength(1);
+      expect(page.batches.find((b) => b.id === onBothGenOne)?.status).toBe("COMPLETED");
+      expect(page.batches.find((b) => b.id === onNewAndShard)?.status).toBe("COMPLETED");
+    }
+  );
+
+  twoShardTest(
+    "an aliased shard contributes no leg, and its rows still arrive once via the aliased store",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardB = shardPrismas[1]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-alias");
+
+      const soakId = generateRunOpsIdV2("a");
+      const realShardId = generateRunOpsIdV2("b");
+      await createBatch(newPrisma, ctx, {
+        id: soakId,
+        friendlyId: "fr_soak",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await createBatch(shardB, ctx, { id: realShardId, friendlyId: "fr_real_shard" });
+
+      const aliasedSpy = spyClient(newPrisma as unknown as PrismaClient);
+
+      const legs = nonAliasedShardReplicas([
+        { key: "a", replica: aliasedSpy.client as unknown as RunOpsPrismaClient, aliasOf: "new" },
+        { key: "b", replica: shardB },
+      ]);
+      expect(legs.map((leg) => leg.key)).toEqual(["b"]);
+
+      const page = await shardPresenter(
+        legacyPrisma,
+        aliasedSpy.client as unknown as RunOpsPrismaClient,
+        legs
+      ).call(baseCall(ctx, { pageSize: 10 }));
+      expect(page.batches.map((b) => b.id)).toEqual([realShardId, soakId]);
+      expect(aliasedSpy.counts.findMany).toBe(1);
     }
   );
 });

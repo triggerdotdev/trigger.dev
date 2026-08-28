@@ -5,11 +5,11 @@ import {
   ChatBubbleLeftRightIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
-  SparklesIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
@@ -132,8 +132,8 @@ export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string 
         {!initialized && (
           <>
             <div className="flex flex-col gap-4 rounded-md border border-indigo-400/20 bg-indigo-800/10 p-4 sm:flex-row sm:items-center">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-indigo-500/15 text-indigo-400">
-                <SparklesIcon className="size-5" />
+              <span className="flex size-9 shrink-0 items-center justify-center self-start rounded-md bg-indigo-500/15 text-indigo-400">
+                <AISparkleIcon className="size-5" />
               </span>
               <div className="min-w-0 flex-1">
                 <Paragraph className="text-text-bright">Set it up with your AI agent</Paragraph>
@@ -142,7 +142,7 @@ export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string 
                   includes your project reference.
                 </Paragraph>
               </div>
-              <div className="shrink-0">
+              <div className="shrink-0 sm:ml-4">
                 <InitAgentPromptV3 />
               </div>
             </div>
@@ -181,7 +181,6 @@ export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string 
           stepNumber="2"
           title={devConnected ? "Dev server connected" : "Start the dev server"}
           complete={devConnected}
-          displaySpinner={!devConnected}
         />
         <StepContentContainer>
           {devConnected ? (
