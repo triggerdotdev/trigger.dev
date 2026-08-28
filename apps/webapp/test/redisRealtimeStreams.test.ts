@@ -1521,4 +1521,146 @@ describe("RedisRealtimeStreams", () => {
       await redis.quit();
     }
   );
+
+  redisTest(
+    "startFrom 'latest' skips the backlog and delivers only new records",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
+      const redisRealtimeStreams = new RedisRealtimeStreams({ redis: redisOptions });
+
+      const runId = "run_latest_test";
+      const streamId = "latest-stream";
+      const encoder = new TextEncoder();
+
+      const ingest = async (line: string) => {
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(line + "\n"));
+            controller.close();
+          },
+        });
+        await redisRealtimeStreams.ingestData(stream, runId, streamId, "default");
+      };
+
+      await ingest("old-0");
+      await ingest("old-1");
+
+      const abortController = new AbortController();
+      const response = await redisRealtimeStreams.streamResponse(
+        new Request("http://localhost/test"),
+        runId,
+        streamId,
+        abortController.signal,
+        { startFrom: "latest", timeoutInSeconds: 10 }
+      );
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const receivedData: string[] = [];
+
+      const readLoop = (async () => {
+        let done = false;
+        while (!done && receivedData.length < 1) {
+          const { value, done: streamDone } = await reader.read().catch(() => ({
+            value: undefined,
+            done: true,
+          }));
+          done = streamDone;
+          if (value) {
+            const events = decoder
+              .decode(value)
+              .split("\n\n")
+              .filter((event) => event.trim());
+            for (const event of events) {
+              for (const l of event.split("\n")) {
+                if (l.startsWith("data: ")) {
+                  const data = l.substring(6).trim();
+                  if (data) receivedData.push(data);
+                }
+              }
+            }
+          }
+        }
+      })();
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await ingest("new-0");
+
+      await readLoop;
+      abortController.abort();
+      reader.releaseLock();
+
+      expect(receivedData).toContain("new-0");
+      expect(receivedData).not.toContain("old-0");
+      expect(receivedData).not.toContain("old-1");
+
+      await redis.del(`stream:${runId}:${streamId}`);
+      await redis.quit();
+    }
+  );
+
+  redisTest(
+    "default start replays the backlog from the beginning",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
+      const redisRealtimeStreams = new RedisRealtimeStreams({ redis: redisOptions });
+
+      const runId = "run_beginning_test";
+      const streamId = "beginning-stream";
+      const encoder = new TextEncoder();
+
+      const ingestStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode("old-0\n"));
+          controller.enqueue(encoder.encode("old-1\n"));
+          controller.close();
+        },
+      });
+      await redisRealtimeStreams.ingestData(ingestStream, runId, streamId, "default");
+
+      const abortController = new AbortController();
+      const response = await redisRealtimeStreams.streamResponse(
+        new Request("http://localhost/test"),
+        runId,
+        streamId,
+        abortController.signal,
+        { timeoutInSeconds: 10 }
+      );
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const receivedData: string[] = [];
+
+      let done = false;
+      while (!done && receivedData.length < 2) {
+        const { value, done: streamDone } = await reader.read();
+        done = streamDone;
+        if (value) {
+          const events = decoder
+            .decode(value)
+            .split("\n\n")
+            .filter((event) => event.trim());
+          for (const event of events) {
+            for (const l of event.split("\n")) {
+              if (l.startsWith("data: ")) {
+                const data = l.substring(6).trim();
+                if (data) receivedData.push(data);
+              }
+            }
+          }
+        }
+      }
+
+      abortController.abort();
+      reader.releaseLock();
+
+      expect(receivedData).toContain("old-0");
+      expect(receivedData).toContain("old-1");
+
+      await redis.del(`stream:${runId}:${streamId}`);
+      await redis.quit();
+    }
+  );
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SSEStreamSubscription } from "./runStream.js";
+import { SSEStreamSubscription, STREAM_START_HEADER } from "./runStream.js";
 
 vi.setConfig({ testTimeout: 10_000 });
 
@@ -640,5 +640,103 @@ describe("SSEStreamSubscription v2 batch parsing — record kinds", () => {
     expect(parts).toHaveLength(2);
     expect(parts[0]!.chunk).toBeUndefined();
     expect((parts[1]!.chunk as any).delta).toBe("x");
+  });
+});
+
+describe("SSEStreamSubscription start position (from)", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  async function drainReader(reader: ReadableStreamDefaultReader<unknown>) {
+    let next = await reader.read();
+    while (!next.done) {
+      next = await reader.read();
+    }
+  }
+
+  function makeClosedSSEResponse(id: string) {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`id: ${id}\ndata: {"hello":1}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "X-Stream-Version": "v1" },
+    });
+  }
+
+  it('from: "latest" sends the start header and no Last-Event-ID on first connect', async () => {
+    const seenHeaders: Array<Record<string, string>> = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      seenHeaders.push((init?.headers as Record<string, string>) ?? {});
+      return makeClosedSSEResponse("42");
+    });
+
+    const sub = new SSEStreamSubscription("http://example.test/sse", { from: "latest" });
+    await drainReader((await sub.subscribe()).getReader());
+
+    expect(seenHeaders[0]![STREAM_START_HEADER]).toBe("latest");
+    expect(seenHeaders[0]!["Last-Event-ID"]).toBeUndefined();
+  });
+
+  it('from: "latest" drops the start header and resumes with Last-Event-ID after a record', async () => {
+    let attempts = 0;
+    const seenHeaders: Array<Record<string, string>> = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      attempts++;
+      seenHeaders.push((init?.headers as Record<string, string>) ?? {});
+      if (attempts === 1) {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(`id: 7\ndata: {"first":true}\n\n`));
+            init?.signal?.addEventListener("abort", () => controller.error(new Error("aborted")));
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream", "X-Stream-Version": "v1" },
+        });
+      }
+      return makeClosedSSEResponse("8");
+    });
+
+    const sub = new SSEStreamSubscription("http://example.test/sse", {
+      from: "latest",
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      fetchTimeoutMs: 60_000,
+    });
+
+    const reader = (await sub.subscribe()).getReader();
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+
+    sub.forceReconnect();
+    await drainReader(reader);
+
+    expect(attempts).toBe(2);
+    expect(seenHeaders[0]![STREAM_START_HEADER]).toBe("latest");
+    expect(seenHeaders[0]!["Last-Event-ID"]).toBeUndefined();
+    expect(seenHeaders[1]![STREAM_START_HEADER]).toBeUndefined();
+    expect(seenHeaders[1]!["Last-Event-ID"]).toBe("7");
+  });
+
+  it("default (no from) never sends the start header", async () => {
+    const seenHeaders: Array<Record<string, string>> = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      seenHeaders.push((init?.headers as Record<string, string>) ?? {});
+      return makeClosedSSEResponse("1");
+    });
+
+    const sub = new SSEStreamSubscription("http://example.test/sse", {});
+    await drainReader((await sub.subscribe()).getReader());
+
+    expect(seenHeaders[0]![STREAM_START_HEADER]).toBeUndefined();
   });
 });

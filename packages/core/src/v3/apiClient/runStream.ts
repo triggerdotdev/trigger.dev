@@ -15,6 +15,14 @@ import { ApiError, isTriggerRealtimeAuthError } from "./errors.js";
 import type { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
 
+/**
+ * Request header carrying the start position for a fresh realtime-stream
+ * subscription. Value `"latest"` asks the server to start at the current tail
+ * (only records appended after connect). Only sent when there is no
+ * `Last-Event-ID`. Read by the realtime streams route on the server.
+ */
+export const STREAM_START_HEADER = "X-Trigger-Stream-Start";
+
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
       id: string;
@@ -159,6 +167,17 @@ export type CreateStreamSubscriptionOptions = {
   onError?: (error: Error) => void;
   timeoutInSeconds?: number;
   lastEventId?: string;
+  /**
+   * Where a fresh subscription (no `lastEventId`) starts reading from.
+   *
+   * - `"beginning"` (default): replay the full stream history, then live-tail.
+   * - `"latest"`: skip history and start at the current tail — the subscriber
+   *   sees only records appended after it connects (a last-value / live view).
+   *
+   * Ignored once `lastEventId` is set: a reconnect always resumes from the last
+   * seen record, so `"latest"` only governs the very first connect.
+   */
+  from?: "beginning" | "latest";
 };
 
 export interface StreamSubscriptionFactory {
@@ -196,6 +215,7 @@ type PumpItem = { type: "part"; part: SSEStreamPart };
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
+  private from: "beginning" | "latest";
   private retryCount = 0;
   private maxRetries: number;
   private retryDelayMs: number;
@@ -225,6 +245,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       onError?: (error: Error) => void;
       timeoutInSeconds?: number;
       lastEventId?: string;
+      from?: "beginning" | "latest";
       // Retry knobs. Defaults: retry forever, 100ms initial backoff,
       // capped at 5s with 50% jitter. Keeps mobile clients reconnecting
       // through transient drops without giving up after a fixed window
@@ -260,6 +281,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     }
   ) {
     this.lastEventId = options.lastEventId;
+    this.from = options.from ?? "beginning";
     this.maxRetries = options.maxRetries ?? Infinity;
     this.retryDelayMs = options.retryDelayMs ?? 100;
     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 5000;
@@ -391,6 +413,7 @@ export class SSEStreamSubscription implements StreamSubscription {
         ...this.options.headers,
       };
       if (this.lastEventId) headers["Last-Event-ID"] = this.lastEventId;
+      else if (this.from === "latest") headers[STREAM_START_HEADER] = "latest";
       if (this.options.timeoutInSeconds) {
         headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
       }

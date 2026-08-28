@@ -70,8 +70,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
 
     const stream = new ReadableStream<StreamChunk>({
       start: async (controller) => {
-        // Start from lastEventId if provided, otherwise from beginning
-        let lastId = options?.lastEventId ?? "0";
+        let lastId = options?.lastEventId ?? (options?.startFrom === "latest" ? "$" : "0");
         let retryCount = 0;
         const maxRetries = 3;
         let lastDataTime = Date.now();

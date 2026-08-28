@@ -123,6 +123,7 @@ import {
   SSEStreamSubscriptionFactory,
   runShapeStream,
   type SSEStreamPart,
+  STREAM_START_HEADER,
 } from "./runStream.js";
 import type {
   CreateBulkActionOptions,
@@ -190,7 +191,7 @@ export type ApiClientFutureFlags = {
   v2RealtimeStreams?: boolean;
 };
 
-export { SSEStreamSubscription, isRequestOptions };
+export { SSEStreamSubscription, STREAM_START_HEADER, isRequestOptions };
 export type {
   AnyRealtimeRun,
   AnyRunShape,
@@ -1778,6 +1779,12 @@ export class ApiClient {
       onComplete?: () => void;
       onError?: (error: Error) => void;
       lastEventId?: string;
+      /**
+       * Where a fresh subscription (no `lastEventId`) starts reading. `"latest"`
+       * starts at the current tail (only records after connect); `"beginning"`
+       * (default) replays history.
+       */
+      from?: "beginning" | "latest";
       /** Called for each SSE event with the full event metadata (id, timestamp). */
       onPart?: (part: SSEStreamPart<T>) => void;
     }
@@ -1792,6 +1799,7 @@ export class ApiClient {
       onError: options?.onError,
       timeoutInSeconds: options?.timeoutInSeconds,
       lastEventId: options?.lastEventId,
+      from: options?.from,
     });
 
     const stream = await subscription.subscribe();

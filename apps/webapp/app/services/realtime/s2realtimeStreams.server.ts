@@ -527,12 +527,17 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   ): Promise<Response> {
     const startSeq = this.parseLastEventId(options?.lastEventId);
 
-    this.logger.info(`S2 streaming records from stream`, { stream: s2Stream, startSeq });
+    const tailFromLatest = startSeq == null && options?.startFrom === "latest";
+
+    this.logger.info(`S2 streaming records from stream`, {
+      stream: s2Stream,
+      startSeq,
+      tailFromLatest,
+    });
 
     // Request SSE stream from S2 and return it directly
     const s2Response = await this.s2StreamRecords(s2Stream, {
-      seq_num: startSeq ?? 0,
-      clamp: true,
+      ...(tailFromLatest ? { tail_offset: 1 } : { seq_num: startSeq ?? 0, clamp: true }),
       wait: options?.timeoutInSeconds ?? this.s2WaitSeconds, // S2 will keep the connection open and stream new records
       signal, // Pass abort signal so S2 connection is cleaned up when client disconnects
     });
@@ -672,6 +677,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     stream: string,
     opts: {
       seq_num?: number;
+      tail_offset?: number;
       clamp?: boolean;
       wait?: number;
       signal?: AbortSignal;
@@ -680,6 +686,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     // GET /v1/streams/{stream}/records with Accept: text/event-stream for SSE streaming
     const qs = new URLSearchParams();
     if (opts.seq_num != null) qs.set("seq_num", String(opts.seq_num));
+    if (opts.tail_offset != null) qs.set("tail_offset", String(opts.tail_offset));
     if (opts.clamp != null) qs.set("clamp", String(opts.clamp));
     if (opts.wait != null) qs.set("wait", String(opts.wait));
 

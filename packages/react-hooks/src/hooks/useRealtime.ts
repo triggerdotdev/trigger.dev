@@ -658,6 +658,30 @@ export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
   startIndex?: number;
 
   /**
+   * Where a fresh subscription starts reading.
+   *
+   * - `"beginning"` (default): replay the full stream history, then live-tail.
+   * - `"latest"`: skip history and start at the current tail — only records
+   *   appended after the hook connects are delivered (a last-value / live
+   *   view). On reconnect or remount the subscription resumes from the last
+   *   record it saw, so no frames are missed and none are replayed.
+   *
+   * Ignored when `startIndex` is set (which pins an absolute start position).
+   */
+  from?: "beginning" | "latest";
+
+  /**
+   * Cap the number of parts kept in the accumulated `parts` array. When more
+   * than `maxParts` parts have been received, only the most recent `maxParts`
+   * are retained (older parts are dropped). Use `maxParts: 1` together with
+   * `from: "latest"` for a pure last-value view with bounded memory.
+   *
+   * When unset, `parts` accumulates every record for the lifetime of the
+   * subscription (the default).
+   */
+  maxParts?: number;
+
+  /**
    * Callback this is called when new data is received.
    */
   onData?: (data: TPart) => void;
@@ -834,6 +858,17 @@ function useRealtimeStreamImplementation<TPart>(
     partsRef.current = parts || ([] as Array<TPart>);
   }, [parts]);
 
+  const { data: persistedLastEventId, mutate: mutateLastEventId } = useSWR<string | undefined>(
+    [idKey, runId, streamKey, "lastEventId"],
+    null
+  );
+  const lastEventIdRef = useRef<string | undefined>(persistedLastEventId);
+  useEffect(() => {
+    if (persistedLastEventId !== undefined) {
+      lastEventIdRef.current = persistedLastEventId;
+    }
+  }, [persistedLastEventId]);
+
   // Add state to track when the subscription is complete
   const { data: _isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
     [idKey, runId, streamKey, "complete"],
@@ -869,6 +904,8 @@ function useRealtimeStreamImplementation<TPart>(
   const timeoutInSeconds = options?.timeoutInSeconds;
   const startIndex = options?.startIndex;
   const throttleInMs = options?.throttleInMs;
+  const from = options?.from;
+  const maxParts = options?.maxParts;
 
   const triggerRequest = useCallback(async () => {
     try {
@@ -890,7 +927,11 @@ function useRealtimeStreamImplementation<TPart>(
         abortControllerRef,
         timeoutInSeconds,
         startIndex,
-        throttleInMs ?? 16
+        throttleInMs ?? 16,
+        from,
+        maxParts,
+        lastEventIdRef,
+        (id) => mutateLastEventId(id, false)
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -919,6 +960,9 @@ function useRealtimeStreamImplementation<TPart>(
     timeoutInSeconds,
     startIndex,
     throttleInMs,
+    from,
+    maxParts,
+    mutateLastEventId,
   ]);
   const requestSubscription = useStableRequestCallback(triggerRequest);
 
@@ -1114,18 +1158,39 @@ async function processRealtimeStream<TPart>(
   abortControllerRef: React.MutableRefObject<AbortController | null>,
   timeoutInSeconds?: number,
   startIndex?: number,
-  throttleInMs?: number
+  throttleInMs?: number,
+  from?: "beginning" | "latest",
+  maxParts?: number,
+  lastEventIdRef?: React.MutableRefObject<string | undefined>,
+  persistLastEventId?: (id: string) => void
 ) {
   try {
+    const resumeFromEventId =
+      lastEventIdRef?.current ?? (startIndex ? (startIndex - 1).toString() : undefined);
+
     const stream = await apiClient.fetchStream<TPart>(runId, streamKey, {
       signal: abortControllerRef.current?.signal,
       timeoutInSeconds,
-      lastEventId: startIndex ? (startIndex - 1).toString() : undefined,
+      lastEventId: resumeFromEventId,
+      from,
+      onPart: (part) => {
+        if (part.id && lastEventIdRef) {
+          lastEventIdRef.current = part.id;
+        }
+      },
     });
 
     // Throttle the stream
     const streamQueue = createThrottledQueue<TPart>(async (parts) => {
-      mutatePartsData([...existingPartsRef.current, ...parts]);
+      const combined = [...existingPartsRef.current, ...parts];
+      const bounded =
+        maxParts != null && maxParts >= 0 && combined.length > maxParts
+          ? combined.slice(combined.length - maxParts)
+          : combined;
+      mutatePartsData(bounded);
+      if (persistLastEventId && lastEventIdRef?.current) {
+        persistLastEventId(lastEventIdRef.current);
+      }
     }, throttleInMs);
 
     for await (const part of stream) {
