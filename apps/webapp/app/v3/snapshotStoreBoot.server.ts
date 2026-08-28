@@ -1,4 +1,5 @@
 import { scanTargetsOf, type SnapshotStoreMode } from "@internal/run-store";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { getSnapshotRepairEnqueuer } from "./snapshotStoreBindings.server";
@@ -214,9 +215,8 @@ export async function assertSnapshotStoreBootFromEnv(): Promise<void> {
     ping: pingSweepClient,
     evictionPolicy: readEvictionPolicy,
     repairBound: () => !!getSnapshotRepairEnqueuer(),
-    // Read raw: the variable is out of the parsed env schema, and the point is to notice a value
-    // nothing consumes any more.
-    legacyEnvHalt: process.env.RUN_ENGINE_SNAPSHOT_STORE_HALT === "1",
+    // Through the env adapter like every other variable. It is in the schema for this check alone.
+    legacyEnvHalt: env.RUN_ENGINE_SNAPSHOT_STORE_HALT === "1",
     log: (message, fields) =>
       logger.info(message, {
         ...fields,

@@ -92,4 +92,66 @@ describe("CircuitBreaker", () => {
     }
     expect(breaker.state).toBe("closed");
   });
+  it("lets exactly ONE caller through a half-open window", async () => {
+    // Without this, every concurrent caller reads "half-open" and enters the call, so during an
+    // outage each one pays the full retry timeout instead of one of them probing recovery. The
+    // breaker would open again afterwards, but the cost it exists to avoid has already been paid.
+    const breaker = new CircuitBreaker({ failureThreshold: 3, openDurationMs: 20 });
+    for (let i = 0; i < 3; i++) {
+      await expect(breaker.run(async () => Promise.reject(connectivityError()))).rejects.toThrow();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(breaker.state).toBe("half-open");
+
+    let entered = 0;
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // The trial, held pending so the window stays open while the others arrive.
+    const trial = breaker.run(async () => {
+      entered += 1;
+      await held;
+      return "trial";
+    });
+
+    const others = await Promise.allSettled([
+      breaker.run(async () => {
+        entered += 1;
+        return "second";
+      }),
+      breaker.run(async () => {
+        entered += 1;
+        return "third";
+      }),
+    ]);
+
+    expect(entered).toBe(1);
+    for (const r of others) {
+      expect(r.status).toBe("rejected");
+      expect((r as PromiseRejectedResult).reason).toBeInstanceOf(SnapshotStoreUnavailableError);
+    }
+
+    release!();
+    await expect(trial).resolves.toBe("trial");
+    // The trial succeeded, so the circuit is closed and normal traffic resumes.
+    expect(breaker.state).toBe("closed");
+  });
+
+  it("frees the half-open slot when the trial fails, rather than wedging shut", async () => {
+    const breaker = new CircuitBreaker({ failureThreshold: 3, openDurationMs: 20 });
+    for (let i = 0; i < 3; i++) {
+      await expect(breaker.run(async () => Promise.reject(connectivityError()))).rejects.toThrow();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    await expect(breaker.run(async () => Promise.reject(connectivityError()))).rejects.toThrow();
+    expect(breaker.state).toBe("open");
+
+    // A failed trial re-opens the circuit, and after the next window another single trial is allowed.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(await breaker.run(async () => "recovered")).toBe("recovered");
+    expect(breaker.state).toBe("closed");
+  });
 });

@@ -1333,6 +1333,17 @@ const EnvironmentSchema = z
     // The hard stop, "1" to halt. Separate from MODE because MODE governs births only: turning it
     // down cannot stop a resident run mirroring. Holding this from the environment outranks the
     // snapshotStoreHalt flag, which is the no-deploy control for the same thing.
+    /**
+     * RETIRED. The hard stop is the snapshotStoreHalt feature flag and nothing else: an environment
+     * variable converged over a rolling deploy rather than a flag interval, and during that window a
+     * stopped process skips a transition while a running one asserts a head that was never written.
+     *
+     * Kept in the schema for one purpose only, so boot can REFUSE to start when it is still set to
+     * "1". A variable that no longer stops anything leaves an operator believing the mirror is
+     * stopped while it runs. Nothing else reads it, and a value of "0" carries no intent so it is
+     * ignored.
+     */
+    RUN_ENGINE_SNAPSHOT_STORE_HALT: z.string().optional(),
     RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX: z.coerce.number().int().default(10_000),
     // No fallback to REDIS_*: this is a distinct durable endpoint and must be set explicitly, or

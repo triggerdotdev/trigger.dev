@@ -151,4 +151,45 @@ describe("a saved organisation dial survives a lagging replica", () => {
 
     expect(source.get("org_1")).toBe("dual-write");
   });
+  it("keeps the save protected when two invalidations for one organisation overlap", async () => {
+    // primaryPending was a Set, so the FIRST primary read's finally cleared it while the SECOND was
+    // still in flight. A refresh arriving in that window then started a replica read carrying the
+    // current generation, so the generation guard could not discard it, and a lagging replica put
+    // the pre-save value back for a full cache TTL.
+    const firstPrimary = deferred();
+    const secondPrimary = deferred();
+    const replica = deferred();
+    const primaries = [firstPrimary, secondPrimary];
+    let primaryCalls = 0;
+
+    const source = createOrgModeSource({
+      primary: clientFor(() => primaries[primaryCalls++]!.promise),
+      replica: clientFor(() => replica.promise),
+    });
+
+    // Two saves for the same organisation, overlapping.
+    source.invalidate("org_1");
+    source.invalidate("org_1");
+
+    // The FIRST primary read completes. The second is still outstanding, so the organisation must
+    // still count as pending.
+    firstPrimary.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // A concurrent read arrives while the second save is still reading. It must not start a replica
+    // read, because the authoritative answer is still on its way.
+    source.refresh("org_1");
+
+    // The second save lands with the value that must win.
+    secondPrimary.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(source.get("org_1")).toBe("dual-write");
+
+    // NOW the lagging replica lands, carrying the pre-save value. It shares the second save's
+    // generation, so the generation guard cannot discard it: only never having started can stop it.
+    replica.resolve({ featureFlags: {} });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(source.get("org_1")).toBe("dual-write");
+  });
 });

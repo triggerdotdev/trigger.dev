@@ -60,6 +60,12 @@ export class CircuitBreaker {
   readonly #now: () => number;
   #consecutiveFailures = 0;
   #openedAt?: number;
+  /**
+   * Whether a half-open trial is already out. Without it every concurrent caller reads `half-open`
+   * and enters the call, so during an outage each one pays the full retry timeout, which is the cost
+   * the breaker exists to avoid. One caller probes recovery; the rest are refused until it settles.
+   */
+  #trialInFlight = false;
 
   constructor(options: CircuitBreakerOptions = {}) {
     this.#failureThreshold = options.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
@@ -75,11 +81,21 @@ export class CircuitBreaker {
   }
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.state === "open") {
+    const state = this.state;
+
+    if (state === "open") {
       throw new SnapshotStoreUnavailableError();
     }
 
-    // half-open lets exactly this one call through. It either closes the circuit or re-opens it.
+    // Reserved BEFORE the call, not after: the reservation is the whole point, and checking it
+    // afterwards would let every arriving caller through first.
+    if (state === "half-open") {
+      if (this.#trialInFlight) {
+        throw new SnapshotStoreUnavailableError();
+      }
+      this.#trialInFlight = true;
+    }
+
     try {
       const result = await fn();
       this.#consecutiveFailures = 0;
@@ -94,11 +110,19 @@ export class CircuitBreaker {
       }
 
       this.#consecutiveFailures += 1;
-      if (this.state === "half-open" || this.#consecutiveFailures >= this.#failureThreshold) {
+      // `state` is captured above: reading this.state here would see the value AFTER a re-open and
+      // could not tell a failed trial from an ordinary failure.
+      if (state === "half-open" || this.#consecutiveFailures >= this.#failureThreshold) {
         this.#openedAt = this.#now();
         this.#consecutiveFailures = 0;
       }
       throw error;
+    } finally {
+      // Always released, whatever the outcome. A trial that threw something unexpected must not
+      // leave the breaker refusing every caller for the rest of the process's life.
+      if (state === "half-open") {
+        this.#trialInFlight = false;
+      }
     }
   }
 }

@@ -840,18 +840,30 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   /**
-   * None of the append outcomes is a thrown failure, and none enqueues a repair.
+   * No append outcome is a thrown failure. Exactly one of them enqueues a repair.
    *
    * `skippedNoKeyspace` is a run that is not resident: every pre-cutover run's transitions, and
    * every run whose organisation was at `off` when it was born. `duplicate` is a retry that already
    * landed. `cycleMismatch` means the store refused an untrustworthy waitpoint pointer on purpose.
+   * None of those three is a fault, and none enqueues anything.
    *
    * `forked` is none of those. It was read as expected contention, from a model where any writer
    * could append to any run. With a run's store fixed at birth the writer set per run is stable, so
    * a fork is either a lost append or a genuinely concurrent writer, and by the time it is seen the
-   * head already disagrees with Postgres. It is logged at error and paged on, not repaired: a repair
-   * re-derives the head from Postgres, and two previous attempts at that in this area were withdrawn
-   * as unsafe, so an operator decides. See the SnapshotStoreAppendForked rule.
+   * head already disagrees with Postgres.
+   *
+   * A fork therefore enqueues a repair as well as paging. It did not, once, and that was a defect:
+   * the two compare-and-set sites assert the head, so a head left wrong makes every later append
+   * from those sites fork too, and the mirror stays frozen for the rest of the run's life. Nothing
+   * else clears it. The sweep will not: it skips live runs by design.
+   *
+   * Two earlier attempts at Postgres-driven head repair in this area were withdrawn as unsafe, and
+   * this is not a third. Both asserted `cur` while re-appending, so they could fork on the very
+   * condition they were sent to fix. This repair asserts nothing: it re-derives the head from
+   * Postgres, refuses when the mirror head is already current or demonstrably newer, and marks the
+   * keyspace so window reads fall back rather than serve the entries the fork lost. See the
+   * SnapshotStoreAppendForked rule, which now reads as "divergence happened" rather than "divergence
+   * persists".
    */
   async #recordOutcome(
     site: string,
@@ -977,7 +989,17 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
-    return this.#hydrate(read, runId, client, { hydrateWaitpointRows: true });
+    // Hydration is inside the boundary too. It makes a SECOND Redis call when the entry has a wait
+    // cycle whose ids the read did not carry, and a failure there is the same brownout the catch
+    // above exists for. Leaving it outside meant a waitpoint-bearing run still threw into the
+    // engine while a plain one fell back.
+    try {
+      return await this.#hydrate(read, runId, client, { hydrateWaitpointRows: true });
+    } catch (error) {
+      if (!this.#readMayFallBack()) throw error;
+      this.#reportReadUnavailable("findLatestExecutionSnapshot", runId, error);
+      return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
+    }
   }
 
   override async findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
@@ -1049,10 +1071,19 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const descending = [...result.entries].reverse();
     // Rows are hydrated for no entry here: the engine fetches the head's waitpoints itself, from
     // the ids this call's head row reports. Each row still carries its own order.
-    const hydrated = await Promise.all(
-      descending.map((entry) => this.#hydrate(entry, shape.runId, client))
-    );
-    return hydrated as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
+    //
+    // Inside the boundary for the same reason as the sibling read: hydration can make a second Redis
+    // call, and one window entry failing it must fall back rather than throw.
+    try {
+      const hydrated = await Promise.all(
+        descending.map((entry) => this.#hydrate(entry, shape.runId, client))
+      );
+      return hydrated as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
+    } catch (error) {
+      if (!this.#readMayFallBack()) throw error;
+      this.#reportReadUnavailable("findManyExecutionSnapshots", shape.runId, error);
+      return this.delegate.findManyExecutionSnapshots(args, client);
+    }
   }
 
   override async findSnapshotCompletedWaitpointIds(

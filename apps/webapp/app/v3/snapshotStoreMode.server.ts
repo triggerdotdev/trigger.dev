@@ -125,11 +125,17 @@ export function createOrgModeSource(clients?: {
     ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS ?? DEFAULT_CACHE_TTL_MS,
   });
   const inFlight = new Set<string>();
-  // Organisations whose primary read is still in flight after a save. A replica refresh started in
-  // that window would carry the SAME generation as the invalidation, so the generation guard below
-  // could not discard it, and a lagging replica landing second would restore the pre-save value for
-  // a full cache TTL. The save is the one read that must win, so nothing else reads during it.
-  const primaryPending = new Set<string>();
+  // Organisations whose primary read is still in flight after a save, keyed to the GENERATION that
+  // owns the read. A replica refresh started in that window would carry the SAME generation as the
+  // invalidation, so the generation guard below could not discard it, and a lagging replica landing
+  // second would restore the pre-save value for a full cache TTL. The save is the one read that must
+  // win, so nothing else reads during it.
+  //
+  // A Set was not enough. Two overlapping saves for one organisation share one entry, so the FIRST
+  // read's completion cleared it while the second was still outstanding, and the window reopened
+  // exactly when a second save made it most dangerous. Holding the generation means a completing
+  // read only clears the flag when it still owns it.
+  const primaryPending = new Map<string, number>();
   // A replica read that started before an invalidation can land after the primary read and put the
   // superseded value back. A per-organisation generation lets a stale load discard its own result.
   const generations = new Map<string, number>();
@@ -143,9 +149,13 @@ export function createOrgModeSource(clients?: {
       const generation = generationOf(organizationId) + 1;
       generations.set(organizationId, generation);
       cache.delete(organizationId);
-      primaryPending.add(organizationId);
+      primaryPending.set(organizationId, generation);
       void load(organizationId, primaryClient, generation).finally(() => {
-        primaryPending.delete(organizationId);
+        // Only if no NEWER save has claimed it since. Deleting unconditionally is what let an older
+        // read reopen the window for a newer one.
+        if (primaryPending.get(organizationId) === generation) {
+          primaryPending.delete(organizationId);
+        }
       });
     },
     refresh: (organizationId) => {

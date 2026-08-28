@@ -176,4 +176,76 @@ describe("the gaps marker", () => {
       }
     }
   );
+  redisTest(
+    "a transition that finds the index gone marks the history, rather than rebuilding a partial one",
+    async ({ redisOptions }) => {
+      // keyspaceAlive tests the entry hash and seq, not the index. An index lost while those two
+      // survive used to let the next transition recreate it holding only that entry, and a window
+      // read would then see a live index, report a hit, and return one entry as the whole range.
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const runId = "run_index_lost";
+        await seed(store, runId, 4);
+        expect(await store.hasGaps(runId)).toBe(false);
+
+        // Lose the index only, the way a per-key expiry or eviction would.
+        await probe.del(snapshotKeys(runId).idx);
+        expect(await probe.exists(snapshotKeys(runId).e)).toBe(1);
+
+        await store.append({
+          entry: entry(runId, "snap_after_loss", at(9)),
+          kind: "transition",
+          isTerminal: false,
+        });
+
+        // The index is back, holding one entry, which is exactly the trap.
+        expect(await probe.exists(snapshotKeys(runId).idx)).toBe(1);
+        // So the keyspace is marked and the window refuses instead of serving a one-entry range.
+        expect(await store.hasGaps(runId)).toBe(true);
+        expect((await store.getSinceCreatedAt(runId, at(1))).kind).toBe("miss");
+
+        // The head still moves: refusing the transition would have frozen it.
+        expect((await store.getLatest(runId))?.entry.id).toBe("snap_after_loss");
+      } finally {
+        await Promise.all([store.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  redisTest(
+    "dropping a run removes its wait cycle keys even when seq is already gone",
+    async ({ redisOptions }) => {
+      // The cycle count lives on seq, so seq being absent read as zero cycles and left every wait
+      // cycle key behind, while dropRun claimed to remove the whole keyspace. The sweep cannot see
+      // those either: it discovers keyspaces by the entry hash.
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const runId = "run_orphan_cycles";
+        // Derived, never hardcoded: snapshotKeys returns UNPREFIXED keys and the `engine:` prefix is
+        // the client's, which testcontainers do not set. A literal prefix here creates keys the
+        // script never looks at, and the test passes or fails for the wrong reason.
+        const eKey = snapshotKeys(runId).e;
+        const base = eKey.slice(0, -2);
+        await seed(store, runId, 2);
+
+        // Wait cycle keys as the append script writes them, then lose seq.
+        await probe.hset(`${base}:wp:1`, "order", "[]", "count", "0", "distinct", "[]");
+        await probe.hset(`${base}:wp:2`, "order", "[]", "count", "0", "distinct", "[]");
+        await probe.del(snapshotKeys(runId).seq);
+
+        await store.dropRun(runId);
+
+        for (const key of [`${base}:wp:1`, `${base}:wp:2`]) {
+          expect(await probe.exists(key)).toBe(0);
+        }
+        for (const key of Object.values(snapshotKeys(runId))) {
+          expect(await probe.exists(key)).toBe(0);
+        }
+      } finally {
+        await Promise.all([store.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
 });

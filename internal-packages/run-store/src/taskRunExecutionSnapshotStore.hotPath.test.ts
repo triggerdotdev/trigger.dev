@@ -251,4 +251,92 @@ describe("a Redis that stops answering", () => {
       await redis.quit();
     }
   });
+  containerTest(
+    "falls back even when the SECOND Redis call is the one that fails",
+    async ({ prisma, redisOptions }) => {
+      // The first fix caught the read itself but stopped before hydration. A snapshot with a wait
+      // cycle whose ids were not carried by the read makes a follow-up Redis call inside #hydrate,
+      // and a failure there threw straight into the engine at redis-read, which is the case the
+      // fallback exists for.
+      const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      const plain = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
+        store: redis,
+        mode: "redis-read",
+        readPercent: 100,
+      });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        await decorated.createRun({
+          data: buildCreateRunData(runId, env),
+          snapshot: birthSnapshot(env),
+        });
+
+        // A transition carrying a wait cycle, so the head has waitpoints and hydration has a reason
+        // to ask Redis for them.
+        const waitpoint = await prisma.waitpoint.create({
+          data: {
+            friendlyId: `waitpoint_${generateInternalId()}`,
+            type: "MANUAL",
+            status: "COMPLETED",
+            completedAt: new Date(),
+            idempotencyKey: generateInternalId(),
+            userProvidedIdempotencyKey: false,
+            environmentId: env.id,
+            projectId: env.projectId,
+          },
+        });
+        await decorated.createExecutionSnapshot({
+          run: { id: runId, status: "EXECUTING" },
+          snapshot: { executionStatus: "EXECUTING", description: "Resumed" },
+          completedWaitpoints: [{ id: waitpoint.id, index: 0 }],
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+        } as never);
+
+        // One more transition, so the waitpoint-bearing entry is no longer the head. Only the HEAD
+        // row of a window is decoded with its waitpoint ids; every other row has to ask, and that
+        // ask is the second Redis call this test is about.
+        await decorated.createExecutionSnapshot({
+          run: { id: runId, status: "EXECUTING" },
+          snapshot: { executionStatus: "EXECUTING", description: "Still executing" },
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+        } as never);
+
+        // Let the first read succeed and the hydration call fail, by breaking only that method.
+        const realWaitpointIds = redis.getSnapshotWaitpointIds.bind(redis);
+        let hydrationCalls = 0;
+        (redis as unknown as Record<string, unknown>).getSnapshotWaitpointIds = async () => {
+          hydrationCalls += 1;
+          throw new Error("Command timed out");
+        };
+
+        // The WINDOW read, not the head read. The head read carries the waitpoint ids already, so
+        // its hydration never asks Redis; the window entries do not, which is where the second call
+        // lives and where the gap was.
+        const served = await decorated.findManyExecutionSnapshots({
+          where: { runId, isValid: true, createdAt: { gt: new Date(Date.now() - 3_600_000) } },
+          include: { checkpoint: true },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        } as never);
+
+        expect(Array.isArray(served)).toBe(true);
+        expect(served.length).toBeGreaterThan(0);
+
+        (redis as unknown as Record<string, unknown>).getSnapshotWaitpointIds = realWaitpointIds;
+        // Asserted, not hoped for: without this the test passes on a run whose hydration never
+        // reaches Redis, and proves nothing at all.
+        expect(hydrationCalls).toBeGreaterThanOrEqual(1);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
 });

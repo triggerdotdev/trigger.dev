@@ -2,8 +2,6 @@ import type { Meter } from "@internal/tracing";
 import { APPEND_RESULT_OUTCOMES } from "@internal/run-store";
 import type { DecoratorMetrics, SnapshotStoreMetrics } from "@internal/run-store";
 
-export type SnapshotSweepCounts = Record<string, number | boolean>;
-
 // Metric attributes must be bounded: every one of these is a time series. The store and the
 // decorator type their outcome strings loosely, so anything unrecognised collapses to "other"
 // rather than minting a series.
@@ -12,23 +10,6 @@ const APPEND_TTLS = ["none", "completion", "reapplied"] as const;
 /** Derived from the store's own vocabulary, so an added outcome cannot silently become "other". */
 export const WRITE_OUTCOMES = APPEND_RESULT_OUTCOMES;
 const READ_SOURCES = ["redis", "postgres"] as const;
-const SWEEP_OUTCOMES = [
-  "completed",
-  "partial",
-  "skipped_locked",
-  "failed",
-  "unbound",
-  "aborted",
-] as const;
-const SWEEP_FIELDS = [
-  "scanned",
-  "expired",
-  "deleted",
-  "skipped",
-  "pendingDeletion",
-  "nodes",
-] as const;
-
 const WRITE_SITES = [
   "createRun",
   "createCancelledRun",
@@ -85,8 +66,6 @@ export function createSnapshotStoreMetrics(meter: Meter) {
   const cycleKeyBytes = meter.createHistogram("run_engine.snapshot_store.cycle_key_bytes");
   const cycleCount = meter.createHistogram("run_engine.snapshot_store.cycle_count");
   const opLatency = meter.createHistogram("run_engine.snapshot_store.op_latency_ms");
-  const sweepPass = meter.createCounter("run_engine.snapshot_store.sweep_pass_total");
-  const sweepCounts = meter.createHistogram("run_engine.snapshot_store.sweep_counts");
 
   const store: SnapshotStoreMetrics = {
     recordAppend: (outcome, ttl) =>
@@ -120,18 +99,8 @@ export function createSnapshotStoreMetrics(meter: Meter) {
       }),
   };
 
-  /** One emitter per pass, so a pass that throws is distinguishable from one that succeeded. */
-  function recordSweepPass(outcome: string, counts?: SnapshotSweepCounts): void {
-    sweepPass.add(1, { outcome: bounded(outcome, SWEEP_OUTCOMES) });
-    if (!counts) {
-      return;
-    }
-    for (const [field, value] of Object.entries(counts)) {
-      if (typeof value === "number" && SWEEP_FIELDS.includes(field as never)) {
-        sweepCounts.record(value, { field });
-      }
-    }
-  }
-
-  return { store, decorator, recordSweepPass };
+  // No sweep emitter here. The engine owns the sweep metrics, because the engine is what schedules
+  // and runs a pass: see snapshotSweepPassCounter and snapshotSweepCountsHistogram. A second
+  // emitter on this side was dead, and its field list had already drifted from the engine's.
+  return { store, decorator };
 }

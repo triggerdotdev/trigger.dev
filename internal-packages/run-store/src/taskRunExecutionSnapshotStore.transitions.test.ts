@@ -375,6 +375,7 @@ describe("transition write ordering", () => {
 
       // A stale previousSnapshotId: the head is not what this write expected. Every later
       // compare-and-set append would fork too, so the run needs the head re-derived from Postgres.
+      const forkedSnapshotId = generateInternalId();
       await decorated.lockRunToWorker(runId, {
         lockedAt: new Date(),
         lockedById: taskId,
@@ -385,7 +386,7 @@ describe("transition write ordering", () => {
         machinePreset: "small-1x",
         taskVersion: "1.0.0",
         snapshot: {
-          id: generateInternalId(),
+          id: forkedSnapshotId,
           previousSnapshotId: generateInternalId(),
           attemptNumber: 1,
           environmentId: env.id,
@@ -398,8 +399,12 @@ describe("transition write ordering", () => {
       });
 
       expect(writes).toContainEqual({ site: "lockRunToWorker", outcome: "forked" });
+      // Exactly one repair, carrying the entry that could not land. One per run, not one per
+      // transition: the enqueue is deduplicated under the stall watchdog's job id.
       expect(repairs).toHaveLength(1);
-      expect(repairs[0]).toMatchObject({ runId });
+      expect(repairs[0]!.runId).toBe(runId);
+      expect(repairs[0]!.snapshotId).toBe(forkedSnapshotId);
+      expect(repairs[0]!.executionStatus).toBe("PENDING_EXECUTING");
     } finally {
       await redis.quit();
     }

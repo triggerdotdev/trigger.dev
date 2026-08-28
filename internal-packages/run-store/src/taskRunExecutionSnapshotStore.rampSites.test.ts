@@ -161,7 +161,13 @@ describe("the per-organisation ramp", () => {
     expect(appends.every((a) => a.kind === "transition")).toBe(true);
   });
 
-  it("mirrors no birth for an organisation held at off, and still mirrors a resident run's transitions", async () => {
+  // Named for what it can prove. It asserts which CALL SITES reach Redis, which is a seam-level
+  // property: the append here is a recording double, so no keyspace exists and residency itself is
+  // not exercised. That a RESIDENT run keeps mirroring after its organisation moves to off is
+  // covered against real infrastructure elsewhere, and was verified by hand as well: a run born at
+  // dual-write went from 3 entries to 8 with its head matching Postgres after the organisation was
+  // pinned off mid-flight.
+  it("asks Redis at no birth site for an organisation held at off, and still asks at every transition site", async () => {
     const { decorated, appends } = harness("dual-write", "off");
 
     await births(decorated);

@@ -927,6 +927,18 @@ export class RedisSnapshotStore {
           redis.call('HSET', seqKey, 'g', '1')
         end
 
+        -- The index can go while the entry hash and seq survive, and keyspaceAlive does not test it.
+        -- This append is about to recreate it holding only the new entry, and a window read would
+        -- then see a live index, report a HIT, and return that one entry as though it were the whole
+        -- range. Same silent short history as a lost append, so it is recorded the same way: the head
+        -- keeps moving and window reads fall back to Postgres, which still holds the log.
+        --
+        -- Refusing the transition instead would freeze the head, which is the outcome this whole area
+        -- exists to avoid.
+        if kind == 'transition' and redis.call('EXISTS', idxKey) == 0 then
+          redis.call('HSET', seqKey, 'g', '1')
+        end
+
         local seq = redis.call('HINCRBY', seqKey, 'e', 1)
 
         local cycleSeq = 0
@@ -1017,10 +1029,30 @@ export class RedisSnapshotStore {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
+        -- The high-water mark, when seq still has it. It is the fast path and the common one.
         local cycles = tonumber(redis.call('HGET', seqKey, 'c') or '0')
         for i = 1, cycles do
           redis.call('DEL', wpKey(i))
         end
+
+        -- seq holds the count, so seq being gone used to mean the count read as 0 and every wait
+        -- cycle key was left behind, while this command claimed to remove the whole keyspace. An
+        -- orphan the sweep cannot see either, because it discovers keyspaces by the entry hash.
+        --
+        -- So probe past the mark. A short miss tolerance covers a stale count as well as an absent
+        -- one, and the bound keeps a pathological run from turning a drop into a long script. Keys
+        -- here all share the {runId} tag, so this stays inside one slot.
+        local misses = 0
+        local probe = cycles + 1
+        while misses < 8 and probe <= cycles + 512 do
+          if redis.call('DEL', wpKey(probe)) == 1 then
+            misses = 0
+          else
+            misses = misses + 1
+          end
+          probe = probe + 1
+        end
+
         return redis.call('DEL', eKey, idxKey, curKey, seqKey)
       `,
     });

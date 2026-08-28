@@ -14,7 +14,7 @@ groups:
       - alert: SnapshotStoreAppendFailing
         # Any sustained failure at all, not a rate threshold: one failed append per minute still
         # burns one attempt per minute on the runs it touches.
-        expr: sum(rate({__name__=~".*run_engine_snapshot_store_append_failed_total"}[5m])) > 0
+        expr: sum(rate({__name__=~".*run_engine_snapshot_store_append_failed(_total)?"}[5m])) > 0
         for: 10m
         labels:
           severity: page
@@ -30,26 +30,34 @@ groups:
             investigate the Redis endpoint.
 
       - alert: SnapshotStoreAppendForked
-        # A fork is a divergence that has already happened, and nothing heals it: the head moved
-        # under an append that was refused, so Redis and Postgres now disagree about that run's
-        # latest snapshot. With a run's store fixed at birth the writer set per run is stable, so
-        # this is a lost append or a genuine concurrent writer, not steady-state noise.
-        expr: sum(rate({__name__=~".*run_engine_snapshot_store_write_total",outcome="forked"}[5m])) > 0
+        # A fork is a divergence that has already happened: the head moved under an append that was
+        # refused, so Redis and Postgres now disagree about that run's latest snapshot. With a run's
+        # store fixed at birth the writer set per run is stable, so this is a lost append or a
+        # genuine concurrent writer, not steady-state noise.
+        #
+        # A fork now enqueues a repair automatically, and the repair re-derives the head from
+        # Postgres. So this alert means "divergence happened", not "divergence persists": it should
+        # clear on its own. It pages because a fork that does NOT clear is a stuck repair, and
+        # because the entries lost with the append are not recovered even when the head is.
+        expr: sum(rate({__name__=~".*run_engine_snapshot_store_write_total(_total)?",outcome="forked"}[5m])) > 0
         for: 5m
         labels:
           severity: page
         annotations:
           summary: "Execution-snapshot appends are being refused as forked"
           description: >-
-            One or more runs have a Redis head that disagrees with Postgres, and no repair is
-            enqueued for a fork. Below redis-only Postgres is authoritative, so turn the
-            snapshotStoreMode flag down to off to stop new runs entering Redis, then resync the
-            affected runs before trusting a Redis read. Do NOT halt: that freezes every resident
-            run's head instead of just the forked ones.
+            One or more runs had a Redis head that disagreed with Postgres. A repair was enqueued
+            automatically for each, so first check whether the rate is falling: a fork that clears
+            itself needs no action. If it is not falling, the repair is not running, and that is the
+            thing to investigate. Below redis-only Postgres is authoritative, so turning the
+            snapshotStoreMode flag down to off stops new runs entering Redis while you look. Do NOT
+            halt: that disables the repair and freezes every resident run's head instead of just the
+            forked ones. Note that a repaired run has a correct head but is missing the entries lost
+            with the append, so its keyspace is marked and window reads fall back to Postgres.
 
       - alert: SnapshotStoreSweepNotCompleting
         # The sweep is the only reaper for orphaned keyspaces. Its absence is silent by nature.
-        expr: sum(increase({__name__=~".*run_engine_snapshot_store_sweep_pass_total",outcome="completed"}[24h])) == 0
+        expr: sum(increase({__name__=~".*run_engine_snapshot_store_sweep_pass_total(_total)?",outcome="completed"}[24h])) == 0
         for: 1h
         labels:
           severity: ticket
