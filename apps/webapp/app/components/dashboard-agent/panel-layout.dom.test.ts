@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { Panel, PanelGroup, PanelResizer } from "@window-splitter/react";
-import { createElement, useEffect } from "react";
+import { createElement, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PanInfo } from "framer-motion";
 import { useDraggableResizable } from "~/components/primitives/DraggableResizable";
 import {
@@ -239,6 +239,10 @@ describe("FloatingAgentWindow's fullscreen geometry", () => {
 // and an agent panel that's either sized (rightPanel) or truly collapsed (otherwise).
 // A leftover fixed-pixel track from a hidden-not-unmounted handle, or from a "0px" panel
 // that doesn't actually collapse, pushes the grid past its own container's width.
+// The handle is ALWAYS mounted (only its `size` varies) — PanelGroup keys children by
+// index after dropping falsy ones (@window-splitter/react's useIndexedChildren), so a
+// conditionally-rendered handle shifts the agent panel's key on every mode switch and
+// remounts the whole chat subtree beneath it.
 function renderDashboardAgentGrid(rightPanel: boolean) {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -249,9 +253,10 @@ function renderDashboardAgentGrid(rightPanel: boolean) {
         PanelGroup,
         { orientation: "horizontal" },
         createElement(Panel, { id: "dashboard-content", min: "320px" }),
-        rightPanel
-          ? createElement(PanelResizer, { id: "dashboard-agent-handle", size: "3px" })
-          : null,
+        createElement(PanelResizer, {
+          id: "dashboard-agent-handle",
+          size: rightPanel ? "3px" : "0px",
+        }),
         createElement(Panel, {
           id: "dashboard-agent-panel",
           default: "380px",
@@ -345,9 +350,9 @@ describe("FloatingAgentWindow clears floating geometry when it docks", () => {
 });
 
 describe("DashboardAgent's degenerate grid tracks outside rightPanel", () => {
-  it("unmounts the handle and collapses the agent panel to a bare 0px track", () => {
+  it("keeps the handle mounted but collapses it and the agent panel to bare 0px tracks", () => {
     const group = renderDashboardAgentGrid(false);
-    expect(group.querySelector('[data-splitter-type="handle"]')).toBeNull();
+    expect(group.querySelector('[data-splitter-type="handle"]')).not.toBeNull();
     const columns = group.style.gridTemplateColumns;
     expect(columns.endsWith("0px")).toBe(true);
     expect(columns).not.toMatch(/\b3px\b/);
@@ -357,5 +362,73 @@ describe("DashboardAgent's degenerate grid tracks outside rightPanel", () => {
     const group = renderDashboardAgentGrid(true);
     expect(group.querySelector('[data-splitter-type="handle"]')).not.toBeNull();
     expect(group.style.gridTemplateColumns).toMatch(/\b3px\b/);
+  });
+});
+
+// Mirrors DashboardAgent.tsx's real PanelGroup/Panel/PanelResizer shape (not the
+// FloatingAgentWindow-standalone test above, which never puts a handle between the
+// panels and so is blind to the sibling-key-shift bug this pins).
+function renderDashboardAgentGridTree(rightPanel: boolean, agentChild: ReactNode) {
+  return createElement(
+    PanelGroup,
+    { orientation: "horizontal" },
+    createElement(Panel, { id: "dashboard-content", min: "320px" }),
+    createElement(PanelResizer, {
+      id: "dashboard-agent-handle",
+      size: rightPanel ? "3px" : "0px",
+    }),
+    createElement(
+      Panel,
+      {
+        id: "dashboard-agent-panel",
+        default: "380px",
+        min: "320px",
+        max: "720px",
+        collapsible: true,
+        collapsed: !rightPanel,
+        collapsedSize: "0px",
+      },
+      agentChild
+    )
+  );
+}
+
+describe("DashboardAgent's real grid tree never remounts the chat across mode switches", () => {
+  it("keeps the agent panel's child mounted across floating/rightPanel/fullscreen transitions", () => {
+    let mounts = 0;
+    function Marker() {
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return null;
+    }
+
+    // jsdom reports every rect as 0x0; the library divides by the group's measured
+    // width when a mode switch changes a panel's size, so it needs a non-zero stand-in.
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({ width: 1000, height: 600, x: 0, y: 0, top: 0, left: 0 } as DOMRect);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    const sequence: DashboardAgentMode[] = [
+      "floating",
+      "rightPanel",
+      "floating",
+      "fullscreen",
+      "rightPanel",
+    ];
+    try {
+      for (const mode of sequence) {
+        act(() => {
+          root!.render(renderDashboardAgentGridTree(mode === "rightPanel", createElement(Marker)));
+        });
+        expect(mounts).toBe(1);
+      }
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 });

@@ -25,7 +25,8 @@ const AGENT_MODE_STORAGE_KEY = "tdev:dashboard-agent:mode";
 
 export type DashboardAgentMode = "floating" | "rightPanel" | "fullscreen";
 
-// V1 floating window: 380x512, bottom-right, matching the gallery's own panel frame.
+// V1 floating window: FLOATING_WIDTH x FLOATING_HEIGHT, bottom-right, matching the
+// gallery's own panel frame.
 export const FLOATING_WIDTH = 380;
 export const FLOATING_HEIGHT = 600;
 export const FLOATING_MARGIN = 16;

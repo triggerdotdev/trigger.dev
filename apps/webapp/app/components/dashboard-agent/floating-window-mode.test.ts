@@ -25,7 +25,13 @@ describe("DashboardAgent.tsx keeps one tree shape across display modes", () => {
 
   it('gates the right-column sizing on mode === "rightPanel", not a branch around FloatingAgentWindow', () => {
     expect(source).toContain('collapsed={mode !== "rightPanel"}');
-    expect(source).toContain('{mode === "rightPanel" && <ResizableHandle');
+  });
+
+  it("keeps ResizableHandle always mounted — a conditional handle shifts sibling keys and remounts the chat", () => {
+    const occurrences = source.match(/<ResizableHandle\b/g) ?? [];
+    expect(occurrences).toHaveLength(1);
+    expect(source).not.toMatch(/mode === "rightPanel" &&\s*<ResizableHandle/);
+    expect(source).toContain('size={mode === "rightPanel" ? "3px" : "0px"}');
   });
 
   it("unclips the degenerate panel with Tailwind v4's trailing-bang important modifier", () => {

@@ -2,6 +2,7 @@ import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contr
 import { useLocation } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  collapsibleHandleClassName,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -363,7 +364,11 @@ export function DashboardAgent({
             <ResizablePanel id="dashboard-content" min="320px">
               <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
             </ResizablePanel>
-            {mode === "rightPanel" && <ResizableHandle id="dashboard-agent-handle" />}
+            <ResizableHandle
+              id="dashboard-agent-handle"
+              size={mode === "rightPanel" ? "3px" : "0px"}
+              className={collapsibleHandleClassName(mode === "rightPanel")}
+            />
             <ResizablePanel
               id="dashboard-agent-panel"
               default="380px"
