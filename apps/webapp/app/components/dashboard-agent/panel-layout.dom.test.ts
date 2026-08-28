@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Panel, PanelGroup, PanelResizer } from "@window-splitter/react";
 import { createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
@@ -15,6 +16,12 @@ import {
   type DashboardAgentMode,
   type FloatingDragProps,
 } from "./panel-layout";
+
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
@@ -223,5 +230,53 @@ describe("FloatingAgentWindow's fullscreen geometry", () => {
     const outer = container.firstElementChild as HTMLDivElement;
     expect(outer.className).toBe("absolute inset-0 z-10 bg-background-bright");
     expect(outer.getAttribute("style")).toBeNull();
+  });
+});
+
+// Mirrors DashboardAgent.tsx's grid: a content panel, a handle only in rightPanel mode,
+// and an agent panel that's either sized (rightPanel) or truly collapsed (otherwise).
+// A leftover fixed-pixel track from a hidden-not-unmounted handle, or from a "0px" panel
+// that doesn't actually collapse, pushes the grid past its own container's width.
+function renderDashboardAgentGrid(rightPanel: boolean) {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  act(() => {
+    root!.render(
+      createElement(
+        PanelGroup,
+        { orientation: "horizontal" },
+        createElement(Panel, { id: "dashboard-content", min: "320px" }),
+        rightPanel
+          ? createElement(PanelResizer, { id: "dashboard-agent-handle", size: "3px" })
+          : null,
+        createElement(Panel, {
+          id: "dashboard-agent-panel",
+          default: "380px",
+          min: "320px",
+          max: "720px",
+          collapsible: true,
+          collapsed: !rightPanel,
+          collapsedSize: "0px",
+        })
+      )
+    );
+  });
+  return container.firstElementChild as HTMLElement;
+}
+
+describe("DashboardAgent's degenerate grid tracks outside rightPanel", () => {
+  it("unmounts the handle and collapses the agent panel to a bare 0px track", () => {
+    const group = renderDashboardAgentGrid(false);
+    expect(group.querySelector('[data-splitter-type="handle"]')).toBeNull();
+    const columns = group.style.gridTemplateColumns;
+    expect(columns.endsWith("0px")).toBe(true);
+    expect(columns).not.toMatch(/\b3px\b/);
+  });
+
+  it("keeps the handle and a real sized track in rightPanel mode", () => {
+    const group = renderDashboardAgentGrid(true);
+    expect(group.querySelector('[data-splitter-type="handle"]')).not.toBeNull();
+    expect(group.style.gridTemplateColumns).toMatch(/\b3px\b/);
   });
 });

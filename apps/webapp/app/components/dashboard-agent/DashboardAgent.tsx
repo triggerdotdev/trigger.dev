@@ -363,15 +363,15 @@ export function DashboardAgent({
             <ResizablePanel id="dashboard-content" min="320px">
               <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
             </ResizablePanel>
-            <ResizableHandle
-              id="dashboard-agent-handle"
-              className={mode === "rightPanel" ? undefined : "hidden"}
-            />
+            {mode === "rightPanel" && <ResizableHandle id="dashboard-agent-handle" />}
             <ResizablePanel
               id="dashboard-agent-panel"
-              default={mode === "rightPanel" ? "380px" : "0px"}
-              min={mode === "rightPanel" ? "320px" : "0px"}
-              max={mode === "rightPanel" ? "720px" : "0px"}
+              default="380px"
+              min="320px"
+              max="720px"
+              collapsible
+              collapsed={mode !== "rightPanel"}
+              collapsedSize="0px"
               // Non-rightPanel modes render through position:fixed/absolute, which must
               // escape this panel's own clipping box to avoid being cut to its 0px width.
               // Tailwind v4's important modifier is a trailing `!`, not a leading one.
