@@ -102,6 +102,7 @@ export class APIClientManagerAPI {
         getEnvVar("TRIGGER_SECRET_KEY") ??
         getEnvVar("TRIGGER_ACCESS_TOKEN"),
       secretKey: partial.secretKey,
+      refreshAccessToken: partial.refreshAccessToken,
       previewBranch:
         partial.previewBranch ??
         getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
@@ -128,7 +129,8 @@ export class APIClientManagerAPI {
       this.accessToken,
       this.branchName,
       requestOptions,
-      futureFlags
+      futureFlags,
+      source?.refreshAccessToken
     );
   }
 
@@ -146,7 +148,14 @@ export class APIClientManagerAPI {
     const requestOptions = config?.requestOptions ?? source?.requestOptions;
     const futureFlags = config?.future ?? source?.future;
 
-    return new ApiClient(baseURL, accessToken, branchName, requestOptions, futureFlags);
+    return new ApiClient(
+      baseURL,
+      accessToken,
+      branchName,
+      requestOptions,
+      futureFlags,
+      config?.refreshAccessToken ?? source?.refreshAccessToken
+    );
   }
 
   runWithConfig<R extends (...args: any[]) => Promise<any>>(
