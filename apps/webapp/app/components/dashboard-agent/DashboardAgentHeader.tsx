@@ -31,7 +31,7 @@ export const NEW_CHAT_SHORTCUT: Shortcut = {
   enabledOnInputElements: true,
 };
 
-function ModeToggle({
+export function ModeToggle({
   mode,
   onModeChange,
 }: {
@@ -40,8 +40,22 @@ function ModeToggle({
 }) {
   const [isExpanded, setExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const currentOption = MODE_OPTIONS.find((option) => option.mode === mode) ?? MODE_OPTIONS[0];
   const otherOptions = MODE_OPTIONS.filter((option) => option.mode !== mode);
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- collapses when `mode` changes externally (e.g. route-driven).
+    setExpanded(false);
+  }, [mode]);
+
+  // Button doesn't forward arbitrary aria props, so set them directly on the node.
+  useEffect(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    el.setAttribute("aria-haspopup", "true");
+    el.setAttribute("aria-expanded", String(isExpanded));
+  }, [isExpanded]);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -52,22 +66,34 @@ function ModeToggle({
       }
     }
 
+    // Capture phase + preventDefault: DashboardAgentPanel's own Escape handler
+    // (bubble phase) checks defaultPrevented before closing the whole panel.
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setExpanded(false);
       }
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [isExpanded]);
 
   return (
-    <div ref={containerRef} className="flex items-center">
+    <div ref={containerRef} className="flex flex-row-reverse items-center">
+      <Button
+        ref={triggerRef}
+        variant="minimal/small"
+        className="aspect-square h-6 p-1"
+        aria-label="Change chat display mode"
+        tooltip={currentOption.label}
+        onClick={() => setExpanded((open) => !open)}
+        LeadingIcon={<currentOption.Icon className="size-4 text-text-dimmed" />}
+      />
       <AnimatePresence initial={false}>
         {isExpanded &&
           otherOptions.map(({ mode: option, label, Icon }) => (
@@ -93,14 +119,6 @@ function ModeToggle({
             </motion.div>
           ))}
       </AnimatePresence>
-      <Button
-        variant="minimal/small"
-        className="aspect-square h-6 p-1"
-        aria-label="Change chat display mode"
-        tooltip={currentOption.label}
-        onClick={() => setExpanded((open) => !open)}
-        LeadingIcon={<currentOption.Icon className="size-4 text-text-dimmed" />}
-      />
     </div>
   );
 }
