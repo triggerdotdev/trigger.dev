@@ -1,16 +1,11 @@
-import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import { ChatFloatingPanel } from "~/assets/icons/ChatFloatingPanel";
 import { ChatFullScreen } from "~/assets/icons/ChatFullScreen";
 import { ChatRightPanel } from "~/assets/icons/ChatRightPanel";
 import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { Button } from "~/components/primitives/Buttons";
-import {
-  Popover,
-  PopoverArrowTrigger,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverTrigger,
-} from "~/components/primitives/Popover";
+import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
 import {
@@ -23,8 +18,8 @@ import type { DashboardAgentMode } from "./panel-layout";
 
 const MODE_OPTIONS: { mode: DashboardAgentMode; label: string; Icon: typeof ChatFloatingPanel }[] =
   [
-    { mode: "floating", label: "Floating window", Icon: ChatFloatingPanel },
-    { mode: "rightPanel", label: "Side panel", Icon: ChatRightPanel },
+    { mode: "floating", label: "Floating", Icon: ChatFloatingPanel },
+    { mode: "rightPanel", label: "Right panel", Icon: ChatRightPanel },
     { mode: "fullscreen", label: "Fullscreen", Icon: ChatFullScreen },
   ];
 
@@ -35,6 +30,80 @@ export const NEW_CHAT_SHORTCUT: Shortcut = {
   key: "j",
   enabledOnInputElements: true,
 };
+
+function ModeToggle({
+  mode,
+  onModeChange,
+}: {
+  mode: DashboardAgentMode;
+  onModeChange: (mode: DashboardAgentMode) => void;
+}) {
+  const [isExpanded, setExpanded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const currentOption = MODE_OPTIONS.find((option) => option.mode === mode) ?? MODE_OPTIONS[0];
+  const otherOptions = MODE_OPTIONS.filter((option) => option.mode !== mode);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setExpanded(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setExpanded(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isExpanded]);
+
+  return (
+    <div ref={containerRef} className="flex items-center">
+      <AnimatePresence initial={false}>
+        {isExpanded &&
+          otherOptions.map(({ mode: option, label, Icon }) => (
+            <motion.div
+              key={option}
+              initial={{ opacity: 0, width: 0, x: 8 }}
+              animate={{ opacity: 1, width: "auto", x: 0 }}
+              exit={{ opacity: 0, width: 0, x: 8 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <Button
+                variant="minimal/small"
+                className="aspect-square h-6 p-1"
+                aria-label={label}
+                tooltip={label}
+                onClick={() => {
+                  onModeChange(option);
+                  setExpanded(false);
+                }}
+                LeadingIcon={<Icon className="size-4 text-text-dimmed" />}
+              />
+            </motion.div>
+          ))}
+      </AnimatePresence>
+      <Button
+        variant="minimal/small"
+        className="aspect-square h-6 p-1"
+        aria-label="Change chat display mode"
+        tooltip={currentOption.label}
+        onClick={() => setExpanded((open) => !open)}
+        LeadingIcon={<currentOption.Icon className="size-4 text-text-dimmed" />}
+      />
+    </div>
+  );
+}
 
 export function DashboardAgentHeader({
   title,
@@ -62,9 +131,6 @@ export function DashboardAgentHeader({
   const [isHistoryOpen, setHistoryOpen] = useState(false);
   const [historyOpenedAt, setHistoryOpenedAt] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
-  const [isModeMenuOpen, setModeMenuOpen] = useState(false);
-  const CurrentModeIcon =
-    MODE_OPTIONS.find((option) => option.mode === mode)?.Icon ?? ChatFloatingPanel;
 
   return (
     <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright pl-1 pr-1.5">
@@ -118,31 +184,7 @@ export function DashboardAgentHeader({
       />
 
       <div className="flex shrink-0 items-center gap-0.5" data-agent-no-drag>
-        <Popover open={isModeMenuOpen} onOpenChange={setModeMenuOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="minimal/small"
-              className="aspect-square h-6 p-1"
-              aria-label="Change chat display mode"
-              tooltip="Display mode"
-              LeadingIcon={<CurrentModeIcon className="size-4 text-text-dimmed" />}
-            />
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-44 p-1">
-            {MODE_OPTIONS.map(({ mode: option, label, Icon }) => (
-              <PopoverMenuItem
-                key={option}
-                icon={Icon}
-                title={label}
-                isSelected={option === mode}
-                onClick={() => {
-                  onModeChange(option);
-                  setModeMenuOpen(false);
-                }}
-              />
-            ))}
-          </PopoverContent>
-        </Popover>
+        <ModeToggle mode={mode} onModeChange={onModeChange} />
         <Button
           variant="minimal/small"
           className="aspect-square h-6 p-1"
