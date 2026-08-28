@@ -1,0 +1,108 @@
+---
+title: "Read a session channel in React"
+sidebarTitle: "Session streams"
+description: "Subscribe to a session's output or input channel from React with useSessionStream: accumulate records, resume from a cursor, and read only the latest."
+---
+
+**`useSessionStream` subscribes to one channel of a [session](/ai-chat/sessions) and updates a `records` array as new records arrive.** It reads the `out` channel by default (the agent's output) or `in` (the input channel). It is read-only; `useSession` is reserved for two-way (read and write) communication.
+
+<Note>
+  Requires a Public Access Token with the `read:sessions:{id}` scope. See [Realtime
+  auth](/realtime/auth) for generating one.
+</Note>
+
+## Basic usage
+
+Pass the session id (or external id) and an `accessToken`. The hook returns the `records` received so far, the last control record, the cursor of the last record seen, and any error:
+
+```tsx
+"use client";
+
+import { useSessionStream } from "@trigger.dev/react-hooks";
+
+export function SessionViewer({
+  sessionId,
+  accessToken,
+}: {
+  sessionId: string;
+  accessToken: string;
+}) {
+  const { records, error } = useSessionStream<string>(sessionId, { accessToken });
+
+  if (error) return <div>Error: {error.message}</div>;
+
+  return <div>{records.join("")}</div>;
+}
+```
+
+## Options
+
+```tsx
+const { records, lastEventId, lastControl, error, stop } = useSessionStream(sessionId, {
+  accessToken: "pk_...", // Required: public access token with read:sessions:{id}
+  io: "out", // Optional: "out" (default) or "in"
+  from: "beginning", // Optional: "beginning" (default) or "latest"
+  maxRecords: 100, // Optional: keep only the most recent N records (default: unbounded)
+  lastEventId: undefined, // Optional: resume cursor
+  timeoutInSeconds: 60, // Optional: close after this long with no new data (default: 60)
+  throttleInMs: 16, // Optional: throttle record updates (default: 16ms)
+  onRecords: (batch) => {}, // Optional: callback per throttled batch, each with its event id
+  onControl: (event) => {}, // Optional: callback for control records (e.g. turn-complete)
+});
+```
+
+The return value:
+
+- **`records`**: every data record received so far, in arrival order. Control records are delivered to `onControl` instead.
+- **`lastEventId`**: the cursor of the last record seen. Persist it and pass it back as the `lastEventId` option to resume.
+- **`lastControl`**: the last control record (for example `turn-complete`).
+- **`stop`**: abort the subscription, keeping the records received so far.
+
+## Start from the latest record
+
+By default the hook replays the channel history, then live-tails. Pass `from: "latest"` to receive only records appended after you connect, and `maxRecords` to bound memory:
+
+```tsx
+const { records } = useSessionStream<{ url: string }>(sessionId, {
+  accessToken,
+  io: "out",
+  from: "latest", // only records appended after this component connects
+  maxRecords: 1, // keep just the most recent record
+});
+```
+
+<Note>
+  `from: "latest"` requires a server that supports it. Against an older server a client that passes
+  it degrades safely to a full replay.
+</Note>
+
+## Resume from a cursor
+
+The hook resumes automatically across a component remount. A full page reload clears in-memory state, so to resume there, persist the returned `lastEventId` and pass it back on the next load. The channel then continues after that record with no replay and no gap:
+
+```tsx
+const saved = localStorage.getItem("session-cursor") ?? undefined;
+
+const { records, lastEventId } = useSessionStream<string>(sessionId, {
+  accessToken,
+  lastEventId: saved,
+  onRecords: (batch) => localStorage.setItem("session-cursor", batch.at(-1)!.id),
+});
+```
+
+## React to control records
+
+Control records (such as `turn-complete`) never enter `records`. Handle them with `onControl`, or read the latest from `lastControl`:
+
+```tsx
+const { records, lastControl } = useSessionStream<string>(sessionId, {
+  accessToken,
+  onControl: (event) => {
+    if (event.subtype === "turn-complete") {
+      console.log("The turn is complete");
+    }
+  },
+});
+```
+
+For an expiring token on a long-lived subscription, pass `refreshAccessToken` (see [Realtime auth](/realtime/auth)). To read a session channel outside React, use [`session.out.read()`](/ai-chat/sessions).

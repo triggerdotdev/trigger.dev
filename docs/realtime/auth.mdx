@@ -135,6 +135,24 @@ When using non-root API keys (recommended), the expiration cannot be more than 3
 
 The format used for a time span is the same as the [jose package](https://github.com/panva/jose), which is a number followed by a unit. Valid units are: "sec", "secs", "second", "seconds", "s", "minute", "minutes", "min", "mins", "m", "hour", "hours", "hr", "hrs", "h", "day", "days", "d", "week", "weeks", "w", "year", "years", "yr", "yrs", and "y". It is not possible to specify months. 365.25 days is used as an alias for a year. If the string is suffixed with "ago", or prefixed with a "-", the resulting time span gets subtracted from the current unix timestamp. A "from now" suffix can also be used for readability when adding to the current unix timestamp.
 
+### Refreshing an expired token
+
+A realtime stream subscription can outlive its token. Pass a `refreshAccessToken` callback and a subscription rejected with a 401/403 re-mints once and reconnects, instead of failing. With no refresher, auth errors stay terminal. Mint the fresh token from your backend, where your secret key lives:
+
+```tsx
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+
+const { parts } = useRealtimeStream<{ url: string }>(runId, "frames", {
+  accessToken,
+  refreshAccessToken: async () => {
+    const res = await fetch("/api/realtime-token"); // your backend calls auth.createPublicToken
+    return (await res.json()).token;
+  },
+});
+```
+
+`refreshAccessToken` is available on every realtime hook, and on `useApiClient` and `TriggerAuthContext` so hooks under a provider share one refresher.
+
 ### Auto-generated tokens
 
 When you [trigger tasks](/triggering) from your backend, the `handle` received includes a `publicAccessToken` field. This token can be used to authenticate real-time requests in your frontend application.
