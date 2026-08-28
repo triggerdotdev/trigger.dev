@@ -374,7 +374,8 @@ export function DashboardAgent({
               max={mode === "rightPanel" ? "720px" : "0px"}
               // Non-rightPanel modes render through position:fixed/absolute, which must
               // escape this panel's own clipping box to avoid being cut to its 0px width.
-              className={mode === "rightPanel" ? undefined : "!overflow-visible"}
+              // Tailwind v4's important modifier is a trailing `!`, not a leading one.
+              className={mode === "rightPanel" ? undefined : "overflow-visible!"}
             >
               <FloatingAgentWindow mode={mode}>
                 {({ dragHandleProps, dragHandleClassName }) => (

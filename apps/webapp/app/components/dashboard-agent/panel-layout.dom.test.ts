@@ -211,3 +211,17 @@ describe("FloatingAgentWindow keeps its child mounted across every mode transiti
     }
   });
 });
+
+describe("FloatingAgentWindow's fullscreen geometry", () => {
+  it("pins the exact takeover classes from before the mode switcher (8dea45a09)", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root!.render(createElement(FloatingAgentWindow, { mode: "fullscreen" }, () => null));
+    });
+    const outer = container.firstElementChild as HTMLDivElement;
+    expect(outer.className).toBe("absolute inset-0 z-10 bg-background-bright");
+    expect(outer.getAttribute("style")).toBeNull();
+  });
+});
