@@ -509,7 +509,7 @@ export function DashboardAgentChat({
               showNewChat && (
                 <Button
                   variant="minimal/small"
-                  className="aspect-square h-6 shrink-0 p-1"
+                  className="aspect-square h-6 shrink-0 p-1 mr-[6px]"
                   aria-label="New chat"
                   tooltip={
                     <span className="flex items-center">
