@@ -25,13 +25,14 @@ import { getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
+import { unroutableIdResponse } from "./unroutableId.server";
 import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tenantContext.server";
 
 // Client aborts and service-level validation errors aren't bugs — they're
 // expected at API boundaries. Log them at `warn` so they stay in stdout
 // without flowing to Sentry via Logger.onError.
 function logBoundaryError(
-  message: "Error in loader" | "Error in action",
+  message: "Error in loader" | "Error in action" | "Unroutable id",
   error: unknown,
   url: string
 ) {
@@ -451,6 +452,12 @@ export function createLoaderApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
+        const unroutable = unroutableIdResponse(error);
+        if (unroutable) {
+          logBoundaryError("Unroutable id", error, request.url);
+          return await wrapResponse(request, unroutable, corsStrategy !== "none");
+        }
+
         logBoundaryError("Error in loader", error, request.url);
 
         return await wrapResponse(
@@ -721,6 +728,12 @@ export function createLoaderPATApiRoute<
       try {
         if (error instanceof Response) {
           return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+
+        const unroutable = unroutableIdResponse(error);
+        if (unroutable) {
+          logBoundaryError("Unroutable id", error, request.url);
+          return await wrapResponse(request, unroutable, corsStrategy !== "none");
         }
         return await wrapResponse(
           request,
@@ -994,6 +1007,12 @@ export function createActionPATApiRoute<
       try {
         if (error instanceof Response) {
           return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+
+        const unroutable = unroutableIdResponse(error);
+        if (unroutable) {
+          logBoundaryError("Unroutable id", error, request.url);
+          return await wrapResponse(request, unroutable, corsStrategy !== "none");
         }
 
         logBoundaryError("Error in action", error, request.url);
@@ -1346,6 +1365,12 @@ export function createActionApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
+        const unroutable = unroutableIdResponse(error);
+        if (unroutable) {
+          logBoundaryError("Unroutable id", error, request.url);
+          return await wrapResponse(request, unroutable, corsStrategy !== "none");
+        }
+
         logBoundaryError("Error in action", error, request.url);
 
         return await wrapResponse(
@@ -1610,6 +1635,12 @@ export function createMultiMethodApiRoute<
       try {
         if (error instanceof Response) {
           return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+
+        const unroutable = unroutableIdResponse(error);
+        if (unroutable) {
+          logBoundaryError("Unroutable id", error, request.url);
+          return await wrapResponse(request, unroutable, corsStrategy !== "none");
         }
 
         logBoundaryError("Error in action", error, request.url);

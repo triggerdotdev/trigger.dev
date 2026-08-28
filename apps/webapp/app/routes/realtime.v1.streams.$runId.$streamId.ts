@@ -1,3 +1,4 @@
+import { STREAM_START_HEADER } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
@@ -59,6 +60,9 @@ export const loader = createLoaderApiRoute(
     // Get Last-Event-ID header for resuming from a specific position
     const lastEventId = request.headers.get("Last-Event-ID") || undefined;
 
+    const startFrom =
+      request.headers.get(STREAM_START_HEADER)?.toLowerCase() === "latest" ? "latest" : undefined;
+
     const timeoutInSecondsRaw = request.headers.get("Timeout-Seconds") ?? undefined;
     const timeoutInSeconds = timeoutInSecondsRaw ? parseInt(timeoutInSecondsRaw) : undefined;
 
@@ -88,6 +92,7 @@ export const loader = createLoaderApiRoute(
       {
         lastEventId,
         timeoutInSeconds,
+        startFrom,
       }
     );
   }

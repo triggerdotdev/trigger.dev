@@ -70,6 +70,21 @@ async function waitFor(check: () => boolean, timeoutMs = 10_000) {
   throw new Error("waitFor timed out");
 }
 
+function runtimeWithWaitpointOutput(output: string, outputType = "application/json") {
+  return {
+    disable() {},
+    waitForTask() {
+      throw new Error("Unexpected task wait");
+    },
+    waitForBatch() {
+      throw new Error("Unexpected batch wait");
+    },
+    waitForWaitpoint() {
+      return Promise.resolve({ ok: true, output, outputType });
+    },
+  };
+}
+
 function streamedText(harness: { allChunks: unknown[] }): string {
   return (harness.allChunks as { type?: string; delta?: string }[])
     .filter((c) => c.type === "text-delta")
@@ -112,6 +127,145 @@ describe("chat.agent pending wire buffer", () => {
       expect(m2At).toBeGreaterThan(-1);
       expect(m3At).toBeGreaterThan(-1);
       expect(m3At).toBeGreaterThan(m2At);
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+describe("chat.agent steering config", () => {
+  /**
+   * `pendingMessages.onReceived` is the first thing a steering integration sees.
+   * A message that lands mid-turn is delivered to the per-turn handler rather
+   * than queued, so if that delivery breaks the symptom is a steer that appends
+   * with a 2xx and is never seen by the agent, with nothing raised anywhere.
+   *
+   * Deliberately covers delivery only, NOT injection. Injection needs a
+   * `prepareStep`, which arrives via `chat.toStreamTextOptions()`, and this run
+   * body does not spread it; the mock model also answers in one step, so there
+   * is no boundary to inject at. `onReceived` fires either way, so passing here
+   * says nothing about whether a steer reaches the model. Do not read this as
+   * "steering is covered".
+   */
+  it("fires onReceived for a message that lands mid-turn", async () => {
+    const received: string[] = [];
+    const injectDecisions: number[] = [];
+
+    const agent = chat.agent({
+      id: "pending-drain.steering",
+      pendingMessages: {
+        onReceived: ({ message }) => {
+          received.push(message.id);
+        },
+        shouldInject: ({ steps }) => {
+          injectDecisions.push(steps.length);
+          return true;
+        },
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model: echoModel(), messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "pending-drain-steer" });
+    try {
+      const first = harness.sendMessage(userMessage("m1", "u-1"));
+      await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      void harness.sendMessage(userMessage("steer me", "u-steer"));
+      await first;
+
+      await waitFor(() => received.length >= 1);
+      expect(received).toContain("u-steer");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+/**
+ * A mid-turn message the agent declines to inject is documented to "queue for
+ * the next turn". It used to be diverted into a turn-local steering queue and
+ * discarded with the turn, so it was never injected, never written to the wire
+ * buffer, and never answered, with nothing raised at either end. Declining is
+ * also the default: with a `pendingMessages` config and no `shouldInject`, the
+ * callback is treated as returning false for every batch.
+ */
+describe("chat.agent declined steering message", () => {
+  it("answers a declined mid-turn message as its own turn", async () => {
+    const received: string[] = [];
+
+    const agent = chat.agent({
+      id: "pending-drain.declined",
+      pendingMessages: {
+        onReceived: ({ message }) => {
+          received.push(message.id);
+        },
+        shouldInject: () => false,
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model: echoModel(), messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "pending-drain-declined" });
+    try {
+      const first = harness.sendMessage(userMessage("m1", "u-1"));
+      await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      // A delta having arrived does not prove the turn is still open, and a
+      // message landing after it would take the ordinary next-turn path and
+      // pass this test without exercising the mid-turn one.
+      expect(turnCompleteCount(harness)).toBe(0);
+      void harness.sendMessage(userMessage("m2", "u-2"));
+      await first;
+
+      await waitFor(() => turnCompleteCount(harness) >= 2);
+
+      expect(received).toContain("u-2");
+      expect(streamedText(harness)).toContain("ANSWER(m2)");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+/**
+ * The shape a developer reaches by following the docs for `onReceived` alone:
+ * a `pendingMessages` config, no `shouldInject`, and no
+ * `chat.toStreamTextOptions()` spread, so nothing can ever drain the steering
+ * queue. The message must still be answered. It used to be taken off the
+ * channel by the arrival handler and then stranded in a queue with no consumer.
+ */
+describe("chat.agent pendingMessages with nothing wired to drain it", () => {
+  it("still answers a mid-turn message as its own turn", async () => {
+    const received: string[] = [];
+
+    const agent = chat.agent({
+      id: "pending-drain.unwired",
+      pendingMessages: {
+        onReceived: ({ message }) => {
+          received.push(message.id);
+        },
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model: echoModel(), messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "pending-drain-unwired" });
+    try {
+      const first = harness.sendMessage(userMessage("m1", "u-1"));
+      await waitFor(() => streamedText(harness).includes("ANSWER(m1)"));
+      // A delta having arrived does not prove the turn is still open, and a
+      // message landing after it would take the ordinary next-turn path and
+      // pass this test without exercising the mid-turn one.
+      expect(turnCompleteCount(harness)).toBe(0);
+      void harness.sendMessage(userMessage("m2", "u-2"));
+      await first;
+
+      await waitFor(() => turnCompleteCount(harness) >= 2);
+
+      expect(received).toContain("u-2");
+      expect(streamedText(harness)).toContain("ANSWER(m2)");
     } finally {
       await harness.close();
     }
@@ -248,26 +402,95 @@ describe("chat.createSession stop + immediate send", () => {
 });
 
 describe("session.in.wait() consume cursor", () => {
-  it("advances lastDispatchedSeqNum alongside lastSeqNum on waitpoint delivery", async () => {
+  it("keeps later input reachable across the suspend-and-resume race", async () => {
     __setSessionOpenImplForTests(undefined);
-    await runInMockTaskContext(async () => {
-      vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
-        createSessionStreamWaitpoint: async () => ({ waitpointId: "wp_test_1" }),
-        waitForWaitpointToken: async () => ({ success: true }),
-      } as never);
+    const first = { kind: "message", payload: { id: "u1" } };
+    const later = { kind: "message", payload: { id: "u2" } };
+    const runtimeManager = runtimeWithWaitpointOutput(JSON.stringify(first));
+    let registeredLastSeqNum: number | undefined;
 
-      const sessionId = "cursor-sess";
-      // Simulate records 0..4 already received via SSE before the suspend.
-      sessionStreams.setLastSeqNum(sessionId, "in", 4);
+    await runInMockTaskContext(
+      async (drivers) => {
+        const sessionId = "cursor-sess";
+        const channel = sessions.open(sessionId).in;
+        const stop = channel.on<{ kind: string }>((record) => record.kind === "stop");
 
-      const result = await sessions.open(sessionId).in.wait();
+        sessionStreams.setLastSeqNum(sessionId, "in", 49);
+        sessionStreams.setLastDispatchedSeqNum(sessionId, "in", 49);
 
-      expect(result.ok).toBe(true);
-      expect(sessionStreams.lastSeqNum(sessionId, "in")).toBe(5);
-      // The waitpoint-delivered record was consumed by this caller, so the
-      // committed-consume cursor (what turn-completes persist as
-      // `session-in-event-id`) must advance with it.
-      expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(5);
-    });
+        vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+          createSessionStreamWaitpoint: async (_runId: string, body: { lastSeqNum?: number }) => {
+            registeredLastSeqNum = body.lastSeqNum;
+            return {
+              waitpointId: "wp_test_1",
+              isCached: false,
+            };
+          },
+          waitForWaitpointToken: async () => {
+            // These records land after registration but before the tail is
+            // disconnected. The waitpoint resolves with seq 50, while the
+            // local tail has already consumed 51 and buffered 52.
+            await drivers.sessions.in.send(sessionId, first, "in", { seqNum: 50 });
+            await drivers.sessions.in.send(sessionId, { kind: "stop" }, "in", { seqNum: 51 });
+            await drivers.sessions.in.send(sessionId, later, "in", { seqNum: 52 });
+            return { success: true };
+          },
+        } as never);
+
+        const result = await channel.wait();
+
+        expect(result).toEqual({ ok: true, output: first });
+        expect(registeredLastSeqNum).toBe(49);
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(51);
+        expect(sessionStreams.peekRecord(sessionId, "in")?.seqNum).toBe(52);
+
+        const next = await sessionStreams.onceRecord(sessionId, "in");
+        expect(next).toEqual({
+          ok: true,
+          output: { id: "test-record-52", seqNum: 52, data: later },
+        });
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(52);
+        stop.off();
+      },
+      { runtimeManager }
+    );
+  });
+
+  it("acknowledges the delivered record when identical payloads repeat on the channel", async () => {
+    __setSessionOpenImplForTests(undefined);
+    const chunk = { kind: "message", payload: { id: "repeated" } };
+    const raw = JSON.stringify(chunk);
+    const sessionId = "ack-repeated-payload";
+
+    await runInMockTaskContext(
+      async (drivers) => {
+        sessionStreams.setLastSeqNum(sessionId, "in", 6);
+        sessionStreams.setLastDispatchedSeqNum(sessionId, "in", 6);
+
+        vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+          createSessionStreamWaitpoint: async () => ({
+            waitpointId: "wp_ack_repeated",
+            isCached: false,
+          }),
+          waitForWaitpointToken: async () => {
+            await drivers.sessions.in.send(sessionId, chunk, "in", { seqNum: 7 });
+            await drivers.sessions.in.send(sessionId, chunk, "in", { seqNum: 8 });
+            return { success: true };
+          },
+          readSessionStreamRecords: async () => ({
+            records: [
+              { id: "repeated-1", seqNum: 7, data: raw },
+              { id: "repeated-2", seqNum: 8, data: raw },
+            ],
+          }),
+        } as never);
+
+        const result = await sessions.open(sessionId).in.wait();
+        expect(result).toEqual({ ok: true, output: chunk });
+
+        expect(sessionStreams.lastDispatchedSeqNum(sessionId, "in")).toBe(7);
+      },
+      { runtimeManager: runtimeWithWaitpointOutput(raw) }
+    );
   });
 });

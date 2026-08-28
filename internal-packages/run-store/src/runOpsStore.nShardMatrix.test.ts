@@ -303,3 +303,155 @@ describe("RoutingRunStore four-store matrix — pagination merge", () => {
     }
   );
 });
+
+// A misplaced tag row still reads back, because the read fans out, so only a per-database count
+// can see it. Hence containers rather than the fake-store suite.
+describe("four-store matrix — a waitpoint tag lands on its environment's shard", () => {
+  matrixTest(
+    "the shard key routes the tag to shard a, and no gen-1 store receives it",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_shard_a");
+
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "tag-on-a", projectId: env.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+
+      expect(await shardPrismas[0]!.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(1);
+      expect(await newPrisma.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(0);
+      expect(await legacyPrisma.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(0);
+      expect(await shardPrismas[1]!.waitpointTag.count({ where: { name: "tag-on-a" } })).toBe(0);
+    }
+  );
+
+  matrixTest(
+    "two environments on different shards do not share a database",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const envA = await seedLegacyEnv(legacyPrisma, "tag_two_a");
+      const envB = await seedLegacyEnv(legacyPrisma, "tag_two_b");
+
+      await router.upsertWaitpointTag(
+        { environmentId: envA.environmentId, name: "shared-name", projectId: envA.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+      await router.upsertWaitpointTag(
+        { environmentId: envB.environmentId, name: "shared-name", projectId: envB.projectId },
+        undefined,
+        "NEW",
+        "b"
+      );
+
+      // The constraint is per-database, so a collapse still inserts two rows: this catches
+      // placement, not a constraint violation.
+      const onA = await shardPrismas[0]!.waitpointTag.findMany({ where: { name: "shared-name" } });
+      const onB = await shardPrismas[1]!.waitpointTag.findMany({ where: { name: "shared-name" } });
+      expect(onA.map((r) => r.environmentId)).toEqual([envA.environmentId]);
+      expect(onB.map((r) => r.environmentId)).toEqual([envB.environmentId]);
+      expect(await newPrisma.waitpointTag.count({ where: { name: "shared-name" } })).toBe(0);
+    }
+  );
+
+  matrixTest(
+    "with no shard key the tag still routes by residency, exactly as before",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_gen1");
+
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "tag-gen1", projectId: env.projectId },
+        undefined,
+        "NEW"
+      );
+
+      expect(await newPrisma.waitpointTag.count({ where: { name: "tag-gen1" } })).toBe(1);
+      expect(await shardPrismas[0]!.waitpointTag.count({ where: { name: "tag-gen1" } })).toBe(0);
+    }
+  );
+
+  matrixTest(
+    "a tag written to a shard is found by the read fan-out",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_readback");
+
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "tag-readback", projectId: env.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+
+      const found = await router.findManyWaitpointTags({
+        where: { environmentId: env.environmentId },
+      });
+      expect(found.map((r) => r.name)).toEqual(["tag-readback"]);
+    }
+  );
+
+  // What a rollout produces: tags exist, then the environment is pinned.
+  matrixTest(
+    "the same tag name on a gen-1 store and a shard is listed once",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const env = await seedLegacyEnv(legacyPrisma, "tag_dupe");
+
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "prod", projectId: env.projectId },
+        undefined,
+        "NEW"
+      );
+      await router.upsertWaitpointTag(
+        { environmentId: env.environmentId, name: "prod", projectId: env.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+
+      const onNew = await newPrisma.waitpointTag.findMany({ where: { name: "prod" } });
+      const onShard = await shardPrismas[0]!.waitpointTag.findMany({ where: { name: "prod" } });
+      expect(onNew).toHaveLength(1);
+      expect(onShard).toHaveLength(1);
+      expect(onNew[0]!.id).not.toBe(onShard[0]!.id);
+
+      const found = await router.findManyWaitpointTags({
+        where: { environmentId: env.environmentId },
+      });
+      expect(found.map((r) => r.name)).toEqual(["prod"]);
+    }
+  );
+
+  matrixTest(
+    "two environments keep their own tag of the same name",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const router = makeMatrixRouter(legacyPrisma, newPrisma, shardPrismas);
+      const envA = await seedLegacyEnv(legacyPrisma, "tag_dupe_a");
+      const envB = await seedLegacyEnv(legacyPrisma, "tag_dupe_b");
+
+      await router.upsertWaitpointTag(
+        { environmentId: envA.environmentId, name: "prod", projectId: envA.projectId },
+        undefined,
+        "NEW",
+        "a"
+      );
+      await router.upsertWaitpointTag(
+        { environmentId: envB.environmentId, name: "prod", projectId: envB.projectId },
+        undefined,
+        "NEW",
+        "b"
+      );
+
+      // No environment filter, or each result set holds one row and a name-only key would pass.
+      const both = await router.findManyWaitpointTags({ where: { name: "prod" } });
+
+      expect(both.map((r) => r.environmentId).sort()).toEqual(
+        [envA.environmentId, envB.environmentId].sort()
+      );
+    }
+  );
+});

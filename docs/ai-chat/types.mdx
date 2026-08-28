@@ -140,7 +140,7 @@ You can also import `InferChatUIMessage` from `@trigger.dev/sdk/ai` in non-React
 
 ## Typed client data with `chat.withClientData`
 
-`chat.withClientData({ schema })` returns a [ChatBuilder](#chatbuilder) that fixes the client data schema. All hooks and `run` receive typed `clientData` without needing `clientDataSchema` in `.agent()` options.
+`chat.withClientData({ schema })` returns a [ChatBuilder](#chatbuilder) that fixes the client data schema. Managed-agent hooks and `run` receive typed `clientData` without needing `clientDataSchema` in `.agent()` options. A `.customAgent()` run receives the parsed schema output in `payload.metadata`, and `chat.createSession()` yields it as `turn.clientData`.
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -166,6 +166,10 @@ export const myChat = chat
     },
   });
 ```
+
+The schema runs at runtime for both `.agent()` and `.customAgent()`. Custom agents validate the initial payload and later `chat.messages` frames. Invalid frames are not passed to user code. Async reads emit an error chunk followed by `turn-complete`; `chat.messages.on()` reports through `onClientDataValidationError` and the task log so it does not end an active response. Without a schema, metadata is passed through unchanged.
+
+`withClientData` also takes `reportErrorAt` and `onValidationError` alongside `schema`. See [chat.withClientData](/ai-chat/reference#chatwithclientdata) for both, and [Validating client data](/ai-chat/custom-agents#validating-client-data) for the custom-agent walkthrough.
 
 ## ChatBuilder
 

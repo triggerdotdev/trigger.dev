@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RoutingRunStore } from "./runOpsStore.js";
+import { RoutingRunStore, UnknownShardKey } from "./runOpsStore.js";
 import type { ReadClient, RunStore } from "./types.js";
 
 // Pins the routing ALGEBRA: probe order, merge precedence, and the two id-less fallbacks that
@@ -114,6 +114,16 @@ function fakeStore(slot: Slot, log: Call[], config: FakeConfig = {}): FakeStore 
       record("findBatchTaskRunById");
       return Promise.resolve((config.batch ?? null) as never);
     }) as FakeStore["findBatchTaskRunById"],
+
+    upsertWaitpoint: ((args: { create?: { id?: string } }) => {
+      record("upsertWaitpoint");
+      return Promise.resolve((args.create ?? {}) as never);
+    }) as FakeStore["upsertWaitpoint"],
+
+    upsertWaitpointTag: ((data: { name: string }) => {
+      record("upsertWaitpointTag");
+      return Promise.resolve({ id: `tag_${slot}`, name: data.name } as never);
+    }) as FakeStore["upsertWaitpointTag"],
 
     countPendingWaitpointsWithPresence: ((waitpointIds: string[], _client?: ReadClient) => {
       record("countPendingWaitpointsWithPresence");
@@ -278,6 +288,65 @@ describe("RoutingRunStore id-to-shard-key seam", () => {
     );
     expect(trace(log)).toEqual([]);
   });
+
+  // The case above injects a resolver. This one does NOT: it uses the real `resolveShard`, which
+  // the compat constructor defaults to. `resolveShard` is pure id-shape, so a gen-2 shaped id
+  // names its shard char whatever the topology holds — the two-store compat router therefore
+  // reaches this throw for any gen-2 id, with no shard configured anywhere.
+  //
+  // That matters beyond this class: these ids reach read routes as URL parameters, so whatever
+  // sits above the router must translate this throw into a 4xx rather than let it surface as a
+  // 5xx that any caller can induce.
+  it("reaches the unconfigured-shard throw for a real gen-2 id, even on the compat pair", () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+    });
+
+    const genTwoId = `${"0".repeat(24)}a2`;
+
+    expect(() => router.findRun({ id: genTwoId })).toThrow(
+      'no store is configured for shard key "a"'
+    );
+    expect(trace(log)).toEqual([]);
+  });
+
+  // Typed, not a bare Error: the API boundary matches on it to answer 404 instead of 500, and
+  // the operator needs the key and the configured set to tell a forged id from a dropped shard.
+  it("throws a typed UnknownShardKey carrying the key and the configured set", () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+    });
+
+    let thrown: unknown;
+    try {
+      router.findRun({ id: `${"0".repeat(24)}a2` });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(UnknownShardKey);
+    const error = thrown as UnknownShardKey;
+    expect(error.name).toBe("UnknownShardKey");
+    expect(error.shardKey).toBe("a");
+    expect([...error.configured].sort()).toEqual(["legacy", "new"]);
+  });
+
+  it("still routes gen-1 shapes on the compat pair with the real resolver", () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+    });
+
+    router.findRun({ id: `${"0".repeat(24)}01` });
+    router.findRun({ id: "c".repeat(25) });
+
+    expect(trace(log)).toEqual(["new:findRun", "legacy:findRun"]);
+  });
 });
 
 function buildNShardRouter(shardKeys: string[], opts: { aliasOf?: Record<string, string> } = {}) {
@@ -301,6 +370,14 @@ function buildNShardRouter(shardKeys: string[], opts: { aliasOf?: Record<string,
 }
 
 describe("RoutingRunStore #distinctStores — one entry per database", () => {
+  // findRunsByIds reaches #fanOutPartitioned, the third unconfigured-shard guard. It must throw
+  // the typed error too, or this read path answers 500 where the boundary would give a 404.
+  it("throws a typed UnknownShardKey from the partitioned id fan-out", async () => {
+    const { router } = buildNShardRouter(["a"]);
+
+    await expect(router.findRunsByIds(["a:r1", "z:r2"])).rejects.toBeInstanceOf(UnknownShardKey);
+  });
+
   it("routes an id to its gen-2 shard", async () => {
     const { router, log } = buildNShardRouter(["a", "b"]);
     await router.findRun({ id: "a:run_1" });
@@ -649,6 +726,17 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
     );
   });
 
+  // The API boundary answers a non-retryable 404 by matching on the TYPE, so every
+  // unconfigured-shard guard has to throw the typed error and not a bare Error. Two other guards
+  // besides #shardStore reach an unconfigured key: this partition, and #fanOutPartitioned below.
+  it("throws a typed UnknownShardKey from the absent-id partition", async () => {
+    const { router } = partitionRouter({});
+
+    await expect(
+      router.countPendingWaitpoints(["c:w1"], undefined, "a:run")
+    ).rejects.toBeInstanceOf(UnknownShardKey);
+  });
+
   it("returns zero for an id absent everywhere", async () => {
     const { router } = partitionRouter({});
     expect(await router.countPendingWaitpoints(["b:w9"], undefined, "a:run")).toBe(0);
@@ -844,5 +932,101 @@ describe("RoutingRunStore batch probe tolerates legitimate dual-residency", () =
     });
     await router.findRun({ spanId: "span_x" });
     expect(seen).toEqual([["legacy", "a"]]);
+  });
+});
+
+describe("RoutingRunStore waitpoint tags follow their environment's shard", () => {
+  const tag = { environmentId: "env_1", name: "tag", projectId: "proj_1" };
+
+  const shardedRouter = () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+    });
+    return { router, log };
+  };
+
+  it("routes a tag to the gen-2 shard the environment mints on", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpointTag(tag as never, undefined, "NEW", "a");
+    expect(trace(log)).toEqual(["a:upsertWaitpointTag"]);
+  });
+
+  it("a gen-1 shard key still routes by residency", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpointTag(tag as never, undefined, "NEW", "new");
+    expect(trace(log)).toEqual(["new:upsertWaitpointTag"]);
+  });
+
+  it("no shard hint keeps today's behaviour exactly", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpointTag(tag as never, undefined, "LEGACY");
+    expect(trace(log)).toEqual(["legacy:upsertWaitpointTag"]);
+  });
+});
+
+describe("RoutingRunStore waitpoint writes: a stamped gen-2 id outranks a residency hint", () => {
+  // A caller passing both used to write to a gen-1 database silently: a create never misses.
+  const GEN2 = `${"a".repeat(24)}a2`;
+  const GEN1 = `${"a".repeat(24)}01`;
+  const CUID = "c".repeat(25);
+
+  const shardedRouter = () => {
+    const log: Call[] = [];
+    const router = new RoutingRunStore({
+      new: fakeStore("new", log),
+      legacy: fakeStore("legacy", log),
+      shards: [{ key: "a", store: fakeStore("a", log) }],
+    });
+    return { router, log };
+  };
+
+  const upsert = (router: RoutingRunStore, id: string, residency?: "NEW" | "LEGACY") =>
+    router.upsertWaitpoint(
+      { create: { id }, update: {}, where: { id } } as never,
+      undefined,
+      residency === undefined ? undefined : ({ residency } as never)
+    );
+
+  it("routes to the shard the id names even when the hint says NEW", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN2, "NEW");
+    expect(trace(log)).toEqual(["a:upsertWaitpoint"]);
+  });
+
+  it("routes to the shard the id names even when the hint says LEGACY", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN2, "LEGACY");
+    expect(trace(log)).toEqual(["a:upsertWaitpoint"]);
+  });
+
+  it("still honours the hint for a gen-1 run-ops id, which the hint can express", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN1, "NEW");
+    expect(trace(log)).toEqual(["new:upsertWaitpoint"]);
+  });
+
+  it("still honours the hint for a cuid, and does not read it as a shard", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, CUID, "NEW");
+    expect(trace(log)).toEqual(["new:upsertWaitpoint"]);
+  });
+
+  it("with no hint at all, a gen-1 id still routes by its own shape", async () => {
+    const { router, log } = shardedRouter();
+    await upsert(router, GEN1);
+    expect(trace(log)).toEqual(["new:upsertWaitpoint"]);
+  });
+
+  it("an owning run still outranks both, so a co-located waitpoint follows its run", async () => {
+    const { router, log } = shardedRouter();
+    await router.upsertWaitpoint(
+      { create: { id: GEN2 }, update: {}, where: { id: GEN2 } } as never,
+      undefined,
+      { coLocateWithRunId: GEN2, residency: "NEW" } as never
+    );
+    expect(trace(log)).toEqual(["a:upsertWaitpoint"]);
   });
 });

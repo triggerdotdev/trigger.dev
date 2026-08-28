@@ -29,10 +29,13 @@ import {
 } from "./helpers/sessionStream";
 import { runChatAgentSession, runRealChatAgent } from "./helpers/agentHarness";
 import {
+  endAndContinueGuardEvents,
   suspendResumeEvents,
   testApprovalChatAgent,
   testChatAgent,
   testChatModelLocal,
+  testEndAndContinueCustomAgent,
+  testEndAndContinueIteratorGuardCustomAgent,
   testEndRunChatAgent,
   testHitlChatAgent,
   testHitlIdleChatAgent,
@@ -121,6 +124,34 @@ async function setupSession(agentId: string = testChatAgent.id) {
   });
   const token = await mintSessionToken({ apiKey, envId: environment.id, addressingKey });
   return { addressingKey, token, apiKey, baseUrl: server.webapp.baseUrl };
+}
+
+async function setupStartedSession(agentId: string) {
+  const { environment, apiKey } = await seedTestEnvironment(server.prisma);
+  const addressingKey = `chat-${randomBytes(6).toString("hex")}`;
+  const createRes = await fetch(`${server.webapp.baseUrl}/api/v1/sessions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "chat.agent",
+      externalId: addressingKey,
+      taskIdentifier: agentId,
+      triggerConfig: { basePayload: {} },
+    }),
+  });
+
+  expect(createRes.ok).toBe(true);
+  const created = (await createRes.json()) as {
+    runId: string;
+    publicAccessToken: string;
+  };
+  return {
+    ...created,
+    addressingKey,
+    apiKey,
+    environment,
+    baseUrl: server.webapp.baseUrl,
+  };
 }
 
 function promptText(prompt: unknown): string {
@@ -1530,6 +1561,213 @@ describe("session agent e2e (real chat.agent loop)", () => {
         "with no next message the between-turns wait times out and the run exits itself"
       ).toBe(true);
     } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA23: custom endAndContinue hands pending input to a fresh run", async () => {
+    const { addressingKey, publicAccessToken, runId, apiKey, environment, baseUrl } =
+      await setupStartedSession(testEndAndContinueCustomAgent.id);
+    const initialRun = await server.prisma.taskRun.findFirstOrThrow({
+      where: { friendlyId: runId },
+      select: { id: true },
+    });
+
+    const append = await appendInput({
+      baseUrl,
+      addressingKey,
+      token: publicAccessToken,
+      partId: "pending-handoff-input",
+      body: submitBody(
+        addressingKey,
+        userMessage("deliver after endAndContinue", "pending-handoff-input")
+      ),
+    });
+    expect(append.status).toBe(200);
+
+    const oldRun = runRealChatAgent({
+      agentId: testEndAndContinueCustomAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("unused"),
+      modelLocal: testChatModelLocal,
+      runId,
+    });
+    let continuation: ReturnType<typeof runRealChatAgent> | undefined;
+
+    try {
+      await expect(oldRun.done).resolves.toBeUndefined();
+
+      const session = await server.prisma.session.findFirstOrThrow({
+        where: { runtimeEnvironmentId: environment.id, externalId: addressingKey },
+        select: { currentRunId: true, currentRunVersion: true },
+      });
+      expect(session.currentRunId).not.toBe(initialRun.id);
+      expect(session.currentRunVersion).toBeGreaterThan(1);
+
+      const successor = await server.prisma.taskRun.findFirstOrThrow({
+        where: { id: session.currentRunId! },
+        select: { friendlyId: true },
+      });
+      continuation = runRealChatAgent({
+        agentId: testEndAndContinueCustomAgent.id,
+        baseUrl,
+        addressingKey,
+        secretKey: apiKey,
+        model: textModel("unused"),
+        modelLocal: testChatModelLocal,
+        runId: successor.friendlyId,
+        continuation: true,
+        previousRunId: runId,
+      });
+
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token: publicAccessToken,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+      expect(joinChunks(parts)).toContain("received:deliver after endAndContinue");
+      await expect(continuation.done).resolves.toBeUndefined();
+    } finally {
+      await continuation?.close();
+      await oldRun.close();
+    }
+  });
+
+  it("EA24: custom endAndContinue rejects when the server rejects the handoff", async () => {
+    const { addressingKey, apiKey, baseUrl } = await setupStartedSession(
+      testEndAndContinueCustomAgent.id
+    );
+    const agent = runRealChatAgent({
+      agentId: testEndAndContinueCustomAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("unused"),
+      modelLocal: testChatModelLocal,
+      runId: "run_missing_end_and_continue",
+    });
+
+    try {
+      await expect(agent.done).rejects.toThrow("callingRunId not found in this environment");
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA25: custom endAndContinue keeps the guard while iterator next is active", async () => {
+    const { addressingKey, publicAccessToken, runId, apiKey, environment, baseUrl } =
+      await setupStartedSession(testEndAndContinueIteratorGuardCustomAgent.id);
+    const initialRun = await server.prisma.taskRun.findFirstOrThrow({
+      where: { friendlyId: runId },
+      select: { id: true },
+    });
+
+    const append = await appendInput({
+      baseUrl,
+      addressingKey,
+      token: publicAccessToken,
+      partId: "iterator-guard-initial-input",
+      body: submitBody(
+        addressingKey,
+        userMessage("start iterator guard test", "iterator-guard-initial-input")
+      ),
+    });
+    expect(append.status).toBe(200);
+
+    const agent = runRealChatAgent({
+      agentId: testEndAndContinueIteratorGuardCustomAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("unused"),
+      modelLocal: testChatModelLocal,
+      runId,
+    });
+    let agentSettled = false;
+    let agentFailure: unknown;
+    void agent.done.then(
+      () => {
+        agentSettled = true;
+      },
+      (error) => {
+        agentSettled = true;
+        agentFailure = error;
+      }
+    );
+    let continuation: ReturnType<typeof runRealChatAgent> | undefined;
+
+    try {
+      await waitFor(
+        () =>
+          agentSettled ||
+          endAndContinueGuardEvents.some(
+            (event) => event.chatId === addressingKey && event.kind === "guard-held"
+          ),
+        20_000
+      );
+      if (agentFailure) throw agentFailure;
+      expect(agentSettled).toBe(false);
+      expect(
+        endAndContinueGuardEvents.some(
+          (event) => event.chatId === addressingKey && event.kind === "guard-held"
+        )
+      ).toBe(true);
+
+      const release = await appendInput({
+        baseUrl,
+        addressingKey,
+        token: publicAccessToken,
+        partId: "iterator-guard-release-input",
+        body: submitBody(
+          addressingKey,
+          userMessage("release pending next", "iterator-guard-release-input")
+        ),
+      });
+      expect(release.status).toBe(200);
+      await expect(agent.done).resolves.toBeUndefined();
+
+      expect(
+        endAndContinueGuardEvents.some(
+          (event) => event.chatId === addressingKey && event.kind === "return-settled"
+        )
+      ).toBe(true);
+      const session = await server.prisma.session.findFirstOrThrow({
+        where: { runtimeEnvironmentId: environment.id, externalId: addressingKey },
+        select: { currentRunId: true },
+      });
+      expect(session.currentRunId).not.toBe(initialRun.id);
+
+      const successor = await server.prisma.taskRun.findFirstOrThrow({
+        where: { id: session.currentRunId! },
+        select: { friendlyId: true },
+      });
+      continuation = runRealChatAgent({
+        agentId: testEndAndContinueIteratorGuardCustomAgent.id,
+        baseUrl,
+        addressingKey,
+        secretKey: apiKey,
+        model: textModel("unused"),
+        modelLocal: testChatModelLocal,
+        runId: successor.friendlyId,
+        continuation: true,
+        previousRunId: runId,
+      });
+
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token: publicAccessToken,
+        until: (records) => records.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+      expect(joinChunks(parts)).toContain("received:release pending next");
+      await expect(continuation.done).resolves.toBeUndefined();
+    } finally {
+      await continuation?.close();
       await agent.close();
     }
   });
