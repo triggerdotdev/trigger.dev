@@ -1396,9 +1396,7 @@ export class ApiClient {
     // `createStream` so downstream clients can feed them into
     // `StreamsWriterV2`.
     const base = `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
-    const url = channel
-      ? `${base}/channels/${encodeURIComponent(channel)}/${io}`
-      : `${base}/${io}`;
+    const url = channel ? `${base}/channels/${encodeURIComponent(channel)}/${io}` : `${base}/${io}`;
     const retentionHeaders: Record<string, string> = {};
     if (channel && retention?.maxAgeSeconds != null) {
       retentionHeaders["x-channel-max-age-seconds"] = String(retention.maxAgeSeconds);
