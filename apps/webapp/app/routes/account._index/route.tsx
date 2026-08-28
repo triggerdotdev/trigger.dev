@@ -496,6 +496,9 @@ function ChangeProfilePhotoButton() {
     });
   };
 
+  // Only our own uploads are app-relative; OAuth avatars are absolute URLs.
+  const uploadedAvatarUrl = user.avatarUrl?.startsWith("/") ? user.avatarUrl : undefined;
+
   const remove = () => {
     actionRef.current = "remove";
     fetcher.submit(null, { method: "delete", action: "/resources/account/avatar" });
@@ -526,7 +529,7 @@ function ChangeProfilePhotoButton() {
         open={isOpen}
         onOpenChange={setIsOpen}
         onSave={save}
-        currentAvatarUrl={user.avatarUrl ?? undefined}
+        currentAvatarUrl={uploadedAvatarUrl}
         onRemove={remove}
         isSaving={isSaving}
       />
