@@ -12,6 +12,7 @@ import type { Counter } from "@opentelemetry/api";
 import { getMeter } from "@internal/tracing";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { nonAliasedShards, type ShardTarget } from "~/v3/runOpsShards.server";
 import {
   probeControlPlaneCoresidency,
   type CoresidencyProbeResult,
@@ -39,12 +40,14 @@ export type CoresidencyEnforcement = { throw: false } | { throw: true; message: 
 export function resolveCoresidencyEnforcement(args: {
   coresident: CoresidencyVerdict;
   expectSplit: boolean;
+  /** Omitted for the legacy store, so its message stays exactly as it was. */
+  shardKey?: string;
 }): CoresidencyEnforcement {
   if (args.expectSplit && args.coresident === "true") {
+    const store = args.shardKey === undefined ? "legacy run-ops DB" : `shard ${args.shardKey}`;
     return {
       throw: true,
-      message:
-        "RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT is on but the legacy run-ops DB is still co-resident with the control-plane DB; refusing to start.",
+      message: `RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT is on but the ${store} is still co-resident with the control-plane DB; refusing to start.`,
     };
   }
   return { throw: false };
@@ -57,46 +60,84 @@ type AdvisoryLogger = {
 
 export async function assertControlPlaneCoresidencyAdvisory(deps?: {
   probe?: typeof probeControlPlaneCoresidency;
-  emit?: (verdict: CoresidencyVerdict) => void;
+  /** shardKey is omitted for the legacy store, so its metric series is unchanged at N=0. */
+  emit?: (verdict: CoresidencyVerdict, shardKey?: string) => void;
   log?: AdvisoryLogger;
   expectSplit?: boolean;
   legacyUrl?: string;
   controlPlaneUrl?: string;
+  shards?: ShardTarget[];
 }): Promise<void> {
   const log = deps?.log ?? logger;
   const legacyUrl = deps?.legacyUrl ?? env.RUN_OPS_LEGACY_DATABASE_URL;
   const controlPlaneUrl =
     deps?.controlPlaneUrl ?? env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL;
-  // No legacy DSN (single-DB / self-host) or no control-plane DSN -> nothing to compare.
-  if (!legacyUrl || !controlPlaneUrl) return;
+  const shards = deps?.shards ?? nonAliasedShards(env.RUN_OPS_SHARDS);
+  // No control-plane DSN -> nothing to compare against, for any store.
+  if (!controlPlaneUrl) return;
+
+  // The legacy store carries NO shard key, so its metric series and its message are unchanged.
+  // An aliased shard is already absent from `shards`: it shares its target's database on purpose,
+  // so a co-residency verdict for it would duplicate its target's verdict.
+  const stores: Array<{ url: string; shardKey?: string }> = [
+    ...(legacyUrl ? [{ url: legacyUrl }] : []),
+    ...shards.map((shard) => ({ url: shard.url, shardKey: shard.key })),
+  ];
+  if (stores.length === 0) return;
 
   const probe = deps?.probe ?? probeControlPlaneCoresidency;
   const emit =
     deps?.emit ??
-    ((verdict: CoresidencyVerdict) => getCoresidentCounter().add(1, { result: verdict }));
+    ((verdict: CoresidencyVerdict, shardKey?: string) =>
+      getCoresidentCounter().add(
+        1,
+        shardKey === undefined ? { result: verdict } : { result: verdict, shard: shardKey }
+      ));
   const expectSplit = deps?.expectSplit ?? env.RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT;
 
-  let result: CoresidencyProbeResult;
-  try {
-    result = await probe(legacyUrl, controlPlaneUrl, { logger: log });
-  } catch (error) {
-    // Any unexpected throw still degrades to "unknown" — the advisory arm must never crash boot.
-    log.warn("run-ops control-plane co-residency probe threw; reporting unknown", { error });
-    result = { coresident: "unknown", reason: String(error) };
+  const results = await Promise.all(
+    stores.map(async (store) => {
+      let result: CoresidencyProbeResult;
+      try {
+        result = await probe(store.url, controlPlaneUrl, { logger: log });
+      } catch (error) {
+        // Any unexpected throw degrades THAT store to "unknown" — the advisory arm must never
+        // crash boot, and one store's denied probe must not hide another store's verdict.
+        log.warn("run-ops control-plane co-residency probe threw; reporting unknown", {
+          error,
+          shard: store.shardKey,
+        });
+        result = { coresident: "unknown", reason: String(error) };
+      }
+      return { store, result };
+    })
+  );
+
+  // Emit and log EVERY store before any enforcement throw, so a failing store never costs
+  // another store its metric.
+  for (const { store, result } of results) {
+    // One argument for the legacy store, so its emission is byte-identical to today's.
+    if (store.shardKey === undefined) {
+      emit(result.coresident);
+    } else {
+      emit(result.coresident, store.shardKey);
+    }
+    log.info("run_ops_legacy_control_plane_coresident", {
+      coresident: result.coresident,
+      reason: "reason" in result ? result.reason : undefined,
+      expectSplit,
+      shard: store.shardKey,
+    });
   }
 
-  emit(result.coresident);
-  log.info("run_ops_legacy_control_plane_coresident", {
-    coresident: result.coresident,
-    reason: "reason" in result ? result.reason : undefined,
-    expectSplit,
-  });
-
-  const enforcement = resolveCoresidencyEnforcement({
-    coresident: result.coresident,
-    expectSplit,
-  });
-  if (enforcement.throw) {
-    throw new Error(enforcement.message);
+  for (const { store, result } of results) {
+    const enforcement = resolveCoresidencyEnforcement({
+      coresident: result.coresident,
+      expectSplit,
+      shardKey: store.shardKey,
+    });
+    if (enforcement.throw) {
+      throw new Error(enforcement.message);
+    }
   }
 }

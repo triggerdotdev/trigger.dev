@@ -86,6 +86,7 @@
             "pages": [
               "ai-chat/overview",
               "ai-chat/quick-start",
+              "ai-chat/migrating-from-a-route-handler",
               {
                 "group": "Building agents",
                 "pages": [
@@ -106,6 +107,7 @@
                 "group": "Features",
                 "pages": [
                   "ai/prompts",
+                  "ai/observability",
                   "ai-chat/fast-starts",
                   "ai-chat/compaction",
                   "ai-chat/prompt-caching",
@@ -185,6 +187,7 @@
               "github-actions",
               "deployment/preview-branches",
               "deployment/dev-branches",
+              "deployment/version-skew-protection",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
@@ -472,6 +475,7 @@
                 },
                 "pages": [
                   "guides/ai-agents/overview",
+                  "guides/ai-agents/chat-agent",
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
@@ -891,6 +895,11 @@
     {
       "source": "/guides/ai-chat",
       "destination": "/ai-chat/overview"
+    },
+    {
+      "source": "/deployment/vercel-skew-protection",
+      "destination": "/deployment/version-skew-protection",
+      "permanent": true
     }
   ]
 }

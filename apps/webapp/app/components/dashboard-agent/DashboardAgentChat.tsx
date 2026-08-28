@@ -1,37 +1,62 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
+import {
+  isWatchRequestMessageId,
+  type AgentIntent,
+  type SuggestedPrompt,
+  type WatchSpec,
+} from "@internal/dashboard-agent-contracts";
+import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useToast } from "~/components/primitives/Toast";
+import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
-import { DashboardAgentMessages } from "./DashboardAgentMessages";
-import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
+import { DashboardAgentHero } from "./DashboardAgentHero";
+import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
+import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
+import {
+  FREE_PLAN_MESSAGE_LIMIT,
+  MESSAGE_QUOTA_REACHED_REASON,
+  parseQuotaReachedResponse,
+  type MessageQuota,
+} from "./message-quota";
+import { createTranscriptOrder, orderTranscript } from "./message-order";
+import { navigateDestination } from "./navigate-target";
+import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
+import type { AgentPageContext } from "./page-context-types";
+import { retryAction } from "./retry-action";
+import {
+  fetchChatTranscript,
+  pollSettledTranscript,
+  transcriptLooksUnfinished,
+} from "./settled-transcript";
+import { takeNavigateIntent } from "./turn-navigation";
+import { sendRequestOutcome } from "./send-request";
+import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
+import { useAgentMessageQuota } from "./useAgentMessageQuota";
+import { useTriggerUriResolver } from "./useTriggerUriResolver";
+import { WatchChips, type WatchChip } from "./WatchChips";
 
-// The persisted session for a chat: the session-scoped token plus the stream
-// cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
-// from replaying the previous turn.
+// Resuming with `lastEventId` stops the `.out` stream replaying the previous turn.
 export type DashboardAgentSession = {
   publicAccessToken: string;
   lastEventId?: string;
 };
 
-// Per-turn context for the agent. Matches the agent's clientDataSchema input.
+// Matches the agent's clientDataSchema input.
 export type DashboardAgentClientData = {
   userId: string;
   organizationId: string;
   projectId?: string;
   environmentId?: string;
   currentPage?: string;
+  pageContext?: AgentPageContext;
 };
 
-/**
- * A single conversation. The panel mounts this with `key={chatId}`, so each
- * chat gets its own transport constructed with its persisted session — the
- * resume cursor flows in declaratively via the `sessions` option rather than
- * an imperative setSession after the fact. A fresh chat passes no session and
- * starts a new run on first send.
- */
+/** Mounted with `key={chatId}`: the resume cursor arrives via `sessions`, not setSession. */
 export function DashboardAgentChat({
   chatId,
   initialMessages,
@@ -44,7 +69,17 @@ export function DashboardAgentChat({
   currentPage,
   pendingFirstMessage,
   streaming,
+  sendRequest,
+  promotedPrompt,
+  watches,
+  pagePaths,
+  watchCard,
+  appendedMessages,
+  onWatchIntent,
+  onCancelWatch,
   onTurnSettled,
+  onActivityChange,
+  onQuotaChange,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -54,31 +89,73 @@ export function DashboardAgentChat({
   actionPath: string;
   projectSlug: string;
   environmentSlug: string;
+  // Display label only; the path the agent sees is `clientData.currentPage`.
   currentPage: string;
-  // Cold start: send this first message through the transport once on mount to
-  // trigger the turn. Undefined for head-started and resumed chats.
+  // Undefined for head-started and resumed chats.
   pendingFirstMessage?: string;
-  // Head start: the turn is already in flight, so hydrate the session as
-  // streaming so the transport resumes `session.out` instead of treating it as
-  // a settled session with nothing to reconnect to.
   streaming?: boolean;
+  // A prompt the user asked for by clicking. `seq` makes each request distinct so the same
+  // text can be sent twice.
+  sendRequest?: { text: string; seq: number };
+  promotedPrompt?: SuggestedPrompt;
+  watches: WatchChip[];
+  pagePaths?: Record<string, string>;
+  watchCard?: React.ReactNode;
+  appendedMessages?: { messages: UIMessage[]; seq: number };
+  /** Nothing is persisted until the user submits the card. */
+  onWatchIntent?: (spec: WatchSpec) => void;
+  onCancelWatch: (watchId: string) => void;
   onTurnSettled: () => void;
+  onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
+  /** The poll lives here, so this is where the panel learns the cap has lifted. */
+  onQuotaChange?: (quota: MessageQuota) => void;
 }) {
   const [input, setInput] = useState("");
+  // Set when the server refuses a send over the cap, so the block shows at once rather than
+  // waiting for the next quota poll.
+  const [quotaReached, setQuotaReached] = useState<{ limit: number; planResolved: boolean } | null>(
+    null
+  );
+  const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
+
+  // The path this chat last rendered on. React never unmounts on a page teardown, so an
+  // unmount whose live URL has moved is the router having navigated out from under it.
+  const renderedPathRef = useRef(location.pathname);
+
+  renderedPathRef.current = location.pathname;
 
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
     baseURL: apiOrigin,
-    // New chats are created server-side (the `create` action owns the id and
-    // runs head start), so there's no client-driven head-start route here.
-    // Redirect only the `in`/append to the same-origin proxy, which mints +
-    // injects the delegated user token server-side. `baseURL` stays a string so
-    // `out` (the long-lived SSE) keeps the SDK's realtime-host routing — we
-    // never override it. The proxy forwards the same path on to the API.
-    fetch: (url, init, ctx) => {
+    // Only `in` goes through the same-origin proxy, which injects the delegated user
+    // token server-side. `baseURL` stays a string so `out` keeps the SDK's realtime routing.
+    fetch: async (url, init, ctx) => {
       if (ctx.endpoint !== "in") return globalThis.fetch(url, init);
       const { pathname, search } = new URL(url);
-      return globalThis.fetch(`${actionPath}/in${pathname}${search}`, init);
+      const res = await globalThis.fetch(`${actionPath}/in${pathname}${search}`, init);
+      // A refused message never succeeds on a retry, so it surfaces as the turn's error.
+      if (res.status === 413) {
+        const data = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? MESSAGE_TOO_LARGE_ERROR);
+      }
+      // Over the message cap: show the upgrade block instead of a generic turn error.
+      if (res.status === 403) {
+        const data = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as { error?: string; limit?: number } | null;
+        const reached = parseQuotaReachedResponse(res.status, data);
+        if (reached) {
+          setQuotaReached(reached);
+          throw new Error("You've reached your message limit.");
+        }
+      }
+      return res;
     },
     clientData,
     sessions: session
@@ -86,9 +163,7 @@ export function DashboardAgentChat({
           [chatId]: {
             publicAccessToken: session.publicAccessToken,
             lastEventId: session.lastEventId,
-            // Head-started chats are mid-turn, so mark the session streaming to
-            // make the transport resume `session.out`. A settled session
-            // (history) stays false — its transcript loads from the store.
+            // Mid-turn chats must be marked streaming or the transport won't resume `session.out`.
             isStreaming: streaming ?? false,
           },
         }
@@ -119,28 +194,70 @@ export function DashboardAgentChat({
   });
 
   const {
-    messages,
+    messages: rawMessages,
+    setMessages,
     sendMessage,
+    regenerate,
     status,
     stop: aiStop,
     error,
+    clearError,
   } = useChat({
     id: chatId,
     messages: initialMessages,
     transport,
-    // Resume an existing/head-started session's stream. A cold-start chat has a
-    // session but nothing to resume yet — it sends its first message instead.
     resume: !!session && !pendingFirstMessage,
   });
 
-  const isStreaming = status === "streaming";
-  const isThinking = status === "submitted";
+  const orderRef = useRef(createTranscriptOrder(initialMessages));
 
-  // Cold start: trigger the first turn by sending the pending message once.
+  const messages = orderTranscript(rawMessages, orderRef.current);
+
+  // Read here, not in the panel, so it re-reads as each turn settles.
+  const quota = useAgentMessageQuota({ actionPath, chatId, status });
+  useEffect(() => {
+    onQuotaChange?.(quota);
+    // The quota object is rebuilt every render; only its kind is acted on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quota.kind, onQuotaChange]);
+  // Either the poll saw the cap, or a send was just refused over it.
+  const atMessageCap = quota.kind === "reached" || quotaReached !== null;
+  const messageCapLimit =
+    quotaReached?.limit ?? (quota.kind === "unlimited" ? FREE_PLAN_MESSAGE_LIMIT : quota.limit);
+  // The poll only runs on the free plan, so its cap is the free-plan nudge; a refusal
+  // carries the plan limit the server resolved.
+  const messageCapPlanResolved = quotaReached?.planResolved ?? false;
+
+  const isStreaming = status === "streaming";
+  // From status, not the last part: the indicator must stay up through silent tool calls.
+  const activity: TurnActivity | null =
+    status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
+
+  // Once per `seq`: the append is already persisted, so a replay would duplicate it.
+  // Ids are stable, so anything already in the transcript is skipped.
+  const appendedSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!appendedMessages || appendedSeq.current === appendedMessages.seq) return;
+    appendedSeq.current = appendedMessages.seq;
+    setMessages((current) => {
+      const missing = appendedMessages.messages.filter(
+        (message) => !current.some((existing) => existing.id === message.id)
+      );
+      return missing.length === 0 ? current : [...current, ...missing];
+    });
+  }, [appendedMessages, setMessages]);
+
+  // Where this tab asked for the running turn, stamped only where a turn is actually started
+  // here. A turn this tab resumed leaves it null, which is what tells `takeNavigateIntent` the
+  // tab cannot claim the user is still on the page that asked. Never cleared on settle: the
+  // navigate intent can be committed alongside the status going ready.
+  const turnStartedPathRef = useRef<string | null>(null);
+
   const sentFirst = useRef(false);
   useEffect(() => {
     if (pendingFirstMessage && !sentFirst.current) {
       sentFirst.current = true;
+      turnStartedPathRef.current = renderedPathRef.current;
       void sendMessage({ text: pendingFirstMessage });
     }
   }, [pendingFirstMessage, sendMessage]);
@@ -148,47 +265,236 @@ export function DashboardAgentChat({
   const submit = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
+      // Suggested prompts and card actions bypass the composer, so the cap is enforced here too.
+      if (!trimmed || isStreaming || atMessageCap) return;
       setInput("");
+      turnStartedPathRef.current = renderedPathRef.current;
       void sendMessage({ text: trimmed });
     },
-    [isStreaming, sendMessage]
+    [isStreaming, atMessageCap, sendMessage]
   );
+
+  // The panel only sends when the chat can take it, so this never lands mid-turn. The cap it
+  // cannot see is why the request is held rather than consumed on sight.
+  const sentRequestSeq = useRef<number | undefined>(undefined);
+  const canSend = !isStreaming && !atMessageCap;
+  useEffect(() => {
+    if (!sendRequest) return;
+    const outcome = sendRequestOutcome({
+      requestSeq: sendRequest.seq,
+      consumedSeq: sentRequestSeq.current,
+      canSend,
+    });
+    if (outcome !== "send") return;
+    sentRequestSeq.current = sendRequest.seq;
+    submit(sendRequest.text);
+  }, [sendRequest, submit, canSend]);
+
+  const retry = useCallback(() => {
+    // Over the cap, a retry only earns another 403 — same guard as `submit`.
+    if (atMessageCap) return;
+    // A watch's consent record is a user message nobody typed, so retry never treats it as one.
+    const action = retryAction(
+      messages.filter((m) => !(m.role === "user" && isWatchRequestMessageId(m.id)))
+    );
+    if (!action) return;
+    clearError();
+    turnStartedPathRef.current = renderedPathRef.current;
+    if (action.kind === "regenerate") {
+      void regenerate();
+      return;
+    }
+    void sendMessage({ text: action.text, messageId: action.messageId });
+  }, [messages, sendMessage, regenerate, clearError, atMessageCap]);
+
+  const resolveUri = useTriggerUriResolver(actionPath);
+
+  // `trigger://` targets resolve server-side: the server owns the environment scope.
+  const goTo = useCallback(
+    async (intent: Extract<AgentIntent, { kind: "navigate" }>) => {
+      const body = new FormData();
+      body.set("intent", "resolve");
+      body.set("uri", intent.target);
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        const data = (await res.json()) as { path?: string; external?: boolean };
+        if (!res.ok) throw new Error(`Resolve failed (${res.status})`);
+        const destination = navigateDestination(data, intent.filters);
+        if (destination.kind === "none") throw new Error("Resolved to nothing routable");
+        if (destination.kind === "route") {
+          navigate(destination.path);
+          return;
+        }
+        // A source file lives on GitHub. The fetch above has already broken the gesture chain,
+        // so a blocked popup falls back to leaving the dashboard rather than doing nothing.
+        const opened = window.open(destination.url, "_blank", "noopener,noreferrer");
+        if (!opened) window.location.assign(destination.url);
+      } catch (error) {
+        console.error("Dashboard agent: failed to resolve a navigate target", error);
+        toast.error("Couldn't open that page.");
+      }
+    },
+    [actionPath, navigate, toast]
+  );
+
+  // `propose_fix` is reserved and must never be executed.
+  const handleIntent = useCallback(
+    (intent: AgentIntent) => {
+      switch (intent.kind) {
+        case "ask":
+          submit(intent.prompt);
+          return;
+        case "watch":
+          onWatchIntent?.(intent.spec);
+          return;
+        case "navigate":
+          void goTo(intent);
+          return;
+        default:
+          console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
+      }
+    },
+    [submit, goTo, onWatchIntent]
+  );
+
+  // Seeded from the loaded transcript before first render, so history never re-navigates.
+  const navigatedRef = useRef<Set<string> | null>(null);
+  if (navigatedRef.current === null) {
+    navigatedRef.current = new Set();
+
+    pendingNavigateIntents(initialMessages, navigatedRef.current);
+  }
+  useEffect(() => {
+    const target = takeNavigateIntent({
+      messages,
+      handled: navigatedRef.current!,
+      startedPath: turnStartedPathRef.current,
+      currentPath: renderedPathRef.current,
+    });
+    if (target) void goTo(target);
+  }, [messages, goTo]);
+
+  const watchProposedRef = useRef<Set<string> | null>(null);
+  if (watchProposedRef.current === null) {
+    watchProposedRef.current = new Set();
+
+    pendingWatchIntents(initialMessages, watchProposedRef.current);
+  }
+  useEffect(() => {
+    const pending = pendingWatchIntents(messages, watchProposedRef.current!);
+    const proposed = pending.at(-1);
+    if (proposed) onWatchIntent?.(proposed.spec);
+  }, [messages, onWatchIntent]);
 
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);
     aiStop();
   }, [transport, chatId, aiStop]);
 
-  // Tell the panel to refresh its history list once a turn settles, so the new
-  // chat appears and titles/timestamps stay current.
+  const teardownRef = useRef<() => void>(() => {});
+
+  teardownRef.current = () => {
+    if (status !== "streaming" && status !== "submitted") return;
+    const reason = unmountTeardown({
+      renderedPath: renderedPathRef.current,
+      livePath: window.location.pathname,
+    });
+    if (!teardownCancelsTurn(reason)) return;
+    stop();
+  };
+  useEffect(() => () => teardownRef.current(), []);
+
+  // Read by the settle effect, which must not re-run when the transcript changes.
+  const messagesRef = useRef(messages);
+
+  messagesRef.current = messages;
+
   const prevStatus = useRef(status);
   useEffect(() => {
     const wasInFlight = prevStatus.current === "streaming" || prevStatus.current === "submitted";
     const nowSettled = status === "ready" || status === "error";
-    if (wasInFlight && nowSettled) onTurnSettled();
     prevStatus.current = status;
-  }, [status, onTurnSettled]);
+    if (!wasInFlight || !nowSettled) return;
+
+    onTurnSettled();
+    // The terminal card is written to the chat row after the stream closes, so this
+    // mounted panel would otherwise keep showing the last `in_progress` revision — or,
+    // if the stream died mid-tool, the tool call it never got an output for.
+    if (!transcriptLooksUnfinished(messagesRef.current)) return;
+    void pollSettledTranscript<UIMessage>({
+      fetchTranscript: () => fetchChatTranscript(actionPath, chatId),
+      apply: (merge) => setMessages((current) => merge(current)),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+  }, [status, onTurnSettled, actionPath, chatId, setMessages]);
+
+  // Not cleared on unmount: the turn carries on server-side and reports again on remount.
+  useEffect(() => {
+    onActivityChange?.(chatId, activity);
+  }, [chatId, activity, onActivityChange]);
 
   return (
     <>
-      <DashboardAgentContextBanner
-        projectSlug={projectSlug}
-        environmentSlug={environmentSlug}
-        currentPage={currentPage}
+      <WatchChips
+        watches={watches.filter((watch) => watch.status === "active")}
+        onCancel={onCancelWatch}
       />
-      {messages.length === 0 ? (
-        <DashboardAgentSuggestedPrompts onSelect={submit} />
+      {messages.length === 0 && !pendingFirstMessage ? (
+        <DashboardAgentHero
+          onSelect={submit}
+          pageContext={clientData.pageContext}
+          promoted={promotedPrompt}
+          promptsDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
+        />
       ) : (
-        <DashboardAgentMessages messages={messages} isThinking={isThinking} error={error} />
+        <DashboardAgentMessages
+          messages={messages}
+          activity={activity}
+          error={error}
+          onRetry={retry}
+          retryDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
+          onDismissError={clearError}
+          onIntent={handleIntent}
+          pagePaths={pagePaths}
+          watches={watches}
+          resolveUri={resolveUri}
+        />
       )}
-      <DashboardAgentComposer
-        value={input}
-        onChange={setInput}
-        onSubmit={() => submit(input)}
-        onStop={stop}
-        isStreaming={isStreaming}
-      />
+      {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
+      {atMessageCap ? (
+        <AgentUpgradeBlock
+          limit={messageCapLimit}
+          planResolved={messageCapPlanResolved}
+          context={
+            <DashboardAgentContextBanner
+              projectSlug={projectSlug}
+              environmentSlug={environmentSlug}
+              currentPage={currentPage}
+            />
+          }
+        />
+      ) : (
+        <>
+          <DashboardAgentComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={() => submit(input)}
+            onStop={stop}
+            isStreaming={isStreaming}
+            focusKey={sendRequest?.seq}
+            context={
+              <DashboardAgentContextBanner
+                projectSlug={projectSlug}
+                environmentSlug={environmentSlug}
+                currentPage={currentPage}
+              />
+            }
+          />
+          {quota.kind === "within" && (
+            <AgentQuotaNotice remaining={quota.remaining} limit={quota.limit} />
+          )}
+        </>
+      )}
     </>
   );
 }

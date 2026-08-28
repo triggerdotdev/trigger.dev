@@ -3,7 +3,7 @@ import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
-import { getImpersonationId } from "./impersonation.server";
+import { getImpersonationId, getImpersonationState } from "./impersonation.server";
 import { logger } from "./logger.server";
 import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
 
@@ -135,7 +135,9 @@ export async function requireUser(request: Request) {
     throw redirect(`/login?${searchParams}`);
   }
 
-  const impersonationId = await getImpersonationId(request);
+  // Shared with the root loader so the client never reads a different answer
+  // than the one computed here.
+  const { isImpersonating, isViewingAsUser } = await getImpersonationState(request, user.id);
   return {
     id: user.id,
     email: user.email,
@@ -148,10 +150,39 @@ export async function requireUser(request: Request) {
     dashboardPreferences: user.dashboardPreferences,
     confirmedBasicDetails: user.confirmedBasicDetails,
     mfaEnabledAt: user.mfaEnabledAt,
-    isImpersonating: !!impersonationId && impersonationId === user.id,
+    isImpersonating,
+    isViewingAsUser,
   };
 }
 
-export async function logout(request: Request) {
+/**
+ * Whether admin-only UI should be rendered for this user.
+ *
+ * Display only. The "view as user" toggle is cosmetic and must never widen or
+ * narrow a real security boundary — authorization stays on `user.admin`, the
+ * route builder's `authorization` block and the per-feature access checks.
+ *
+ * The rule: the toggle changes what is *shown*, never what is *permitted or
+ * what happens*. "Shown" is narrow — rendering and read-only listings. A badge,
+ * a debug tooltip, an extra table column, a control that is merely hidden while
+ * the handler behind it re-checks the raw flags: all fine.
+ *
+ * It does NOT extend to a value a request handler reads, nor to the option set
+ * of a control that submits. An option list feeding a mutation is not display:
+ * shrinking it changes what a submitted form is able to do, and where the
+ * current value is not among the remaining options it can change which value
+ * the form carries. Those stay on raw `user.admin || user.isImpersonating`, or
+ * the admin's own submissions start behaving differently — or failing — the
+ * moment they flip the toggle on.
+ */
+export function hasAdminDisplayAccess(user: {
+  admin: boolean;
+  isImpersonating: boolean;
+  isViewingAsUser: boolean;
+}): boolean {
+  return (user.admin || user.isImpersonating) && !user.isViewingAsUser;
+}
+
+async function logout(request: Request) {
   return redirect("/logout");
 }

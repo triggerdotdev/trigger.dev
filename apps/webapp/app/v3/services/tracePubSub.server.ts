@@ -6,11 +6,11 @@ import { singleton } from "~/utils/singleton";
 import { Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";
 
-export type TracePubSubOptions = {
+type TracePubSubOptions = {
   redis: RedisWithClusterOptions;
 };
 
-export class TracePubSub {
+class TracePubSub {
   private _publisher: RedisClient;
   private _subscriberCount = 0;
 

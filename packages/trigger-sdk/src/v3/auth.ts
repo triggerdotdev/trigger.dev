@@ -83,7 +83,7 @@ type PublicTokenPermissionProperties = {
   sessions?: string | string[];
 };
 
-export type PublicTokenPermissions = {
+type PublicTokenPermissions = {
   read?: PublicTokenPermissionProperties;
 
   write?: PublicTokenPermissionProperties;
@@ -103,7 +103,7 @@ export type PublicTokenPermissions = {
   };
 };
 
-export type CreatePublicTokenOptions = {
+type CreatePublicTokenOptions = {
   /**
    * A collection of permission scopes to be granted to the token. This remains
    * optional for root API key compatibility; additional API keys require at
@@ -251,7 +251,7 @@ async function withPublicToken(options: CreatePublicTokenOptions, fn: () => Prom
   await withAuth({ accessToken: token }, fn);
 }
 
-export type CreateTriggerTokenOptions = {
+type CreateTriggerTokenOptions = {
   /**
    * The expiration time for the token: a duration string, a `Date`, or a Unix
    * timestamp in **seconds**.

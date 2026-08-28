@@ -2,6 +2,7 @@ import {
   type Prisma,
   type PrismaClient,
   type PrismaClientOrTransaction,
+  boundedIn,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import { BoundedTtlCache } from "./boundedTtlCache";
@@ -14,7 +15,7 @@ import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.
  */
 
 /** The TaskRun columns the realtime feed projects (mirrors DEFAULT_ELECTRIC_COLUMNS). */
-export const RUN_HYDRATOR_SELECT = {
+const RUN_HYDRATOR_SELECT = {
   id: true,
   taskIdentifier: true,
   createdAt: true,
@@ -152,7 +153,7 @@ export class RunHydrator {
       {
         where: {
           runtimeEnvironmentId: environmentId,
-          id: { in: ids },
+          id: { in: boundedIn(ids) },
         },
         select: buildHydratorSelect(skipColumns),
       },

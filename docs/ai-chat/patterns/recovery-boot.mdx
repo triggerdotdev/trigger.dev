@@ -32,7 +32,7 @@ On a continuation boot, the runtime reads:
 - **`session.out` tail past the snapshot cursor** — closed assistant turns plus, optionally, a `partialAssistant` (the trailing message whose stream never received a `finish` chunk). `cleanupAbortedParts` has already stripped streaming-in-progress fragments.
 - **`session.in` tail past the last `turn-complete` cursor** — user messages the dead run hadn't acknowledged.
 
-If both `partialAssistant` and `inFlightUsers` are non-empty, the runtime splices `[firstInFlightUser, partialAssistant]` onto the chain. The remaining in-flight users dispatch as fresh turns. The model sees:
+If there's a `partialAssistant` and two or more `inFlightUsers`, the runtime splices `[firstInFlightUser, partialAssistant]` onto the chain. The remaining in-flight users dispatch as fresh turns. The model sees:
 
 ```
 [ ...settledMessages,  // chain through the last completed turn
@@ -138,9 +138,16 @@ type RecoveryBootResult<TUIM extends UIMessage = UIMessage> = {
 };
 ```
 
-- **`chain`** — replaces the seed chain. Defaults to `[...settledMessages, firstInFlightUser, partialAssistant]` when both partial and in-flight users exist, otherwise `settledMessages` alone.
+- **`chain`** — replaces the seed chain. Defaults to `[...settledMessages, firstInFlightUser, partialAssistant]` when there's a partial **and two or more** in-flight users, otherwise `settledMessages` alone.
 - **`recoveredTurns`** — user messages to dispatch as fresh turns after the chain is restored. Defaults to `inFlightUsers.slice(1)` when the smart default consumed the first user, otherwise `inFlightUsers`.
 - **`beforeBoot`** — runs after the writer flushes and before the first recovered turn fires. Use for blocking persistence (write the partial to your DB so a later turn can reference it). Errors bubble — wrap your own try/catch if you want to soft-fail.
+
+<Note>
+  The splice needs a follow-up user to answer, so it only applies with two or
+  more in-flight users. With exactly one — the plain OOM or crash-mid-answer
+  case — the orphan partial is dropped and that single user is re-dispatched as
+  a fresh turn, so the interrupted question still gets answered.
+</Note>
 
 ## Examples
 

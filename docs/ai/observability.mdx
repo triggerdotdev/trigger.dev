@@ -1,0 +1,174 @@
+---
+title: "LLM observability"
+sidebarTitle: "LLM observability"
+description: "Capture Vercel AI SDK calls in a task as spans in the run trace, with model, token usage, cost, and latency. Opt in per call, link calls to prompt versions, and query usage across runs."
+---
+
+**LLM observability turns a Vercel AI SDK call inside a task into its own span in the run trace, next to your logs and other spans.** Each span carries the model, provider, input, output, and total token counts, cost, and latency, so you can see what each generation did and what it cost without leaving the run.
+
+Everything shows up inline in the run trace you already use to debug runs. There is no separate product and no dashboard to set up.
+
+<Note>
+  Observability is opt-in per call and only covers [Vercel AI SDK](https://ai-sdk.dev) functions (`generateText`, `streamText`, `generateObject`). Calls you make with a raw `fetch`, a provider's own SDK, or any other HTTP client are not captured automatically.
+</Note>
+
+## Turn it on
+
+Set `experimental_telemetry: { isEnabled: true }` on the AI SDK call. There is nothing to install for AI SDK 6, and nothing to configure on the Trigger.dev side.
+
+```ts /trigger/summarize.ts
+import { task } from "@trigger.dev/sdk";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const summarize = task({
+  id: "summarize",
+  run: async (payload: { text: string }) => {
+    const result = await generateText({
+      model: openai("gpt-4o"),
+      prompt: `Summarize the following text:\n\n${payload.text}`,
+      experimental_telemetry: { isEnabled: true },
+    });
+
+    return { summary: result.text };
+  },
+});
+```
+
+Trigger the task and open the run. The `generateText` call appears as a span in the trace. `streamText` and `generateObject` work the same way: add the same `experimental_telemetry` flag to each call you want captured.
+
+<Note>
+  **AI SDK 7** moved span emission out of `ai` core into the `@ai-sdk/otel` adapter. In a task, install `@ai-sdk/otel` and register it once yourself, for example at the top of your task file:
+
+  ```ts /trigger/summarize.ts
+  import { registerTelemetry } from "ai";
+  import { OpenTelemetry } from "@ai-sdk/otel";
+
+  registerTelemetry(new OpenTelemetry());
+  ```
+
+  A [`chat.agent()`](/ai-chat/overview) run registers the adapter for you at run start, so chat agents need only the install. On AI SDK 5 and 6, `ai` core emits spans directly and no adapter is needed.
+</Note>
+
+## What each span shows
+
+Open an AI generation span in the run trace to get a dedicated inspector with three tabs:
+
+- **Overview**: model, provider, token usage, cost, and a preview of the input and output.
+- **Messages**: the full message thread, including the system prompt and any tool results.
+- **Tools**: the tool definitions passed to the model, plus every tool call the model made with its arguments.
+
+A fourth **Prompt** tab appears when the call is linked to an [AI Prompt](/ai/prompts) (see below).
+
+## Link a call to its prompt
+
+If you manage prompts with [AI Prompts](/ai/prompts), resolve the prompt and spread `toAISDKTelemetry()` into the call. This sets `experimental_telemetry` for you and links the span back to the exact prompt version that produced it.
+
+```ts /trigger/support.ts
+import { task, prompts } from "@trigger.dev/sdk";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import type { supportPrompt } from "./prompts";
+
+export const handleSupport = task({
+  id: "handle-support",
+  run: async (payload: { name: string; plan: string; issue: string }) => {
+    const resolved = await prompts.resolve<typeof supportPrompt>("customer-support", {
+      customerName: payload.name,
+      plan: payload.plan,
+      issue: payload.issue,
+    });
+
+    const result = await generateText({
+      model: openai(resolved.model ?? "gpt-4o"),
+      system: resolved.text,
+      prompt: payload.issue,
+      ...resolved.toAISDKTelemetry(),
+    });
+
+    return { response: result.text };
+  },
+});
+```
+
+The span's **Prompt** tab now shows the linked template, its version, and the input variables the prompt was resolved with.
+
+Pass custom attributes to `toAISDKTelemetry()` to tag the span with your own metadata:
+
+```ts
+const result = await generateText({
+  model: openai(resolved.model ?? "gpt-4o"),
+  system: resolved.text,
+  prompt: payload.issue,
+  ...resolved.toAISDKTelemetry({
+    "task.type": "summarization",
+    "customer.tier": "enterprise",
+  }),
+});
+```
+
+Custom attributes are stored on the span's `metadata`, so you can filter or group by them in TRQL, for example `metadata['task.type']`.
+
+<Note>
+  When you build an agent with `chat.agent()` and store a prompt with `chat.prompt.set()`, `chat.toStreamTextOptions()` sets `experimental_telemetry` for you, so those generations are captured without adding the flag by hand. Without a stored prompt, set `experimental_telemetry` on the call yourself. See [Prompts](/ai/prompts#using-with-chatagent).
+</Note>
+
+## Query usage across runs
+
+Every captured generation is also written to the `llm_metrics` table, which you can query with [TRQL](/observability/query). This lets you aggregate token usage, cost, and latency across many runs rather than inspecting one span at a time.
+
+Cost and token usage by model:
+
+```sql
+SELECT
+  response_model,
+  gen_ai_system AS provider,
+  count() AS calls,
+  sum(total_tokens) AS tokens,
+  round(sum(total_cost), 4) AS cost_usd
+FROM llm_metrics
+GROUP BY response_model, gen_ai_system
+ORDER BY cost_usd DESC
+LIMIT 20
+```
+
+Spend per task:
+
+```sql
+SELECT
+  task_identifier,
+  sum(input_tokens) AS input_tokens,
+  sum(output_tokens) AS output_tokens,
+  round(sum(total_cost), 4) AS cost_usd
+FROM llm_metrics
+GROUP BY task_identifier
+ORDER BY cost_usd DESC
+LIMIT 20
+```
+
+Cost by prompt version, when calls are linked to an [AI Prompt](/ai/prompts):
+
+```sql
+SELECT
+  prompt_slug,
+  prompt_version,
+  count() AS calls,
+  round(sum(total_cost), 4) AS cost_usd
+FROM llm_metrics
+WHERE prompt_slug != ''
+GROUP BY prompt_slug, prompt_version
+ORDER BY prompt_slug, prompt_version
+```
+
+Set the time window with the query's [period filter](/observability/query#time-ranges) rather than in the SQL itself. Run these from the [Query dashboard](/observability/query#using-the-query-dashboard), the SDK with `query.execute()`, or the REST API. `llm_metrics` also exposes `ms_to_first_chunk` and `tokens_per_second` for latency and throughput, plus `finish_reason`, `request_model`, `cached_read_tokens`, `reasoning_tokens`, and per-direction `input_cost` / `output_cost` for finer breakdowns.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Prompts" icon="message-lines" href="/ai/prompts">
+    Version prompts as code and link generations to the exact prompt version that produced them.
+  </Card>
+  <Card title="Query (TRQL)" icon="magnifying-glass-chart" href="/observability/query">
+    Write custom queries against your runs, metrics, and LLM usage.
+  </Card>
+</CardGroup>

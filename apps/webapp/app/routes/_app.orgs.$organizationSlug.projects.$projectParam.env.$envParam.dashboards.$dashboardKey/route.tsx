@@ -42,6 +42,14 @@ import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueryScopeSchema } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { MetricWidget } from "../resources.metric";
+import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data }) => [
+  data?.title ?? "Dashboard",
+  "Dashboards",
+]);
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
@@ -55,7 +63,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // URL), so gate it per-org like the rest of the Queue Metrics view.
   if (
     dashboardKey === "queues" &&
-    !(await canAccessQueueMetricsUi({ userId: user.id, organizationSlug }))
+    !(await canAccessQueueMetricsUi({ request, userId: user.id, organizationSlug }))
   ) {
     throw new Response(undefined, { status: 404, statusText: "Not found" });
   }
@@ -137,6 +145,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleOperations,
     possibleProviders,
   });
+};
+
+export const handle: Handle = {
+  agentPageContext: (data) => dashboardsAgentPageContext(data),
 };
 
 export default function Page() {
@@ -432,6 +444,7 @@ function useContainerWidth(initialWidth = 1280) {
 
   useEffect(() => {
     measureWidth();
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setMounted(true);
 
     const element = containerRef.current;

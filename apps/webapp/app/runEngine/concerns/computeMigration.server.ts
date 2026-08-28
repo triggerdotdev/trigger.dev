@@ -1,7 +1,7 @@
 import { hashBucket } from "~/utils/computeBucket";
 
 /** Subset of the global flags snapshot this resolver reads. */
-export type ComputeMigrationFlags = {
+type ComputeMigrationFlags = {
   computeMigrationEnabled?: boolean;
   computeMigrationFreePercentage?: number;
   computeMigrationPaidPercentage?: number;

@@ -215,10 +215,12 @@ function ChatClient({ chatId, initialMessages, initialSessions }) {
 </Info>
 
 <Note>
-  After resuming, `useChat`'s built-in `stop()` won't send the stop signal to the backend because
-  the AI SDK doesn't pass its abort signal through `reconnectToStream`. Use
-  `transport.stopGeneration(chatId)` for reliable stop behavior after resume — see
-  [Stop generation](#stop-generation) for the recommended pattern.
+  After resuming, `useChat`'s built-in `stop()` won't send the stop signal to the backend. The
+  transport accepts an abort signal on `reconnectToStream` but doesn't treat it as owning the turn,
+  so aborting a resumed subscription only closes your local stream while the run keeps generating.
+  Use `transport.stopGeneration(chatId)` for reliable stop behavior after resume — see
+  [Stop generation](#stop-generation) for the recommended pattern. Pass `stopOnAbort: true` to
+  `reconnectToStream` only when that subscriber owns the turn.
 </Note>
 
 <Warning>
@@ -340,11 +342,10 @@ const stop = useCallback(() => {
 </Info>
 
 <Tip>
-  A [PR to the AI SDK](https://github.com/vercel/ai/pull/14350) has been
-  submitted to pass `abortSignal` through `reconnectToStream`, which would make
-  `useChat`'s built-in `stop()` work after resume without needing
-  `stopGeneration`. Until that lands, use the pattern above for reliable stop
-  behavior after page refresh.
+  Aborting a resumed stream never stops the run by itself, so `useChat`'s
+  built-in `stop()` isn't enough after a page refresh. Use the pattern above, or
+  pass `stopOnAbort: true` to `reconnectToStream` when that subscriber owns the
+  turn.
 </Tip>
 
 See [Stop generation](/ai-chat/backend#stop-generation) in the backend docs for how to handle stop signals in your task.

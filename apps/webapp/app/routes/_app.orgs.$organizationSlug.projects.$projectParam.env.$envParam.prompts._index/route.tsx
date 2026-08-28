@@ -1,4 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   Bar,
@@ -39,10 +38,17 @@ import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { promptsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Prompts | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => promptsAgentPageContext(data),
 };
+
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Prompts");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -99,9 +105,11 @@ export default function PromptsPage() {
       <NavBar>
         <PageTitle title="Prompts" />
         <PageAccessories>
-          <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("ai/prompts")}>
-            Prompts docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("ai/prompts")}>
+              Prompts docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

@@ -66,6 +66,12 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     symbol: "#tryCompleteBatch",
   },
   {
+    id: "batch.expireBatch",
+    kind: "RUN",
+    site: BATCH_SYSTEM,
+    symbol: "expireBatch",
+  },
+  {
     id: "ttl.expireRun",
     kind: "RUN",
     site: TTL_SYSTEM,

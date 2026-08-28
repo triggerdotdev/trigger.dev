@@ -37,6 +37,7 @@ function installPrimarySignalHandlers() {
 
   const forward = (signal: NodeJS.Signals) => {
     for (const id in cluster.workers) {
+      if (!Object.hasOwn(cluster.workers, id)) continue;
       const w = cluster.workers[id];
       if (w?.process?.pid) {
         try {
@@ -145,8 +146,18 @@ async function startServer() {
   // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
   // (2xx) access logs; non-2xx responses are always logged so errors stay visible.
   const suppressSuccessfulAccessLogs = process.env.HTTP_ACCESS_LOG_DISABLED === "1";
+  // Strip the query string from webhook ingress URLs (they may carry a
+  // url-secret) before they reach the access log. Other paths pass through.
+  morgan.token("url-redacted", (req: any) => {
+    const url: string = req.originalUrl ?? req.url ?? "";
+    if (url.startsWith("/webhooks/v1/ingest/")) {
+      const q = url.indexOf("?");
+      return q === -1 ? url : url.slice(0, q);
+    }
+    return url;
+  });
   app.use(
-    morgan("tiny", {
+    morgan(":method :url-redacted :status :res[content-length] - :response-time ms", {
       skip: (_req, res) =>
         suppressSuccessfulAccessLogs && res.statusCode >= 200 && res.statusCode < 300,
     })
@@ -183,10 +194,14 @@ async function startServer() {
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
     const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
+    const deploymentRateLimiter: RateLimitMiddleware = build.entry.module.deploymentRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
+    const dashboardAgentBodyCap: RequestHandler = build.entry.module.dashboardAgentBodyCap;
+    const webhookIngressIpRateLimiter: RequestHandler =
+      build.entry.module.webhookIngressIpRateLimiter;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -235,10 +250,16 @@ async function startServer() {
       }
 
       app.use(apiRateLimiter);
+      app.use(deploymentRateLimiter);
       app.use(engineRateLimiter);
       app.use(otlpRateLimiter);
+      app.use(webhookIngressIpRateLimiter);
 
       app.use(tenantContextMiddleware);
+
+      // Before the Remix handler: the agent's chat body is refused while it streams, so a
+      // route never buffers one that was already too large.
+      app.use(dashboardAgentBodyCap);
 
       app.all(
         "*",

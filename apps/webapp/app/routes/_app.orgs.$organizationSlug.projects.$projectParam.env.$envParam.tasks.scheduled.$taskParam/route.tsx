@@ -1,5 +1,5 @@
 import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
@@ -28,6 +28,7 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
+import { TitleBar } from "~/components/primitives/TitleBar";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -59,6 +60,11 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { useToast } from "~/components/primitives/Toast";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
+import {
+  RunsListErrorState,
+  RunsListErrorStateNoop,
+} from "~/components/runs/v3/RunsListErrorState";
+import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -74,6 +80,8 @@ import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import {
   TaskDetailPresenter,
@@ -104,13 +112,18 @@ import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
+import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
-  return [
-    { title: slug ? `${slug} | Scheduled tasks | Trigger.dev` : "Scheduled task | Trigger.dev" },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => taskAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.task?.slug ?? params.taskParam ?? "Task",
+  "Scheduled tasks",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),
@@ -135,10 +148,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, runsListClickhouse] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
+  ]);
 
   const taskPresenter = new TaskDetailPresenter($replica, clickhouse);
   const task = await taskPresenter.findTask({
@@ -153,7 +166,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Live queue counts for the sidebar Queue property (flag on only; the property itself
   // is not rendered without them, so flag off = no extra reads and no UI change).
   let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
-  if (task.queue && (await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+  if (task.queue && (await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
     const queueName = task.queue.name;
     const [lengths, concurrency] = await Promise.all([
       engine.lengthOfQueues(environment, [queueName]),
@@ -199,10 +212,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tasks: [task.slug],
       page: schedulesPage,
       pageSize: 25,
+      includeLastRun: true,
     })
     .catch(() => null);
 
-  const runList = new NextRunListPresenter($replica, clickhouse)
+  const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -213,8 +227,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       cursor,
       direction,
       includeHasAnyRuns: true,
+      columns: getRunColumnsForSelect(request),
     })
-    .catch(() => null);
+    .catch((error) => {
+      if (error instanceof RunsListQueryError) {
+        throw error;
+      }
+      return null;
+    });
 
   return typeddefer({
     task,
@@ -292,31 +312,15 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="scheduled-task-main" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
-              {/* Top bar — title on the left; actions + TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
-              <div className="flex min-h-10 items-center gap-2 border-b border-grid-dimmed bg-background-bright py-2 pl-3 pr-2">
-                <Header2>Runs</Header2>
+              <div className="flex min-h-10 items-center gap-2 border-b border-grid-dimmed bg-background-bright px-2 py-2">
+                <TimeFilter defaultPeriod="7d" labelName="Runs" />
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-                  <CreateScheduleButton
-                    isAtLimit={isAtLimit}
-                    limits={limits}
-                    canUpgrade={canUpgrade}
-                    canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
-                    extraSchedules={scheduleList?.extraSchedules ?? 0}
-                    maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
-                    planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
-                    schedulePricing={scheduleList?.schedulePricing ?? null}
-                    onCreate={openCreateSchedule}
-                    disabled={isCreatingSchedule}
-                  />
-                  {newRunsCount > 0 ? (
-                    <NewRunsButton count={newRunsCount} onClick={() => showNewRunsRef.current()} />
-                  ) : null}
-                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
                   <LinkButton
                     variant="secondary/small"
                     to={v3RunsPath(organization, project, environment, filters)}
                     LeadingIcon={RunsIcon}
+                    // -7px halves the icon's default 6px of space on each side.
+                    leadingIconClassName="-mx-[7px]"
                   >
                     View all runs
                   </LinkButton>
@@ -335,11 +339,18 @@ export default function Page() {
                   >
                     Bulk replay…
                   </LinkButton>
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
+                  <CreateScheduleButton
+                    isAtLimit={isAtLimit}
+                    limits={limits}
+                    canUpgrade={canUpgrade}
+                    canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
+                    extraSchedules={scheduleList?.extraSchedules ?? 0}
+                    maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
+                    planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
+                    schedulePricing={scheduleList?.schedulePricing ?? null}
+                    onCreate={openCreateSchedule}
+                    disabled={isCreatingSchedule}
+                  />
                 </div>
               </div>
 
@@ -363,23 +374,40 @@ export default function Page() {
 
                 {/* Runs table */}
                 <ResizablePanel id="scheduled-task-content" min="160px">
-                  <div className="h-full overflow-hidden">
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                        {(list) =>
-                          list ? (
-                            <TaskRunsList
-                              list={list}
-                              taskSlug={task.slug}
-                              onNewRunsCountChange={setNewRunsCount}
-                              showNewRunsRef={showNewRunsRef}
-                            />
-                          ) : (
-                            <TableLoading />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
+                  <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the title. */}
+                    <TitleBar title="Runs" className="-mt-px">
+                      {newRunsCount > 0 ? (
+                        <NewRunsButton
+                          count={newRunsCount}
+                          onClick={() => showNewRunsRef.current()}
+                        />
+                      ) : null}
+                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </TitleBar>
+                    <div className="min-h-0 overflow-hidden">
+                      <Suspense fallback={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
+                          {(list) =>
+                            list ? (
+                              <TaskRunsList
+                                list={list}
+                                taskSlug={task.slug}
+                                onNewRunsCountChange={setNewRunsCount}
+                                showNewRunsRef={showNewRunsRef}
+                              />
+                            ) : (
+                              <TableLoading />
+                            )
+                          }
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -539,6 +567,7 @@ function CreateScheduleSheet({
   onClose: () => void;
 }) {
   const fetcher = useTypedFetcher<typeof scheduleNewLoader>();
+  const loadScheduleForm = fetcher.load;
   // Embedded create — stays on this page via `_format=json`.
   const createFetcher = useFetcher<{ ok: boolean; message?: string }>();
   const toast = useToast();
@@ -549,8 +578,8 @@ function CreateScheduleSheet({
   const newPath = v3NewSchedulePath(organization, project, environment);
 
   useEffect(() => {
-    if (open) fetcher.load(newPath);
-  }, [open, newPath]);
+    if (open) loadScheduleForm(newPath);
+  }, [open, newPath, loadScheduleForm]);
 
   // Toast + close + revalidate so the new schedule appears.
   useEffect(() => {
@@ -610,7 +639,9 @@ function ScheduleSheet({
   onClose: () => void;
 }) {
   const detailFetcher = useTypedFetcher<typeof scheduleDetailLoader>();
+  const loadScheduleDetail = detailFetcher.load;
   const editFetcher = useTypedFetcher<typeof scheduleEditLoader>();
+  const loadScheduleEditor = editFetcher.load;
   // Embedded enable/disable — stays in the sheet via `_format=json`.
   const activeToggleFetcher = useFetcher<{ ok: boolean; active?: boolean; message?: string }>();
   // Embedded update submission — same idea.
@@ -634,16 +665,17 @@ function ScheduleSheet({
 
   // Always reopen in inspect mode.
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setMode("inspect");
   }, [openScheduleId]);
 
   useEffect(() => {
-    if (detailPath) detailFetcher.load(detailPath);
-  }, [detailPath]);
+    if (detailPath) loadScheduleDetail(detailPath);
+  }, [detailPath, loadScheduleDetail]);
 
   useEffect(() => {
-    if (mode === "edit" && editPath) editFetcher.load(editPath);
-  }, [mode, editPath]);
+    if (mode === "edit" && editPath) loadScheduleEditor(editPath);
+  }, [mode, editPath, loadScheduleEditor]);
 
   // Reload inspector data so Enable/Disable label flips; revalidate the
   // route loader so the sidebar's list/Overview stay in sync; toast on error.
@@ -653,12 +685,19 @@ function ScheduleSheet({
     if (handledToggleRef.current === data) return;
     handledToggleRef.current = data;
     if (data.ok) {
-      if (detailPath) detailFetcher.load(detailPath);
+      if (detailPath) loadScheduleDetail(detailPath);
       revalidator.revalidate();
     } else if (data.message) {
       toast.error(data.message);
     }
-  }, [activeToggleFetcher.state, activeToggleFetcher.data, detailPath, toast, revalidator]);
+  }, [
+    activeToggleFetcher.state,
+    activeToggleFetcher.data,
+    detailPath,
+    toast,
+    revalidator,
+    loadScheduleDetail,
+  ]);
 
   // Toast + back to inspect + reload + revalidate so both the inspector
   // and the sidebar reflect the update.
@@ -669,13 +708,14 @@ function ScheduleSheet({
     handledUpdateRef.current = data;
     if (data.ok) {
       toast.success(data.message ?? "Schedule updated");
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setMode("inspect");
-      if (detailPath) detailFetcher.load(detailPath);
+      if (detailPath) loadScheduleDetail(detailPath);
       revalidator.revalidate();
     } else if (data.message) {
       toast.error(data.message);
     }
-  }, [updateFetcher.state, updateFetcher.data, detailPath, toast, revalidator]);
+  }, [updateFetcher.state, updateFetcher.data, detailPath, toast, revalidator, loadScheduleDetail]);
 
   // Toast + close + revalidate so the deleted row disappears.
   useEffect(() => {
@@ -778,7 +818,7 @@ function ScheduledTaskDetailSidebar({
       if (a.type === b.type) return 0;
       return a.type === "DECLARATIVE" ? -1 : 1;
     });
-  }, [scheduleList?.schedules]);
+  }, [scheduleList]);
   const firstSchedule = sortedSchedules[0];
   const [activeTab, setActiveTab] = useState<"overview" | "schedules">("overview");
   return (
@@ -854,7 +894,7 @@ function ScheduledTaskDetailSidebar({
               </Property.Value>
             </Property.Item>
             <Property.Item>
-              <Property.Label>CRON</Property.Label>
+              <Property.Label>Cron</Property.Label>
               <Property.Value>
                 {firstSchedule ? (
                   <div className="space-y-2">
@@ -876,7 +916,7 @@ function ScheduledTaskDetailSidebar({
               <Property.Label>Next run</Property.Label>
               <Property.Value>
                 {firstSchedule ? (
-                  <RelativeDateTime date={firstSchedule.nextRun} />
+                  <RelativeDateTime date={firstSchedule.nextRunEffectiveAt} />
                 ) : (
                   <span className="text-text-dimmed">–</span>
                 )}
@@ -959,8 +999,9 @@ type ScheduleRow = {
   type: "DECLARATIVE" | "IMPERATIVE";
   cron: string;
   cronDescription: string;
+  window?: string;
   externalId: string | null;
-  nextRun: Date;
+  nextRunEffectiveAt: Date;
   lastRun: Date | undefined;
   active: boolean;
 };
@@ -980,7 +1021,7 @@ function SchedulesMiniTable({
     return (
       <Table variant={variant} showTopBorder={showTopBorder}>
         <TableBody>
-          <TableBlankRow colSpan={6}>
+          <TableBlankRow colSpan={8}>
             <Paragraph variant="small" className="flex items-center justify-center">
               No schedules attached to this task yet.
             </Paragraph>
@@ -997,6 +1038,7 @@ function SchedulesMiniTable({
           <TableHeaderCell>Schedule ID</TableHeaderCell>
           <TableHeaderCell>Type</TableHeaderCell>
           <TableHeaderCell>Cron</TableHeaderCell>
+          <TableHeaderCell>Window</TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>Next run</TableHeaderCell>
           <TableHeaderCell>Last run</TableHeaderCell>
@@ -1024,6 +1066,9 @@ function SchedulesMiniTable({
                 <span className="font-mono text-xs">{schedule.cron}</span>
               </TableCell>
               <TableCell onClick={open}>
+                <span className="text-xs">{schedule.window}</span>
+              </TableCell>
+              <TableCell onClick={open}>
                 {schedule.externalId ? (
                   <span className="font-mono text-xs">{schedule.externalId}</span>
                 ) : (
@@ -1031,7 +1076,7 @@ function SchedulesMiniTable({
                 )}
               </TableCell>
               <TableCell onClick={open}>
-                <RelativeDateTime date={schedule.nextRun} />
+                <RelativeDateTime date={schedule.nextRunEffectiveAt} />
               </TableCell>
               <TableCell onClick={open}>
                 {schedule.lastRun ? (

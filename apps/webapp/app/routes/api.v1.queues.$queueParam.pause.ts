@@ -15,6 +15,10 @@ const route = createActionApiRoute(
     params: z.object({
       queueParam: z.string().transform((val) => val.replace(/%2F/g, "/")),
     }),
+    authorization: {
+      action: "write",
+      resource: () => ({ type: "queues" }),
+    },
   },
   async ({ params, body, authentication }) => {
     const input: RetrieveQueueParam =

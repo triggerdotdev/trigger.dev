@@ -1,243 +1,35 @@
 import { heteroPostgresTest } from "@internal/testcontainers";
-import { PostgresRunStore } from "@internal/run-store";
-import type { ReadClient, RunStore } from "@internal/run-store";
-import type { Prisma, PrismaClient } from "@trigger.dev/database";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
+import type { PrismaClient } from "@trigger.dev/database";
 import { parsePacket } from "@trigger.dev/core/v3";
-import { generateRunOpsId, ownerEngine } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "timers/promises";
 import { describe, expect } from "vitest";
 import { UpdateMetadataService } from "~/services/metadata/updateMetadata.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-/**
- * A test-only RunStore that routes residency-bearing operations to one of two
- * inner PostgresRunStore instances (NEW = PG17, LEGACY = PG14) purely by run-id
- * classification — NOT by whatever client the service forwards as `tx`.
- *
- * This is the load-bearing design point: the UpdateMetadataService forwards
- * `this._prisma` as the tx/client to every findRun/updateMetadata call. To prove
- * STORE residency routing (and not the forwarded prisma), this wrapper IGNORES
- * the forwarded client for residency-bearing calls and resolves to its own inner
- * store by id length, then calls the inner store WITHOUT forwarding the outer tx
- * (passes undefined), so the inner PostgresRunStore uses its own prisma17/prisma14.
- *
- * Classification contract (version char): a v1 id (26 chars, version "1" at index 25) => NEW store;
- * 25-char cuid => LEGACY store.
- */
-class RoutingRunStore implements RunStore {
-  readonly #newStore: PostgresRunStore;
-  readonly #legacyStore: PostgresRunStore;
-
-  constructor(newStore: PostgresRunStore, legacyStore: PostgresRunStore) {
-    this.#newStore = newStore;
-    this.#legacyStore = legacyStore;
-  }
-
-  // Resolve by the version char: a v1 body => NEW, otherwise LEGACY (25-char cuid).
-  #resolveById(runId: string): PostgresRunStore {
-    return ownerEngine(runId) === "NEW" ? this.#newStore : this.#legacyStore;
-  }
-
-  // Extract a classifiable run id from a `where`. Prefers `where.id`; if only a
-  // friendlyId is present the stub does not classify, so the caller falls back
-  // to read-through (try NEW, then LEGACY).
-  #idFromWhere(where: Prisma.TaskRunWhereInput): string | undefined {
-    const id = (where as { id?: unknown }).id;
-    return typeof id === "string" ? id : undefined;
-  }
-
-  // ---- Reads (residency routing; drop forwarded client) ----
-
-  async findRun(
-    where: Prisma.TaskRunWhereInput,
-    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
-    _client?: ReadClient
-  ): Promise<unknown> {
-    const id = this.#idFromWhere(where);
-    if (id !== undefined) {
-      // Classifiable by id shape — route to the owning store, dropping the
-      // forwarded client so the inner store uses its OWN prisma.
-      return (this.#resolveById(id).findRun as any)(where, argsOrClient);
-    }
-    // Not classifiable (friendlyId-only / other) — read-through: NEW then LEGACY.
-    const fromNew = await (this.#newStore.findRun as any)(where, argsOrClient);
-    if (fromNew) {
-      return fromNew;
-    }
-    return (this.#legacyStore.findRun as any)(where, argsOrClient);
-  }
-
-  async findRunOrThrow(
-    where: Prisma.TaskRunWhereInput,
-    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
-    _client?: ReadClient
-  ): Promise<unknown> {
-    const id = this.#idFromWhere(where);
-    if (id !== undefined) {
-      return (this.#resolveById(id).findRunOrThrow as any)(where, argsOrClient);
-    }
-    const fromNew = await (this.#newStore.findRun as any)(where, argsOrClient);
-    if (fromNew) {
-      return fromNew;
-    }
-    return (this.#legacyStore.findRunOrThrow as any)(where, argsOrClient);
-  }
-
-  async findRunOnPrimary(
-    where: Prisma.TaskRunWhereInput,
-    args?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
-  ): Promise<unknown> {
-    const id = this.#idFromWhere(where);
-    if (id !== undefined) {
-      return (this.#resolveById(id).findRunOnPrimary as any)(where, args);
-    }
-    const fromNew = await (this.#newStore.findRunOnPrimary as any)(where, args);
-    if (fromNew) {
-      return fromNew;
-    }
-    return (this.#legacyStore.findRunOnPrimary as any)(where, args);
-  }
-
-  async findRunOrThrowOnPrimary(
-    where: Prisma.TaskRunWhereInput,
-    args?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
-  ): Promise<unknown> {
-    const id = this.#idFromWhere(where);
-    if (id !== undefined) {
-      return (this.#resolveById(id).findRunOrThrowOnPrimary as any)(where, args);
-    }
-    const fromNew = await (this.#newStore.findRunOnPrimary as any)(where, args);
-    if (fromNew) {
-      return fromNew;
-    }
-    return (this.#legacyStore.findRunOrThrowOnPrimary as any)(where, args);
-  }
-
-  async findRuns(
-    args: { where: Prisma.TaskRunWhereInput },
-    _client?: ReadClient
-  ): Promise<unknown> {
-    const id = this.#idFromWhere(args.where);
-    if (id !== undefined) {
-      return (this.#resolveById(id).findRuns as any)(args);
-    }
-    // Read-through across both stores, NEW first.
-    const fromNew = (await (this.#newStore.findRuns as any)(args)) as unknown[];
-    const fromLegacy = (await (this.#legacyStore.findRuns as any)(args)) as unknown[];
-    return [...fromNew, ...fromLegacy];
-  }
-
-  // ---- Field touches (residency routing; drop forwarded tx) ----
-
-  async updateMetadata(
-    runId: string,
-    data: Parameters<RunStore["updateMetadata"]>[1],
-    options: Parameters<RunStore["updateMetadata"]>[2],
-    _tx?: unknown
-  ): Promise<{ count: number }> {
-    // Route by run id, dropping the forwarded tx so the inner store writes to
-    // its OWN prisma — this is what proves the CAS targets the owning store.
-    return this.#resolveById(runId).updateMetadata(runId, data, options);
-  }
-
-  // ---- Everything else: delegate by run id to satisfy the RunStore interface;
-  // not exercised by these tests. ----
-
-  createRun(params: any, _tx?: unknown): any {
-    return this.#resolveById(params.data.id).createRun(params);
-  }
-  createCancelledRun(params: any, _tx?: unknown): any {
-    return this.#resolveById(params.data.id).createCancelledRun(params);
-  }
-  createFailedRun(params: any, _tx?: unknown): any {
-    return this.#resolveById(params.data.id).createFailedRun(params);
-  }
-  startAttempt(runId: string, data: any, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).startAttempt as any)(runId, data, args);
-  }
-  completeAttemptSuccess(runId: string, data: any, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).completeAttemptSuccess as any)(runId, data, args);
-  }
-  recordRetryOutcome(runId: string, data: any, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).recordRetryOutcome as any)(runId, data, args);
-  }
-  requeueRun(runId: string, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).requeueRun as any)(runId, args);
-  }
-  recordBulkActionMembership(runId: string, bulkActionId: string, _tx?: unknown): any {
-    return this.#resolveById(runId).recordBulkActionMembership(runId, bulkActionId);
-  }
-  cancelRun(runId: string, data: any, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).cancelRun as any)(runId, data, args);
-  }
-  failRunPermanently(runId: string, data: any, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).failRunPermanently as any)(runId, data, args);
-  }
-  expireRun(runId: string, data: any, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).expireRun as any)(runId, data, args);
-  }
-  expireRunsBatch(runIds: string[], data: any, _tx?: unknown): any {
-    return this.#resolveById(runIds[0] ?? "").expireRunsBatch(runIds, data);
-  }
-  lockRunToWorker(runId: string, data: any, _tx?: unknown): any {
-    return this.#resolveById(runId).lockRunToWorker(runId, data);
-  }
-  parkPendingVersion(runId: string, data: any, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).parkPendingVersion as any)(runId, data, args);
-  }
-  promotePendingVersionRuns(runId: string, _tx?: unknown): any {
-    return this.#resolveById(runId).promotePendingVersionRuns(runId);
-  }
-  suspendForCheckpoint(runId: string, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).suspendForCheckpoint as any)(runId, args);
-  }
-  resumeFromCheckpoint(runId: string, args: any, _tx?: unknown): any {
-    return (this.#resolveById(runId).resumeFromCheckpoint as any)(runId, args);
-  }
-  rescheduleRun(runId: string, data: any, _tx?: unknown): any {
-    return this.#resolveById(runId).rescheduleRun(runId, data);
-  }
-  enqueueDelayedRun(runId: string, data: any, _tx?: unknown): any {
-    return this.#resolveById(runId).enqueueDelayedRun(runId, data);
-  }
-  rewriteDebouncedRun(runId: string, data: any, _tx?: unknown): any {
-    return this.#resolveById(runId).rewriteDebouncedRun(runId, data);
-  }
-  clearIdempotencyKey(params: any, _tx?: unknown): any {
-    const runId = params?.byId?.runId ?? "";
-    return this.#resolveById(runId).clearIdempotencyKey(params);
-  }
-  pushTags(runId: string, tags: string[], where: any, _tx?: unknown): any {
-    return this.#resolveById(runId).pushTags(runId, tags, where);
-  }
-  removeTags(runId: string, tags: string[], where: any, _tx?: unknown): any {
-    return this.#resolveById(runId).removeTags(runId, tags, where);
-  }
-  pushRealtimeStream(runId: string, streamId: string, _tx?: unknown): any {
-    return this.#resolveById(runId).pushRealtimeStream(runId, streamId);
-  }
-  finalizeRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).finalizeRun as any)(runId, ...a);
-  }
-  findManyBatchTaskRunItems(...a: any[]): any {
-    return (this.#newStore.findManyBatchTaskRunItems as any)(...a);
-  }
-  findBatchTaskRunItem(...a: any[]): any {
-    return (this.#newStore.findBatchTaskRunItem as any)(...a);
-  }
-  upsertWaitpointTag(...a: any[]): any {
-    return (this.#newStore.upsertWaitpointTag as any)(...a);
-  }
-  findManyWaitpointTags(...a: any[]): any {
-    return (this.#newStore.findManyWaitpointTags as any)(...a);
-  }
-}
+// Real heterogeneous NEW + LEGACY Postgres proof for UpdateMetadataService, exercising the REAL
+// RoutingRunStore over two real PostgresRunStore instances (NEW = PG17, LEGACY = PG14). The DB is
+// never mocked.
+//
+// The load-bearing design point: UpdateMetadataService forwards `this._prisma` as the tx/client to
+// every findRun/updateMetadata call. That client is bound to the control plane — the wrong database
+// for a run resident on either store — so the router must never forward it verbatim. It does not:
+// a non-replica client escalates to the OWNING store's own primary, so residency routing is proved
+// rather than the forwarded prisma.
+//
+// Residency comes from the id shape: a v1 run-ops id (26 chars, version "1" at index 25) resolves
+// to NEW, a 25-char cuid to LEGACY.
 
 function buildRoutingStore(prisma17: PrismaClient, prisma14: PrismaClient) {
-  const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
+  const newStore = new PostgresRunStore({
+    prisma: prisma17,
+    readOnlyPrisma: prisma17,
+    schemaVariant: "dedicated",
+  });
   const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
-  return new RoutingRunStore(newStore, legacyStore);
+  return new RoutingRunStore({ new: newStore, legacy: legacyStore });
 }
 
 // 25-char cuid-format id (starts with "c"), no v1 version marker.
@@ -466,8 +258,8 @@ describe("UpdateMetadataService store routing (hetero)", () => {
         logLevel: "error",
       });
 
-      // Call WITHOUT an environment arg, so the `where` is just `{ id: runId }` and
-      // the router classifies by id length (25 => LEGACY).
+      // Call WITHOUT an environment arg, so the `where` is just `{ id: runId }` and the router
+      // resolves residency from the id shape (a 25-char cuid is not a v1 body => LEGACY).
       const result = await service.call(runId, {
         operations: [{ type: "set", key: "x", value: 1 }],
       });

@@ -1,5 +1,97 @@
 # internal-platform
 
+## 4.5.13
+
+### Patch Changes
+
+- `trigger.dev deploy` now asks the server whether to build with Depot or the native build server unless `--native-build`, `--depot-build`, or `--local-build` is passed, so the native build server can be rolled out per organization without a CLI change. `--local-bundle` and `--detach` now require `--native-build`. ([#4803](https://github.com/triggerdotdev/trigger.dev/pull/4803))
+- Add an experimental `--local-bundle` deploy flag that runs the install and bundling steps on your machine and uploads only the build output; the image is still built remotely. Useful when your project's install step needs tooling or credentials that only exist locally. ([#4331](https://github.com/triggerdotdev/trigger.dev/pull/4331))
+- A message that arrives mid-turn and is not injected into that turn is now answered as the next turn, instead of being dropped. This is what the `pendingMessages` docs have always described, and it applies to the default too: configuring `pendingMessages` without a `shouldInject` declines every batch, which previously meant every mid-turn message was lost with no error at either end. ([#4795](https://github.com/triggerdotdev/trigger.dev/pull/4795))
+
+  ```ts
+  chat.agent({
+    id: "my-chat",
+    pendingMessages: {
+      onReceived: ({ message }) =>
+        logger.info("arrived mid-turn", { id: message.id }),
+      // Only interrupt once the agent has started calling tools.
+      shouldInject: ({ steps }) => steps.length > 0,
+    },
+    run: async ({ messages, signal }) =>
+      streamText({
+        model,
+        messages,
+        abortSignal: signal,
+        // Required for injection. Without it nothing injects, and every
+        // mid-turn message is answered as the next turn instead.
+        ...chat.toStreamTextOptions(),
+      }),
+  });
+  ```
+
+  A declined message keeps its place in the queue, so it survives a crash and is answered by whichever run picks the conversation up. An injected one is consumed at the moment it is injected, so it is never also answered as a later turn.
+
+- Fixes a case where a chat could silently lose a message. If a message arrived while the agent was between turns and a stop arrived after it, the cursor the next boot resumed from could point past that message, so it was never answered and no error was raised. This affected `chat.agent`, not just custom agents. ([#4644](https://github.com/triggerdotdev/trigger.dev/pull/4644))
+
+  Fixes a recovered answer being cut off. After a crash the agent replays the message it had not answered yet, but it was replaying the stop that arrived after that message too, so the turn answering it was aborted the moment it began. A stop is now only applied to the turn that was live when it arrived. That holds however the stop got there: sent after the last completed turn, or sent to a chat whose most recent turn was completed by an older version of the SDK.
+
+  One limitation to know about: the recovered answer is persisted correctly, but a chat page that stayed open across the crash keeps showing the partial answer it had already received. Reload the page to see the full recovered answer.
+
+  Also fixes a retried send being answered twice. When a send was retried and its idempotency claim was lost, the agent could consume the same message a second time.
+
+  Custom agent loops can now inspect pending chat input without consuming it, and consume one record at a time, with `chat.messages.hasPending()` and `chat.messages.next()`. Records carry stable identifiers so a redelivery is recognisable.
+
+  ```ts
+  if (await chat.messages.hasPending()) {
+    const record = await chat.messages.next({ timeoutInSeconds: 0 });
+    if (record) handle(record.payload);
+  }
+  ```
+
+  `hasPending()` answers for messages alone, so a message sitting behind a stop, or behind a record this version of the SDK does not recognise, still reports as pending and is still delivered. Anything the agent has no consumer for is discarded rather than left where it would make every message queued behind it undeliverable. `chat.messages.next()` returning `undefined` means no message became consumable before the timeout.
+
+  `chat.writeTurnComplete()`'s `sessionInEventId` is the cursor that is safe to resume from, not the sequence of the record the turn answered. It is held back behind any message still waiting to be handled, so a value below the record you just handled is expected.
+
+## 4.5.12
+
+### Patch Changes
+
+- Unrelated runs are no longer merged into a single trace in your external observability tool when they happen to execute on the same warm worker process. ([#4534](https://github.com/triggerdotdev/trigger.dev/pull/4534))
+- List the current Production runtime for every accessible project with `trigger projects list`. Add `--needs-update` to identify projects currently running Node.js 21. ([#4659](https://github.com/triggerdotdev/trigger.dev/pull/4659))
+- Task metrics no longer go missing for projects that configure their own `metricExporters` or `metricReaders`, and the flush error that came with it is gone. ([#4613](https://github.com/triggerdotdev/trigger.dev/pull/4613))
+- `idempotencyKeys.reset()` now works when your idempotency key is itself 64 characters long (for example if you use a hash of your own as the key). Previously any 64-character key was assumed to be already hashed, so passing one along with a `scope` silently ignored the scope and the reset never found a matching run. Keys returned by `idempotencyKeys.create()` continue to be reset exactly as before. ([#4626](https://github.com/triggerdotdev/trigger.dev/pull/4626))
+- Define stable execution windows on declarative scheduled tasks. Schedule API responses now expose both the nominal CRON time and its assigned time, while the dashboard shows configured windows and upcoming assignments. ([#4572](https://github.com/triggerdotdev/trigger.dev/pull/4572))
+- Pin runs to the deployment your calling code came from, so an old release never triggers tasks from a new one: set `TRIGGER_EXTERNAL_DEPLOYMENT_ID` to the id you deployed with, or `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` to detect the commit automatically on Vercel and most CI systems. Runs triggered before that deployment finishes building wait for it, then start pinned. ([#4664](https://github.com/triggerdotdev/trigger.dev/pull/4664))
+
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- The current-worker API now reports each task's queue, so you can see which tasks write to a given queue. ([#4525](https://github.com/triggerdotdev/trigger.dev/pull/4525))
+
+## 4.5.10
+
+### Patch Changes
+
+- Fix a chunk occasionally dropped when a chat.agent run takes over from the warm first turn. The realtime stream writer now reports the inclusive last-written position as the resume cursor, so the agent's first record after the handover is no longer skipped. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- Allow task-scoped environment API keys to run batch operations for their permitted tasks. The SDK declares the batch's task set before creation, and `@trigger.dev/core/v3/apiKeys` now exports the additional-key format helper. ([#4389](https://github.com/triggerdotdev/trigger.dev/pull/4389))
+- Transient connection errors when a run starts are now retried for longer, so a brief connectivity blip no longer sends the run back through the queue and delays its first attempt. ([#4441](https://github.com/triggerdotdev/trigger.dev/pull/4441))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+
+## 4.5.9
+
+### Patch Changes
+
+- Ask whether an environment is healthy and get an answer instead of a wall of charts. `trigger report health` returns a verdict on three questions: is work flowing, are the runs that start succeeding, and is the telemetry fresh enough to trust either answer. When something looks wrong it names the most likely cause and a next action. ([#4131](https://github.com/triggerdotdev/trigger.dev/pull/4131))
+
+  ```bash
+  npx trigger.dev@latest report health --env prod --period 24h
+  ```
+
+  The verdict is computed server side, so the CLI, the new `get_report` MCP tool, and `GET /api/v1/reports/health` all return the same text with the same sparklines. In MCP hosts that support prompts, `report` is also available as a slash command.
+
 ## 4.5.8
 
 ### Patch Changes

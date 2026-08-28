@@ -1,5 +1,6 @@
 import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import { json, type MetaFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
+
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
@@ -16,6 +17,7 @@ import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -71,6 +73,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -99,11 +102,18 @@ import {
   v3StandardTaskPath,
   v3TasksStreamingPath,
   v3TestTaskPath,
+  v3WebhookTaskPath,
 } from "~/utils/pathBuilder";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Tasks | Trigger.dev` }];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("tasks"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Tasks");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -129,7 +139,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const usefulLinksPreference = await getUsefulLinksPreference(request);
 
-    return typeddefer({ items, hourlyActivity, runningStates, usefulLinksPreference });
+    const initialized = await prisma.project.findFirst({
+      where: { id: project.id },
+      select: { initializedAt: true },
+    });
+
+    return typeddefer({
+      items,
+      hourlyActivity,
+      runningStates,
+      usefulLinksPreference,
+      projectInitializedAt: initialized?.initializedAt ?? null,
+    });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -159,6 +180,7 @@ const KIND_OPTIONS: { value: UnifiedTaskKind; label: string }[] = [
   { value: "AGENT", label: "Agent" },
   { value: "STANDARD", label: "Standard" },
   { value: "SCHEDULED", label: "Scheduled" },
+  { value: "WEBHOOK", label: "Webhook" },
 ];
 
 const VALID_KINDS = new Set<UnifiedTaskKind>(KIND_OPTIONS.map((o) => o.value));
@@ -188,15 +210,17 @@ const TASK_TYPE_SEGMENTS: {
   { value: "AGENT", tooltip: "Agent tasks", source: "AGENT" },
   { value: "STANDARD", tooltip: "Standard tasks", source: "STANDARD" },
   { value: "SCHEDULED", tooltip: "Scheduled tasks", source: "SCHEDULED" },
+  { value: "WEBHOOK", tooltip: "Webhook tasks", source: "WEBHOOK" },
 ];
 
 const PAGE_SIZE = 25;
+const TASK_FILTER_KEYS = ["slug", "filePath", "triggerSource"];
 
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { items, hourlyActivity, runningStates, usefulLinksPreference } =
+  const { items, hourlyActivity, runningStates, usefulLinksPreference, projectInitializedAt } =
     useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
 
@@ -219,6 +243,7 @@ export default function Page() {
   const usefulLinksPanelRef = useRef<PanelHandle>(null);
   const fetcher = useFetcher();
   const fetcherRef = useRef(fetcher);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   fetcherRef.current = fetcher;
 
   const toggleUsefulLinks = useCallback((show: boolean) => {
@@ -243,7 +268,7 @@ export default function Page() {
 
   const { filteredItems } = useFuzzyFilter<UnifiedTaskListItem>({
     items,
-    keys: ["slug", "filePath", "triggerSource"],
+    keys: TASK_FILTER_KEYS,
     filterText: value("search") ?? "",
   });
 
@@ -269,13 +294,15 @@ export default function Page() {
         <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/tasks/overview")}
-          >
-            Task docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/tasks/overview")}
+            >
+              Task docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -356,7 +383,7 @@ export default function Page() {
                 </div>
               ) : environment.type === "DEVELOPMENT" ? (
                 <MainCenteredContainer className="max-w-prose">
-                  <HasNoTasksDev />
+                  <HasNoTasksDev initializedAt={projectInitializedAt} />
                 </MainCenteredContainer>
               ) : (
                 <MainCenteredContainer className="max-w-prose">
@@ -416,12 +443,18 @@ function TaskRow({
       ? v3AgentTaskPath(organization, project, environment, item.slug)
       : item.kind === "SCHEDULED"
         ? v3ScheduledTaskPath(organization, project, environment, item.slug)
-        : v3StandardTaskPath(organization, project, environment, item.slug);
+        : item.kind === "WEBHOOK"
+          ? v3WebhookTaskPath(organization, project, environment, item.slug)
+          : v3StandardTaskPath(organization, project, environment, item.slug);
 
+  // A webhook task runs from a verified inbound event, not a hand-built
+  // payload, so it has no Test page.
   const testPath =
-    item.kind === "AGENT"
-      ? v3PlaygroundAgentPath(organization, project, environment, item.slug)
-      : v3TestTaskPath(organization, project, environment, { taskIdentifier: item.slug });
+    item.kind === "WEBHOOK"
+      ? undefined
+      : item.kind === "AGENT"
+        ? v3PlaygroundAgentPath(organization, project, environment, item.slug)
+        : v3TestTaskPath(organization, project, environment, { taskIdentifier: item.slug });
 
   const runsPath = v3RunsPath(organization, project, environment, { tasks: [item.slug] });
 
@@ -440,7 +473,13 @@ function TaskRow({
       <TableCell to={rowPath}>
         <div className="flex items-center gap-2">
           <span>
-            {item.kind === "AGENT" ? "Agent" : item.kind === "SCHEDULED" ? "Scheduled" : "Standard"}
+            {item.kind === "AGENT"
+              ? "Agent"
+              : item.kind === "SCHEDULED"
+                ? "Scheduled"
+                : item.kind === "WEBHOOK"
+                  ? "Webhook"
+                  : "Standard"}
           </span>
           {item.kind === "AGENT" && item.agentType && (
             <Badge variant="extra-small">{formatAgentType(item.agentType)}</Badge>
@@ -495,23 +534,27 @@ function TaskRow({
               title="View runs"
               leadingIconClassName="-mx-1 text-runs"
             />
-            <PopoverMenuItem
-              icon={BeakerIcon}
-              to={testPath}
-              title="Test"
-              leadingIconClassName="-mx-1 text-tests"
-            />
+            {testPath && (
+              <PopoverMenuItem
+                icon={BeakerIcon}
+                to={testPath}
+                title="Test"
+                leadingIconClassName="-mx-1 text-tests"
+              />
+            )}
           </>
         }
         hiddenButtons={
-          <LinkButton
-            variant="minimal/small"
-            LeadingIcon={BeakerIcon}
-            leadingIconClassName="-mx-2.5 text-tests"
-            to={testPath}
-          >
-            <span className="text-text-bright">Test</span>
-          </LinkButton>
+          testPath ? (
+            <LinkButton
+              variant="minimal/small"
+              LeadingIcon={BeakerIcon}
+              leadingIconClassName="-mx-2.5 text-tests"
+              to={testPath}
+            >
+              <span className="text-text-bright">Test</span>
+            </LinkButton>
+          ) : undefined
         }
       />
     </TableRow>
@@ -522,7 +565,7 @@ function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
   if (!state) {
     return <span className="text-text-dimmed">–</span>;
   }
-  return <>{state.running ?? 0}</>;
+  return state.running ?? 0;
 }
 
 function TaskTypeFilter() {
@@ -754,6 +797,16 @@ function TaskTypeBreakdown() {
         <Paragraph variant="small" className="mt-1">
           Runs automatically on a recurring cron schedule. Use daily, weekly, or any custom interval
           you need.
+        </Paragraph>
+      </div>
+      <div>
+        <div className="flex items-center gap-1.5">
+          <WebhookIcon className="size-4.5 shrink-0 text-webhooks" />
+          <Paragraph variant="small/bright">Webhook task</Paragraph>
+        </div>
+        <Paragraph variant="small" className="mt-1">
+          Runs from a verified inbound event sent to a hosted endpoint. Each delivery is logged, and
+          a successful one starts a run.
         </Paragraph>
       </div>
     </div>

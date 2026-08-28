@@ -14,6 +14,7 @@ import type {
   PrismaClientOrTransaction,
   PrismaReplicaClient,
   TaskRun,
+  TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
@@ -53,7 +54,12 @@ export type DebounceSystemOptions = {
   redis: RedisOptions;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   delayedRunSystem: DelayedRunSystem;
-  maxDebounceDurationMs: number;
+  /**
+   * Optional server-side ceiling on how long a debounced run can be pushed back, measured
+   * from the run's `createdAt`. Unset means there is no ceiling and a continuously triggered
+   * key can be pushed back indefinitely; a trigger's own `maxDelay` is then the only bound.
+   */
+  maxDebounceDurationMs?: number;
   /**
    * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
    * Set to 0 to disable quantization.
@@ -86,18 +92,14 @@ export type DebounceResult =
       status: "max_duration_exceeded";
     };
 
+const DEBOUNCEABLE_RUN_STATUSES: TaskRunStatus[] = ["DELAYED", "PENDING_VERSION"];
+
 // TTL for the pending claim state (30 seconds)
 const CLAIM_TTL_MS = 30_000;
 // Max retries when waiting for another server to complete its claim
 const MAX_CLAIM_RETRIES = 10;
 // Delay between retries when waiting for pending claim
 const CLAIM_RETRY_DELAY_MS = 50;
-
-export type DebounceData = {
-  key: string;
-  delay: string;
-  createdAt: Date;
-};
 
 /**
  * DebounceSystem handles debouncing of task triggers.
@@ -113,7 +115,7 @@ export class DebounceSystem {
   private readonly redis: Redis;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
-  private readonly maxDebounceDurationMs: number;
+  private readonly maxDebounceDurationMs: number | undefined;
   private readonly quantizeNewDelayUntilMs: number;
   private readonly fastPathSkipEnabled: boolean;
   private readonly useReplicaForFastPathRead: boolean;
@@ -568,6 +570,36 @@ return 0
     return new Date(quantized);
   }
 
+  /**
+   * How long after a run's `createdAt` triggers may keep pushing it back, or `undefined` for
+   * no bound at all. A trigger's own `maxDelay` wins; otherwise the server ceiling applies,
+   * which is itself unset by default. An unparseable `maxDelay` falls back to the ceiling, and
+   * so to no bound when no ceiling is configured. Callers that reach the engine through the
+   * trigger API never get that far, since an unparseable `maxDelay` is rejected there.
+   */
+  #resolveMaxDurationMs(debounce: DebounceOptions): number | undefined {
+    if (debounce.maxDelay === undefined) {
+      return this.maxDebounceDurationMs;
+    }
+
+    const parsedMaxDelay = parseNaturalLanguageDurationInMs(debounce.maxDelay);
+
+    if (parsedMaxDelay === undefined) {
+      this.$.logger.warn(
+        this.maxDebounceDurationMs === undefined
+          ? "handleExistingRun: invalid maxDelay duration and no server ceiling, the run can be pushed back indefinitely"
+          : "handleExistingRun: invalid maxDelay duration, using server ceiling",
+        {
+          maxDelay: debounce.maxDelay,
+          fallbackMs: this.maxDebounceDurationMs,
+        }
+      );
+      return this.maxDebounceDurationMs;
+    }
+
+    return parsedMaxDelay;
+  }
+
   #isLockContentionError(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
     return (
@@ -614,7 +646,7 @@ return 0
       { select: { status: true, delayUntil: true, createdAt: true } },
       prisma
     );
-    if (!probe || probe.status !== "DELAYED" || !probe.delayUntil) {
+    if (!probe || !DEBOUNCEABLE_RUN_STATUSES.includes(probe.status) || !probe.delayUntil) {
       return null;
     }
     if (newDelayUntil.getTime() > probe.delayUntil.getTime()) {
@@ -624,16 +656,12 @@ return 0
     // Fall through to the lock path when newDelayUntil would exceed the run's
     // max debounce window so the caller can return max_duration_exceeded and
     // create a fresh run.
-    let maxDurationMs = this.maxDebounceDurationMs;
-    if (debounce.maxDelay) {
-      const parsedMaxDelay = parseNaturalLanguageDurationInMs(debounce.maxDelay);
-      if (parsedMaxDelay !== undefined) {
-        maxDurationMs = parsedMaxDelay;
+    const maxDurationMs = this.#resolveMaxDurationMs(debounce);
+    if (maxDurationMs !== undefined) {
+      const maxDelayUntilMs = probe.createdAt.getTime() + maxDurationMs;
+      if (newDelayUntil.getTime() > maxDelayUntilMs) {
+        return null;
       }
-    }
-    const maxDelayUntilMs = probe.createdAt.getTime() + maxDurationMs;
-    if (newDelayUntil.getTime() > maxDelayUntilMs) {
-      return null;
     }
 
     const fullRun = await this.$.runStore.findRun(
@@ -641,7 +669,7 @@ return 0
       { include: { associatedWaitpoint: true } },
       prisma
     );
-    if (!fullRun || fullRun.status !== "DELAYED") {
+    if (!fullRun || !DEBOUNCEABLE_RUN_STATUSES.includes(fullRun.status)) {
       return null;
     }
 
@@ -676,12 +704,12 @@ return 0
       prisma
     );
 
-    if (!fullRun || fullRun.status !== "DELAYED") {
+    if (!fullRun || !DEBOUNCEABLE_RUN_STATUSES.includes(fullRun.status)) {
       // The run is no longer in a state we can safely return as "existing" -
       // re-throw so the caller surfaces the failure rather than silently
       // succeeding on a stale/terminated run.
       this.$.logger.warn(
-        "handleExistingRun: lock contention, but existing run no longer DELAYED - rethrowing",
+        "handleExistingRun: lock contention, but existing run is no longer debounceable - rethrowing",
         {
           existingRunId,
           debounceKey: debounce.key,
@@ -819,25 +847,12 @@ return 0
         });
       }
 
-      // Check if max debounce duration would be exceeded
-      // Use per-trigger maxDelay if provided, otherwise use global config
-      let maxDurationMs = this.maxDebounceDurationMs;
-      if (debounce.maxDelay) {
-        const parsedMaxDelay = parseNaturalLanguageDurationInMs(debounce.maxDelay);
-        if (parsedMaxDelay !== undefined) {
-          maxDurationMs = parsedMaxDelay;
-        } else {
-          this.$.logger.warn("handleExistingRun: invalid maxDelay duration, using global config", {
-            maxDelay: debounce.maxDelay,
-            fallbackMs: this.maxDebounceDurationMs,
-          });
-        }
-      }
-
+      const maxDurationMs = this.#resolveMaxDurationMs(debounce);
       const runCreatedAt = existingRun.createdAt;
-      const maxDelayUntil = new Date(runCreatedAt.getTime() + maxDurationMs);
+      const maxDelayUntil =
+        maxDurationMs === undefined ? undefined : new Date(runCreatedAt.getTime() + maxDurationMs);
 
-      if (newDelayUntil > maxDelayUntil) {
+      if (maxDelayUntil && newDelayUntil > maxDelayUntil) {
         this.$.logger.debug("handleExistingRun: max debounce duration would be exceeded", {
           existingRunId,
           debounceKey: debounce.key,

@@ -3,15 +3,13 @@ import {
   BellAlertIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
-  ClockIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
-  RectangleGroupIcon,
-  RectangleStackIcon,
+  SparklesIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
-import { useLocation } from "react-use";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
+import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
@@ -31,10 +29,10 @@ import {
   v3CreateBulkActionPath,
   v3EnvironmentPath,
   v3NewProjectAlertPath,
-  v3NewSchedulePath,
 } from "~/utils/pathBuilder";
-import { AskAI } from "./AskAI";
+import { AskAgentButton } from "./dashboard-agent/AskAgentButton";
 import { CodeBlock } from "./code/CodeBlock";
+import { useDevPresence } from "./DevPresence";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
@@ -53,20 +51,73 @@ import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
 import { SimpleTooltip } from "./primitives/Tooltip";
 import {
+  InitAgentPromptV3,
   InitCommandV3,
   PackageManagerProvider,
   TriggerDeployStep,
   TriggerDevStepV3,
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
-import { V4Badge } from "./V4Badge";
 
-export function HasNoTasksDev() {
+/**
+ * What the agent is asked when it's opened from a deployment setup panel. The panel is the docs
+ * answer; the agent is for the part the docs can't answer — this project, this environment.
+ */
+const ASK_AGENT_DEPLOY_PROMPT =
+  "I'm trying to deploy my tasks to this environment. Walk me through it and tell me if anything about this project or environment is going to get in the way.";
+
+/** The docs links the deployment panels offer to anyone without the agent. */
+function DeployDocsLinks() {
+  return (
+    <>
+      <SimpleTooltip
+        asChild
+        tabbable
+        button={
+          // Span wrapper: LinkButton drops the pointer-event props Radix injects via asChild, so
+          // the tooltip trigger has to be a plain element (same pattern as FavoritePageButton).
+          <span className="flex">
+            <LinkButton
+              variant="small-menu-item"
+              LeadingIcon={BookOpenIcon}
+              leadingIconClassName="text-blue-500"
+              to={docsPath("deployment/overview")}
+              aria-label="Deploy docs"
+            />
+          </span>
+        }
+        content="Deploy docs"
+      />
+      <SimpleTooltip
+        asChild
+        tabbable
+        button={
+          <span className="flex">
+            <LinkButton
+              variant="small-menu-item"
+              LeadingIcon={QuestionMarkCircleIcon}
+              leadingIconClassName="text-blue-500"
+              to={docsPath("troubleshooting#deployment")}
+              aria-label="Troubleshooting docs"
+            />
+          </span>
+        }
+        content="Troubleshooting docs"
+      />
+    </>
+  );
+}
+
+export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string | null }) {
+  const { isConnected } = useDevPresence();
+  const initialized = !!initializedAt;
+  const devConnected = isConnected === true;
+
   return (
     <PackageManagerProvider>
       <div>
         <div className="mb-6 flex items-center justify-between border-b">
-          <Header1 spacing>Get setup in 3 minutes</Header1>
+          <Header1 spacing>Get set up in 2 minutes</Header1>
           <div className="flex items-center gap-2">
             <Feedback
               button={
@@ -78,22 +129,75 @@ export function HasNoTasksDev() {
             />
           </div>
         </div>
-        <StepNumber stepNumber="1" title="Run the CLI 'init' command in an existing project" />
+        {!initialized && (
+          <>
+            <div className="flex flex-col gap-4 rounded-md border border-indigo-400/20 bg-indigo-800/10 p-4 sm:flex-row sm:items-center">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-indigo-500/15 text-indigo-400">
+                <SparklesIcon className="size-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <Paragraph className="text-text-bright">Set it up with your AI agent</Paragraph>
+                <Paragraph variant="small" className="text-text-dimmed">
+                  Copy a ready-to-paste prompt for Claude Code, Cursor, or any coding agent. It
+                  includes your project reference.
+                </Paragraph>
+              </div>
+              <div className="shrink-0">
+                <InitAgentPromptV3 />
+              </div>
+            </div>
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-grid-bright" />
+              <span className="text-xs uppercase tracking-wide text-text-dimmed">
+                or set it up yourself
+              </span>
+              <div className="h-px flex-1 bg-grid-bright" />
+            </div>
+          </>
+        )}
+        <StepNumber
+          stepNumber="1"
+          title={initialized ? "Project initialized" : "Initialize your project"}
+          complete={initialized}
+        />
         <StepContentContainer>
-          <InitCommandV3 />
-          <Paragraph spacing>
-            You'll notice a new folder in your project called{" "}
-            <InlineCode variant="small">trigger</InlineCode>. We've added a few simple example tasks
-            in there to help you get started.
-          </Paragraph>
+          {initialized ? (
+            <Paragraph>
+              Your project is initialized. Your tasks live in the{" "}
+              <InlineCode variant="small">trigger</InlineCode> directory.
+            </Paragraph>
+          ) : (
+            <>
+              <InitCommandV3 />
+              <Paragraph spacing>
+                Run this in an existing project. You'll notice a new folder called{" "}
+                <InlineCode variant="small">trigger</InlineCode> with a few example tasks to help
+                you get started.
+              </Paragraph>
+            </>
+          )}
         </StepContentContainer>
-        <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
+        <StepNumber
+          stepNumber="2"
+          title={devConnected ? "Dev server connected" : "Start the dev server"}
+          complete={devConnected}
+          displaySpinner={!devConnected}
+        />
         <StepContentContainer>
-          <TriggerDevStepV3 />
-        </StepContentContainer>
-        <StepNumber stepNumber="3" title="Waiting for tasks" displaySpinner />
-        <StepContentContainer>
-          <Paragraph>This page will automatically refresh.</Paragraph>
+          {devConnected ? (
+            <Paragraph>
+              Your dev server is connected. Your tasks will appear here automatically as soon as
+              they register.
+            </Paragraph>
+          ) : (
+            <>
+              <TriggerDevStepV3 />
+              <Paragraph spacing>
+                Keep this running while you develop. Once your tasks register, this page updates
+                automatically.
+              </Paragraph>
+            </>
+          )}
         </StepContentContainer>
       </div>
     </PackageManagerProvider>
@@ -102,71 +206,6 @@ export function HasNoTasksDev() {
 
 export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
   return <DeploymentOnboardingSteps />;
-}
-
-export function SchedulesNoPossibleTaskPanel() {
-  return (
-    <InfoPanel
-      title="Create your first scheduled task"
-      icon={ClockIcon}
-      iconClassName="text-schedules"
-      panelClassName="max-w-full"
-      accessory={
-        <LinkButton
-          to={docsPath("v3/tasks-scheduled")}
-          variant="docs/small"
-          LeadingIcon={BookOpenIcon}
-        >
-          How to schedule tasks
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        You have no scheduled tasks in your project. Before you can schedule a task you need to
-        create a <InlineCode>schedules.task</InlineCode>.
-      </Paragraph>
-    </InfoPanel>
-  );
-}
-
-export function SchedulesNoneAttached() {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const location = useLocation();
-
-  return (
-    <InfoPanel
-      title="Attach your first schedule"
-      icon={ClockIcon}
-      iconClassName="text-schedules"
-      panelClassName="max-w-full"
-    >
-      <Paragraph spacing variant="small">
-        Scheduled tasks will only run automatically if you connect a schedule to them, you can do
-        this in the dashboard or using the SDK.
-      </Paragraph>
-      <div className="flex gap-2">
-        <LinkButton
-          to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-          variant="secondary/medium"
-          LeadingIcon={RectangleGroupIcon}
-          className="inline-flex"
-          leadingIconClassName="text-blue-500"
-        >
-          Use the dashboard
-        </LinkButton>
-        <LinkButton
-          to={docsPath("v3/tasks-scheduled")}
-          variant="docs/medium"
-          LeadingIcon={BookOpenIcon}
-          className="inline-flex"
-        >
-          Use the SDK
-        </LinkButton>
-      </div>
-    </InfoPanel>
-  );
 }
 
 export function BatchesNone() {
@@ -269,29 +308,10 @@ export function DeploymentsNoneDev() {
           <Header1>Deploy your tasks</Header1>
         </div>
         <div className="flex items-center">
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={BookOpenIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("deployment/overview")}
-              />
-            }
-            content="Deploy docs"
-          />
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={QuestionMarkCircleIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("troubleshooting#deployment")}
-              />
-            }
-            content="Troubleshooting docs"
-          />
-          <AskAI />
+          {/* One entry point instead of two: the docs links were a guess at which page you
+              needed, and the agent can look at this project and answer for it. Someone with no
+              agent still gets the links. */}
+          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
         </div>
       </div>
       <StepNumber stepNumber="→" title="Switch to a deployed environment" />
@@ -384,36 +404,6 @@ export function AlertsNoneDeployed() {
   );
 }
 
-export function QueuesHasNoTasks() {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
-  return (
-    <InfoPanel
-      title="You don't have any queues"
-      icon={RectangleStackIcon}
-      iconClassName="text-queues"
-      panelClassName="max-w-md"
-      accessory={
-        <LinkButton
-          to={v3EnvironmentPath(organization, project, environment)}
-          variant="primary/small"
-        >
-          Create a task
-        </LinkButton>
-      }
-    >
-      <Paragraph spacing variant="small">
-        Queues will appear here when you have created a task in this environment. Follow the
-        instructions on the{" "}
-        <TextLink to={v3EnvironmentPath(organization, project, environment)}>Tasks page</TextLink>{" "}
-        to create a task, then return here to see its queue.
-      </Paragraph>
-    </InfoPanel>
-  );
-}
-
 export function NoWaitpointTokens() {
   return (
     <InfoPanel
@@ -476,13 +466,9 @@ export function BranchesNoBranchableEnvironment({ showSelfServe }: { showSelfSer
         )
       }
     >
-      <Paragraph spacing variant="small">
+      <Paragraph variant="small">
         Preview branches in Trigger.dev create isolated environments for testing new features before
         production.
-      </Paragraph>
-      <Paragraph variant="small">
-        You must be on <V4Badge inline /> to access preview branches. Read our{" "}
-        <TextLink to={docsPath("upgrade-to-v4")}>upgrade to v4 guide</TextLink> to learn more.
       </Paragraph>
     </InfoPanel>
   );
@@ -557,19 +543,15 @@ export function BranchesNoBranches({
         />
       }
     >
-      <Paragraph spacing variant="small">
+      <Paragraph variant="small">
         Branches are a way to test new features in isolation before merging them into the main
         environment.
-      </Paragraph>
-      <Paragraph spacing variant="small">
-        Branches are only available when using <V4Badge inline /> or above. Read our{" "}
-        <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
       </Paragraph>
     </InfoPanel>
   );
 }
 
-export function SwitcherPanel({ title = "Switch to a deployed environment" }: { title?: string }) {
+function SwitcherPanel({ title = "Switch to a deployed environment" }: { title?: string }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -657,29 +639,10 @@ function DeploymentOnboardingSteps() {
           </Header1>
         </div>
         <div className="flex items-center">
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={BookOpenIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("deployment/overview")}
-              />
-            }
-            content="Deploy docs"
-          />
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={QuestionMarkCircleIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("troubleshooting#deployment")}
-              />
-            }
-            content="Troubleshooting docs"
-          />
-          <AskAI />
+          {/* One entry point instead of two: the docs links were a guess at which page you
+              needed, and the agent can look at this project and answer for it. Someone with no
+              agent still gets the links. */}
+          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
         </div>
       </div>
       <ClientTabs defaultValue="github">
@@ -742,7 +705,7 @@ export function PromptsNone() {
   return (
     <InfoPanel
       title="Define your first prompt"
-      icon={AIChatIcon}
+      icon={AIPenIcon}
       iconClassName="text-aiPrompts"
       panelClassName="max-w-lg"
       accessory={

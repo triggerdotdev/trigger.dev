@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    // ES2020 rather than the ES2019 most sibling packages use, because the tests call
+    // String.prototype.matchAll. It already resolved: @types/node carries a
+    // `/// <reference lib="es2020" />`, so the program had es2020 whatever this line said. Stating
+    // it here stops the requirement resting on a transitive reference from a types package.
+    "lib": ["ES2020"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "strict": true,
+    "types": ["vitest/globals", "node"],
+    "customConditions": ["@triggerdotdev/source"]
+  },
+  "exclude": ["node_modules", "dist"]
+}

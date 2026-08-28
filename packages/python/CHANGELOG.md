@@ -1,5 +1,51 @@
 # @trigger.dev/python
 
+## 4.5.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.13`
+  - `@trigger.dev/core@4.5.13`
+  - `@trigger.dev/build@4.5.13`
+
+## 4.5.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+  - `@trigger.dev/sdk@4.5.12`
+  - `@trigger.dev/build@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+  - `@trigger.dev/sdk@4.5.11`
+  - `@trigger.dev/build@4.5.11`
+
+## 4.5.10
+
+### Patch Changes
+
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.10`
+  - `@trigger.dev/core@4.5.10`
+  - `@trigger.dev/build@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.9`
+  - `@trigger.dev/core@4.5.9`
+  - `@trigger.dev/build@4.5.9`
+
 ## 4.5.8
 
 ### Patch Changes

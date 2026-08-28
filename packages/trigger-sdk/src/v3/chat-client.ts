@@ -58,16 +58,16 @@ export type ChatSession = {
  * `AgentChat`. Same shape as the type on `TriggerChatTransport` — these
  * mirror so customers can share a single resolver between the two clients.
  */
-export type AgentChatEndpoint = "in" | "out";
+type AgentChatEndpoint = "in" | "out";
 
-export type AgentChatEndpointContext = {
+type AgentChatEndpointContext = {
   endpoint: AgentChatEndpoint;
   chatId: string;
 };
 
-export type AgentChatBaseURLResolver = (ctx: AgentChatEndpointContext) => string;
+type AgentChatBaseURLResolver = (ctx: AgentChatEndpointContext) => string;
 
-export type AgentChatFetchOverride = (
+type AgentChatFetchOverride = (
   url: string,
   init: RequestInit,
   ctx: AgentChatEndpointContext
@@ -576,10 +576,26 @@ export class AgentChat<TAgent = unknown> {
     }
   }
 
-  /** Reconnect to the response stream (e.g. after a disconnect). */
+  /**
+   * Reconnect to the response stream to resume an already-established session
+   * after a disconnect. Requests the caught-up settle probe (`X-Peek-Settled`)
+   * so a resumed stream already at a turn-complete tail closes promptly instead
+   * of holding the full SSE window, mirroring the browser transport's
+   * `reconnectToStream`.
+   *
+   * Do not call this immediately after `sendMessage()` to read a fresh turn: the
+   * settle probe can race the newly-triggered turn's first record, see the prior
+   * turn's `turn-complete` tail, and hand back an empty stream (unlike the
+   * browser transport, there is no auto-resubscribe). `sendMessage()` already
+   * returns the turn's stream; use `reconnect()` only to resume an idle or
+   * mid-turn stream.
+   */
   async reconnect(abortSignal?: AbortSignal): Promise<ReadableStream<UIMessageChunk> | null> {
     if (!this.state.started) return null;
-    return this.subscribeToSessionStream(abortSignal, { sendStopOnAbort: false });
+    return this.subscribeToSessionStream(abortSignal, {
+      sendStopOnAbort: false,
+      peekSettled: true,
+    });
   }
 
   // ─── Private ───────────────────────────────────────────────────
@@ -637,6 +653,9 @@ export class AgentChat<TAgent = unknown> {
   private async ensureStarted(options?: { idleTimeoutInSeconds?: number }): Promise<void> {
     if (this.state.started) return;
 
+    const idleTimeoutInSeconds =
+      options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds;
+
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
         // `trigger: "preload"` mirrors the browser-mediated
@@ -656,13 +675,7 @@ export class AgentChat<TAgent = unknown> {
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
         : {}),
-      ...(options?.idleTimeoutInSeconds !== undefined ||
-      this.triggerConfigDefault?.idleTimeoutInSeconds !== undefined
-        ? {
-            idleTimeoutInSeconds:
-              options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds!,
-          }
-        : {}),
+      ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
     const created = await sessions.start({
@@ -681,7 +694,7 @@ export class AgentChat<TAgent = unknown> {
 
   private subscribeToSessionStream(
     abortSignal: AbortSignal | undefined,
-    options?: { sendStopOnAbort?: boolean }
+    options?: { sendStopOnAbort?: boolean; peekSettled?: boolean }
   ): ReadableStream<UIMessageChunk> {
     const state = this.state;
     const accessToken = apiClientManager.accessToken ?? "";
@@ -743,6 +756,7 @@ export class AgentChat<TAgent = unknown> {
               ...(apiClientManager.branchName
                 ? { "x-trigger-branch": apiClientManager.branchName }
                 : {}),
+              ...(options?.peekSettled ? { "X-Peek-Settled": "1" } : {}),
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,

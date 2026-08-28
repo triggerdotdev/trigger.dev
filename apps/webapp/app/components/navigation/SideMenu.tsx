@@ -1,10 +1,14 @@
-import {
-  ArrowTopRightOnSquareIcon,
-  ChevronRightIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useNavigation, useRevalidator, useSubmit } from "@remix-run/react";
+import {
+  Form,
+  useFetcher,
+  useLocation,
+  useNavigation,
+  useRevalidator,
+  useSubmit,
+} from "@remix-run/react";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { LayoutGroup, motion } from "framer-motion";
 import {
   type CSSProperties,
@@ -17,42 +21,27 @@ import {
   useState,
 } from "react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
-import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ArrowLeftRightIcon } from "~/assets/icons/ArrowLeftRightIcon";
 import { ArrowRightSquareIcon } from "~/assets/icons/ArrowRightSquareIcon";
 import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
-import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
-import { Box3DIcon } from "~/assets/icons/Box3DIcon";
-import { BugIcon } from "~/assets/icons/BugIcon";
 import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
-import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
-import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
-import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
-import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
-import { DialIcon } from "~/assets/icons/DialIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { EyeClosedIcon } from "~/assets/icons/EyeClosedIcon";
+import { EyeOpenIcon } from "~/assets/icons/EyeOpenIcon";
 import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
 import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
-import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { HomeIcon } from "~/assets/icons/HomeIcon";
-import { IDIcon } from "~/assets/icons/IDIcon";
 import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
-import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { LeftSideMenuCollapsedIcon } from "~/assets/icons/LeftSideMenuCollapsedIcon";
 import { LeftSideMenuIcon } from "~/assets/icons/LeftSideMenuIcon";
-import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
-import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
-import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { ShieldIcon } from "~/assets/icons/ShieldIcon";
 import { SidebarCustomizeIcon } from "~/assets/icons/SidebarCustomizeIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
-import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { UserCrossIcon } from "~/assets/icons/UserCrossIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
@@ -63,13 +52,14 @@ import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Avatar } from "~/components/primitives/Avatar";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
+import { usePageSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
-import { useHasAdminAccess } from "~/hooks/useUser";
+import { useHasAdminAccess, useIsViewingAsUser } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import {
   useCurrentPlan,
@@ -84,49 +74,30 @@ import {
   accountSecurityPath,
   personalAccessTokensPath,
   adminPath,
-  branchesPath,
-  concurrencyPath,
-  limitsPath,
+  docsPath,
   logoutPath,
   newOrganizationPath,
   newProjectPath,
-  organizationPath,
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationSsoPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
-  queryPath,
-  regionsPath,
-  v3ApiKeysPath,
-  v3BatchesPath,
   v3BillingLimitsPath,
   v3BillingPath,
   v3PrivateConnectionsPath,
-  v3BulkActionsPath,
-  v3DashboardsLandingPath,
-  v3DeploymentsPath,
   v3EnvironmentPath,
-  v3EnvironmentVariablesPath,
-  v3ErrorsPath,
-  v3LogsPath,
-  v3ModelsPath,
-  v3ProjectAlertsPath,
-  v3ProjectPath,
   v3ProjectSettingsGeneralPath,
-  v3ProjectSettingsIntegrationsPath,
-  v3PromptsPath,
-  v3QueuesPath,
   v3RunsPath,
   v3SessionsPath,
   v3UsagePath,
-  v3WaitpointTokensPath,
+  v3WebhooksPath,
 } from "~/utils/pathBuilder";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
-import { AlphaBadge, NewBadge } from "../FeatureBadges";
-import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
+import { NewBadge } from "../FeatureBadges";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
@@ -149,6 +120,7 @@ import {
 } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
+import { AppearanceMenuItem } from "./AppearanceMenuItem";
 import {
   CustomizeSidebarDialog,
   type CustomizeSidebarSection,
@@ -169,6 +141,8 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { NotificationPanel } from "./NotificationPanel";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem, SideMenuLabel } from "./SideMenuItem";
+import { buildSideMenuSections, type SideMenuSectionConfig } from "./sideMenuSections";
+import { SideMenuPopoverSubMenu } from "./SideMenuPopoverSubMenu";
 import { SideMenuSection } from "./SideMenuSection";
 import {
   isItemHidden,
@@ -185,31 +159,6 @@ function getSectionCollapsed(
 ): boolean {
   return sideMenu?.collapsedSections?.[sectionId] ?? false;
 }
-
-type SideMenuItemConfig = {
-  /** Stable id used for hidden/order preferences; never rename once shipped. */
-  id: string;
-  name: string;
-  icon: RenderIcon;
-  activeIconColor: string;
-  inactiveIconColor?: string;
-  to: string;
-  dataAction?: string;
-  badge?: ReactNode;
-  trailingIconClassName?: string;
-  /** Hidden for every user who hasn't set their own preference for this item. */
-  defaultHidden?: boolean;
-  /** Right-side action (e.g. the + button on Dashboards); only rendered when visible. */
-  action?: ReactNode;
-  /** Extra content rendered directly after the item (e.g. the dashboards list). */
-  after?: ReactNode;
-};
-
-type SideMenuSectionConfig = {
-  id: SideMenuSectionId;
-  title: string;
-  items: SideMenuItemConfig[];
-};
 
 // Impersonation accent (menu border + "Stop impersonating"). Full class strings so Tailwind's
 // static scanner picks them up.
@@ -355,25 +304,32 @@ export function SideMenu({
   const rafRef = useRef<number | null>(null);
   // Mirror of `isCollapsed` for the drag handlers (outside React's render cycle; no stale closures).
   const isCollapsedRef = useRef(isCollapsed);
+  // Freeze first-paint values so React never fights the imperative width writes after hydration.
+  const [initialVisual] = useState(() => {
+    const collapsed = user.dashboardPreferences.sideMenu?.isCollapsed ?? false;
+    const expandedWidth = clamp(
+      user.dashboardPreferences.sideMenu?.width ?? DEFAULT_WIDTH,
+      DEFAULT_WIDTH,
+      MAX_WIDTH
+    );
+    const width = collapsed ? COLLAPSED_WIDTH : expandedWidth;
+    const progress = collapsed ? 1 : 0;
+
+    return {
+      expandedWidth,
+      width,
+      progress,
+      style: {
+        width,
+        "--sm-collapse": String(progress),
+        "--sm-label-opacity": String(progressToLabelOpacity(progress)),
+      } as CSSProperties,
+    };
+  });
   // The last-committed expanded width; animation targets and re-expansion read from here.
-  const expandedWidthRef = useRef(
-    clamp(user.dashboardPreferences.sideMenu?.width ?? DEFAULT_WIDTH, DEFAULT_WIDTH, MAX_WIDTH)
-  );
-  // Frozen first-paint width; never changes, so React never fights the imperative width writes.
-  const initialWidthRef = useRef(
-    (user.dashboardPreferences.sideMenu?.isCollapsed ?? false)
-      ? COLLAPSED_WIDTH
-      : expandedWidthRef.current
-  );
-  const widthRef = useRef(initialWidthRef.current);
-  const progressRef = useRef((user.dashboardPreferences.sideMenu?.isCollapsed ?? false) ? 1 : 0);
-  // Frozen initial style (incl. CSS vars) so the SSR HTML has the right collapsed/expanded visuals
-  // (no pre-hydration flash). Stable identity, so React never rewrites it after writeVisual.
-  const initialStyleRef = useRef<CSSProperties>({
-    width: initialWidthRef.current,
-    "--sm-collapse": String(progressRef.current),
-    "--sm-label-opacity": String(progressToLabelOpacity(progressRef.current)),
-  } as CSSProperties);
+  const expandedWidthRef = useRef(initialVisual.expandedWidth);
+  const widthRef = useRef(initialVisual.width);
+  const progressRef = useRef(initialVisual.progress);
   // Removes an in-flight drag's window listeners (set on pointerdown; cleared on finish/unmount).
   const dragCleanupRef = useRef<(() => void) | null>(null);
 
@@ -389,6 +345,7 @@ export function SideMenu({
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
+  const isViewingAsUser = useIsViewingAsUser();
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
   const incidentStatus = useIncidentStatus();
@@ -426,6 +383,7 @@ export function SideMenu({
     const data = customizationFetcher.data;
     if (!data) {
       // Settled with no response body (e.g. a session-expiry redirect): fail rather than spin
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setCustomizeConfirmPending(false);
       setCustomizeError("Couldn't save your changes. Please try again.");
       return;
@@ -512,6 +470,7 @@ export function SideMenu({
   // object each render, so depending on it would fire the cleanup (flushing the debounce) every
   // render — and drags re-render constantly — instead of only on unmount.
   const flushPendingPreferencesRef = useRef<() => void>();
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   flushPendingPreferencesRef.current = () => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -577,6 +536,7 @@ export function SideMenu({
   }, []);
 
   // Animate width + progress over COLLAPSE_ANIM_MS (toggle button, ⌘B shortcut, release-snap).
+
   const animateTo = useCallback(
     (targetWidth: number, targetProgress: number) => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -625,6 +585,7 @@ export function SideMenu({
 
   // Drag runs on window-level listeners so releasing anywhere finalizes it. (Pointer capture alone
   // was unreliable: if the browser drops it mid-drag, the release never fires and the menu strands.)
+
   const onHandlePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -783,219 +744,32 @@ export function SideMenu({
 
   // The customizable sections (everything except Tasks/Runs/Sessions), in DEFAULT order. The
   // user's saved order/hidden preferences are applied at render below.
-  const staticSections: SideMenuSectionConfig[] = [];
-
-  if (user.admin || user.isImpersonating || featureFlags.hasAiAccess) {
-    staticSections.push({
-      id: "ai",
-      title: "AI",
-      items: [
-        {
-          id: "prompts",
-          name: "Prompts",
-          icon: AIPenIcon,
-          trailingIconClassName: "size-6",
-          activeIconColor: "text-aiPrompts",
-          to: v3PromptsPath(organization, project, environment),
-          dataAction: "prompts",
-          badge: <NewBadge />,
-        },
-        {
-          id: "models",
-          name: "Models",
-          icon: Box3DIcon,
-          activeIconColor: "text-models",
-          to: v3ModelsPath(organization, project, environment),
-          dataAction: "models",
-          badge: <NewBadge />,
-        },
-      ],
-    });
-  }
-
-  if (user.admin || user.isImpersonating || featureFlags.hasQueryAccess) {
-    staticSections.push({
-      id: "metrics",
-      title: "Observability",
-      items: [
-        ...(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess
-          ? [
-              {
-                id: "logs",
-                name: "Logs",
-                icon: LogsIcon,
-                activeIconColor: "text-logs",
-                to: v3LogsPath(organization, project, environment),
-                dataAction: "logs",
-                badge: <AlphaBadge />,
-              } satisfies SideMenuItemConfig,
-            ]
-          : []),
-        {
-          id: "errors",
-          name: "Errors",
-          icon: BugIcon,
-          activeIconColor: "text-errors",
-          to: v3ErrorsPath(organization, project, environment),
-          dataAction: "errors",
-        },
-        {
-          id: "query",
-          name: "Query",
-          icon: CodeSquareIcon,
-          activeIconColor: "text-query",
-          to: queryPath(organization, project, environment),
-          dataAction: "query",
-        },
-        {
-          id: "queues",
-          name: "Queues",
-          icon: QueuesIcon,
-          activeIconColor: "text-queues",
-          to: v3QueuesPath(organization, project, environment),
-          dataAction: "queues",
-        },
-        {
-          id: "dashboards",
-          name: "Dashboards",
-          icon: ChartBarIcon,
-          activeIconColor: "text-metrics",
-          to: v3DashboardsLandingPath(organization, project, environment),
-          dataAction: "dashboards-landing",
-          action: (
-            <CreateDashboardButton
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-            />
-          ),
-          after: (
-            <DashboardList
-              organization={organization}
-              project={project}
-              environment={environment}
-              isCollapsed={isCollapsed}
-              user={user}
-            />
-          ),
-        },
-      ],
-    });
-  }
-
-  staticSections.push({
-    id: "deployments",
-    title: "Deployments",
-    items: [
-      {
-        id: "deployments",
-        name: "Deploys",
-        icon: DeploymentsIcon,
-        activeIconColor: "text-deployments",
-        to: v3DeploymentsPath(organization, project, environment),
-        dataAction: "deployments",
-      },
-      {
-        id: "environment-variables",
-        name: "Environment variables",
-        icon: IDIcon,
-        activeIconColor: "text-environmentVariables",
-        to: v3EnvironmentVariablesPath(organization, project, environment),
-        dataAction: "environment variables",
-      },
-      {
-        id: "preview-branches",
-        name: "Preview branches",
-        icon: BranchEnvironmentIconSmall,
-        activeIconColor: "text-previewBranches",
-        to: branchesPath(organization, project, environment),
-        dataAction: "preview-branches",
-      },
-      {
-        id: "regions",
-        name: "Regions",
-        icon: GlobeLinesIcon,
-        activeIconColor: "text-regions",
-        to: regionsPath(organization, project, environment),
-        dataAction: "regions",
-      },
-    ],
-  });
-
-  staticSections.push({
-    id: "manage",
-    title: "Manage",
-    items: [
-      {
-        id: "waitpoint-tokens",
-        name: "Waitpoint tokens",
-        icon: WaitpointTokenIcon,
-        activeIconColor: "text-sky-500",
-        to: v3WaitpointTokensPath(organization, project, environment),
-        dataAction: "waitpoint-tokens",
-      },
-      {
-        id: "batches",
-        name: "Batches",
-        icon: BatchesIcon,
-        activeIconColor: "text-batches",
-        to: v3BatchesPath(organization, project, environment),
-        dataAction: "batches",
-      },
-      {
-        id: "bulk-actions",
-        name: "Bulk actions",
-        icon: ListCheckedIcon,
-        activeIconColor: "text-text-bright",
-        to: v3BulkActionsPath(organization, project, environment),
-        dataAction: "bulk actions",
-      },
-      {
-        id: "api-keys",
-        name: "API keys",
-        icon: KeyIcon,
-        activeIconColor: "text-text-bright",
-        to: v3ApiKeysPath(organization, project, environment),
-        dataAction: "api keys",
-      },
-      {
-        id: "alerts",
-        name: "Alerts",
-        icon: BellIcon,
-        activeIconColor: "text-text-bright",
-        to: v3ProjectAlertsPath(organization, project, environment),
-        dataAction: "alerts",
-      },
-      ...(isManagedCloud
-        ? [
-            {
-              id: "concurrency",
-              name: "Concurrency",
-              icon: ConcurrencyIcon,
-              activeIconColor: "text-text-bright",
-              to: concurrencyPath(organization, project, environment),
-              dataAction: "concurrency",
-            } satisfies SideMenuItemConfig,
-          ]
-        : []),
-      {
-        id: "limits",
-        name: "Limits",
-        icon: DialIcon,
-        activeIconColor: "text-text-bright",
-        to: limitsPath(organization, project, environment),
-        dataAction: "limits",
-      },
-      {
-        id: "integrations",
-        name: "Integrations",
-        icon: IntegrationsIcon,
-        activeIconColor: "text-text-bright",
-        to: v3ProjectSettingsIntegrationsPath(organization, project, environment),
-        dataAction: "project-settings-integrations",
-      },
-    ],
+  const staticSections = buildSideMenuSections({
+    organization,
+    project,
+    environment,
+    isAdmin,
+    featureFlags,
+    isManagedCloud,
+    dashboards: {
+      action: (
+        <CreateDashboardButton
+          organization={organization}
+          project={project}
+          environment={environment}
+          isCollapsed={isCollapsed}
+        />
+      ),
+      after: (
+        <DashboardList
+          organization={organization}
+          project={project}
+          environment={environment}
+          isCollapsed={isCollapsed}
+          user={user}
+        />
+      ),
+    },
   });
 
   const sideMenuPrefs = user.dashboardPreferences.sideMenu;
@@ -1045,10 +819,16 @@ export function SideMenu({
   return (
     <div
       ref={rootRef}
-      style={initialStyleRef.current}
+      style={initialVisual.style}
       className={cn(
         "relative h-full border-r bg-background-bright",
-        user.isImpersonating ? IMPERSONATION_ACCENT.border : "border-grid-bright"
+        // The accent is the loudest "you are not this user" tell, so "view as user" drops it too —
+        // the point of the mode is a dashboard that looks exactly like the user's. The account
+        // menu's "Stop impersonating" and the toggle itself stay on raw impersonation, so there is
+        // still a way back out (as does the ⌘⌥A shortcut in <GlobalShortcuts>).
+        user.isImpersonating && !isViewingAsUser
+          ? IMPERSONATION_ACCENT.border
+          : "border-grid-bright"
       )}
     >
       <ResizeHandle
@@ -1096,7 +876,7 @@ export function SideMenu({
                   isDragging={isDragging}
                   className="min-w-0 flex-1"
                 />
-                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                {environment.type === "DEVELOPMENT" && (
                   <CollapsibleElement isDragging={isDragging} className="shrink-0">
                     <Dialog>
                       <TooltipProvider disableHoverableContent={true}>
@@ -1185,6 +965,19 @@ export function SideMenu({
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
               />
+              {(user.admin || user.isImpersonating || featureFlags.hasWebhooksAccess) && (
+                <SideMenuItem
+                  name="Webhooks"
+                  icon={WebhookIcon}
+                  activeIconColor="text-webhooks"
+                  inactiveIconColor="text-text-dimmed"
+                  to={v3WebhooksPath(organization, project, environment)}
+                  data-action="webhooks"
+                  badge={<NewBadge />}
+                  isCollapsed={isCollapsed}
+                  yieldActiveToFavorite
+                />
+              )}
             </div>
 
             {orderedSectionIds.map((sectionId) => {
@@ -1449,6 +1242,7 @@ function SideMenuMoreItem({
 
   // Watch search too: navigating to a favorite can change only the search on the same pathname
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOpen(false);
   }, [navigation.location?.pathname, navigation.location?.search]);
 
@@ -1589,7 +1383,7 @@ function V3DeprecationPanel({
                 <ExclamationTriangleIcon className="size-5 text-amber-400" />
               </PopoverTrigger>
             }
-            content="V3 deprecation warning"
+            content="v3 is now deprecated"
             side="right"
             sideOffset={8}
             disableHoverableContent
@@ -1610,23 +1404,23 @@ function V3DeprecationContent() {
       <div className="flex items-center gap-1 border-b border-amber-500/30 pb-1">
         <ExclamationTriangleIcon className="size-4 text-amber-400" />
         <Paragraph variant="small/bright" className="text-amber-300">
-          V3 deprecation warning
+          v3 is now deprecated
         </Paragraph>
       </div>
       <Paragraph variant="extra-small/bright" className="text-amber-300">
-        This is a v3 project. V3 deploys will stop working on 1 April 2026. Full shutdown is 1 July
-        2026 where all v3 runs will stop executing. Migrate to v4 to avoid downtime.
+        This is a v3 project which is now deprecated so no runs are executing. Upgrade to v4 to
+        resume executing runs in this project.
       </Paragraph>
       <LinkButton
         variant="secondary/small"
-        to="https://trigger.dev/docs/migrating-from-v3"
+        to={docsPath("/upgrade-to-v4")}
         target="_blank"
         fullWidth
         TrailingIcon={ArrowTopRightOnSquareIcon}
         trailingIconClassName="text-amber-300"
         className="border-amber-500/30 bg-amber-500/15 hover:border-amber-500/50! hover:bg-amber-500/25!"
       >
-        <span className="text-amber-300">View migration guide</span>
+        <span className="text-amber-300">Upgrade to v4</span>
       </LinkButton>
     </div>
   );
@@ -1662,6 +1456,7 @@ function OrgSelector({
   const planTitle = currentPlan?.v3Subscription?.plan?.title;
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setOrgMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -1832,24 +1627,29 @@ function AccountMenuItems({
 
   return (
     <>
-      {isAdmin && (
+      {/* "Stop impersonating" and the view-as-user toggle key off raw impersonation, not `isAdmin`:
+          with "view as user" on, `isAdmin` is false and these are the only ways back out. */}
+      {(isImpersonating || isAdmin) && (
         <div className="flex flex-col gap-1 border-b border-grid-bright p-1">
           {isImpersonating ? (
-            <PopoverMenuItem
-              title={
-                <div className="flex w-full items-center justify-between">
-                  <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
-                  <ShortcutKey
-                    shortcut={{ modifiers: ["mod", "alt"], key: "a" }}
-                    variant="medium/bright"
-                  />
-                </div>
-              }
-              icon={UserCrossIcon}
-              onClick={stopImpersonating}
-              leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
-              className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            />
+            <>
+              <PopoverMenuItem
+                title={
+                  <div className="flex w-full items-center justify-between">
+                    <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
+                    <ShortcutKey
+                      shortcut={{ modifiers: ["mod", "alt"], key: "a" }}
+                      variant="medium/bright"
+                    />
+                  </div>
+                }
+                icon={UserCrossIcon}
+                onClick={stopImpersonating}
+                leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
+                className={SIDE_MENU_POPOVER_ITEM_LABEL}
+              />
+              <ViewAsUserMenuItem />
+            </>
           ) : (
             <PopoverMenuItem
               to={adminPath()}
@@ -1877,6 +1677,7 @@ function AccountMenuItems({
           leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
           className={SIDE_MENU_POPOVER_ITEM_LABEL}
         />
+        <AppearanceMenuItem />
         <PopoverMenuItem
           to={personalAccessTokensPath()}
           title="Personal Access Tokens"
@@ -1906,11 +1707,36 @@ function AccountMenuItems({
   );
 }
 
+/**
+ * Toggles the display-only "view as user" mode for the current impersonation session, so an admin
+ * can see the dashboard the way the impersonated user sees it. `reloadDocument` forces a full
+ * navigation, so every loader re-runs under the updated cookie instead of reusing cached data.
+ */
+function ViewAsUserMenuItem() {
+  const isViewingAsUser = useIsViewingAsUser();
+  const location = useLocation();
+
+  return (
+    <Form method="post" action="/resources/impersonation/view-as" reloadDocument>
+      <input type="hidden" name="viewAsUser" value={isViewingAsUser ? "false" : "true"} />
+      <input type="hidden" name="redirectTo" value={`${location.pathname}${location.search}`} />
+      <PopoverMenuItem
+        type="submit"
+        title={isViewingAsUser ? "Show admin UI" : "View as user"}
+        icon={isViewingAsUser ? EyeClosedIcon : EyeOpenIcon}
+        leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
+        className={SIDE_MENU_POPOVER_ITEM_LABEL}
+      />
+    </Form>
+  );
+}
+
 function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImpersonating: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const navigation = useNavigation();
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -1962,8 +1788,10 @@ function ProjectSelector({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
+  const { urlForProject } = usePageSwitcher();
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -2038,7 +1866,7 @@ function ProjectSelector({
             return (
               <PopoverMenuItem
                 key={p.id}
-                to={v3ProjectPath(organization, p)}
+                to={urlForProject(organization, p)}
                 title={
                   <div className="flex w-full items-center justify-between text-text-bright">
                     <SideMenuLabel className="min-w-0 grow text-left">{p.name}</SideMenuLabel>
@@ -2057,80 +1885,6 @@ function ProjectSelector({
   );
 }
 
-/**
- * Hover-expandable submenu row for side-menu popovers (Account, Switch organization, Integrations):
- * a menu item with a trailing chevron that reveals `children` in a popover to the right, with a
- * short close delay so the pointer can cross the gap.
- */
-function SideMenuPopoverSubMenu({
-  title,
-  icon,
-  leadingIconClassName,
-  children,
-}: {
-  title: string;
-  icon: RenderIcon;
-  leadingIconClassName?: string;
-  children: ReactNode;
-}) {
-  const navigation = useNavigation();
-  const [isOpen, setIsOpen] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  // Close the submenu on navigation (the parent popover closes too).
-  useEffect(() => {
-    setIsOpen(false);
-  }, [navigation.location?.pathname]);
-
-  const openNow = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setIsOpen(true);
-  };
-  const closeSoon = () => {
-    // Small delay before closing so the pointer can move onto the content.
-    timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
-  };
-
-  return (
-    <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
-      <div onMouseEnter={openNow} onMouseLeave={closeSoon} className="flex">
-        <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
-          <ButtonContent
-            variant="small-menu-item"
-            className={cn("hover:bg-background-hover", SIDE_MENU_POPOVER_ITEM_LABEL)}
-            LeadingIcon={icon}
-            leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, leadingIconClassName)}
-            TrailingIcon={ChevronRightIcon}
-            trailingIconClassName="text-text-dimmed"
-            textAlignLeft
-            fullWidth
-          >
-            {title}
-          </ButtonContent>
-        </PopoverTrigger>
-        <PopoverContent
-          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
-          align="start"
-          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
-          side="right"
-          alignOffset={0}
-          sideOffset={-4}
-          onMouseEnter={openNow}
-          onMouseLeave={closeSoon}
-        >
-          {children}
-        </PopoverContent>
-      </div>
-    </Popover>
-  );
-}
-
 function SwitchOrganizations({
   organizations,
   organization,
@@ -2138,6 +1892,8 @@ function SwitchOrganizations({
   organizations: MatchedOrganization[];
   organization: MatchedOrganization;
 }) {
+  const { urlForOrganization } = usePageSwitcher();
+
   return (
     <SideMenuPopoverSubMenu title="Switch organization" icon={ArrowLeftRightIcon}>
       <div className="flex flex-col gap-1 p-1">
@@ -2153,7 +1909,7 @@ function SwitchOrganizations({
         {organizations.map((org) => (
           <PopoverMenuItem
             key={org.id}
-            to={organizationPath(org)}
+            to={urlForOrganization(org)}
             title={org.title}
             icon={<Avatar size={1.25} avatar={org.avatar} orgName={org.title} />}
             leadingIconClassName="text-text-dimmed"

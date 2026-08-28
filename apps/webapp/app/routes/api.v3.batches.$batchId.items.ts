@@ -6,8 +6,12 @@ import {
   createNdjsonParserStream,
   streamToAsyncIterable,
 } from "~/runEngine/services/streamBatchItems.server";
-import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { rbac } from "~/services/rbac.server";
+import {
+  authorizedBatchItemStream,
+  BatchItemAuthorizationError,
+} from "~/utils/batchItemAuthorization";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 const ParamsSchema = z.object({
@@ -48,13 +52,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  // Authenticate the request
-  const authResult = await authenticateApiRequestWithFailure(request, {
-    allowPublicKey: true,
-  });
+  // This streaming route cannot use createActionApiRoute because the body must
+  // remain an unread stream. Use the same RBAC controller directly and apply
+  // its ability to every parsed item below.
+  //
+  // Because we bypass the route builder, we also bypass its
+  // `restrictedApiKey && !authorization -> 403` fail-closed. Authorization is
+  // instead enforced per item by `authorizedBatchItemStream` below, which also
+  // requires a restricted credential to present at least one authorized item
+  // before the service may touch the batch — otherwise an empty stream would
+  // reach it having passed no checks at all. Any logic added between here and
+  // that call runs authenticated but NOT authorized, so keep new per-request
+  // work behind it.
+  const authResult = await rbac.authenticateBearer(request, { allowJWT: true });
 
   if (!authResult.ok) {
-    return json({ error: authResult.error }, { status: 401 });
+    return json({ error: authResult.error }, { status: authResult.status });
   }
 
   // Get the request body stream
@@ -76,8 +89,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // Pipe the request body through the parser
     const parsedStream = body.pipeThrough(parser);
 
-    // Convert to async iterable for the service
-    const itemsIterator = streamToAsyncIterable(parsedStream);
+    // Convert to async iterable for the service. This authorizes the first item
+    // eagerly, so a stream that yields no items is rejected before the service
+    // can report anything about the batch.
+    const itemsIterator = await authorizedBatchItemStream(
+      streamToAsyncIterable(parsedStream),
+      authResult.ability,
+      batchId
+    );
 
     // Process the stream
     const service = new StreamBatchItemsService();
@@ -88,6 +107,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     return json(result, { status: 200 });
   } catch (error) {
+    if (error instanceof BatchItemAuthorizationError) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
+
     // Customer-facing validation failures (invalid item shape, invalid JSON
     // in the streamed body). The handler returns 4xx with the message;
     // system handles it gracefully, no alert needed.

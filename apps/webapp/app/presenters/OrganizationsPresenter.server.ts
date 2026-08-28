@@ -7,9 +7,7 @@ import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
 import { SelectBestEnvironmentPresenter } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
-import { env } from "~/env.server";
-import { flags } from "~/v3/featureFlags.server";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import { globalFeatureFlags, mergeOrgFeatureFlags } from "~/v3/featureFlags.server";
 import { hydrateEnvsWithActivity } from "./v3/BranchesPresenter.server";
 
 export class OrganizationsPresenter {
@@ -152,31 +150,13 @@ export class OrganizationsPresenter {
           },
           orderBy: { name: "asc" },
         },
-        _count: {
-          select: {
-            members: true,
-          },
-        },
       },
     });
 
-    // Get global feature flags with env-var-based defaults
-    const globalFlags = await flags({
-      defaultValues: {
-        hasAiAccess: env.AI_FEATURES_ENABLED === "1",
-        hasDashboardAgentAccess: env.DASHBOARD_AGENT_ENABLED === "1",
-        hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
-      },
-    });
+    const globalFlags = await globalFeatureFlags();
 
     return orgs.map((org) => {
-      const orgFlagsResult = org.featureFlags
-        ? validatePartialFeatureFlags(org.featureFlags as Record<string, unknown>)
-        : ({ success: false } as const);
-      const orgFlags = orgFlagsResult.success ? orgFlagsResult.data : {};
-
-      // Combine global flags with org flags (org flags win)
-      const combinedFlags = { ...globalFlags, ...orgFlags };
+      const combinedFlags = mergeOrgFeatureFlags(globalFlags, org.featureFlags);
 
       return {
         id: org.id,
@@ -191,7 +171,6 @@ export class OrganizationsPresenter {
           updatedAt: project.updatedAt,
           externalRef: project.externalRef,
         })),
-        membersCount: org._count.members,
       };
     });
   }

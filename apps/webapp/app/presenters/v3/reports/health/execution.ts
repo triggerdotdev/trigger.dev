@@ -1,12 +1,7 @@
-/**
- * EXECUTION analyzer: "are the runs that DO start completing OK?" — failures + durations only.
- * Its "read:" line answers whether the flow problem is a code problem.
- */
-
 import { isOk, maxSeverity, type Finding, type Metric } from "../report-view-model";
 import { HEALTH_THRESHOLDS, metricById, type HealthInput } from "./health-core";
 
-export const EXECUTION_METRIC_IDS = ["failures", "dur_p95"];
+const EXECUTION_METRIC_IDS = ["failures", "dur_p95"];
 
 export function interpretExecution(metrics: Metric[], input: HealthInput): Finding {
   const exec = EXECUTION_METRIC_IDS.map((id) => metricById(metrics, id));
@@ -40,10 +35,7 @@ export function interpretExecution(metrics: Metric[], input: HealthInput): Findi
   };
 }
 
-/** Flow causes that provably CAN'T be user code, so a healthy execution reads "not a code problem".
- *  dequeue_stall is platform-side (capacity free but nothing dequeuing). Trigger spike/surge are
- *  excluded: a code path fanning out task.trigger can BE the cause, so we only state the runs that
- *  execute are fine — never the global "not a code problem". */
+// Trigger spike and surge are excluded: code fanning out task.trigger can be the cause.
 const NOT_A_CODE_PROBLEM_CAUSES = new Set(["dequeue_stall"]);
 
 export function buildExecutionRead(execution: Finding, flow: Finding): string {

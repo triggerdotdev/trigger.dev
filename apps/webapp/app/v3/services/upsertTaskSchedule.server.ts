@@ -3,11 +3,16 @@ import cronstrue from "cronstrue";
 import { nanoid } from "nanoid";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { type UpsertSchedule } from "../schedules";
-import { calculateNextScheduledTimestampFromNow } from "../utils/calculateNextSchedule.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { scheduleEngine } from "../scheduleEngine.server";
+import {
+  calculateNextScheduleRunTimes,
+  formatScheduleWindow,
+  normalizeScheduleWindow,
+} from "../scheduleWindow.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
+import { env } from "~/env.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
@@ -80,7 +85,7 @@ export class UpsertTaskScheduleService extends BaseService {
       },
     });
 
-    return this.#createReturnObject(scheduleRecord, instances);
+    return this.#createReturnObject(scheduleRecord, instances, schedule.environments[0]);
   }
 
   async #createNewSchedule(
@@ -100,6 +105,7 @@ export class UpsertTaskScheduleService extends BaseService {
         generatorDescription: cronstrue.toString(options.cron),
         timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : undefined,
+        ...normalizeScheduleWindow(options.window),
       },
     });
 
@@ -161,12 +167,15 @@ export class UpsertTaskScheduleService extends BaseService {
         generatorDescription: cronstrue.toString(options.cron),
         timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : null,
+        ...normalizeScheduleWindow(options.window),
       },
     });
 
     const scheduleHasChanged =
       scheduleRecord.generatorExpression !== existingSchedule.generatorExpression ||
-      scheduleRecord.timezone !== existingSchedule.timezone;
+      scheduleRecord.timezone !== existingSchedule.timezone ||
+      scheduleRecord.windowDurationSeconds !== existingSchedule.windowDurationSeconds ||
+      scheduleRecord.windowPercentage !== existingSchedule.windowPercentage;
 
     // create the new instances
     const newInstances: InstanceWithEnvironment[] = [];
@@ -232,7 +241,27 @@ export class UpsertTaskScheduleService extends BaseService {
     return { scheduleRecord };
   }
 
-  #createReturnObject(taskSchedule: TaskSchedule, instances: InstanceWithEnvironment[]) {
+  #createReturnObject(
+    taskSchedule: TaskSchedule,
+    instances: InstanceWithEnvironment[],
+    environmentId: string
+  ) {
+    const instance = instances.find((instance) => instance.environmentId === environmentId);
+    if (!instance) {
+      throw new ServiceValidationError("Failed to find the schedule instance");
+    }
+
+    const [nextRun] = calculateNextScheduleRunTimes({
+      cron: taskSchedule.generatorExpression,
+      timezone: taskSchedule.timezone,
+      deduplicationKey: taskSchedule.deduplicationKey,
+      environmentId: instance.environmentId,
+      schedulePhase: instance.schedulePhase,
+      phaseSecret: env.ENCRYPTION_KEY,
+      windowDurationSeconds: taskSchedule.windowDurationSeconds,
+      windowPercentage: taskSchedule.windowPercentage,
+    });
+
     return {
       id: taskSchedule.friendlyId,
       type: taskSchedule.type,
@@ -245,10 +274,9 @@ export class UpsertTaskScheduleService extends BaseService {
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
       timezone: taskSchedule.timezone,
-      nextRun: calculateNextScheduledTimestampFromNow(
-        taskSchedule.generatorExpression,
-        taskSchedule.timezone
-      ),
+      window: formatScheduleWindow(taskSchedule),
+      nextRun: nextRun.nominalAt,
+      nextRunEffectiveAt: nextRun.effectiveAt,
       environments: instances.map((instance) => ({
         id: instance.environment.id,
         shortcode: instance.environment.shortcode,

@@ -28,6 +28,7 @@ import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
+import { checkInviteRateLimit, InviteRateLimitError } from "~/services/inviteRateLimiter.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
@@ -38,6 +39,9 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { isAtOrBelow } from "~/utils/inviteRoleLadder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Invite team members");
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -170,6 +174,23 @@ export const action = dashboardAction(
           { errors: { body: "Membership is managed by Directory Sync" } },
           { status: 403 }
         );
+      }
+    }
+
+    // Every invite emails the address, so cap per-org and per-inviter sends
+    // (same limiter as the invite-create API). With no org scope the
+    // slug didn't resolve and inviteMembers rejects anyway.
+    if (env.LOGIN_RATE_LIMITS_ENABLED && context.organizationId) {
+      try {
+        await checkInviteRateLimit(context.organizationId, userId, submission.value.emails.length);
+      } catch (error) {
+        if (error instanceof InviteRateLimitError) {
+          return json(
+            { errors: { body: "Too many invites sent. Please try again later." } },
+            { status: 429 }
+          );
+        }
+        throw error;
       }
     }
 

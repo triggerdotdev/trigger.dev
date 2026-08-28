@@ -1,6 +1,11 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import {
+  QUEUE_METRICS_DEFAULT_PERIOD,
+  clipQueueMetricsWindow,
+} from "~/components/queues/queueMetricsPeriod";
+import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { findEnvironmentById, hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
@@ -13,8 +18,7 @@ import { engine } from "~/v3/runEngine.server";
 // Redis (O(page), independent of total key cardinality). This replaces the old top-50 cap.
 export const CONCURRENCY_KEYS_PER_PAGE = 25;
 
-// Matches QUEUE_METRICS_DEFAULT_PERIOD (the detail page's TimeFilter default).
-const DEFAULT_PERIOD = "1d";
+const DEFAULT_PERIOD = QUEUE_METRICS_DEFAULT_PERIOD;
 
 const Body = z.object({
   organizationId: z.string(),
@@ -103,6 +107,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // this endpoint's data isn't reachable for orgs that can't see the UI. 404 (not 403) to hide it.
   if (
     !(await canAccessQueueMetricsUi({
+      request,
       userId,
       organizationSlug: environment.organization.slug,
     }))
@@ -110,12 +115,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json<ConcurrencyKeysResponse>({ success: false, error: "Not found" }, { status: 404 });
   }
 
-  const range = timeFilterFromTo({
-    period: period ?? undefined,
-    from: from ?? undefined,
-    to: to ?? undefined,
-    defaultPeriod: DEFAULT_PERIOD,
-  });
+  const range = clipQueueMetricsWindow(
+    timeFilterFromTo({
+      period: period ?? undefined,
+      from: from ?? undefined,
+      to: to ?? undefined,
+      defaultPeriod: DEFAULT_PERIOD,
+    }),
+    await queueMetricsMaxPeriodDays(organizationId)
+  );
   const startTime = formatClickhouseDateTime(new Date(floorToMinute(range.from.getTime())));
   const endTime = formatClickhouseDateTime(new Date(ceilToMinute(range.to.getTime())));
 

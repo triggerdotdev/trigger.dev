@@ -1,8 +1,14 @@
 import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
-import React, { type ReactNode, createContext, forwardRef, useContext, useState } from "react";
+import React, {
+  type ReactNode,
+  createContext,
+  forwardRef,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
@@ -85,8 +91,10 @@ export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: Table
     },
     ref
   ) => {
+    const contextValue = useMemo(() => ({ variant }), [variant]);
+
     return (
-      <TableContext.Provider value={{ variant }}>
+      <TableContext.Provider value={contextValue}>
         <div
           className={cn(
             "whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
@@ -181,7 +189,7 @@ type TableCellBasicProps = {
 type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
-  /** Extra class merged onto the tooltip content — e.g. widen it past the default max-width. */
+  /** Extra class merged onto the tooltip content. */
   tooltipContentClassName?: string;
   disableTooltipHoverableContent?: boolean;
   /**
@@ -425,6 +433,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             <div className={cn(flexClasses, "gap-2")}>
               {leadingContent}
               <button
+                type="button"
                 onClick={onClick}
                 className={cn(
                   "inline-flex cursor-pointer items-center gap-2 focus:outline-hidden",
@@ -438,6 +447,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             </div>
           ) : (
             <button
+              type="button"
               onClick={onClick}
               className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
               tabIndex={isTabbableCell ? 0 : -1}
@@ -452,7 +462,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             {trailingContent}
           </div>
         ) : (
-          <>{children}</>
+          children
         )}
       </td>
     );
@@ -468,6 +478,37 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
     const [isHovered, setIsHovered] = useState(false);
     const { copy, copied } = useCopy(value);
 
+    // The button (with its aria-label) always sits in the same position in the tree, wrapped by
+    // the same SimpleTooltip, so it is never unmounted/remounted on hover (which would drop
+    // keyboard focus). The tooltip is left uncontrolled so Radix opens it only when the pointer
+    // or keyboard focus is actually on the button, not whenever the pointer is anywhere in the cell.
+    // `focus-visible:` reveals keyboard focus without leaving the button visible after a mouse click
+    // moves outside the cell.
+    const copyButton = (
+      <button
+        type="button"
+        aria-label={copied ? "Copied" : "Copy"}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          copy();
+        }}
+        className={cn(
+          "absolute -right-2 top-1/2 z-10 flex size-6 -translate-y-1/2 items-center justify-center rounded border border-border-bright bg-background-hover transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100",
+          isHovered ? "opacity-100" : "pointer-events-none opacity-0",
+          copied
+            ? "text-green-500"
+            : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
+        )}
+      >
+        {copied ? (
+          <ClipboardCheckIcon className="size-3.5" />
+        ) : (
+          <ClipboardIcon className="size-3.5" />
+        )}
+      </button>
+    );
+
     return (
       <TableCell ref={ref} className={className} {...props}>
         <div
@@ -476,67 +517,18 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
           onMouseLeave={() => setIsHovered(false)}
         >
           {children}
-          {isHovered && (
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                copy();
-              }}
-              className="absolute -right-2 top-1/2 z-10 flex -translate-y-1/2 cursor-pointer"
-            >
-              <SimpleTooltip
-                button={
-                  <span
-                    className={cn(
-                      "flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
-                      copied
-                        ? "text-green-500"
-                        : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
-                    )}
-                  >
-                    {copied ? (
-                      <ClipboardCheckIcon className="size-3.5" />
-                    ) : (
-                      <ClipboardIcon className="size-3.5" />
-                    )}
-                  </span>
-                }
-                content={copied ? "Copied!" : "Copy"}
-                disableHoverableContent
-              />
-            </span>
-          )}
+          <SimpleTooltip
+            asChild
+            tabbable
+            button={copyButton}
+            content={copied ? "Copied!" : "Copy"}
+            disableHoverableContent
+          />
         </div>
       </TableCell>
     );
   }
 );
-
-export const TableCellChevron = forwardRef<
-  HTMLTableCellElement,
-  {
-    className?: string;
-    to?: string;
-    children?: ReactNode;
-    isSticky?: boolean;
-    onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
-  }
->(({ className, to, children, isSticky, onClick }, ref) => {
-  return (
-    <TableCell
-      className={className}
-      isSticky={isSticky}
-      to={to}
-      onClick={onClick}
-      ref={ref}
-      alignment="right"
-    >
-      {children}
-      <ChevronRightIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
-    </TableCell>
-  );
-});
 
 export const TableCellMenu = forwardRef<
   HTMLTableCellElement,

@@ -5,13 +5,15 @@ import { resolveProjectScopedEnvironments } from "./resolveProjectScopedEnvironm
 import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { boundedIn, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { validateScheduleWindowSyntax } from "../scheduleWindow.server";
 
 type Schedule = {
   cron: string;
   timezone?: string;
   taskIdentifier: string;
   friendlyId?: string;
+  window?: string;
 };
 
 export class CheckScheduleService extends BaseService {
@@ -39,11 +41,19 @@ export class CheckScheduleService extends BaseService {
       }
     }
 
+    const windowValidation = validateScheduleWindowSyntax(schedule.window);
+    if (!windowValidation.valid) {
+      throw new ServiceValidationError(windowValidation.message);
+    }
+
     //check the task exists
     const task = await this._prisma.backgroundWorkerTask.findFirst({
       where: {
         slug: schedule.taskIdentifier,
         projectId: projectId,
+      },
+      select: {
+        triggerSource: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -70,6 +80,9 @@ export class CheckScheduleService extends BaseService {
       select: {
         organizationId: true,
         environments: {
+          where: {
+            id: { in: boundedIn(environmentIds) },
+          },
           select: {
             id: true,
             type: true,
@@ -128,12 +141,14 @@ export class CheckScheduleService extends BaseService {
         projectId,
         active: true,
         environment: {
+          projectId,
           type: {
             not: "DEVELOPMENT",
           },
           archivedAt: null,
         },
         taskSchedule: {
+          projectId,
           active: true,
         },
       },

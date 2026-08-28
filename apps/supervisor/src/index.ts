@@ -21,7 +21,7 @@ import {
   CheckpointClient,
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
-import { createK8sApi, createApiserverMetricsFetcher } from "./clients/kubernetes.js";
+import { createK8sApi, createPodCountFetcher } from "./clients/kubernetes.js";
 import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
@@ -276,14 +276,16 @@ class ManagedSupervisor {
       // RELEASE < ENGAGE is enforced in env.ts (superRefine), so it's valid here.
       const podCountGauge = new Gauge({
         name: "supervisor_cluster_pod_count",
-        help: "Total pod objects stored in the cluster, scraped for backpressure",
+        help: "Pod objects in the workload namespace, counted for backpressure",
         registers: [register],
       });
       this.backpressureMonitors.push(
         new BackpressureMonitor({
           enabled: true,
           source: new K8sPodCountSignalSource({
-            fetchMetrics: createApiserverMetricsFetcher(
+            fetchPodCount: createPodCountFetcher(
+              createK8sApi(),
+              env.KUBERNETES_NAMESPACE,
               env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_SCRAPE_TIMEOUT_MS
             ),
             engageThreshold: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE,

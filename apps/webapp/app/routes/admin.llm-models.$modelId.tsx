@@ -230,8 +230,11 @@ export default function AdminLlmModelDetailRoute() {
           <div className="space-y-4">
             {/* Model fields */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-text-dimmed">Model Name</label>
+              <label htmlFor="modelName" className="text-xs font-medium text-text-dimmed">
+                Model Name
+              </label>
               <Input
+                id="modelName"
                 name="modelName"
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
@@ -241,8 +244,11 @@ export default function AdminLlmModelDetailRoute() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-text-dimmed">Match Pattern (regex)</label>
+              <label htmlFor="matchPattern" className="text-xs font-medium text-text-dimmed">
+                Match Pattern (regex)
+              </label>
               <Input
+                id="matchPattern"
                 name="matchPattern"
                 value={matchPattern}
                 onChange={(e) => setMatchPattern(e.target.value)}
@@ -254,9 +260,12 @@ export default function AdminLlmModelDetailRoute() {
 
             {/* Test pattern */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-text-dimmed">Test pattern match</label>
+              <label htmlFor="testPattern" className="text-xs font-medium text-text-dimmed">
+                Test pattern match
+              </label>
               <div className="flex items-center gap-2">
                 <Input
+                  id="testPattern"
                   value={testInput}
                   onChange={(e) => setTestInput(e.target.value)}
                   placeholder="Type a model name to test..."
@@ -277,12 +286,15 @@ export default function AdminLlmModelDetailRoute() {
 
             {/* Catalog metadata */}
             <div className="space-y-2 border-t border-grid-dimmed pt-4">
-              <label className="text-sm font-medium text-text-bright">Catalog Metadata</label>
+              <h3 className="text-sm font-medium text-text-bright">Catalog Metadata</h3>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Provider</label>
+                  <label htmlFor="provider" className="text-xs font-medium text-text-dimmed">
+                    Provider
+                  </label>
                   <Input
+                    id="provider"
                     name="provider"
                     value={provider}
                     onChange={(e) => setProvider(e.target.value)}
@@ -292,8 +304,11 @@ export default function AdminLlmModelDetailRoute() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Context Window</label>
+                  <label htmlFor="contextWindow" className="text-xs font-medium text-text-dimmed">
+                    Context Window
+                  </label>
                   <Input
+                    id="contextWindow"
                     name="contextWindow"
                     value={contextWindow}
                     onChange={(e) => setContextWindow(e.target.value)}
@@ -305,8 +320,11 @@ export default function AdminLlmModelDetailRoute() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium text-text-dimmed">Description</label>
+                <label htmlFor="description" className="text-xs font-medium text-text-dimmed">
+                  Description
+                </label>
                 <Input
+                  id="description"
                   name="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -318,8 +336,11 @@ export default function AdminLlmModelDetailRoute() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Max Output Tokens</label>
+                  <label htmlFor="maxOutputTokens" className="text-xs font-medium text-text-dimmed">
+                    Max Output Tokens
+                  </label>
                   <Input
+                    id="maxOutputTokens"
                     name="maxOutputTokens"
                     value={maxOutputTokens}
                     onChange={(e) => setMaxOutputTokens(e.target.value)}
@@ -329,10 +350,11 @@ export default function AdminLlmModelDetailRoute() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">
+                  <label htmlFor="capabilities" className="text-xs font-medium text-text-dimmed">
                     Features (comma-separated)
                   </label>
                   <Input
+                    id="capabilities"
                     name="capabilities"
                     value={capabilities}
                     onChange={(e) => setCapabilities(e.target.value)}
@@ -344,8 +366,11 @@ export default function AdminLlmModelDetailRoute() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium text-text-dimmed">Pricing Unit</label>
+                <label htmlFor="pricingUnit" className="text-xs font-medium text-text-dimmed">
+                  Pricing Unit
+                </label>
                 <select
+                  id="pricingUnit"
                   name="pricingUnit"
                   value={pricingUnit}
                   onChange={(e) => setPricingUnit(e.target.value)}
@@ -374,7 +399,7 @@ export default function AdminLlmModelDetailRoute() {
             {/* Pricing tiers */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-text-bright">Pricing Tiers</label>
+                <h3 className="text-sm font-medium text-text-bright">Pricing Tiers</h3>
                 <Button
                   type="button"
                   variant="tertiary/small"

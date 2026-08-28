@@ -4,12 +4,11 @@ import { CliApiClient } from "../apiClient.js";
 import { CLOUD_API_URL } from "../consts.js";
 import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
 import { NotAccessTokenError, validateAccessToken } from "../utilities/accessTokens.js";
-import type { LoginResult, LoginResultOk } from "../utilities/session.js";
+import type { LoginResult } from "../utilities/session.js";
 import { getPersonalAccessToken } from "../commands/login.js";
 import open from "open";
 import pRetry from "p-retry";
 import type { McpContext } from "./context.js";
-import { ApiClient } from "@trigger.dev/core/v3";
 
 export type McpAuthOptions = {
   server: McpServer;
@@ -191,26 +190,4 @@ async function askForLoginPermission(server: McpServer, authorizationCodeUrl: st
   });
 
   return result.action === "accept" && result.content?.allowLogin;
-}
-
-export async function createApiClientWithPublicJWT(
-  auth: LoginResultOk,
-  projectRef: string,
-  envName: string,
-  scopes: string[],
-  previewBranch?: string
-) {
-  const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken, previewBranch);
-
-  const jwt = await cliApiClient.getJWT(projectRef, envName, {
-    claims: {
-      scopes,
-    },
-  });
-
-  if (!jwt.success) {
-    return;
-  }
-
-  return new ApiClient(auth.auth.apiUrl, jwt.data.token);
 }

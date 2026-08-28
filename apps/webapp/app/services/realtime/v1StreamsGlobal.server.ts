@@ -10,6 +10,7 @@ import { singleton } from "~/utils/singleton";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 import { S2RealtimeStreams } from "./s2realtimeStreams.server";
+import { resolveRealtimeStreamsVersion } from "./realtimeStreamsVersion";
 import type { StreamIngestor, StreamResponder } from "./types";
 
 function initializeRedisRealtimeStreams() {
@@ -27,7 +28,7 @@ function initializeRedisRealtimeStreams() {
   });
 }
 
-export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
+const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
 
 /**
  * Resolve a stream's basin. Precedence: run → session → org → global env.
@@ -70,6 +71,8 @@ export function getRealtimeStreamInstance(
       basin: resolvedBasin,
       accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN ?? "",
       endpoint: env.REALTIME_STREAMS_S2_ENDPOINT,
+      accountUrl: env.REALTIME_STREAMS_S2_ACCOUNT_URL,
+      basinUrl: env.REALTIME_STREAMS_S2_BASIN_URL,
       skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
       streamPrefix: streamPrefixFor(environment, resolvedBasin),
       logLevel: env.REALTIME_STREAMS_S2_LOG_LEVEL,
@@ -94,20 +97,22 @@ function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): 
   return segments.join("/");
 }
 
-export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | "v2" {
-  if (!streamVersion) {
-    return env.REALTIME_STREAMS_DEFAULT_VERSION;
-  }
-
-  if (
-    streamVersion === "v2" &&
-    env.REALTIME_STREAMS_S2_BASIN &&
-    (env.REALTIME_STREAMS_S2_ACCESS_TOKEN || env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
-  ) {
-    return "v2";
-  }
-
-  return "v1";
+/**
+ * Pass `organizationBasinName` wherever the caller has it. It mirrors the
+ * organization step of {@link resolveStreamBasin}, and is what lets a
+ * per-org-basin deployment with no global setting resolve v2 for a
+ * provisioned organization while an unprovisioned one still degrades to v1.
+ */
+export function determineRealtimeStreamsVersion(
+  streamVersion?: string,
+  organizationBasinName?: string | null
+): "v1" | "v2" {
+  return resolveRealtimeStreamsVersion(streamVersion, {
+    defaultVersion: env.REALTIME_STREAMS_DEFAULT_VERSION,
+    basin: organizationBasinName ?? env.REALTIME_STREAMS_S2_BASIN,
+    accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN,
+    skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
+  });
 }
 
 const s2RealtimeStreamsCache = singleton(

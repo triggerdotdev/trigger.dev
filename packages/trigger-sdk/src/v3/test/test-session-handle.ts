@@ -4,7 +4,7 @@ import type {
   StreamWriteResult,
   WriterStreamOptions,
 } from "@trigger.dev/core/v3";
-import { ensureReadableStream, ManualWaitpointPromise } from "@trigger.dev/core/v3";
+import { ensureReadableStream } from "@trigger.dev/core/v3";
 import type { SessionPipeStreamOptions, SessionSubscribeOptions } from "../sessions.js";
 import { SessionHandle, SessionInputChannel, SessionOutputChannel } from "../sessions.js";
 
@@ -29,32 +29,27 @@ class TestSessionInputChannel extends SessionInputChannel {
     super(sessionId);
   }
 
-  // Override only the `wait` path. `on` / `once` / `peek` / `send`
-  // continue to flow through the real `sessionStreams` global, which
-  // the mock task context installs as a `TestSessionStreamManager`.
-  wait<T = unknown>(): ManualWaitpointPromise<T> {
-    return new ManualWaitpointPromise<T>(
-      (resolve: (value: { ok: false; error: Error }) => void) => {
-        const signal = this.getAbortSignal();
-        if (!signal) {
-          // Harness hasn't wired up its run signal yet — nothing to abort
-          // on. Stay pending; the run loop should never reach this state
-          // in practice but we don't want to throw here either.
-          return;
-        }
-        const onAbort = () => {
-          resolve({
-            ok: false,
-            error: new Error("session.in.wait() aborted by test harness"),
-          });
-        };
-        if (signal.aborted) {
-          onAbort();
-          return;
-        }
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-    );
+  /**
+   * Override the one step that talks to the network. Everything built on top
+   * of it (`wait`, and the chat facades' route waits) then runs its real
+   * implementation against the in-memory stream manager, so the harness stubs
+   * a boundary instead of reimplementing a composite.
+   */
+  async awaitWake(): Promise<{ ok: true; waitpointId: string } | { ok: false; error: Error }> {
+    const signal = this.getAbortSignal();
+    if (!signal) {
+      return new Promise(() => {});
+    }
+    if (signal.aborted) {
+      return { ok: false, error: new Error("session.in.wait() aborted by test harness") };
+    }
+    return new Promise((resolve) => {
+      signal.addEventListener(
+        "abort",
+        () => resolve({ ok: false, error: new Error("session.in.wait() aborted by test harness") }),
+        { once: true }
+      );
+    });
   }
 }
 
@@ -106,7 +101,7 @@ async function drainInto<T>(
  * Mirrors {@link SessionOutputChannel}'s public shape — `pipe` / `writer`
  * / `append` / `read` — so the agent's existing code paths work unchanged.
  */
-export class TestSessionOutputChannel extends SessionOutputChannel {
+class TestSessionOutputChannel extends SessionOutputChannel {
   constructor(
     sessionId: string,
     private readonly state: TestSessionOutState
@@ -264,6 +259,10 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
       for (const [name, value] of extraHeaders) {
         if (name === "public-access-token") {
           synthetic.publicAccessToken = value;
+        } else if (name === "session-in-event-id") {
+          synthetic.sessionInEventId = value;
+        } else if (name === "session-in-consumed-id") {
+          synthetic.sessionInConsumedId = value;
         }
       }
     }

@@ -51,15 +51,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     type,
   });
 
-  if (!result.success) {
-    return {
-      queues: [],
-      currentPage: 1,
-      hasMore: false,
-      hasFilters: Boolean(query?.trim()) || Boolean(type),
-    };
-  }
-
   return {
     queues: result.queues.map((queue) => ({
       id: queue.id,

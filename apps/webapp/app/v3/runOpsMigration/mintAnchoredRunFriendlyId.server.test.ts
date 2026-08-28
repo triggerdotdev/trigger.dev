@@ -28,4 +28,16 @@ describe("mintAnchoredRunFriendlyId", () => {
     expect(parsed.format).toBe("b32hex");
     expect(parsed.format === "b32hex" && parsed.region).toBe(REGION_CODES["us-east-1"]);
   });
+
+  it("a gen-2 batch anchor mints an item on the batch's shard", () => {
+    const body = mintAnchoredRunFriendlyId(`batch_${"a".repeat(24)}a2`).slice("run_".length);
+    expect(body).toHaveLength(26);
+    expect(body[24]).toBe("a");
+    expect(body[25]).toBe("2");
+  });
+
+  it("a gen-2 batch anchor ignores a caller region: the shard owns index 24", () => {
+    const body = mintAnchoredRunFriendlyId(`batch_${"a".repeat(24)}a2`, "us-east-1").slice(4);
+    expect(body[24]).toBe("a");
+  });
 });

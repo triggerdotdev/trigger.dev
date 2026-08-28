@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { TriggerChatTransport, createChatTransport } from "./chat.js";
+import { TriggerChatTransport, createChatTransport, type ChatTransportEvent } from "./chat.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test helpers
@@ -132,6 +132,35 @@ function defaultSseResponse(
   });
 }
 
+/**
+ * An SSE response whose body stays open until the request signal aborts.
+ * Models a live subscription sitting on a quiet server.
+ */
+function openSseResponse(signal?: AbortSignal | null): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const onAbort = () => {
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        try {
+          controller.error(err);
+        } catch {
+          /* already errored */
+        }
+      };
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    },
+  });
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "X-Stream-Version": "v2",
+    },
+  });
+}
+
 function authError(status = 401): Response {
   return new Response(JSON.stringify({ error: "Unauthorized", name: "TriggerApiError", status }), {
     status,
@@ -199,6 +228,7 @@ describe("TriggerChatTransport", () => {
           "chat-1": {
             publicAccessToken: "hydrated-pat",
             lastEventId: "42",
+            activeInputSeq: 41,
             isStreaming: false,
           },
         },
@@ -208,6 +238,7 @@ describe("TriggerChatTransport", () => {
       expect(session).toEqual({
         publicAccessToken: "hydrated-pat",
         lastEventId: "42",
+        activeInputSeq: 41,
         isStreaming: false,
       });
     });
@@ -233,15 +264,21 @@ describe("TriggerChatTransport", () => {
       transport.setSession("chat-x", {
         publicAccessToken: "tok",
         lastEventId: "10",
+        activeInputSeq: 9,
       });
 
       expect(transport.getSession("chat-x")).toMatchObject({
         publicAccessToken: "tok",
         lastEventId: "10",
+        activeInputSeq: 9,
       });
       expect(onSessionChange).toHaveBeenCalledWith(
         "chat-x",
-        expect.objectContaining({ publicAccessToken: "tok", lastEventId: "10" })
+        expect.objectContaining({
+          publicAccessToken: "tok",
+          lastEventId: "10",
+          activeInputSeq: 9,
+        })
       );
     });
 
@@ -948,7 +985,9 @@ describe("TriggerChatTransport", () => {
     it("marks the session streaming and notifies before subscribing", async () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
-        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: 7 }), { status: 200 });
+        }
         if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
         throw new Error(`Unexpected URL: ${urlStr}`);
       });
@@ -965,7 +1004,9 @@ describe("TriggerChatTransport", () => {
       // isStreaming:true must be observed during the action — otherwise a reload
       // mid-action sees a persisted isStreaming:false and never resumes.
       expect(
-        onSessionChange.mock.calls.some(([, session]) => session && session.isStreaming === true)
+        onSessionChange.mock.calls.some(
+          ([, session]) => session && session.isStreaming === true && session.activeInputSeq === 7
+        )
       ).toBe(true);
       await drainChunks(stream);
     });
@@ -1027,6 +1068,37 @@ describe("TriggerChatTransport", () => {
       expect(result).toBeNull();
     });
 
+    it("resumes in watch mode when the session is hydrated with isStreaming=false", async () => {
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          const response = defaultSseResponse([{ type: "text-delta", id: "p1", delta: "turn2" }]);
+          const headers = new Headers(response.headers);
+          headers.set("X-Session-Settled", "true");
+          return new Response(response.body, { status: 200, headers });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: {
+          "chat-rc-watch": { publicAccessToken: "p", isStreaming: false },
+        },
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-rc-watch" });
+      expect(stream).not.toBeNull();
+      const chunks = await drainChunks(stream!);
+
+      expect(subscribeCount).toBe(1);
+      expect(chunks).toEqual([{ type: "text-delta", id: "p1", delta: "turn2" }]);
+    });
+
     it("opens an SSE subscription with the X-Peek-Settled header set", async () => {
       let subscribeHeaders: Headers | undefined;
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
@@ -1051,6 +1123,625 @@ describe("TriggerChatTransport", () => {
       await drainChunks(stream!);
 
       expect(subscribeHeaders?.get("X-Peek-Settled")).toBe("1");
+    });
+  });
+
+  describe("stream body ends mid-turn", () => {
+    it("resubscribes from the last event id when the close was not settled", async () => {
+      const subscribeHeaders: Headers[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeHeaders.push(new Headers(init?.headers));
+          // First connection ends mid-turn: one chunk, no turn-complete,
+          // no `X-Session-Settled`.
+          return subscribeHeaders.length === 1
+            ? defaultSseResponse([{ type: "text-start", id: "part-1" }])
+            : defaultSseResponse([
+                { type: "text-delta", id: "part-1", delta: "resumed" },
+                { type: "trigger:turn-complete" },
+              ]);
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-eof": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-eof",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      expect(subscribeHeaders).toHaveLength(2);
+      expect(subscribeHeaders[1]?.get("Last-Event-ID")).toBe("1");
+      expect(chunks).toEqual([
+        { type: "text-start", id: "part-1" },
+        { type: "text-delta", id: "part-1", delta: "resumed" },
+      ]);
+      expect(transport.getSession("chat-eof")?.isStreaming).toBe(false);
+    });
+
+    it("stops and clears isStreaming when the close was settled", async () => {
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          const response = defaultSseResponse([{ type: "text-start", id: "part-1" }]);
+          const headers = new Headers(response.headers);
+          headers.set("X-Session-Settled", "true");
+          return new Response(response.body, { status: 200, headers });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const onSessionChange = vi.fn();
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onSessionChange,
+        sessions: { "chat-settled": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-settled",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(subscribeCount).toBe(1);
+      expect(transport.getSession("chat-settled")?.isStreaming).toBe(false);
+      expect(
+        onSessionChange.mock.calls.some(([, session]) => session && session.isStreaming === false)
+      ).toBe(true);
+    });
+
+    it("keeps streaming when every window delivers a single record", async () => {
+      // One record per window arrives via `primed` on the resumed connection —
+      // it must still re-earn the budget, otherwise a slow turn is truncated.
+      const WINDOWS = 8;
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          return subscribeCount > WINDOWS
+            ? defaultSseResponse([{ type: "trigger:turn-complete" }])
+            : defaultSseResponse([
+                { type: "text-delta", id: "part-1", delta: `d${subscribeCount}` },
+              ]);
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-slow": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-slow",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      expect(subscribeCount).toBe(WINDOWS + 1);
+      expect(chunks).toHaveLength(WINDOWS);
+      expect(transport.getSession("chat-slow")?.isStreaming).toBe(false);
+    });
+
+    it("surfaces an error after the resubscribe budget is exhausted", async () => {
+      // Fake timers so the 100ms..1.6s backoffs don't cost real seconds.
+      vi.useFakeTimers();
+      try {
+        let subscribeCount = 0;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(urlStr)) {
+            subscribeCount++;
+            // Never any records, never settled — the pathological case.
+            return defaultSseResponse([]);
+          }
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          sessions: { "chat-empty": { publicAccessToken: "p" } },
+        });
+
+        const stream = await transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-empty",
+          messageId: undefined,
+          messages: [createUserMessage("hi")],
+          abortSignal: undefined,
+        });
+        // A cut-off turn surfaces an error rather than reading as complete.
+        // Attach the rejection assertion before advancing timers so the
+        // rejection is never unhandled.
+        const drained = drainChunks(stream);
+        const rejects = expect(drained).rejects.toThrow(/reconnect budget exhausted/i);
+        await vi.advanceTimersByTimeAsync(10_000);
+        await rejects;
+
+        // One initial connect plus the five-attempt resubscribe budget.
+        expect(subscribeCount).toBe(6);
+        // State is cleared before the throw, so a reload won't reopen a
+        // doomed subscription.
+        expect(transport.getSession("chat-empty")?.isStreaming).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("watch mode across long-poll window boundaries", () => {
+    function settled(response: Response): Response {
+      const headers = new Headers(response.headers);
+      headers.set("X-Session-Settled", "true");
+      return new Response(response.body, { status: 200, headers });
+    }
+
+    it("resubscribes after a completed turn and receives a later wake", async () => {
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          // Window 1: a turn completes, then the body EOFs with no
+          // settled header — the quiet long-poll boundary.
+          return subscribeCount === 1
+            ? defaultSseResponse([
+                { type: "text-delta", id: "p1", delta: "turn1" },
+                { type: "trigger:turn-complete" },
+              ])
+            : settled(defaultSseResponse([{ type: "text-delta", id: "p2", delta: "wake" }]));
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: { "chat-watch-eof": { publicAccessToken: "p", isStreaming: true } },
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-watch-eof" });
+      const chunks = await drainChunks(stream!);
+
+      expect(subscribeCount).toBe(2);
+      expect(chunks).toEqual([
+        { type: "text-delta", id: "p1", delta: "turn1" },
+        { type: "text-delta", id: "p2", delta: "wake" },
+      ]);
+    });
+
+    it("does not peek-settle an idle resubscribe, so the next turn is delivered", async () => {
+      // Watch mode must NOT send X-Peek-Settled between turns: a settled peek
+      // while no turn is in flight closes the standing subscription and the
+      // viewer never sees turn 2. This mock plays the server's peek shortcut —
+      // a peek request with nothing in flight settles — to prove the transport
+      // long-polls instead.
+      const subscribeHeaders: Headers[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeHeaders.push(new Headers(init?.headers));
+          const n = subscribeHeaders.length;
+          if (n === 1) {
+            // Turn 1 completes, then the body EOFs (no settled header).
+            return defaultSseResponse([
+              { type: "text-delta", id: "p1", delta: "turn1" },
+              { type: "trigger:turn-complete" },
+            ]);
+          }
+          if (n === 2) {
+            // Idle resubscribe. If it peeked, the server settles and the
+            // subscription would close before turn 2; a long-poll delivers it.
+            if (init && new Headers(init.headers).get("X-Peek-Settled")) {
+              return settled(defaultSseResponse([]));
+            }
+            return defaultSseResponse([
+              { type: "text-delta", id: "p2", delta: "turn2" },
+              { type: "trigger:turn-complete" },
+            ]);
+          }
+          // Turn 2 done — end the watch cleanly.
+          return settled(defaultSseResponse([]));
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: { "chat-watch-turn2": { publicAccessToken: "p", isStreaming: true } },
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-watch-turn2" });
+      const chunks = await drainChunks(stream!);
+
+      expect(subscribeHeaders[1]?.get("X-Peek-Settled")).toBeNull();
+      expect(chunks).toEqual([
+        { type: "text-delta", id: "p1", delta: "turn1" },
+        { type: "text-delta", id: "p2", delta: "turn2" },
+      ]);
+    });
+
+    it("cancelling the reader stops the resubscribe loop", async () => {
+      // A consumer that stops reading without aborting must not leak the
+      // resubscribe loop — the stream's cancel() aborts it.
+      vi.useFakeTimers();
+      try {
+        let subscribeCount = 0;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionOutSubscribeUrl(urlStr)) {
+            subscribeCount++;
+            // Quiet: EOF, no records, never settled — watch keeps resubscribing.
+            return defaultSseResponse([]);
+          }
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const events: ChatTransportEvent[] = [];
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          watch: true,
+          onEvent: (e) => events.push(e),
+          sessions: { "chat-watch-cancel": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const stream = await transport.reconnectToStream({ chatId: "chat-watch-cancel" });
+        const reader = stream!.getReader();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(subscribeCount).toBeGreaterThan(1);
+
+        const countAtCancel = subscribeCount;
+        await reader.cancel();
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(subscribeCount).toBe(countAtCancel);
+        // A clean cancel must not surface a spurious stream-error (an
+        // unguarded controller.close() after cancel would throw "Invalid
+        // state" and leak it onto the telemetry channel).
+        expect(events.some((e) => e.type === "stream-error")).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("stops when the server says the session settled", async () => {
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          return settled(
+            defaultSseResponse([
+              { type: "text-delta", id: "p1", delta: "last" },
+              { type: "trigger:turn-complete" },
+            ])
+          );
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: { "chat-watch-settled": { publicAccessToken: "p", isStreaming: true } },
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-watch-settled" });
+      const chunks = await drainChunks(stream!);
+
+      expect(subscribeCount).toBe(1);
+      expect(chunks).toHaveLength(1);
+      expect(transport.getSession("chat-watch-settled")?.isStreaming).toBe(false);
+    });
+
+    it("stops promptly when aborted during backoff", async () => {
+      vi.useFakeTimers();
+      try {
+        let subscribeCount = 0;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(urlStr)) {
+            subscribeCount++;
+            // Every window is quiet: EOF with no records, never settled.
+            return defaultSseResponse([]);
+          }
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const abortController = new AbortController();
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          watch: true,
+          sessions: { "chat-watch-abort": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-watch-abort",
+          abortSignal: abortController.signal,
+        });
+        const drained = drainChunks(stream!);
+        await vi.advanceTimersByTimeAsync(10_000);
+        // The budget doesn't apply in watch mode, so it is still reconnecting.
+        expect(subscribeCount).toBeGreaterThan(6);
+
+        const countAtAbort = subscribeCount;
+        abortController.abort();
+        await drained;
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(subscribeCount).toBe(countAtAbort);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("reconnectToStream stop-on-abort ownership (TRI-13070)", () => {
+    // A quiet stream: EOF, no records, never settled — the subscription
+    // stays alive (watch mode) so an abort mid-flight exercises the stop path.
+    function quietWatchTransport(): {
+      transport: TriggerChatTransport;
+      appends: () => number;
+    } {
+      let appendCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          appendCount++;
+          return defaultAppendResponse();
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse([]);
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        watch: true,
+        sessions: { "chat-own": { publicAccessToken: "p", isStreaming: true } },
+      });
+      return { transport, appends: () => appendCount };
+    }
+
+    it("passive subscriber aborting writes no stop chunk to .in", async () => {
+      vi.useFakeTimers();
+      try {
+        const { transport, appends } = quietWatchTransport();
+        const abort = new AbortController();
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-own",
+          abortSignal: abort.signal,
+        });
+        const drained = drainChunks(stream!);
+        await vi.advanceTimersByTimeAsync(1_000);
+        abort.abort();
+        await drained;
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appends()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("owning subscriber with stopOnAbort:true sends a stop chunk on abort", async () => {
+      vi.useFakeTimers();
+      try {
+        const { transport, appends } = quietWatchTransport();
+        const abort = new AbortController();
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-own",
+          abortSignal: abort.signal,
+          stopOnAbort: true,
+        });
+        const drained = drainChunks(stream!);
+        await vi.advanceTimersByTimeAsync(1_000);
+        abort.abort();
+        await drained;
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appends()).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("abortSignal presence alone (stopOnAbort unset) sends no stop", async () => {
+      vi.useFakeTimers();
+      try {
+        const { transport, appends } = quietWatchTransport();
+        const abort = new AbortController();
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-own",
+          abortSignal: abort.signal,
+        });
+        const drained = drainChunks(stream!);
+        await vi.advanceTimersByTimeAsync(1_000);
+        abort.abort();
+        await drained;
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appends()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("superseded stream teardown", () => {
+    it("keeps the successor's controller registered when the aborted stream tears down", async () => {
+      vi.useFakeTimers();
+      try {
+        let appendCount = 0;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) {
+            appendCount++;
+            return defaultAppendResponse();
+          }
+          // Quiet stream: EOF, no records, never settled — watch keeps it open.
+          if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse([]);
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          watch: true,
+          sessions: { "chat-race": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const send = () =>
+          transport.sendMessages({
+            trigger: "submit-message" as const,
+            chatId: "chat-race",
+            messageId: undefined,
+            messages: [createUserMessage("hi")],
+            abortSignal: undefined,
+          });
+
+        const first = drainChunks(await send());
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // Supersede: the new stream registers its controller synchronously,
+        // the aborted one tears down a microtask later.
+        const second = await send();
+        let secondClosed = false;
+        const secondDrain = drainChunks(second).then(() => {
+          secondClosed = true;
+        });
+        await first;
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // stopGeneration posts the stop chunk either way — only the
+        // closing assertion proves it found the successor to abort.
+        appendCount = 0;
+        expect(await transport.stopGeneration("chat-race")).toBe(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(appendCount).toBe(1);
+        expect(secondClosed).toBe(true);
+
+        transport.dispose();
+        await secondDrain;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps the tab claim the successor took (multi-tab)", async () => {
+      vi.useFakeTimers();
+      try {
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          // Open SSE that only ends when the subscription is aborted, so
+          // the superseded stream tears down while the successor is live.
+          if (isSessionOutSubscribeUrl(urlStr)) return openSseResponse(init?.signal);
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          multiTab: true,
+          sessions: { "chat-race-tab": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const send = () =>
+          transport.sendMessages({
+            trigger: "submit-message" as const,
+            chatId: "chat-race-tab",
+            messageId: undefined,
+            messages: [createUserMessage("hi")],
+            abortSignal: undefined,
+          });
+
+        const first = drainChunks(await send());
+        await vi.advanceTimersByTimeAsync(1_000);
+        const secondDrain = drainChunks(await send());
+        await first;
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // The superseded stream must not release the claim its successor
+        // holds — otherwise this tab flips to read-only mid-turn.
+        expect(transport.hasClaim("chat-race-tab")).toBe(true);
+
+        transport.dispose();
+        await secondDrain;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("releases the tab claim when the user stops generation (multi-tab)", async () => {
+      vi.useFakeTimers();
+      try {
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(urlStr)) return openSseResponse(init?.signal);
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          multiTab: true,
+          sessions: { "chat-stop-tab": { publicAccessToken: "p", isStreaming: true } },
+        });
+
+        const drain = drainChunks(
+          await transport.sendMessages({
+            trigger: "submit-message" as const,
+            chatId: "chat-stop-tab",
+            messageId: undefined,
+            messages: [createUserMessage("hi")],
+            abortSignal: undefined,
+          })
+        );
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(transport.hasClaim("chat-stop-tab")).toBe(true);
+
+        expect(await transport.stopGeneration("chat-stop-tab")).toBe(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // The turn ends here with no successor stream, so the claim must be
+        // freed or other tabs stay read-only until this one closes.
+        expect(transport.hasClaim("chat-stop-tab")).toBe(false);
+
+        transport.dispose();
+        await drain;
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -1324,9 +2015,18 @@ describe("TriggerChatTransport", () => {
         { type: "text-delta", id: "p2", delta: "Again" },
         { type: "trigger:turn-complete" },
       ];
+      let subscribeCount = 0;
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
-        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse(turn1);
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribeCount++;
+          if (subscribeCount === 1) return defaultSseResponse(turn1);
+          // Watch mode reconnects past the body EOF; settle so the drain ends.
+          const response = defaultSseResponse([]);
+          const headers = new Headers(response.headers);
+          headers.set("X-Session-Settled", "true");
+          return new Response(response.body, { status: 200, headers });
+        }
         throw new Error(`Unexpected URL: ${urlStr}`);
       });
 

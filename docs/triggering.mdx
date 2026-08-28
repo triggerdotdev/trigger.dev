@@ -873,7 +873,7 @@ The `debounce` option accepts:
 - `key` - A unique string to identify the debounce group (scoped to the task)
 - `delay` - Duration string specifying how long to delay. Supported units: `s` (seconds), `m` (minutes), `h`/`hr` (hours), `d` (days), `w` (weeks). Minimum is 1 second. Examples: `"5s"`, `"1m"`, `"2h30m"`
 - `mode` - Optional. Controls which trigger's data is used: `"leading"` (default) or `"trailing"`
-- `maxDelay` - Optional. Maximum total time from the first trigger before the run must execute. Uses the same duration format as `delay`
+- `maxDelay` - Optional. Maximum total time from the first trigger before the run must execute. Uses the same duration format as `delay`. Not set by default
 
 **How it works:**
 
@@ -882,9 +882,18 @@ The `debounce` option accepts:
 3. Once no new triggers occur within the delay duration, the run executes
 4. After the run starts executing, a new trigger with the same key will create a new run
 
+<Warning>
+  There is no time limit on step 2. While triggers keep arriving on the same key, the run keeps
+  being pushed back and never executes. A key triggered every 10 seconds with a `delay` of `"30s"`
+  runs 30 seconds after the triggers stop, however long that takes. Set `maxDelay` whenever the
+  work needs to happen eventually. This matters most with `triggerAndWait`: every parent waiting
+  on a debounced run stays blocked, and holds its concurrency, for as long as the run keeps being
+  pushed back.
+</Warning>
+
 **Limiting total delay with `maxDelay`:**
 
-By default, continuous triggers can delay execution indefinitely. The `maxDelay` option sets an upper bound on the total delay from the first trigger, ensuring the run eventually executes even with constant activity.
+The `maxDelay` option sets an upper bound on the total delay from the first trigger, ensuring the run eventually executes even with constant activity.
 
 ```ts
 await summarizeChat.trigger(
@@ -921,11 +930,14 @@ Consider `delay: "5s"` and `maxDelay: "30s"` with triggers arriving every 2 seco
 
 Without `maxDelay`, continuous triggers would prevent the run from ever executing. With `maxDelay: "30s"`, execution is guaranteed within 30 seconds of the first trigger.
 
+Keep `delay` well below `maxDelay`. A run is only pushed back while its new execution time stays inside `maxDelay`, so the room you have to push is `maxDelay` minus `delay`. Setting them equal, or setting `delay` higher, leaves no room at all, and the trigger is rejected rather than accepted as a debounce that could never collapse anything.
+
 <Note>
   The `maxDelay` value is evaluated from each trigger call, not stored with the original run. This
   means if you pass different `maxDelay` values for the same debounce key, each trigger uses its own
-  `maxDelay` to check against the original run's creation time. For consistent behavior, use the
-  same `maxDelay` value for all triggers with the same debounce key.
+  `maxDelay` to check against the original run's creation time. A trigger that omits `maxDelay`
+  has no bound at all, so a single call without it can push the run past the limit the other calls
+  set. Use the same `maxDelay` value for every trigger with the same debounce key.
 </Note>
 
 **Leading vs Trailing mode:**

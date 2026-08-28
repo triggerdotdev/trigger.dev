@@ -363,8 +363,8 @@ export class WorkerGroupTokenService extends WithRunEngine {
   }
 }
 
-export const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
-export type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
+const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
+type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 
 export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   type: WorkerInstanceGroupType;
@@ -538,7 +538,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
-    const environment = await this._prisma.runtimeEnvironment.findFirst({
+    const environmentReader =
+      env.CONTROL_PLANE_DEQUEUE_READS_FROM_REPLICA === "1" ? this._replica : this._prisma;
+
+    const environment = await environmentReader.runtimeEnvironment.findFirst({
       where: {
         id: engineResult.execution.environment.id,
       },

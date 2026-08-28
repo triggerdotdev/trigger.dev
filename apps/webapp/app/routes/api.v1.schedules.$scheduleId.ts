@@ -107,6 +107,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           taskIdentifier: body.data.task,
           cron: body.data.cron,
           timezone: body.data.timezone,
+          window: body.data.window,
           environments: [authenticationResult.environment.id],
           externalId: body.data.externalId,
         };
@@ -124,10 +125,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
             description: schedule.cronDescription,
           },
           timezone: schedule.timezone,
+          window: schedule.window,
           externalId: schedule.externalId ?? undefined,
           deduplicationKey: schedule.deduplicationKey,
           environments: schedule.environments,
           nextRun: schedule.nextRun,
+          nextRunEffectiveAt: schedule.nextRunEffectiveAt,
         };
 
         return json(responseObject, { status: 200 });
@@ -176,6 +179,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     projectId: authenticationResult.environment.projectId,
     friendlyId: parsedParams.data.scheduleId,
     environmentId: authenticationResult.environment.id,
+    includeRunHistory: false,
   });
 
   if (!result) {

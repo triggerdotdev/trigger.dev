@@ -5,6 +5,7 @@ export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./ap
 export * from "./apiClient/errors.js";
 export * from "./clock-api.js";
 export * from "./errors.js";
+export * from "./externalDeploymentId.js";
 export * from "./limits.js";
 export * from "./logger-api.js";
 export * from "./runtime-api.js";

@@ -1,14 +1,70 @@
 import { describe, it, expect } from "vitest";
 import {
   INVALID_UTF16_SENTINEL,
+  insertWithBadRowSkip,
+  insertWithLimitedStrip,
   isClickHouseJsonParseError,
+  landedNothing,
   parseRowNumberFromError,
+  parseStrippableRowNumber,
   sanitizeRows,
   sanitizeUnknownInPlace,
 } from "~/v3/eventRepository/sanitizeRowsOnParseError.server";
 
 const HIGH_SURROGATE = "\uD800";
 const LOW_SURROGATE = "\uDC00";
+
+type FakeRow = {
+  id: number;
+  poison?: boolean;
+  unstrippable?: boolean;
+  stripped?: boolean;
+  msg?: string;
+};
+
+const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
+
+function parseErrorAtRow(oneBasedRow: number) {
+  return new Error(
+    `Cannot parse JSON object here: {...}: (at row ${oneBasedRow})\n: While executing ParallelParsingBlockInputFormat.`
+  );
+}
+
+/**
+ * Builds insert doubles for `insertWithLimitedStrip`: an insert that fails at
+ * the first still-poison row (reporting ClickHouse's 1-based `at row N`), an
+ * allow-bad-rows insert that lands only the good rows and reports the landed
+ * count in a summary, and a strip that clears the poison marker (but cannot fix
+ * an `unstrippable` row).
+ */
+function makeHarness() {
+  const landed: FakeRow[] = [];
+  let insertCalls = 0;
+  let allowCalls = 0;
+  const insertSync = async (rows: FakeRow[]) => {
+    insertCalls += 1;
+    const badIndex = rows.findIndex((r) => r.poison || r.unstrippable);
+    if (badIndex >= 0) throw parseErrorAtRow(badIndex + 1);
+    landed.push(...rows);
+    return { summary: { written_rows: String(rows.length) } };
+  };
+  const insertAllowingBadRows = async (rows: FakeRow[]) => {
+    allowCalls += 1;
+    const good = rows.filter((r) => !(r.poison || r.unstrippable));
+    landed.push(...good);
+    return { summary: { written_rows: String(good.length) } };
+  };
+  const stripJsonColumns = (row: FakeRow): FakeRow =>
+    row.unstrippable ? row : { ...row, poison: false, stripped: true };
+  return {
+    landed,
+    insertSync,
+    insertAllowingBadRows,
+    stripJsonColumns,
+    insertCalls: () => insertCalls,
+    allowCalls: () => allowCalls,
+  };
+}
 
 describe("isClickHouseJsonParseError", () => {
   it("recognises ClickHouse's parse-error string", () => {
@@ -49,6 +105,86 @@ describe("parseRowNumberFromError", () => {
 
   it("returns the first match when multiple `at row N` substrings exist", () => {
     expect(parseRowNumberFromError("at row 1, oops also at row 2")).toBe(1);
+  });
+});
+
+describe("landedNothing", () => {
+  it("is true only when an exact dropped count covers the whole batch", () => {
+    expect(
+      landedNothing(
+        {
+          kind: "recovered",
+          rowsStripped: 0,
+          rowsDropped: 3,
+          rowsDroppedExact: true,
+          capped: true,
+        },
+        3
+      )
+    ).toBe(true);
+    expect(
+      landedNothing(
+        {
+          kind: "recovered",
+          rowsStripped: 0,
+          rowsDropped: 2,
+          rowsDroppedExact: true,
+          capped: false,
+        },
+        3
+      )
+    ).toBe(false);
+  });
+
+  it("is false when the dropped count is only a floor, so a partial drop is never read as total loss", () => {
+    expect(
+      landedNothing(
+        {
+          kind: "recovered",
+          rowsStripped: 0,
+          rowsDropped: 1,
+          rowsDroppedExact: false,
+          capped: false,
+        },
+        1
+      )
+    ).toBe(false);
+  });
+
+  it("is false for a healthy or sanitized insert", () => {
+    expect(landedNothing({ kind: "inserted", insertResult: {} }, 5)).toBe(false);
+    expect(landedNothing({ kind: "sanitized", insertResult: {} }, 5)).toBe(false);
+  });
+});
+
+describe("parseStrippableRowNumber", () => {
+  it("reads the parenthesised position ClickHouse appends", () => {
+    expect(
+      parseStrippableRowNumber(
+        "Cannot parse JSON object here: { ... }: (while reading the value of key attributes): (at row 1942)\n: While executing ParallelParsingBlockInputFormat."
+      )
+    ).toBe(1942);
+  });
+
+  it("ignores an `at row N` that appears inside the offending row's own data", () => {
+    const withDecoyInPayload =
+      'Cannot parse JSON object here: {"output":{"dbError":"syntax error at row 7"}}: (while reading the value of key output): (at row 3)';
+
+    expect(parseStrippableRowNumber(withDecoyInPayload)).toBe(3);
+    expect(parseRowNumberFromError(withDecoyInPayload)).toBe(7);
+  });
+
+  it("takes the last parenthesised position when the payload fakes that form too", () => {
+    expect(
+      parseStrippableRowNumber(
+        'Cannot parse JSON object here: {"msg":"failed (at row 99)"}: (at row 4)'
+      )
+    ).toBe(4);
+  });
+
+  it("returns null when no parenthesised position is present, so the caller bails", () => {
+    expect(parseStrippableRowNumber("Cannot parse JSON object here: {...}: at row 5")).toBeNull();
+    expect(parseStrippableRowNumber("Cannot parse JSON object, no position at all")).toBeNull();
   });
 });
 
@@ -292,5 +428,547 @@ describe("sanitizeRows", () => {
     expect(rows[0].attributes.bigint).toBe("117039831458782870000");
     expect(rows[0].attributes.safe).toBe(42);
     expect(rows[1].attributes.bigint).toBe("-100000000000000000000");
+  });
+});
+
+describe("insertWithLimitedStrip", () => {
+  const clean = (id: number): FakeRow => ({ id });
+
+  it("inserts a healthy batch with no recovery", async () => {
+    const { landed, insertSync, insertAllowingBadRows, stripJsonColumns, allowCalls } =
+      makeHarness();
+    const rows = [clean(0), clean(1), clean(2)];
+
+    const outcome = await insertWithLimitedStrip({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns,
+    });
+
+    expect(outcome.kind).toBe("inserted");
+    expect(landed).toHaveLength(3);
+    expect(allowCalls()).toBe(0);
+  });
+
+  it("strips a single poison row and lands the rest in full without bailing", async () => {
+    const { landed, insertSync, insertAllowingBadRows, stripJsonColumns, allowCalls } =
+      makeHarness();
+    const rows = [clean(0), clean(1), { id: 2, poison: true }, clean(3), clean(4)];
+
+    const outcome = await insertWithLimitedStrip({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 0,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+    expect(landed.find((r) => r.id === 2)?.stripped).toBe(true);
+    expect(landed.filter((r) => r.id !== 2).every((r) => !r.stripped)).toBe(true);
+    expect(allowCalls()).toBe(0);
+  });
+
+  it("strips up to the limit, then bails to allow_errors and skips the excess poison", async () => {
+    const { landed, insertSync, insertAllowingBadRows, stripJsonColumns, allowCalls } =
+      makeHarness();
+    const rows = [clean(0), { id: 1, poison: true }, clean(2), { id: 3, poison: true }, clean(4)];
+
+    const outcome = await insertWithLimitedStrip({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns,
+      maxPoisonStrips: 1,
+      hasMaterializedViews: false,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 1,
+      rowsDroppedExact: true,
+      capped: true,
+      bailReason: "strip_budget_spent",
+    });
+    expect(allowCalls()).toBe(1);
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2, 4]);
+    expect(landed.find((r) => r.id === 1)?.stripped).toBe(true);
+    expect(landed.some((r) => r.id === 3)).toBe(false);
+  });
+
+  it("strips every poison row when the limit is high enough", async () => {
+    const { landed, insertSync, insertAllowingBadRows, stripJsonColumns, allowCalls } =
+      makeHarness();
+    const rows = [clean(0), { id: 1, poison: true }, { id: 2, poison: true }, clean(3)];
+
+    const outcome = await insertWithLimitedStrip({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns,
+      maxPoisonStrips: 3,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 2,
+      rowsDropped: 0,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+    expect(allowCalls()).toBe(0);
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("bails to allow_errors when the failing row cannot be located", async () => {
+    const landed: FakeRow[] = [];
+    let allowCalls = 0;
+    const insertSync = async (rows: FakeRow[]) => {
+      if (rows.some((r) => r.poison)) {
+        throw new Error("Cannot parse JSON object here: {...} (no row hint here)");
+      }
+      landed.push(...rows);
+      return { summary: { written_rows: String(rows.length) } };
+    };
+    const insertAllowingBadRows = async (rows: FakeRow[]) => {
+      allowCalls += 1;
+      const good = rows.filter((r) => !r.poison);
+      landed.push(...good);
+      return { summary: { written_rows: String(good.length) } };
+    };
+
+    const outcome = await insertWithLimitedStrip({
+      rows: [clean(0), { id: 1, poison: true }, clean(2)],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns: (row) => row,
+      hasMaterializedViews: false,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 1,
+      rowsDroppedExact: true,
+      capped: true,
+      bailReason: "row_not_locatable",
+    });
+    expect(allowCalls).toBe(1);
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 2]);
+  });
+
+  it("rethrows non-parse errors so the caller's transient-retry path handles them", async () => {
+    const insert = async () => {
+      throw new Error("Connection refused");
+    };
+
+    await expect(
+      insertWithLimitedStrip({
+        rows: [clean(0)],
+        contextLabel: "test",
+        logger: silentLogger,
+        insert,
+        insertSync: insert,
+        insertAllowingBadRows: insert,
+        stripJsonColumns: (row) => row,
+      })
+    ).rejects.toThrow("Connection refused");
+  });
+
+  it("strips the row ClickHouse pointed at, not one named by the payload's own text", async () => {
+    const landed: FakeRow[] = [];
+    const insertSync = async (rows: FakeRow[]) => {
+      const badIndex = rows.findIndex((r) => r.poison);
+      if (badIndex >= 0) {
+        throw new Error(
+          `Cannot parse JSON object here: {"output":"failed at row 1"}: (at row ${badIndex + 1})`
+        );
+      }
+      landed.push(...rows);
+      return { summary: { written_rows: String(rows.length) } };
+    };
+    const insertAllowingBadRows = async (rows: FakeRow[]) => {
+      const good = rows.filter((r) => !r.poison);
+      landed.push(...good);
+      return { summary: { written_rows: String(good.length) } };
+    };
+
+    const outcome = await insertWithLimitedStrip({
+      rows: [clean(0), clean(1), { id: 2, poison: true }],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns: (row) => ({ ...row, poison: false, stripped: true }),
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 0,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    expect(landed.find((r) => r.id === 2)?.stripped).toBe(true);
+    expect(landed.filter((r) => r.id !== 2).every((r) => !r.stripped)).toBe(true);
+  });
+
+  it("counts the batch as dropped instead of throwing when even allow_errors is rejected", async () => {
+    const insertSync = async () => {
+      throw parseErrorAtRow(1);
+    };
+    let allowCalls = 0;
+    const insertAllowingBadRows = async () => {
+      allowCalls += 1;
+      throw new Error("Cannot parse JSON object here: {...}: (at row 1)");
+    };
+
+    const outcome = await insertWithLimitedStrip({
+      rows: [clean(0), { id: 1, poison: true }],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns: (row) => row,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 2,
+      rowsDroppedExact: true,
+      capped: true,
+      bailReason: "strip_budget_spent",
+    });
+    expect(allowCalls).toBe(1);
+  });
+
+  it("rethrows a transient failure of the allow_errors insert so the retry layer still runs", async () => {
+    const insertSync = async () => {
+      throw parseErrorAtRow(1);
+    };
+    const insertAllowingBadRows = async () => {
+      throw new Error("Connection refused");
+    };
+
+    await expect(
+      insertWithLimitedStrip({
+        rows: [clean(0), { id: 1, poison: true }],
+        contextLabel: "test",
+        logger: silentLogger,
+        insert: insertSync,
+        insertSync,
+        insertAllowingBadRows,
+        stripJsonColumns: (row) => row,
+      })
+    ).rejects.toThrow("Connection refused");
+  });
+});
+
+/**
+ * Builds insert doubles for `insertWithBadRowSkip`: a normal insert that fails
+ * whole when any row is poison, plus an allow-bad-rows insert that lands only
+ * the good rows and reports the landed count in a ClickHouse-style summary
+ * (`written_rows`) so the recovery can derive how many rows were skipped.
+ */
+function makeSkipHarness() {
+  const landed: FakeRow[] = [];
+  let insertCalls = 0;
+  let allowCalls = 0;
+  const insert = async (rows: FakeRow[]) => {
+    insertCalls += 1;
+    const badIndex = rows.findIndex((r) => r.poison || r.unstrippable);
+    if (badIndex >= 0) throw parseErrorAtRow(badIndex + 1);
+    landed.push(...rows);
+    return { summary: { written_rows: String(rows.length) } };
+  };
+  const insertAllowingBadRows = async (rows: FakeRow[]) => {
+    allowCalls += 1;
+    const good = rows.filter((r) => !(r.poison || r.unstrippable));
+    landed.push(...good);
+    return { summary: { written_rows: String(good.length) } };
+  };
+  return {
+    landed,
+    insert,
+    insertAllowingBadRows,
+    insertCalls: () => insertCalls,
+    allowCalls: () => allowCalls,
+  };
+}
+
+describe("insertWithBadRowSkip", () => {
+  const clean = (id: number): FakeRow => ({ id });
+
+  it("inserts a healthy batch with no recovery", async () => {
+    const { landed, insert, insertAllowingBadRows, allowCalls } = makeSkipHarness();
+
+    const outcome = await insertWithBadRowSkip({
+      rows: [clean(0), clean(1), clean(2)],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+    });
+
+    expect(outcome.kind).toBe("inserted");
+    expect(landed).toHaveLength(3);
+    expect(allowCalls()).toBe(0);
+  });
+
+  it("skips the poison rows in one extra insert and counts drops exactly on a table with no materialized views", async () => {
+    const { landed, insert, insertAllowingBadRows, insertCalls, allowCalls } = makeSkipHarness();
+    const rows = [clean(0), { id: 1, poison: true }, clean(2), { id: 3, poison: true }, clean(4)];
+
+    const outcome = await insertWithBadRowSkip({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+      hasMaterializedViews: false,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 2,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 2, 4]);
+    expect(insertCalls()).toBe(1);
+    expect(allowCalls()).toBe(1);
+  });
+
+  it("floors a partial drop at one on a table with materialized views, and counts a whole-batch drop exactly", async () => {
+    const inflatedSummary = (goodCount: number) => ({
+      summary: { written_rows: String(goodCount * 3) },
+    });
+    const insert = async (rows: FakeRow[]) => {
+      if (rows.some((r) => r.poison)) throw parseErrorAtRow(1);
+      return inflatedSummary(rows.length);
+    };
+    const insertAllowingBadRows = async (rows: FakeRow[]) =>
+      inflatedSummary(rows.filter((r) => !r.poison).length);
+
+    const partial = await insertWithBadRowSkip({
+      rows: [clean(0), { id: 1, poison: true }, clean(2)],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+      hasMaterializedViews: true,
+    });
+    expect(partial).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 1,
+      rowsDroppedExact: false,
+      capped: false,
+    });
+
+    const wholeBatch = await insertWithBadRowSkip({
+      rows: [
+        { id: 0, poison: true },
+        { id: 1, poison: true },
+      ],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+      hasMaterializedViews: true,
+    });
+    expect(wholeBatch).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 2,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+  });
+
+  it("sanitizes a repairable batch and lands it in full without skipping any row", async () => {
+    const landed: FakeRow[] = [];
+    let allowCalls = 0;
+    const insert = async (rows: FakeRow[]) => {
+      if (rows.some((r) => typeof r.msg === "string" && r.msg.includes(HIGH_SURROGATE))) {
+        throw parseErrorAtRow(1);
+      }
+      landed.push(...rows);
+      return { summary: { written_rows: String(rows.length) } };
+    };
+    const insertAllowingBadRows = async (rows: FakeRow[]) => {
+      allowCalls += 1;
+      landed.push(...rows);
+      return { summary: { written_rows: String(rows.length) } };
+    };
+    const rows: FakeRow[] = [
+      { id: 0, msg: `bad ${HIGH_SURROGATE}` },
+      { id: 1, msg: "clean" },
+    ];
+
+    const outcome = await insertWithBadRowSkip({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+    });
+
+    expect(outcome.kind).toBe("sanitized");
+    expect(allowCalls).toBe(0);
+    expect(landed).toHaveLength(2);
+    expect(rows[0].msg).toBe(INVALID_UTF16_SENTINEL);
+  });
+
+  it("floors the dropped count at one when the summary has no written_rows count", async () => {
+    const insert = async (rows: FakeRow[]) => {
+      if (rows.some((r) => r.poison)) throw parseErrorAtRow(1);
+      return undefined;
+    };
+    const insertAllowingBadRows = async () => ({ summary: {} });
+
+    const outcome = await insertWithBadRowSkip({
+      rows: [{ id: 0, poison: true }, clean(1)],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 1,
+      rowsDroppedExact: false,
+      capped: false,
+    });
+  });
+
+  it("rethrows non-parse errors so the caller's transient-retry path handles them", async () => {
+    const insert = async () => {
+      throw new Error("Connection refused");
+    };
+
+    await expect(
+      insertWithBadRowSkip({
+        rows: [clean(0)],
+        contextLabel: "test",
+        logger: silentLogger,
+        insert,
+        insertAllowingBadRows: insert,
+      })
+    ).rejects.toThrow("Connection refused");
+  });
+
+  it("counts the batch as dropped instead of throwing when even allow_errors is rejected", async () => {
+    const insert = async () => {
+      throw parseErrorAtRow(1);
+    };
+    let allowCalls = 0;
+    const insertAllowingBadRows = async () => {
+      allowCalls += 1;
+      throw new Error("Cannot parse JSON object here: {...}: (at row 1)");
+    };
+
+    const outcome = await insertWithBadRowSkip({
+      rows: [clean(0), { id: 1, poison: true }, clean(2)],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 3,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+    expect(allowCalls).toBe(1);
+  });
+
+  it("rethrows a transient failure of the allow_errors insert so the retry layer still runs", async () => {
+    const insert = async () => {
+      throw parseErrorAtRow(1);
+    };
+    const insertAllowingBadRows = async () => {
+      throw new Error("Connection refused");
+    };
+
+    await expect(
+      insertWithBadRowSkip({
+        rows: [clean(0), { id: 1, poison: true }],
+        contextLabel: "test",
+        logger: silentLogger,
+        insert,
+        insertAllowingBadRows,
+      })
+    ).rejects.toThrow("Connection refused");
+  });
+
+  it("logs a whole-batch drop at error so alerting fires, and a partial skip only at warn", async () => {
+    const levels: string[] = [];
+    const capturingLogger = {
+      info: () => levels.push("info"),
+      warn: () => levels.push("warn"),
+      error: () => levels.push("error"),
+    };
+
+    await insertWithBadRowSkip({
+      rows: [{ id: 0, poison: true }],
+      contextLabel: "test",
+      logger: capturingLogger,
+      insert: async () => {
+        throw parseErrorAtRow(1);
+      },
+      insertAllowingBadRows: async () => {
+        throw new Error("Cannot parse JSON object here: {...}: (at row 1)");
+      },
+    });
+
+    expect(levels).toEqual(["error"]);
+
+    levels.length = 0;
+    const skip = makeSkipHarness();
+
+    await insertWithBadRowSkip({
+      rows: [clean(0), { id: 1, poison: true }],
+      contextLabel: "test",
+      logger: capturingLogger,
+      insert: skip.insert,
+      insertAllowingBadRows: skip.insertAllowingBadRows,
+      hasMaterializedViews: false,
+    });
+
+    expect(levels).toEqual(["warn"]);
   });
 });

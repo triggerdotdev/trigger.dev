@@ -17,6 +17,11 @@ import { requireUserId } from "~/services/session.server";
 import { v3EnvironmentPath, v3ScheduleParams, v3SchedulePath } from "~/utils/pathBuilder";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
+import { scheduleAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.scheduleParam ?? "Schedule", "Schedules"]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -174,6 +179,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
     }
   }
+};
+
+export const handle: Handle = {
+  agentPageContext: (data) => scheduleAgentPageContext(data),
 };
 
 export default function Page() {

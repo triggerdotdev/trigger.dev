@@ -29,6 +29,7 @@ export function useDebounceEffect<T>(value: T, fn: (value: T) => void, delay: nu
   const fnRef = useRef(fn);
 
   // Update the ref whenever the function changes
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   fnRef.current = fn;
 
   useEffect(() => {

@@ -42,7 +42,9 @@ export type MiniLineChartProps = {
    * throttled magnitude carried by the tooltip.
    */
   throttled?: number[];
-  /** Epoch ms of the first bucket's start. When omitted, the last bucket is anchored to now. */
+  /** Tooltip wording for the overlay buckets. Null omits the overlay line. */
+  overlayLabel?: string | null;
+  /** Epoch ms of the first bucket's start. */
   bucketStartMs?: number;
   /** Width of each bucket in ms. Defaults to one hour. */
   bucketIntervalMs?: number;
@@ -76,6 +78,7 @@ export type MiniLineChartProps = {
 export function MiniLineChart({
   data,
   throttled,
+  overlayLabel = "throttled",
   bucketStartMs,
   bucketIntervalMs,
   color = "var(--color-tasks)",
@@ -89,7 +92,12 @@ export function MiniLineChart({
   showPeak = true,
 }: MiniLineChartProps) {
   const hasPeakOverride = peakOverride !== undefined;
-  if (!data || data.length === 0 || (data.every((v) => v === 0) && !hasPeakOverride)) {
+  if (
+    !data ||
+    data.length === 0 ||
+    bucketStartMs === undefined ||
+    (data.every((v) => v === 0) && !hasPeakOverride)
+  ) {
     return <span className="text-text-dimmed">–</span>;
   }
 
@@ -100,11 +108,9 @@ export function MiniLineChart({
   const max = Math.max(...data);
   const peak = peakOverride ?? max;
 
-  // Map each bucket to a dated point so the tooltip can show the window it represents. Buckets are
-  // `intervalMs` wide; if the caller didn't pass the first bucket's start, anchor the last bucket to
-  // now (hourly default).
+  // Map each bucket to a dated point so the tooltip can show the window it represents.
   const intervalMs = bucketIntervalMs ?? 3600_000;
-  const startMs = bucketStartMs ?? Date.now() - (data.length - 1) * intervalMs;
+  const startMs = bucketStartMs;
   const chartData: MiniLineChartDatum[] = data.map((count, i) => {
     const t = throttled?.[i] ?? 0;
     // Extend the mask one bucket forward (a segment needs both endpoints non-null), so even a
@@ -128,7 +134,7 @@ export function MiniLineChart({
       <YAxis domain={[0, max || 1]} hide />
       <Tooltip
         cursor={{ stroke: "rgba(255, 255, 255, 0.2)", strokeWidth: 1 }}
-        content={<MiniLineChartTooltip unitLabel={unitLabel} />}
+        content={<MiniLineChartTooltip unitLabel={unitLabel} overlayLabel={overlayLabel} />}
         allowEscapeViewBox={{ x: true, y: true }}
         wrapperStyle={{ zIndex: 1000 }}
         animationDuration={0}
@@ -195,7 +201,8 @@ function MiniLineChartTooltip({
   active,
   payload,
   unitLabel,
-}: TooltipProps<number, string> & { unitLabel: UnitLabel }) {
+  overlayLabel = "throttled",
+}: TooltipProps<number, string> & { unitLabel: UnitLabel; overlayLabel?: string | null }) {
   if (!active || !payload || payload.length === 0) return null;
   const entry = payload[0].payload as MiniLineChartDatum;
   const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
@@ -211,9 +218,9 @@ function MiniLineChartTooltip({
             {entry.count === 1 ? unitLabel.singular : unitLabel.plural}
           </span>
         </div>
-        {throttled > 0 && (
+        {throttled > 0 && overlayLabel !== null && (
           <div className="mt-1 text-xs text-warning">
-            <span className="tabular-nums">{throttled.toLocaleString()}</span> throttled
+            <span className="tabular-nums">{throttled.toLocaleString()}</span> {overlayLabel}
           </div>
         )}
       </div>

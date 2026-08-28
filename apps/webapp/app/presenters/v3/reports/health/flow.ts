@@ -1,10 +1,3 @@
-/**
- * FLOW analyzer: "is work flowing, and if not, WHY?" Diagnosed by a CAUSE TREE — `flow.reason`
- * names why work is backing up (env_limit_saturation, dequeue_stall, …), selected from flow's
- * evidence, falling back to v1 symptom reasons when no discriminator fires. Evidence quantities
- * carry no severity of their own — they only select the cause.
- */
-
 import {
   anomalyWindow,
   isOk,
@@ -17,16 +10,20 @@ import {
   type Severity,
 } from "../report-view-model";
 import {
+  bucketCoverage,
   HEALTH_THRESHOLDS,
   isPendingIncreasing,
+  isPendingUnknown,
   mean,
   metricById,
   type HealthInput,
 } from "./health-core";
 
-export const FLOW_METRIC_IDS = ["start_latency_p95", "pending", "throughput"];
+const FLOW_METRIC_IDS = ["start_latency_p95", "pending", "throughput"];
 
-/** One row of the declarative cause table — everything a cause defines about itself. */
+/** Unmeasurable backlog: verdict is unassessable. Distinct from "unknown", the staleness guard. */
+export const FLOW_UNMEASURED = "flow_unmeasured";
+
 type CauseSpec = {
   reason: string;
   metricIds: string[]; // real metric rows, causal order
@@ -44,46 +41,51 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
   const flowMetrics = FLOW_METRIC_IDS.map((id) => metricById(metrics, id));
   const severity = maxSeverity(...flowMetrics.map((m) => m.severity));
 
+  // `pending.now` is a placeholder here, so no cause tree may hang off it. What `runs` measured still
+  // stands: only a flow with nothing measurably wrong is unassessable, the rest reports its symptom.
+  if (isPendingUnknown(input)) {
+    return isOk(severity)
+      ? { type: "flow", severity, reason: FLOW_UNMEASURED, metricIds: FLOW_METRIC_IDS }
+      : fallbackFlow(flowMetrics, severity);
+  }
+
   if (isOk(severity)) {
     return { type: "flow", severity, reason: "healthy", metricIds: FLOW_METRIC_IDS };
   }
 
-  // Discriminators (evidence only, no own severity).
   const pendingIncreasing = isPendingIncreasing(input.pending.series);
   const latencyElevated = !isOk(metricById(metrics, "start_latency_p95").severity);
-  // Concurrency causes need real running-capacity evidence — without it runningShare is a
-  // meaningless 0 and would falsely select dequeue_stall on the snapshot path (#1).
-  const hasConcurrencyEvidence = ev.envLimit > 0 && ev.runningSeries.length > 0;
+  // Without real running-capacity evidence runningShare is a meaningless 0 that selects
+  // dequeue_stall; without enough arrived buckets a few fresh ones read as pinned all window.
+  const coverage = bucketCoverage(input);
+  const hasConcurrencyEvidence =
+    ev.envLimit > 0 && ev.runningSeries.length > 0 && coverage.sufficient;
   const runningShare = hasConcurrencyEvidence ? mean(ev.runningSeries) / ev.envLimit : 1;
+  // Pinned share is measured against expected buckets, not received rows.
   const pinnedShare = hasConcurrencyEvidence
     ? ev.runningSeries.filter((r) => r >= t.pinnedLevel * ev.envLimit).length /
-      ev.runningSeries.length
+      coverage.expectedBuckets
     : 0;
   const pinned = pinnedShare >= t.pinnedShare;
   const hasTriggerBaseline = input.throughput.normalTriggeredPerMin > 0;
   const triggeredMult = hasTriggerBaseline
     ? input.throughput.triggeredPerMin / input.throughput.normalTriggeredPerMin
     : 0;
-  // No baseline: a multiplier can't be computed, so an absolute rate selects "new volume".
+  // No baseline means no multiplier, so an absolute rate selects "new volume".
   const triggerSurge = !hasTriggerBaseline && input.throughput.triggeredPerMin >= t.surgePerMin;
 
-  const donePerMin = input.throughput.donePerMin;
-  const net = donePerMin - input.throughput.triggeredPerMin;
-  // Exclusions must be PROVEN, not assumed. "not your code" needs healthy execution; "limits
-  // aren't the bottleneck" needs no env-pin AND no queue throttling; the workers/spike ones
-  // state a measured fact (rate) rather than a global "everything's fine" claim.
+  // Work leaves the queue on any terminal status, not just completions.
+  const finishedPerMin = input.throughput.finishedPerMin;
+  const net = finishedPerMin - input.throughput.triggeredPerMin;
+  // "not your config" requires both no env pin and no queue throttling.
   const executionHealthy =
     isOk(metricById(metrics, "failures").severity) && isOk(metricById(metrics, "dur_p95").severity);
   const queueThrottled = ev.throttledShare >= t.throttledShare;
   const configHealthy = !pinned && !queueThrottled;
-  // A trigger spike/surge is only the CAUSE of a backup when work is actually piling up:
-  // completions falling behind (net < 0) AND the backlog trending up. Without this a spike that
-  // drains fine would still be blamed while its read says "queue fills faster than it drains".
+  // A spike is only a cause when work piles up: finishes behind triggers and backlog trending up.
   const triggerBacklog = net < 0 && pendingIncreasing;
 
-  // First discriminator that fires wins (fixed priority). dequeue_stall is a last-resort
-  // "it's on our side" cause — so a known config bottleneck (queue throttling) must rule it
-  // out first, else throttled-but-idle-capacity is misread as a platform stall (#1).
+  // First discriminator wins. dequeue_stall is last resort: a known config bottleneck rules it out.
   let spec: CauseSpec;
   if (
     hasConcurrencyEvidence &&
@@ -112,10 +114,8 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
       drivingMetricId: "concurrency",
       annotationCode: "pinned_minutes",
       exclusions: [],
-      // States a measured fact (runs ARE completing at {rate}/min) — evidence the workers aren't
-      // dead. An observation, not an exclusion: it doesn't claim it's the limit, nor "keeps pace".
       observations:
-        donePerMin > 0 ? [{ code: "not_workers_platform", evidence: { donePerMin } }] : [],
+        finishedPerMin > 0 ? [{ code: "not_workers_platform", evidence: { finishedPerMin } }] : [],
       recommendation: { code: "raise_env_limit", link: "concurrency" },
       usesAttribution: true,
     };
@@ -125,7 +125,6 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
       metricIds: ["throttled", "pending"],
       drivingMetricId: "throttled",
       annotationCode: "throttled_minutes",
-      // Justified: we're in the not-pinned branch, so the env limit isn't the bottleneck.
       exclusions: [{ code: "not_env_limit" }],
       observations: [],
       recommendation: { code: "raise_queue_limit", link: "queue" },
@@ -138,9 +137,6 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
       drivingMetricId: "triggered",
       annotationCode: "spike_mult",
       exclusions: [],
-      // Only the proven fact — the runs that DO start execute fine. An observation, NOT the
-      // exclusion "not your code": healthy execution doesn't prove the code isn't the one
-      // triggering the flood (e.g. a deploy that fans out task.trigger in a loop).
       observations: executionHealthy ? [{ code: "execution_healthy" }] : [],
       recommendation: { code: "review_trigger_source", link: "runs" },
       usesAttribution: false,
@@ -152,20 +148,17 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
       drivingMetricId: "triggered",
       annotationCode: "surge_rate",
       exclusions: [],
-      // Same as a spike: only the proven fact, without ruling out the trigger-producing code.
       observations: executionHealthy ? [{ code: "execution_healthy" }] : [],
       recommendation: { code: "review_trigger_source", link: "runs" },
       usesAttribution: false,
     };
   } else {
-    // Fallback — v1 symptom reasons by dominant metric.
     return fallbackFlow(flowMetrics, severity);
   }
 
   return assembleFlowCause(spec, metrics, input, severity);
 }
 
-/** Build a flow Finding from a cause spec: annotation, anomaly window, attribution, evidence. */
 function assembleFlowCause(
   spec: CauseSpec,
   metrics: Metric[],
@@ -175,21 +168,22 @@ function assembleFlowCause(
   const t = HEALTH_THRESHOLDS;
   const driving = metricById(metrics, spec.drivingMetricId);
 
-  // Anomaly window from the driving series. env_limit_saturation breaches ABOVE
-  // (concurrency pinned at the limit); dequeue_stall breaches BELOW (capacity idle).
-  // NOTE: runningSeries is at native env_metrics resolution (not resampled), so the "(last N
-  // min)" figure assumes those buckets are uniform and cover the resolved window. env_metrics
-  // are emitted on a fixed cadence, so that holds; a gappy/partial window could skew the minutes.
+  // env_limit_saturation breaches above the threshold, dequeue_stall below it. runningSeries is not
+  // gap-filled, so the duration counts per real bucket cadence and gaps break the contiguous run.
   let aw: Finding["anomalyWindow"];
   if (spec.reason === "env_limit_saturation" || spec.reason === "dequeue_stall") {
     const below = spec.reason === "dequeue_stall";
     const threshold = below
       ? t.flowCause.stallRunningShare * input.flowEvidence.envLimit
       : t.flowCause.pinnedLevel * input.flowEvidence.envLimit;
-    aw = anomalyWindow(input.flowEvidence.runningSeries, threshold, input.windowMinutes, { below });
+    const coverage = bucketCoverage(input);
+    aw = anomalyWindow(input.flowEvidence.runningSeries, threshold, input.windowMinutes, {
+      below,
+      bucketMinutes: coverage.known ? coverage.bucketMinutes : undefined,
+      timestampsMs: input.flowEvidence.runningBucketsMs,
+    });
   }
 
-  // Annotation on the driving metric (a fact, not an invented number).
   if (spec.annotationCode) {
     const value =
       spec.annotationCode === "pinned_minutes"
@@ -211,16 +205,13 @@ function assembleFlowCause(
     driving.annotation = { code: spec.annotationCode, value };
   }
 
-  // Attribution — only when a queue owns >= minShare of the problem.
   let attribution: Finding["attribution"];
   const wq = input.flowEvidence.worstQueue;
   if (spec.usesAttribution && wq && wq.share >= t.attribution.minShare) {
     attribution = { dim: "queue", key: wq.name, share: wq.share, of: "pending" };
   }
 
-  // Append "nothing dead-lettered" ONLY on a measured zero (dlqDelta === 0); null means
-  // unmeasured (snapshot path) — no observation without evidence. It's a supporting fact, not a
-  // ruled-out cause, so it joins observations.
+  // Only a measured zero supports "nothing dead-lettered". Null means unmeasured.
   const observations =
     input.flowEvidence.dlqDelta === 0
       ? [...spec.observations, { code: "nothing_dead_lettered", evidence: { dlq: 0 } }]
@@ -239,7 +230,6 @@ function assembleFlowCause(
   };
 }
 
-/** v1 symptom fallback when no cause discriminator fires. */
 function fallbackFlow(flowMetrics: Metric[], severity: Severity): Finding {
   const firstOff = flowMetrics.find((m) => !isOk(m.severity));
   const reason =
@@ -267,10 +257,6 @@ function fallbackFlow(flowMetrics: Metric[], severity: Severity): Finding {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Flow severity policy + the causal "read:" line.
-// ---------------------------------------------------------------------------
-
 export function applyFlowPolicy(
   flow: Finding,
   execution: Finding,
@@ -279,7 +265,6 @@ export function applyFlowPolicy(
 ): Finding {
   if (flow.severity !== "crit") return flow;
   // Downgrade a drainable crit to warn only when execution is fine and telemetry isn't stale.
-  // Unknown/lagging freshness must NOT block this (it's not a signal that anything's wrong).
   const severity: Severity =
     isOk(execution.severity) && !telemetryStale && isDrainable ? "warn" : "crit";
   return { ...flow, severity };
@@ -294,10 +279,10 @@ const CAUSE_READS: Record<string, string> = {
 };
 
 export function buildFlowRead(flow: Finding, executionOk: boolean, livenessFresh: boolean): string {
-  if (flow.reason === "unknown") return "data_stale"; // stale-guarded — no causal read
+  if (flow.reason === "unknown") return "data_stale";
+  if (flow.reason === FLOW_UNMEASURED) return "flow_unmeasured";
   if (isOk(flow.severity)) return "starting_normally";
   if (CAUSE_READS[flow.reason]) return CAUSE_READS[flow.reason];
-  // fallback symptoms (v1 logic)
   if (executionOk && livenessFresh) return "lag_while_triggering_normal";
   if (!executionOk) return "lag_and_failures";
   return "degraded_generic";

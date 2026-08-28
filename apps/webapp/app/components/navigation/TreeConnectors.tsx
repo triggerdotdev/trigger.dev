@@ -5,7 +5,7 @@ import { cn } from "~/utils/cn";
 export function TreeConnectorBranch({ className }: { className?: string }) {
   return (
     <svg
-      className={cn("overflow-visible", className, "text-charcoal-600")}
+      className={cn("overflow-visible", className, "text-border-bright")}
       viewBox="0 0 20 20"
       fill="none"
     >
@@ -18,7 +18,7 @@ export function TreeConnectorBranch({ className }: { className?: string }) {
 export function TreeConnectorEnd({ className }: { className?: string }) {
   return (
     <svg
-      className={cn("overflow-visible", className, "text-charcoal-600")}
+      className={cn("overflow-visible", className, "text-border-bright")}
       viewBox="0 0 20 20"
       fill="none"
     >

@@ -46,7 +46,7 @@ import {
   SettingsRow,
   SettingsRowDescription,
 } from "~/components/primitives/SettingsLayout";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import {
@@ -442,6 +442,7 @@ export function ConnectGitHubRepoModal({
     const params = new URLSearchParams(searchParams);
 
     if (params.get("openGithubRepoModal") === "1") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(true);
       params.delete("openGithubRepoModal");
       setSearchParams(params);
@@ -450,6 +451,7 @@ export function ConnectGitHubRepoModal({
 
   useEffect(() => {
     if (lastSubmission && "success" in lastSubmission && lastSubmission.success === true) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsModalOpen(false);
     }
   }, [lastSubmission]);
@@ -610,7 +612,6 @@ export function ConnectGitHubRepoModal({
                     value="connect-repo"
                     variant="primary/medium"
                     LeadingIcon={isConnectRepositoryLoading ? SpinnerWhite : undefined}
-                    leadingIconClassName="text-white"
                     disabled={isConnectRepositoryLoading}
                   >
                     Connect repository
@@ -778,6 +779,7 @@ function GitHubSettingsRows({
 export function ConnectedGitHubRepoForm({
   connectedGitHubRepo,
   previewEnvironmentEnabled,
+  stagingEnvironmentEnabled,
   organizationSlug,
   projectSlug,
   environmentSlug,
@@ -787,6 +789,7 @@ export function ConnectedGitHubRepoForm({
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
   previewEnvironmentEnabled?: boolean;
+  stagingEnvironmentEnabled?: boolean;
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
@@ -811,6 +814,7 @@ export function ConnectedGitHubRepoForm({
       gitSettingsValues.stagingBranch !==
         (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
       gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasGitSettingsChanges(hasChanges);
   }, [gitSettingsValues, connectedGitHubRepo]);
 
@@ -954,24 +958,42 @@ export function ConnectedGitHubRepoForm({
 
         <SettingsRow
           action={
-            <Input
-              {...getInputProps(fields.stagingBranch, { type: "text" })}
-              defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
-              placeholder="none"
-              variant="medium"
-              className="font-mono"
-              containerClassName="w-64"
-              icon={GitBranchIcon}
-              onChange={(e) => {
-                setGitSettingsValues((prev) => ({
-                  ...prev,
-                  stagingBranch: e.target.value,
-                }));
-              }}
-            />
+            stagingEnvironmentEnabled ? (
+              <Input
+                {...getInputProps(fields.stagingBranch, { type: "text" })}
+                defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
+                placeholder="none"
+                variant="medium"
+                className="font-mono"
+                containerClassName="w-64"
+                icon={GitBranchIcon}
+                onChange={(e) => {
+                  setGitSettingsValues((prev) => ({
+                    ...prev,
+                    stagingBranch: e.target.value,
+                  }));
+                }}
+              />
+            ) : (
+              <LinkButton
+                to={billingPath}
+                variant="secondary/small"
+                LeadingIcon={ArrowUpCircleIcon}
+                leadingIconClassName="text-indigo-500"
+              >
+                Upgrade
+              </LinkButton>
+            )
           }
         >
-          <EnvironmentRowLabel type="STAGING" />
+          <EnvironmentRowLabel
+            type="STAGING"
+            description={
+              stagingEnvironmentEnabled
+                ? undefined
+                : "Upgrade your plan to enable a Staging environment"
+            }
+          />
         </SettingsRow>
 
         <SettingsRow
@@ -1030,7 +1052,7 @@ export function ConnectedGitHubRepoForm({
                 ? undefined
                 : "You don't have permission to manage the GitHub integration"
             }
-            LeadingIcon={isGitSettingsLoading ? SpinnerWhite : undefined}
+            LeadingIcon={isGitSettingsLoading ? Spinner : undefined}
           >
             Save
           </Button>
@@ -1078,6 +1100,7 @@ export function GitHubSettingsPanel({
   layout?: "settings" | "compact";
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const location = useLocation();
 
   // Preserve current search params (e.g. origin=marketplace, next=...) but strip
@@ -1089,8 +1112,8 @@ export function GitHubSettingsPanel({
     return search ? `${location.pathname}?${search}` : location.pathname;
   })();
   useEffect(() => {
-    fetcher.load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
-  }, [organizationSlug, projectSlug, environmentSlug]);
+    load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
+  }, [organizationSlug, projectSlug, environmentSlug, load]);
 
   const data = fetcher.data;
 
@@ -1100,7 +1123,7 @@ export function GitHubSettingsPanel({
   if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
-        <SpinnerWhite className="size-4" />
+        <Spinner color="blue" className="size-4" />
         <span className="text-sm">Loading GitHub settings...</span>
       </div>
     );
@@ -1119,6 +1142,7 @@ export function GitHubSettingsPanel({
         <ConnectedGitHubRepoForm
           connectedGitHubRepo={data.connectedRepository}
           previewEnvironmentEnabled={data.isPreviewEnvironmentEnabled}
+          stagingEnvironmentEnabled={data.isStagingEnvironmentEnabled}
           organizationSlug={organizationSlug}
           projectSlug={projectSlug}
           environmentSlug={environmentSlug}

@@ -1,28 +1,15 @@
-/**
- * The `health` report's DATA layer — the ONLY place SQL / Redis IO lives. Loads a
- * `HealthInput` (plain numbers) that the pure `interpret()` turns into a VM.
- *
- * Flow signal is sourced behind `FlowSource`:
- *   - QueueMetricsSource (preferred) — MEASURED queue depth + real scheduling delay
- *     (p95 wait) from `env_metrics`, which is env-level, so there is no per-queue split.
- *   - SnapshotFlowSource (fallback)  — live Redis depth + an ESTIMATED backlog proxy
- *     and `runs.queued_duration`, used until the queue-metrics pipeline has populated
- *     `env_metrics` for this env.
- *
- * `flowSource` records which ran and drives `pending.estimated`, so the "informational
- * only" caveat drops automatically on the measured path. Execution, liveness and
- * throughput always come from `runs`.
- */
-
+import { calculateTimeBucketInterval, type TimeBucketInterval } from "@internal/tsql";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { executeQuery, isQueryConcurrencyRejection } from "~/services/queryService.server";
+import { envMetricsSchema } from "~/v3/querySchemas";
 import { engine } from "~/v3/runEngine.server";
 import { HEALTH_THRESHOLDS, type HealthInput } from "./health";
 
-/** §5.B — failures = user-code failures only (Expired/Canceled excluded from both sides). */
+/** User-code failures only. Expired and Canceled are excluded from both sides of the rate. */
 const FAILURE_STATUSES = "'Failed','Crashed','System failure','Timed out'";
 
-/** All terminal statuses — a run that reached any of these has left the queue (not backlog). */
+/** All terminal statuses: a run that reached any of these has left the queue. */
 const FINISHED_STATUSES =
   "'Completed','Canceled','Expired','Failed','Crashed','System failure','Timed out'";
 
@@ -39,11 +26,16 @@ function num(value: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** Like `num`, but keeps "no measurement" distinct from a measured 0. */
+function optionalNum(value: unknown): number | undefined {
+  const n = num(value, NaN);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function mean(xs: number[]): number {
   return xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-/** Downsample a per-bucket series to ~N points so the sparkline width is stable (plan §5.C). */
 function resampleSeries(points: number[], target = SPARKLINE_BUCKETS): number[] {
   if (points.length <= target) return points;
   const out: number[] = [];
@@ -62,13 +54,7 @@ function failureRate(failures: number, completed: number): number {
   return denom === 0 ? 0 : failures / denom;
 }
 
-/**
- * Bug 1 fix — ClickHouse query concurrency cap. The query service rejects the 4th
- * concurrent query per project (-> `runQuery` throws -> 500); this loader used to fire
- * up to 4 at once. `mapWithConcurrency` runs `fn` over `items` with at most `limit` in
- * flight, preserving order. We cap CH calls at 2 to leave headroom under the limit of 3
- * for other project traffic. (Redis calls don't count — kept outside this helper.)
- */
+/** Order-preserving. The query service rejects the 4th concurrent query per project. */
 async function mapWithConcurrency<T, R>(
   items: readonly T[],
   limit: number,
@@ -88,15 +74,10 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-/** Max ClickHouse queries this loader keeps in flight (limit of 3, leave headroom). */
+/** Max ClickHouse queries in flight. The per-project limit is 3, so this leaves headroom. */
 const CH_CONCURRENCY = 2;
 
-/**
- * The per-project limit (3) is shared across ALL in-flight requests, not just this
- * loader — so concurrent report requests can still transiently exceed it and get a
- * rejection. It's retryable (a slot frees when another query finishes), so we back off
- * and retry rather than surface a 500. Scheduling only — same query, same result.
- */
+// The per-project limit is shared, so concurrent requests can still be rejected. That is retryable.
 const CH_REJECTION_RETRIES = 6;
 const CH_REJECTION_BACKOFF_MS = 60; // base for exponential "full jitter" backoff
 const CH_REJECTION_BACKOFF_CAP_MS = 2000; // ceiling per attempt
@@ -113,39 +94,26 @@ function isConcurrencyRejection(error: unknown): boolean {
   return /concurrency|too many|try again/i.test(message);
 }
 
-/** rows + the actual (clip-aware) time window the query service resolved for this run. */
+/** Rows plus the clip-aware time window the query service resolved for this run. */
 type QueryResult = { rows: Row[]; timeRange: { from: Date; to: Date } };
 
-/** Runs one (TRQL) report query. Injectable so tests can drive the loader with canned results. */
 export type HealthQueryRunner = (
   env: AuthenticatedEnvironment,
   query: string,
   period: string
 ) => Promise<QueryResult>;
 
-/**
- * The loader's IO boundary (§7 Seam A): ClickHouse via the query service, Redis via the
- * engine. Defaults wire the real singletons; overriding lets tests drive the loader's
- * orchestration without booting the env-bound query-service client.
- */
+/** The loader's IO boundary. */
 export type HealthDeps = {
   runQuery: HealthQueryRunner;
   lengthOfEnvQueue: (env: AuthenticatedEnvironment) => Promise<number | undefined>;
 };
 
-/**
- * The 7d baseline changes slowly, so cache it briefly (per env + query) to avoid recomputing a
- * wide query on every request — the biggest lever on query pressure (#12). Only the default
- * runner caches; injected test runners bypass this entirely, so test isolation is preserved.
- */
+// The 7d baseline is cached per env and query. Only the default runner caches.
 const BASELINE_CACHE_TTL_MS = 5 * 60_000;
 const baselineCache = new Map<string, { expiresAt: number; result: QueryResult }>();
 
-/**
- * Store a baseline result, first sweeping expired entries so envs that stop requesting reports
- * don't linger in memory forever. Writes only happen on a cache miss (~once per env per TTL), so
- * a full sweep here is cheap and keeps the map bounded to recently-active environments.
- */
+/** Sweeps expired entries first so envs that stop requesting reports don't linger in memory. */
 function cacheBaseline(key: string, result: QueryResult, now: number) {
   for (const [k, v] of baselineCache) {
     if (v.expiresAt <= now) baselineCache.delete(k);
@@ -179,10 +147,7 @@ async function executeReportQuery(
       if (cacheKey) cacheBaseline(cacheKey, out, Date.now());
       return out;
     }
-    // Retry transient concurrency rejections; rethrow anything else (e.g. a bad query) so
-    // callers/tryQuery can handle it. Exponential "full jitter" backoff — delay picked uniformly
-    // from [0, min(cap, base·2^attempt)) — so concurrent report requests don't wake in lockstep
-    // and re-collide on the same 3 query slots.
+    // Full-jitter backoff so concurrent report requests don't wake in lockstep and re-collide.
     if (attempt < CH_REJECTION_RETRIES && isConcurrencyRejection(result.error)) {
       const window = Math.min(CH_REJECTION_BACKOFF_CAP_MS, CH_REJECTION_BACKOFF_MS * 2 ** attempt);
       await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * window)));
@@ -192,17 +157,14 @@ async function executeReportQuery(
   }
 }
 
-// ---------------------------------------------------------------------------
-// runs queries (execution + liveness + throughput; also feed the snapshot fallback).
-// executeQuery injects tenant isolation + the time window, so we never write WHERE.
-// ---------------------------------------------------------------------------
-
+// executeQuery injects tenant isolation and the time window, so these queries never write WHERE.
 function runsScalarQuery(): string {
   return `SELECT
   quantile(0.95)(queued_duration) AS start_latency_p95,
   quantile(0.95)(execution_duration) AS dur_p95,
   countIf(status IN (${FAILURE_STATUSES})) AS failures,
   countIf(status = 'Completed') AS completed,
+  countIf(status IN (${FINISHED_STATUSES})) AS finished,
   count() AS triggered,
   max(triggered_at) AS last_activity
 FROM runs`;
@@ -220,10 +182,6 @@ FROM runs
 GROUP BY t
 ORDER BY t`;
 }
-
-// ---------------------------------------------------------------------------
-// env_metrics queries (measured queue depth + scheduling delay).
-// ---------------------------------------------------------------------------
 
 function envSeriesQuery(): string {
   return `SELECT
@@ -247,9 +205,8 @@ FROM env_metrics`;
 }
 
 /**
- * Worst queue by share of CURRENT pending. `argMax(max_queued, bucket_start)` = each queue's
- * depth in its latest bucket, so the shares sum to a real point-in-time backlog — not a sum of
- * per-queue peaks from different moments (which isn't "% of pending" at any instant). Best-effort.
+ * `argMax(max_queued, bucket_start)` is a point-in-time depth, not a peak. These rows stop at 20, so
+ * the share's denominator comes from `queueTotalsQuery`.
  */
 function queueWorstQuery(): string {
   return `SELECT
@@ -262,20 +219,21 @@ LIMIT 20`;
 }
 
 /**
- * Runs dead-lettered across the window, summed over queues. `dlq_delta` is per-queue
- * cumulative-counter state, so it must be merged per queue then summed (never merged
- * across queues). Best-effort — absent columns just yield no rows.
+ * `dlq_delta` must be merged per queue then summed, never merged across queues. `total_queued` must
+ * be computed here, not by summing the top-20 `queueWorstQuery` rows.
  */
-function dlqTotalQuery(): string {
-  return `SELECT sum(dlq) AS dlq_total
+function queueTotalsQuery(): string {
+  return `SELECT sum(dlq) AS dlq_total, sum(latest_queued) AS total_queued
 FROM (
-  SELECT deltaSumTimestampMerge(dlq_delta) AS dlq
+  SELECT
+    deltaSumTimestampMerge(dlq_delta) AS dlq,
+    argMax(max_queued, bucket_start) AS latest_queued
   FROM queue_metrics
   GROUP BY queue
 )`;
 }
 
-/** Top failing task (lazy — only when execution degrades). Best-effort. */
+/** Top failing task. Loaded lazily, only when execution degrades. */
 function failureBreakdownQuery(): string {
   return `SELECT
   task_identifier AS task,
@@ -286,40 +244,31 @@ ORDER BY fails DESC
 LIMIT 10`;
 }
 
-/** Default IO wiring — the real query-service runner + the engine's env-queue length. */
 const defaultHealthDeps: HealthDeps = {
   runQuery: executeReportQuery,
   lengthOfEnvQueue: (env) => engine.lengthOfEnvQueue(env),
 };
 
-/** Run a query that may reference not-yet-available columns; never break the report. */
+/** Never throws. Callers treat no rows as unmeasured rather than as a measured zero. */
 async function tryQuery(
   deps: HealthDeps,
   env: AuthenticatedEnvironment,
   query: string,
   period: string
-): Promise<Row[]> {
+): Promise<QueryResult> {
   try {
-    return (await deps.runQuery(env, query, period)).rows;
+    return await deps.runQuery(env, query, period);
   } catch {
-    return [];
+    return { rows: [], timeRange: { from: new Date(0), to: new Date(0) } };
   }
 }
 
-// ---------------------------------------------------------------------------
-// FlowSource seam (§7 Seam A).
-// ---------------------------------------------------------------------------
-
-export type FlowData = {
+type FlowData = {
   flowSource: HealthInput["flowSource"];
-  pending: { now: number; normal?: number; series: number[]; estimated: boolean };
-  startLatency: { p95Ms: number; normalP95Ms: number; series: number[] };
+  pending: HealthInput["pending"];
+  startLatency: HealthInput["startLatency"];
   evidence: HealthInput["flowEvidence"];
-  /**
-   * Epoch ms of the freshest telemetry the source saw (latest env_metrics bucket and/or latest
-   * run) — how the report tells "data current" from "pipeline stale", independent of traffic.
-   * null when no signal exists at all (brand-new/empty env) -> liveness "unknown", not stale.
-   */
+  /** Epoch ms of the freshest telemetry. Null means no signal, which makes liveness unknown. */
   telemetryLastTs: number | null;
 };
 
@@ -331,179 +280,266 @@ const EMPTY_EVIDENCE: HealthInput["flowEvidence"] = {
   dlqDelta: null, // snapshot path: dead-letter volume is unmeasured
 };
 
-/** The runs results loadHealthInput already fetched, so the snapshot fallback needn't re-query. */
 type RunsContext = { liveScalar: Row; liveSeries: Row[]; baselineScalar: Row };
 
-export interface FlowSource {
+/**
+ * "unavailable" is a recognized rollout state, so the next source down is a legitimate substitute.
+ * "failed" is anything else and must make the flow verdict unassessable, never fall through to it.
+ */
+type FlowLoadResult =
+  | { status: "ok"; data: FlowData }
+  | { status: "unavailable" }
+  | { status: "failed"; error: unknown };
+
+interface FlowSource {
   loadFlow(
     env: AuthenticatedEnvironment,
     period: string,
     ctx: RunsContext,
     deps: HealthDeps
-  ): Promise<FlowData | null>;
+  ): Promise<FlowLoadResult>;
 }
 
 /**
- * Preferred source: measured queue depth + scheduling-delay p95 from `env_metrics`.
- * Returns null when the pipeline hasn't populated the table yet, so the caller can fall
- * back to the snapshot.
+ * The only failures the measured source may treat as a benign fallback: the object itself does not
+ * exist yet, so waiting is correct. Codes 60 (table) and 81 (database). Matched on error text
+ * because the client collapses the error into a message.
+ *
+ * 47 (UNKNOWN_IDENTIFIER) is deliberately absent: the table exists and a column in our own query
+ * does not, which is a broken query, not a rollout gap. It must surface as a failed source.
  */
-export const QueueMetricsSource: FlowSource = {
+const ROLLOUT_ERROR_PATTERNS = [
+  /\bUNKNOWN_(?:TABLE|DATABASE)\b/,
+  /\bCode:\s*(?:60|81)\b/,
+  /\bTable\b[^.]*\bdoes\s?n?o?t?'?t?\s*exist/i,
+  /\bUnknown (?:table|database)\b/i,
+];
+
+function isRolloutError(error: unknown): boolean {
+  // Prefer a structured code/type if one ever survives the wrapping.
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>;
+    const code = String(record.code ?? "");
+    const type = String(record.type ?? "");
+    if (code === "60" || code === "81") return true;
+    if (/^UNKNOWN_(TABLE|DATABASE)$/.test(type)) return true;
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : String(error ?? "");
+  return ROLLOUT_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+/** Measured depth and scheduling-delay p95 from `env_metrics`. Unavailable until it is populated. */
+const QueueMetricsSource: FlowSource = {
   async loadFlow(env, period, ctx, deps) {
     try {
-      // Redis depth isn't a CH query, so it runs alongside (doesn't count toward the cap).
-      // Guard the rejection: if the CH queries throw first we jump to catch without awaiting
-      // this, and an unhandled Redis rejection would crash the process.
+      // The rejection must be guarded: if the queries below throw first this is never awaited, and
+      // an unhandled Redis rejection would crash the process.
       const pendingNowPromise = deps.lengthOfEnvQueue(env).catch(() => undefined);
 
-      // Bug 1 fix — route all CH queries through the concurrency cap (max 2 in flight).
-      // Every task returns Row[] (scalars indexed after) so mapWithConcurrency infers a
-      // single element type — a mixed Row[]/Row union trips its generic inference.
-      const [seriesRows, liveScalarRows, baselineScalarRows, worstQueueRows, dlqResultRows] =
+      // Every task must return the same shape; a mixed union trips mapWithConcurrency's inference.
+      const [seriesResult, liveScalarResult, baselineScalarResult, worstQueueResult, totalsResult] =
         await mapWithConcurrency(
           [
-            () => deps.runQuery(env, envSeriesQuery(), period).then((r) => r.rows),
-            () => deps.runQuery(env, envScalarQuery(), period).then((r) => r.rows),
-            () => deps.runQuery(env, envScalarQuery(), BASELINE_PERIOD).then((r) => r.rows),
+            () => deps.runQuery(env, envSeriesQuery(), period),
+            () => deps.runQuery(env, envScalarQuery(), period),
+            () => deps.runQuery(env, envScalarQuery(), BASELINE_PERIOD),
             () => tryQuery(deps, env, queueWorstQuery(), period),
-            () => tryQuery(deps, env, dlqTotalQuery(), period),
+            () => tryQuery(deps, env, queueTotalsQuery(), period),
           ],
           CH_CONCURRENCY,
           (task) => task()
         );
-      const liveScalarRow = liveScalarRows[0] ?? {};
-      const baselineScalarRow = baselineScalarRows[0] ?? {};
+      const seriesRows = seriesResult.rows;
+      const liveScalarRow = liveScalarResult.rows[0] ?? {};
+      const baselineScalarRow = baselineScalarResult.rows[0] ?? {};
 
       const pendingNow = await pendingNowPromise;
 
       if (seriesRows.length === 0) {
-        return null; // no measured data yet -> snapshot fallback
+        return { status: "unavailable" }; // no measured data yet -> snapshot fallback
       }
 
-      // Telemetry freshness = the freshest of the latest env_metrics bucket (a heartbeat
-      // independent of traffic) and the latest run recorded.
+      // Freshness is the newer of the latest env_metrics bucket and the latest run.
       const telemetryLastTs = freshestTs(liveScalarRow.last_bucket, ctx.liveScalar.last_activity);
 
-      return buildQueueMetricsFlow(
-        seriesRows,
-        liveScalarRow,
-        baselineScalarRow,
-        worstQueueRows,
-        dlqResultRows,
-        pendingNow,
-        telemetryLastTs
-      );
-    } catch {
-      // Bug 2 fix — if `env_metrics` isn't available the queries throw; return null so
-      // loadHealthInput falls back to the snapshot instead of propagating a 500.
-      return null;
+      return {
+        status: "ok",
+        data: buildQueueMetricsFlow({
+          series: seriesRows,
+          sampling: envSampling(seriesResult.timeRange),
+          liveScalar: liveScalarRow,
+          baselineScalar: baselineScalarRow,
+          worstRows: worstQueueResult.rows,
+          totalsRows: totalsResult.rows,
+          pendingNow,
+          telemetryLastTs,
+        }),
+      };
+    } catch (error) {
+      // Only a rollout error is a benign fallback. Anything else must surface as failed.
+      if (isRolloutError(error)) return { status: "unavailable" };
+      logger.error("report health: measured flow source failed", {
+        environmentId: env.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { status: "failed", error };
     }
   },
 };
 
-function buildQueueMetricsFlow(
-  series: Row[],
-  liveScalar: Row,
-  baselineScalar: Row,
-  worstRows: Row[],
-  dlqRows: Row[],
-  pendingNow: number | undefined,
-  telemetryLastTs: number | null
-): FlowData {
-  // Dead-letter volume (0 = measured none; no rows -> unmeasured -> null).
-  const dlqDelta = dlqRows.length > 0 ? Math.round(num(dlqRows[0].dlq_total)) : null;
+/** Minutes per env_metrics bucket, matching the interval the query printer emits. */
+const INTERVAL_UNIT_MINUTES: Record<TimeBucketInterval["unit"], number> = {
+  SECOND: 1 / 60,
+  MINUTE: 1,
+  HOUR: 60,
+  DAY: 1440,
+  WEEK: 10_080,
+  MONTH: 43_200,
+};
 
-  // Throttled share = fraction of buckets with any queue-level throttling.
-  const throttledShare =
-    series.length > 0 ? series.filter((r) => num(r.throttled) > 0).length / series.length : 0;
+/** Derived from the query printer's own thresholds, so "expected" matches what the query emits. */
+function envSampling(range: {
+  from: Date;
+  to: Date;
+}): { bucketMinutes: number; expectedBuckets: number } | null {
+  const windowMinutes = timeRangeMinutes(range);
+  if (windowMinutes === 0) return null;
+  const interval = calculateTimeBucketInterval(
+    range.from,
+    range.to,
+    envMetricsSchema.timeBucketThresholds
+  );
+  const bucketMinutes = interval.value * INTERVAL_UNIT_MINUTES[interval.unit];
+  if (!(bucketMinutes > 0)) return null;
+  return { bucketMinutes, expectedBuckets: Math.max(1, Math.round(windowMinutes / bucketMinutes)) };
+}
 
-  // Worst queue = top queue's share of current pending (latest-bucket depths, so shares
-  // sum to a real point-in-time backlog).
+function buildQueueMetricsFlow(args: {
+  series: Row[];
+  sampling: { bucketMinutes: number; expectedBuckets: number } | null;
+  liveScalar: Row;
+  baselineScalar: Row;
+  worstRows: Row[];
+  totalsRows: Row[];
+  pendingNow: number | undefined;
+  telemetryLastTs: number | null;
+}): FlowData {
+  const { series, sampling, liveScalar, baselineScalar, worstRows, totalsRows } = args;
+  const totals = totalsRows[0];
+  // Zero means measured none; no rows means unmeasured.
+  const dlqDelta = totals !== undefined ? Math.round(num(totals.dlq_total)) : null;
+
+  // Measured against expected buckets when the cadence is known, not against received rows.
+  const throttledBuckets = series.filter((r) => num(r.throttled) > 0).length;
+  const throttledDenominator = sampling?.expectedBuckets ?? series.length;
+  const throttledShare = throttledDenominator > 0 ? throttledBuckets / throttledDenominator : 0;
+
+  // The denominator is the env-wide total, never the sum of these top-20 rows. No total, no share.
   let worstQueue: HealthInput["flowEvidence"]["worstQueue"] = null;
-  if (worstRows.length > 0) {
-    const depths = worstRows.map((r) => num(r.latest_queued));
-    const total = depths.reduce((a, b) => a + b, 0);
-    if (total > 0) {
-      worstQueue = { name: String(worstRows[0].name ?? "unknown"), share: depths[0] / total };
+  const totalQueued = totals !== undefined ? num(totals.total_queued) : 0;
+  if (worstRows.length > 0 && totalQueued > 0) {
+    const worstDepth = num(worstRows[0].latest_queued);
+    if (worstDepth > 0) {
+      worstQueue = {
+        name: String(worstRows[0].name ?? "unknown"),
+        share: Math.min(1, worstDepth / totalQueued),
+      };
     }
   }
 
-  // Prefer live Redis depth; if it's unavailable fall back to the latest MEASURED queued from
-  // env_metrics (still a real number) rather than a misleading confident zero (#7).
+  // Prefer live Redis depth, then the latest measured queued from env_metrics.
   const lastMeasuredQueued = num(series[series.length - 1]?.queued);
+
+  // Only carried when every bucket parsed: a partial set would make "adjacent" meaningless.
+  const bucketTimestamps = series.map((r) => parseTimestamp(r.t));
+  const runningBucketsMs = bucketTimestamps.every((t): t is number => t !== null)
+    ? bucketTimestamps
+    : undefined;
+
+  const waitP95 = optionalNum(liveScalar.wait_p95);
 
   return {
     flowSource: "queue_metrics_v1",
     pending: {
-      now: pendingNow ?? lastMeasuredQueued,
+      now: args.pendingNow ?? lastMeasuredQueued,
       normal: Math.round(num(baselineScalar.avg_queued)),
       series: resampleSeries(series.map((r) => num(r.queued))),
       estimated: false, // measured
+      availability: "measured",
     },
     startLatency: {
-      p95Ms: num(liveScalar.wait_p95),
-      normalP95Ms: num(baselineScalar.wait_p95),
+      p95Ms: waitP95 ?? 0,
+      normalP95Ms: optionalNum(baselineScalar.wait_p95),
       series: resampleSeries(series.map((r) => num(r.wait_p95))),
+      availability: waitP95 === undefined ? "unknown" : "measured",
     },
     evidence: {
-      // native resolution — cause discriminators read shares off this series.
       runningSeries: series.map((r) => num(r.running)),
+      runningBucketsMs,
+      sampling,
       envLimit: num(liveScalar.env_limit),
       throttledShare,
       worstQueue,
       dlqDelta,
     },
-    telemetryLastTs,
+    telemetryLastTs: args.telemetryLastTs,
   };
 }
 
 /**
- * Fallback: live Redis depth (accurate "now") + an estimated backlog proxy from `runs`
- * (cumulative triggered - finished) and `runs.queued_duration` for latency. The proxy is a
- * shape-only TREND (`estimated: true`): it starts at 0 within the window and can't see
- * backlog that predates it.
+ * Fallback: live Redis depth plus a backlog proxy from `runs` (triggered minus finished). The proxy
+ * is shape-only: it starts at 0 within the window and can't see backlog that predates it.
  */
-export const SnapshotFlowSource: FlowSource = {
+const SnapshotFlowSource: FlowSource = {
   async loadFlow(env, _period, ctx, deps) {
-    // Guard Redis: this is the last-resort source, so a failure must not break the report.
-    const pendingNow = (await deps.lengthOfEnvQueue(env).catch(() => undefined)) ?? 0;
+    // Last-resort source, so a Redis failure must not break the report.
+    const pendingNow = await deps.lengthOfEnvQueue(env).catch(() => undefined);
 
-    // Subtract ALL terminal runs, not just Completed — else failed/expired/canceled runs
-    // linger in the proxy as phantom backlog forever.
+    // Subtract all terminal runs, or failed and canceled runs linger as phantom backlog.
     let backlog = 0;
     const proxy = ctx.liveSeries.map((r) => {
       backlog = Math.max(0, backlog + num(r.triggered) - num(r.finished));
       return backlog;
     });
     const series = resampleSeries(proxy);
+    const startLatencyP95 = optionalNum(ctx.liveScalar.start_latency_p95);
+
+    // Redis is the only depth measurement here, so a failure must not substitute 0. Fall back to the
+    // last proxy point and mark the depth unknown.
+    const depthUnavailable = pendingNow === undefined;
+    const lastProxyPoint = proxy.length > 0 ? proxy[proxy.length - 1] : 0;
 
     return {
-      flowSource: "snapshot+runs",
-      pending: {
-        now: pendingNow,
-        // No 7d pending baseline on this path — omit `normal` rather than pass off a
-        // live-window proxy average as "7d normal" (#8). Severity falls back to an absolute floor.
-        normal: undefined,
-        series,
-        estimated: true,
+      status: "ok",
+      data: {
+        flowSource: "snapshot+runs",
+        pending: {
+          now: pendingNow ?? lastProxyPoint,
+          // No 7d pending baseline on this path, so severity falls back to an absolute floor.
+          normal: undefined,
+          series,
+          estimated: true,
+          availability: depthUnavailable ? "unknown" : "measured",
+        },
+        startLatency: {
+          p95Ms: startLatencyP95 ?? 0,
+          normalP95Ms: optionalNum(ctx.baselineScalar.start_latency_p95),
+          series: resampleSeries(ctx.liveSeries.map((r) => num(r.start_latency_p95))),
+          availability: startLatencyP95 === undefined ? "unknown" : "measured",
+        },
+        // No cause-tree evidence; interpret falls back to v1 symptoms.
+        evidence: EMPTY_EVIDENCE,
+        // This path has no pipeline heartbeat, and run activity is not one.
+        telemetryLastTs: null,
       },
-      startLatency: {
-        p95Ms: num(ctx.liveScalar.start_latency_p95),
-        normalP95Ms: num(ctx.baselineScalar.start_latency_p95),
-        series: resampleSeries(ctx.liveSeries.map((r) => num(r.start_latency_p95))),
-      },
-      // No cause-tree evidence; interpret falls back to v1 symptoms.
-      evidence: EMPTY_EVIDENCE,
-      // No env_metrics heartbeat here — the only freshness signal is the latest run recorded
-      // (null when the env has no runs at all -> liveness "unknown", not stale).
-      telemetryLastTs: freshestTs(ctx.liveScalar.last_activity),
     };
   },
 };
-
-// ---------------------------------------------------------------------------
-// loadHealthInput.
-// ---------------------------------------------------------------------------
 
 export async function loadHealthInput(
   env: AuthenticatedEnvironment,
@@ -511,8 +547,6 @@ export async function loadHealthInput(
   now: Date = new Date(),
   deps: HealthDeps = defaultHealthDeps
 ): Promise<HealthInput> {
-  // Bug 1 fix — route the runs-phase CH queries through the concurrency cap (max 2)
-  // instead of firing all 3 at once, so we never exceed the per-project limit.
   const [liveScalarRes, liveSeriesRes, baselineScalarRes] = await mapWithConcurrency(
     [
       () => deps.runQuery(env, runsScalarQuery(), period),
@@ -528,17 +562,24 @@ export async function loadHealthInput(
     baselineScalar: baselineScalarRes.rows[0] ?? {},
   };
 
-  // Window lengths come from the query service's resolved (clip-aware) range, not a
-  // re-parse of the period — so `maxQueryPeriod` clipping can't skew per-minute rates
-  // or annotation math. periodToMinutes is a fallback for a degenerate range.
+  // Window lengths come from the resolved range, not the period, so clipping can't skew rates.
   const windowMinutes = timeRangeMinutes(liveSeriesRes.timeRange) || periodToMinutes(period);
   const baselineMinutes =
     timeRangeMinutes(baselineScalarRes.timeRange) || periodToMinutes(BASELINE_PERIOD);
 
-  // Prefer measured queue metrics; fall back to the runs snapshot when unavailable.
-  const flow =
-    (await QueueMetricsSource.loadFlow(env, period, ctx, deps)) ??
-    (await SnapshotFlowSource.loadFlow(env, period, ctx, deps))!;
+  // A measured source that failed still falls back for the remaining shape, but its depth is marked
+  // unknown so a failure is never presented as a measurement.
+  const measured = await QueueMetricsSource.loadFlow(env, period, ctx, deps);
+  let flow: FlowData;
+  if (measured.status === "ok") {
+    flow = measured.data;
+  } else {
+    const snapshot = await SnapshotFlowSource.loadFlow(env, period, ctx, deps);
+    flow = (snapshot as { status: "ok"; data: FlowData }).data;
+    if (measured.status === "failed") {
+      flow = { ...flow, pending: { ...flow.pending, availability: "unknown" } };
+    }
+  }
 
   const failuresSeries = resampleSeries(
     ctx.liveSeries.map((r) => failureRate(num(r.failures), num(r.completed)))
@@ -546,8 +587,12 @@ export async function loadHealthInput(
 
   const triggered = num(ctx.liveScalar.triggered);
   const completed = num(ctx.liveScalar.completed);
-  const donePerMin = windowMinutes === 0 ? 0 : completed / windowMinutes;
-  const triggeredPerMin = windowMinutes === 0 ? 0 : triggered / windowMinutes;
+  // Older rows have no `finished`, so fall back to completions rather than a fabricated 0 drain.
+  const finished = num(ctx.liveScalar.finished, completed);
+  const perMin = (total: number) => (windowMinutes === 0 ? 0 : total / windowMinutes);
+  const finishedPerMin = perMin(finished);
+  const completedPerMin = perMin(completed);
+  const triggeredPerMin = perMin(triggered);
   const normalTriggeredPerMin =
     baselineMinutes === 0 ? 0 : num(ctx.baselineScalar.triggered) / baselineMinutes;
 
@@ -557,9 +602,7 @@ export async function loadHealthInput(
     num(ctx.baselineScalar.completed)
   );
 
-  // Lazy failure attribution — only when execution is actually degraded.
-  // A fresh failure pattern from a clean 0% baseline is exactly when attribution matters most,
-  // so a zero baseline (can't form a ratio) counts as degraded once past the floor.
+  // A zero baseline can't form a ratio, so it counts as degraded once past the floor.
   const failureDegraded =
     rate >= HEALTH_THRESHOLDS.failures.floorRate &&
     (normalRate === 0 || rate / normalRate >= HEALTH_THRESHOLDS.failures.warnMult);
@@ -567,8 +610,7 @@ export async function loadHealthInput(
     ? await loadFailureBreakdown(deps, env, period, num(ctx.liveScalar.failures))
     : undefined;
 
-  // Liveness = telemetry freshness (how recent is the newest data), NOT "recent completions":
-  // a quiet env with a fresh pipeline is fresh; a dead pipeline is stale. null -> unknown.
+  // Liveness measures telemetry freshness, not recent completions.
   const telemetryAgeMs =
     flow.telemetryLastTs === null ? null : Math.max(0, now.getTime() - flow.telemetryLastTs);
 
@@ -581,7 +623,7 @@ export async function loadHealthInput(
     flowSource: flow.flowSource,
     pending: flow.pending,
     startLatency: flow.startLatency,
-    throughput: { donePerMin, triggeredPerMin, normalTriggeredPerMin },
+    throughput: { finishedPerMin, completedPerMin, triggeredPerMin, normalTriggeredPerMin },
     failures: { rate, normalRate, series: failuresSeries },
     duration: {
       p95Ms: num(ctx.liveScalar.dur_p95),
@@ -600,15 +642,11 @@ async function loadFailureBreakdown(
   totalFails: number
 ): Promise<HealthInput["failureBreakdown"]> {
   if (totalFails <= 0) return undefined;
-  const rows = await tryQuery(deps, env, failureBreakdownQuery(), period);
+  const { rows } = await tryQuery(deps, env, failureBreakdownQuery(), period);
   if (rows.length === 0) return undefined;
   const top = rows[0];
   return { task: String(top.task ?? "unknown"), share: num(top.fails) / totalFails };
 }
-
-// ---------------------------------------------------------------------------
-// Small local helpers.
-// ---------------------------------------------------------------------------
 
 function parseTimestamp(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;

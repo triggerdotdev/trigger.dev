@@ -1,5 +1,4 @@
 import { CalendarDaysIcon, CreditCardIcon, StarIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type PlanDefinition } from "@trigger.dev/platform";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
@@ -21,14 +20,9 @@ import {
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Billing | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Billing");
 
 export const loader = dashboardLoader(
   {

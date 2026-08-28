@@ -2,6 +2,7 @@ import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "~/utils/cn";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 
 export function NotificationCard({
   title,
@@ -87,7 +88,7 @@ export function NotificationCard({
           <button
             type="button"
             onClick={handleToggleExpand}
-            className="relative z-20 mt-0.5 text-xs text-indigo-400 hover:text-indigo-300"
+            className={cn(textLinkClassName(), "relative z-20 mt-0.5 text-xs")}
           >
             {isExpanded ? "Show less" : "Show more"}
           </button>
@@ -109,7 +110,7 @@ function getMarkdownComponents(onLinkClick?: () => void) {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="relative z-20 text-indigo-400 underline transition-colors hover:text-indigo-300"
+        className={cn(textLinkClassName(), "relative z-20")}
         onClick={(e) => {
           e.stopPropagation();
           onLinkClick?.();

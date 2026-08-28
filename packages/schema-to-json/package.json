@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/schema-to-json",
-  "version": "4.5.8",
+  "version": "4.5.13",
   "description": "Convert various schema validation libraries to JSON Schema",
   "license": "MIT",
   "publishConfig": {
@@ -51,7 +51,7 @@
     "arktype": "^2.0.0",
     "runtypes": "^6.7.0",
     "superstruct": "^2.0.2",
-    "tshy": "^3.0.2",
+    "tshy": "^4.1.3",
     "@sinclair/typebox": "^0.34.3",
     "valibot": "^1.1.0",
     "yup": "^1.7.0",

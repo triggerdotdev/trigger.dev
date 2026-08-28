@@ -89,7 +89,7 @@ export type RunShapeStreamOptions = {
   onFetchError?: (e: Error) => void;
 };
 
-export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
+type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
   [K in keyof TStreams]: {
     type: K;
     chunk: TStreams[K];
@@ -170,6 +170,9 @@ export interface StreamSubscriptionFactory {
 }
 
 export type SSEStreamPart<TChunk = unknown> = {
+  /** Stable logical record id from the S2 data envelope (`X-Part-Id` on append). */
+  recordId?: string;
+  /** S2 sequence number in decimal-string form. */
   id: string;
   chunk: TChunk;
   timestamp: number;
@@ -184,6 +187,12 @@ export type SSEStreamPart<TChunk = unknown> = {
   headers?: Array<[string, string]>;
 };
 
+/**
+ * Internal item flowing from the decode transform to the consumer-facing
+ * stream.
+ */
+type PumpItem = { type: "part"; part: SSEStreamPart };
+
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
@@ -197,6 +206,15 @@ export class SSEStreamSubscription implements StreamSubscription {
   private nonRetryableStatuses: ReadonlySet<number>;
   private retryNowController: AbortController | null = null;
   private internalAbort: AbortController | null = null;
+  private cancelledByConsumer = false;
+  private completeNotified = false;
+
+  /**
+   * True when the most recent response carried `X-Session-Settled: true` —
+   * the server has no more records coming, so a clean end of the body is
+   * terminal rather than the end of a long-poll window.
+   */
+  sessionSettled = false;
 
   constructor(
     private url: string,
@@ -278,22 +296,64 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.retryNowController?.abort();
   }
 
+  /** Fire `onComplete` at most once, even if both the drain and cancel paths reach it. */
+  private notifyComplete(): void {
+    if (this.completeNotified) return;
+    this.completeNotified = true;
+    this.options.onComplete?.();
+  }
+
+  /**
+   * The transport pumps decoded records into an internal stream; the returned
+   * stream drains it on demand.
+   */
   async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
     // eslint-disable-next-line no-this-alias
     const self = this;
 
-    return new ReadableStream({
+    const internal = new ReadableStream<PumpItem>({
       async start(controller) {
         await self.connectStream(controller);
       },
       cancel() {
-        self.options.onComplete?.();
+        self.cancelledByConsumer = true;
+        self.internalAbort?.abort();
+        self.retryNowController?.abort();
       },
     });
+    const internalReader = internal.getReader();
+
+    return new ReadableStream<SSEStreamPart>(
+      {
+        async pull(controller) {
+          let result: ReadableStreamReadResult<PumpItem>;
+          try {
+            result = await internalReader.read();
+          } catch (err) {
+            controller.error(err);
+            return;
+          }
+          if (result.done) {
+            self.notifyComplete();
+            try {
+              controller.close();
+            } catch {}
+            return;
+          }
+          controller.enqueue(result.value.part);
+        },
+        cancel(reason) {
+          self.cancelledByConsumer = true;
+          self.notifyComplete();
+          internalReader.cancel(reason).catch(() => {});
+        },
+      },
+      { highWaterMark: 0 }
+    );
   }
 
   private async connectStream(
-    controller: ReadableStreamDefaultController<SSEStreamPart>
+    controller: ReadableStreamDefaultController<PumpItem>
   ): Promise<void> {
     // Two abort sources flow through `internalAbort.signal`:
     //   - this.options.signal: caller cancel — bypass retry, exit cleanly.
@@ -364,6 +424,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       }
 
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
+      this.sessionSettled = response.headers.get("X-Session-Settled") === "true";
       this.retryCount = 0; // reset on success
       armStall();
 
@@ -386,7 +447,7 @@ export class SSEStreamSubscription implements StreamSubscription {
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new EventSourceParserStream())
         .pipeThrough(
-          new TransformStream<EventSourceMessage, SSEStreamPart>({
+          new TransformStream<EventSourceMessage, PumpItem>({
             transform: (chunk, chunkController) => {
               if (streamVersion === "v1") {
                 if (chunk.id) {
@@ -394,9 +455,12 @@ export class SSEStreamSubscription implements StreamSubscription {
                 }
                 const timestamp = parseRedisStreamIdTimestamp(chunk.id);
                 chunkController.enqueue({
-                  id: chunk.id ?? "unknown",
-                  chunk: safeParseJSON(chunk.data),
-                  timestamp,
+                  type: "part",
+                  part: {
+                    id: chunk.id ?? "unknown",
+                    chunk: safeParseJSON(chunk.data),
+                    timestamp,
+                  },
                 });
               } else {
                 if (chunk.event === "batch") {
@@ -407,6 +471,7 @@ export class SSEStreamSubscription implements StreamSubscription {
                       timestamp: number;
                       headers?: Array<[string, string]>;
                     }>;
+                    tail?: { seq_num: number; timestamp: number };
                   };
                   if (!data || !Array.isArray(data.records)) return;
 
@@ -438,10 +503,14 @@ export class SSEStreamSubscription implements StreamSubscription {
                       rememberSeen(parsedBody.id);
                     }
                     chunkController.enqueue({
-                      id: record.seq_num.toString(),
-                      chunk: parsedBody?.data,
-                      timestamp: record.timestamp,
-                      headers: record.headers ?? [],
+                      type: "part",
+                      part: {
+                        recordId: parsedBody?.id,
+                        id: record.seq_num.toString(),
+                        chunk: parsedBody?.data,
+                        timestamp: record.timestamp,
+                        headers: record.headers ?? [],
+                      },
                     });
                   }
                 }
@@ -458,16 +527,16 @@ export class SSEStreamSubscription implements StreamSubscription {
 
           if (done) {
             reader.releaseLock();
+            this.notifyComplete();
             controller.close();
-            this.options.onComplete?.();
             return;
           }
 
           if (this.options.signal?.aborted) {
             reader.cancel();
             reader.releaseLock();
+            this.notifyComplete();
             controller.close();
-            this.options.onComplete?.();
             return;
           }
 
@@ -479,10 +548,10 @@ export class SSEStreamSubscription implements StreamSubscription {
         throw error;
       }
     } catch (error) {
-      if (this.options.signal?.aborted) {
+      if (this.options.signal?.aborted || this.cancelledByConsumer) {
         // User cancel — exit cleanly, don't retry.
+        this.notifyComplete();
         controller.close();
-        this.options.onComplete?.();
         return;
       }
 
@@ -505,9 +574,9 @@ export class SSEStreamSubscription implements StreamSubscription {
     controller: ReadableStreamDefaultController,
     error?: Error
   ): Promise<void> {
-    if (this.options.signal?.aborted) {
+    if (this.options.signal?.aborted || this.cancelledByConsumer) {
+      this.notifyComplete();
       controller.close();
-      this.options.onComplete?.();
       return;
     }
 
@@ -547,9 +616,8 @@ export class SSEStreamSubscription implements StreamSubscription {
     });
     this.retryNowController = null;
 
-    if (this.options.signal?.aborted) {
+    if (this.options.signal?.aborted || this.cancelledByConsumer) {
       controller.close();
-      this.options.onComplete?.();
       return;
     }
 
@@ -599,10 +667,6 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
       ...options,
     });
   }
-}
-
-export interface RunShapeProvider {
-  onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void>;
 }
 
 export type RunSubscriptionOptions = RunShapeStreamOptions & {

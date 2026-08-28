@@ -25,6 +25,7 @@ export type {
   AuthenticatedEnvironment,
   RbacScopeAction,
   RbacScopeResourceType,
+  BearerAuthOptions,
 } from "./rbac.js";
 
 export {

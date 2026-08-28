@@ -25,6 +25,9 @@ import {
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Your invitations");
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -140,8 +143,10 @@ export default function Page() {
         >
           <div>
             <FormTitle
-              LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
-              className="mb-0 text-sky-500"
+              LeadingIcon={
+                <EnvelopeIcon className="size-6 text-cyan-500 system:text-text-bright" />
+              }
+              className="mb-0 text-sky-500 system:text-text-bright"
               title={simplur`You have ${invites.length} new invitation[|s]`}
             />
             <FormError>{form.errors}</FormError>

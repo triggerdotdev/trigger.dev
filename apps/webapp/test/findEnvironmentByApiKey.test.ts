@@ -1,7 +1,11 @@
 import { postgresTest } from "@internal/testcontainers";
 import { type PrismaClient } from "@trigger.dev/database";
-import { describe, expect, vi } from "vitest";
-import { findEnvironmentByApiKey } from "~/models/runtimeEnvironment.server";
+import { describe, expect, it, vi } from "vitest";
+import {
+  findEnvironmentByApiKey,
+  resolvePrivateApiKeyRateLimitScope,
+} from "~/models/runtimeEnvironment.server";
+import { generateAdditionalApiKey, hashApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -142,6 +146,36 @@ describe("findEnvironmentByApiKey — PREVIEW (regression guard)", () => {
       expect(resolved?.apiKey).toBe(previewParent.apiKey);
     }
   );
+
+  postgresTest(
+    "rate limit scope resolves root and additional keys to the preview parent",
+    async ({ prisma }) => {
+      const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+      const previewParent = await createEnv(prisma, project.id, organization.id, {
+        type: "PREVIEW",
+        isBranchableEnvironment: true,
+      });
+      const additional = generateAdditionalApiKey("PREVIEW").apiKey;
+
+      await prisma.apiKey.create({
+        data: {
+          name: "Preview integration",
+          keyHash: hashApiKey(additional),
+          lastFour: additional.slice(-4),
+          runtimeEnvironmentId: previewParent.id,
+          createdByUserId: user.id,
+          presetId: null,
+          scopes: ["admin"],
+        },
+      });
+
+      const rootScope = await resolvePrivateApiKeyRateLimitScope(previewParent.apiKey, prisma);
+      const additionalScope = await resolvePrivateApiKeyRateLimitScope(additional, prisma);
+
+      expect(rootScope?.environmentId).toBe(previewParent.id);
+      expect(additionalScope?.environmentId).toBe(previewParent.id);
+    }
+  );
 });
 
 describe("findEnvironmentByApiKey — non-branchable", () => {
@@ -160,5 +194,235 @@ describe("findEnvironmentByApiKey — non-branchable", () => {
   postgresTest("an unknown api key returns null", async ({ prisma }) => {
     const resolved = await findEnvironmentByApiKey("tr_dev_nonexistent", undefined, prisma);
     expect(resolved).toBeNull();
+  });
+
+  it("queries only the additional-key store for a valid additional-key format", async () => {
+    const runtimeEnvironmentFind = vi.fn();
+    const revokedApiKeyFind = vi.fn();
+    const apiKeyFind = vi.fn(async () => null);
+    const tx = {
+      runtimeEnvironment: { findFirst: runtimeEnvironmentFind },
+      revokedApiKey: { findFirst: revokedApiKeyFind },
+      apiKey: { findFirst: apiKeyFind },
+    } as unknown as PrismaClient;
+
+    await expect(
+      findEnvironmentByApiKey("tr_prod_sk_0123456789abcdefghijklmn", undefined, tx, () => true)
+    ).resolves.toBeNull();
+    expect(apiKeyFind).toHaveBeenCalledOnce();
+    expect(runtimeEnvironmentFind).not.toHaveBeenCalled();
+    expect(revokedApiKeyFind).not.toHaveBeenCalled();
+  });
+
+  it("skips the additional-key store when lookup is disabled", async () => {
+    const runtimeEnvironmentFind = vi.fn();
+    const revokedApiKeyFind = vi.fn();
+    const apiKeyFind = vi.fn();
+    const tx = {
+      runtimeEnvironment: { findFirst: runtimeEnvironmentFind },
+      revokedApiKey: { findFirst: revokedApiKeyFind },
+      apiKey: { findFirst: apiKeyFind },
+    } as unknown as PrismaClient;
+
+    await expect(
+      findEnvironmentByApiKey("tr_prod_sk_0123456789abcdefghijklmn", undefined, tx, () => false)
+    ).resolves.toBeNull();
+    expect(apiKeyFind).not.toHaveBeenCalled();
+    expect(runtimeEnvironmentFind).not.toHaveBeenCalled();
+    expect(revokedApiKeyFind).not.toHaveBeenCalled();
+  });
+
+  it.each(["tr_prod_ak_0123456789abcdefghijklmn", "tr_prod_sk_too-short"])(
+    "keeps malformed additional-key formats on the root lookup path: %s",
+    async (apiKey) => {
+      const runtimeEnvironmentFind = vi.fn(async () => null);
+      const revokedApiKeyFind = vi.fn(async () => null);
+      const apiKeyFind = vi.fn();
+      const tx = {
+        runtimeEnvironment: { findFirst: runtimeEnvironmentFind },
+        revokedApiKey: { findFirst: revokedApiKeyFind },
+        apiKey: { findFirst: apiKeyFind },
+      } as unknown as PrismaClient;
+
+      await expect(findEnvironmentByApiKey(apiKey, undefined, tx)).resolves.toBeNull();
+      expect(runtimeEnvironmentFind).toHaveBeenCalledOnce();
+      expect(revokedApiKeyFind).toHaveBeenCalledOnce();
+      expect(apiKeyFind).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe("findEnvironmentByApiKey — additional and disabled keys", () => {
+  postgresTest("authenticates an active additional key", async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+    });
+    const plaintext = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "External integration",
+        keyHash: hashApiKey(plaintext),
+        lastFour: plaintext.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: ["admin"],
+      },
+    });
+
+    const resolved = await findEnvironmentByApiKey(plaintext, undefined, prisma, () => true);
+
+    expect(resolved?.id).toBe(environment.id);
+    expect(resolved?.apiKey).toBe(environment.apiKey);
+  });
+
+  postgresTest(
+    "rejects restricted scopes on the legacy authentication path",
+    async ({ prisma }) => {
+      const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createEnv(prisma, project.id, organization.id, {
+        type: "PRODUCTION",
+      });
+      const plaintext = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+      await prisma.apiKey.create({
+        data: {
+          name: "Task-scoped",
+          keyHash: hashApiKey(plaintext),
+          lastFour: plaintext.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: user.id,
+          presetId: "TASK_SELECTION_TEST_PRESET",
+          scopes: ["trigger:tasks"],
+        },
+      });
+
+      await expect(
+        findEnvironmentByApiKey(plaintext, undefined, prisma, () => true)
+      ).resolves.toBeNull();
+    }
+  );
+
+  postgresTest("rejects an additional key with empty scopes", async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+    });
+    const plaintext = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "Empty policy",
+        keyHash: hashApiKey(plaintext),
+        lastFour: plaintext.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: [],
+      },
+    });
+
+    await expect(
+      findEnvironmentByApiKey(plaintext, undefined, prisma, () => true)
+    ).resolves.toBeNull();
+  });
+
+  postgresTest("rejects revoked and expired additional keys", async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+    });
+    const revoked = generateAdditionalApiKey("PRODUCTION").apiKey;
+    const expired = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.createMany({
+      data: [
+        {
+          name: "Revoked",
+          keyHash: hashApiKey(revoked),
+          lastFour: revoked.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: user.id,
+          presetId: null,
+          scopes: ["admin"],
+          revokedAt: new Date(),
+        },
+        {
+          name: "Expired",
+          keyHash: hashApiKey(expired),
+          lastFour: expired.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: user.id,
+          presetId: null,
+          scopes: ["admin"],
+          expiresAt: new Date(Date.now() - 1_000),
+        },
+      ],
+    });
+
+    await expect(
+      findEnvironmentByApiKey(revoked, undefined, prisma, () => true)
+    ).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(expired, undefined, prisma, () => true)
+    ).resolves.toBeNull();
+  });
+
+  postgresTest(
+    "resolves the same environment from the root key and an additional key",
+    async ({ prisma }) => {
+      const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createEnv(prisma, project.id, organization.id, {
+        type: "PRODUCTION",
+      });
+      const additional = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+      await prisma.apiKey.create({
+        data: {
+          name: "Replacement",
+          keyHash: hashApiKey(additional),
+          lastFour: additional.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: user.id,
+          presetId: null,
+          scopes: ["admin"],
+        },
+      });
+
+      await expect(
+        findEnvironmentByApiKey(environment.apiKey, undefined, prisma)
+      ).resolves.toMatchObject({ id: environment.id });
+      await expect(
+        findEnvironmentByApiKey(additional, undefined, prisma, () => true)
+      ).resolves.toMatchObject({ id: environment.id });
+    }
+  );
+
+  postgresTest("does not resolve additional keys for deleted projects", async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+    });
+    const additional = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "Deleted project key",
+        keyHash: hashApiKey(additional),
+        lastFour: additional.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: ["admin"],
+      },
+    });
+    await prisma.project.update({
+      where: { id: project.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await expect(resolvePrivateApiKeyRateLimitScope(additional, prisma)).resolves.toBeNull();
   });
 });

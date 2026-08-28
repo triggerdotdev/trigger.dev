@@ -45,4 +45,18 @@ describe("tenantContextFromAuthEnvironment", () => {
   it("does not propagate impersonating (auth environments are real, not impersonated)", () => {
     expect(tenantContextFromAuthEnvironment(envWithOrgMember).impersonating).toBeUndefined();
   });
+
+  it("prefers the JWT actor over orgMember", () => {
+    const ctx = tenantContextFromAuthEnvironment(envWithOrgMember, { sub: "usr_99" });
+    expect(ctx.userId).toBe("usr_99");
+  });
+
+  it("attributes a shared env with no orgMember to the JWT actor", () => {
+    const ctx = tenantContextFromAuthEnvironment(envWithoutOrgMember, { sub: "usr_99" });
+    expect(ctx.userId).toBe("usr_99");
+  });
+
+  it("falls back to orgMember when there is no actor", () => {
+    expect(tenantContextFromAuthEnvironment(envWithOrgMember, undefined).userId).toBe("usr_42");
+  });
 });

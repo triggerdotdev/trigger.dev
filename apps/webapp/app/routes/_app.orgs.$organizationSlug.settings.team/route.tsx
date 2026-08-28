@@ -2,13 +2,7 @@ import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  type MetaFunction,
-  useActionData,
-  useFetcher,
-  useNavigation,
-} from "@remix-run/react";
+import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { cloneElement, useEffect, useRef, useState } from "react";
@@ -43,7 +37,8 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
+import { getUserId } from "~/services/session.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
@@ -61,14 +56,10 @@ import {
 } from "~/utils/pathBuilder";
 import { SetSeatsAddOnService } from "~/v3/services/setSeatsAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Team | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Team");
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -77,8 +68,10 @@ const Params = z.object({
 export const loader = dashboardLoader(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     authorization: { action: "read", resource: { type: "members" } },
@@ -138,8 +131,10 @@ const SetRoleSchema = z.object({
 export const action = dashboardAction(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     // No top-level authorization — different intents have different
@@ -471,12 +466,9 @@ export default function Page() {
               <div className="mt-4 flex items-baseline justify-between">
                 <Header2>Active team members</Header2>
                 {roles.length > 0 ? (
-                  <a
-                    className="text-xs text-text-link hover:underline"
-                    href={organizationRolesPath(organization)}
-                  >
-                    View all role permissions →
-                  </a>
+                  <TextLink to={organizationRolesPath(organization)} className="text-xs">
+                    View all role permissions
+                  </TextLink>
                 ) : null}
               </div>
               <div className="mb-8 mt-3 grid w-full grid-cols-[1fr_auto_auto] items-center gap-x-2 border-y border-grid-bright">
@@ -976,6 +968,7 @@ export function PurchaseSeatsModal({
 
   const [amountValue, setAmountValue] = useState(extraSeats);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- The authoritative seat count intentionally resets this modal draft.
     setAmountValue(extraSeats);
   }, [extraSeats]);
   const isLoading = fetcher.state !== "idle";
@@ -990,6 +983,7 @@ export function PurchaseSeatsModal({
       "ok" in data &&
       data.ok
     ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);
@@ -1158,7 +1152,7 @@ export function PurchaseSeatsModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                    <span className="tabular-nums">{`Send request for ${formatNumber(
                       amountValue
                     )}`}</span>
                   </Button>
@@ -1172,7 +1166,7 @@ export function PurchaseSeatsModal({
                     disabled={isLoading || state === "need_to_remove_members"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                    <span className="tabular-nums">{`Remove ${formatNumber(
                       extraSeats - amountValue
                     )} ${extraSeats - amountValue === 1 ? "seat" : "seats"}`}</span>
                   </Button>
@@ -1186,7 +1180,7 @@ export function PurchaseSeatsModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                    <span className="tabular-nums">{`Purchase ${formatNumber(
                       amountValue - extraSeats
                     )} ${amountValue - extraSeats === 1 ? "seat" : "seats"}`}</span>
                   </Button>

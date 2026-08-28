@@ -12,7 +12,7 @@ mode: "wide"
 | `MAGIC_LINK_SECRET`                              | Yes      | —                     | Magic link encryption secret. Run: `openssl rand -hex 16`                                                          |
 | `ENCRYPTION_KEY`                                 | Yes      | —                     | Secret store encryption key. Run: `openssl rand -hex 16`                                                           |
 | `MANAGED_WORKER_SECRET`                          | Yes      | —                     | Managed worker secret. Must be set and match supervisor. Run: `openssl rand -hex 32`                               |
-| `ALLOW_INSECURE_DEFAULT_SECRETS`                 | No       | false                 | Boot even if a secret is still a known-insecure published default. Temporary escape hatch for values you can't safely rotate yet (see [Secret generation and rotation](/self-hosting/kubernetes#secret-generation-and-rotation)). |
+| `ALLOW_INSECURE_DEFAULT_SECRETS`                 | No       | false                 | Boot even if a secret is still a known-insecure published default. Temporary escape hatch for values you can't safely rotate yet (see [Secrets](/self-hosting/kubernetes#secrets)). |
 | **Domains & ports**                              |          |                       |                                                                                                                    |
 | `REMIX_APP_PORT`                                 | No       | 3030                  | Remix app port.                                                                                                    |
 | `APP_ORIGIN`                                     | Yes      | http://localhost:3030 | App origin URL.                                                                                                    |
@@ -26,7 +26,11 @@ mode: "wide"
 | `DATABASE_CONNECTION_LIMIT`                      | No       | 10                    | Max DB connections.                                                                                                |
 | `DATABASE_POOL_TIMEOUT`                          | No       | 60                    | DB pool timeout (s).                                                                                               |
 | `DATABASE_CONNECTION_TIMEOUT`                    | No       | 20                    | DB connect timeout (s).                                                                                            |
+| `DATABASE_WRITER_POOL_TIMEOUT`                   | No       | `DATABASE_POOL_TIMEOUT`       | Writer pool timeout (s); overrides the shared default for the writer only.                                 |
+| `DATABASE_WRITER_CONNECTION_TIMEOUT`             | No       | `DATABASE_CONNECTION_TIMEOUT` | Writer connect timeout (s); overrides the shared default for the writer only.                              |
 | `DATABASE_READ_REPLICA_URL`                      | No       | `DATABASE_URL`        | Read-replica DB string.                                                                                            |
+| `DATABASE_READ_REPLICA_POOL_TIMEOUT`             | No       | `DATABASE_POOL_TIMEOUT`       | Read-replica pool timeout (s); overrides the shared default for the replica only.                          |
+| `DATABASE_READ_REPLICA_CONNECTION_TIMEOUT`       | No       | `DATABASE_CONNECTION_TIMEOUT` | Read-replica connect timeout (s); overrides the shared default for the replica only.                       |
 | **Redis**                                        |          |                       |                                                                                                                    |
 | `REDIS_HOST`                                     | Yes      | —                     | Redis host.                                                                                                        |
 | `REDIS_PORT`                                     | Yes      | —                     | Redis port.                                                                                                        |
@@ -40,6 +44,7 @@ mode: "wide"
 | `LOGIN_RATE_LIMITS_ENABLED`                      | No       | true                  | Enable rate limiting on magic-link login.                                                                          |
 | `AUTH_GITHUB_CLIENT_ID`                          | No       | —                     | GitHub client ID.                                                                                                  |
 | `AUTH_GITHUB_CLIENT_SECRET`                      | No       | —                     | GitHub client secret.                                                                                              |
+| `CSP_IMG_SRC_ALLOWLIST`                          | No       | —                     | Extra hosts the dashboard may load images from, e.g. an SSO or avatar host serving profile images. A comma-separated list of exact origins (`https://sso.example.com`); a wildcard host such as `https://*.example.com` is refused. |
 | **Email**                                        |          |                       |                                                                                                                    |
 | `EMAIL_TRANSPORT`                                | No       | —                     | Email transport type. One of `resend`, `smtp`, `aws-ses`.                                                          |
 | `FROM_EMAIL`                                     | No       | —                     | From email address.                                                                                                |
@@ -72,6 +77,12 @@ mode: "wide"
 | `API_RATE_LIMIT_LIMITER_LOGS_ENABLED`            | No       | 0                     | API rate limit limiter logs.                                                                                       |
 | `API_RATE_LIMIT_JWT_WINDOW`                      | No       | 1m                    | API rate limit JWT window.                                                                                         |
 | `API_RATE_LIMIT_JWT_TOKENS`                      | No       | 60                    | API rate limit JWT tokens.                                                                                         |
+| `DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL`          | No       | 10s                   | Deployment endpoints rate limit refill interval.                                                                   |
+| `DEPLOYMENT_RATE_LIMIT_MAX`                      | No       | 1500                  | Deployment endpoints rate limit max.                                                                               |
+| `DEPLOYMENT_RATE_LIMIT_REFILL_RATE`              | No       | 500                   | Deployment endpoints rate limit refill rate.                                                                       |
+| `DEPLOYMENT_RATE_LIMIT_REQUEST_LOGS_ENABLED`     | No       | 0                     | Deployment endpoints rate limit request logs.                                                                      |
+| `DEPLOYMENT_RATE_LIMIT_REJECTION_LOGS_ENABLED`   | No       | 1                     | Deployment endpoints rate limit rejection logs.                                                                    |
+| `DEPLOYMENT_RATE_LIMIT_LIMITER_LOGS_ENABLED`     | No       | 0                     | Deployment endpoints rate limit limiter logs.                                                                      |
 | **Deploy & Registry**                            |          |                       |                                                                                                                    |
 | `DEPLOY_REGISTRY_HOST`                           | Yes      | —                     | Deploy registry host.                                                                                              |
 | `DEPLOY_REGISTRY_USERNAME`                       | No       | —                     | Deploy registry username.                                                                                          |
@@ -173,6 +184,7 @@ mode: "wide"
 | `MACHINE_PRESETS_OVERRIDE_PATH`                  | No       | —                     | Path to machine presets override file. See [machine overrides](/self-hosting/overview#machine-overrides).          |
 | `APP_ENV`                                        | No       | `NODE_ENV`            | App environment. Used for things like the title tag.                                                               |
 | `ADMIN_EMAILS`                                   | No       | —                     | Regex of user emails to automatically promote to admin on signup. Does not apply to existing users.                |
+| `ADMIN_DASHBOARD_ENABLED`                        | No       | 1                     | Set to anything other than `1` or `true` to disable the admin dashboard and user impersonation on this instance.   |
 | `EVENT_LOOP_MONITOR_ENABLED`                     | No       | 1                     | Node.js event loop lag monitor.                                                                                    |
 
 ## Multi-Provider Object Storage

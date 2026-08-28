@@ -477,9 +477,46 @@ export function getDefaultEnvironmentLimitFromPlan(
 }
 
 export async function getCachedLimit(orgId: string, limit: keyof Limits, fallback: number) {
+  // No billing client means there is no plan limit to read, so don't touch the cache:
+  // an unreachable cache Redis would stall the caller for its whole reconnect cycle.
+  if (!client) return { val: fallback };
+
   return platformCache.limits.swr(`${orgId}:${limit}`, async () => {
     return getLimit(orgId, limit, fallback);
   });
+}
+
+/**
+ * Reads one plan limit, treating 0 as zero rather than absent: only a missing limit falls back.
+ * {@link getLimit} keeps its `!result` fallback, which its callers depend on.
+ */
+export function limitValueAllowingZero(
+  limits: Limits | undefined,
+  limit: keyof Limits,
+  fallback: number
+): number {
+  const result = limits?.[limit];
+
+  if (result === undefined || result === null) return fallback;
+  if (typeof result === "number") return result;
+  if (typeof result === "object" && "number" in result) return result.number;
+  return fallback;
+}
+
+/**
+ * Like {@link getCachedLimit}, but a plan value of 0 means zero. Cached under its own key so it
+ * never crosses with {@link getCachedLimit}.
+ */
+export async function getCachedLimitAllowingZero(
+  orgId: string,
+  limit: keyof Limits,
+  fallback: number
+) {
+  if (!client) return { val: fallback };
+
+  return platformCache.limits.swr(`${orgId}:${limit}:allow-zero`, async () =>
+    limitValueAllowingZero(await getLimits(orgId), limit, fallback)
+  );
 }
 
 export async function customerPortalUrl(orgId: string, orgSlug: string) {
@@ -1058,6 +1095,7 @@ export async function enqueueBuild(
   options: {
     skipPromotion?: boolean;
     configFilePath?: string;
+    fromBundle?: boolean;
   }
 ) {
   if (!client) return undefined;
@@ -1195,6 +1233,10 @@ export function isCloud(): boolean {
   ];
 
   if (acceptableHosts.includes(env.LOGIN_ORIGIN)) {
+    return true;
+  }
+
+  if (env.LOGIN_ORIGIN?.endsWith(".triggerlabs.dev")) {
     return true;
   }
 

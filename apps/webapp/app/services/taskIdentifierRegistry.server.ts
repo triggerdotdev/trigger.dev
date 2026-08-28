@@ -2,6 +2,7 @@ import {
   type TaskTriggerSource,
   type PrismaClient,
   type PrismaClientOrTransaction,
+  boundedIn,
 } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
@@ -15,6 +16,7 @@ import {
 function toTriggerSource(source: string | undefined): TaskTriggerSource {
   const normalized = source?.toUpperCase();
   if (normalized === "AGENT") return "AGENT";
+  if (normalized === "WEBHOOK") return "WEBHOOK";
   if (normalized === "SCHEDULED" || normalized === "SCHEDULE") return "SCHEDULED";
   return "STANDARD";
 }
@@ -59,7 +61,7 @@ export async function syncTaskIdentifiers(
       db.taskIdentifier.updateMany({
         where: {
           runtimeEnvironmentId: environmentId,
-          slug: { in: taskSlugs },
+          slug: { in: boundedIn(taskSlugs) },
         },
         data: {
           currentTriggerSource: source,
@@ -73,7 +75,7 @@ export async function syncTaskIdentifiers(
     db.taskIdentifier.updateMany({
       where: {
         runtimeEnvironmentId: environmentId,
-        slug: { notIn: slugs },
+        slug: { notIn: boundedIn(slugs) },
         isInLatestDeployment: true,
       },
       data: { isInLatestDeployment: false },

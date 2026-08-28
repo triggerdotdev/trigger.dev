@@ -4,7 +4,7 @@ import _m0 from "protobufjs/minimal";
 import { AnyValue, InstrumentationScope, KeyValue } from "../../common/v1/common";
 import { Resource } from "../../resource/v1/resource";
 
-export const protobufPackage = "opentelemetry.proto.logs.v1";
+const protobufPackage = "opentelemetry.proto.logs.v1";
 
 /** Possible values for LogRecord.SeverityNumber. */
 export enum SeverityNumber {
@@ -37,7 +37,7 @@ export enum SeverityNumber {
   UNRECOGNIZED = -1,
 }
 
-export function severityNumberFromJSON(object: any): SeverityNumber {
+function severityNumberFromJSON(object: any): SeverityNumber {
   switch (object) {
     case 0:
     case "SEVERITY_NUMBER_UNSPECIFIED":
@@ -121,7 +121,7 @@ export function severityNumberFromJSON(object: any): SeverityNumber {
   }
 }
 
-export function severityNumberToJSON(object: SeverityNumber): string {
+function severityNumberToJSON(object: SeverityNumber): string {
   switch (object) {
     case SeverityNumber.UNSPECIFIED:
       return "SEVERITY_NUMBER_UNSPECIFIED";
@@ -188,7 +188,7 @@ export function severityNumberToJSON(object: SeverityNumber): string {
  *
  *   (logRecord.flags & LOG_RECORD_FLAGS_TRACE_FLAGS_MASK)
  */
-export enum LogRecordFlags {
+enum LogRecordFlags {
   /**
    * DO_NOT_USE - The zero value for the enum. Should not be used for comparisons.
    * Instead use bitwise "and" with the appropriate mask as shown above.
@@ -199,7 +199,7 @@ export enum LogRecordFlags {
   UNRECOGNIZED = -1,
 }
 
-export function logRecordFlagsFromJSON(object: any): LogRecordFlags {
+function logRecordFlagsFromJSON(object: any): LogRecordFlags {
   switch (object) {
     case 0:
     case "LOG_RECORD_FLAGS_DO_NOT_USE":
@@ -214,7 +214,7 @@ export function logRecordFlagsFromJSON(object: any): LogRecordFlags {
   }
 }
 
-export function logRecordFlagsToJSON(object: LogRecordFlags): string {
+function logRecordFlagsToJSON(object: LogRecordFlags): string {
   switch (object) {
     case LogRecordFlags.DO_NOT_USE:
       return "LOG_RECORD_FLAGS_DO_NOT_USE";
@@ -238,7 +238,7 @@ export function logRecordFlagsToJSON(object: LogRecordFlags): string {
  * When new fields are added into this message, the OTLP request MUST be updated
  * as well.
  */
-export interface LogsData {
+interface LogsData {
   /**
    * An array of ResourceLogs.
    * For data coming from a single resource this array will typically contain
@@ -382,7 +382,7 @@ function createBaseLogsData(): LogsData {
   return { resourceLogs: [] };
 }
 
-export const LogsData = {
+const LogsData = {
   encode(message: LogsData, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     for (const v of message.resourceLogs) {
       ResourceLogs.encode(v!, writer.uint32(10).fork()).ldelim();
@@ -882,7 +882,7 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin
+type DeepPartial<T> = T extends Builtin
   ? T
   : T extends globalThis.Array<infer U>
     ? globalThis.Array<DeepPartial<U>>
@@ -893,7 +893,7 @@ export type DeepPartial<T> = T extends Builtin
         : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin
+type Exact<P, I extends P> = P extends Builtin
   ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 

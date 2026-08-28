@@ -6,14 +6,16 @@ import { generateInternalId, getMaxDuration, SnapshotId } from "@trigger.dev/cor
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import type {
   BackgroundWorker,
-  BackgroundWorkerTask,
   Prisma,
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
-  TaskQueue,
-  WorkerDeployment,
 } from "@trigger.dev/database";
 import type { BillingCache } from "../billingCache.js";
+import type {
+  ResolvedTaskQueue,
+  ResolvedWorkerDeployment,
+  ResolvedWorkerTask,
+} from "../controlPlaneResolver.js";
 
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
@@ -88,16 +90,16 @@ type RunWithBackgroundWorkerTasksResult =
       run: RunWithDequeueScalars;
       environmentType: RuntimeEnvironmentType;
       worker: BackgroundWorker;
-      task: BackgroundWorkerTask;
-      queue: TaskQueue;
-      deployment: WorkerDeployment | null;
+      task: ResolvedWorkerTask;
+      queue: ResolvedTaskQueue;
+      deployment: ResolvedWorkerDeployment | null;
     };
 
 type WorkerDeploymentWithWorkerTasks = {
   worker: BackgroundWorker;
-  tasks: BackgroundWorkerTask[];
-  queues: TaskQueue[];
-  deployment: WorkerDeployment | null;
+  tasks: ResolvedWorkerTask[];
+  queues: ResolvedTaskQueue[];
+  deployment: ResolvedWorkerDeployment | null;
 };
 
 export class DequeueSystem {
@@ -156,8 +158,12 @@ export class DequeueSystem {
 
         const orgId = message.message.orgId;
         const runId = message.messageId;
+        const queueWaitMs =
+          typeof message.message.eligibleAtMs === "number"
+            ? Math.max(0, Date.now() - message.message.eligibleAtMs)
+            : undefined;
 
-        this.$.logger.info("DequeueSystem.dequeueFromWorkerQueue dequeued message", {
+        this.$.logger.debug("DequeueSystem.dequeueFromWorkerQueue dequeued message", {
           runId,
           orgId,
           environmentId: message.message.environmentId,
@@ -174,6 +180,9 @@ export class DequeueSystem {
         span.setAttribute("consumer_id", consumerId);
         span.setAttribute("worker_queue", workerQueue);
         span.setAttribute("blocking_pop", blockingPop ?? true);
+        if (queueWaitMs !== undefined) {
+          span.setAttribute("queue_wait_ms", queueWaitMs);
+        }
 
         //lock the run so nothing else can modify it
         try {
@@ -886,6 +895,8 @@ export class DequeueSystem {
           environmentId: run.runtimeEnvironmentId,
           type: env.type,
           workerId: workerId ?? undefined,
+          taskIdentifier: run.taskIdentifier,
+          queue: { lockedQueueId: run.lockedQueueId, name: run.queue },
         });
 
       if (!workerWithTasks) {

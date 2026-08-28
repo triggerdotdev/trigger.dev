@@ -1,4 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
@@ -16,14 +15,9 @@ import {
 } from "~/services/sessionDuration.server";
 import { MfaSetup } from "../resources.account.mfa.setup/route";
 import { SessionDurationSetting } from "../resources.account.session-duration/SessionDurationSetting";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Security | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Security");
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);

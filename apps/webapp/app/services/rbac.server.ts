@@ -2,6 +2,7 @@ import { $replica, prisma } from "~/db.server";
 import type { PrismaClient } from "@trigger.dev/database";
 import plugin from "@trigger.dev/rbac";
 import { env } from "~/env.server";
+import { authFeatureControls } from "~/services/authFeatureControls.server";
 
 // plugin.create() is synchronous — returns a lazy controller that resolves
 // any installed RBAC plugin on first call. Top-level await is not used
@@ -30,6 +31,7 @@ export const rbac = plugin.create(
   {
     forceFallback: env.RBAC_FORCE_FALLBACK,
     userActorSecret: env.SESSION_SECRET,
+    additionalApiKeyLookupEnabled: authFeatureControls.additionalApiKeyLookupEnabled,
     // A plugin that owns its own database client gets the same
     // writer/replica topology the webapp's Prisma clients use (see
     // getClient/getReplicaClient in db.server.ts): control-plane URLs win,

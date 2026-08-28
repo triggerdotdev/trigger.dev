@@ -165,6 +165,15 @@ export class WorkloadHttpClient {
           ...this.defaultHeaders(),
         },
         body: JSON.stringify(body),
+      },
+      {
+        retry: {
+          minTimeoutInMs: 1000,
+          maxTimeoutInMs: 10_000,
+          maxAttempts: 6,
+          factor: 2,
+          randomize: true,
+        },
       }
     );
   }

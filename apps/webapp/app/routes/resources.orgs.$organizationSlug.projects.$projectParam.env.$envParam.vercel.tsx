@@ -1,8 +1,8 @@
 import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { Result, fromPromise } from "neverthrow";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +12,11 @@ import {
   EnvironmentIcon,
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
-import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettings";
+import {
+  BuildSettingsFields,
+  SKEW_PROTECTION_DOCS_PATH,
+  skewProtectionVersionRequirement,
+} from "~/components/integrations/VercelBuildSettings";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -27,7 +31,8 @@ import {
   SettingsAlertRow,
   SettingsRow,
 } from "~/components/primitives/SettingsLayout";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
+import { TextLink } from "~/components/primitives/TextLink";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
@@ -57,7 +62,6 @@ import {
   type SyncEnvVarsMapping,
   type VercelProjectIntegrationData,
   envSlugArrayField,
-  getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
@@ -290,6 +294,11 @@ export const action = dashboardAction(
             ?.environmentId ?? null;
         const newStagingEnvId = parsedStagingEnv?.environmentId ?? null;
 
+        const wasAtomicEnabled = (
+          previousIntegration?.parsedIntegrationData.config?.atomicBuilds ?? []
+        ).includes("prod");
+        const isAtomicBeingEnabled = !wasAtomicEnabled && (atomicBuilds?.includes("prod") ?? false);
+
         const result = await vercelService.updateVercelIntegrationConfig(project.id, {
           atomicBuilds,
           pullEnvVarsBeforeBuild,
@@ -299,6 +308,40 @@ export const action = dashboardAction(
         });
 
         if (result) {
+          if (isAtomicBeingEnabled) {
+            try {
+              const orgIntegration =
+                await VercelIntegrationRepository.findVercelOrgIntegrationForProject(project.id);
+
+              if (orgIntegration) {
+                const teamId =
+                  await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+
+                const disableResult = await VercelIntegrationRepository.getVercelClient(
+                  orgIntegration
+                ).andThen((client) =>
+                  VercelIntegrationRepository.disableAutoAssignCustomDomains(
+                    client,
+                    result.parsedIntegrationData.vercelProjectId,
+                    teamId
+                  )
+                );
+
+                if (disableResult.isErr()) {
+                  logger.warn("Failed to disable autoAssignCustomDomains when enabling atomic", {
+                    projectId: project.id,
+                    error: disableResult.error.message,
+                  });
+                }
+              }
+            } catch (error) {
+              logger.error("Errored while disabling autoAssignCustomDomains when enabling atomic", {
+                projectId: project.id,
+                error,
+              });
+            }
+          }
+
           // Sync staging TRIGGER_SECRET_KEY if the custom environment changed
           if (previousStagingEnvId !== newStagingEnvId) {
             await vercelService.syncStagingKeyForCustomEnvironment(
@@ -541,10 +584,17 @@ function VercelAppInstalledRow() {
   );
 }
 
+function VercelLeadingIcon() {
+  return <VercelLogo className="-mx-1 size-3.5 text-text-bright" />;
+}
+
+function VercelLoadingIcon() {
+  return <Spinner color="blue" className="size-4" />;
+}
+
 function VercelSettingsRows({
   organizationSlug,
   projectSlug,
-  environmentSlug: _environmentSlug,
   hasOrgIntegration,
   isGitHubConnected,
   onOpenModal,
@@ -553,7 +603,6 @@ function VercelSettingsRows({
 }: {
   organizationSlug: string;
   projectSlug: string;
-  environmentSlug: string;
   hasOrgIntegration: boolean;
   isGitHubConnected: boolean;
   onOpenModal?: () => void;
@@ -577,7 +626,7 @@ function VercelSettingsRows({
               noPermissionTooltip={noPermissionTooltip}
               to={vercelAppInstallPath(organizationSlug, projectSlug)}
               variant="secondary/small"
-              LeadingIcon={() => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />}
+              LeadingIcon={VercelLeadingIcon}
             >
               Install Vercel app
             </PermissionLink>
@@ -595,11 +644,7 @@ function VercelSettingsRows({
               onClick={() => onOpenModal?.()}
               disabled={isLoadingProjects || !onOpenModal || !canManageVercel}
               tooltip={canManageVercel ? undefined : noPermissionTooltip}
-              LeadingIcon={
-                isLoadingProjects
-                  ? () => <SpinnerWhite className="size-4" />
-                  : () => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />
-              }
+              LeadingIcon={isLoadingProjects ? VercelLoadingIcon : VercelLeadingIcon}
             >
               {isLoadingProjects ? "Loading projects…" : "Connect Vercel project"}
             </Button>
@@ -650,19 +695,6 @@ function VercelGitHubWarning() {
   );
 }
 
-function envSlugLabel(slug: EnvSlug): string {
-  switch (slug) {
-    case "prod":
-      return "Production";
-    case "stg":
-      return "Staging";
-    case "preview":
-      return "Preview";
-    case "dev":
-      return "Development";
-  }
-}
-
 function ConnectedVercelProjectForm({
   connectedProject,
   hasStagingEnvironment,
@@ -691,7 +723,6 @@ function ConnectedVercelProjectForm({
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
-  const [hasConfigChanges, setHasConfigChanges] = useState(false);
   const [configValues, setConfigValues] = useState({
     atomicBuilds: connectedProject.integrationData.config.atomicBuilds ?? [],
     pullEnvVarsBeforeBuild: connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [],
@@ -708,37 +739,26 @@ function ConnectedVercelProjectForm({
     connectedProject.integrationData.config.vercelStagingEnvironment ?? null;
   const originalAutoPromote = connectedProject.integrationData.config.autoPromote ?? true;
 
-  useEffect(() => {
-    const atomicBuildsChanged =
-      JSON.stringify([...configValues.atomicBuilds].sort()) !==
-      JSON.stringify([...originalAtomicBuilds].sort());
-    const pullEnvVarsChanged =
-      JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
-      JSON.stringify([...originalPullEnvVars].sort());
-    const discoverEnvVarsChanged =
-      JSON.stringify([...configValues.discoverEnvVars].sort()) !==
-      JSON.stringify([...originalDiscoverEnvVars].sort());
-    const stagingEnvChanged =
-      configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
-    const autoPromoteChanged = configValues.autoPromote !== originalAutoPromote;
+  const atomicBuildsChanged =
+    JSON.stringify([...configValues.atomicBuilds].sort()) !==
+    JSON.stringify([...originalAtomicBuilds].sort());
+  const pullEnvVarsChanged =
+    JSON.stringify([...configValues.pullEnvVarsBeforeBuild].sort()) !==
+    JSON.stringify([...originalPullEnvVars].sort());
+  const discoverEnvVarsChanged =
+    JSON.stringify([...configValues.discoverEnvVars].sort()) !==
+    JSON.stringify([...originalDiscoverEnvVars].sort());
+  const stagingEnvChanged =
+    configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
+  const autoPromoteChanged = configValues.autoPromote !== originalAutoPromote;
+  const hasConfigChanges =
+    atomicBuildsChanged ||
+    pullEnvVarsChanged ||
+    discoverEnvVarsChanged ||
+    stagingEnvChanged ||
+    autoPromoteChanged;
 
-    setHasConfigChanges(
-      atomicBuildsChanged ||
-        pullEnvVarsChanged ||
-        discoverEnvVarsChanged ||
-        stagingEnvChanged ||
-        autoPromoteChanged
-    );
-  }, [
-    configValues,
-    originalAtomicBuilds,
-    originalPullEnvVars,
-    originalDiscoverEnvVars,
-    originalStagingEnv,
-    originalAutoPromote,
-  ]);
-
-  const [configForm, _fields] = useForm({
+  const [configForm] = useForm({
     id: "update-vercel-config",
     lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
@@ -752,6 +772,7 @@ function ConnectedVercelProjectForm({
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const clearTriggerVersionInputRef = useRef<HTMLInputElement>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
+  const [showEnableAtomicDialog, setShowEnableAtomicDialog] = useState(false);
 
   // Modal trigger uses the page-load state of atomicBuilds, not whatever changed in-session,
   // because clearing TRIGGER_VERSION only makes sense when atomic was actually on at load time.
@@ -764,6 +785,14 @@ function ConnectedVercelProjectForm({
     isAtomicNowDisabled &&
     (Boolean(currentTriggerVersion) || currentTriggerVersionFetchFailed);
 
+  const shouldConfirmEnableAtomicOnSave =
+    !wasAtomicEnabledAtLoad && configValues.atomicBuilds.includes("prod");
+
+  const submitConfigForm = () => {
+    const form = document.getElementById("update-vercel-config") as HTMLFormElement | null;
+    form?.requestSubmit(saveButtonRef.current ?? undefined);
+  };
+
   const submitWithClearChoice = (clear: boolean) => {
     if (clearTriggerVersionInputRef.current) {
       clearTriggerVersionInputRef.current.value = clear
@@ -771,10 +800,12 @@ function ConnectedVercelProjectForm({
         : CLEAR_TRIGGER_VERSION_NO;
     }
     setShowClearDialog(false);
-    // Conform owns the form's React ref via {...configForm.props}, so look it up by id
-    // (set via useForm({ id: "update-vercel-config" })) rather than fighting for the ref.
-    const form = document.getElementById("update-vercel-config") as HTMLFormElement | null;
-    form?.requestSubmit(saveButtonRef.current ?? undefined);
+    submitConfigForm();
+  };
+
+  const confirmEnableAtomic = () => {
+    setShowEnableAtomicDialog(false);
+    submitConfigForm();
   };
 
   const isConfigLoading =
@@ -786,25 +817,21 @@ function ConnectedVercelProjectForm({
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
-  const availableEnvSlugs = getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment);
   const availableEnvSlugsForBuildSettings = getAvailableEnvSlugsForBuildSettings(
     hasStagingEnvironment,
     hasPreviewEnvironment
   );
 
+  const hasVercelCustomEnvironments = customEnvironments.length > 0;
+
   const disabledEnvSlugsForBuildSettings: Partial<Record<EnvSlug, string>> | undefined =
     hasStagingEnvironment && !configValues.vercelStagingEnvironment
-      ? { stg: "Set a Vercel environment for Staging first." }
+      ? {
+          stg: hasVercelCustomEnvironments
+            ? "Set a Vercel environment for Staging first."
+            : "Add a custom environment to this project in Vercel to use Staging.",
+        }
       : undefined;
-
-  const _formatSelectedEnvs = (
-    selected: EnvSlug[],
-    availableSlugs: EnvSlug[] = availableEnvSlugs
-  ): string => {
-    if (selected.length === 0) return "None selected";
-    if (selected.length === availableSlugs.length) return "All environments";
-    return selected.map(envSlugLabel).join(", ");
-  };
 
   return (
     <>
@@ -914,60 +941,68 @@ function ConnectedVercelProjectForm({
           ref={clearTriggerVersionInputRef}
         />
 
-        {/* Staging environment mapping */}
-        {hasStagingEnvironment && customEnvironments && customEnvironments.length > 0 && (
+        {hasStagingEnvironment && (
           <SettingsRow
             title="Vercel environment for Staging"
             description="Required to enable the Staging options below."
             action={
-              <div data-unlock-target="staging-env">
-                <Select
-                  value={configValues.vercelStagingEnvironment?.environmentId || ""}
-                  setValue={(value) => {
-                    if (!Array.isArray(value)) {
-                      const env = customEnvironments?.find((e) => e.id === value);
-                      setConfigValues((prev) => {
-                        const next = {
-                          ...prev,
-                          vercelStagingEnvironment: env
-                            ? { environmentId: env.id, displayName: env.slug }
-                            : null,
-                        };
-                        // When clearing the staging mapping, strip "stg" from build settings
-                        if (!env) {
-                          next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
-                            (s) => s !== "stg"
-                          );
-                          next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
-                        }
-                        return next;
-                      });
+              !hasVercelCustomEnvironments ? (
+                <Paragraph variant="extra-small" className="w-64">
+                  This Vercel project has no custom environments. Add one in Vercel under Settings{" "}
+                  &rarr; Environments, then reload this page.
+                </Paragraph>
+              ) : (
+                <div data-unlock-target="staging-env">
+                  <Select
+                    value={configValues.vercelStagingEnvironment?.environmentId || ""}
+                    setValue={(value) => {
+                      if (!Array.isArray(value)) {
+                        const env = customEnvironments?.find((e) => e.id === value);
+                        setConfigValues((prev) => {
+                          const next = {
+                            ...prev,
+                            vercelStagingEnvironment: env
+                              ? { environmentId: env.id, displayName: env.slug }
+                              : null,
+                          };
+                          // When clearing the staging mapping, strip "stg" from build settings
+                          if (!env) {
+                            next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
+                              (s) => s !== "stg"
+                            );
+                            next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
+                          }
+                          return next;
+                        });
+                      }
+                    }}
+                    items={[{ id: "", slug: "None" }, ...customEnvironments]}
+                    variant="secondary/small"
+                    placeholder="Select environment"
+                    dropdownIcon
+                    text={
+                      configValues.vercelStagingEnvironment ? (
+                        <StagingEnvOption
+                          name={configValues.vercelStagingEnvironment.displayName}
+                        />
+                      ) : (
+                        "None"
+                      )
                     }
-                  }}
-                  items={[{ id: "", slug: "None" }, ...customEnvironments]}
-                  variant="secondary/small"
-                  placeholder="Select environment"
-                  dropdownIcon
-                  text={
-                    configValues.vercelStagingEnvironment ? (
-                      <StagingEnvOption name={configValues.vercelStagingEnvironment.displayName} />
-                    ) : (
-                      "None"
-                    )
-                  }
-                >
-                  {[
-                    <SelectItem key="" value="">
-                      <span className="text-text-bright">None</span>
-                    </SelectItem>,
-                    ...customEnvironments.map((env) => (
-                      <SelectItem key={env.id} value={env.id}>
-                        <StagingEnvOption name={env.slug} />
-                      </SelectItem>
-                    )),
-                  ]}
-                </Select>
-              </div>
+                  >
+                    {[
+                      <SelectItem key="" value="">
+                        <span className="text-text-bright">None</span>
+                      </SelectItem>,
+                      ...customEnvironments.map((env) => (
+                        <SelectItem key={env.id} value={env.id}>
+                          <StagingEnvOption name={env.slug} />
+                        </SelectItem>
+                      )),
+                    ]}
+                  </Select>
+                </div>
+              )
             }
           />
         )}
@@ -994,7 +1029,6 @@ function ConnectedVercelProjectForm({
           }
           currentTriggerVersion={currentTriggerVersion}
           currentTriggerVersionFetchFailed={currentTriggerVersionFetchFailed}
-          hideSectionToggles
           layout="settings"
         />
 
@@ -1014,7 +1048,7 @@ function ConnectedVercelProjectForm({
                     ? undefined
                     : "You don't have permission to manage the Vercel integration"
                 }
-                LeadingIcon={isDisablingAutoAssign ? SpinnerWhite : undefined}
+                LeadingIcon={isDisablingAutoAssign ? Spinner : undefined}
                 onClick={() =>
                   disableAutoAssignFetcher.submit(
                     { action: "disable-auto-assign" },
@@ -1043,11 +1077,17 @@ function ConnectedVercelProjectForm({
                 ? undefined
                 : "You don't have permission to manage the Vercel integration"
             }
-            LeadingIcon={isConfigLoading ? SpinnerWhite : undefined}
+            LeadingIcon={isConfigLoading ? Spinner : undefined}
             onClick={(event) => {
               if (shouldPromptClearOnSave) {
                 event.preventDefault();
                 setShowClearDialog(true);
+                return;
+              }
+
+              if (shouldConfirmEnableAtomicOnSave) {
+                event.preventDefault();
+                setShowEnableAtomicDialog(true);
               }
             }}
           >
@@ -1099,6 +1139,40 @@ function ConnectedVercelProjectForm({
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showEnableAtomicDialog} onOpenChange={setShowEnableAtomicDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>Turn on atomic deployments?</DialogHeader>
+          <div className="flex flex-col gap-3 pt-3">
+            <Paragraph className="mb-1">
+              Atomic deployments are deprecated. Task version skew protection is the supported way
+              to stop your app running against a mismatched task version, and it works automatically{" "}
+              {skewProtectionVersionRequirement()} — with nothing to turn on.{" "}
+              <TextLink href={SKEW_PROTECTION_DOCS_PATH} target="_blank">
+                Read about version skew protection
+              </TextLink>
+              .
+            </Paragraph>
+            <Paragraph className="mb-1">
+              If you turn atomic deployments on, every release spawns a second Vercel deployment,
+              and "Auto-assign Custom Production Domains" must stay off on your Vercel project so
+              Trigger.dev can stage the switch.
+            </Paragraph>
+            <FormButtons
+              confirmButton={
+                <Button variant="primary/medium" onClick={confirmEnableAtomic}>
+                  Turn on atomic deployments
+                </Button>
+              }
+              cancelButton={
+                <DialogClose asChild>
+                  <Button variant="tertiary/medium">Cancel</Button>
+                </DialogClose>
+              }
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1117,47 +1191,22 @@ function VercelSettingsPanel({
   isLoadingVercelData?: boolean;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
-  const _location = useLocation();
+  const { load } = fetcher;
   const data = fetcher.data;
-  const [hasError, _setHasError] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
-    if (!data?.authInvalid && !hasError && !data && !hasFetched) {
-      fetcher.load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
+    if (!data && !hasFetched) {
+      load(vercelResourcePath(organizationSlug, projectSlug, environmentSlug));
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHasFetched(true);
     }
-  }, [
-    organizationSlug,
-    projectSlug,
-    environmentSlug,
-    data?.authInvalid,
-    hasError,
-    data,
-    hasFetched,
-  ]);
-
-  if (hasError) {
-    return (
-      <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-4">
-        <div className="flex items-start gap-3">
-          <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-rose-500" />
-          <div>
-            <p className="font-medium text-rose-400">Failed to load Vercel settings</p>
-            <p className="mt-1 text-sm text-rose-300">
-              There was an error loading the Vercel integration settings. Please refresh the page to
-              try again.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  }, [organizationSlug, projectSlug, environmentSlug, data, hasFetched, load]);
 
   if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
-        <SpinnerWhite className="size-4" />
+        <Spinner color="blue" className="size-4" />
         <span className="text-sm">Loading Vercel settings...</span>
       </div>
     );
@@ -1168,40 +1217,30 @@ function VercelSettingsPanel({
   }
 
   const showGitHubWarning = data.connectedProject && !data.isGitHubConnected;
-  const showAuthInvalid = data.authInvalid || data.onboardingData?.authInvalid;
 
   if (data.connectedProject) {
     return (
       <>
-        {showAuthInvalid && (
-          <VercelAuthInvalidBanner
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            canManageVercel={data.canManageVercel}
-          />
-        )}
         {showGitHubWarning && <VercelGitHubWarning />}
-        {!showAuthInvalid && <VercelAppInstalledRow />}
-        {!showAuthInvalid && (
-          <ConnectedVercelProjectForm
-            connectedProject={data.connectedProject}
-            hasStagingEnvironment={data.hasStagingEnvironment}
-            hasPreviewEnvironment={data.hasPreviewEnvironment}
-            customEnvironments={data.customEnvironments}
-            autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
-            currentTriggerVersion={data.currentTriggerVersion ?? null}
-            currentTriggerVersionFetchFailed={data.currentTriggerVersionFetchFailed ?? false}
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            environmentSlug={environmentSlug}
-            canManageVercel={data.canManageVercel}
-          />
-        )}
+        <VercelAppInstalledRow />
+        <ConnectedVercelProjectForm
+          connectedProject={data.connectedProject}
+          hasStagingEnvironment={data.hasStagingEnvironment}
+          hasPreviewEnvironment={data.hasPreviewEnvironment}
+          customEnvironments={data.customEnvironments}
+          autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
+          currentTriggerVersion={data.currentTriggerVersion ?? null}
+          currentTriggerVersionFetchFailed={data.currentTriggerVersionFetchFailed ?? false}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          canManageVercel={data.canManageVercel}
+        />
       </>
     );
   }
 
-  if (showAuthInvalid) {
+  if (data.authInvalid) {
     return (
       <VercelAuthInvalidBanner
         organizationSlug={organizationSlug}
@@ -1215,7 +1254,6 @@ function VercelSettingsPanel({
     <VercelSettingsRows
       organizationSlug={organizationSlug}
       projectSlug={projectSlug}
-      environmentSlug={environmentSlug}
       hasOrgIntegration={data.hasOrgIntegration}
       isGitHubConnected={data.isGitHubConnected}
       onOpenModal={onOpenVercelModal}

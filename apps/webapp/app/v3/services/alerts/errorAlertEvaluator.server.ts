@@ -4,6 +4,7 @@ import {
   type PrismaClientOrTransaction,
   type ProjectAlertChannel,
   type RuntimeEnvironmentType,
+  boundedIn,
 } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { ErrorAlertConfig } from "~/models/projectAlert.server";
@@ -293,7 +294,7 @@ export class ErrorAlertEvaluator {
     const envs = await this._replica.runtimeEnvironment.findMany({
       where: {
         projectId,
-        type: { in: types },
+        type: { in: boundedIn(types) },
       },
       select: {
         id: true,

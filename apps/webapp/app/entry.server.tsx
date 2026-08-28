@@ -10,6 +10,7 @@ import { PassThrough } from "stream";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
+import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
 import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
@@ -17,8 +18,9 @@ import type { OperatingSystemPlatform } from "./components/primitives/OperatingS
 import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
 import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
-import { eventLoopMonitor } from "./eventLoopMonitor.server";
+import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
+import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 import {
@@ -40,12 +42,48 @@ import { registerRunChangeNotifierHandlers } from "./services/realtime/runChange
 // TRI-9864 for the incident write-up.
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
 (globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
+// Touch the webhook deliveries replication singleton at entry so it boots
+// deterministically alongside the sessions replicator. Same `sideEffects: false`
+// tree-shaking constraint applies — assign to globalThis, do NOT use `void`.
+import { webhookDeliveriesReplicationInstance } from "./services/webhookDeliveriesReplicationInstance.server";
+(globalThis as Record<string, unknown>).__webhookDeliveriesReplicationInstance =
+  webhookDeliveriesReplicationInstance;
+// Touch the webhook engine singleton at entry so its redis-worker boots
+// deterministically on webapp startup (the constructor calls worker.start()).
+// Same `sideEffects: false` tree-shaking constraint applies: assign to
+// globalThis, do NOT use `void`.
+import { webhookEngine } from "./v3/webhookEngine.server";
+(globalThis as Record<string, unknown>).__webhookEngine = webhookEngine;
 import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
 (globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
 import { workerRegionRegistry } from "./v3/workerRegions.server";
 (globalThis as Record<string, unknown>).__workerRegionRegistry = workerRegionRegistry;
 
 const ABORT_DELAY = 30000;
+
+/**
+ * Where a document may load images from. The markdown renderer that strips images
+ * ships in the stacked UI PR, so on this branch the policy is the only thing stopping
+ * a model- or customer-authored image from reaching a remote host.
+ *
+ * The hosts we store avatar URLs for, plus whatever `CSP_IMG_SRC_ALLOWLIST` adds
+ * (e.g. a self-hosted SSO avatar host).
+ */
+const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
+  singleton("CspImageOrigins", () => {
+    const { origins, rejected } = parseCspImageOrigins(env.CSP_IMG_SRC_ALLOWLIST, {
+      allowHttp: env.NODE_ENV === "development",
+    });
+
+    for (const entry of rejected) {
+      logger.warn(
+        `⚠️  CSP_IMG_SRC_ALLOWLIST entry "${entry.value}" was ignored: it ${entry.reason}.`
+      );
+    }
+
+    return origins;
+  })
+);
 
 export default function handleRequest(
   request: Request,
@@ -65,6 +103,11 @@ export default function handleRequest(
     responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
     responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
   }
+
+  responseHeaders.set(
+    "Content-Security-Policy",
+    withImgSrc(responseHeaders.get("Content-Security-Policy"), IMG_SRC_DIRECTIVE)
+  );
 
   const acceptLanguage = request.headers.get("accept-language");
   const locales = parseAcceptLanguage(acceptLanguage, {
@@ -235,6 +278,7 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
 initBillingLimitWorker();
+initLogsSearchProjectorWorker();
 initQueueMetricsEmitter();
 initQueueMetricsConsumer();
 
@@ -302,15 +346,22 @@ singleton("SentryTenantContextProcessor", () => {
 });
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { dashboardAgentBodyCap } from "./services/dashboardAgentBodyCap.server";
+export { deploymentRateLimiter } from "./services/deploymentRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { otlpRateLimiter } from "./services/otlpRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
+export { webhookIngressIpRateLimiter } from "./services/webhookIngressIpRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
+}
+
+if (env.EVENT_LOOP_UTILIZATION_MONITOR_ENABLED === "1") {
+  eventLoopUtilizationMonitor.enable();
 }
 
 if (remoteBuildsEnabled()) {

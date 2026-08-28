@@ -1,4 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense, useMemo, useRef, useState } from "react";
@@ -11,7 +10,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { TabButton } from "~/components/primitives/Tabs";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
@@ -20,6 +19,7 @@ import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
+import { TitleBar } from "~/components/primitives/TitleBar";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -30,6 +30,11 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
+import {
+  RunsListErrorState,
+  RunsListErrorStateNoop,
+} from "~/components/runs/v3/RunsListErrorState";
+import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import {
   QUEUE_METRIC_COLORS,
@@ -46,6 +51,8 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -64,11 +71,18 @@ import { parseFiniteInt } from "~/utils/searchParams";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { engine } from "~/v3/runEngine.server";
+import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
-  return [{ title: slug ? `${slug} | Tasks | Trigger.dev` : "Task | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => taskAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.task?.slug ?? params.taskParam ?? "Task",
+  "Tasks",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   taskParam: z.string(),
@@ -94,10 +108,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
   const versions = url.searchParams.getAll("versions").filter((v) => v.length > 0);
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, runsListClickhouse] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
+  ]);
 
   const presenter = new TaskDetailPresenter($replica, clickhouse);
   const task = await presenter.findTask({
@@ -112,7 +126,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Live queue counts (two O(1) Redis reads) shown in the sidebar; history charts fetch
   // client-side through the metric resource. Flag off = no extra reads at all.
   let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
-  if (task.queue && (await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+  if (task.queue && (await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
     const queueName = task.queue.name;
     const [lengths, concurrency] = await Promise.all([
       engine.lengthOfQueues(environment, [queueName]),
@@ -144,7 +158,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] }) satisfies TaskActivity);
 
-  const runList = new NextRunListPresenter($replica, clickhouse)
+  const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -156,8 +170,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       cursor,
       direction,
       includeHasAnyRuns: true,
+      columns: getRunColumnsForSelect(request),
     })
-    .catch(() => null);
+    .catch((error) => {
+      if (error instanceof RunsListQueryError) {
+        throw error;
+      }
+      return null;
+    });
 
   return typeddefer({
     task,
@@ -234,21 +254,8 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="task-main" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              {/* Top bar — title on the left; TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
-              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <Header2>Runs</Header2>
-                <div className="ml-auto flex items-center gap-1.5">
-                  {newRunsCount > 0 ? (
-                    <NewRunsButton count={newRunsCount} onClick={() => showNewRunsRef.current()} />
-                  ) : null}
-                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
-                </div>
+              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright px-2">
+                <TimeFilter defaultPeriod="7d" labelName="Runs" />
               </div>
 
               <ResizablePanelGroup orientation="vertical" className="max-h-full">
@@ -263,23 +270,40 @@ export default function Page() {
 
                 {/* Runs table */}
                 <ResizablePanel id="task-content" min="160px">
-                  <div className="h-full overflow-hidden">
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                        {(list) =>
-                          list ? (
-                            <TaskRunsList
-                              list={list}
-                              taskSlug={task.slug}
-                              onNewRunsCountChange={setNewRunsCount}
-                              showNewRunsRef={showNewRunsRef}
-                            />
-                          ) : (
-                            <TableLoading />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
+                  <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the title. */}
+                    <TitleBar title="Runs" className="-mt-px">
+                      {newRunsCount > 0 ? (
+                        <NewRunsButton
+                          count={newRunsCount}
+                          onClick={() => showNewRunsRef.current()}
+                        />
+                      ) : null}
+                      <RunsDisplayOptions sampleFilters={{ tasks: task.slug, rootOnly: "false" }} />
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </TitleBar>
+                    <div className="min-h-0 overflow-hidden">
+                      <Suspense fallback={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
+                          {(list) =>
+                            list ? (
+                              <TaskRunsList
+                                list={list}
+                                taskSlug={task.slug}
+                                onNewRunsCountChange={setNewRunsCount}
+                                showNewRunsRef={showNewRunsRef}
+                              />
+                            ) : (
+                              <TableLoading />
+                            )
+                          }
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
@@ -477,11 +501,14 @@ function TaskActivityCard({
   const [view, setView] = useState<"runs" | "queue">("runs");
   return (
     <ChartCard
+      headerVariant="tabs"
       title={
-        <TabContainer>
+        <>
           <TabButton
             isActive={view === "runs"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("runs")}
           >
             Runs by status
@@ -489,11 +516,13 @@ function TaskActivityCard({
           <TabButton
             isActive={view === "queue"}
             layoutId="task-activity-view"
+            variant="title"
+            size="small"
             onClick={() => setView("queue")}
           >
             Queue backlog
           </TabButton>
-        </TabContainer>
+        </>
       }
     >
       {view === "queue" ? (

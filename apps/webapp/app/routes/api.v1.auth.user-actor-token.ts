@@ -9,7 +9,7 @@ import { rbac } from "~/services/rbac.server";
 // with the PAT. The default is short, but the ceiling allows long-lived tokens
 // for callers that need them (e.g. a long-running integration).
 const DEFAULT_UAT_TTL_SECONDS = 60 * 60; // 1 hour
-const MAX_UAT_TTL_SECONDS = 365 * 24 * 60 * 60; // 365 days
+const MAX_UAT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 // Mint a short-lived delegated user-actor token (`tr_uat_`) from a personal
 // access token. A UAT is a strict downgrade of the PAT: same user identity,
@@ -68,6 +68,8 @@ export async function action({ request }: ActionFunctionArgs) {
     const token = await signUserActorToken(env.SESSION_SECRET, {
       userId: patAuth.userId,
       client: body.client ?? "personal-access-token",
+      // Bind the token to its source PAT so revoking the PAT invalidates it.
+      pat: patAuth.tokenId,
       cap: body.cap,
       // Absolute exp (seconds since epoch). jose treats a number as absolute.
       expirationTime: Math.floor(Date.now() / 1000) + ttlSeconds,

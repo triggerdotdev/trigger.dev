@@ -1,16 +1,15 @@
 // Real heterogeneous legacy + new Postgres proof for the alert-hydration TaskRun read.
-// The DB is never mocked. A test-only RunStore wraps two real PostgresRunStore
-// instances and routes findRun by id residency (run-ops id → NEW, cuid → LEGACY),
-// mirroring the sibling routing suite. The ProjectAlertChannel read must stay control-plane.
+// The DB is never mocked. The REAL RoutingRunStore wraps two real PostgresRunStore instances and
+// routes findRun by id residency, mirroring the sibling routing suite. The ProjectAlertChannel
+// read must stay control-plane.
 //
 // The alert env-type read (parentEnvironment?.type ?? type) is resolved via the app
 // ControlPlaneResolver over a control-plane client DISTINCT from the run-ops store, proving the
 // cross-provider inversion. The prior version co-located env + run and masked it.
 import { heteroPostgresTest, postgresTest } from "@internal/testcontainers";
-import { PostgresRunStore } from "@internal/run-store";
-import type { ReadClient, RunStore } from "@internal/run-store";
-import type { Prisma, PrismaClient } from "@trigger.dev/database";
-import { generateRunOpsId, ownerEngine } from "@trigger.dev/core/v3/isomorphic";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
+import type { PrismaClient } from "@trigger.dev/database";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
 import { ControlPlaneCache } from "~/v3/runOpsMigration/controlPlaneCache.server";
 import { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -28,145 +27,20 @@ function buildControlPlaneResolver(controlPlane: PrismaClient) {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// Test-only routing store: resolve findRun by id length (27 → NEW, else LEGACY),
-// dropping any forwarded client so each inner store uses its OWN prisma. NOT a mock —
-// real DB I/O against two PostgresRunStore instances.
-class RoutingRunStore implements RunStore {
-  readonly #newStore: PostgresRunStore;
-  readonly #legacyStore: PostgresRunStore;
-
-  constructor(newStore: PostgresRunStore, legacyStore: PostgresRunStore) {
-    this.#newStore = newStore;
-    this.#legacyStore = legacyStore;
-  }
-
-  #resolveById(runId: string): PostgresRunStore {
-    return ownerEngine(runId) === "NEW" ? this.#newStore : this.#legacyStore;
-  }
-
-  #idFromWhere(where: Prisma.TaskRunWhereInput): string | undefined {
-    const id = (where as { id?: unknown }).id;
-    return typeof id === "string" ? id : undefined;
-  }
-
-  async findRun(
-    where: Prisma.TaskRunWhereInput,
-    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
-    _client?: ReadClient
-  ): Promise<unknown> {
-    const id = this.#idFromWhere(where);
-    if (id !== undefined) {
-      return (this.#resolveById(id).findRun as any)(where, argsOrClient);
-    }
-    const fromNew = await (this.#newStore.findRun as any)(where, argsOrClient);
-    return fromNew ?? (this.#legacyStore.findRun as any)(where, argsOrClient);
-  }
-
-  // The remaining RunStore methods are not exercised here; delegate to NEW to satisfy
-  // the interface.
-  findRunOrThrow(...a: any[]): any {
-    return (this.#newStore.findRunOrThrow as any)(...a);
-  }
-  findRuns(...a: any[]): any {
-    return (this.#newStore.findRuns as any)(...a);
-  }
-  createRun(p: any, tx?: any): any {
-    return this.#resolveById(p.data.id).createRun(p, tx);
-  }
-  createCancelledRun(p: any, tx?: any): any {
-    return this.#resolveById(p.data.id).createCancelledRun(p, tx);
-  }
-  createFailedRun(p: any, tx?: any): any {
-    return this.#resolveById(p.data.id).createFailedRun(p, tx);
-  }
-  updateMetadata(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).updateMetadata as any)(...[runId, ...a]);
-  }
-  startAttempt(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).startAttempt as any)(runId, ...a);
-  }
-  completeAttemptSuccess(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).completeAttemptSuccess as any)(runId, ...a);
-  }
-  recordRetryOutcome(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).recordRetryOutcome as any)(runId, ...a);
-  }
-  requeueRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).requeueRun as any)(runId, ...a);
-  }
-  recordBulkActionMembership(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).recordBulkActionMembership as any)(runId, ...a);
-  }
-  cancelRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).cancelRun as any)(runId, ...a);
-  }
-  failRunPermanently(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).failRunPermanently as any)(runId, ...a);
-  }
-  expireRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).expireRun as any)(runId, ...a);
-  }
-  expireRunsBatch(runIds: string[], ...a: any[]): any {
-    return (this.#resolveById(runIds[0] ?? "").expireRunsBatch as any)(runIds, ...a);
-  }
-  lockRunToWorker(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).lockRunToWorker as any)(runId, ...a);
-  }
-  parkPendingVersion(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).parkPendingVersion as any)(runId, ...a);
-  }
-  promotePendingVersionRuns(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).promotePendingVersionRuns as any)(runId, ...a);
-  }
-  suspendForCheckpoint(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).suspendForCheckpoint as any)(runId, ...a);
-  }
-  resumeFromCheckpoint(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).resumeFromCheckpoint as any)(runId, ...a);
-  }
-  rescheduleRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).rescheduleRun as any)(runId, ...a);
-  }
-  enqueueDelayedRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).enqueueDelayedRun as any)(runId, ...a);
-  }
-  rewriteDebouncedRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).rewriteDebouncedRun as any)(runId, ...a);
-  }
-  clearIdempotencyKey(params: any, tx?: any): any {
-    const runId = params?.byId?.runId ?? "";
-    return this.#resolveById(runId).clearIdempotencyKey(params, tx);
-  }
-  pushTags(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).pushTags as any)(runId, ...a);
-  }
-  removeTags(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).removeTags as any)(runId, ...a);
-  }
-  pushRealtimeStream(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).pushRealtimeStream as any)(runId, ...a);
-  }
-  finalizeRun(runId: string, ...a: any[]): any {
-    return (this.#resolveById(runId).finalizeRun as any)(runId, ...a);
-  }
-  findManyBatchTaskRunItems(...a: any[]): any {
-    return (this.#newStore.findManyBatchTaskRunItems as any)(...a);
-  }
-  findBatchTaskRunItem(...a: any[]): any {
-    return (this.#newStore.findBatchTaskRunItem as any)(...a);
-  }
-  upsertWaitpointTag(...a: any[]): any {
-    return (this.#newStore.upsertWaitpointTag as any)(...a);
-  }
-  findManyWaitpointTags(...a: any[]): any {
-    return (this.#newStore.findManyWaitpointTags as any)(...a);
-  }
-}
+// The alert-hydration TaskRun read runs through the REAL RoutingRunStore over two real
+// PostgresRunStore instances (NEW = PG17, LEGACY = PG14). The DB is never mocked. The router
+// resolves residency from the id shape — a v1 run-ops id (26 chars, version "1" at index 25) to
+// NEW, a 25-char cuid to LEGACY — and never forwards a caller-passed control-plane client into a
+// routed read, so each store uses its OWN prisma.
 
 function buildRoutingStore(prisma17: PrismaClient, prisma14: PrismaClient) {
-  const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
+  const newStore = new PostgresRunStore({
+    prisma: prisma17,
+    readOnlyPrisma: prisma17,
+    schemaVariant: "dedicated",
+  });
   const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
-  return new RoutingRunStore(newStore, legacyStore);
+  return new RoutingRunStore({ new: newStore, legacy: legacyStore });
 }
 
 async function seedProject(prisma: PrismaClient, suffix: string) {

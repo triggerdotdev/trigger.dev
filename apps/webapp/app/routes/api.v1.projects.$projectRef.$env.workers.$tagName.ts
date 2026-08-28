@@ -1,16 +1,14 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
-import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env as $env } from "~/env.server";
 import {
   authenticatedEnvironmentForAuthentication,
-  authenticateRequest,
   branchNameFromRequest,
-  type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 import { v3RunsPath } from "~/utils/pathBuilder";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
@@ -24,32 +22,11 @@ type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
-    // A delegated user-actor token authenticates as its user, like a PAT.
-    // Resolve it here (the shared `authenticateRequest` deliberately doesn't
-    // accept UATs) so the dashboard agent can list a project's deployed tasks
-    // on the user's behalf. Identity-only, same as the PAT path below — there's
-    // no ability check on this route, so the cap isn't enforced here (matches
-    // PAT behavior).
-    const bearer = request.headers
-      .get("Authorization")
-      ?.replace(/^Bearer /, "")
-      .trim();
-    let authenticationResult: AuthenticationResult | undefined;
-    if (bearer && isUserActorToken(bearer)) {
-      const claims = await verifyUserActorToken($env.SESSION_SECRET, bearer);
-      if (!claims) {
-        return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-      }
-      authenticationResult = { type: "personalAccessToken", result: { userId: claims.userId } };
-    } else {
-      authenticationResult = await authenticateRequest(request, {
-        personalAccessToken: true,
-        organizationAccessToken: true,
-        apiKey: false,
-      });
-    }
+    // Accepts a user-actor token as well as a PAT. There's no ability check here, so the
+    // token's cap isn't enforced (matches PAT behavior).
+    const authentication = await authenticateUatOrApiRequest(request);
 
-    if (!authenticationResult) {
+    if (!authentication) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
     }
 
@@ -63,7 +40,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const triggerBranch = branchNameFromRequest(request);
 
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
-      authenticationResult,
+      authentication.authenticationResult,
       projectRef,
       env,
       triggerBranch
@@ -93,6 +70,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         triggerSource: true,
         createdAt: true,
         payloadSchema: true,
+        queueConfig: true,
       },
       orderBy: {
         slug: "asc",
@@ -123,6 +101,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           triggerSource: task.triggerSource,
           createdAt: task.createdAt,
           payloadSchema: task.payloadSchema,
+          queueConfig: task.queueConfig,
         })),
       },
       urls,

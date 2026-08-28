@@ -23,6 +23,12 @@ export type ApiKeyPreset = {
   id: string;
   label: string;
   description: string;
+  /**
+   * The plugin-generated, all-task scope template for this preset. The host
+   * uses it only to preview the policy before creation; `prepareApiKeyPolicy`
+   * remains the authorization source of truth.
+   */
+  scopes: string[];
   usesTaskSelection: boolean;
   available: boolean;
 };
@@ -87,6 +93,8 @@ export type RbacSubject =
       type: "userActor";
       userId: string;
       client?: string;
+      // The environment the token was signed for, when it carries the claim.
+      environmentId?: string;
       organizationId: string;
       projectId?: string;
     };
@@ -190,6 +198,7 @@ export type RbacScopeResourceType =
   | "deployments"
   | "envvars"
   | "apiKeys"
+  | "branches"
   | "sessions"
   | "waitpoints"
   | "tags"
@@ -283,9 +292,20 @@ export type UserActorClaims = {
   userId: string;
   client?: string;
   sessionId?: string;
+  // The id of the source PAT this token was minted from, when it was minted
+  // from one. Hosts recheck it is still live so revoking the PAT invalidates
+  // the token. Absent for flows with no source PAT (e.g. the dashboard agent).
+  pat?: string;
+  // The `RuntimeEnvironment.id` the token was minted for, so a route need not trust the request
+  // body. Optional because other UAT flows are environment-agnostic.
+  environmentId?: string;
   // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
   // user's role. Absent today; the auth path is already cap-ready.
   cap?: string[];
+  // The token's own expiry (`exp`, epoch seconds) when signed with one. Used to
+  // clamp the lifetime of anything minted from it — a delegated token can't be
+  // exchanged for a longer-lived one.
+  expiresAt?: number;
 };
 
 export function isUserActorToken(token: string): boolean {
@@ -298,6 +318,8 @@ export async function signUserActorToken(
     userId: string;
     client: string;
     sessionId?: string;
+    environmentId?: string;
+    pat?: string;
     cap?: string[];
     expirationTime?: string | number | Date;
   }
@@ -307,7 +329,12 @@ export async function signUserActorToken(
     payload: {
       kind: USER_ACTOR_KIND,
       sub: opts.userId,
-      act: { client: opts.client, ...(opts.sessionId ? { sessionId: opts.sessionId } : {}) },
+      act: {
+        client: opts.client,
+        ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+        ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+        ...(opts.pat ? { pat: opts.pat } : {}),
+      },
       ...(opts.cap ? { cap: opts.cap } : {}),
     },
     expirationTime: opts.expirationTime ?? "1h",
@@ -328,12 +355,17 @@ export async function verifyUserActorToken(
   const payload = result.payload;
   if (payload.kind !== USER_ACTOR_KIND || typeof payload.sub !== "string") return;
 
-  const act = payload.act as { client?: string; sessionId?: string } | undefined;
+  const act = payload.act as
+    | { client?: string; sessionId?: string; environmentId?: string; pat?: string }
+    | undefined;
   return {
     userId: payload.sub,
     client: act?.client,
     sessionId: act?.sessionId,
+    environmentId: act?.environmentId,
+    pat: act?.pat,
     cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
+    expiresAt: typeof payload.exp === "number" ? payload.exp : undefined,
   };
 }
 
@@ -349,6 +381,13 @@ export type BearerAuthResult =
       // surface it for attribution (e.g. who resolved an error).
       jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean; act?: { sub: string } };
     };
+
+export type BearerAuthOptions = {
+  allowJWT?: boolean;
+  // Branch creation authenticates against the branchable Preview parent before
+  // the requested child environment exists.
+  allowPreviewParent?: boolean;
+};
 
 export type SessionAuthResult =
   | { ok: false; reason: "unauthenticated" | "unauthorized" }
@@ -385,6 +424,9 @@ export type UserActorAuthResult =
   | {
       ok: true;
       userId: string;
+      // Optional only for plugins built against an older contract: a host enforcing the
+      // environment claim must fail closed when it is absent.
+      claims?: UserActorClaims;
       subject: RbacSubject;
       ability: RbacAbility;
     };
@@ -399,7 +441,7 @@ export interface RoleBaseAccessController {
 
   // API routes (Bearer token): one DB query → identity + pre-built ability
   // options.allowJWT: when true, accepts PUBLIC_JWT tokens in addition to environment API keys
-  authenticateBearer(request: Request, options?: { allowJWT?: boolean }): Promise<BearerAuthResult>;
+  authenticateBearer(request: Request, options?: BearerAuthOptions): Promise<BearerAuthResult>;
 
   // Dashboard loaders/actions (session cookie): one DB query → user + pre-built ability.
   // The caller resolves `userId` from the session cookie and passes it in.
@@ -434,8 +476,8 @@ export interface RoleBaseAccessController {
   // user: floor = the user's role in the target org (rejects non-members,
   // like authenticatePat), cap = the token's optional scope cap.
   //
-  // No plugin installed → fallback verifies the token and returns a
-  // permissive ability, mirroring the fallback's PAT behaviour.
+  // No plugin installed → the fallback builds the ability from the token's own cap
+  // (read-only when it declares none), never the blanket ability it gives a PAT.
   authenticateUserActor(
     request: Request,
     context: { organizationId?: string; projectId?: string }
@@ -447,7 +489,7 @@ export interface RoleBaseAccessController {
   authenticateAuthorizeBearer(
     request: Request,
     check: { action: string; resource: RbacResource | RbacResource[] },
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerAuthResult>;
 
   authenticateAuthorizeSession(
@@ -579,7 +621,7 @@ export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: 
 // `code` is an optional machine-readable reason so callers can branch on
 // expected outcomes (e.g. `last_owner`, the guard that keeps an org from
 // losing its final Owner) instead of matching the free-text `error`.
-export type RoleAssignmentErrorCode = "last_owner";
+type RoleAssignmentErrorCode = "last_owner";
 export type RoleAssignmentResult =
   | { ok: true }
   | { ok: false; error: string; code?: RoleAssignmentErrorCode };

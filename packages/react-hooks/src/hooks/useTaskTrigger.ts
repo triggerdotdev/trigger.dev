@@ -87,6 +87,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
         lockToVersion: options?.version,
+        debounce: options?.debounce,
       },
     });
 

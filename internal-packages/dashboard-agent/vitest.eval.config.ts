@@ -8,7 +8,7 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./eval-setup.ts"],
     // Real-model turns run sequentially (the harness is single-agent-per-process).
-    testTimeout: 240000,
+    testTimeout: 840000,
     hookTimeout: 60000,
   },
   esbuild: {

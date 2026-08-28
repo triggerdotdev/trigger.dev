@@ -44,27 +44,37 @@ function createEngineOptions(redisOptions: any, prisma: any, store?: PostgresRun
 }
 
 /**
- * A real PostgresRunStore subclass that counts the snapshot create method that enqueueRun's
- * snapshot write routes through (via executionSnapshotSystem.createExecutionSnapshot). super.*
- * runs the genuine store implementation, so the routing is observed over real containers without
- * ever mocking prisma or the store.
+ * A real PostgresRunStore subclass that counts the store methods a run's QUEUED snapshot can be
+ * written through: nested in `createRun` on the trigger path, or standalone via
+ * `createExecutionSnapshot` on every re-enqueue. super.* runs the genuine store implementation, so
+ * the routing is observed over real containers without ever mocking prisma or the store.
  */
 class CountingPostgresRunStore extends PostgresRunStore {
-  public snapshotCreates = 0;
+  /** Snapshots written nested in a run create: the trigger path's QUEUED write. */
+  public nestedSnapshotCreates = 0;
+  /** Snapshots written standalone through `createExecutionSnapshot`: every re-enqueue. */
+  public standaloneSnapshotCreates = 0;
 
   override async createExecutionSnapshot(
     input: any,
     tx?: any
   ): ReturnType<PostgresRunStore["createExecutionSnapshot"]> {
-    this.snapshotCreates++;
+    this.standaloneSnapshotCreates++;
     return super.createExecutionSnapshot(input, tx);
+  }
+
+  override async createRun(
+    params: Parameters<PostgresRunStore["createRun"]>[0],
+    tx?: any
+  ): ReturnType<PostgresRunStore["createRun"]> {
+    this.nestedSnapshotCreates++;
+    return super.createRun(params, tx);
   }
 }
 
 describe("RunEngine enqueueRun store routing", () => {
-  // The QUEUED snapshot written while enqueuing a run routes through the injected store.
   containerTest(
-    "enqueueRun snapshot routes through the store",
+    "the QUEUED snapshot routes through the store as a single nested write",
     async ({ prisma, redisOptions }) => {
       const countingStore = new CountingPostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const engine = new RunEngine(createEngineOptions(redisOptions, prisma, countingStore));
@@ -74,7 +84,8 @@ describe("RunEngine enqueueRun store routing", () => {
         const taskIdentifier = "test-task";
         await setupBackgroundWorker(engine, environment, taskIdentifier);
 
-        const before = countingStore.snapshotCreates;
+        const nestedBefore = countingStore.nestedSnapshotCreates;
+        const standaloneBefore = countingStore.standaloneSnapshotCreates;
 
         const run = await engine.trigger(
           {
@@ -96,7 +107,8 @@ describe("RunEngine enqueueRun store routing", () => {
           prisma
         );
 
-        expect(countingStore.snapshotCreates).toBeGreaterThan(before);
+        expect(countingStore.nestedSnapshotCreates).toBe(nestedBefore + 1);
+        expect(countingStore.standaloneSnapshotCreates).toBe(standaloneBefore);
 
         const latest = await getLatestExecutionSnapshot(prisma, run.id);
         assertNonNullable(latest);

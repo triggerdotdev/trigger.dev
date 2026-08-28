@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { PageContainer } from "~/components/layout/AppLayout";
 import { MetricsLayout } from "~/components/layout/MetricsLayout";
@@ -348,6 +349,9 @@ export default function Story() {
 
   return (
     <PageContainer>
+      <div className="px-4 pt-4">
+        <ComponentNames names={["AppLayout.tsx", "PageHeader.tsx"]} />
+      </div>
       <NavBar>
         <PageTitle title="MetricsLayout" />
         <PageAccessories>

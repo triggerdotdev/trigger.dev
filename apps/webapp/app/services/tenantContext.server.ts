@@ -1,12 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { AuthenticatedEnvironment } from "./apiAuth.server";
 
-// All fields are optional. The middleware establishes an empty scope per
-// request; entry points fill what they know:
-//   - URL-matching paths get the slug trio from the Express middleware (zero IO).
-//   - The `_app` layout adds `userId` for any authenticated request.
-//   - The env layout adds tenant IDs / env type after its own existing DB query.
-//   - API routes get the full set up-front from `authenticationResult.environment`.
+// Every field is optional: each entry point fills only what it already knows.
 export type TenantContext = {
   userId?: string;
   orgSlug?: string;
@@ -35,9 +30,13 @@ export const tenantContext = {
   },
 };
 
-export function tenantContextFromAuthEnvironment(env: AuthenticatedEnvironment): TenantContext {
+// `actor` wins over `orgMember`, which only exists on dev environments.
+export function tenantContextFromAuthEnvironment(
+  env: AuthenticatedEnvironment,
+  actor?: { sub: string }
+): TenantContext {
   return {
-    userId: env.orgMember?.userId,
+    userId: actor?.sub ?? env.orgMember?.userId,
     orgSlug: env.organization.slug,
     projectSlug: env.project.slug,
     envSlug: env.slug,

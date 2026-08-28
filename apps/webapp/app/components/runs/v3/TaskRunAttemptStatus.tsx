@@ -9,12 +9,7 @@ import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.
 import assertNever from "assert-never";
 import { HourglassIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
-import { TaskRunAttemptStatus } from "~/database-types";
 import { cn } from "~/utils/cn";
-
-export const allTaskRunAttemptStatuses = Object.values(
-  TaskRunAttemptStatus
-) as TaskRunAttemptStatusType[];
 
 export type ExtendedTaskAttemptStatus = TaskRunAttemptStatusType | "ENQUEUED";
 
@@ -33,17 +28,16 @@ export function TaskRunAttemptStatusCombo({
   );
 }
 
-export function TaskRunAttemptStatusLabel({
-  status,
-}: {
-  status: ExtendedTaskAttemptStatus | null;
-}) {
+function TaskRunAttemptStatusLabel({ status }: { status: ExtendedTaskAttemptStatus | null }) {
   return (
-    <span className={runAttemptStatusClassNameColor(status)}>{runAttemptStatusTitle(status)}</span>
+    // system-mono-label: System themes uncolor the label (see tailwind.css)
+    <span className={cn("system-mono-label", runAttemptStatusClassNameColor(status))}>
+      {runAttemptStatusTitle(status)}
+    </span>
   );
 }
 
-export function TaskRunAttemptStatusIcon({
+function TaskRunAttemptStatusIcon({
   status,
   className,
 }: {
@@ -77,7 +71,7 @@ export function TaskRunAttemptStatusIcon({
   }
 }
 
-export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
+function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
     return "text-text-faint";
   }
@@ -103,7 +97,7 @@ export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus
   }
 }
 
-export function runAttemptStatusTitle(status: ExtendedTaskAttemptStatus | null): string {
+function runAttemptStatusTitle(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
     return "Enqueued";
   }

@@ -1,39 +1,84 @@
-import { SparklesIcon } from "@heroicons/react/20/solid";
-import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  BookOpenIcon,
+  ChartBarIcon,
+  EyeIcon,
+  MagnifyingGlassIcon,
+  QuestionMarkCircleIcon,
+  SparklesIcon,
+} from "@heroicons/react/20/solid";
+import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import { useMemo, useState } from "react";
+import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
+import type { RenderIcon } from "~/components/primitives/Icon";
+import {
+  readDismissedPromptIds,
+  resolveSuggestedPromptsBySlot,
+  type ResolvedPromptSlot,
+} from "./suggested-prompts";
 
-// Static for now; later these can be page-aware (per currentPage) or server-driven.
-const SUGGESTED_PROMPTS = [
-  "What can you help me with?",
-  "How do retries work in Trigger.dev?",
-  "Where do I set environment variables?",
-  "Explain what this page shows.",
-];
+// The only slot-to-button-style mapping: a new slot is styled here and nowhere else.
+const PROMPT_SLOT_BUTTON: Record<ResolvedPromptSlot, { variant: ButtonVariant; icon: RenderIcon }> =
+  {
+    promoted: { variant: "primary/small", icon: SparklesIcon },
+    investigate: { variant: "primary/small", icon: MagnifyingGlassIcon },
+    watch: { variant: "secondary/small", icon: EyeIcon },
+    status: { variant: "secondary/small", icon: ChartBarIcon },
+    explain: { variant: "tertiary/small", icon: QuestionMarkCircleIcon },
+    docs: { variant: "docs/small", icon: BookOpenIcon },
+  };
 
+// This surface never writes dismissals; only the row surfaces do.
 export function DashboardAgentSuggestedPrompts({
   onSelect,
+  pageContext,
+  promoted,
+  dismissedIds,
+  disabledReason,
 }: {
+  /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
+  /** Omitted means defaults only. */
+  pageContext?: AgentPageContext;
+  promoted?: SuggestedPrompt;
+  /** Omitted means the component reads its own localStorage. */
+  dismissedIds?: string[];
+  /** Set to disable every chip and say why, e.g. over the message cap. */
+  disabledReason?: string;
 }) {
+  // Read once on mount: re-reading per render churns the resolved set.
+  const [storedDismissedIds] = useState<string[]>(() =>
+    dismissedIds !== undefined ? [] : readDismissedPromptIds()
+  );
+
+  const effectiveDismissedIds = dismissedIds ?? storedDismissedIds;
+
+  const prompts = useMemo(
+    () =>
+      resolveSuggestedPromptsBySlot(
+        pageContext ?? { page: { kind: "other", path: "" }, signals: [] },
+        { promoted, dismissedIds: effectiveDismissedIds }
+      ),
+    [pageContext, promoted, effectiveDismissedIds]
+  );
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
-      <div className="flex flex-col items-center gap-1.5 text-center">
-        <SparklesIcon className="size-6 text-indigo-500" />
-        <Paragraph variant="small" className="text-text-dimmed">
-          Ask about your runs, errors, or how Trigger.dev works.
-        </Paragraph>
-      </div>
-      <div className="flex w-full flex-col gap-1.5">
-        {SUGGESTED_PROMPTS.map((prompt) => (
-          <button
-            key={prompt}
-            type="button"
-            onClick={() => onSelect(prompt)}
-            className="rounded-md border border-grid-bright bg-background-bright/40 px-3 py-2 text-left text-sm text-text-dimmed transition hover:border-border-bright hover:text-text-bright"
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
+      {prompts.map(({ slot, prompt }) => {
+        const style = PROMPT_SLOT_BUTTON[slot];
+        return (
+          <Button
+            key={prompt.id}
+            variant={style.variant}
+            LeadingIcon={style.icon}
+            onClick={() => onSelect(prompt.prompt)}
+            disabled={!!disabledReason}
+            tooltip={disabledReason}
+            aria-label={disabledReason ? `${prompt.label} — ${disabledReason}` : undefined}
           >
-            {prompt}
-          </button>
-        ))}
-      </div>
+            {prompt.label}
+          </Button>
+        );
+      })}
     </div>
   );
 }

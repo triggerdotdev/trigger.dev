@@ -1,11 +1,10 @@
 import type { RunEngine } from "@internal/run-engine";
 import type { Prisma } from "@trigger.dev/database";
-import { TaskQueueType } from "@trigger.dev/database";
+import { TaskQueueType, boundedIn } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
-import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 import { toQueueItem } from "./QueueRetrievePresenter.server";
@@ -18,7 +17,7 @@ const MAX_ITEMS_PER_PAGE = 100;
 export type QueueListSort = "busiest" | "queued" | "name";
 
 /** Ranking reads recent aggregated gauges, so ordering is a stable snapshot, not a live sort. */
-export const QUEUE_RANKING_WINDOW_MINUTES = 15;
+const QUEUE_RANKING_WINDOW_MINUTES = 15;
 const MAX_RANKED_QUEUES = 5000;
 
 const typeToDBQueueType: Record<"task" | "custom", TaskQueueType> = {
@@ -51,25 +50,12 @@ type QueueListPagination =
   | { mode: "filtered"; currentPage: number; hasMore: boolean }
   | { mode: "unfiltered"; currentPage: number; totalPages: number; count: number };
 
-// The `?: undefined` markers keep every key reachable across the union, so consumers
-// can destructure before narrowing on `success`.
-export type QueueListResult =
-  | {
-      success: false;
-      code: string;
-      totalQueues: number;
-      hasFilters: boolean;
-      queues?: undefined;
-      pagination?: undefined;
-    }
-  | {
-      success: true;
-      queues: QueueListItem[];
-      pagination: QueueListPagination;
-      totalQueues?: number;
-      hasFilters: boolean;
-      code?: undefined;
-    };
+export type QueueListResult = {
+  queues: QueueListItem[];
+  pagination: QueueListPagination;
+  totalQueues?: number;
+  hasFilters: boolean;
+};
 
 function formatClickhouseDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace("T", " ");
@@ -126,37 +112,6 @@ export class QueueListPresenter extends BasePresenter {
   }): Promise<QueueListResult> {
     const hasFilters = Boolean(query?.trim()) || type !== undefined;
 
-    const engineVersion = await determineEngineVersion({ environment });
-    if (engineVersion === "V1") {
-      const totalQueues = await this._replica.taskQueue.count({
-        where: buildQueueListWhere(environment.id, query, type),
-      });
-
-      if (totalQueues === 0) {
-        const oldQueue = await this._replica.taskQueue.findFirst({
-          where: {
-            runtimeEnvironmentId: environment.id,
-            version: "V1",
-          },
-        });
-        if (oldQueue) {
-          return {
-            success: false as const,
-            code: "engine-version",
-            totalQueues: 1,
-            hasFilters,
-          };
-        }
-      }
-
-      return {
-        success: false as const,
-        code: "engine-version",
-        totalQueues,
-        hasFilters,
-      };
-    }
-
     if (sort !== "name") {
       // Ranking is additive: any failure or unsupported input falls back to name order.
       try {
@@ -173,7 +128,6 @@ export class QueueListPresenter extends BasePresenter {
       const { queues, hasMore } = await this.getFilteredQueues(environment, query, page, type);
 
       return {
-        success: true as const,
         queues,
         pagination: {
           mode: "filtered" as const,
@@ -189,7 +143,6 @@ export class QueueListPresenter extends BasePresenter {
     });
 
     return {
-      success: true as const,
       queues: await this.getUnfilteredQueues(environment, page, type),
       pagination: {
         mode: "unfiltered" as const,
@@ -289,7 +242,7 @@ export class QueueListPresenter extends BasePresenter {
       // AND keeps the search's name filter intact alongside the exclusion (a spread
       // would overwrite one name condition with the other).
       tailQueues = await this._replica.taskQueue.findMany({
-        where: { AND: [where, { name: { notIn: excludedNames } }] },
+        where: { AND: [where, { name: { notIn: boundedIn(excludedNames) } }] },
         select: queueListSelect,
         orderBy: {
           orderableName: "asc",
@@ -300,7 +253,6 @@ export class QueueListPresenter extends BasePresenter {
     }
 
     return {
-      success: true as const,
       queues: await this.enrichQueues(environment, [...rankedPageQueues, ...tailQueues]),
       pagination: {
         mode: "unfiltered" as const,
@@ -321,7 +273,7 @@ export class QueueListPresenter extends BasePresenter {
       return [];
     }
     const queues = await this._replica.taskQueue.findMany({
-      where: { AND: [where, { name: { in: names } }] },
+      where: { AND: [where, { name: { in: boundedIn(names) } }] },
       select: queueListSelect,
     });
     const byName = new Map(queues.map((queue) => [queue.name, queue]));
@@ -401,7 +353,7 @@ export class QueueListPresenter extends BasePresenter {
     const overriddenByIds = queues.map((q) => q.concurrencyLimitOverriddenBy).filter(Boolean);
     const overriddenByUsers = await this._replica.user.findMany({
       where: {
-        id: { in: overriddenByIds },
+        id: { in: boundedIn(overriddenByIds) },
       },
     });
 

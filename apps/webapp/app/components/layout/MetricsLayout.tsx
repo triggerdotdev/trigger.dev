@@ -48,7 +48,7 @@ type ColumnCount = 1 | 2 | 3 | 4 | 5 | 6;
  * the value is the number of grid columns from that breakpoint up. Pass this to `Grid` when the
  * tile count shouldn't drive the layout (e.g. a chart grid that is always two-up).
  */
-export type GridColumns = {
+type GridColumns = {
   base?: ColumnCount;
   sm?: ColumnCount;
   md?: ColumnCount;
@@ -115,7 +115,7 @@ function columnsForCount(count: number): GridColumns {
  *   - `"regions"`: Root only bounds the height (a bare `flex` column, no scroll, no rhythm); the
  *     page composes its own scrolling areas inside the slots.
  */
-export type MetricsScroll = "page" | "regions";
+type MetricsScroll = "page" | "regions";
 
 /** A length the resizable panels accept: pixels or percent (the panel library's `Unit`). */
 type PanelLength = `${number}px` | `${number}%`;
@@ -175,10 +175,12 @@ function MetricsLayoutMain({ children, scroll }: { children: ReactNode; scroll: 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {filters}
+      {/* overflow-x-clip: without it `overflow-y-auto` promotes x to auto and wide content drags
+          the charts sideways. Wide children must scroll in their own container. */}
       <div
         className={
           scroll === "page"
-            ? "flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto py-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            ? "flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overflow-x-clip py-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
             : "flex min-h-0 flex-1 flex-col overflow-hidden"
         }
       >
@@ -286,7 +288,7 @@ function MetricsLayoutFilters({
   return (
     <div
       className={cn(
-        "flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed pl-2.5 pr-3",
+        "flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed px-2",
         className
       )}
     >
@@ -296,7 +298,7 @@ function MetricsLayoutFilters({
 }
 
 /** Whether a grid holds stat tiles (auto height) or charts (a fixed row height). */
-export type MetricsGridKind = "tiles" | "charts";
+type MetricsGridKind = "tiles" | "charts";
 
 /**
  * A grid of tiles with the baked page gutter and grid gap. Columns are derived from the tile count
@@ -357,12 +359,4 @@ export const MetricsLayout = {
   Grid: MetricsLayoutGrid,
   Content: MetricsLayoutContent,
   Sidebar: MetricsLayoutSidebar,
-};
-
-export {
-  MetricsLayoutRoot,
-  MetricsLayoutFilters,
-  MetricsLayoutGrid,
-  MetricsLayoutContent,
-  MetricsLayoutSidebar,
 };

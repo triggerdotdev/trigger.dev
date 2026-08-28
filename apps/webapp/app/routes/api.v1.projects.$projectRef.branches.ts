@@ -3,7 +3,7 @@ import { tryCatch, UpsertBranchRequestBody } from "@trigger.dev/core/v3";
 import { DEFAULT_DEV_BRANCH, isDefaultDevBranch } from "@trigger.dev/core/v3/utils/gitBranch";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateRequest } from "~/services/apiAuth.server";
+import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
@@ -21,14 +21,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   logger.info("project upsert branch", { url: request.url });
 
-  const authenticationResult = await authenticateRequest(request, {
+  const authentication = await authenticateRequestWithScopedApiKey(request, {
     personalAccessToken: true,
     organizationAccessToken: true,
-    apiKey: false,
+    apiKey: {
+      action: "write",
+      resource: { type: "branches" },
+      allowPreviewParent: true,
+    },
   });
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+  if (!authentication.ok) {
+    return json({ error: authentication.error }, { status: authentication.status });
   }
+  const authenticationResult = authentication.authentication;
+
+  const apiKeyEnvironment =
+    authenticationResult.type === "apiKey" && authenticationResult.result.ok
+      ? authenticationResult.result.environment
+      : undefined;
 
   const parsedParams = ParamsSchema.safeParse(params);
 
@@ -38,24 +48,32 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { projectRef } = parsedParams.data;
 
-  const project = await prisma.project.findFirst({
-    select: {
-      id: true,
-    },
-    where: {
-      externalRef: projectRef,
-      organization:
-        authenticationResult.type === "organizationAccessToken"
-          ? { id: authenticationResult.result.organizationId }
-          : {
-              members: {
-                some: {
-                  userId: authenticationResult.result.userId,
+  let project: { id: string } | null | undefined;
+  if (authenticationResult.type === "apiKey") {
+    project =
+      apiKeyEnvironment?.project.externalRef === projectRef
+        ? { id: apiKeyEnvironment.project.id }
+        : undefined;
+  } else {
+    project = await prisma.project.findFirst({
+      select: {
+        id: true,
+      },
+      where: {
+        externalRef: projectRef,
+        organization:
+          authenticationResult.type === "organizationAccessToken"
+            ? { id: authenticationResult.result.organizationId }
+            : {
+                members: {
+                  some: {
+                    userId: authenticationResult.result.userId,
+                  },
                 },
               },
-            },
-    },
-  });
+      },
+    });
+  }
   if (!project) {
     return json({ error: "Project not found" }, { status: 404 });
   }
@@ -72,10 +90,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { branch, env, git } = parsed.data;
 
-  if (env === "development" && authenticationResult.type === "organizationAccessToken") {
+  if (env === "development" && authenticationResult.type !== "personalAccessToken") {
     return json(
-      { error: "Cannot create dev branches with organization access tokens." },
+      {
+        error:
+          authenticationResult.type === "apiKey"
+            ? "API keys can only create Preview branches."
+            : "Cannot create dev branches with organization access tokens.",
+      },
       { status: 400 }
+    );
+  }
+
+  if (
+    authenticationResult.type === "apiKey" &&
+    (!apiKeyEnvironment ||
+      apiKeyEnvironment.type !== "PREVIEW" ||
+      apiKeyEnvironment.parentEnvironmentId !== null)
+  ) {
+    return json(
+      { error: "API keys must belong to the parent Preview environment." },
+      { status: 403 }
     );
   }
 
@@ -86,24 +121,33 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const service = new UpsertBranchService();
-  const result = await service.call(
-    authenticationResult.type === "organizationAccessToken"
-      ? { type: "orgId", organizationId: authenticationResult.result.organizationId }
-      : { type: "userMembership", userId: authenticationResult.result.userId },
-    {
-      env,
-      branchName: branch,
-      projectId: project.id,
-      git,
+  let orgFilter:
+    | { type: "userMembership"; userId: string }
+    | { type: "orgId"; organizationId: string };
+  if (authenticationResult.type === "personalAccessToken") {
+    orgFilter = { type: "userMembership", userId: authenticationResult.result.userId };
+  } else if (authenticationResult.type === "organizationAccessToken") {
+    orgFilter = { type: "orgId", organizationId: authenticationResult.result.organizationId };
+  } else {
+    if (!apiKeyEnvironment) {
+      return json({ error: "Invalid API key" }, { status: 401 });
     }
-  );
+    orgFilter = { type: "orgId", organizationId: apiKeyEnvironment.organizationId };
+  }
+
+  const service = new UpsertBranchService();
+  const result = await service.call(orgFilter, {
+    env,
+    branchName: branch,
+    projectId: project.id,
+    git,
+  });
 
   if (!result.success) {
     return json({ error: result.error }, { status: 400 });
   }
 
-  return json(result.branch);
+  return json({ id: result.branch.id });
 }
 
 export async function loader({ request, params }: LoaderFunctionArgs) {

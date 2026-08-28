@@ -5,7 +5,7 @@ import {
   type InitializeDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
 import { $replica } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -18,12 +18,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+  const authResult = await authenticateApiKeyWithScope(request, {
+    action: "write",
+    resource: { type: "deployments" },
+  });
 
-  if (!authenticationResult) {
+  if (!authResult.ok) {
     logger.info("Invalid or missing api key", { url: request.url });
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+
+  const authenticationResult = authResult.authentication;
 
   const rawBody = await request.json();
   const body = InitializeDeploymentRequestBody.safeParse(rawBody);
@@ -37,29 +42,47 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new InitializeDeploymentService();
 
   try {
-    const { deployment, imageRef, eventStream } = await service.call(authenticatedEnv, body.data);
+    const result = await service.call(authenticatedEnv, body.data, {
+      cliVersion: parseCliVersionHeader(request),
+    });
+    const { deployment, imageRef } = result;
 
     const responseBody: InitializeDeploymentResponseBody = {
       id: deployment.friendlyId,
       contentHash: deployment.contentHash,
       shortCode: deployment.shortCode,
       version: deployment.version,
-      externalBuildData:
-        deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
       imageTag: imageRef,
       imagePlatform: deployment.imagePlatform,
-      eventStream,
+      externalId: deployment.externalId ?? undefined,
+      outcome: result.outcome,
+      ...(result.outcome === "created"
+        ? {
+            externalBuildData: result.deployment
+              .externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
+            eventStream: result.eventStream,
+            canceledDeployments: result.canceledDeployments,
+          }
+        : { isPromoted: result.isPromoted }),
     };
 
     return json(responseBody, { status: 200 });
   } catch (error) {
     if (error instanceof ServiceValidationError) {
-      return json({ error: error.message }, { status: 400 });
+      return json({ error: error.message }, { status: error.status ?? 400 });
     }
 
     logger.error("Error initializing deployment", { error });
     return json({ error: "Internal server error" }, { status: 500 });
   }
+}
+
+// Client-controlled and persisted, so cap what we accept
+const CLI_VERSION_MAX_LENGTH = 128;
+
+function parseCliVersionHeader(request: Request): string | undefined {
+  const value = request.headers.get("x-trigger-cli-version");
+  return value && value.length <= CLI_VERSION_MAX_LENGTH ? value : undefined;
 }
 
 export const loader = createLoaderApiRoute(

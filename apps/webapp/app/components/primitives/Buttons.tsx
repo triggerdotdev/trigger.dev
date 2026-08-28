@@ -1,4 +1,4 @@
-import { Link, type LinkProps, NavLink, type NavLinkProps } from "@remix-run/react";
+import { Link, type LinkProps } from "@remix-run/react";
 import React, {
   forwardRef,
   type ReactNode,
@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
+import { AgentMonoLogo } from "./AgentDotMatrix";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
@@ -58,18 +59,19 @@ type Size = keyof typeof sizes;
 
 const theme = {
   primary: {
-    textColor:
-      "text-text-bright group-hover/button:text-white transition group-disabled/button:text-text-dimmed",
+    textColor: "text-white transition group-disabled/button:text-white/60",
     button:
-      "bg-indigo-600 border border-indigo-500 group-hover/button:bg-indigo-500 group-hover/button:border-indigo-400 group-disabled/button:opacity-50 group-disabled/button:bg-indigo-600 group-disabled/button:border-indigo-500 group-disabled/button:pointer-events-none",
+      // Shares --color-accent-fill with the switch's checked track.
+      "bg-accent-fill border border-lavender-500 group-hover/button:bg-lavender-500 group-hover/button:border-lavender-400 group-disabled/button:opacity-50 group-disabled/button:bg-accent-fill group-disabled/button:border-lavender-500 group-disabled/button:pointer-events-none",
     shortcut:
-      "border-text-bright/40 text-text-bright group-hover/button:border-text-bright/60 group-hover/button:text-text-bright",
-    icon: "text-text-bright",
+      "border-white/40 text-white group-hover/button:border-white/60 group-hover/button:text-white",
+    icon: "text-white",
   },
   secondary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary group-hover/button:bg-surface-control group-hover/button:border-border-brighter border border-border-bright group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      // Hover steps up the scale; background-raised would be darker.
+      "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised dark:group-hover/button:bg-surface-control group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
@@ -91,12 +93,11 @@ const theme = {
     icon: "text-text-dimmed",
   },
   danger: {
-    textColor:
-      "text-text-bright group-hover/button:text-white transition group-disabled/button:text-text-bright/80",
+    textColor: "text-white transition group-disabled/button:text-white/80",
     button:
       "bg-error group-hover/button:bg-rose-500 disabled:opacity-50 group-disabled/button:bg-error group-disabled/button:pointer-events-none",
-    shortcut: "border-text-bright text-text-bright group-hover/button:border-text-bright/60",
-    icon: "text-text-bright",
+    shortcut: "border-white text-white group-hover/button:border-white/60",
+    icon: "text-white",
   },
   warning: {
     textColor: "text-warning transition group-disabled/button:text-warning/60",
@@ -106,12 +107,23 @@ const theme = {
     icon: "text-warning",
   },
   docs: {
-    textColor: "text-blue-200/70 transition group-disabled/button:text-text-dimmed/80",
+    textColor:
+      "text-callout-docs-text/70 dark:text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-background-raised border border-border-bright/50 shadow-sm group-hover/button:bg-secondary group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-blue-500",
+  },
+  // The AI agent's "Ask Trigger" affordance.
+  "ask-trigger": {
+    textColor:
+      "text-text-bright transition light:group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
+    button:
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 dark:group-hover/button:bg-background-raised dark:group-hover/button:border-[#41FF54]/40 light:group-hover/button:bg-[#e4ffe8] light:group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+    shortcut:
+      "border-text-dimmed/40 text-text-dimmed dark:group-hover/button:text-text-bright dark:group-hover/button:border-text-dimmed light:group-hover/button:text-charcoal-800 light:group-hover/button:border-charcoal-800/60",
+    icon: "text-text-bright light:group-hover/button:text-charcoal-800",
   },
 };
 
@@ -125,6 +137,19 @@ function createVariant(sizeName: Size, themeName: Theme) {
     iconSpacing: sizes[sizeName].iconSpacing,
     shortcutVariant: sizes[sizeName].shortcutVariant,
     shortcut: cn(sizes[sizeName].shortcut, theme[themeName].shortcut),
+    // Rendered as the leading icon when the caller doesn't pass one.
+    defaultLeadingIcon: undefined as RenderIcon | undefined,
+  };
+}
+
+// ask-trigger supplies its own leading logo. Pass an explicit `LeadingIcon` to animate it.
+function createAskTriggerVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
+  const base = createVariant(sizeName, "ask-trigger");
+  return {
+    ...base,
+    button: cn(base.button, opticalPadding),
+    iconSpacing: "gap-x-1.5",
+    defaultLeadingIcon: <AgentMonoLogo size={logoSize} decorative />,
   };
 }
 
@@ -158,6 +183,9 @@ const variant = {
   "docs/medium": createVariant("medium", "docs"),
   "docs/large": createVariant("large", "docs"),
   "docs/extra-large": createVariant("extra-large", "docs"),
+  "ask-trigger/small": createAskTriggerVariant("small", "px-1 pr-1.5", 16),
+  "ask-trigger/medium": createAskTriggerVariant("medium", "px-2", 16),
+  "ask-trigger/large": createAskTriggerVariant("large", "px-2.5", 20),
   "menu-item": {
     textColor: "text-text-bright px-1",
     button:
@@ -166,6 +194,7 @@ const variant = {
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
     shortcut: undefined,
+    defaultLeadingIcon: undefined,
   },
   "small-menu-item": {
     textColor: "text-text-bright",
@@ -175,6 +204,7 @@ const variant = {
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
     shortcut: undefined,
+    defaultLeadingIcon: undefined,
   },
   "small-menu-sub-item": {
     textColor: "text-text-dimmed",
@@ -184,11 +214,12 @@ const variant = {
     iconSpacing: undefined,
     shortcutVariant: undefined,
     shortcut: undefined,
+    defaultLeadingIcon: undefined,
   },
 };
 
 const allVariants = {
-  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus/button:outline-hidden group-disabled/button:opacity-75 group-disabled/button:pointer-events-none focus-custom",
+  $all: "cursor-pointer font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus/button:outline-hidden group-disabled/button:opacity-75 group-disabled/button:pointer-events-none focus-custom",
   variant: variant,
 };
 
@@ -232,6 +263,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   const [showSpinner, setShowSpinner] = useState(false);
   useEffect(() => {
     if (!isLoading) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setShowSpinner(false);
       return;
     }
@@ -240,6 +272,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
   }, [isLoading]);
 
   const variation = allVariants.variant[props.variant];
+  // Some variants (ask-trigger) always lead with their own glyph unless overridden.
+  const leadingIcon = LeadingIcon ?? variation.defaultLeadingIcon;
 
   const btnClassName = cn(allVariants.$all, variation.button);
   const iconClassName = variation.icon;
@@ -264,14 +298,17 @@ export function ButtonContent(props: ButtonContentPropsType) {
           className={cn(
             textAlignLeft ? "text-left" : "justify-center",
             "flex w-full items-center",
+            // Set here, not on the string branch below, so element children
+            // inherit the variant's colour rather than the page's.
+            textColorClassName,
             iconSpacingClassName,
             iconSpacing,
             showSpinner && "invisible"
           )}
         >
-          {LeadingIcon && (
+          {leadingIcon && (
             <Icon
-              icon={LeadingIcon}
+              icon={leadingIcon}
               className={cn(
                 iconClassName,
                 variation.icon,
@@ -283,11 +320,9 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
           {text &&
             (typeof text === "string" ? (
-              <span className={cn("mx-auto grow self-center truncate", textColorClassName)}>
-                {text}
-              </span>
+              <span className="mx-auto grow self-center truncate">{text}</span>
             ) : (
-              <>{text}</>
+              text
             ))}
 
           {shortcut &&
@@ -313,8 +348,11 @@ export function ButtonContent(props: ButtonContentPropsType) {
             renderShortcutKey()}
         </div>
         {showSpinner && (
-          <span className="absolute inset-0 flex items-center justify-center">
-            <Spinner className="size-3.5" color="white" />
+          // Inherits the variant's colour so the spinner tracks its button.
+          <span
+            className={cn("absolute inset-0 flex items-center justify-center", textColorClassName)}
+          >
+            <Spinner className="size-3.5" color="inherit" />
           </span>
         )}
       </div>
@@ -343,6 +381,7 @@ type ButtonPropsType = Pick<
 > &
   React.ComponentProps<typeof ButtonContent>;
 
+/* oxlint-disable react/button-has-type -- Callers can select button, reset, or submit semantics. */
 export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, autoFocus, onClick, "aria-label": ariaLabel, ...props }, ref) => {
     const innerRef = useRef<HTMLButtonElement>(null);
@@ -404,10 +443,18 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     return buttonElement;
   }
 );
+/* oxlint-enable react/button-has-type */
 
 type LinkPropsType = Pick<
   LinkProps,
-  "to" | "target" | "onClick" | "onMouseDown" | "onMouseEnter" | "onMouseLeave" | "download"
+  | "to"
+  | "target"
+  | "onClick"
+  | "onMouseDown"
+  | "onMouseEnter"
+  | "onMouseLeave"
+  | "download"
+  | "aria-label"
 > & { disabled?: boolean; replace?: boolean } & React.ComponentProps<typeof ButtonContent>;
 export const LinkButton = ({
   to,
@@ -418,6 +465,7 @@ export const LinkButton = ({
   download,
   disabled = false,
   replace,
+  "aria-label": ariaLabel,
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
@@ -456,6 +504,7 @@ export const LinkButton = ({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         download={download}
+        aria-label={ariaLabel}
       >
         <ButtonContent {...props} />
       </ExtLink>
@@ -472,29 +521,12 @@ export const LinkButton = ({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         download={download}
+        aria-label={ariaLabel}
       >
         <ButtonContent {...props} />
       </Link>
     );
   }
-};
-
-type NavLinkPropsType = Pick<NavLinkProps, "to" | "target"> &
-  Omit<React.ComponentProps<typeof ButtonContent>, "className"> & {
-    className?: (props: { isActive: boolean; isPending: boolean }) => string | undefined;
-  };
-export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsType) => {
-  return (
-    <NavLink
-      to={to}
-      className={cn("group/button outline-hidden block", props.fullWidth ? "w-full" : "")}
-      target={target}
-    >
-      {({ isActive, isPending }) => (
-        <ButtonContent className={className && className({ isActive, isPending })} {...props} />
-      )}
-    </NavLink>
-  );
 };
 
 type ExtLinkProps = JSX.IntrinsicElements["a"] & {

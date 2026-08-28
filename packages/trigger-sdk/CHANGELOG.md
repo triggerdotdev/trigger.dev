@@ -1,5 +1,121 @@
 # @trigger.dev/sdk
 
+## 4.5.13
+
+### Patch Changes
+
+- Fixed a chat agent hanging after an interrupted turn: when a run was killed mid-answer (out of memory, crash, or eviction) and only the one message it was answering was still outstanding, the new run never replied to it. That message is now re-answered on the new run. ([#4768](https://github.com/triggerdotdev/trigger.dev/pull/4768))
+- Browser chats now keep the active turn open across page reloads when older completion records are replayed. ([#4643](https://github.com/triggerdotdev/trigger.dev/pull/4643))
+- Add `chat.endAndContinue()` so fully hand-rolled custom chat agents can hand a conversation off to a fresh run on the latest deployed task version while preserving unconsumed Session input. ([#4647](https://github.com/triggerdotdev/trigger.dev/pull/4647))
+- Fix chat transport discarding the next turn after stopping generation. `skipToTurnComplete` is now reset when a new message or action is sent, so a message sent after `stopGeneration` streams normally instead of leaving the chat stuck in a streaming state. ([#4744](https://github.com/triggerdotdev/trigger.dev/pull/4744))
+- Custom chat agents now validate and parse client data declared with `chat.withClientData({ schema })` before passing it to agent code. ([#4646](https://github.com/triggerdotdev/trigger.dev/pull/4646))
+- Fixes a message sent while the agent was mid-answer being lost if the run then crashed. The cursor written at the end of each turn could point past a message that had arrived during that turn but had not been answered yet, so the next boot skipped it and no error was raised anywhere. Such a message is now held until a turn actually takes it. ([#4795](https://github.com/triggerdotdev/trigger.dev/pull/4795))
+
+  This also removes the in-memory buffer those messages used to sit in, on both `chat.agent` and `chat.createSession()`, so a message waiting for its turn is durable rather than only present in the worker that received it.
+
+- A message that arrives mid-turn and is not injected into that turn is now answered as the next turn, instead of being dropped. This is what the `pendingMessages` docs have always described, and it applies to the default too: configuring `pendingMessages` without a `shouldInject` declines every batch, which previously meant every mid-turn message was lost with no error at either end. ([#4795](https://github.com/triggerdotdev/trigger.dev/pull/4795))
+
+  ```ts
+  chat.agent({
+    id: "my-chat",
+    pendingMessages: {
+      onReceived: ({ message }) =>
+        logger.info("arrived mid-turn", { id: message.id }),
+      // Only interrupt once the agent has started calling tools.
+      shouldInject: ({ steps }) => steps.length > 0,
+    },
+    run: async ({ messages, signal }) =>
+      streamText({
+        model,
+        messages,
+        abortSignal: signal,
+        // Required for injection. Without it nothing injects, and every
+        // mid-turn message is answered as the next turn instead.
+        ...chat.toStreamTextOptions(),
+      }),
+  });
+  ```
+
+  A declined message keeps its place in the queue, so it survives a crash and is answered by whichever run picks the conversation up. An injected one is consumed at the moment it is injected, so it is never also answered as a later turn.
+
+- Fixes a case where a chat could silently lose a message. If a message arrived while the agent was between turns and a stop arrived after it, the cursor the next boot resumed from could point past that message, so it was never answered and no error was raised. This affected `chat.agent`, not just custom agents. ([#4644](https://github.com/triggerdotdev/trigger.dev/pull/4644))
+
+  Fixes a recovered answer being cut off. After a crash the agent replays the message it had not answered yet, but it was replaying the stop that arrived after that message too, so the turn answering it was aborted the moment it began. A stop is now only applied to the turn that was live when it arrived. That holds however the stop got there: sent after the last completed turn, or sent to a chat whose most recent turn was completed by an older version of the SDK.
+
+  One limitation to know about: the recovered answer is persisted correctly, but a chat page that stayed open across the crash keeps showing the partial answer it had already received. Reload the page to see the full recovered answer.
+
+  Also fixes a retried send being answered twice. When a send was retried and its idempotency claim was lost, the agent could consume the same message a second time.
+
+  Custom agent loops can now inspect pending chat input without consuming it, and consume one record at a time, with `chat.messages.hasPending()` and `chat.messages.next()`. Records carry stable identifiers so a redelivery is recognisable.
+
+  ```ts
+  if (await chat.messages.hasPending()) {
+    const record = await chat.messages.next({ timeoutInSeconds: 0 });
+    if (record) handle(record.payload);
+  }
+  ```
+
+  `hasPending()` answers for messages alone, so a message sitting behind a stop, or behind a record this version of the SDK does not recognise, still reports as pending and is still delivered. Anything the agent has no consumer for is discarded rather than left where it would make every message queued behind it undeliverable. `chat.messages.next()` returning `undefined` means no message became consumable before the timeout.
+
+  `chat.writeTurnComplete()`'s `sessionInEventId` is the cursor that is safe to resume from, not the sequence of the record the turn answered. It is held back behind any message still waiting to be handled, so a value below the record you just handled is expected.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.13`
+
+## 4.5.12
+
+### Patch Changes
+
+- Define stable execution windows on declarative scheduled tasks. Schedule API responses now expose both the nominal CRON time and its assigned time, while the dashboard shows configured windows and upcoming assignments. ([#4572](https://github.com/triggerdotdev/trigger.dev/pull/4572))
+- Pin runs to the deployment your calling code came from, so an old release never triggers tasks from a new one: set `TRIGGER_EXTERNAL_DEPLOYMENT_ID` to the id you deployed with, or `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` to detect the commit automatically on Vercel and most CI systems. Runs triggered before that deployment finishes building wait for it, then start pinned. ([#4664](https://github.com/triggerdotdev/trigger.dev/pull/4664))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Chat in the browser now reconnects when the connection drops mid-turn, instead of leaving the reply stuck as if it were still generating. Reports can be fetched as structured data with the `json` format, and the shortest report period is now one minute (`1m`, `30m`, `1h`, `7d`). The `mint-token` command's help is clearer too: a token minted without `--cap` is read-only, and `--ttl` shows the correct maximum lifetime of 7 days. ([#4418](https://github.com/triggerdotdev/trigger.dev/pull/4418))
+- Watch-mode chat streams now survive quiet windows and page reloads, and a reply cut off by a lost connection shows an error instead of appearing finished. Aborting a resumed subscription only closes your local stream — call `stopGeneration(chatId)` or pass `stopOnAbort: true` to stop the run. Also fixed a race where quickly restarting a stream could break stop and reconnect, and stopping a chat now hands it back to your other tabs instead of leaving them read-only. ([#4516](https://github.com/triggerdotdev/trigger.dev/pull/4516))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+
+## 4.5.10
+
+### Patch Changes
+
+- `debounce` now works when you pass an array of items to `batchTrigger` or `batchTriggerAndWait`, and when you trigger from `useTaskTrigger`. Previously the option was accepted by the types and dropped before the request was sent, so every trigger created its own run instead of collapsing onto the debounce key. ([#4520](https://github.com/triggerdotdev/trigger.dev/pull/4520))
+
+  ```ts
+  await myTask.batchTrigger([
+    {
+      payload: { id: "a" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+    {
+      payload: { id: "b" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+  ]);
+  ```
+
+  The streaming (async iterable) forms of the batch calls were already forwarding `debounce` correctly.
+
+- Fix a preloaded `chat.agent` run dropping an in-flight message when it retries after an out-of-memory error. The message being processed when the run hit the OOM is now recovered and re-run on the retry, instead of being skipped while the run waited for a new message. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- `AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts. ([#4349](https://github.com/triggerdotdev/trigger.dev/pull/4349))
+- Allow task-scoped environment API keys to run batch operations for their permitted tasks. The SDK declares the batch's task set before creation, and `@trigger.dev/core/v3/apiKeys` now exports the additional-key format helper. ([#4389](https://github.com/triggerdotdev/trigger.dev/pull/4389))
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Correct the `expirationTime` docs on `auth.createPublicToken` and the trigger-token helpers: a number is a Unix timestamp in seconds, not milliseconds. ([#4388](https://github.com/triggerdotdev/trigger.dev/pull/4388))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
 ## 4.5.8
 
 ### Patch Changes

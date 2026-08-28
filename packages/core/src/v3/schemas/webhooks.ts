@@ -289,3 +289,8 @@ export type RunFailedWebhook = Extract<Webhook, { type: "alert.run.failed" }>;
 export type DeploymentSuccessWebhook = Extract<Webhook, { type: "alert.deployment.success" }>;
 export type DeploymentFailedWebhook = Extract<Webhook, { type: "alert.deployment.failed" }>;
 export type ErrorWebhook = Extract<Webhook, { type: "alert.error" }>;
+
+// The ingress webhook verification schemas live in ./webhookConfig.ts (a leaf module),
+// re-exported via schemas/index.ts. They are deliberately NOT here: this file imports
+// api.js (RunStatus) for the alert union, and resources.ts (imported by api.ts) needs
+// those config schemas, so keeping them here would create a module-init cycle.

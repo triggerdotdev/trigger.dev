@@ -13,6 +13,30 @@ export type MetricResourceTimeRange = {
   to: string | null;
 };
 
+export function useIsMetricResponseFresh(
+  responseReceivedAt: number | null,
+  dataTimestamp: number,
+  maxAgeMs: number
+) {
+  const expiresAt =
+    responseReceivedAt !== null && Number.isFinite(dataTimestamp) ? dataTimestamp + maxAgeMs : null;
+  const [expiredAt, setExpiredAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (expiresAt === null) return;
+
+    const timeout = setTimeout(() => setExpiredAt(expiresAt), Math.max(0, expiresAt - Date.now()));
+    return () => clearTimeout(timeout);
+  }, [expiresAt]);
+
+  return (
+    expiresAt !== null &&
+    responseReceivedAt !== null &&
+    responseReceivedAt < expiresAt &&
+    expiredAt !== expiresAt
+  );
+}
+
 export type MetricResourceQueryOptions = {
   organizationId: string;
   projectId: string;
@@ -21,6 +45,8 @@ export type MetricResourceQueryOptions = {
   defaultPeriod: string;
   queues?: string[];
   fillGaps?: boolean;
+  /** Floor for the query's bucket width, for series too sparse to read at the range's width. */
+  minBucketSeconds?: number;
   refreshIntervalMs?: number;
 };
 
@@ -49,6 +75,11 @@ function cacheSet(key: string, rows: MetricResourceRow[]) {
  * back-navigation to the queues list) shows its last data immediately and revalidates in the
  * background rather than flashing a loading skeleton.
  */
+/**
+ * An empty query means the caller has nothing to ask for, so no request is made and any rows or
+ * failure left by a previous query are dropped — a caller that stops asking must not keep reading
+ * the last answer, or a stale failure would outlive the query that caused it.
+ */
 export function useMetricResourceQuery(query: string, opts: MetricResourceQueryOptions) {
   const {
     organizationId,
@@ -56,6 +87,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     environmentId,
     defaultPeriod,
     fillGaps,
+    minBucketSeconds,
     refreshIntervalMs = 60_000,
   } = opts;
   const { period, from, to } = opts.timeRange;
@@ -71,10 +103,22 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         from ?? "",
         to ?? "",
         fillGaps ? 1 : 0,
+        minBucketSeconds ?? "",
         queuesKey ?? "",
         query,
       ].join("|"),
-    [organizationId, projectId, environmentId, resolvedPeriod, from, to, fillGaps, queuesKey, query]
+    [
+      organizationId,
+      projectId,
+      environmentId,
+      resolvedPeriod,
+      from,
+      to,
+      fillGaps,
+      minBucketSeconds,
+      queuesKey,
+      query,
+    ]
   );
 
   const [rows, setRows] = useState<MetricResourceRow[] | null>(
@@ -82,10 +126,22 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   );
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [responseReceivedAt, setResponseReceivedAt] = useState<number | null>(null);
+  const [lastSuccessfulResponseAt, setLastSuccessfulResponseAt] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loadedKeyRef = useRef<string | null>(null);
 
   const load = useCallback(() => {
+    if (!query) {
+      abortRef.current?.abort();
+      loadedKeyRef.current = cacheKey;
+      setRows(null);
+      setFailed(false);
+      setResponseReceivedAt(null);
+      setLastSuccessfulResponseAt(null);
+      setIsLoading(false);
+      return;
+    }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -97,6 +153,8 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       loadedKeyRef.current = cacheKey;
       setRows(responseCache.get(cacheKey) ?? null);
       setFailed(false);
+      setResponseReceivedAt(null);
+      setLastSuccessfulResponseAt(null);
     }
     setIsLoading(true);
     fetch("/resources/metric", {
@@ -112,6 +170,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         organizationId,
         projectId,
         environmentId,
+        ...(minBucketSeconds !== undefined ? { minBucketSeconds } : {}),
         ...(queuesKey !== undefined ? { queues: queuesKey.split(",") } : {}),
       }),
       signal: controller.signal,
@@ -121,10 +180,14 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         if (controller.signal.aborted) return;
         if (data.success) {
           cacheSet(cacheKey, data.data.rows);
+          const receivedAt = Date.now();
           setRows(data.data.rows);
           setFailed(false);
+          setResponseReceivedAt(receivedAt);
+          setLastSuccessfulResponseAt(receivedAt);
         } else {
           setFailed(true);
+          setResponseReceivedAt(null);
         }
         setIsLoading(false);
       })
@@ -132,6 +195,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         if (error instanceof DOMException && error.name === "AbortError") return;
         if (!controller.signal.aborted) {
           setFailed(true);
+          setResponseReceivedAt(null);
           setIsLoading(false);
         }
       });
@@ -142,6 +206,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     from,
     to,
     fillGaps,
+    minBucketSeconds,
     organizationId,
     projectId,
     environmentId,
@@ -149,6 +214,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   ]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     load();
     return () => abortRef.current?.abort();
   }, [load]);
@@ -161,5 +227,12 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     callback: load,
   });
 
-  return { rows: rows ?? [], isLoading, showLoading: isLoading && !rows, failed };
+  return {
+    rows: rows ?? [],
+    isLoading,
+    showLoading: isLoading && !rows,
+    failed,
+    responseReceivedAt,
+    lastSuccessfulResponseAt,
+  };
 }

@@ -1,0 +1,272 @@
+name: 🐳 Deploy base images
+
+# Publishes the deploy base images (see base-images/README.md) to Docker Hub.
+# Tags are mutable and rebuilt in place; the CLI pins digests, so consumers
+# only move when a release bumps its pins.
+
+on:
+  workflow_dispatch:
+    inputs:
+      debian_snapshot:
+        description: "Debian snapshot timestamp (YYYYMMDDTHHMMSSZ). Defaults to yesterday 00:00 UTC."
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "base-images/**"
+      - ".github/workflows/base-images.yml"
+  pull_request:
+    paths:
+      - "base-images/**"
+      - ".github/workflows/base-images.yml"
+
+concurrency:
+  group: base-images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.config.outputs.images }}
+      packages: ${{ steps.config.outputs.packages }}
+      build_packages: ${{ steps.config.outputs.build_packages }}
+      suite: ${{ steps.config.outputs.suite }}
+      snapshot: ${{ steps.config.outputs.snapshot }}
+      publish_id: ${{ steps.config.outputs.publish_id }}
+      source_date_epoch: ${{ steps.config.outputs.source_date_epoch }}
+      push: ${{ steps.config.outputs.push }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Read image matrix and resolve snapshot
+        id: config
+        env:
+          SNAPSHOT_INPUT: ${{ inputs.debian_snapshot }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          PACKAGES="$(jq -er '.packages' base-images/images.json)"
+          BUILD_PACKAGES="$(jq -er '.buildPackages' base-images/images.json)"
+          SUITE="$(jq -er '.suite' base-images/images.json)"
+
+          # Values land in build args and shell lines; keep them boring.
+          # NUL-delimited whole-record match so multi-line values can't sneak through
+          printf '%s\0' "$PACKAGES" | grep -zqxE '[a-z0-9][a-z0-9 .+:=~-]*' || { echo "invalid packages value"; exit 1; }
+          printf '%s\0' "$BUILD_PACKAGES" | grep -zqxE '[a-z0-9][a-z0-9 .+:=~-]*' || { echo "invalid buildPackages value"; exit 1; }
+          printf '%s\0' "$SUITE" | grep -zqxE '[a-z]+' || { echo "invalid suite value"; exit 1; }
+          jq -e '.images | length > 0 and all((.repo | test("^[a-z0-9-]+$")) and (.tag | test("^[a-z0-9.-]+$")) and (.base | test("^[a-zA-Z0-9./:@-]+$")))' base-images/images.json > /dev/null \
+            || { echo "invalid images entries"; exit 1; }
+
+          SNAPSHOT="$SNAPSHOT_INPUT"
+          if [ -z "$SNAPSHOT" ]; then
+            SNAPSHOT="$(date -u -d yesterday +%Y%m%dT000000Z)"
+          fi
+          printf '%s\0' "$SNAPSHOT" | grep -zqxE '[0-9]{8}T[0-9]{6}Z' || { echo "invalid debian_snapshot: $SNAPSHOT"; exit 1; }
+
+          # Snapshot-derived timestamps: reproducible, with a real created date
+          EPOCH="$(date -u -d "${SNAPSHOT:0:4}-${SNAPSHOT:4:2}-${SNAPSHOT:6:2} ${SNAPSHOT:9:2}:${SNAPSHOT:11:2}:${SNAPSHOT:13:2}Z" +%s)"
+          # Future snapshots resolve to "latest" and break mtime normalization
+          [ "$EPOCH" -le "$(date -u +%s)" ] || { echo "debian_snapshot is in the future: $SNAPSHOT"; exit 1; }
+
+          # Pull requests and branch dispatches build without pushing
+          if [ "$EVENT_NAME" = "pull_request" ] || [ "$REF" != "refs/heads/main" ]; then
+            PUSH=false
+          else
+            PUSH=true
+          fi
+
+          {
+            echo "images=$(jq -c '.images' base-images/images.json)"
+            echo "packages=$PACKAGES"
+            echo "build_packages=$BUILD_PACKAGES"
+            echo "suite=$SUITE"
+            echo "snapshot=$SNAPSHOT"
+            echo "publish_id=${SNAPSHOT:0:8}-${SNAPSHOT:9:6}-${SHA:0:7}"
+            echo "source_date_epoch=$EPOCH"
+            echo "push=$PUSH"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.setup.outputs.images) }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_BUILD_SUMMARY: "false"
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Before any pull so rate limits are authenticated; fork PRs skip (no secrets)
+      - name: 🐳 Login to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🐳 Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        with:
+          image: docker.io/tonistiigi/binfmt:latest@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      # Build both targets before pushing either so the tag pair can't skew
+      - name: 🐳 Build both targets (no push)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: base-images
+          file: base-images/Dockerfile
+          target: build
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          outputs: type=image,push=false,rewrite-timestamp=true
+          tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+          build-args: |
+            BASE_IMAGE=${{ matrix.image.base }}
+            DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
+            DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
+            PACKAGES=${{ needs.setup.outputs.packages }}
+            BUILD_PACKAGES=${{ needs.setup.outputs.build_packages }}
+            SOURCE_DATE_EPOCH=${{ needs.setup.outputs.source_date_epoch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            dev.trigger.debian-snapshot=${{ needs.setup.outputs.snapshot }}
+
+      - name: 🐳 Push runtime image
+        id: build_runtime
+        if: needs.setup.outputs.push == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: base-images
+          file: base-images/Dockerfile
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          outputs: type=image,push=true,rewrite-timestamp=true
+          # The dated tag is immutable and keeps every published digest
+          # tag-referenced forever; shipped CLI releases pin these digests
+          tags: |
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-${{ needs.setup.outputs.publish_id }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.image.base }}
+            DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
+            DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
+            PACKAGES=${{ needs.setup.outputs.packages }}
+            SOURCE_DATE_EPOCH=${{ needs.setup.outputs.source_date_epoch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            dev.trigger.debian-snapshot=${{ needs.setup.outputs.snapshot }}
+
+      - name: 🐳 Push build-variant image
+        id: build_toolchain
+        if: needs.setup.outputs.push == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: base-images
+          file: base-images/Dockerfile
+          target: build
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          outputs: type=image,push=true,rewrite-timestamp=true
+          tags: |
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
+            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build-${{ needs.setup.outputs.publish_id }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.image.base }}
+            DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
+            DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
+            PACKAGES=${{ needs.setup.outputs.packages }}
+            BUILD_PACKAGES=${{ needs.setup.outputs.build_packages }}
+            SOURCE_DATE_EPOCH=${{ needs.setup.outputs.source_date_epoch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            dev.trigger.debian-snapshot=${{ needs.setup.outputs.snapshot }}
+
+      # An auto-created private repo would publish green while customer pulls fail
+      - name: 🔎 Verify anonymous pullability
+        if: needs.setup.outputs.push == 'true'
+        env:
+          IMAGE_REPO: ${{ matrix.image.repo }}
+          RUNTIME_DIGEST: ${{ steps.build_runtime.outputs.digest }}
+          BUILD_DIGEST: ${{ steps.build_toolchain.outputs.digest }}
+        run: |
+          for digest in "$RUNTIME_DIGEST" "$BUILD_DIGEST"; do
+            TOKEN="$(curl -fsS --connect-timeout 10 --max-time 60 "https://auth.docker.io/token?service=registry.docker.io&scope=repository:triggerdotdev/$IMAGE_REPO:pull" | jq -r .token)"
+            curl -fsS --connect-timeout 10 --max-time 60 -o /dev/null               -H "Authorization: Bearer $TOKEN"               -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"               "https://registry-1.docker.io/v2/triggerdotdev/$IMAGE_REPO/manifests/$digest"               || { echo "triggerdotdev/$IMAGE_REPO@$digest is not anonymously pullable; is the repo private?"; exit 1; }
+          done
+
+      # Builds are reproducible, so re-running a red publish re-pushes the
+      # same digests and re-attests them
+      - name: 🔏 Attest runtime image provenance
+        if: needs.setup.outputs.push == 'true'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
+          subject-digest: ${{ steps.build_runtime.outputs.digest }}
+          push-to-registry: false
+
+      - name: 🔏 Attest build-variant image provenance
+        if: needs.setup.outputs.push == 'true'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: index.docker.io/triggerdotdev/${{ matrix.image.repo }}
+          subject-digest: ${{ steps.build_toolchain.outputs.digest }}
+          push-to-registry: false
+
+      - name: 📋 Record digests
+        if: needs.setup.outputs.push == 'true'
+        env:
+          IMAGE_REPO: ${{ matrix.image.repo }}
+          IMAGE_TAG: ${{ matrix.image.tag }}
+          RUNTIME_DIGEST: ${{ steps.build_runtime.outputs.digest }}
+          BUILD_DIGEST: ${{ steps.build_toolchain.outputs.digest }}
+          SNAPSHOT: ${{ needs.setup.outputs.snapshot }}
+        run: |
+          {
+            echo "### triggerdotdev/$IMAGE_REPO:$IMAGE_TAG"
+            echo '```'
+            echo "runtime: $RUNTIME_DIGEST"
+            echo "build:   $BUILD_DIGEST"
+            echo "debian snapshot: $SNAPSHOT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  results:
+    needs: [publish]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Fail if any image build failed
+        env:
+          RESULT: ${{ needs.publish.result }}
+        run: |
+          [ "$RESULT" = "success" ] || { echo "one or more image builds failed: $RESULT"; exit 1; }

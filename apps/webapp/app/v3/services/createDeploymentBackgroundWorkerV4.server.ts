@@ -1,9 +1,10 @@
 import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
-import type {
-  BackgroundWorker,
-  PrismaClientOrTransaction,
-  WorkerDeployment,
+import {
+  Prisma,
+  type BackgroundWorker,
+  type PrismaClientOrTransaction,
+  type WorkerDeployment,
 } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
@@ -13,11 +14,13 @@ import {
   createBackgroundFiles,
   createWorkerResources,
   syncDeclarativeSchedules,
+  syncDeclarativeWebhooks,
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
+import { webhookPrisma } from "~/db.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -228,6 +231,29 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         throw serviceError;
       }
 
+      const [webhooksError] = await tryCatch(
+        syncDeclarativeWebhooks(
+          body.metadata.webhooks,
+          backgroundWorker,
+          environment,
+          this._prisma,
+          webhookPrisma
+        )
+      );
+
+      if (webhooksError) {
+        logger.error("Error syncing declarative webhooks", { error: webhooksError });
+
+        const serviceError =
+          webhooksError instanceof ServiceValidationError
+            ? webhooksError
+            : new ServiceValidationError("Error syncing declarative webhooks");
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
+
+        throw serviceError;
+      }
+
       // Guarded BUILDING → DEPLOYING transition. `updateMany` for optimistic concurrency control
       const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
         where: {
@@ -272,6 +298,12 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
     error: Error,
     environment: AuthenticatedEnvironment
   ) {
+    const failedAt = new Date();
+    const errorData = {
+      name: error.name,
+      message: error.message,
+    };
+
     // Guarded BUILDING → FAILED transition, symmetric with the BUILDING → DEPLOYING
     // transition in `call()`. With idempotent retries, two attempts can run side-by-side;
     // without the predicate, one attempt's failure could downgrade the deployment after
@@ -283,11 +315,9 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       },
       data: {
         status: "FAILED",
-        failedAt: new Date(),
-        errorData: {
-          name: error.name,
-          message: error.message,
-        },
+        failedAt,
+        errorData,
+        buildEnvVars: Prisma.DbNull,
       },
     });
 
@@ -305,13 +335,18 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // BUILDING → DEPLOYING transition.
       await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
-      recordDeploymentOutcome({
+      recordDeploymentFinished({
         status: "FAILED",
-        deploymentFriendlyId: deployment.friendlyId,
-        organizationId: environment.organizationId,
-        projectId: environment.projectId,
-        environmentId: environment.id,
-        environmentType: environment.type,
+        deployment: { ...deployment, status: "FAILED", failedAt, errorData },
+        environment: {
+          organizationId: environment.organizationId,
+          organizationSlug: environment.organization.slug,
+          projectId: environment.projectId,
+          projectName: environment.project.name,
+          projectRef: environment.project.externalRef,
+          environmentId: environment.id,
+          environmentType: environment.type,
+        },
         reason: error.message,
       });
     }

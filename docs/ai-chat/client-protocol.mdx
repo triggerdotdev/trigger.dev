@@ -320,7 +320,7 @@ The output stream uses [S2](https://s2.dev) under the hood and follows the stand
 | Event | Meaning |
 | --- | --- |
 | `batch` | One or more records. The records you actually care about. |
-| `ping` | Keepalive (~every 5s on idle). Body is `{"timestamp": <ms>}`. Ignore it. |
+| `ping` | Keepalive (~every 5s on idle). Body is `{"timestamp": <ms>}`, and on backends that report it a `tail` (same `{seq_num, timestamp}` shape as a batch tail). The tail is what lets you tell you have caught up to the live edge; if you don't need caught-up detection, ignore the ping. |
 | _(no `event:`, just `data: [DONE]`)_ | Stream is closing — server sends this once before EOF. |
 
 A `batch` event in raw SSE format looks like this — note the `data` is a single line of JSON, no embedded newlines (per the SSE spec):
@@ -359,7 +359,7 @@ Decoded `data` payload:
 | `records[].timestamp` | Unix ms when the record was written to S2. |
 | `records[].body` | For data records: a JSON-encoded **string** wrapping `{ data: UIMessageChunk, id: string }`. For control records: an empty string (semantics live in `headers`). For S2 command records: opaque bytes. See [Records on session.out](#records-on-session-out). |
 | `records[].headers` | Optional `[name, value]` pairs. Empty for data records; a `trigger-control` entry for control records; a single empty-name `["", "<op>"]` entry for S2 command records. |
-| `tail.seq_num` | Latest known tail of the S2 stream — useful for detecting how far behind the live edge you are. Skip if you don't need it. |
+| `tail.seq_num` | Latest known tail of the S2 stream, useful for detecting how far behind the live edge you are. Track the **highest `seq_num` you have received**, counting every record in the batch (including the command records you skip, see below), not just the last application-visible one. When `highest received seq_num + 1 === tail.seq_num` you have drained the backlog and are caught up to the live edge. The same `tail` also rides on `ping` events. Skip if you don't need it. |
 | `tail.timestamp` | Timestamp of `tail.seq_num`. |
 
 ### Records on `session.out`
@@ -652,6 +652,8 @@ On **reconnect-on-reload** paths (resuming a chat where nothing may be streaming
 
 **Do not send `X-Peek-Settled` on the active-send response-stream path.** The peek would race the newly-triggered turn's first chunk — if the agent hasn't written the new turn's first record yet, the peek sees the prior turn's `turn-complete` and closes the SSE before the response lands on S2. The built-in `TriggerChatTransport.reconnectToStream` sets the header; `sendMessages → subscribeToStream` does not.
 
+If you use `TriggerChatTransport` (or `useChat`, which builds on it), this is handled for you: the reconnect path sends `X-Peek-Settled`, so a settled idle reconnect closes promptly on the server's `wait=0` fast-close instead of waiting out the long poll. Consuming `.out` directly, send the same header on your reconnect reads and treat an `X-Session-Settled: true` response as a terminal close.
+
 ```ts
 // Reconnect path (page reload)
 const response = await fetch(sseUrl, {
@@ -769,7 +771,7 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unk
 ```
 
 <Note>
-  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then every `kind: "message"` payload — and the `triggerConfig.basePayload` you sent at session create — must carry a matching `metadata.userId`. The agent rejects messages whose metadata fails schema validation.
+  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then the `triggerConfig.basePayload` you sent at session create and every non-close `kind: "message"` payload must carry a matching `metadata.userId`. Invalid metadata is not passed to agent code. Async reads produce an error chunk followed by `turn-complete`; raw `chat.messages.on()` subscriptions use `onClientDataValidationError` and the task log so they do not end an active response.
 </Note>
 
 ### Sending a message
@@ -830,7 +832,9 @@ Custom actions (undo, rollback, edit) ride on the same `.in` channel using `kind
 }
 ```
 
-Actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend (but still no `run()` or `onTurnComplete`). The `action` payload is validated against the agent's `actionSchema`. If the agent didn't register an `actionSchema` (or your `action` payload doesn't match it), validation fails the same way `metadata` does — `.in/append` returns `200 OK`, but the run trace shows `chat turn N [ERROR]` and the wire emits a `turn-complete` control record with no other chunks. See [Actions](/ai-chat/actions) for the agent-side schema setup.
+For managed `chat.agent()` tasks, actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend (but still no `run()` or `onTurnComplete`). The `action` payload is validated against the agent's `actionSchema`. If the agent didn't register an `actionSchema` (or your `action` payload doesn't match it), validation fails the same way `metadata` does — `.in/append` returns `200 OK`, but the run trace shows `chat turn N [ERROR]` and the wire emits a `turn-complete` control record with no other chunks. See [Actions](/ai-chat/actions) for the agent-side schema setup.
+
+Raw `chat.customAgent()` tasks receive `action` as `unknown` and must validate it in their own loop.
 
 ### Regenerating the last response
 
@@ -951,8 +955,11 @@ You can send messages while the agent is still streaming a response. These are *
 
 The wire format is identical to a normal `kind: "message"` send — same `.in` channel, single `message` field. The difference is timing. What happens depends on the agent's `pendingMessages` configuration:
 
-- **With `pendingMessages.shouldInject`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With `pendingMessages.shouldInject` returning `true`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With a `pendingMessages` config that declines it**, either because `shouldInject` returned `false` or because it is absent: the message stays queued on the backend and is answered as the next turn.
 - **Without `pendingMessages` config**: the message queues for the next turn.
+
+In every case the message is answered. A declined message keeps its place in the queue, so it also survives a crash and is picked up by whichever run continues the conversation.
 
 See [Pending Messages](/ai-chat/pending-messages) for how to configure the agent side.
 

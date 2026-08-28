@@ -36,7 +36,12 @@ vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 // `authUser`, `resolvedEnv`, `logDetail`, `project`, `environment` feed the mocked fix-orthogonal deps.
 const cp = vi.hoisted(() => ({ client: undefined as any }));
 const router = vi.hoisted(() => ({ store: undefined as any }));
-const authUser = vi.hoisted(() => ({ id: "user_rrg_guard", admin: false, isImpersonating: false }));
+const authUser = vi.hoisted(() => ({
+  id: "user_rrg_guard",
+  admin: false,
+  isImpersonating: false,
+  isViewingAsUser: false,
+}));
 const resolved = vi.hoisted(() => ({
   authEnv: undefined as any,
   env: undefined as any,
@@ -104,7 +109,10 @@ vi.mock("~/v3/runStore.server", () => ({
   ),
 }));
 
-// Auth/session (orthogonal): fixed user id.
+// Auth/session (orthogonal): fixed user id. This factory replaces the whole module, so it has to
+// return every export the route graph under test actually reaches — accessing one it does not
+// define throws. Keep it to that set; importing the original would evaluate session.server's
+// server-only import graph, which this test deliberately keeps out.
 vi.mock("~/services/session.server", () => ({
   requireUserId: async () => authUser.id,
   requireUser: async () => authUser,
@@ -259,7 +267,11 @@ let seq = 0;
 
 async function seedTenant(prisma: PrismaClient, suffix: string) {
   const organization = await prisma.organization.create({
-    data: { title: `Org ${suffix}`, slug: `org-${suffix}` },
+    data: {
+      title: `Org ${suffix}`,
+      slug: `org-${suffix}`,
+      featureFlags: { hasLogsPageAccess: true },
+    },
   });
   const project = await prisma.project.create({
     data: {

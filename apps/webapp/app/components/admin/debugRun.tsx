@@ -1,4 +1,3 @@
-import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -12,10 +11,11 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { ClipboardField } from "../primitives/ClipboardField";
 
 export function AdminDebugRun({ friendlyId }: { friendlyId: string }) {
+  // `useHasAdminAccess` already folds in impersonation and the "view as user"
+  // toggle, so this one check is enough.
   const hasAdminAccess = useHasAdminAccess();
-  const isImpersonating = useIsImpersonating();
 
-  if (!hasAdminAccess && !isImpersonating) {
+  if (!hasAdminAccess) {
     return null;
   }
 
@@ -31,7 +31,7 @@ export function AdminDebugRun({ friendlyId }: { friendlyId: string }) {
   );
 }
 
-export function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
+function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
   return (
     <DialogContent
       key={`debug`}
@@ -45,10 +45,11 @@ export function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
 function DebugRunContent({ friendlyId }: { friendlyId: string }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const isLoading = fetcher.state === "loading";
+  const load = fetcher.load;
 
   useEffect(() => {
-    fetcher.load(`/resources/taskruns/${friendlyId}/debug`);
-  }, [friendlyId]);
+    load(`/resources/taskruns/${friendlyId}/debug`);
+  }, [friendlyId, load]);
 
   return (
     <>

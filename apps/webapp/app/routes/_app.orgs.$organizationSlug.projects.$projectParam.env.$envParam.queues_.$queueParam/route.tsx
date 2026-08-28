@@ -1,4 +1,3 @@
-import { type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
@@ -9,6 +8,10 @@ import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { queueWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import { storedQueueName } from "~/components/queues/queue-name";
+import { isQueueDegraded, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Spinner } from "~/components/primitives/Spinner";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
@@ -22,7 +25,6 @@ import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncConte
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
   QUEUE_METRIC_COLORS as COLORS,
-  QUEUE_METRICS_DEFAULT_PERIOD,
   QueueMetricChartCard as QueueDetailChartCard,
   type QueueMetricIds as Ids,
   type QueueMetricTimeRange as TimeRangeParams,
@@ -31,6 +33,7 @@ import {
   toNumber,
   useQueueMetric,
 } from "~/components/queues/QueueMetricCards";
+import { useIsMetricResponseFresh } from "~/hooks/useMetricResourceQuery";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
@@ -55,7 +58,6 @@ import type {
   ConcurrencyKeyRow,
   ConcurrencyKeysResponse,
 } from "~/routes/resources.queues.concurrency-keys";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
@@ -67,15 +69,34 @@ import {
   QueueOverrideConcurrencyButton,
   QueuePauseResumeButton,
 } from "~/components/queues/QueueControls";
+import {
+  clampQueueMetricsPeriod,
+  queueMetricsPeriodFromRequest,
+  resolveQueueMetricsPeriod,
+  useRememberQueueMetricsPeriod,
+} from "~/components/queues/queueMetricsPeriod";
+import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
+import { queueAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
+export const handle: Handle = {
+  agentPageContext: (data) => queueAgentPageContext(data),
+};
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.queue?.name ?? params.queueParam ?? "Queue",
+  "Queues",
+]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({ queueParam: z.string() });
 
@@ -85,7 +106,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // This whole page is part of the metrics UI; gate it per-org (the list already hides
   // the only link to it, this is defense in depth).
-  if (!(await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+  if (!(await canAccessQueueMetricsUi({ request, userId, organizationSlug }))) {
     throw new Response(undefined, { status: 404, statusText: "Not found" });
   }
 
@@ -104,7 +125,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const queue = retrieve.queue;
-  const fullName = queue.type === "task" ? `task/${queue.name}` : queue.name;
+  const fullName = storedQueueName(queue);
+
+  const maxPeriodDays = await queueMetricsMaxPeriodDays(environment.organizationId);
 
   const [ckBreakdown, oldestQueuedAt] = await Promise.all([
     engine.concurrencyKeyBreakdown(environment, fullName, { limit: CK_LIVE_LIMIT }),
@@ -134,6 +157,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     oldestQueuedAt: oldestQueuedAt ?? null,
     loadedAt: Date.now(),
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
+    defaultPeriod: clampQueueMetricsPeriod(queueMetricsPeriodFromRequest(request), maxPeriodDays),
+    maxPeriodDays,
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -182,6 +207,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 const CK_LIVE_LIMIT = 50;
 
+/**
+ * Bucket floor for the charts in a synced group. The event-driven series (scheduling delay,
+ * throttling) need it: their samples only exist when something started or was held back, so at the
+ * 10-second width a short range picks, most buckets hold nothing and the line reads as a run of
+ * zeros. The gauges beside them take the same floor because the shared hover crosshair is a
+ * recharts ReferenceLine on a category x-axis, so it only draws where the hovered bucket
+ * timestamp exists in the other chart's own data — mixing widths in one group silently drops it.
+ */
+const SYNCED_CHART_MIN_BUCKET_SECONDS = 60;
+
 // Whole-queue oldest wait right now: for keyed queues the per-key breakdown carries the oldest
 // enqueue time per key, so the queue's oldest is the max wait across keys; otherwise fall back to
 // the queue's oldest message directly. Returns null when nothing is waiting.
@@ -210,19 +245,23 @@ export default function Page() {
     loadedAt,
     backPath,
     ids,
+    defaultPeriod,
+    maxPeriodDays,
   } = useTypedLoaderData<typeof loader>();
-  const plan = useCurrentPlan();
-  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
-  // plans whose query-period limit was raised above it — a longer window would render empty.
-  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
-  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
-    period: value("period") ?? null,
+    period: resolveQueueMetricsPeriod({
+      period: value("period"),
+      from: value("from"),
+      to: value("to"),
+      defaultPeriod,
+      maxPeriodDays,
+    }),
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
+  useRememberQueueMetricsPeriod(value("period"));
 
   // The Concurrency keys tab exists only for queues with key activity: live keys in the
   // ckIndex, or nonzero CK history in the selected range (one cached scalar query decides).
@@ -240,6 +279,15 @@ export default function Page() {
   const hasKeys = ckBreakdown.keys.length > 0 || (!gateLoading && hasHistory);
   const view = value("view") === "keys" ? "keys" : "overview";
   const selectedKey = value("key");
+
+  const oldestWaitMs = wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt);
+  const degraded = isQueueDegraded({
+    paused: queue.paused,
+    running: queue.running,
+    queued: queue.queued,
+    limit: queue.concurrencyLimit ?? environmentConcurrencyLimit,
+    oldestWaitMs,
+  });
 
   return (
     <PageContainer>
@@ -283,11 +331,26 @@ export default function Page() {
               />
             ) : null}
             <TimeFilter
-              defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+              period={timeRange.period ?? undefined}
+              defaultPeriod={defaultPeriod}
               labelName="Period"
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
+            {/* Both buttons self-hide when the agent isn't available. Watch is
+                pre-filled with this queue's recommendation. */}
+            {degraded ? (
+              <InvestigateButton
+                prompt={queueBacklogPrompt(fullName)}
+                variant="secondary"
+                tooltip="Ask why this queue is backed up"
+              />
+            ) : null}
+            {/* A paused queue can't drain or grow, so every watch it could offer is a
+                promise nothing will keep until someone resumes it. */}
+            {queue.paused ? null : (
+              <WatchButton spec={queueWatchRecommendation(fullName, { oldestWaitMs })} />
+            )}
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
@@ -307,7 +370,7 @@ export default function Page() {
           queue={queue}
           environmentConcurrencyLimit={environmentConcurrencyLimit}
           queuedRunsPath={queuedRunsPath}
-          oldestWaitMs={wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt)}
+          oldestWaitMs={oldestWaitMs}
           ids={ids}
           timeRange={timeRange}
           queueName={fullName}
@@ -395,6 +458,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -421,6 +485,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -440,6 +505,7 @@ function OverviewCharts({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -456,8 +522,10 @@ function OverviewCharts({
           info="How long runs wait before they start."
           showLegend
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99,\n  sum(wait_ms_count) AS samples\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
+          sampleCountColumn="samples"
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -479,6 +547,7 @@ function OverviewCharts({
           className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
           query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -830,6 +899,7 @@ function useConcurrencyKeys(opts: {
   }, [body]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     load();
     return () => abortRef.current?.abort();
   }, [load]);
@@ -968,6 +1038,7 @@ function KeyDrilldown({
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -981,6 +1052,8 @@ function KeyDrilldown({
           title={`Key ${keyName}: throughput`}
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -989,7 +1062,10 @@ function KeyDrilldown({
         <QueueDetailChartCard
           title={`Key ${keyName}: mean scheduling delay`}
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait, sum(wait_ms_count) AS samples\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
+          sampleCountColumn="samples"
           ids={ids}
           timeRange={timeRange}
           queueName={queueName}
@@ -1006,9 +1082,7 @@ function KeyDrilldown({
 // fresh, always reading the newest gauge row and falling back to the loader values until the first
 // poll lands (so we never flash 0). These blocks never change with the filter. Period trends
 // (backlog, throughput, delay over time) live in the charts below.
-// Oldest-wait threshold for the warning tint: the head of the queue sitting unstarted this long
-// signals the queue is stuck, not just busy.
-const OLDEST_WAIT_WARNING_MS = 5 * 60_000;
+// The oldest-wait warning threshold lives in ~/components/queues/queue-thresholds.
 
 // How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
 // bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.
@@ -1049,7 +1123,7 @@ function QueueStats({
   // Latest gauges from ClickHouse, polled every 15s so the live blocks keep ticking after first
   // paint. Read the newest bucket (largest t); until the first poll lands liveRows is empty and the
   // *Live values stay null, so the blocks show the loader values instead of flashing 0.
-  const { rows: liveRows } = useQueueMetric(
+  const { rows: liveRows, responseReceivedAt } = useQueueMetric(
     `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit, max(max_ck_wait_ms) AS ck_wait FROM queue_metrics GROUP BY t ORDER BY t`,
     {
       ids,
@@ -1065,8 +1139,11 @@ function QueueStats({
   // Redis/PG value instead of lingering on a stale count.
   const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
   const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
-  const liveFresh =
-    Number.isFinite(latestBucketMs) && Date.now() - latestBucketMs < LIVE_GAUGE_FRESH_MS;
+  const liveFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    latestBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
   const fresh = latest && liveFresh ? latest : undefined;
   const runningLive = fresh ? toNumber(fresh.running) : null;
   const queuedLive = fresh ? toNumber(fresh.queued) : null;
@@ -1172,7 +1249,7 @@ function ConcurrencyBlock({
               <span
                 className={cn(
                   "text-xs tabular-nums",
-                  atLimit ? "text-warning" : "text-text-dimmed"
+                  atLimit ? "system-mono-label text-warning" : "text-text-dimmed"
                 )}
               >
                 {/* Separator so the limit and the percentage don't read as one number
@@ -1183,7 +1260,7 @@ function ConcurrencyBlock({
             )}
           </div>
           {limit !== null && limit > 0 && (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-charcoal-750">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-charcoal-750">
               <div
                 className={cn("h-full rounded-full", atLimit ? "bg-warning" : "bg-queues")}
                 style={{ width: `${pct}%` }}

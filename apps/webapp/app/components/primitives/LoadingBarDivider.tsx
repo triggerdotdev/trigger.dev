@@ -15,7 +15,7 @@ export function LoadingBarDivider({ isLoading, className }: LoadingBarDividerPro
   );
 }
 
-export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
+function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
   const [scope, animate] = useAnimate();
   const [isPresent, safeToRemove] = usePresence();
 
@@ -39,7 +39,7 @@ export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
 
       exitAnimation();
     }
-  }, [isPresent, isLoading]);
+  }, [animate, isPresent, isLoading, safeToRemove, scope]);
 
   return (
     <AnimatePresence>

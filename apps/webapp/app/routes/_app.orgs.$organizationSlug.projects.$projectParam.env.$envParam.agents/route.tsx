@@ -1,10 +1,6 @@
 import { Outlet } from "@remix-run/react";
-import { PageContainer } from "~/components/layout/AppLayout";
 
+// No PageContainer — the child pages render their own; nesting two collapses the inner one's height.
 export default function Page() {
-  return (
-    <PageContainer>
-      <Outlet />
-    </PageContainer>
-  );
+  return <Outlet />;
 }

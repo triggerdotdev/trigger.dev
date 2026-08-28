@@ -174,6 +174,70 @@ describe("transport send events", () => {
   });
 });
 
+describe("stopped turn followed by a new turn", () => {
+  /**
+   * `.out` stub that honours the `Last-Event-ID` cursor like the server does, so
+   * a resubscribe cannot replay records the reader already consumed. A stop that
+   * never saw its turn-complete is therefore unrecoverable unless the new send
+   * clears the skip state.
+   */
+  function cursoredOneTurnTransport() {
+    const frames = [
+      { id: "1", data: `{"type":"text-delta","id":"t1","delta":"hello"}` },
+      { id: "2", data: `{"type":"trigger:turn-complete"}` },
+    ];
+
+    return makeTransport({
+      fetch: async (_url, init, ctx) => {
+        if (ctx.endpoint === "in") return jsonOk();
+
+        const cursor = new Headers(init.headers).get("Last-Event-ID");
+        const from = cursor ? frames.findIndex((f) => f.id === cursor) + 1 : 0;
+        const remaining = frames.slice(from);
+        const response = sseResponse(
+          remaining.map((f) => `id: ${f.id}\ndata: ${f.data}\n\n`).join("")
+        );
+        // Nothing left to send: the session is settled, so the reader stops
+        // instead of resubscribing.
+        if (remaining.length === 0) response.headers.set("X-Session-Settled", "true");
+        return response;
+      },
+    });
+  }
+
+  it("streams a sendMessages turn after a stop that never saw turn-complete", async () => {
+    const { transport, events } = cursoredOneTurnTransport();
+
+    expect(await transport.stopGeneration("c1")).toBe(true);
+    events.length = 0;
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "c1",
+      messageId: undefined,
+      messages: [user("after stop", "u-2")],
+      abortSignal: undefined,
+    });
+    const chunks = await readAll(stream);
+
+    expect(chunks).toEqual([{ type: "text-delta", id: "t1", delta: "hello" }]);
+    expect(events.some((e) => e.type === "turn-completed")).toBe(true);
+  });
+
+  it("streams a sendAction turn after a stop that never saw turn-complete", async () => {
+    const { transport, events } = cursoredOneTurnTransport();
+
+    expect(await transport.stopGeneration("c1")).toBe(true);
+    events.length = 0;
+
+    const stream = await transport.sendAction("c1", { type: "undo" });
+    const chunks = await readAll(stream);
+
+    expect(chunks).toEqual([{ type: "text-delta", id: "t1", delta: "hello" }]);
+    expect(events.some((e) => e.type === "turn-completed")).toBe(true);
+  });
+});
+
 describe("transport stream events", () => {
   it("marks reconnectToStream subscriptions as resumed", async () => {
     const { transport, events } = makeTransport({
@@ -211,11 +275,20 @@ describe("transport stream events", () => {
       ``,
     ].join("\n");
 
+    let subscribes = 0;
     const { transport, events } = makeTransport({
       watch: true,
       sessions: { c1: { publicAccessToken: "tok_test", isStreaming: true } },
-      fetch: async (_url, _init, ctx) =>
-        ctx.endpoint === "in" ? jsonOk() : sseResponse(TWO_TURNS),
+      fetch: async (_url, _init, ctx) => {
+        if (ctx.endpoint === "in") return jsonOk();
+        if (subscribes++ > 0) {
+          // Watch mode reconnects past the body EOF; settle so the read ends.
+          const settled = sseResponse("");
+          settled.headers.set("X-Session-Settled", "true");
+          return settled;
+        }
+        return sseResponse(TWO_TURNS);
+      },
     });
 
     const stream = await transport.reconnectToStream({ chatId: "c1" });

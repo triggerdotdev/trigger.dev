@@ -16,6 +16,17 @@ import type { UseApiClientOptions } from "./useApiClient.js";
 import { useApiClient } from "./useApiClient.js";
 import { createThrottledQueue } from "../utils/throttle.js";
 
+// Keep subscription lifecycles controlled by their effects while using the latest request inputs.
+function useStableRequestCallback(callback: () => Promise<void>) {
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  return useCallback(() => callbackRef.current(), []);
+}
+
 export type UseRealtimeRunOptions = UseApiClientOptions & {
   id?: string;
   enabled?: boolean;
@@ -111,6 +122,9 @@ export function useRealtimeRun<TTask extends AnyTask>(
   }, []);
 
   const apiClient = useApiClient(options);
+  const onComplete = options?.onComplete;
+  const skipColumns = options?.skipColumns;
+  const stopOnCompletion = options?.stopOnCompletion;
 
   const triggerRequest = useCallback(async () => {
     try {
@@ -123,12 +137,12 @@ export function useRealtimeRun<TTask extends AnyTask>(
 
       await processRealtimeRun(
         runId,
-        { skipColumns: options?.skipColumns },
+        { skipColumns },
         apiClient,
         mutateRun,
         setError,
         abortControllerRef,
-        typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true
+        typeof stopOnCompletion === "boolean" ? stopOnCompletion : true
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -146,7 +160,8 @@ export function useRealtimeRun<TTask extends AnyTask>(
       // Mark the subscription as complete
       setIsComplete(true);
     }
-  }, [runId, mutateRun, abortControllerRef, apiClient, setError]);
+  }, [runId, apiClient, mutateRun, setError, setIsComplete, skipColumns, stopOnCompletion]);
+  const requestSubscription = useStableRequestCallback(triggerRequest);
 
   const hasCalledOnCompleteRef = useRef(false);
 
@@ -154,11 +169,11 @@ export function useRealtimeRun<TTask extends AnyTask>(
   // Only call onComplete when the run has actually finished (has finishedAt),
   // not just when the subscription stream ends (which can happen due to network issues)
   useEffect(() => {
-    if (isComplete && run?.finishedAt && options?.onComplete && !hasCalledOnCompleteRef.current) {
-      options.onComplete(run, error);
+    if (isComplete && run?.finishedAt && onComplete && !hasCalledOnCompleteRef.current) {
+      onComplete(run, error);
       hasCalledOnCompleteRef.current = true;
     }
-  }, [isComplete, run, error, options?.onComplete]);
+  }, [isComplete, run, error, onComplete]);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
@@ -169,18 +184,18 @@ export function useRealtimeRun<TTask extends AnyTask>(
       return;
     }
 
-    triggerRequest().finally(() => {});
+    requestSubscription().finally(() => {});
 
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, requestSubscription]);
 
   useEffect(() => {
     if (run?.finishedAt) {
       setIsComplete(true);
     }
-  }, [run]);
+  }, [run, setIsComplete]);
 
   return { run, error, stop };
 }
@@ -274,6 +289,10 @@ export function useRealtimeRunWithStreams<
   }, []);
 
   const apiClient = useApiClient(options);
+  const onComplete = options?.onComplete;
+  const skipColumns = options?.skipColumns;
+  const stopOnCompletion = options?.stopOnCompletion;
+  const throttleInMs = options?.throttleInMs;
 
   const triggerRequest = useCallback(async () => {
     try {
@@ -286,15 +305,15 @@ export function useRealtimeRunWithStreams<
 
       await processRealtimeRunWithStreams(
         runId,
-        { skipColumns: options?.skipColumns },
+        { skipColumns },
         apiClient,
         mutateRun,
         mutateStreams,
         streamsRef,
         setError,
         abortControllerRef,
-        typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
-        options?.throttleInMs ?? 16
+        typeof stopOnCompletion === "boolean" ? stopOnCompletion : true,
+        throttleInMs ?? 16
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -312,7 +331,18 @@ export function useRealtimeRunWithStreams<
       // Mark the subscription as complete
       setIsComplete(true);
     }
-  }, [runId, mutateRun, mutateStreams, streamsRef, abortControllerRef, apiClient, setError]);
+  }, [
+    runId,
+    apiClient,
+    mutateRun,
+    mutateStreams,
+    setError,
+    setIsComplete,
+    skipColumns,
+    stopOnCompletion,
+    throttleInMs,
+  ]);
+  const requestSubscription = useStableRequestCallback(triggerRequest);
 
   const hasCalledOnCompleteRef = useRef(false);
 
@@ -320,11 +350,11 @@ export function useRealtimeRunWithStreams<
   // Only call onComplete when the run has actually finished (has finishedAt),
   // not just when the subscription stream ends (which can happen due to network issues)
   useEffect(() => {
-    if (isComplete && run?.finishedAt && options?.onComplete && !hasCalledOnCompleteRef.current) {
-      options.onComplete(run, error);
+    if (isComplete && run?.finishedAt && onComplete && !hasCalledOnCompleteRef.current) {
+      onComplete(run, error);
       hasCalledOnCompleteRef.current = true;
     }
-  }, [isComplete, run, error, options?.onComplete]);
+  }, [isComplete, run, error, onComplete]);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
@@ -335,18 +365,18 @@ export function useRealtimeRunWithStreams<
       return;
     }
 
-    triggerRequest().finally(() => {});
+    requestSubscription().finally(() => {});
 
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, requestSubscription]);
 
   useEffect(() => {
     if (run?.finishedAt) {
       setIsComplete(true);
     }
-  }, [run]);
+  }, [run, setIsComplete]);
 
   return { run, streams: streams ?? initialStreamsFallback, error, stop };
 }
@@ -442,6 +472,8 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
   }, []);
 
   const apiClient = useApiClient(options);
+  const createdAt = options?.createdAt;
+  const skipColumns = options?.skipColumns;
 
   const triggerRequest = useCallback(async () => {
     try {
@@ -454,7 +486,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 
       await processRealtimeRunsWithTag(
         tag,
-        { createdAt: options?.createdAt, skipColumns: options?.skipColumns },
+        { createdAt, skipColumns },
         apiClient,
         mutateRuns,
         runsRef,
@@ -474,19 +506,20 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
         abortControllerRef.current = null;
       }
     }
-  }, [normalizedTag, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
+  }, [tag, createdAt, skipColumns, apiClient, mutateRuns, setError]);
+  const requestSubscription = useStableRequestCallback(triggerRequest);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
       return;
     }
 
-    triggerRequest().finally(() => {});
+    requestSubscription().finally(() => {});
 
     return () => {
       stop();
     };
-  }, [normalizedTag, stop, options?.enabled]);
+  }, [normalizedTag, stop, options?.enabled, requestSubscription]);
 
   return { runs: runs ?? [], error, stop };
 }
@@ -572,18 +605,19 @@ export function useRealtimeBatch<TTask extends AnyTask>(
       }
     }
   }, [batchId, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
+  const requestSubscription = useStableRequestCallback(triggerRequest);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
       return;
     }
 
-    triggerRequest().finally(() => {});
+    requestSubscription().finally(() => {});
 
     return () => {
       stop();
     };
-  }, [batchId, stop, options?.enabled]);
+  }, [batchId, stop, options?.enabled, requestSubscription]);
 
   return { runs: runs ?? [], error, stop };
 }
@@ -750,33 +784,29 @@ export function useRealtimeStream<TPart>(
   streamKeyOrOptionsOrRunId?: string | UseRealtimeStreamOptions<TPart>,
   options?: UseRealtimeStreamOptions<TPart>
 ): UseRealtimeStreamInstance<TPart> {
+  let runId: string;
+  let streamKey: string;
+  let resolvedOptions: UseRealtimeStreamOptions<TPart> | undefined;
+
   if (typeof runIdOrDefinedStream === "string") {
-    if (typeof streamKeyOrOptionsOrRunId === "string") {
-      return useRealtimeStreamImplementation(
-        runIdOrDefinedStream,
-        streamKeyOrOptionsOrRunId,
-        options
-      );
-    } else {
-      return useRealtimeStreamImplementation(
-        runIdOrDefinedStream,
-        "default",
-        streamKeyOrOptionsOrRunId
-      );
-    }
+    runId = runIdOrDefinedStream;
+    streamKey =
+      typeof streamKeyOrOptionsOrRunId === "string" ? streamKeyOrOptionsOrRunId : "default";
+    resolvedOptions =
+      typeof streamKeyOrOptionsOrRunId === "string" ? options : streamKeyOrOptionsOrRunId;
   } else {
-    if (typeof streamKeyOrOptionsOrRunId === "string") {
-      return useRealtimeStreamImplementation(
-        streamKeyOrOptionsOrRunId,
-        runIdOrDefinedStream.id,
-        options
-      );
-    } else {
+    if (typeof streamKeyOrOptionsOrRunId !== "string") {
       throw new Error(
         "Invalid second argument to useRealtimeStream. When using a defined stream instance, the second argument to useRealtimeStream must be a run ID."
       );
     }
+
+    runId = streamKeyOrOptionsOrRunId;
+    streamKey = runIdOrDefinedStream.id;
+    resolvedOptions = options;
   }
+
+  return useRealtimeStreamImplementation(runId, streamKey, resolvedOptions);
 }
 
 function useRealtimeStreamImplementation<TPart>(
@@ -825,16 +855,20 @@ function useRealtimeStreamImplementation<TPart>(
     }
   }, []);
 
+  const onDataCallback = options?.onData;
   const onData = useCallback(
     (data: TPart) => {
-      if (options?.onData) {
-        options.onData(data);
+      if (onDataCallback) {
+        onDataCallback(data);
       }
     },
-    [options?.onData]
+    [onDataCallback]
   );
 
   const apiClient = useApiClient(options);
+  const timeoutInSeconds = options?.timeoutInSeconds;
+  const startIndex = options?.startIndex;
+  const throttleInMs = options?.throttleInMs;
 
   const triggerRequest = useCallback(async () => {
     try {
@@ -854,9 +888,9 @@ function useRealtimeStreamImplementation<TPart>(
         setError,
         onData,
         abortControllerRef,
-        options?.timeoutInSeconds,
-        options?.startIndex,
-        options?.throttleInMs ?? 16
+        timeoutInSeconds,
+        startIndex,
+        throttleInMs ?? 16
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -874,7 +908,19 @@ function useRealtimeStreamImplementation<TPart>(
       // Mark the subscription as complete
       setIsComplete(true);
     }
-  }, [runId, streamKey, mutateParts, partsRef, abortControllerRef, apiClient, setError]);
+  }, [
+    runId,
+    streamKey,
+    apiClient,
+    mutateParts,
+    setError,
+    setIsComplete,
+    onData,
+    timeoutInSeconds,
+    startIndex,
+    throttleInMs,
+  ]);
+  const requestSubscription = useStableRequestCallback(triggerRequest);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
@@ -885,12 +931,12 @@ function useRealtimeStreamImplementation<TPart>(
       return;
     }
 
-    triggerRequest().finally(() => {});
+    requestSubscription().finally(() => {});
 
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, requestSubscription]);
 
   return { parts: parts ?? initialPartsFallback, error, stop };
 }

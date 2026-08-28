@@ -11,7 +11,7 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-import { branchesPath, branchesDevPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
+import { branchesPath, branchesDevPath, v3BillingPath } from "~/utils/pathBuilder";
 import {
   EnvironmentCombo,
   EnvironmentIcon,
@@ -29,9 +29,7 @@ import {
   PopoverSectionHeader,
   PopoverTrigger,
 } from "../primitives/Popover";
-import { TextLink } from "../primitives/TextLink";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import { V4Badge } from "../V4Badge";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { Badge } from "../primitives/Badge";
 
@@ -197,7 +195,7 @@ export function EnvironmentSelector({
                       className={ENV_POPOVER_ITEM_LABEL}
                       iconClassName={ENV_POPOVER_ITEM_ICON}
                     />
-                    <span className={cn("text-indigo-500", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
+                    <span className={cn("text-text-link", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
                   </div>
                 }
                 isSelected={false}
@@ -215,7 +213,7 @@ export function EnvironmentSelector({
                       className={ENV_POPOVER_ITEM_LABEL}
                       iconClassName={ENV_POPOVER_ITEM_ICON}
                     />
-                    <span className={cn("text-indigo-500", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
+                    <span className={cn("text-text-link", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
                   </div>
                 }
                 isSelected={false}
@@ -251,6 +249,7 @@ function Branches({
   }, []);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setMenuOpen(false);
   }, [navigation.location?.pathname]);
 
@@ -312,7 +311,7 @@ function Branches({
  * Inner content of the branches popover (list, empty states, "Manage branches" footer). Shared by
  * the `Branches` hover submenu and the side-menu Preview popover.
  */
-export function BranchesPopoverContent({
+function BranchesPopoverContent({
   parentEnvironment,
   branchEnvironments,
   currentEnvironment,
@@ -411,13 +410,9 @@ export function BranchesPopoverContent({
               <BranchEnvironmentIconSmall className={cn("size-4", envTextClassName)} />
               <Header2>Create your first branch</Header2>
             </div>
-            <Paragraph spacing variant="small">
+            <Paragraph variant="small">
               Branches are a way to test new features in isolation before merging them into the main
               environment.
-            </Paragraph>
-            <Paragraph variant="small">
-              Branches are only available when using <V4Badge inline /> or above. Read our{" "}
-              <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
             </Paragraph>
           </div>
         ) : (

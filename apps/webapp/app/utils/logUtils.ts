@@ -4,8 +4,6 @@ import { z } from "zod";
 export const LogLevelSchema = z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
-export const validLogLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
-
 // Default styles for search highlighting
 const DEFAULT_HIGHLIGHT_STYLES: React.CSSProperties = {
   backgroundColor: "#facc15", // yellow-400
@@ -93,20 +91,21 @@ export function kindToLevel(kind: string, status: string): LogLevel {
   }
 }
 
-// Level badge color styles
+/* Each chip is a translucent wash of its own accent, from tokens rather than the
+   raw palette so the "Stronger colors" preference can reach them. */
 export function getLevelColor(level: LogLevel): string {
   switch (level) {
     case "ERROR":
-      return "text-error bg-error/10 border-error/20";
+      return "text-error bg-error/10 border-error/20 system:border-transparent system:bg-error system:text-white";
     case "WARN":
-      return "text-warning bg-warning/10 border-warning/20";
+      return "text-warning bg-warning/10 border-warning/20 system:border-transparent system:bg-warning system:text-white";
     case "TRACE":
-      return "text-purple-400 bg-purple-500/10 border-purple-500/20";
+      return "log-level-chip-trace text-log-trace bg-log-trace/10 border-log-trace/20 system:border-transparent system:bg-log-trace system:text-white";
     case "DEBUG":
-      return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
+      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10 system:border-transparent system:bg-charcoal-500 system:text-white";
     case "INFO":
-      return "text-blue-400 bg-blue-500/10 border-blue-500/20";
+      return "text-pending bg-pending/10 border-pending/20 system:border-transparent system:bg-pending system:text-white";
     default:
-      return "text-text-dimmed bg-charcoal-750 border-charcoal-700";
+      return "text-text-dimmed bg-black/5 border-black/10 dark:bg-white/5 dark:border-white/10 system:border-transparent system:bg-charcoal-500 system:text-white";
   }
 }

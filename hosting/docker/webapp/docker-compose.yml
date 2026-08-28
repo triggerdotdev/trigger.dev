@@ -80,11 +80,11 @@ services:
       TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
       TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
       # ClickHouse configuration
-      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://default:${CLICKHOUSE_PASSWORD}@clickhouse:8123?secure=false}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD}@clickhouse:8123?secure=false}
       CLICKHOUSE_LOG_LEVEL: ${CLICKHOUSE_LOG_LEVEL:-info}
       # Run replication
       RUN_REPLICATION_ENABLED: ${RUN_REPLICATION_ENABLED:-1}
-      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://default:${CLICKHOUSE_PASSWORD}@clickhouse:8123}
+      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD}@clickhouse:8123}
       RUN_REPLICATION_LOG_LEVEL: ${RUN_REPLICATION_LOG_LEVEL:-info}
       # Limits
       # TASK_PAYLOAD_OFFLOAD_THRESHOLD: 524288 # 512KB
@@ -157,18 +157,27 @@ services:
       start_period: 10s
 
   clickhouse:
-    image: bitnamilegacy/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_IMAGE_TAG:-26.2}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9123:8123
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     environment:
-      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env - run ./generate-secrets.sh}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env - run ./generate-secrets.sh}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
-      - clickhouse:/bitnami/clickhouse
-      - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
+      # The same volume works across upgrades from the previous Bitnami-based
+      # setup: data-paths.xml keeps the on-disk layout compatible.
+      - clickhouse:/var/lib/clickhouse
+      - ../clickhouse/data-paths.xml:/etc/clickhouse-server/config.d/data-paths.xml:ro
+      - ../clickhouse/override.xml:/etc/clickhouse-server/config.d/override.xml:ro
+      - ../clickhouse/users-override.xml:/etc/clickhouse-server/users.d/override.xml:ro
     networks:
       - webapp
     healthcheck:

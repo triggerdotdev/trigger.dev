@@ -3,6 +3,7 @@ import { env } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
+import { nonAliasedShards } from "~/v3/runOpsShards.server";
 import { meter, provider } from "~/v3/tracer.server";
 import {
   setRunsReplicationConfiguredSources,
@@ -31,6 +32,17 @@ export function buildReplicationSources(args: {
   newSlotName: string;
   newPublicationName: string;
   newOriginGeneration: number;
+  /**
+   * Gen-2 shards that own their own database, each with its own slot, publication and origin
+   * generation. An aliased shard is absent: its target's slot already covers its WAL.
+   */
+  shards?: Array<{
+    key: string;
+    url: string;
+    /** The DIRECT, non-pooled DSN. Logical replication needs a session-mode connection. */
+    directUrl?: string;
+    replication: { slotName: string; publicationName: string; originGeneration: number };
+  }>;
 }): RunsReplicationSource[] {
   const legacy: RunsReplicationSource = {
     id: "legacy",
@@ -54,7 +66,29 @@ export function buildReplicationSources(args: {
     originGeneration: args.newOriginGeneration,
   };
 
-  return [legacy, next];
+  // Shard sources come after the gen-1 pair. Reached only when the new source is on, because
+  // split is the precondition for a shard to exist at all. The origin generations come from the
+  // descriptor, which the boot parser already bounds to 2..255 and checks for duplicates; the
+  // service re-checks uniqueness across every source it is given.
+  // The DIRECT dsn, not the app writer dsn. A transaction pooler cannot serve the replication
+  // protocol, and the writer dsn is pooled in a real deployment. Gen-1 keeps the same separation
+  // through its own RUN_REPLICATION_* variables, and the migration loop prefers directUrl too.
+  const shardSources: RunsReplicationSource[] = (args.shards ?? []).map((shard) => ({
+    id: shardSourceId(shard.key),
+    pgConnectionUrl: shard.directUrl ?? shard.url,
+    slotName: shard.replication.slotName,
+    publicationName: shard.replication.publicationName,
+    originGeneration: shard.replication.originGeneration,
+  }));
+
+  return [legacy, next, ...shardSources];
+}
+
+// The replication source id for a shard. It derives the per-source client name and the key the
+// status route probes, so it must be stable and unique across sources. The leader lock is keyed on
+// the slot name, not on this id.
+function shardSourceId(key: string): string {
+  return `shard-${key}`;
 }
 
 /**
@@ -66,23 +100,105 @@ export function buildReplicationSources(args: {
  * rather than ship a fleet-wide under-count.
  */
 export class SplitReplicationMisconfiguredError extends Error {
-  constructor() {
+  constructor(message?: string) {
     super(
-      'RUN_OPS_SPLIT_ENABLED is on but the runs-replication sources[] has no "new" source: ' +
-        "run-ops runs on the new DB would not replicate to ClickHouse, under-counting every " +
-        "ClickHouse-fronted aggregate. Enable the new replication source " +
-        "(RUN_REPLICATION_NEW_ENABLED / RUN_REPLICATION_RUN_OPS_DATABASE_URL) or turn the split off."
+      message ??
+        'RUN_OPS_SPLIT_ENABLED is on but the runs-replication sources[] has no "new" source: ' +
+          "run-ops runs on the new DB would not replicate to ClickHouse, under-counting every " +
+          "ClickHouse-fronted aggregate. Enable the new replication source " +
+          "(RUN_REPLICATION_NEW_ENABLED / RUN_REPLICATION_RUN_OPS_DATABASE_URL) or turn the split off."
     );
     this.name = "SplitReplicationMisconfiguredError";
+  }
+}
+
+/**
+ * Two sources that share an identity. The descriptor parser checks uniqueness AMONG shards only, so
+ * it cannot see the env-configured legacy and new sources: a shard can collide with either. The
+ * service has its own check, but it throws from the constructor, which the caller reaches only AFTER
+ * it has shut the bootstrap instance down — leaving the process up with NO replication at all, which
+ * is the exact silent under-count this family of errors exists to prevent. So the check runs here,
+ * at the fatal gate, before anything is torn down.
+ */
+class DuplicateReplicationIdentityError extends SplitReplicationMisconfiguredError {
+  constructor(field: string, value: unknown) {
+    super(
+      `the runs-replication sources[] has two sources with the same ${field} "${String(value)}": ` +
+        "two consumers on one WAL stream is a data race, and a shared origin generation defeats the " +
+        "ClickHouse dedup tiebreak. Give every source its own slot, publication and origin generation."
+    );
+    this.name = "DuplicateReplicationIdentityError";
+  }
+}
+
+/**
+ * A configured shard with no replication source of its own. Subclasses the split error on purpose:
+ * the boot catch site tests `instanceof SplitReplicationMisconfiguredError` to reach
+ * process.exit(1), and a shard whose runs never reach ClickHouse must take that same exit.
+ */
+class ShardReplicationMisconfiguredError extends SplitReplicationMisconfiguredError {
+  constructor(shardKey: string) {
+    super(
+      `run-ops shard ${shardKey} is configured but the runs-replication sources[] has no ` +
+        `"${shardSourceId(shardKey)}" source: runs on that shard would not replicate to ` +
+        "ClickHouse, under-counting every ClickHouse-fronted aggregate. Give the shard a " +
+        "replication slot, publication and origin generation, or remove the shard."
+    );
+    this.name = "ShardReplicationMisconfiguredError";
+  }
+}
+
+/**
+ * A shard that replicates but declares no direct dsn. Falling back to its writer dsn is a silent
+ * trap: if that dsn is pooled, the replication client throws inside start(), which is NOT a
+ * SplitReplicationMisconfiguredError, so the process stays up with EVERY source down, legacy
+ * included. Refuse the boot instead.
+ */
+class ShardDirectUrlMissingError extends SplitReplicationMisconfiguredError {
+  constructor(shardKey: string) {
+    super(
+      `run-ops shard ${shardKey} declares replication but no directUrl: logical replication needs a ` +
+        "session-mode connection, which a transaction pooler cannot serve. Give the shard a directUrl " +
+        "pointing at its direct, non-pooled endpoint."
+    );
+    this.name = "ShardDirectUrlMissingError";
   }
 }
 
 export function assertReplicationCoversSplit(args: {
   splitEnabled: boolean;
   sources: RunsReplicationSource[];
+  /** Every configured shard, aliased ones included. An aliased shard needs no source of its own. */
+  shards?: Array<{ key: string; aliasOf?: "new"; hasDirectUrl?: boolean }>;
 }): void {
-  if (args.splitEnabled && !args.sources.some((s) => s.id === "new")) {
+  if (!args.splitEnabled) {
+    return;
+  }
+  if (!args.sources.some((s) => s.id === "new")) {
     throw new SplitReplicationMisconfiguredError();
+  }
+  for (const shard of args.shards ?? []) {
+    // An aliased shard shares its target's database, so the target's slot already carries its WAL.
+    if (shard.aliasOf !== undefined) continue;
+    if (!args.sources.some((s) => s.id === shardSourceId(shard.key))) {
+      throw new ShardReplicationMisconfiguredError(shard.key);
+    }
+    if (shard.hasDirectUrl === false) {
+      throw new ShardDirectUrlMissingError(shard.key);
+    }
+  }
+
+  // Cross-source identity, over EVERY source and not only the shards. A correct two-source
+  // deployment already satisfies this, because two consumers on one WAL slot is a data race that
+  // cannot work. So this adds a loud failure for a configuration that was already broken silently.
+  for (const field of ["id", "slotName", "publicationName", "originGeneration"] as const) {
+    const seen = new Set<unknown>();
+    for (const source of args.sources) {
+      if (seen.has(source[field])) {
+        throw new DuplicateReplicationIdentityError(field, source[field]);
+      }
+      seen.add(source[field]);
+    }
   }
 }
 
@@ -117,6 +233,7 @@ function initializeRunsReplicationInstance() {
     maxFlushConcurrency: env.RUN_REPLICATION_MAX_FLUSH_CONCURRENCY,
     flushIntervalMs: env.RUN_REPLICATION_FLUSH_INTERVAL_MS,
     flushBatchSize: env.RUN_REPLICATION_FLUSH_BATCH_SIZE,
+    maxPoisonStripsPerBatch: env.RUN_REPLICATION_MAX_POISON_STRIPS_PER_BATCH,
     leaderLockTimeoutMs: env.RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS,
     leaderLockExtendIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS,
     leaderLockAcquireAdditionalTimeMs: env.RUN_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS,
@@ -170,6 +287,20 @@ function initializeRunsReplicationInstance() {
     // The legacy-only instance above is never started in the dual path (no slot/lock
     // taken). runsReplicationService.server.ts is untouched. The create route also calls
     // setRunsReplicationGlobal — last-writer-wins is the existing contract.
+    // An aliased shard replicates through its target's slot, so only the shards that own their own
+    // database take a source. Coverage is then checked against EVERY descriptor, aliased included.
+    // The schema requires `replication` on every non-aliased descriptor, so the guard below is a
+    // type narrowing and not a policy.
+    const shardReplicationByKey = new Map(
+      env.RUN_OPS_SHARDS.flatMap((d) => (d.replication ? [[d.key, d.replication] as const] : []))
+    );
+    const shardsWithReplication = nonAliasedShards(env.RUN_OPS_SHARDS).flatMap((shard) => {
+      const replication = shardReplicationByKey.get(shard.key);
+      return replication
+        ? [{ key: shard.key, url: shard.url, directUrl: shard.directUrl, replication }]
+        : [];
+    });
+
     isSplitEnabled()
       .then(async (splitEnabled) => {
         const sources = buildReplicationSources({
@@ -183,10 +314,20 @@ function initializeRunsReplicationInstance() {
           newSlotName: env.RUN_REPLICATION_NEW_SLOT_NAME,
           newPublicationName: env.RUN_REPLICATION_NEW_PUBLICATION_NAME,
           newOriginGeneration: env.RUN_REPLICATION_NEW_ORIGIN_GENERATION,
+          shards: shardsWithReplication,
         });
 
-        // Refuse to start replication if split is on but `#new` is not a source.
-        assertReplicationCoversSplit({ splitEnabled, sources });
+        // Refuse to start replication if split is on but `#new` is not a source, or if any shard
+        // that owns its own database has no source of its own.
+        assertReplicationCoversSplit({
+          splitEnabled,
+          sources,
+          shards: env.RUN_OPS_SHARDS.map((d) => ({
+            key: d.key,
+            aliasOf: d.aliasOf,
+            hasDirectUrl: d.directUrl !== undefined,
+          })),
+        });
 
         if (sources.length > 1) {
           // Release the bootstrap instance's eager replication client (Redis + Redlock)

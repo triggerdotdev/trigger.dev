@@ -27,7 +27,11 @@ export function registerGlobal<Type extends keyof TriggerDotDevGlobalAPI>(
   instance: TriggerDotDevGlobalAPI[Type],
   allowOverride = false
 ): boolean {
-  const api = (_global[GLOBAL_TRIGGER_DOT_DEV_KEY] = _global[GLOBAL_TRIGGER_DOT_DEV_KEY] ?? {});
+  let api = _global[GLOBAL_TRIGGER_DOT_DEV_KEY];
+  if (!api) {
+    api = {};
+    _global[GLOBAL_TRIGGER_DOT_DEV_KEY] = api;
+  }
 
   if (!allowOverride && api[type]) {
     // already registered an API of this type

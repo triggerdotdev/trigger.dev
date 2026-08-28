@@ -7,8 +7,7 @@ import {
   type SessionItem,
   type SessionStatus,
 } from "@trigger.dev/core/v3";
-import { SessionId } from "@trigger.dev/core/v3/isomorphic";
-import type { Prisma, Session } from "@trigger.dev/database";
+import type { Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
@@ -17,8 +16,8 @@ import {
   ensureRunForSession,
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
-import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import {
+  findOrCreateSession,
   serializeSession,
   serializeSessionsWithFriendlyRunIds,
 } from "~/services/realtime/sessions.server";
@@ -27,6 +26,7 @@ import {
   anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
+  everyResource,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
@@ -48,15 +48,19 @@ export const loader = createLoaderApiRoute(
       //   - Type-level `read:sessions` (the old superScope) matches the
       //     sessions element (collection-level — no id)
       //   - `read:all` / `admin` bypass via the JWT ability's wildcard branches
-      // The taskIdentifier filter accepts a string or an array; expand to
-      // one resource per task id so any per-task-scoped JWT among them
-      // grants access (the array gets OR semantics).
+      // The taskIdentifier filter accepts a string or an array. Broad
+      // sessions/tasks scopes remain alternatives, while ID-scoped keys must
+      // match every requested task so one allowed filter cannot expose others.
       resource: (_, __, searchParams) => {
         const taskFilter = asArray(searchParams["filter[taskIdentifier]"]) ?? [];
-        return anyResource([
-          ...taskFilter.map((id) => ({ type: "tasks" as const, id })),
-          { type: "sessions" as const },
-        ]);
+        if (taskFilter.length === 0) {
+          return anyResource([{ type: "sessions" as const }, { type: "tasks" as const }]);
+        }
+
+        return everyResource(
+          taskFilter.map((id) => ({ type: "tasks" as const, id })),
+          [{ type: "sessions" as const }, { type: "tasks" as const }]
+        );
       },
     },
     findResource: async () => 1,
@@ -164,66 +168,18 @@ const { action } = createActionApiRoute(
   },
   async ({ authentication, body }) => {
     try {
-      const { id, friendlyId } = SessionId.generate();
-
-      // Idempotent on (env, externalId): two concurrent POSTs converge
-      // to the same row. We refresh `triggerConfig` on the cached path
-      // so newly-deployed schema changes (e.g. an updated
-      // `clientDataSchema` on the agent) propagate to subsequent runs
-      // — the next `ensureRunForSession` reads back the latest config.
-      let session: Session;
-      let isCached = false;
-
-      const triggerConfigJson = body.triggerConfig as unknown as Prisma.InputJsonValue;
-
-      if (body.externalId) {
-        session = await prisma.session.upsert({
-          where: {
-            runtimeEnvironmentId_externalId: {
-              runtimeEnvironmentId: authentication.environment.id,
-              externalId: body.externalId,
-            },
-          },
-          create: {
-            id,
-            friendlyId,
-            externalId: body.externalId,
-            type: body.type,
-            taskIdentifier: body.taskIdentifier,
-            triggerConfig: triggerConfigJson,
-            tags: body.tags ?? [],
-            metadata: body.metadata as Prisma.InputJsonValue | undefined,
-            expiresAt: body.expiresAt ?? null,
-            projectId: authentication.environment.projectId,
-            runtimeEnvironmentId: authentication.environment.id,
-            environmentType: authentication.environment.type,
-            organizationId: authentication.environment.organizationId,
-            streamBasinName: authentication.environment.organization.streamBasinName,
-            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
-          },
-          update: { triggerConfig: triggerConfigJson },
-        });
-        isCached = session.id !== id;
-      } else {
-        session = await prisma.session.create({
-          data: {
-            id,
-            friendlyId,
-            type: body.type,
-            taskIdentifier: body.taskIdentifier,
-            triggerConfig: triggerConfigJson,
-            tags: body.tags ?? [],
-            metadata: body.metadata as Prisma.InputJsonValue | undefined,
-            expiresAt: body.expiresAt ?? null,
-            projectId: authentication.environment.projectId,
-            runtimeEnvironmentId: authentication.environment.id,
-            environmentType: authentication.environment.type,
-            organizationId: authentication.environment.organizationId,
-            streamBasinName: authentication.environment.organization.streamBasinName,
-            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
-          },
-        });
-      }
+      // Idempotent on (env, externalId): two concurrent POSTs converge to the same row, and
+      // `triggerConfig` is refreshed on the cached path so a redeployed config reaches the next run.
+      const { session, isCached } = await findOrCreateSession({
+        environment: authentication.environment,
+        externalId: body.externalId,
+        type: body.type,
+        taskIdentifier: body.taskIdentifier,
+        triggerConfig: body.triggerConfig,
+        tags: body.tags,
+        metadata: body.metadata as Record<string, unknown> | undefined,
+        expiresAt: body.expiresAt,
+      });
 
       // Reject create on a closed session. The upsert path will return
       // an already-closed row when the caller reuses an externalId, and

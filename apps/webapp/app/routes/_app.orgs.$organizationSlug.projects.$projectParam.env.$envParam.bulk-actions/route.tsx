@@ -1,6 +1,6 @@
 import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
-import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
+import { Outlet, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -54,14 +54,16 @@ import {
   v3BulkActionPath,
   v3CreateBulkActionPath,
 } from "~/utils/pathBuilder";
+import { bulkActionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Bulk actions | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => bulkActionsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Bulk actions");
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().optional(),
@@ -140,13 +142,15 @@ export default function Page() {
         <PageTitle title="Bulk actions" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/bulk-actions")}
-          >
-            Bulk actions docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/bulk-actions")}
+            >
+              Bulk actions docs
+            </LinkButton>
+          </WhenAgentUnavailable>
           <LinkButton
             variant="primary/small"
             LeadingIcon={PlusIcon}

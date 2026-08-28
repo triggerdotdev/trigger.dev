@@ -7,6 +7,7 @@ import { safeJsonParse } from "~/utils/json";
 import { logger } from "../logger.server";
 import type { SecretStoreOptions } from "./secretStoreOptionsSchema.server";
 
+import { boundedIn } from "@trigger.dev/database";
 type ProviderInitializationOptions = {
   DATABASE: {
     prismaClient?: PrismaClientOrTransaction;
@@ -118,7 +119,7 @@ class PrismaSecretStore implements SecretStoreProvider {
     const secrets = await this.#prismaClient.secretStore.findMany({
       where: {
         key: {
-          in: keys,
+          in: boundedIn(keys),
         },
       },
     });

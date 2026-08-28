@@ -4,15 +4,8 @@ import {
   BookOpenIcon,
   NoSymbolIcon,
 } from "@heroicons/react/20/solid";
-import {
-  Form,
-  type MetaFunction,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useNavigation,
-  useParams,
-} from "@remix-run/react";
+import { Form, Outlet, useLocation, useNavigate, useNavigation, useParams } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CogIcon, GitBranchIcon } from "lucide-react";
 import { useEffect } from "react";
@@ -49,6 +42,7 @@ import {
   collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
+  CopyableTableCell,
   Table,
   TableBlankRow,
   TableBody,
@@ -87,14 +81,17 @@ import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { env } from "~/env.server";
 import { DialogClose } from "@radix-ui/react-dialog";
+import { deploymentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Deployments | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => deploymentsAgentPageContext(),
 };
+import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
+
+export const meta = pageMeta("Deployments");
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -195,15 +192,24 @@ export default function Page() {
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
+  const selectedDeploymentShortCode = selectedDeployment?.shortCode;
+
   // If we have a selected deployment from the version param, show it
   useEffect(() => {
-    if (selectedDeployment && !deploymentParam) {
+    if (selectedDeploymentShortCode && !deploymentParam) {
       const searchParams = new URLSearchParams(location.search);
       searchParams.delete("version");
       searchParams.set("page", currentPage.toString());
-      navigate(`${location.pathname}/${selectedDeployment.shortCode}?${searchParams.toString()}`);
+      navigate(`${location.pathname}/${selectedDeploymentShortCode}?${searchParams.toString()}`);
     }
-  }, [selectedDeployment, deploymentParam, location.search]);
+  }, [
+    selectedDeploymentShortCode,
+    deploymentParam,
+    location.search,
+    location.pathname,
+    currentPage,
+    navigate,
+  ]);
 
   const currentDeployment = deployments.find((d) => d.isCurrent);
 
@@ -212,13 +218,15 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Deployments" />
         <PageAccessories>
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/cli-deploy")}
-          >
-            Deployments docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/cli-deploy")}
+            >
+              Deployments docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -259,8 +267,9 @@ export default function Page() {
                       <TableHeaderCell>Tasks</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
-                      <TableHeaderCell>Git</TableHeaderCell>
+                      <TableHeaderCell>External ID</TableHeaderCell>
                       {hasVercelIntegration && <TableHeaderCell>Linked</TableHeaderCell>}
+                      <TableHeaderCell>Git</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -335,18 +344,15 @@ export default function Page() {
                                 "–"
                               )}
                             </TableCell>
-                            <TableCell isSelected={isSelected}>
-                              <div className="-ml-1 flex items-center">
-                                <GitMetadata git={deployment.git} />
-                              </div>
-                            </TableCell>
+                            <DeploymentExternalIdCell
+                              externalId={deployment.externalId}
+                              path={path}
+                              isSelected={isSelected}
+                            />
                             {hasVercelIntegration && (
                               <TableCell isSelected={isSelected}>
                                 {deployment.vercelDeploymentUrl ? (
-                                  <div
-                                    className="-ml-1 flex items-center"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
+                                  <div className="-ml-1 flex items-center">
                                     <VercelLink
                                       vercelDeploymentUrl={deployment.vercelDeploymentUrl}
                                     />
@@ -356,6 +362,11 @@ export default function Page() {
                                 )}
                               </TableCell>
                             )}
+                            <TableCell isSelected={isSelected}>
+                              <div className="-ml-1 flex items-center">
+                                <GitMetadata git={deployment.git} />
+                              </div>
+                            </TableCell>
                             <DeploymentActionsCell
                               deployment={deployment}
                               path={path}
@@ -367,7 +378,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={hasVercelIntegration ? 9 : 8}>
+                      <TableBlankRow colSpan={hasVercelIntegration ? 11 : 10}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
@@ -390,14 +401,18 @@ export default function Page() {
                         <span className="max-w-28 truncate">{environmentGitHubBranch}</span>
                       </div>{" "}
                       in
-                      <a
+                      <TextLink
                         href={connectedGithubRepository.repository.htmlUrl}
                         target="_blank"
                         rel="noreferrer noopener"
-                        className="max-w-52 truncate text-sm text-text-dimmed underline transition-colors hover:text-text-bright"
+                        variant="secondary"
+                        className="text-sm"
                       >
-                        {connectedGithubRepository.repository.fullName}
-                      </a>
+                        {/* truncate needs a block-level child: the link itself is inline-flex */}
+                        <span className="max-w-52 truncate">
+                          {connectedGithubRepository.repository.fullName}
+                        </span>
+                      </TextLink>
                       <LinkButton
                         variant="minimal/small"
                         LeadingIcon={CogIcon}
@@ -602,6 +617,30 @@ function DeploymentActionsCell({
         </>
       }
     />
+  );
+}
+
+function DeploymentExternalIdCell({
+  externalId,
+  path,
+  isSelected,
+}: {
+  externalId: string | null;
+  path: string;
+  isSelected: boolean;
+}) {
+  if (!externalId) {
+    return (
+      <TableCell to={path} isSelected={isSelected}>
+        –
+      </TableCell>
+    );
+  }
+
+  return (
+    <CopyableTableCell to={path} isSelected={isSelected} className="font-mono" value={externalId}>
+      {externalId.length > 12 ? `${externalId.slice(0, 12)}…` : externalId}
+    </CopyableTableCell>
   );
 }
 

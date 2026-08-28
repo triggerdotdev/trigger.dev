@@ -103,7 +103,7 @@ function SpanPill({ text, icon }: { text: string; icon?: string }) {
   );
 }
 
-export function SpanCodePathAccessory({
+function SpanCodePathAccessory({
   accessory,
   className,
 }: {
@@ -231,7 +231,8 @@ export function eventBorderClassName(event: RunEvent) {
 function textClassNameForVariant(variant: TaskEventStyle["variant"]) {
   switch (variant) {
     case "primary": {
-      return "text-blue-500";
+      // System themes: monochrome span titles, icons carry the color
+      return "text-blue-500 system:text-text-bright";
     }
     default: {
       return "text-text-dimmed";

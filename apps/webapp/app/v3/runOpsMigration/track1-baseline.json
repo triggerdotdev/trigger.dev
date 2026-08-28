@@ -68,19 +68,19 @@
     "WaitpointTag.project"
   ],
   "totals": {
-    "violations": 4,
-    "detectorI": 4,
+    "violations": 5,
+    "detectorI": 5,
     "detectorII": 0,
     "detectorIII": 0,
     "write": 0,
-    "read": 4,
+    "read": 5,
     "files": 1,
     "legacyAnnotations": 0
   },
   "violations": [
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 88,
+      "line": 93,
       "model": "BatchTaskRun",
       "delegate": "batchTaskRun",
       "callKind": "read",
@@ -89,7 +89,7 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 149,
+      "line": 154,
       "model": "BatchTaskRun",
       "delegate": "batchTaskRun",
       "callKind": "read",
@@ -98,16 +98,25 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 183,
+      "line": 214,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",
       "detector": "i",
-      "snippet": "const newRows = (await newClient.taskRun.findMany({"
+      "snippet": "? ((await newClient.taskRun.findMany({"
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 195,
+      "line": 224,
+      "model": "TaskRun",
+      "delegate": "taskRun",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": "(await shardReplicas.get(shardKey)!.taskRun.findMany({"
+    },
+    {
+      "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
+      "line": 241,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",

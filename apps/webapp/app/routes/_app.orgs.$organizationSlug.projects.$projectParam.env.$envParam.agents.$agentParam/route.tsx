@@ -1,5 +1,4 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -23,6 +22,11 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import {
+  RunsListErrorState,
+  RunsListErrorStateNoop,
+} from "~/components/runs/v3/RunsListErrorState";
+import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
@@ -39,6 +43,8 @@ import {
   type AgentDetail,
 } from "~/presenters/v3/AgentDetailPresenter.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -50,11 +56,19 @@ import {
   v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { agentsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const slug = (data as { agent?: AgentDetail | null } | undefined)?.agent?.slug;
-  return [{ title: slug ? `${slug} | Agents | Trigger.dev` : "Agent | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => agentsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.agent?.slug ?? params.agentParam ?? "Agent",
+  "Agents",
+]);
 
 const AgentParamSchema = EnvironmentParamSchema.extend({
   agentParam: z.string(),
@@ -83,10 +97,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, runsListClickhouse] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
+  ]);
 
   const presenter = new AgentDetailPresenter($replica, clickhouse);
   const agent = await presenter.findAgent({
@@ -145,7 +159,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
-  const runList = new NextRunListPresenter($replica, clickhouse)
+  const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -155,8 +169,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      columns: getRunColumnsForSelect(request),
     })
-    .catch(() => null);
+    .catch((error) => {
+      if (error instanceof RunsListQueryError) {
+        throw error;
+      }
+      return null;
+    });
 
   const sessionList = new SessionListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
@@ -224,37 +244,21 @@ export default function Page() {
           }
         />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("ai-chat/overview")}
-          >
-            Agents docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant="docs/small"
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("ai-chat/overview")}
+            >
+              Agents docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
-        {/* Filters — the pinned bar under the NavBar: the TimeFilter and pagination that used to
-            be fused with the tabs now live here, above the charts (Queues list pattern). Left and
-            right clusters are child divs; the slot's baked justify-between spreads them. */}
         <MetricsLayout.Filters>
           <div className="flex items-center gap-2">
             <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
-          </div>
-          <div className="flex items-center gap-2">
-            {tab === "sessions" ? (
-              <Suspense fallback={null}>
-                <TypedAwait resolve={sessionList} errorElement={null}>
-                  {(list) => (list ? <ListPagination list={list} /> : null)}
-                </TypedAwait>
-              </Suspense>
-            ) : (
-              <Suspense fallback={null}>
-                <TypedAwait resolve={runList} errorElement={null}>
-                  {(list) => (list ? <ListPagination list={list} /> : null)}
-                </TypedAwait>
-              </Suspense>
-            )}
           </div>
         </MetricsLayout.Filters>
 
@@ -315,23 +319,48 @@ export default function Page() {
 
         {/* Tabs alone on their row (Queue detail pattern), then the table below them. */}
         <MetricsLayout.Content>
-          <TabContainer className="px-3">
-            <TabButton
-              isActive={tab === "sessions"}
-              layoutId="agent-page-tabs"
-              onClick={() => setTab("sessions")}
-            >
-              Sessions
-            </TabButton>
-            <TabButton
-              isActive={tab === "runs"}
-              layoutId="agent-page-tabs"
-              onClick={() => setTab("runs")}
-            >
-              Runs
-            </TabButton>
-          </TabContainer>
-          <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
+          {/* Single child so Content's gap-2.5 can't separate the bar from the table. */}
+          <div className="flex flex-col">
+            <TabContainer variant="title" className="justify-between border-y px-2">
+              <div className="flex items-stretch gap-x-6">
+                <TabButton
+                  isActive={tab === "sessions"}
+                  layoutId="agent-page-tabs"
+                  variant="title"
+                  onClick={() => setTab("sessions")}
+                >
+                  Sessions
+                </TabButton>
+                <TabButton
+                  isActive={tab === "runs"}
+                  layoutId="agent-page-tabs"
+                  variant="title"
+                  onClick={() => setTab("runs")}
+                >
+                  Runs
+                </TabButton>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {tab === "sessions" ? (
+                  <Suspense fallback={null}>
+                    <TypedAwait resolve={sessionList} errorElement={null}>
+                      {(list) => (list ? <ListPagination list={list} /> : null)}
+                    </TypedAwait>
+                  </Suspense>
+                ) : (
+                  <>
+                    <RunsDisplayOptions sampleFilters={{ tasks: agent.slug, rootOnly: "false" }} />
+                    <Suspense fallback={null}>
+                      <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
+                        {(list) => (list ? <ListPagination list={list} /> : null)}
+                      </TypedAwait>
+                    </Suspense>
+                  </>
+                )}
+              </div>
+            </TabContainer>
+            <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
+          </div>
         </MetricsLayout.Content>
 
         <MetricsLayout.Sidebar
@@ -356,8 +385,7 @@ function AgentContentArea({
   sessionList,
   runList,
 }: { tab: AgentTab } & Pick<LoaderData, "sessionList" | "runList">) {
-  // The table flows in the page-level scroll (MetricsLayout.Root scroll="page"); a sticky header
-  // keeps the column labels pinned as the whole column scrolls.
+  // No `stickyHeader` — it drops the table's own overflow-x-auto and the charts scroll with it.
   return tab === "sessions" ? (
     <Suspense fallback={<TableLoading />}>
       <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
@@ -367,7 +395,7 @@ function AgentContentArea({
               sessions={list.sessions}
               filters={list.filters}
               hasFilters={list.hasFilters}
-              stickyHeader
+              showTopBorder={false}
             />
           ) : (
             <TableLoading />
@@ -377,7 +405,7 @@ function AgentContentArea({
     </Suspense>
   ) : (
     <Suspense fallback={<TableLoading />}>
-      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+      <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
         {(list) =>
           list ? (
             <TaskRunsTable
@@ -386,7 +414,7 @@ function AgentContentArea({
               filters={list.filters}
               runs={list.runs}
               variant="dimmed"
-              stickyHeader
+              showTopBorder={false}
             />
           ) : (
             <TableLoading />

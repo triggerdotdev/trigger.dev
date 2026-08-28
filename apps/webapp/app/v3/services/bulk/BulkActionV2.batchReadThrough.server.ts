@@ -20,9 +20,10 @@ import {
   runOpsLegacyReplica as defaultLegacyReplica,
   runOpsNewReplica as defaultNewClient,
 } from "~/db.server";
-import { ownerEngine, UnclassifiableRunId } from "@trigger.dev/core/v3/isomorphic";
+import { resolveShard, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import { runOpsShardReplicas as defaultShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
 
-export type SeamReadDeps = {
+type SeamReadDeps = {
   /**
    * Resolved boot constant. REQUIRED here — the caller resolves it once per
    * request via `isSplitEnabled()`; this adapter never awaits it itself.
@@ -30,7 +31,9 @@ export type SeamReadDeps = {
   splitEnabled: boolean;
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
-  logger?: { warn: (m: string, meta?: unknown) => void };
+  /** Gen-2 shard replicas by shard char; empty (RUN_OPS_SHARDS unset) keeps today's behaviour. */
+  shardReplicas?: ReadonlyMap<ShardKey, PrismaReplicaClient>;
+  logger?: { error: (m: string, meta?: Record<string, unknown>) => void };
 };
 
 type HydrateRunsAcrossSeamInput<T> = {
@@ -61,28 +64,30 @@ export async function hydrateRunsAcrossSeam<T>(input: HydrateRunsAcrossSeamInput
     return input.readNew(newClient, runIds);
   }
 
-  // Split is on. Classify residency; unclassifiable → LEGACY (probe rather than drop).
+  // Split is on. Partition by shard key; `resolveShard` is total, so an unclassifiable id
+  // resolves to "legacy" (probe rather than drop). A gen-2 id goes to its OWN shard and to
+  // no other store: it is directly routable, so it joins neither gen-1 group.
+  const shardReplicas = deps.shardReplicas ?? defaultShardReplicas;
   const newIds: string[] = [];
   const legacyCandidateIds: string[] = [];
+  const idsByShard = new Map<ShardKey, string[]>();
   for (const runId of runIds) {
-    let residency: "LEGACY" | "NEW";
-    try {
-      residency = ownerEngine(runId);
-    } catch (e) {
-      if (e instanceof UnclassifiableRunId) {
-        deps.logger?.warn("hydrateRunsAcrossSeam: UnclassifiableRunId, treating as LEGACY", {
-          runId,
-          valueLength: e.valueLength,
-        });
-        residency = "LEGACY";
-      } else {
-        throw e;
-      }
-    }
-    if (residency === "NEW") {
+    const shardKey = resolveShard(runId);
+    if (shardKey === "new") {
       newIds.push(runId);
-    } else {
+    } else if (shardKey === "legacy") {
       legacyCandidateIds.push(runId);
+    } else if (shardReplicas.has(shardKey)) {
+      const group = idsByShard.get(shardKey);
+      group ? group.push(runId) : idsByShard.set(shardKey, [runId]);
+    } else {
+      // Not routable and not a gen-1 shape. Reading a gen-1 store would query the wrong
+      // database, so the id is dropped from the page — loudly, never silently.
+      deps.logger?.error("hydrateRunsAcrossSeam: gen-2 id on an unconfigured shard key", {
+        runId,
+        shardKey,
+        configured: [...shardReplicas.keys()],
+      });
     }
   }
 
@@ -103,6 +108,16 @@ export async function hydrateRunsAcrossSeam<T>(input: HydrateRunsAcrossSeamInput
     legacyRows = await input.readLegacyReplica(legacyReplica, legacyToProbe);
   }
 
+  // Each configured shard is read once, in parallel: the groups are disjoint by id, so the
+  // results need no dedupe.
+  const shardRows = (
+    await Promise.all(
+      [...idsByShard.entries()].map(([shardKey, ids]) =>
+        input.readNew(shardReplicas.get(shardKey)!, ids)
+      )
+    )
+  ).flat();
+
   // Order within the page is irrelevant (downstream pMap does not depend on it).
-  return [...newRows, ...legacyRows];
+  return [...newRows, ...legacyRows, ...shardRows];
 }

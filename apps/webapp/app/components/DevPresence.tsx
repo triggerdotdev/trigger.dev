@@ -15,6 +15,7 @@ import disconnectedImage from "../assets/images/cli-disconnected.png";
 import { InlineCode } from "./code/InlineCode";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
+import { cn } from "~/utils/cn";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
 import { PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
@@ -54,6 +55,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
   useEffect(() => {
     // If disabled or no events
     if (!enabled || streamedEvents === null) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsConnected(undefined);
       return;
     }
@@ -79,7 +81,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
   // Calculate isConnected and memoize the context value
   const contextValue = useMemo(() => {
     return { isConnected };
-  }, [isConnected, enabled]);
+  }, [isConnected]);
 
   return <DevPresenceContext.Provider value={contextValue}>{children}</DevPresenceContext.Provider>;
 }
@@ -112,6 +114,7 @@ export function useCrossEngineIsConnected({
 
   useEffect(() => {
     if (project.engine === "V2") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setCrossEngineIsConnected(isConnected);
       return;
     }
@@ -165,7 +168,10 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
             width={282}
             height={45}
           />
-          <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
+          <Paragraph
+            variant="small"
+            className={cn("system-mono-label", isConnected ? "text-success" : "text-error")}
+          >
             {isConnected === undefined
               ? "Checking connection..."
               : isConnected

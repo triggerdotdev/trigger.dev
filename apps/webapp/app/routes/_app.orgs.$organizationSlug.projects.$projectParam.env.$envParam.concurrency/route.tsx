@@ -7,13 +7,7 @@ import {
   InformationCircleIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  useActionData,
-  useNavigation,
-  useSearchParams,
-  type MetaFunction,
-} from "@remix-run/react";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
@@ -67,6 +61,7 @@ import {
   getPlans,
   getSelfServePurchaseBlockReason,
 } from "~/services/platform.v3.server";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
@@ -74,14 +69,15 @@ import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Manage concurrency | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("concurrency"),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Manage concurrency");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -441,7 +437,8 @@ function Upgradable({
                             <span>
                               Save your changes or{" "}
                               <button
-                                className="inline text-indigo-500 hover:text-indigo-300"
+                                type="button"
+                                className={cn(textLinkClassName(), "inline")}
                                 onClick={() => {
                                   setAllocation(initialAllocation(environments));
                                 }}
@@ -472,9 +469,7 @@ function Upgradable({
                         </div>
                         <ArrowDownIcon className="size-4 animate-bounce text-success" />
                       </div>
-                    ) : (
-                      <></>
-                    )}
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>
@@ -546,7 +541,9 @@ function Upgradable({
                     </div>
                   </TableCell>
                   <TableCell alignment="right">
-                    {environment.planConcurrencyLimit + (allocation.get(environment.id) ?? 0)}
+                    {environment.type === "DEVELOPMENT"
+                      ? environment.maximumConcurrencyLimit
+                      : environment.planConcurrencyLimit + (allocation.get(environment.id) ?? 0)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -648,17 +645,18 @@ function PurchaseConcurrencyModal({
   // Close the panel, when we've succeeded
   // This is required because a redirect to the same path doesn't clear state
   const [searchParams, setSearchParams] = useSearchParams();
+  const purchaseSucceeded = Boolean(searchParams.get("success"));
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const success = searchParams.get("success");
-    if (success) {
+    if (purchaseSucceeded) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
       setSearchParams((s) => {
         s.delete("success");
         return s;
       });
     }
-  }, [searchParams.get("success")]);
+  }, [purchaseSucceeded, setSearchParams]);
 
   const state = updateState({
     value: amountValue,

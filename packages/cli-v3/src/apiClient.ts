@@ -23,12 +23,15 @@ import {
   DevDisconnectResponseBody,
   EnvironmentVariableResponseBody,
   FailDeploymentResponseBody,
+  GetDeploymentBuildEnvVarsResponseBody,
   GetDeploymentResponseBody,
   GetEnvironmentVariablesResponseBody,
   GetLatestDeploymentResponseBody,
   GetPersonalAccessTokenResponseSchema,
   GetProjectEnvResponse,
+  GetDeploySettingsResponseBody,
   GetProjectResponseBody,
+  GetProjectRuntimesResponseBody,
   GetProjectsResponseBody,
   InitializeDeploymentResponseBody,
   PromoteDeploymentResponseBody,
@@ -45,6 +48,11 @@ import {
   GenerateRegistryCredentialsResponseBody,
   RemoteBuildProviderStatusResponseBody,
 } from "@trigger.dev/core/v3";
+import {
+  ReportViewModelSchema,
+  type ReportFormat,
+  type ReportViewModel,
+} from "@trigger.dev/core/v3/schemas";
 import type {
   WorkloadDebugLogRequestBody,
   WorkloadHeartbeatRequestBody,
@@ -93,6 +101,11 @@ const CliPlatformNotificationResponseSchema = z.object({
       firstSeenAt: z.string(),
     })
     .nullable(),
+});
+
+const MarkProjectInitializedResponseBody = z.object({
+  id: z.string(),
+  initializedAt: z.string().nullable(),
 });
 
 export class CliApiClient {
@@ -174,12 +187,43 @@ export class CliApiClient {
     });
   }
 
+  async markProjectInitialized(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("markProjectInitialized: No access token");
+    }
+
+    return wrapZodFetch(
+      MarkProjectInitializedResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/init`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+
   async getProjects() {
     if (!this.accessToken) {
       throw new Error("getProjects: No access token");
     }
 
     return wrapZodFetch(GetProjectsResponseBody, `${this.apiURL}/api/v1/projects`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async getProjectRuntimes() {
+    if (!this.accessToken) {
+      throw new Error("getProjectRuntimes: No access token");
+    }
+
+    return wrapZodFetch(GetProjectRuntimesResponseBody, `${this.apiURL}/api/v1/projects/runtimes`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -369,13 +413,21 @@ export class CliApiClient {
   }
 
   /**
-   * Fetch a server-rendered report (text + sparkline). Thin pass-through. `format`:
-   * "markdown" (agents/chat) or "ansi" (terminal). Uses this client's env API key.
+   * `format: "json"` returns a `ReportViewModel`; "markdown" (default) and "ansi" return a rendered
+   * string. `period` is a shorthand like "1h" or "7d", capped at 90d. Seconds are not accepted.
    */
   async getReport(
     key: string,
+    options: { period?: string; format: "json" }
+  ): Promise<ReportViewModel>;
+  async getReport(
+    key: string,
     options?: { period?: string; format?: "markdown" | "ansi" }
-  ): Promise<string> {
+  ): Promise<string>;
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: ReportFormat }
+  ): Promise<string | ReportViewModel> {
     if (!this.accessToken) {
       throw new Error("getReport: No access token");
     }
@@ -408,6 +460,10 @@ export class CliApiClient {
       );
     }
 
+    if (options?.format === "json") {
+      return ReportViewModelSchema.parse(await response.json());
+    }
+
     return response.text();
   }
 
@@ -428,6 +484,19 @@ export class CliApiClient {
         headers: this.getHeaders(),
         body: JSON.stringify(params),
       }
+    );
+  }
+
+  async getDeploySettings(projectRef: string, env: string, signal?: AbortSignal) {
+    return wrapZodFetch(
+      GetDeploySettingsResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/${env}/deploy-settings`,
+      {
+        method: "GET",
+        headers: this.getHeaders(),
+        signal,
+      },
+      { retry: { maxAttempts: 1 } }
     );
   }
 
@@ -629,6 +698,20 @@ export class CliApiClient {
     return wrapZodFetch(
       GetDeploymentResponseBody,
       `${this.apiURL}/api/v1/deployments/${deploymentId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async getDeploymentBuildEnvVars(deploymentId: string) {
+    if (!this.accessToken) {
+      throw new Error("getDeploymentBuildEnvVars: No access token");
+    }
+
+    return wrapZodFetch(
+      GetDeploymentBuildEnvVarsResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/build-env-vars`,
       {
         headers: this.getHeaders(),
       }
@@ -947,6 +1030,7 @@ export class CliApiClient {
       Authorization: `Bearer ${this.accessToken}`,
       "Content-Type": "application/json",
       "x-trigger-source": this.source,
+      "x-trigger-cli-version": VERSION,
       ...this.getBranchHeader(),
     };
   }

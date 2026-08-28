@@ -1284,6 +1284,16 @@ paths:
                     description: Error message describing the query error
         "401":
           description: Unauthorized - API key is missing or invalid
+        "429":
+          description: Query service is busy or rate limited - retry shortly
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message describing why the query was turned away
         "500":
           description: Internal server error during query execution
       tags:

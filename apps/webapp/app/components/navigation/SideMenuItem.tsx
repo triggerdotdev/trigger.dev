@@ -135,7 +135,10 @@ export function SideMenuItem({
         icon={icon}
         className={cn(
           "size-5 shrink-0",
-          isActive ? activeIconColor : (inactiveIconColor ?? "text-text-dimmed"),
+          // side-menu-active-icon: System themes neutralize the accent (see tailwind.css)
+          isActive
+            ? cn(activeIconColor, "side-menu-active-icon")
+            : (inactiveIconColor ?? "text-text-dimmed"),
           !isActive &&
             !disableIconHover &&
             "group-hover/menuitem:text-text-bright group-hover/menulink:text-text-bright",
@@ -237,10 +240,19 @@ export function SideMenuItem({
 }
 
 /** Button styled to match {@link SideMenuItem}, for entries that open a dialog rather than navigate. */
+/* oxlint-disable react/button-has-type -- Callers can select button, reset, or submit semantics. */
 export const SideMenuItemButton = forwardRef<
   HTMLButtonElement,
-  { icon: RenderIcon; name: string; trailing?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>
->(function SideMenuItemButton({ icon, name, trailing, className, type, ...props }, ref) {
+  {
+    icon: RenderIcon;
+    name: string;
+    trailing?: ReactNode;
+    iconClassName?: string;
+  } & ButtonHTMLAttributes<HTMLButtonElement>
+>(function SideMenuItemButton(
+  { icon, name, trailing, className, iconClassName, type, ...props },
+  ref
+) {
   return (
     <button
       ref={ref}
@@ -253,7 +265,10 @@ export const SideMenuItemButton = forwardRef<
     >
       <Icon
         icon={icon}
-        className="size-5 shrink-0 text-text-dimmed group-hover/menuitem:text-text-bright"
+        className={cn(
+          "size-5 shrink-0",
+          iconClassName ?? "text-text-dimmed group-hover/menuitem:text-text-bright"
+        )}
       />
       <SideMenuLabel className="min-w-0 flex-1 select-none text-left text-[0.90625rem] font-medium tracking-[-0.01em]">
         {name}
@@ -262,3 +277,4 @@ export const SideMenuItemButton = forwardRef<
     </button>
   );
 });
+/* oxlint-enable react/button-has-type */

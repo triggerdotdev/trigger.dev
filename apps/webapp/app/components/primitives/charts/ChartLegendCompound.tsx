@@ -302,26 +302,22 @@ type ViewAllDataRowProps = {
 
 function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
   return (
-    <div
+    <button
+      type="button"
       className="relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-background-dimmed"
       onClick={onViewAll}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onViewAll?.();
-        }
-      }}
     >
       <div className="relative flex w-full items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <div className="w-1 shrink-0 self-stretch rounded-[2px] border border-border-bright" />
           <span className="text-text-dimmed tabular-nums">{remainingCount} more…</span>
         </div>
-        <span className="self-start text-indigo-500">View all</span>
+        {/* The row is the button, so this only takes the link color - it gets its
+            hover from the parent, and it isn't body text the underline
+            preference should reach. */}
+        <span className="self-start text-text-link">View all</span>
       </div>
-    </div>
+    </button>
   );
 }
 

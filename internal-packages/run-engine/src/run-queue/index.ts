@@ -216,9 +216,9 @@ export type RunQueueOptions = {
   };
 };
 
-export interface ConcurrencySweeperCallback {
-  (runIds: string[]): Promise<Array<{ id: string; orgId: string }>>;
-}
+type ConcurrencySweeperCallback = (
+  runIds: string[]
+) => Promise<Array<{ id: string; orgId: string }>>;
 
 type DequeuedMessage = {
   messageId: string;
@@ -1104,6 +1104,12 @@ export class RunQueue {
   /**
    * Negative acknowledge a message, which will requeue the message (with an optional future date).
     If you pass no date it will get reattempted with exponential backoff.
+
+    The rewritten message drops ttlExpiresAt: TTL only applies to runs that have never been
+    dequeued, and a nack is always post-dequeue (the run's TTL set entry was already removed
+    at dequeue time). Carrying a lapsed ttlExpiresAt forward would make the next dequeue pass
+    treat the requeued run as expired and drop it from the queue sorted sets, deferring to a
+    TTL consumer that has no entry for it — orphaning the run.
    */
   public async nackMessage({
     orgId,
@@ -1150,6 +1156,8 @@ export class RunQueue {
             return false;
           }
         }
+
+        delete message.ttlExpiresAt;
 
         if (!skipDequeueProcessing) {
           // For CK queues, use wildcard dedup so all CKs share one worker queue processing job
@@ -2133,8 +2141,10 @@ export class RunQueue {
     const messageId = message.runId;
     const messageData = JSON.stringify(message);
     const messageScore = String(message.timestamp);
-    const currentTime = String(Date.now());
-    const enableFastPathArg = enableFastPath ? "1" : "0";
+    const currentTimeMs = Date.now();
+    const shouldEnableFastPath = enableFastPath && message.timestamp <= currentTimeMs;
+    const currentTime = String(currentTimeMs);
+    const enableFastPathArg = shouldEnableFastPath ? "1" : "0";
     const metricsGaugeArg = this.#queueMetricsGaugeArg();
     const defaultEnvConcurrencyLimit = String(this.options.defaultEnvConcurrency);
     const defaultEnvConcurrencyBurstFactor = String(
@@ -2155,6 +2165,7 @@ export class RunQueue {
       messageScore,
       masterQueueKey,
       enableFastPath,
+      shouldEnableFastPath,
       ttlInfo,
       service: this.name,
     });
@@ -3600,8 +3611,13 @@ if #earliestIdx > 0 then
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, queueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if queueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, queueName)
+end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -3705,8 +3721,13 @@ if #earliestIdx > 0 then
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, queueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if queueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, queueName)
+end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -3835,8 +3856,13 @@ if #earliestIdx > 0 then
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, queueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if queueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, queueName)
+end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -3953,8 +3979,13 @@ if #earliestIdx > 0 then
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, queueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if queueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, queueName)
+end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -4267,10 +4298,15 @@ for i = 1, #messages, 2 do
         -- Check if TTL has expired
         if ttlExpiresAt and ttlExpiresAt <= currentTime then
             -- TTL expired - remove from dequeue queues so it won't be retried,
-            -- but leave messageKey and ttlQueueKey intact for the TTL consumer
-            -- to discover and properly expire the run.
+            -- leave messageKey intact, and (re-)register the TTL entry so the
+            -- TTL consumer can discover and properly expire the run. The entry
+            -- is removed on first dequeue, so it cannot be assumed to exist.
             redis.call('ZREM', queueKey, messageId)
             redis.call('ZREM', envQueueKey, messageId)
+            if ttlQueueKey and ttlQueueKey ~= '' then
+                local ttlMember = queueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+                redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
+            end
         else
             -- Not expired - process normally
             redis.call('ZREM', queueKey, messageId)
@@ -4400,9 +4436,14 @@ for _, ckQueueName in ipairs(ckQueues) do
         local ttlExpiresAt = messageData and messageData.ttlExpiresAt
 
         if ttlExpiresAt and ttlExpiresAt <= currentTime then
-          -- TTL expired - remove from queues
+          -- TTL expired - remove from queues and (re-)register the TTL entry
+          -- so the TTL consumer can discover and properly expire the run
           redis.call('ZREM', fullQueueKey, messageId)
           redis.call('ZREM', envQueueKey, messageId)
+          if ttlQueueKey and ttlQueueKey ~= '' then
+            local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+            redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
+          end
         else
           -- Dequeue normally
           redis.call('ZREM', fullQueueKey, messageId)
@@ -4555,6 +4596,10 @@ for _, ckQueueName in ipairs(ckQueues) do
           redis.call('ZREM', fullQueueKey, messageId)
           redis.call('ZREM', envQueueKey, messageId)
           decrLengthCounter()
+          if ttlQueueKey and ttlQueueKey ~= '' then
+            local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+            redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
+          end
         else
           redis.call('ZREM', fullQueueKey, messageId)
           redis.call('ZREM', envQueueKey, messageId)
@@ -4905,8 +4950,13 @@ else
   redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, messageQueueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -4970,8 +5020,13 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, messageQueueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
 `,
     });
 
@@ -5016,8 +5071,13 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, messageQueueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
 
 -- Add the message to the dead letter queue
 redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
@@ -5092,8 +5152,13 @@ else
   redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, messageQueueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
 
 -- Update the concurrency keys. DECR runningCounter only when SREM
 -- currentDequeued actually removed an entry (the message was in flight).
@@ -5198,8 +5263,13 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, messageQueueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
 `,
     });
 
@@ -5258,8 +5328,13 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
--- Remove old-format entry from master queue (transition cleanup)
-redis.call('ZREM', masterQueueKey, messageQueueName)
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
 
 -- Add the message to the dead letter queue
 redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)

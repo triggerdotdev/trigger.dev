@@ -1,9 +1,3 @@
-/**
- * Health report FOUNDATION shared by the three analyzers (flow / execution / liveness):
- * the input shape, tunable thresholds, small helpers, and `buildMetrics` (numbers +
- * per-metric severity). No verdict logic here — that lives in the per-analyzer modules.
- */
-
 import { classifySeverity, delta, type Metric, type Severity } from "../report-view-model";
 
 export type HealthInput = {
@@ -11,42 +5,63 @@ export type HealthInput = {
   period: string;
   baselineLabel: string;
   generatedAt: string;
-  /** live window length in minutes — for anomaly-window / annotation math. */
   windowMinutes: number;
-  /** provenance; drives caveat text, not logic. */
+  /** Provenance. Drives caveat text, not logic. */
   flowSource: "snapshot+runs" | "queue_metrics_v1";
   /**
-   * now = live env-level depth; normal = 7d baseline (omitted on the snapshot path, which has
-   * no real 7d pending baseline — so we never mislabel a live-window average as "7d normal");
-   * series measured (v2) or estimated (v1).
+   * `normal` is the 7d baseline, omitted on the snapshot path. `availability: "unknown"` means the
+   * depth was not measured and `now` is a placeholder, not a confident 0.
    */
-  pending: { now: number; normal?: number; series: number[]; estimated: boolean };
-  startLatency: { p95Ms: number; normalP95Ms: number; series: number[] };
-  throughput: { donePerMin: number; triggeredPerMin: number; normalTriggeredPerMin: number };
+  pending: {
+    now: number;
+    normal?: number;
+    series: number[];
+    estimated: boolean;
+    availability?: "measured" | "unknown";
+  };
+  /**
+   * p95 wait. `availability: "unknown"` = the source had no measurement, so `p95Ms` is a
+   * placeholder that must not be graded — a 0 would read as a confident green.
+   */
+  startLatency: {
+    p95Ms: number;
+    normalP95Ms?: number;
+    series: number[];
+    availability?: "measured" | "unknown";
+  };
+  /** `finishedPerMin` is all terminal runs and the drain rate. `completedPerMin` is successes only. */
+  throughput: {
+    finishedPerMin: number;
+    completedPerMin: number;
+    triggeredPerMin: number;
+    normalTriggeredPerMin: number;
+  };
   failures: { rate: number; normalRate: number; series: number[] };
   duration: { p95Ms: number; normalP95Ms: number };
-  /** Age of the freshest telemetry (ms). null = no signal to assess -> freshness unknown. */
+  /** Age of the freshest telemetry in ms. Null means no signal to assess. */
   liveness: { telemetryAgeMs: number | null };
-  /**
-   * Flow's cause-tree discriminators (no own severity) — from env_metrics rows + one
-   * queue_metrics GROUP BY. Empty-ish when unavailable (cause tree falls back to v1).
-   */
+  /** Flow's cause-tree discriminators. No severity of their own. */
   flowEvidence: {
     runningSeries: number[];
+    /** Epoch ms per `runningSeries` bucket. Absent means contiguity falls back to index adjacency. */
+    runningBucketsMs?: number[];
+    /**
+     * Cadence and expected bucket count of `runningSeries`, which is not gap-filled. Absent means
+     * the cadence is unknown and received buckets are assumed to spread evenly over the window.
+     */
+    sampling?: { bucketMinutes: number; expectedBuckets: number } | null;
     envLimit: number;
     throttledShare: number;
     worstQueue: { name: string; share: number } | null;
-    /** runs dead-lettered in the window: 0 = measured none, null = unmeasured (snapshot). */
+    /** Runs dead-lettered in the window. 0 is a measured none, null is unmeasured. */
     dlqDelta: number | null;
   };
-  /** Lazy — loaded only when execution degrades (attribution line). */
+  /** Loaded only when execution degrades. */
   failureBreakdown?: { task: string; share: number; region?: string };
 };
 
-/** Tunable defaults — first-guess; tune against prod once wired. */
 export const HEALTH_THRESHOLDS = {
-  // `floor` = absolute warn/crit used when there's no usable baseline (normal 0/undefined),
-  // so a spike from a zero baseline (e.g. a never-failing env) isn't classified healthy.
+  // `floor` is the absolute warn/crit used when there's no usable baseline.
   startLatency: { warnMult: 3, critMult: 10, floor: { warn: 30_000, crit: 120_000 } },
   pending: { warnMult: 2, critMult: 10, floor: { warn: 500, crit: 5_000 } },
   failures: {
@@ -64,21 +79,18 @@ export const HEALTH_THRESHOLDS = {
     pinnedShare: 0.5, // env_limit_saturation: >= half the window's buckets pinned
     throttledShare: 0.25, // queue_limit_throttling: >= a quarter of the window throttled
     spikeMult: 3, // trigger_spike: triggered/min >= 3x the 7d-normal rate
-    // trigger_surge: with NO usable baseline (normal 0), a multiplier is meaningless, so an
-    // absolute floor picks the "new volume" cause instead of dropping to the v1 fallback.
-    surgePerMin: 100,
+    surgePerMin: 100, // trigger_surge: absolute triggered/min floor used when there's no baseline
+    // Minimum share of the window's expected buckets that must have arrived before a
+    // concurrency-shaped cause may be named. Below it flow drops to a symptom-level verdict.
+    minCoverage: 0.5,
   },
   attribution: { minShare: 0.5 }, // name a queue/task/region only when it owns >= half the problem
 };
 
-// ---------------------------------------------------------------------------
-// Helpers.
-// ---------------------------------------------------------------------------
-
 export const mean = (xs: number[]) =>
   xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
 
-/** Deterministic "trending up": mean of the last third vs the first third (direction only). */
+/** Trending up: mean of the last third against the first third. */
 export function isPendingIncreasing(series: number[]): boolean {
   if (series.length < 2) return false;
   const third = Math.max(1, Math.floor(series.length / 3));
@@ -99,66 +111,121 @@ function multiplierSeverity(
   return classifySeverity(value / normal, { warn: warnMult, crit: critMult });
 }
 
-/** Look up a metric by id; throws if absent (buildMetrics guarantees the standard set exists). */
+/** True when the depth was not measured, so `pending.now` is a placeholder. */
+export function isPendingUnknown(input: HealthInput): boolean {
+  return input.pending.availability === "unknown";
+}
+
+export type BucketCoverage = {
+  /** Buckets the window should contain at the source's cadence. */
+  expectedBuckets: number;
+  receivedBuckets: number;
+  bucketMinutes: number;
+  /** Received over expected. 1 when the cadence is unknown. */
+  coverage: number;
+  /** Enough of the window arrived to support a cause and a duration. */
+  sufficient: boolean;
+  /** True when the source reported its cadence, so gaps are detectable. */
+  known: boolean;
+};
+
+/** Without the source's cadence the received buckets are assumed to span the window evenly. */
+export function bucketCoverage(input: HealthInput): BucketCoverage {
+  const received = input.flowEvidence.runningSeries.length;
+  const sampling = input.flowEvidence.sampling;
+  if (!sampling || sampling.expectedBuckets <= 0) {
+    return {
+      expectedBuckets: received,
+      receivedBuckets: received,
+      bucketMinutes: received > 0 ? input.windowMinutes / received : 0,
+      coverage: 1,
+      sufficient: true,
+      known: false,
+    };
+  }
+  const coverage = received / sampling.expectedBuckets;
+  return {
+    expectedBuckets: sampling.expectedBuckets,
+    receivedBuckets: received,
+    bucketMinutes: sampling.bucketMinutes,
+    coverage,
+    sufficient: coverage >= HEALTH_THRESHOLDS.flowCause.minCoverage,
+    known: true,
+  };
+}
+
 export function metricById(metrics: Metric[], id: string): Metric {
   const m = metrics.find((x) => x.id === id);
   if (!m) throw new Error(`health: missing metric ${id}`);
   return m;
 }
 
-// ---------------------------------------------------------------------------
-// buildMetrics: numbers + per-metric severity. The standard six carry severity; the
-// flow-evidence metrics (concurrency, throttled, triggered) are evidence only (severity ok)
-// and exist so a cause's metricIds resolve.
-// ---------------------------------------------------------------------------
-
+// Only the standard six metrics carry severity; the flow-evidence metrics exist so metricIds resolve.
 export function buildMetrics(input: HealthInput): Metric[] {
   const t = HEALTH_THRESHOLDS;
   const ev = input.flowEvidence;
 
+  const startLatencyUnknown = input.startLatency.availability === "unknown";
   const startLatency: Metric = {
     id: "start_latency_p95",
     value: input.startLatency.p95Ms,
+    availability: startLatencyUnknown ? "unknown" : "measured",
     unit: "ms",
     aggregation: "p95",
-    normal: input.startLatency.normalP95Ms,
-    delta: delta(input.startLatency.p95Ms, input.startLatency.normalP95Ms),
-    series: { points: input.startLatency.series, kind: "measured" },
-    severity: multiplierSeverity(
-      input.startLatency.p95Ms,
-      input.startLatency.normalP95Ms,
-      t.startLatency.warnMult,
-      t.startLatency.critMult,
-      t.startLatency.floor
-    ),
+    normal: startLatencyUnknown ? undefined : input.startLatency.normalP95Ms,
+    delta: startLatencyUnknown
+      ? undefined
+      : delta(input.startLatency.p95Ms, input.startLatency.normalP95Ms),
+    series: startLatencyUnknown
+      ? undefined
+      : { points: input.startLatency.series, kind: "measured" },
+    // Nothing measured -> nothing to classify (a placeholder must never grade green).
+    severity: startLatencyUnknown
+      ? "ok"
+      : multiplierSeverity(
+          input.startLatency.p95Ms,
+          input.startLatency.normalP95Ms,
+          t.startLatency.warnMult,
+          t.startLatency.critMult,
+          t.startLatency.floor
+        ),
   };
 
+  // An unmeasurable depth must not be classified: a placeholder 0 would read as a confident green.
+  const pendingUnknown = isPendingUnknown(input);
   const pending: Metric = {
     id: "pending",
     value: input.pending.now,
     unit: "count",
+    availability: pendingUnknown ? "unknown" : "measured",
     normal: input.pending.normal,
-    delta: delta(input.pending.now, input.pending.normal),
+    delta: pendingUnknown ? undefined : delta(input.pending.now, input.pending.normal),
     series: {
       points: input.pending.series,
       kind: input.pending.estimated ? "estimated" : "measured",
     },
-    severity: multiplierSeverity(
-      input.pending.now,
-      input.pending.normal,
-      t.pending.warnMult,
-      t.pending.critMult,
-      t.pending.floor
-    ),
+    severity: pendingUnknown
+      ? "ok"
+      : multiplierSeverity(
+          input.pending.now,
+          input.pending.normal,
+          t.pending.warnMult,
+          t.pending.critMult,
+          t.pending.floor
+        ),
   };
 
-  const net = input.throughput.donePerMin - input.throughput.triggeredPerMin;
+  // Net drain uses all terminal runs, not just completions.
+  const net = input.throughput.finishedPerMin - input.throughput.triggeredPerMin;
   const throughput: Metric = {
     id: "throughput",
     value: net,
     unit: "perMin",
     aggregation: "rate",
-    breakdown: { done: input.throughput.donePerMin, triggered: input.throughput.triggeredPerMin },
+    breakdown: {
+      done: input.throughput.finishedPerMin,
+      triggered: input.throughput.triggeredPerMin,
+    },
     severity: net < 0 && isPendingIncreasing(input.pending.series) ? "warn" : "ok",
   };
 
@@ -200,27 +267,24 @@ export function buildMetrics(input: HealthInput): Metric[] {
   };
 
   const ageMs = input.liveness.telemetryAgeMs;
+  // No signal stays neutral. Lagging telemetry is a real warn; unknown is not.
   const livenessSeverity: Severity =
-    ageMs === null // no signal at all (brand-new/quiet env) — genuinely unknown, so NEUTRAL (ok):
-      ? "ok" //         a fine-but-idle env must not surface as a yellow verdict, and it never
-      : //              trust-guards. "lagging" (below) IS a real warn; "unknown" is not.
-        ageMs > t.liveness.staleMs
+    ageMs === null
+      ? "ok"
+      : ageMs > t.liveness.staleMs
         ? "crit"
         : ageMs > t.liveness.freshMs
           ? "warn"
           : "ok";
   const liveness: Metric = {
     id: "liveness",
-    // No signal -> value 0 is a placeholder, NOT a real "0ms fresh". `availability: "unknown"`
-    // says so, so a structured consumer never reads the 0 as freshness (the finding reason
-    // also carries "freshness_unknown"). A finite number keeps the JSON VM valid (no Infinity).
+    // With no signal, 0 is a placeholder rather than a real "0ms fresh"; `availability` says so.
     value: ageMs ?? 0,
     availability: ageMs === null ? "unknown" : "measured",
     unit: "ms",
     severity: livenessSeverity,
   };
 
-  // Flow-evidence metrics (severity ok — evidence, not a verdict).
   const concurrency: Metric = {
     id: "concurrency",
     value: ev.runningSeries.length > 0 ? ev.runningSeries[ev.runningSeries.length - 1] : 0,
@@ -257,15 +321,15 @@ export function buildMetrics(input: HealthInput): Metric[] {
   ];
 }
 
-// ---------------------------------------------------------------------------
-// Drain computation — shared by the flow policy (flow.ts) and the footer (health.ts).
-// ---------------------------------------------------------------------------
-
 export function computeDrain(input: HealthInput): { drainMinutes: number; isDrainable: boolean } {
-  const donePerMin = input.throughput.donePerMin;
-  const drainMinutes = donePerMin === 0 ? Number.POSITIVE_INFINITY : input.pending.now / donePerMin;
+  // The drain rate counts runs leaving the queue, not just completions.
+  const finishedPerMin = input.throughput.finishedPerMin;
+  const drainMinutes =
+    finishedPerMin === 0 ? Number.POSITIVE_INFINITY : input.pending.now / finishedPerMin;
   return {
     drainMinutes,
-    isDrainable: drainMinutes < HEALTH_THRESHOLDS.flowPolicy.drainCritMinutes,
+    // An unmeasurable depth can't produce an ETA.
+    isDrainable:
+      !isPendingUnknown(input) && drainMinutes < HEALTH_THRESHOLDS.flowPolicy.drainCritMinutes,
   };
 }

@@ -25,6 +25,14 @@ import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { logger } from "~/services/logger.server";
+import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [
+  params.waitpointParam ?? "Waitpoint",
+  "Waitpoint tokens",
+]);
 
 const Params = EnvironmentParamSchema.extend({
   waitpointParam: z.string(),
@@ -85,6 +93,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export const handle: Handle = {
+  agentPageContext: (data) => waitpointsAgentPageContext(data),
+};
+
 export default function Page() {
   const { waitpoint } = useTypedLoaderData<typeof loader>();
 
@@ -124,6 +136,7 @@ export default function Page() {
             <InfoIconTooltip content="These runs have been blocked by this waitpoint." />
           </div>
           <TaskRunsTable
+            enableSmartColumns={false}
             total={waitpoint.connectedRuns.length}
             hasFilters={false}
             filters={{

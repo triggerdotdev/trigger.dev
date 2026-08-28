@@ -1,18 +1,18 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import type { ChartBlock } from "@internal/dashboard-agent";
+import type { AgentIntent, ChartAction } from "@internal/dashboard-agent-contracts";
 import { useEffect, useState } from "react";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import type { ChartConfiguration } from "~/components/metrics/QueryWidget";
-import { Spinner } from "~/components/primitives/Spinner";
+import { Button } from "~/components/primitives/Buttons";
+import { AgentSpinner } from "~/components/primitives/Spinner";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
-
-// Render an agent "chart" block by running its TRQL query through the dashboard's
-// own /resources/metric endpoint (session-authed, returns rows + real column
-// metadata) and feeding the result into QueryResultsChart. So the chart is live
-// and matches the Query page exactly: the agent only emits the query + chart
-// config, never the rows. Runs against the project/env the panel is open in.
+import { cn } from "~/utils/cn";
+import { AgentCard, AgentCardHeader } from "./agent-card";
+import { ChatActionsRow } from "./chat-layout";
+import { renderableActions } from "./view-actions";
 
 type MetricResponse =
   | { success: false; error: string }
@@ -25,6 +25,18 @@ type MetricResponse =
       };
     };
 
+// `chartBlockBodySchema` carries only `period`, so scope and from/to are fixed here.
+const CHART_SCOPE = "environment";
+const CHART_FROM = null;
+const CHART_TO = null;
+// `min-h` as well: the chart draws nothing at zero height if a flex parent collapses it.
+const CHART_HEIGHT_CLASS = "h-64 min-h-64";
+const CHART_PADDING_CLASS = "px-2 pb-2 pt-4";
+export const AGENT_CHART_PLOT_CLASS = `w-full ${CHART_PADDING_CLASS} ${CHART_HEIGHT_CLASS}`;
+
+// Query errors can carry SQL and schema detail, so the real one only goes to the console.
+const CHART_ERROR_MESSAGE = "This chart's query couldn't run.";
+
 type ChartState =
   | { status: "loading" }
   | { status: "error"; error: string }
@@ -35,7 +47,39 @@ type ChartState =
       timeRange?: { from: string; to: string };
     };
 
-export function AgentChart({ block }: { block: ChartBlock }) {
+export function ChartActions({
+  actions,
+  onIntent,
+}: {
+  actions: ChartAction[];
+  onIntent?: (intent: AgentIntent) => void;
+}) {
+  const renderable = renderableActions(actions);
+  if (!onIntent || renderable.length === 0) return null;
+  return (
+    <div className="border-t border-grid-bright px-2 pb-2 pt-2">
+      <ChatActionsRow>
+        {renderable.map((action, i) => (
+          <Button
+            key={i}
+            variant={i === 0 ? "primary/small" : "secondary/small"}
+            onClick={() => onIntent(action.intent as AgentIntent)}
+          >
+            {action.label}
+          </Button>
+        ))}
+      </ChatActionsRow>
+    </div>
+  );
+}
+
+export function AgentChart({
+  block,
+  onIntent,
+}: {
+  block: ChartBlock;
+  onIntent?: (intent: AgentIntent) => void;
+}) {
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
   const environment = useOptionalEnvironment();
@@ -46,10 +90,10 @@ export function AgentChart({ block }: { block: ChartBlock }) {
   const environmentId = environment?.id;
 
   useEffect(() => {
-    // The block can render before its `query` has finished streaming in; wait
-    // for it rather than POST an empty query (which 400s).
+    // The block can render before `query` has streamed in; an empty query 400s.
     if (!block.query) return;
     if (!organizationId || !projectId || !environmentId) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState({ status: "error", error: "No environment context to run the query." });
       return;
     }
@@ -63,10 +107,11 @@ export function AgentChart({ block }: { block: ChartBlock }) {
         organizationId,
         projectId,
         environmentId,
-        scope: "environment",
+        scope: CHART_SCOPE,
         period: block.period ?? null,
-        from: null,
-        to: null,
+        from: CHART_FROM,
+        to: CHART_TO,
+        userAuthoredQuery: true,
       }),
       signal: controller.signal,
     })
@@ -74,7 +119,8 @@ export function AgentChart({ block }: { block: ChartBlock }) {
       .then((data) => {
         if (controller.signal.aborted) return;
         if (!data.success) {
-          setState({ status: "error", error: data.error });
+          console.error("Dashboard agent chart query failed:", data.error);
+          setState({ status: "error", error: CHART_ERROR_MESSAGE });
         } else {
           setState({
             status: "ready",
@@ -86,7 +132,8 @@ export function AgentChart({ block }: { block: ChartBlock }) {
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        setState({ status: "error", error: err?.message ?? "The query failed to run." });
+        console.error("Dashboard agent chart request failed:", err);
+        setState({ status: "error", error: CHART_ERROR_MESSAGE });
       });
     return () => controller.abort();
   }, [block.query, block.period, organizationId, projectId, environmentId]);
@@ -103,16 +150,16 @@ export function AgentChart({ block }: { block: ChartBlock }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
+    <AgentCard>
       {block.title ? (
-        <div className="border-b border-grid-bright bg-background-bright px-3 py-2 text-xs font-medium text-text-dimmed">
+        <AgentCardHeader className="text-xs font-medium text-text-dimmed">
           {block.title}
-        </div>
+        </AgentCardHeader>
       ) : null}
-      <div className="h-64 w-full p-2">
+      <div className={cn(AGENT_CHART_PLOT_CLASS)}>
         {state.status === "loading" ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-text-dimmed">
-            <Spinner className="size-3" />
+            <AgentSpinner size={12} />
             Running query…
           </div>
         ) : state.status === "error" ? (
@@ -128,6 +175,7 @@ export function AgentChart({ block }: { block: ChartBlock }) {
           />
         )}
       </div>
-    </div>
+      <ChartActions actions={block.actions ?? []} onIntent={onIntent} />
+    </AgentCard>
   );
 }

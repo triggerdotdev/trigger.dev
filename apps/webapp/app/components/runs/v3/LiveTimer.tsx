@@ -23,7 +23,7 @@ export function LiveTimer({
     }, updateInterval);
 
     return () => clearInterval(interval);
-  }, [startTime, endTime]);
+  }, [startTime, endTime, updateInterval]);
 
   return (
     <>
@@ -31,37 +31,6 @@ export function LiveTimer({
         style: "short",
         maxDecimalPoints: 0,
         units: ["d", "h", "m", "s"],
-      })}
-    </>
-  );
-}
-
-export function LiveCountUp({
-  lastUpdated,
-  updateInterval = 250,
-  className,
-}: {
-  lastUpdated: Date;
-  updateInterval?: number;
-  className?: string;
-}) {
-  const [now, setNow] = useState<Date>();
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const date = new Date();
-      setNow(date);
-    }, updateInterval);
-
-    return () => clearInterval(interval);
-  }, [lastUpdated]);
-
-  return (
-    <>
-      {formatDuration(lastUpdated, now, {
-        style: "short",
-        maxDecimalPoints: 0,
-        units: ["m", "s"],
       })}
     </>
   );
@@ -87,7 +56,7 @@ export function LiveCountdown({
     }, updateInterval);
 
     return () => clearInterval(interval);
-  }, [endTime]);
+  }, [endTime, updateInterval]);
 
   return (
     <>

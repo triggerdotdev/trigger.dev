@@ -45,12 +45,12 @@ const connections: Set<string> = new Set();
 // AbortSignal.any composite — see comment near the timeoutTimer below for the
 // Node issue refs), but naming the sentinels keeps call sites readable and
 // lets future signal.reason consumers branch on the cause.
-export const ABORT_REASON_REQUEST = "request_aborted";
-export const ABORT_REASON_TIMEOUT = "timeout";
+const ABORT_REASON_REQUEST = "request_aborted";
+const ABORT_REASON_TIMEOUT = "timeout";
 export const ABORT_REASON_SEND_ERROR = "send_error";
-export const ABORT_REASON_INIT_STOP = "init_requested_stop";
-export const ABORT_REASON_ITERATOR_STOP = "iterator_requested_stop";
-export const ABORT_REASON_ITERATOR_ERROR = "iterator_error";
+const ABORT_REASON_INIT_STOP = "init_requested_stop";
+const ABORT_REASON_ITERATOR_STOP = "iterator_requested_stop";
+const ABORT_REASON_ITERATOR_ERROR = "iterator_error";
 
 export function createSSELoader(options: SSEOptions) {
   const { timeout, interval = 500, debug = false, handler } = options;

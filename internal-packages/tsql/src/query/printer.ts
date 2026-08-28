@@ -429,8 +429,15 @@ export class ClickHousePrinter {
       windowClause = windowDefs.join(", ");
     }
 
+    // PREWHERE runs before enforced tenant conditions in WHERE, so it cannot be
+    // exposed to customer-authored queries.
+    if (node.prewhere) {
+      throw new QueryError("PREWHERE is not supported. Use WHERE instead.", {
+        node: node.prewhere,
+      });
+    }
+
     // Process other clauses
-    const prewhere = node.prewhere ? this.visit(node.prewhere) : null;
     const whereStr = where ? this.visit(where) : null;
 
     // Process GROUP BY with context flags:
@@ -502,7 +509,6 @@ export class ClickHousePrinter {
       `SELECT${space}${node.distinct ? "DISTINCT " : ""}${columns.join(comma)}`,
       joinedTables.length > 0 ? `FROM${space}${joinedTables.join(space)}` : null,
       arrayJoin || null,
-      prewhere ? `PREWHERE${space}${prewhere}` : null,
       whereStr ? `WHERE${space}${whereStr}` : null,
       groupBy && groupBy.length > 0 ? `GROUP BY${space}${groupBy.join(comma)}` : null,
       having ? `HAVING${space}${having}` : null,
@@ -624,7 +630,8 @@ export class ClickHousePrinter {
     const interval = calculateTimeBucketInterval(
       timeRange.from,
       timeRange.to,
-      tableSchema.timeBucketThresholds
+      tableSchema.timeBucketThresholds,
+      this.context.minBucketSeconds
     );
     const bucketSql = `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
 
@@ -3551,7 +3558,8 @@ export class ClickHousePrinter {
     const interval = calculateTimeBucketInterval(
       timeRange.from,
       timeRange.to,
-      tableSchema.timeBucketThresholds
+      tableSchema.timeBucketThresholds,
+      this.context.minBucketSeconds
     );
 
     // Emit toStartOfInterval(column, INTERVAL N UNIT)

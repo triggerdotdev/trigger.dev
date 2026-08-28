@@ -1,15 +1,41 @@
 ---
 title: "Kubernetes"
-description: "You can self-host Trigger.dev in Kubernetes using our official Helm chart."
+description: "Deploy Trigger.dev to Kubernetes with our official Helm chart - one command for evaluation, external datastores for production."
 ---
 
-The following instructions will help you deploy Trigger.dev to Kubernetes using our official Helm chart. Make sure to read the self-hosting [overview](/self-hosting/overview) first.
+The official Helm chart installs the full Trigger.dev stack into a Kubernetes namespace. Read the self-hosting [overview](/self-hosting/overview) first.
 
-As self-hosted deployments tend to have unique requirements and configurations, we don't provide specific advice for securing your deployment, scaling up, or improving reliability.
+Pick a path and stay on it. Run the **evaluation install** to try Trigger.dev with everything bundled in-cluster - one `helm install`, default values, no external dependencies. Run the **production install** for real workloads: external Postgres, Redis, ClickHouse, and object storage, your own secrets, and HA on the datastores you already operate. Each configuration decision below belongs to one path or the other.
 
-Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
+This guide alone is unlikely to produce a hardened production deployment - securing, scaling, and reliability-tuning your cluster remain yours to own. Should the burden get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
 
-**Warning:** This guide alone is unlikely to result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
+## Architecture
+
+The chart deploys a webapp, a supervisor, and the datastores they depend on. The supervisor pulls runs from the webapp and schedules each one onto a worker node, which executes the task in a container sized by its machine preset.
+
+```mermaid
+flowchart TD
+  webapp["webapp<br/>API + dashboard"]
+  supervisor["supervisor"]
+  workers["worker nodes<br/>task containers"]
+  pg[("Postgres<br/>primary DB")]
+  redis[("Redis<br/>queue / state")]
+  ch[("ClickHouse<br/>task events v2")]
+  obj[("object storage<br/>MinIO / external S3")]
+  reg[("registry<br/>deploy images")]
+  s2[("s2 / s2-lite<br/>realtime streams v2")]
+
+  webapp --> pg
+  webapp --> redis
+  webapp --> ch
+  webapp --> obj
+  webapp --> s2
+  webapp -->|worker token| supervisor
+  supervisor --> workers
+  workers --> reg
+```
+
+Each component maps to a top-level key in `values.yaml`: `webapp`, `supervisor`, `postgres`, `redis`, `electric`, `clickhouse`, `s3` (object storage), `s2`, and `registry`. The datastores default to `deploy: true` and run in-cluster; set `deploy: false` with an `external` block to bring your own. The registry is the exception - it defaults to `deploy: false`, so you point it at an external one. Webapp settings live under `webapp`, supervisor settings under `supervisor.config`, and each service takes `extraEnvVars` for anything else.
 
 ## Requirements
 
@@ -52,57 +78,111 @@ webapp:
       memory: 4Gi
 ```
 
-## Installation
+## Evaluation install
 
-### Quick start
+Bundled datastores let you run the whole stack with a single command and no external services. The default values are insecure and are only suitable for testing - for real workloads, follow the [production install](#production-install) instead.
 
-1. Install with default values (for testing only):
+<Steps>
+  <Step title="Install the chart with default values">
+    ```bash
+    helm upgrade -n trigger --install trigger \
+      oci://ghcr.io/triggerdotdev/charts/trigger \
+      --version "^4.5.0" \
+      --create-namespace
+    ```
+
+    The chart deploys the webapp, supervisor, and bundled Postgres, Redis, Electric, ClickHouse, MinIO, and s2-lite. The registry is not deployed by default - configure an external one before deploying tasks.
+  </Step>
+
+  <Step title="Port-forward the webapp">
+    ```bash
+    kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
+    ```
+
+    The dashboard is now reachable at `http://localhost:3040`.
+  </Step>
+
+  <Step title="Log in with the magic link">
+    Default installs print the login link to the webapp logs instead of sending email.
+
+    ```bash
+    kubectl logs -n trigger deployment/trigger-webapp | grep -A1 "magic link"
+    ```
+
+    Open the printed link to sign in.
+  </Step>
+</Steps>
+
+### Verify it
+
+Confirm every component reached a healthy state:
 
 ```bash
-helm upgrade -n trigger --install trigger \
-  oci://ghcr.io/triggerdotdev/charts/trigger \
-  --version "^4.5.0" \
-  --create-namespace
+kubectl get pods -n trigger
 ```
 
-2. Access the webapp:
+The webapp, supervisor, and each bundled datastore pod should report `Running` with all containers `READY`. Migrations and bootstrap run inside the webapp pod rather than as separate jobs, so if the webapp stays unready, check its logs. If a pod is stuck in `Pending` or `CrashLoopBackOff`, jump to [Troubleshooting](#troubleshooting).
+
+Once you can sign in and trigger a run, you've validated the stack. For a deployment that survives restarts, upgrades, and load, move on to the production install.
+
+## Production install
+
+Running external datastores is the requirement that separates a production install from an evaluation one. You supply your own Postgres, Redis, ClickHouse, and object storage, manage secrets yourself, and point the chart at each service. The steps below layer onto the same `helm upgrade` command, driven by a custom values file.
+
+### Secrets
+
+Application, control-plane, and bundled-datastore secrets left unset are generated on first install and **retained across `helm upgrade`** - they are never rotated automatically, so sessions, encrypted data, and datastore volumes survive upgrades. This auto-generation is the default and needs no configuration.
+
+For production, supply your own Secret instead so credentials live outside the release. With `secrets.existingSecret` set, the chart generates nothing and reads every key from your Secret; a preflight check fails the install - before touching a running release - and lists any keys it can't find.
+
+To pin values inline instead of letting the chart generate them - for example to share `MANAGED_WORKER_SECRET` with an external supervisor - set them under `secrets`:
+
+```yaml
+secrets:
+  enabled: true
+  sessionSecret: "your-32-char-hex-secret-1"
+  magicLinkSecret: "your-32-char-hex-secret-2"
+  # ...
+```
+
+To use an existing Secret instead, leave the values unset and set `existingSecret`. It must contain at least `SESSION_SECRET`, `MAGIC_LINK_SECRET`, `ENCRYPTION_KEY`, `PROVIDER_SECRET`, `COORDINATOR_SECRET`, and `MANAGED_WORKER_SECRET` - plus `s3-auth-access-key-id` and `s3-auth-secret-access-key` if you deploy the bundled MinIO with `s3.auth.existingSecret` cleared:
+
+```yaml
+secrets:
+  enabled: false
+  existingSecret: "your-existing-secret"
+```
+
+The chart wires `PROVIDER_SECRET` and `COORDINATOR_SECRET` into the webapp deployment, and the pre-upgrade check requires both, so an existing Secret must include them. For a deployment that already runs, add them before upgrading:
 
 ```bash
-kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
+kubectl patch secret my-trigger-secrets -n trigger --type merge -p \
+  "{\"stringData\":{\"PROVIDER_SECRET\":\"$(openssl rand -hex 16)\",\"COORDINATOR_SECRET\":\"$(openssl rand -hex 16)\"}}"
 ```
 
-3. Open the dashboard: `http://localhost:3040`
+There is no clean migration for a compromised `ENCRYPTION_KEY`: changing it makes existing encrypted data unreadable. If a deployment is still running a previously published default and cannot rotate yet, set `ALLOW_INSECURE_DEFAULT_SECRETS=true` on the webapp to keep booting while you plan a migration.
 
-4. Login with the magic link:
+<Warning>
+  GitOps tools that render with `helm template` (e.g. Argo CD) cannot read the existing
+  secret, so they regenerate auto-generated values on every sync - which rotates them. If you
+  deploy via GitOps, always supply your own `secrets.existingSecret` (and datastore
+  credentials) so nothing is generated in-cluster.
+</Warning>
 
-```bash
-# Check the webapp logs
-kubectl logs -n trigger deployment/trigger-webapp | grep -A1 "magic link"
-```
+### Custom values
 
-## Configuration
-
-Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview.
-
-**Naming convention:**
-
-- Environment variables use `UPPER_SNAKE_CASE`
-- Helm values use `camelCase`
-
-**Example mapping:**
+Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview. Environment variables use `UPPER_SNAKE_CASE`; Helm values use `camelCase`:
 
 ```bash
 # Environment variable
 APP_ORIGIN=https://trigger.example.com
 
 # Becomes Helm value
-config:
+webapp:
   appOrigin: "https://trigger.example.com"
 ```
 
-### Default values
-
-The following commands will display the default values:
+Print the full default surface for the version you're deploying:
 
 ```bash
 # Specific version
@@ -114,44 +194,14 @@ helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
   --version "^4.5.0"
 ```
 
-### Custom values
-
-The default values are insecure and are only suitable for testing. You will need to configure your own secrets as a bare minimum.
-
-Create a `values-custom.yaml` file to override the defaults. For example:
+Create a `values-custom.yaml` that overrides the defaults with your URLs and resource requests:
 
 ```yaml
-# Leave these unset to have the chart auto-generate strong values on first
-# install (retained across upgrades). Set them explicitly only if you need to
-# control the value - e.g. sharing MANAGED_WORKER_SECRET with an external
-# supervisor - or use an existingSecret.
-secrets:
-  enabled: true
-  sessionSecret: "your-32-char-hex-secret-1"
-  magicLinkSecret: "your-32-char-hex-secret-2"
-  # ...
-
-# Recommended: existingSecret, must contain at least the following keys:
-# - SESSION_SECRET
-# - MAGIC_LINK_SECRET
-# - ENCRYPTION_KEY
-# - PROVIDER_SECRET
-# - COORDINATOR_SECRET
-# - MANAGED_WORKER_SECRET
-# - OBJECT_STORE_ACCESS_KEY_ID
-# - OBJECT_STORE_SECRET_ACCESS_KEY
-secrets:
-  enabled: false
-  existingSecret: "your-existing-secret"
-
-# Application URLs
-config:
+# Application URLs and resource limits
+webapp:
   appOrigin: "https://trigger.example.com"
   loginOrigin: "https://trigger.example.com"
   apiOrigin: "https://trigger.example.com"
-
-# Resource limits
-webapp:
   resources:
     requests:
       cpu: 1000m
@@ -180,27 +230,7 @@ helm upgrade -n trigger --install trigger \
   -f values-custom.yaml
 ```
 
-### Secret generation and rotation
-
-Application, control-plane, and bundled-datastore secrets left unset are generated on
-first install and **retained across `helm upgrade`** - they are never rotated
-automatically, so sessions, encrypted data, and datastore volumes survive upgrades.
-
-<Warning>
-  GitOps tools that render with `helm template` (e.g. Argo CD) cannot read the existing
-  secret, so they regenerate these values on every sync - which rotates them. If you
-  deploy via GitOps, always supply your own `secrets.existingSecret` (and datastore
-  credentials) so nothing is generated in-cluster.
-</Warning>
-
-There is no clean migration for a compromised `ENCRYPTION_KEY`: changing it makes
-existing encrypted data unreadable. If a deployment is still running a previously
-published default and cannot rotate yet, set `ALLOW_INSECURE_DEFAULT_SECRETS=true` on
-the webapp to keep booting while you plan a migration.
-
-### Extra env
-
-You can set extra environment variables on all services. For example:
+Set extra environment variables on any service:
 
 ```yaml
 webapp:
@@ -209,9 +239,7 @@ webapp:
       value: "extra-value"
 ```
 
-### Extra annotations
-
-You can set extra annotations on all services. For example:
+Set extra annotations on any service:
 
 ```yaml
 webapp:
@@ -221,7 +249,7 @@ webapp:
 
 ### External services
 
-You can disable the built-in services and use external services instead. The chart supports both direct configuration and existing Kubernetes secrets for secure credential management.
+Disable each built-in datastore and point the chart at your own. Every service supports direct configuration or an existing Kubernetes secret; use existing secrets to keep credentials out of `values.yaml` and Helm releases.
 
 #### PostgreSQL
 
@@ -279,6 +307,13 @@ redis:
 
 #### ClickHouse
 
+Migration from the old Bitnami subchart to the official `clickhouse/clickhouse-server` image is automatic - a normal upgrade moves you across with no manual step. The one exception: if you pinned `clickhouse.image` to a Bitnami tag, switch it to an official `clickhouse/clickhouse-server` tag first, since Bitnami tags don't exist in the official repository.
+
+<Note>
+  Trigger.dev requires ClickHouse 25.8 or newer. The bundled ClickHouse is single-node — run
+  ClickHouse externally for a clustered or replicated setup.
+</Note>
+
 **Direct configuration:**
 
 ```yaml
@@ -286,10 +321,16 @@ clickhouse:
   deploy: false
   external:
     host: "my-clickhouse.example.com"
-    port: 8123
+    httpPort: 8123
     username: "my-username"
     password: "my-password"
 ```
+
+<Note>
+  An inline external `username`/`password` is percent-encoded into the connection URL for you, so
+  store the **raw** value - special characters like `@ : / %` are handled automatically.
+  (Credentials from `existingSecret` are injected at runtime and are unaffected.)
+</Note>
 
 **Using existing secrets (recommended):**
 
@@ -298,20 +339,21 @@ clickhouse:
   deploy: false
   external:
     host: "my-clickhouse.example.com"
-    port: 8123
+    httpPort: 8123
     username: "my-username"
     existingSecret: "clickhouse-credentials"
     # existingSecretKey: "clickhouse-password" # default (optional)
 ```
 
-#### S3 Object Storage
+#### Object storage
+
+Object storage holds deploy artifacts and large payloads. See the [Docker object storage setup](/self-hosting/docker#object-storage) for conceptual information. Disable the bundled MinIO and point at any S3-compatible endpoint.
 
 **Direct configuration:**
 
 ```yaml
-minio:
-  deploy: false
 s3:
+  deploy: false
   external:
     endpoint: "https://s3.amazonaws.com"
     accessKeyId: "my-access-key"
@@ -321,21 +363,19 @@ s3:
 **Using existing secrets (recommended):**
 
 ```yaml
-minio:
-  deploy: false
 s3:
+  deploy: false
   external:
     endpoint: "https://s3.amazonaws.com"
     existingSecret: "s3-credentials"
-    # Optional: Use secretKeys to specify the key names in the secret
-    # secretKeys:
-    #   accessKeyIdKey: "access-key-id"     # default
-    #   secretAccessKeyKey: "secret-access-key" # default
+    # Optional: override the key names in the secret
+    # existingSecretAccessKeyIdKey: "access-key-id"         # default
+    # existingSecretSecretAccessKeyKey: "secret-access-key" # default
 ```
 
 ### PostgreSQL SSL with custom CA certificates
 
-When connecting to PostgreSQL instances that require custom CA certificates (such as AWS RDS with SSL verification), you can mount the CA certificate as a volume and configure the webapp to use it:
+When connecting to PostgreSQL instances that require custom CA certificates (such as AWS RDS with SSL verification), mount the CA certificate as a volume and configure the webapp to use it:
 
 ```yaml
 postgres:
@@ -376,99 +416,9 @@ webapp:
 - Compatible with secret management tools (External Secrets Operator, etc.)
 - Follows Kubernetes security best practices
 
-## DNS performance
+### Registry setup
 
-For production clusters we recommend deploying [NodeLocal DNSCache](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/). DNS queries — especially to managed Postgres or Redis endpoints — can be very slow under Kubernetes' default resolver, and a node-local cache typically gives a large step change in latency and throughput across the cluster.
-
-The default `ndots: 5` setting also forces every cluster search domain to be tried before resolving hostnames with fewer dots (the case for most external database hosts). Lowering `ndots` to `1` on the webapp and supervisor pods avoids those extra round-trips.
-
-## Task events
-
-By default, task events (timeline, logs, spans) are stored in PostgreSQL. For production deployments we recommend storing them in ClickHouse instead, it scales to much higher volumes and avoids unbounded growth of the `TaskEvent` table.
-
-ClickHouse is already deployed by the chart, so no extra services are required. To enable, set `EVENT_REPOSITORY_DEFAULT_STORE` on the webapp via `extraEnvVars`:
-
-```yaml
-webapp:
-  extraEnvVars:
-    - name: EVENT_REPOSITORY_DEFAULT_STORE
-      value: "clickhouse_v2"
-```
-
-This only affects new runs; existing runs continue to read from wherever their events were originally stored.
-
-## Realtime streams
-
-Realtime streams power AI-agent token streaming and run streams. They default to **v2**, backed by the bundled `s2` deployment — [s2-lite](https://s2.dev), the open-source, self-hostable S2 server. The chart deploys it with a persistent volume, so no extra services are required.
-
-To fall back to the Redis-backed **v1** streams, set the default version to `v1`:
-
-```yaml
-s2:
-  defaultStreamVersion: "v1"
-```
-
-To use a hosted S2 at [s2.dev](https://s2.dev) instead of the bundled s2-lite, disable the bundled deployment and point at your basin. Supply the access token via an existing secret:
-
-```yaml
-s2:
-  deploy: false
-  skipAccessTokens: false
-  external:
-    endpoint: "https://your-basin.b.aws.s2.dev/v1"
-    existingSecret: "s2-credentials"
-    existingSecretAccessTokenKey: "access-token"
-  basin: "your-basin"
-```
-
-To disable realtime streams v2 entirely and use v1, set `s2.deploy: false` with no external endpoint. See `helm show values` for all `s2` options.
-
-## Worker token
-
-When using the default bootstrap configuration, worker creation and authentication is handled automatically. The webapp generates a worker token and makes it available to the supervisor via a shared volume.
-
-### Bootstrap (default)
-
-```yaml
-webapp:
-  bootstrap:
-    enabled: true
-    workerGroupName: "bootstrap"
-```
-
-### Manual
-
-If you need to set up workers separately or use a custom token:
-
-1. Get the worker token from the webapp logs:
-
-```bash
-kubectl logs deployment/trigger-webapp -n trigger | grep -A15 "Worker Token"
-```
-
-2. Create a secret with the token:
-
-```bash
-kubectl create secret generic worker-token \
-  --from-literal=token=tr_wgt_your_token_here \
-  -n trigger
-```
-
-3. Configure the supervisor to use the secret:
-
-```yaml
-supervisor:
-  bootstrap:
-    enabled: false
-    workerToken:
-      secret:
-        name: "worker-token"
-        key: "token"
-```
-
-## Registry setup
-
-See the [Docker registry setup](/self-hosting/docker#registry-setup) for conceptual information. The configuration is specified in your `values.yaml`:
+Built deploy images are pushed to a registry. See the [Docker registry setup](/self-hosting/docker#registry-setup) for conceptual information. Configure an external registry in your `values.yaml`:
 
 ```yaml
 # Use external registry (recommended)
@@ -477,8 +427,7 @@ registry:
   # Part of deployment image ref, for example: your-registry.example.com/your-company/proj_123:20250625.1.prod
   repositoryNamespace: "your-company"
   external:
-    host: "your-registry.example.com"
-    port: 5000
+    host: "your-registry.example.com:5000"
     auth:
       enabled: true
       username: "your-username"
@@ -486,32 +435,19 @@ registry:
 ```
 
 <Note>
-  The internal registry (`registry.external: false`) is experimental and requires proper TLS setup
+  The internal registry (`registry.deploy: true`) is experimental and requires proper TLS setup
   and additional cluster configuration. Use an external registry for production.
 </Note>
 
-## Object storage
+### DNS performance
 
-See the [Docker object storage setup](/self-hosting/docker#object-storage) for conceptual information. The defaults will use built-in MinIO, but you can use an external S3-compatible storage. The configuration is specified in your `values.yaml`:
+For production clusters we recommend deploying [NodeLocal DNSCache](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/). DNS queries — especially to managed Postgres or Redis endpoints — can be very slow under Kubernetes' default resolver, and a node-local cache typically gives a large step change in latency and throughput across the cluster.
 
-```yaml
-# Use external S3-compatible storage
-minio:
-  deploy: false
-  external:
-    url: "https://s3.amazonaws.com"
-    # or: "https://your-minio.com:9000"
+The default `ndots: 5` setting also forces every cluster search domain to be tried before resolving hostnames with fewer dots (the case for most external database hosts). Lowering `ndots` to `1` on the webapp and supervisor pods avoids those extra round-trips.
 
-# Configure credentials
-secrets:
-  objectStore:
-    accessKeyId: "admin"
-    secretAccessKey: "very-safe-password"
-```
+### Authentication
 
-## Authentication
-
-Authentication options are identical to the [Docker-based installation](/self-hosting/docker#authentication). The configuration is specified in your `values.yaml`:
+Authentication options are identical to the [Docker-based installation](/self-hosting/docker#authentication). Configure the provider in your `values.yaml`:
 
 **GitHub OAuth:**
 
@@ -548,7 +484,91 @@ webapp:
       value: "^(user1@company\\.com|user2@company\\.com)$"
 ```
 
-## Version locking
+### Worker token
+
+The supervisor authenticates to the webapp with a worker token. The default bootstrap path generates one for you; supply your own token to manage workers separately.
+
+**Bootstrap (default):** the webapp generates a worker token and makes it available to the supervisor via a shared volume.
+
+```yaml
+webapp:
+  bootstrap:
+    enabled: true
+    workerGroupName: "bootstrap"
+```
+
+**Manual:** to set up workers separately or use a custom token:
+
+<Steps>
+  <Step title="Read the worker token from the webapp logs">
+    ```bash
+    kubectl logs deployment/trigger-webapp -n trigger | grep -A15 "Worker Token"
+    ```
+  </Step>
+
+  <Step title="Create a secret with the token">
+    ```bash
+    kubectl create secret generic worker-token \
+      --from-literal=token=tr_wgt_your_token_here \
+      -n trigger
+    ```
+  </Step>
+
+  <Step title="Point the supervisor at the secret">
+    ```yaml
+    supervisor:
+      bootstrap:
+        enabled: false
+        workerToken:
+          secret:
+            name: "worker-token"
+            key: "token"
+    ```
+  </Step>
+</Steps>
+
+With external datastores, secrets, registry, and authentication in place, you have a production install. If you only wanted to try Trigger.dev, the [evaluation install](#evaluation-install) gets you there in one command.
+
+## Operating your deployment
+
+### Upgrading
+
+`helm upgrade` is safe to run as-is. Your generated secrets, data volumes, and the bundled ClickHouse are preserved and migrated automatically, so a normal upgrade needs no preparation. A few situations need one manual step first — expand any that apply to you.
+
+<AccordionGroup>
+  <Accordion title="You supply your own secret (secrets.existingSecret)">
+    With `secrets.existingSecret` set, the chart reads every key from your Secret and generates none, so any key the app needs must already be present there.
+
+    As of chart 4.5.6 the webapp deployment references `PROVIDER_SECRET` and `COORDINATOR_SECRET`, and the pre-upgrade check requires both, so an existing Secret must carry them. Add both before upgrading:
+
+    ```bash
+    kubectl patch secret my-trigger-secrets -n trigger --type merge -p \
+      "{\"stringData\":{\"PROVIDER_SECRET\":\"$(openssl rand -hex 16)\",\"COORDINATOR_SECRET\":\"$(openssl rand -hex 16)\"}}"
+    ```
+
+    If a required key is missing, the upgrade stops before touching your running release and tells you which to add.
+  </Accordion>
+
+  <Accordion title="Something outside the chart reads a datastore password">
+    The bundled datastore passwords live in the `trigger-datastore` Secret. If a maintenance job, a dashboard, or a secret sync reads one directly, point it there:
+
+    ```bash
+    kubectl get secret trigger-datastore -n trigger \
+      -o jsonpath='{.data.clickhouse-admin-password}' | base64 -d
+    ```
+
+    The keys are `clickhouse-admin-password`, `postgres-password`, and `minio-root-user` / `minio-root-password`.
+  </Accordion>
+
+  <Accordion title="You render manifests without cluster access (Argo CD, plain helm template)">
+    During an upgrade the chart reads the cluster to keep your data and to check your Secret. Renderers that run offline can't do that, so set these yourself:
+
+    - Point `clickhouse.persistence.existingClaim` at your ClickHouse data volume (`data-<release>-clickhouse-shard0-0`) and keep it set on future syncs, so ClickHouse reuses its data instead of starting on an empty volume.
+    - Confirm `PROVIDER_SECRET` and `COORDINATOR_SECRET` are already in your Secret before syncing.
+  </Accordion>
+</AccordionGroup>
+
+### Version locking
 
 <Note>
   Trigger.dev 4.5.0 is the last version we officially support for running v3 (SDK v3) tasks. If
@@ -556,7 +576,7 @@ webapp:
   later reject v3 triggers and deploys with an upgrade message.
 </Note>
 
-You can lock versions in two ways:
+Lock versions in two ways.
 
 **Helm chart version (recommended):**
 
@@ -588,7 +608,7 @@ supervisor:
 
 The chart version's `appVersion` field determines the default image tags. Newer image tags may be incompatible with older chart versions and vice versa.
 
-## Troubleshooting
+### Troubleshooting
 
 **Check logs:**
 
@@ -633,18 +653,58 @@ kubectl delete namespace trigger
 
 See the [Docker troubleshooting](/self-hosting/docker#troubleshooting) section for more information.
 
-## CLI usage
+### Task events
+
+By default, task events (timeline, logs, spans) are stored in PostgreSQL. For production deployments we recommend storing them in ClickHouse instead, it scales to much higher volumes and avoids unbounded growth of the `TaskEvent` table.
+
+ClickHouse is already deployed by the chart, so no extra services are required. To enable, set `EVENT_REPOSITORY_DEFAULT_STORE` on the webapp via `extraEnvVars`:
+
+```yaml
+webapp:
+  extraEnvVars:
+    - name: EVENT_REPOSITORY_DEFAULT_STORE
+      value: "clickhouse_v2"
+```
+
+This only affects new runs; existing runs continue to read from wherever their events were originally stored.
+
+### Realtime streams
+
+Realtime streams power AI-agent token streaming and run streams. They default to **v2**, backed by the bundled `s2` deployment — [s2-lite](https://s2.dev), the open-source, self-hostable S2 server. The chart deploys it with a persistent volume, so no extra services are required.
+
+To fall back to the Redis-backed **v1** streams, set the default version to `v1`:
+
+```yaml
+s2:
+  defaultStreamVersion: "v1"
+```
+
+To use a hosted S2 at [s2.dev](https://s2.dev) instead of the bundled s2-lite, disable the bundled deployment and point at your basin. Supply the access token via an existing secret:
+
+```yaml
+s2:
+  deploy: false
+  skipAccessTokens: false
+  external:
+    endpoint: "https://your-basin.b.aws.s2.dev/v1"
+    existingSecret: "s2-credentials"
+    existingSecretAccessTokenKey: "access-token"
+  basin: "your-basin"
+```
+
+To disable realtime streams v2 entirely and use v1, set `s2.deploy: false` with no external endpoint. See `helm show values` for all `s2` options.
+
+### CLI usage
 
 See the [Docker CLI usage](/self-hosting/docker#cli-usage) section, the commands are identical regardless of deployment method.
 
-## CI / GitHub Actions
+### CI / GitHub Actions
 
-When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment
-variables to point at your self-hosted instance and authenticate.
+When running the CLI in a CI environment, your login profiles won't be available. Instead, use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment variables to point at your self-hosted instance and authenticate.
 
 For more detailed instructions, see the [GitHub Actions guide](/github-actions).
 
-## Telemetry
+### Telemetry
 
 By default, the Trigger.dev webapp sends telemetry data to our servers. This data is used to improve the product and is not shared with third parties. To disable telemetry, set in your `values.yaml`:
 

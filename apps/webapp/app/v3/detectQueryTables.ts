@@ -103,6 +103,9 @@ export function detectQueryTables(query: string, allowedTableNames: Set<string>)
         visitSelectSet(tableExpr as SelectSetQuery);
       }
     }
+    // The `ON expr` can embed a SELECT that reads a real table, e.g.
+    // `JOIN x ON id IN (SELECT … FROM runs)`.
+    scanForSubqueries(node.constraint);
     if (node.next_join) visitJoin(node.next_join);
   }
 

@@ -1,52 +1,49 @@
 import { describe, it, expect } from "vitest";
-import { parsePodCount, K8sPodCountSignalSource } from "./k8sPodCountSignalSource.js";
+import { K8sPodCountSignalSource } from "./k8sPodCountSignalSource.js";
+import { podCountFromList, withTimeout } from "../clients/kubernetes.js";
 
-describe("parsePodCount", () => {
-  it("reads the pods object count", () => {
-    const text = [
-      "# HELP apiserver_storage_objects Number of stored objects",
-      "# TYPE apiserver_storage_objects gauge",
-      'apiserver_storage_objects{resource="pods"} 8421',
-      'apiserver_storage_objects{resource="configmaps"} 17',
-    ].join("\n");
-    expect(parsePodCount(text)).toBe(8421);
+describe("podCountFromList", () => {
+  it("returns items.length when the list is not truncated", () => {
+    expect(podCountFromList({ items: [{}], metadata: {} })).toBe(1);
   });
 
-  it("is tolerant of extra labels in any order", () => {
-    const text = 'apiserver_storage_objects{group="",resource="pods",extra="x"} 12';
-    expect(parsePodCount(text)).toBe(12);
+  it("returns zero for an empty namespace", () => {
+    expect(podCountFromList({ items: [], metadata: {} })).toBe(0);
   });
 
-  it("parses scientific notation", () => {
-    const text = 'apiserver_storage_objects{resource="pods"} 1.2e+04';
-    expect(parsePodCount(text)).toBe(12000);
+  it("adds remainingItemCount when the list is truncated", () => {
+    const list = { items: [{}], metadata: { _continue: "tok", remainingItemCount: 24492 } };
+    expect(podCountFromList(list)).toBe(24493);
   });
 
-  it("throws when the pods metric is absent", () => {
-    const text = 'apiserver_storage_objects{resource="configmaps"} 17';
-    expect(() => parsePodCount(text)).toThrow(/not found/);
+  it("throws when truncated but remainingItemCount is absent", () => {
+    const list = { items: [{}], metadata: { _continue: "tok" } };
+    expect(() => podCountFromList(list)).toThrow(/remainingItemCount/);
   });
 
-  it("throws on a non-finite value (e.g. 1e999)", () => {
-    const text = 'apiserver_storage_objects{resource="pods"} 1e999';
-    expect(() => parsePodCount(text)).toThrow();
-  });
-
-  it("throws on a negative value", () => {
-    const text = 'apiserver_storage_objects{resource="pods"} -5';
-    expect(() => parsePodCount(text)).toThrow();
+  it("throws when truncated but remainingItemCount is negative", () => {
+    const list = { items: [{}], metadata: { _continue: "tok", remainingItemCount: -1 } };
+    expect(() => podCountFromList(list)).toThrow(/remainingItemCount/);
   });
 });
 
-function metrics(count: number): string {
-  return `apiserver_storage_objects{resource="pods"} ${count}`;
-}
+describe("withTimeout", () => {
+  it("rejects once the deadline passes", async () => {
+    await expect(withTimeout(new Promise(() => {}), 10, "pod count list")).rejects.toThrow(
+      /timed out/
+    );
+  });
+
+  it("passes a value through when it settles first", async () => {
+    await expect(withTimeout(Promise.resolve(7), 1000, "pod count list")).resolves.toBe(7);
+  });
+});
 
 describe("K8sPodCountSignalSource", () => {
   it("engages at the engage threshold and reports the count", async () => {
     const counts: number[] = [];
     const source = new K8sPodCountSignalSource({
-      fetchMetrics: async () => metrics(10000),
+      fetchPodCount: async () => 10000,
       engageThreshold: 10000,
       releaseThreshold: 5000,
       reportPodCount: (c) => counts.push(c),
@@ -59,7 +56,7 @@ describe("K8sPodCountSignalSource", () => {
 
   it("does not engage below the engage threshold", async () => {
     const source = new K8sPodCountSignalSource({
-      fetchMetrics: async () => metrics(9999),
+      fetchPodCount: async () => 9999,
       engageThreshold: 10000,
       releaseThreshold: 5000,
     });
@@ -69,7 +66,7 @@ describe("K8sPodCountSignalSource", () => {
   it("stays engaged in the hysteresis band, releases only below release threshold", async () => {
     let count = 10000;
     const source = new K8sPodCountSignalSource({
-      fetchMetrics: async () => metrics(count),
+      fetchPodCount: async () => count,
       engageThreshold: 10000,
       releaseThreshold: 5000,
     });
@@ -82,9 +79,9 @@ describe("K8sPodCountSignalSource", () => {
     expect((await source.read()).engaged).toBe(false); // band again -> stays off
   });
 
-  it("propagates scrape failures (monitor fails open on throw)", async () => {
+  it("propagates fetch failures (monitor fails open on throw)", async () => {
     const source = new K8sPodCountSignalSource({
-      fetchMetrics: async () => {
+      fetchPodCount: async () => {
         throw new Error("connection refused");
       },
       engageThreshold: 10000,

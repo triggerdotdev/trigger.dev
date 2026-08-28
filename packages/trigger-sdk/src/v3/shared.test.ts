@@ -1,6 +1,22 @@
 import { ApiClient } from "@trigger.dev/core/v3";
 import { describe, it, expect } from "vitest";
-import { offloadBatchItemPayloads, readableStreamToAsyncIterable } from "./shared.js";
+import {
+  offloadBatchItemPayloads,
+  readableStreamToAsyncIterable,
+  uniqueBatchTaskIdentifiers,
+} from "./shared.js";
+
+describe("uniqueBatchTaskIdentifiers", () => {
+  it("returns a stable, deduplicated declaration for batch creation", () => {
+    expect(
+      uniqueBatchTaskIdentifiers([
+        { index: 0, task: "task-b", payload: "{}" },
+        { index: 1, task: "task-a", payload: "{}" },
+        { index: 2, task: "task-b", payload: "{}" },
+      ])
+    ).toEqual(["task-a", "task-b"]);
+  });
+});
 
 describe("offloadBatchItemPayloads", () => {
   // A real client is required for conditionallyExportPacket's truthy check; small payloads

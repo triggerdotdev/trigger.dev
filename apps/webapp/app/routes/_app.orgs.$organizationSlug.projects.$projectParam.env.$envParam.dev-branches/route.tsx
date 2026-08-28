@@ -6,7 +6,6 @@ import { useCallback } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -46,6 +45,12 @@ import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { branchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Dev branches");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -74,6 +79,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export const handle: Handle = {
+  agentPageContext: (data) => branchesAgentPageContext(data),
+};
+
 export default function Page() {
   const { branches, limits, currentPage, totalPages } = useTypedLoaderData<typeof loader>();
   useAutoRevalidate({ interval: 5000 });
@@ -88,7 +97,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Dev branches</V4Title>} />
+        <PageTitle title="Dev branches" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -103,13 +112,15 @@ export default function Page() {
             </Property.Table>
           </AdminDebugTooltip>
 
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("deployment/dev-branches")}
-          >
-            Dev branches docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("deployment/dev-branches")}
+            >
+              Dev branches docs
+            </LinkButton>
+          </WhenAgentUnavailable>
 
           {limits.isAtLimit ? (
             <BranchLimitReachedDialog limits={limits} />
@@ -300,17 +311,20 @@ export function BranchFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { showArchived } = BranchesOptions.parse(Object.fromEntries(searchParams.entries()));
 
-  const handleArchivedChange = useCallback((checked: boolean) => {
-    setSearchParams((s) => {
-      if (checked) {
-        s.set("showArchived", "true");
-      } else {
-        s.delete("showArchived");
-      }
-      s.delete("page");
-      return s;
-    });
-  }, []);
+  const handleArchivedChange = useCallback(
+    (checked: boolean) => {
+      setSearchParams((s) => {
+        if (checked) {
+          s.set("showArchived", "true");
+        } else {
+          s.delete("showArchived");
+        }
+        s.delete("page");
+        return s;
+      });
+    },
+    [setSearchParams]
+  );
 
   return (
     <div className="flex w-full items-center justify-between gap-2">

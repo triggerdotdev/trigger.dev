@@ -1,13 +1,19 @@
 import { intro, log, outro } from "@clack/prompts";
-import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
+import {
+  EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH,
+  getBranch,
+  prepareDeploymentError,
+  tryCatch,
+} from "@trigger.dev/core/v3";
 import type {
+  DeployBuildPath,
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   GitMeta,
   DeploymentFinalizedEvent,
   DeploymentTriggeredVia,
 } from "@trigger.dev/core/v3/schemas";
-import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { BuildManifest, DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
@@ -19,6 +25,12 @@ import type { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
+import { createBundleArchive } from "../deploy/bundleArchive.js";
+import {
+  applyBuildPathOptions,
+  nativeOnlyFlagError,
+  resolveBuildPath,
+} from "../deploy/buildPath.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -30,6 +42,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
+import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import { buildImage } from "../deploy/buildImage.js";
 import {
   checkLogsForErrors,
@@ -72,6 +85,8 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
   skipPromotion: z.boolean().default(false),
+  externalId: z.string().optional(),
+  force: z.boolean().default(false),
   cache: z.boolean().default(true),
   envFile: z.string().optional(),
   // Local build options
@@ -82,6 +97,10 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
   nativeBuildServer: z.boolean().default(false),
+  nativeBuild: z.boolean().default(false),
+  depotBuild: z.boolean().default(false),
+  localBundle: z.boolean().default(false),
+  fromBundle: z.string().optional(),
   detach: z.boolean().default(false),
   plain: z.boolean().default(false),
   compression: z.enum(["zstd", "gzip"]).default("zstd"),
@@ -131,6 +150,14 @@ export function configureDeployCommand(program: Command) {
         .option(
           "--skip-promotion",
           "Skip promoting the deployment to the current deployment for the environment."
+        )
+        .option(
+          "--external-id <externalId>",
+          `An id of your choosing for this deploy, such as a commit SHA, CI run id or release tag (max ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters). Deploying the same id again returns the existing version instead of building it twice.`
+        )
+        .option(
+          "--force",
+          "Build again even if --external-id has already been deployed. Requires --external-id."
         )
     )
       .addOption(
@@ -202,13 +229,16 @@ export function configureDeployCommand(program: Command) {
           .implies({
             localBuild: true,
           })
-          .conflicts("nativeBuildServer")
+          .conflicts(["nativeBuild", "nativeBuildServer", "localBundle", "detach"])
           .hideHelp()
       )
       .addOption(
-        new CommandOption("--local-build", "Build the deployment image locally").conflicts(
-          "nativeBuildServer"
-        )
+        new CommandOption("--local-build", "Build the deployment image locally").conflicts([
+          "nativeBuild",
+          "nativeBuildServer",
+          "localBundle",
+          "detach",
+        ])
       )
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
@@ -228,15 +258,47 @@ export function configureDeployCommand(program: Command) {
       )
       .addOption(
         new CommandOption(
-          "--native-build-server",
-          "Use the native build server for building the image"
+          "--native-build",
+          "Build the image on the native build server, ignoring the build path configured for this project on the server"
         )
+          .implies({ nativeBuildServer: true })
+          .conflicts(["localBuild", "forceLocalBuild", "depotBuild", "fromBundle"])
+      )
+      .addOption(new CommandOption("--native-build-server", "Alias for --native-build").hideHelp())
+      .addOption(
+        new CommandOption(
+          "--depot-build",
+          "Build the image with Depot, ignoring the build path configured for this project on the server"
+        ).conflicts([
+          "nativeBuild",
+          "nativeBuildServer",
+          "localBundle",
+          "localBuild",
+          "forceLocalBuild",
+          "fromBundle",
+          "detach",
+        ])
+      )
+      .addOption(
+        new CommandOption(
+          "--local-bundle",
+          "Experimental: install and bundle locally and upload only the build output. Requires --native-build."
+        ).conflicts(["localBuild", "forceLocalBuild", "depotBuild"])
+      )
+      .addOption(
+        new CommandOption(
+          "--from-bundle <dir>",
+          "Internal: build the image from a pre-built bundle directory. Implies a local build."
+        )
+          .implies({ localBuild: true })
+          .conflicts(["nativeBuild", "nativeBuildServer", "depotBuild", "localBundle", "detach"])
+          .hideHelp()
       )
       .addOption(
         new CommandOption(
           "--detach",
-          "Return immediately after the deployment is queued, do not wait for the build to complete. Implies using the native build server."
-        ).implies({ nativeBuildServer: true })
+          "Return immediately after the deployment is queued, do not wait for the build to complete. Requires --native-build."
+        )
       )
       .addOption(new CommandOption("--plain", "Plain output").hideHelp())
       .action(async (path, options) => {
@@ -248,13 +310,38 @@ export function configureDeployCommand(program: Command) {
   );
 }
 
-export async function deployCommand(dir: string, options: unknown) {
+async function deployCommand(dir: string, options: unknown) {
   return await wrapCommandAction("deployCommand", DeployCommandOptions, options, async (opts) => {
     return await _deployCommand(dir, opts);
   });
 }
 
 async function _deployCommand(dir: string, options: DeployCommandOptions) {
+  const nativeOnlyError = nativeOnlyFlagError(options);
+  if (nativeOnlyError) {
+    throw new Error(nativeOnlyError);
+  }
+
+  if (options.externalId !== undefined) {
+    options.externalId = options.externalId.trim();
+
+    if (options.externalId.length === 0) {
+      throw new Error("--external-id must not be empty.");
+    }
+
+    if (options.externalId.length > EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH) {
+      throw new Error(
+        `--external-id must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters.`
+      );
+    }
+  }
+
+  if (options.force && !options.externalId) {
+    throw new Error(
+      "--force requires --external-id. Without an id there is no previous deployment for --force to build over."
+    );
+  }
+
   if (!options.plain) {
     intro(`Deploying project${options.skipPromotion ? " (without promotion)" : ""}`);
   }
@@ -268,11 +355,12 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   verifyDirectory(dir, projectPath);
 
-  const authorization = await login({
-    embedded: true,
-    defaultApiUrl: options.apiUrl,
+  const authorization = await authenticateForDeploy({
+    accessToken: process.env.TRIGGER_ACCESS_TOKEN,
+    apiUrl: process.env.TRIGGER_API_URL ?? options.apiUrl,
     profile: options.profile,
     silent: options.plain,
+    login,
   });
 
   if (!authorization.ok) {
@@ -298,7 +386,19 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
   }
 
-  const resolvedConfig = await loadConfig({
+  if (options.fromBundle) {
+    await handleFromBundleDeploy({
+      bundleDir: options.fromBundle,
+      options,
+      dashboardUrl: authorization.dashboardUrl,
+      auth: authorization.auth,
+      existingDeploymentId: envVars.TRIGGER_EXISTING_DEPLOYMENT_ID,
+      projectRefOverride: options.projectRef ?? envVars.TRIGGER_PROJECT_REF,
+    });
+    return;
+  }
+
+  let resolvedConfig = await loadConfig({
     cwd: projectPath,
     overrides: { project: options.projectRef ?? envVars.TRIGGER_PROJECT_REF },
     configFile: options.config,
@@ -308,6 +408,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
   logger.debug("gitMeta", gitMeta);
+
+  const isAttachingToExistingDeployment =
+    Boolean(envVars.TRIGGER_EXISTING_DEPLOYMENT_ID) ||
+    Boolean(gitMeta?.commitSha?.startsWith("deployment_"));
+
+  if (isAttachingToExistingDeployment && (options.externalId || options.force)) {
+    throw new Error(
+      "--external-id and --force are not supported when attaching to an existing deployment. Remove the flags, or start a new deployment instead."
+    );
+  }
 
   const branch =
     options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
@@ -362,13 +472,41 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new Error("Failed to get project client");
   }
 
-  if (options.nativeBuildServer) {
+  if (!resolvedConfig.runtimeWasExplicit && projectClient.defaultRuntime) {
+    resolvedConfig.runtime = projectClient.defaultRuntime;
+  }
+
+  const resolvedBuildPath = await resolveServerBuildPath(
+    projectClient.client,
+    resolvedConfig.project,
+    options
+  );
+  const buildPath = applyBuildPathOptions(resolvedBuildPath, options);
+
+  if (options.dryRun && resolvedBuildPath === "native" && buildPath === "depot") {
+    log.info("Dry run is not supported on the native build server path, bundling locally instead");
+  }
+
+  if (buildPath === "native_local_bundle") {
+    await handleLocalBundleDeploy({
+      apiClient: projectClient.client,
+      config: resolvedConfig,
+      dashboardUrl: authorization.dashboardUrl,
+      options,
+      userId: userIdForDeploy(authorization),
+      gitMeta,
+      branch,
+    });
+    return;
+  }
+
+  if (buildPath === "native") {
     await handleNativeBuildServerDeploy({
       apiClient: projectClient.client,
       config: resolvedConfig,
       dashboardUrl: authorization.dashboardUrl,
       options,
-      userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
+      userId: userIdForDeploy(authorization),
       gitMeta,
     });
     return;
@@ -424,16 +562,61 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     projectClient.client,
     {
       contentHash: buildManifest.contentHash,
-      userId: authorization.auth.tokenType === "personal" ? authorization.userId : undefined,
+      userId: userIdForDeploy(authorization),
       gitMeta,
       type: features.run_engine_v2 ? "MANAGED" : "V1",
       runtime: buildManifest.runtime,
       isLocalBuild: options.localBuild,
       isNativeBuild: false,
       triggeredVia: getTriggeredVia(),
+      externalId: options.externalId,
+      force: options.force,
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
+
+  if (deployment.outcome === "existing") {
+    const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
+      dashboardUrl: authorization.dashboardUrl,
+      projectRef: resolvedConfig.project,
+      env: options.env,
+      shortCode: deployment.shortCode,
+    });
+
+    setDeploymentGithubActionsOutput({
+      version: deployment.version,
+      shortCode: deployment.shortCode,
+      rawDeploymentLink,
+      rawTestLink,
+      needsPromotion: !deployment.isPromoted,
+    });
+
+    warnAboutSkippedBuild(options.externalId, deployment.isPromoted);
+
+    const message = `Version ${deployment.version} was already deployed for --external-id ${options.externalId} — nothing to build`;
+
+    if (options.plain) {
+      console.log(message);
+
+      if (process.env.TRIGGER_DEPLOYMENT_LINK_OUTPUT_DISABLED !== "1") {
+        console.log(`Deployment: ${rawDeploymentLink}`);
+        console.log(`Test: ${rawTestLink}`);
+      }
+    } else {
+      outro(
+        `${message} ${isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""}`
+      );
+
+      if (!isLinksSupported) {
+        console.log("View deployment");
+        console.log(rawDeploymentLink);
+      }
+    }
+
+    return;
+  }
+
+  warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
 
   // When `externalBuildData` is not present the deployment implicitly goes into the local build path
   // which is used in self-hosted setups. There are a few subtle differences between local builds for the cloud
@@ -510,10 +693,12 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const version = deployment.version;
 
-  const rawDeploymentLink = `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${authorization.dashboardUrl}/projects/v3/${
-    resolvedConfig.project
-  }/test?environment=${options.env === "prod" ? "prod" : "stg"}`;
+  const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
+    dashboardUrl: authorization.dashboardUrl,
+    projectRef: resolvedConfig.project,
+    env: options.env,
+    shortCode: deployment.shortCode,
+  });
 
   const deploymentLink = cliLink("View deployment", rawDeploymentLink);
   const testLink = cliLink("Test tasks", rawTestLink);
@@ -749,30 +934,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     console.log(`Full build logs have been saved to ${logPath}`);
   }
 
-  setGithubActionsOutputAndEnvVars({
-    envVars: {
-      TRIGGER_DEPLOYMENT_VERSION: version,
-      TRIGGER_VERSION: version,
-      TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
-      TRIGGER_DEPLOYMENT_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
-    },
-    outputs: {
-      deploymentVersion: version,
-      workerVersion: version,
-      deploymentShortCode: deployment.shortCode,
-      deploymentUrl: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      testUrl: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
-      needsPromotion: options.skipPromotion ? "true" : "false",
-    },
+  setDeploymentGithubActionsOutput({
+    version,
+    shortCode: deployment.shortCode,
+    rawDeploymentLink,
+    rawTestLink,
+    needsPromotion: options.skipPromotion,
   });
 }
 
-export async function syncEnvVarsWithServer(
+async function syncEnvVarsWithServer(
   apiClient: CliApiClient,
   projectRef: string,
   environmentSlug: string,
@@ -886,7 +1057,7 @@ async function failDeploy(
         break;
       }
       case "CANCELED": {
-        await doOutputLogs("Canceled");
+        await doOutputLogs(serverDeployment.canceledReason ?? "Canceled");
 
         exitCommand("Failed to deploy project");
 
@@ -973,6 +1144,7 @@ async function initializeOrAttachDeployment(
     return {
       ...existingDeploymentOrError.data,
       imageTag: imageReference,
+      outcome: "created" as const,
     };
   }
 
@@ -985,6 +1157,92 @@ async function initializeOrAttachDeployment(
   }
 
   return newDeploymentOrError.data;
+}
+
+function buildDeploymentLinks({
+  dashboardUrl,
+  projectRef,
+  env,
+  shortCode,
+}: {
+  dashboardUrl: string;
+  projectRef: string;
+  env: DeployCommandOptions["env"];
+  shortCode: string;
+}) {
+  return {
+    rawDeploymentLink: `${dashboardUrl}/projects/v3/${projectRef}/deployments/${shortCode}`,
+    rawTestLink: `${dashboardUrl}/projects/v3/${projectRef}/test?environment=${
+      env === "prod" ? "prod" : "stg"
+    }`,
+  };
+}
+
+function warnAboutSkippedBuild(externalId: string | undefined, isPromoted: boolean | undefined) {
+  prettyWarning(
+    "Environment variables were not synced because nothing was built.",
+    `If your environment variables have changed, deploy again with --force --external-id ${externalId} to rebuild this id and sync them.`
+  );
+
+  if (isPromoted === false) {
+    prettyWarning(
+      "This version is not the current deployment.",
+      "Promote it from the dashboard, or deploy again with --force to build a new version."
+    );
+  }
+}
+
+function warnAboutCanceledDeployments(
+  canceledDeployments: Array<{ version: string }> | undefined,
+  externalId: string | undefined
+) {
+  if (!canceledDeployments?.length || !externalId) {
+    return;
+  }
+
+  const versions = canceledDeployments.map((deployment) => deployment.version);
+
+  const header =
+    versions.length === 1
+      ? `--force canceled version ${versions[0]}, which was still building for --external-id ${externalId}`
+      : `--force canceled ${versions.length} in-progress deployments for --external-id ${externalId}: ${versions.join(", ")}`;
+
+  prettyWarning(
+    header,
+    "A canceled deployment can never be deployed. The build is signalled to stop, but a build running on another machine can keep going for a few minutes before it notices."
+  );
+}
+
+function setDeploymentGithubActionsOutput({
+  version,
+  shortCode,
+  rawDeploymentLink,
+  rawTestLink,
+  needsPromotion,
+}: {
+  version: string;
+  shortCode: string;
+  rawDeploymentLink: string;
+  rawTestLink: string;
+  needsPromotion: boolean;
+}) {
+  setGithubActionsOutputAndEnvVars({
+    envVars: {
+      TRIGGER_DEPLOYMENT_VERSION: version,
+      TRIGGER_VERSION: version,
+      TRIGGER_DEPLOYMENT_SHORT_CODE: shortCode,
+      TRIGGER_DEPLOYMENT_URL: rawDeploymentLink,
+      TRIGGER_TEST_URL: rawTestLink,
+    },
+    outputs: {
+      deploymentVersion: version,
+      workerVersion: version,
+      deploymentShortCode: shortCode,
+      deploymentUrl: rawDeploymentLink,
+      testUrl: rawTestLink,
+      needsPromotion: needsPromotion ? "true" : "false",
+    },
+  });
 }
 
 function getTriggeredVia(): DeploymentTriggeredVia {
@@ -1019,6 +1277,39 @@ function getTriggeredVia(): DeploymentTriggeredVia {
   }
 
   return "cli:manual";
+}
+
+const DEPLOY_SETTINGS_TIMEOUT_MS = 5_000;
+
+async function resolveServerBuildPath(
+  apiClient: CliApiClient,
+  projectRef: string,
+  options: DeployCommandOptions
+): Promise<DeployBuildPath> {
+  const resolved = await resolveBuildPath(options, () =>
+    apiClient.getDeploySettings(
+      projectRef,
+      options.env,
+      AbortSignal.timeout(DEPLOY_SETTINGS_TIMEOUT_MS)
+    )
+  );
+
+  switch (resolved.from) {
+    case "flag":
+      logger.debug(`Build path ${resolved.buildPath} from ${resolved.flag}`);
+      break;
+    case "fallback":
+      logger.debug("Failed to fetch deploy settings", { failure: resolved.failure });
+      if (!resolved.silent) {
+        log.warn("Could not read the deploy settings from the server, using the Depot build path");
+      }
+      break;
+    case "server":
+      logger.debug(`Build path ${resolved.buildPath} (server)`);
+      break;
+  }
+
+  return resolved.buildPath;
 }
 
 async function handleNativeBuildServerDeploy({
@@ -1127,6 +1418,8 @@ async function handleNativeBuildServerDeploy({
     skipPromotion: options.skipPromotion,
     configFilePath,
     triggeredVia: getTriggeredVia(),
+    externalId: options.externalId,
+    force: options.force,
   });
 
   if (!initializeDeploymentResult.success) {
@@ -1142,28 +1435,42 @@ async function handleNativeBuildServerDeploy({
     options.env === "prod" ? "prod" : "stg"
   }`;
 
+  if (deployment.outcome === "existing") {
+    $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
+
+    setDeploymentGithubActionsOutput({
+      version: deployment.version,
+      shortCode: deployment.shortCode,
+      rawDeploymentLink,
+      rawTestLink,
+      needsPromotion: !deployment.isPromoted,
+    });
+
+    warnAboutSkippedBuild(options.externalId, deployment.isPromoted);
+
+    outro(
+      `Version ${deployment.version} was already deployed for --external-id ${options.externalId} — nothing to build ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : rawDeploymentLink
+      }`
+    );
+
+    return;
+  }
+
   const exposedDeploymentLink = isLinksSupported
     ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
     : chalk.bold(rawDeploymentLink);
   $deploymentSpinner.stop("Deployment initialized");
   log.info(`View deployment: ${exposedDeploymentLink}`);
 
-  setGithubActionsOutputAndEnvVars({
-    envVars: {
-      TRIGGER_DEPLOYMENT_VERSION: deployment.version,
-      TRIGGER_VERSION: deployment.version,
-      TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
-      TRIGGER_DEPLOYMENT_URL: rawDeploymentLink,
-      TRIGGER_TEST_URL: rawTestLink,
-    },
-    outputs: {
-      deploymentVersion: deployment.version,
-      workerVersion: deployment.version,
-      deploymentShortCode: deployment.shortCode,
-      deploymentUrl: rawDeploymentLink,
-      testUrl: rawTestLink,
-      needsPromotion: options.skipPromotion ? "true" : "false",
-    },
+  warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
+
+  setDeploymentGithubActionsOutput({
+    version: deployment.version,
+    shortCode: deployment.shortCode,
+    rawDeploymentLink,
+    rawTestLink,
+    needsPromotion: options.skipPromotion,
   });
 
   if (options.detach) {
@@ -1447,4 +1754,994 @@ export function verifyDirectory(dir: string, projectPath: string) {
 
     throw new Error(`Directory "${dir}" not found at ${projectPath}`);
   }
+}
+
+// --local-bundle: install + bundling happen locally, only the build output is
+// uploaded, and the build server runs just the container build from it.
+async function handleLocalBundleDeploy({
+  apiClient,
+  options,
+  config,
+  dashboardUrl,
+  userId,
+  gitMeta,
+  branch,
+}: {
+  apiClient: CliApiClient;
+  config: Awaited<ReturnType<typeof loadConfig>>;
+  dashboardUrl: string;
+  options: DeployCommandOptions;
+  userId?: string;
+  gitMeta?: GitMeta;
+  branch?: string;
+}) {
+  const tmpDir = join(config.workingDir, ".trigger", "tmp");
+  await mkdir(tmpDir, { recursive: true });
+
+  const archivePath = join(tmpDir, `deploy-${Date.now()}.tar.gz`);
+
+  const ignoredBuildFlags = [
+    options.compression !== "zstd" && "--compression",
+    options.cacheCompression !== "zstd" && "--cache-compression",
+    options.compressionLevel !== undefined && "--compression-level",
+    !options.forceCompression && "--no-force-compression",
+    !options.cache && "--no-cache",
+    options.builder !== "trigger" && "--builder",
+    options.network !== undefined && "--network",
+    options.push !== undefined && "--push/--no-push",
+    options.load !== undefined && "--load/--no-load",
+  ].filter((flag): flag is string => Boolean(flag));
+
+  if (ignoredBuildFlags.length > 0) {
+    log.warn(
+      `The following flags are ignored with --local-bundle (the image is built remotely): ${ignoredBuildFlags.join(", ")}`
+    );
+  }
+
+  const serverEnvVars = await apiClient.getEnvironmentVariables(config.project);
+  loadDotEnvVars(config.workingDir, options.envFile);
+
+  // Keep the bundle dir around on dry runs so the printed path is inspectable
+  const destination = getTmpDir(config.workingDir, "build", options.dryRun);
+  const forcedExternals = await resolveAlwaysExternal(apiClient);
+
+  const $buildSpinner = spinner({ plain: options.plain });
+
+  const [buildError, buildManifest] = await tryCatch(
+    buildWorker({
+      target: "deploy",
+      environment: options.env,
+      branch,
+      destination: destination.path,
+      resolvedConfig: config,
+      rewritePaths: true,
+      envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+      forcedExternals,
+      plain: options.plain,
+      listener: {
+        onBundleStart() {
+          $buildSpinner.start("Building trigger code");
+        },
+        onBundleComplete(result) {
+          $buildSpinner.stop("Successfully built code");
+          logger.debug("Bundle result", result);
+        },
+      },
+    })
+  );
+
+  if (buildError) {
+    $buildSpinner.stop("Failed to build code");
+    throw buildError;
+  }
+
+  const bundleManifest = buildManifest;
+  const bundleOutputPath = destination.path;
+
+  // Extensions can set undefined values at runtime despite the manifest type
+  const bundleBuildEnvVars = Object.fromEntries(
+    Object.entries(buildManifest.build.env ?? {}).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
+
+  if (options.dryRun) {
+    logger.info(`Dry run complete. View the built bundle at ${destination.path}`);
+    return;
+  }
+
+  // Sync BEFORE init: init enqueues the build synchronously, so a post-init sync races a fast build
+  const childVars = buildManifest.deploy.sync?.env ?? {};
+  const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+  const secretChildVars = buildManifest.deploy.sync?.secretEnv ?? {};
+  const secretParentVars = buildManifest.deploy.sync?.secretParentEnv ?? {};
+
+  const hasVarsToSync =
+    Object.keys(childVars).length > 0 ||
+    Object.keys(secretChildVars).length > 0 ||
+    // Only sync parent variables if this is a branch environment
+    (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
+
+  if (!options.skipSyncEnvVars) {
+    if (hasVarsToSync) {
+      const uploadResult = await syncEnvVarsWithServer(
+        apiClient,
+        config.project,
+        options.env,
+        childVars,
+        parentVars,
+        secretChildVars,
+        secretParentVars
+      );
+
+      if (!uploadResult.success) {
+        throw new Error(`Failed to sync env vars with the server: ${uploadResult.error}`);
+      }
+
+      logger.debug("Synced env vars with the server");
+    }
+  } else if (hasVarsToSync) {
+    logger.log(
+      "Skipping syncing env vars. The environment variables in your project have changed, but the --skip-sync-env-vars flag was provided."
+    );
+  }
+
+  const $deploymentSpinner = spinner();
+  $deploymentSpinner.start("Preparing deployment files");
+
+  await createBundleArchive(bundleOutputPath, archivePath);
+
+  const archiveSize = await getArchiveSize(archivePath);
+  const sizeMB = (archiveSize / 1024 / 1024).toFixed(2);
+  $deploymentSpinner.message(`Deployment files ready (${sizeMB} MB)`);
+
+  const artifactResult = await apiClient.createArtifact({
+    type: "deployment_bundle",
+    contentType: "application/gzip",
+    contentLength: archiveSize,
+  });
+
+  if (!artifactResult.success) {
+    $deploymentSpinner.stop("Failed creating deployment artifact");
+    log.error(chalk.bold(chalkError(artifactResult.error)));
+    throw new OutroCommandError(`Deployment failed`);
+  }
+
+  const { artifactKey, uploadUrl, uploadFields } = artifactResult.data;
+
+  logger.debug("Artifact created", { artifactKey });
+
+  // Defense in depth: current older servers already reject the deployment_bundle
+  // type at createArtifact; this catches a server that accepts it but returns a
+  // non-bundle key, which would make the remote build treat the bundle as source.
+  if (!artifactKey.startsWith("bundles/")) {
+    $deploymentSpinner.stop("Failed creating deployment artifact");
+    log.error(
+      chalk.bold(
+        chalkError(
+          "This server does not support --local-bundle deploys yet. Deploy without --local-bundle instead."
+        )
+      )
+    );
+    throw new OutroCommandError(`Deployment failed`);
+  }
+
+  $deploymentSpinner.message("Uploading deployment files");
+
+  const [readError, fileBuffer] = await tryCatch(readFile(archivePath));
+
+  if (readError) {
+    $deploymentSpinner.stop("Failed reading deployment archive");
+    log.error(chalk.bold(chalkError(readError.message)));
+    throw new OutroCommandError(`Deployment failed`);
+  }
+
+  const formData = new FormData();
+
+  for (const [key, value] of Object.entries(uploadFields)) {
+    formData.append(key, value);
+  }
+
+  const blob = new Blob([new Uint8Array(fileBuffer)], { type: "application/gzip" });
+  formData.append("file", blob, "deployment.tar.gz");
+
+  const [uploadError, uploadResponse] = await tryCatch(
+    fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+    })
+  );
+
+  if (uploadError || !uploadResponse?.ok) {
+    $deploymentSpinner.stop("Failed to upload deployment files");
+    log.error(
+      chalk.bold(
+        chalkError(
+          `${uploadError?.message} (${uploadResponse?.statusText} ${uploadResponse?.status})`
+        )
+      )
+    );
+    throw new OutroCommandError(`Deployment failed`);
+  }
+
+  const [unlinkError] = await tryCatch(unlink(archivePath));
+  if (unlinkError) {
+    logger.debug("Failed to delete deployment artifact file", { archivePath, error: unlinkError });
+  }
+
+  $deploymentSpinner.message("Deployment files uploaded");
+
+  const configFilePath =
+    config.configFile !== undefined
+      ? relative(config.workspaceDir, config.configFile).replace(/\\/g, "/")
+      : undefined;
+
+  const initializeDeploymentResult = await apiClient.initializeDeployment({
+    contentHash: bundleManifest.contentHash,
+    userId,
+    gitMeta,
+    type: config.features.run_engine_v2 ? "MANAGED" : "V1",
+    // config.runtime (not the manifest runtime) to match classic native deploys
+    runtime: config.runtime,
+    isNativeBuild: true,
+    artifactKey,
+    skipPromotion: options.skipPromotion,
+    configFilePath,
+    triggeredVia: getTriggeredVia(),
+    externalId: options.externalId,
+    force: options.force,
+    fromBundle: true,
+    buildEnvVars: Object.keys(bundleBuildEnvVars).length > 0 ? bundleBuildEnvVars : undefined,
+  });
+
+  if (!initializeDeploymentResult.success) {
+    $deploymentSpinner.stop("Failed to initialize deployment");
+    log.error(chalk.bold(chalkError(initializeDeploymentResult.error)));
+    throw new OutroCommandError(`Deployment failed`);
+  }
+
+  const deployment = initializeDeploymentResult.data;
+
+  const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
+  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
+    options.env === "prod" ? "prod" : "stg"
+  }`;
+
+  if (deployment.outcome === "existing") {
+    $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
+
+    setDeploymentGithubActionsOutput({
+      version: deployment.version,
+      shortCode: deployment.shortCode,
+      rawDeploymentLink,
+      rawTestLink,
+      needsPromotion: !deployment.isPromoted,
+    });
+
+    warnAboutSkippedBuild(options.externalId, deployment.isPromoted);
+
+    outro(
+      `Version ${deployment.version} was already deployed for --external-id ${options.externalId} — nothing to build ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : rawDeploymentLink
+      }`
+    );
+
+    return;
+  }
+
+  const exposedDeploymentLink = isLinksSupported
+    ? cliLink(chalk.bold(rawDeploymentLink), rawDeploymentLink)
+    : chalk.bold(rawDeploymentLink);
+  $deploymentSpinner.stop("Deployment initialized");
+  log.info(`View deployment: ${exposedDeploymentLink}`);
+
+  warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
+
+  setDeploymentGithubActionsOutput({
+    version: deployment.version,
+    shortCode: deployment.shortCode,
+    rawDeploymentLink,
+    rawTestLink,
+    needsPromotion: options.skipPromotion,
+  });
+
+  if (options.detach) {
+    outro(`Version ${deployment.version} is being deployed`);
+    return;
+  }
+
+  const { eventStream } = deployment;
+
+  if (!eventStream) {
+    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
+
+    outro(`Version ${deployment.version} is being deployed`);
+
+    return process.exit(0);
+  }
+
+  const $queuedSpinner = spinner();
+  $queuedSpinner.start("Build queued");
+
+  const abortController = new AbortController();
+
+  const s2 = new S2({ accessToken: eventStream.s2.accessToken });
+  const basin = s2.basin(eventStream.s2.basin);
+  const stream = basin.stream(eventStream.s2.stream);
+
+  const [readSessionError, readSession] = await tryCatch(
+    stream.readSession(
+      {
+        start: { from: { seqNum: 0 }, clamp: true },
+        stop: { waitSecs: 60 * 20 }, // 20 minutes
+      },
+      { signal: abortController.signal }
+    )
+  );
+
+  if (readSessionError) {
+    $queuedSpinner.stop("Failed to query build progress");
+    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
+
+    outro(
+      `Version ${deployment.version} is being deployed ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+
+    return process.exit(0);
+  }
+
+  let finalDeploymentEvent: DeploymentFinalizedEvent["data"] | undefined;
+  let queuedSpinnerStopped = false;
+
+  for await (const record of readSession) {
+    const decoded = record.body;
+    const result = DeploymentEventFromString.safeParse(decoded);
+    if (!result.success) {
+      logger.debug("Failed to parse deployment event, skipping", {
+        error: result.error,
+        record: decoded,
+      });
+      continue;
+    }
+
+    const event = result.data;
+
+    switch (event.type) {
+      case "log": {
+        if (record.seqNum === 0) {
+          $queuedSpinner.stop("Build started");
+          console.log("│");
+          queuedSpinnerStopped = true;
+        }
+
+        const formattedTimestamp = chalkGrey(
+          new Date(record.timestamp).toLocaleTimeString("en-US", {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            fractionalSecondDigits: 3,
+          })
+        );
+
+        const { level, message } = event.data;
+        const formattedMessage =
+          level === "error"
+            ? chalk.bold(chalkError(message))
+            : level === "warn"
+              ? chalkWarning(message)
+              : level === "debug"
+                ? chalkGrey(message)
+                : message;
+
+        // We use console.log here instead of clack's logger as the current version does not support changing the line spacing.
+        // And the logs look verbose with the default spacing.
+        // We cannot upgrade because the newer versions introduced some weird issues with the spinner.
+        // Ideally, we'd use clack's `taskLog` to only show the recent n lines of logs as they are streamed, but that also seems brittle
+        // and has some issues with cursor movements/clearing lines that it shouldn't clear.
+        // We can revisit this on future versions of `@clack/prompts`.
+        console.log(`│  ${formattedTimestamp}  ${formattedMessage}`);
+        break;
+      }
+      case "finalized": {
+        finalDeploymentEvent = event.data;
+        abortController.abort(); // stop the stream
+        break;
+      }
+      default: {
+        event satisfies never;
+        logger.debug("Unknown deployment event, skipping", { event });
+        continue;
+      }
+    }
+  }
+
+  if (!queuedSpinnerStopped && !finalDeploymentEvent) {
+    // unlikely that it happens in practice, only in rare corner cases
+    // the timeout would kick in earlier if the build server fails to dequeue the build
+
+    $queuedSpinner.stop("Log stream stopped");
+
+    log.error("Failed dequeueing build, please try again shortly");
+
+    throw new OutroCommandError(
+      `Version ${deployment.version} ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+  }
+
+  if (!finalDeploymentEvent) {
+    log.error(
+      "Stopped receiving updates from the build server, please check the deployment status in the dashboard"
+    );
+
+    if (!isLinksSupported) {
+      log.info(`View deployment: ${rawDeploymentLink}`);
+    }
+
+    throw new OutroCommandError(
+      `Version ${deployment.version} ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+  }
+
+  switch (finalDeploymentEvent.result) {
+    case "succeeded": {
+      queuedSpinnerStopped
+        ? log.success("Deployment completed successfully")
+        : $queuedSpinner.stop("Deployment completed successfully");
+
+      if (finalDeploymentEvent.message) {
+        log.success(finalDeploymentEvent.message);
+      }
+
+      if (options.skipPromotion) {
+        log.info(
+          `This deployment was not automatically promoted. You can promote in the dashboard or via the promote command, e.g, \`npx trigger.dev promote ${deployment.version}\`.`
+        );
+      }
+
+      if (!isLinksSupported) {
+        log.info(`Test tasks: ${rawTestLink}`);
+      }
+
+      outro(
+        `Version ${deployment.version} was deployed ${
+          isLinksSupported
+            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+                "View deployment",
+                rawDeploymentLink
+              )}`
+            : ""
+        }`
+      );
+      return process.exit(0);
+    }
+    case "failed": {
+      if (!queuedSpinnerStopped) {
+        $queuedSpinner.stop("Deployment failed");
+      }
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment failed" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment failed ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    case "timed_out": {
+      if (!queuedSpinnerStopped) {
+        $queuedSpinner.stop("Deployment timed out");
+      }
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment timed out" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment timed out ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    case "canceled": {
+      if (!queuedSpinnerStopped) {
+        $queuedSpinner.stop("Deployment was canceled");
+      }
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment was canceled" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment canceled ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    default: {
+      // This case is only relevant in case we extend the enum in the future.
+      // New enum values will not be treated as errors in older cli versions.
+      queuedSpinnerStopped
+        ? log.success("Log stream finished")
+        : $queuedSpinner.stop("Log stream finished");
+      if (finalDeploymentEvent.message) {
+        log.message(finalDeploymentEvent.message);
+      }
+
+      if (!isLinksSupported) {
+        log.info(`Test tasks: ${rawTestLink}`);
+      }
+
+      outro(
+        `Version ${deployment.version} ${
+          isLinksSupported
+            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+                "View deployment",
+                rawDeploymentLink
+              )}`
+            : ""
+        }`
+      );
+      return process.exit(0);
+    }
+  }
+}
+
+// Builds the image locally from the bundle and finalizes the deployment.
+async function buildAndFinalizeFromBundle({
+  apiClient,
+  projectId,
+  projectRef,
+  deployment,
+  options,
+  dashboardUrl,
+  authAccessToken,
+  compilationPath,
+  buildEnvVars,
+  branch,
+  isLocalBuild,
+}: {
+  apiClient: CliApiClient;
+  projectId: string;
+  projectRef: string;
+  deployment: Deployment;
+  options: DeployCommandOptions;
+  dashboardUrl: string;
+  authAccessToken: string;
+  compilationPath: string;
+  buildEnvVars: Record<string, string | undefined> | undefined;
+  branch: string | undefined;
+  isLocalBuild: boolean;
+}) {
+  const authenticateToTriggerRegistry = options.localBuild;
+  const skipServerSideRegistryPush = options.localBuild;
+
+  const version = deployment.version;
+
+  const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
+    dashboardUrl,
+    projectRef,
+    env: options.env,
+    shortCode: deployment.shortCode,
+  });
+
+  const deploymentLink = cliLink("View deployment", rawDeploymentLink);
+  const testLink = cliLink("Test tasks", rawTestLink);
+
+  const $spinner = spinner({ plain: options.plain });
+
+  const buildSuffix =
+    isLocalBuild && process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED !== "1" ? " (local)" : "";
+  const deploySuffix =
+    isLocalBuild && process.env.TRIGGER_LOCAL_BUILD_LABEL_DISABLED !== "1" ? " (local build)" : "";
+
+  if (options.plain) {
+    $spinner.start(`Building version ${version}${buildSuffix}`);
+  } else if (isCI) {
+    log.step(`Building version ${version}\n`);
+  } else {
+    if (isLinksSupported) {
+      $spinner.start(`Building version ${version}${buildSuffix} ${deploymentLink}`);
+    } else {
+      $spinner.start(`Building version ${version}${buildSuffix}`);
+    }
+  }
+
+  const buildResult = await buildImage({
+    isLocalBuild,
+    useRegistryCache: options.useRegistryCache,
+    noCache: !options.cache,
+    deploymentId: deployment.id,
+    deploymentVersion: deployment.version,
+    imageTag: deployment.imageTag,
+    imagePlatform: deployment.imagePlatform,
+    load: options.load,
+    contentHash: deployment.contentHash,
+    externalBuildId: deployment.externalBuildData?.buildId,
+    externalBuildToken: deployment.externalBuildData?.buildToken,
+    externalBuildProjectId: deployment.externalBuildData?.projectId,
+    projectId,
+    projectRef,
+    apiUrl: apiClient.apiURL,
+    apiKey: apiClient.accessToken!,
+    apiClient,
+    branchName: branch,
+    authAccessToken,
+    compilationPath,
+    buildEnvVars,
+    compression: options.compression,
+    cacheCompression: options.cacheCompression,
+    compressionLevel: options.compressionLevel,
+    forceCompression: options.forceCompression,
+    onLog: (logMessage) => {
+      if (options.plain || isCI) {
+        console.log(logMessage);
+        return;
+      }
+
+      if (isLinksSupported) {
+        $spinner.message(
+          `Building version ${version}${buildSuffix} ${deploymentLink}: ${logMessage}`
+        );
+      } else {
+        $spinner.message(`Building version ${version}${buildSuffix}: ${logMessage}`);
+      }
+    },
+    // Local build options
+    network: options.network,
+    builder: options.builder,
+    push: options.push,
+    authenticateToRegistry: authenticateToTriggerRegistry,
+  });
+
+  logger.debug("Build result", buildResult);
+
+  const warnings = checkLogsForWarnings(buildResult.logs);
+
+  const canShowLocalBuildHint =
+    !isLocalBuild && process.env.TRIGGER_LOCAL_BUILD_HINT_DISABLED !== "1";
+  const buildFailed = !warnings.ok || !buildResult.ok;
+
+  if (buildFailed && canShowLocalBuildHint) {
+    const providerStatus = await apiClient.getRemoteBuildProviderStatus();
+
+    if (providerStatus.success && providerStatus.data.status === "degraded") {
+      prettyWarning(providerStatus.data.message + "\n");
+    }
+  }
+
+  if (!warnings.ok) {
+    await failDeploy(
+      apiClient,
+      deployment,
+      { name: "BuildError", message: warnings.summary },
+      buildResult.logs,
+      $spinner,
+      warnings.warnings,
+      warnings.errors
+    );
+
+    throw new SkipLoggingError("Failed to build image");
+  }
+
+  if (!buildResult.ok) {
+    await failDeploy(
+      apiClient,
+      deployment,
+      { name: "BuildError", message: buildResult.error },
+      buildResult.logs,
+      $spinner,
+      warnings.warnings
+    );
+
+    throw new SkipLoggingError("Failed to build image");
+  }
+
+  const getDeploymentResponse = await apiClient.getDeployment(deployment.id);
+
+  if (!getDeploymentResponse.success) {
+    await failDeploy(
+      apiClient,
+      deployment,
+      { name: "DeploymentError", message: getDeploymentResponse.error },
+      buildResult.logs,
+      $spinner
+    );
+
+    throw new SkipLoggingError(getDeploymentResponse.error);
+  }
+
+  const deploymentWithWorker = getDeploymentResponse.data;
+
+  if (!deploymentWithWorker.worker) {
+    const errorData = deploymentWithWorker.errorData
+      ? prepareDeploymentError(deploymentWithWorker.errorData)
+      : undefined;
+
+    await failDeploy(
+      apiClient,
+      deployment,
+      {
+        name: "DeploymentError",
+        message: errorData?.message ?? "Failed to get deployment with worker",
+      },
+      buildResult.logs,
+      $spinner
+    );
+
+    throw new SkipLoggingError(errorData?.message ?? "Failed to get deployment with worker");
+  }
+
+  if (options.plain) {
+    $spinner.message(`Deploying version ${version}${deploySuffix}`);
+  } else if (isCI) {
+    log.step(`Deploying version ${version}${deploySuffix}\n`);
+  } else {
+    if (isLinksSupported) {
+      $spinner.message(`Deploying version ${version}${deploySuffix} ${deploymentLink}`);
+    } else {
+      $spinner.message(`Deploying version ${version}${deploySuffix}`);
+    }
+  }
+
+  const finalizeResponse = await apiClient.finalizeDeployment(
+    deployment.id,
+    {
+      imageDigest: buildResult.digest,
+      skipPromotion: options.skipPromotion,
+      skipPushToRegistry: skipServerSideRegistryPush,
+    },
+    (logMessage) => {
+      if (options.plain || isCI) {
+        console.log(logMessage);
+        return;
+      }
+
+      if (isLinksSupported) {
+        $spinner.message(
+          `Deploying version ${version}${deploySuffix} ${deploymentLink}: ${logMessage}`
+        );
+      } else {
+        $spinner.message(`Deploying version ${version}${deploySuffix}: ${logMessage}`);
+      }
+    }
+  );
+
+  if (!finalizeResponse.success) {
+    await failDeploy(
+      apiClient,
+      deployment,
+      { name: "FinalizeError", message: finalizeResponse.error },
+      buildResult.logs,
+      $spinner
+    );
+
+    throw new SkipLoggingError("Failed to finalize deployment");
+  }
+
+  if (options.plain) {
+    console.log(`Successfully deployed version ${version}${deploySuffix}`);
+  } else if (isCI) {
+    log.step(`Successfully deployed version ${version}${deploySuffix}`);
+  } else {
+    $spinner.stop(`Successfully deployed version ${version}${deploySuffix}`);
+  }
+
+  const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
+
+  if (options.plain) {
+    console.log(
+      `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"}`
+    );
+
+    if (process.env.TRIGGER_DEPLOYMENT_LINK_OUTPUT_DISABLED !== "1") {
+      console.log(`Deployment: ${rawDeploymentLink}`);
+      console.log(`Test: ${rawTestLink}`);
+    }
+  } else {
+    outro(
+      `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${
+        isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
+      }`
+    );
+
+    if (!isLinksSupported) {
+      console.log("View deployment");
+      console.log(rawDeploymentLink);
+      console.log(); // new line
+      console.log("Test tasks");
+      console.log(rawTestLink);
+    }
+  }
+
+  if (options.saveLogs) {
+    const logPath = await saveLogs(deployment.shortCode, buildResult.logs);
+    console.log(`Full build logs have been saved to ${logPath}`);
+  }
+
+  setDeploymentGithubActionsOutput({
+    version,
+    shortCode: deployment.shortCode,
+    rawDeploymentLink,
+    rawTestLink,
+    needsPromotion: options.skipPromotion,
+  });
+}
+
+// Runs only the container build from a pre-built bundle dir, skipping config loading
+// entirely. Attach mode is the supported flow (build server); fresh-init is for testing.
+async function handleFromBundleDeploy({
+  bundleDir,
+  options,
+  dashboardUrl,
+  auth,
+  existingDeploymentId,
+  projectRefOverride,
+}: {
+  bundleDir: string;
+  options: DeployCommandOptions;
+  dashboardUrl: string;
+  auth: { accessToken: string; apiUrl: string };
+  existingDeploymentId?: string;
+  projectRefOverride?: string;
+}) {
+  const bundlePath = resolve(process.cwd(), bundleDir);
+
+  if (!isDirectory(bundlePath)) {
+    throw new Error(`Bundle directory not found at ${bundlePath}`);
+  }
+
+  const [manifestReadError, manifestRaw] = await tryCatch(
+    readFile(join(bundlePath, "build.json"), "utf-8")
+  );
+
+  if (manifestReadError) {
+    throw new Error(
+      `Failed to read build.json in the bundle directory: ${manifestReadError.message}`
+    );
+  }
+
+  let manifestJson: unknown;
+  try {
+    manifestJson = JSON.parse(manifestRaw);
+  } catch {
+    throw new Error(`Invalid build.json in the bundle directory: not valid JSON`);
+  }
+
+  const manifestResult = BuildManifest.safeParse(manifestJson);
+
+  if (!manifestResult.success) {
+    throw new Error(`Invalid build.json in the bundle directory: ${manifestResult.error.message}`);
+  }
+
+  const bundleManifest = manifestResult.data;
+
+  // --dry-run must never touch the server
+  if (options.dryRun) {
+    logger.info(`Dry run complete. Validated bundle at ${bundlePath}`);
+    return;
+  }
+
+  const projectRef = projectRefOverride ?? bundleManifest.config.project;
+
+  const branch = options.env === "preview" ? getBranch({ specified: options.branch }) : undefined;
+
+  if (options.env === "preview" && !branch) {
+    throw new Error(
+      "Preview deploys from a bundle require an explicit branch. Pass --branch <branch>."
+    );
+  }
+
+  // In attach mode the branch env already exists
+  if (options.env === "preview" && branch && !existingDeploymentId) {
+    await upsertBranch({
+      accessToken: auth.accessToken,
+      apiUrl: auth.apiUrl,
+      projectRef,
+      branch,
+      gitMeta: undefined,
+    });
+  }
+
+  const projectClient = await getProjectClient({
+    accessToken: auth.accessToken,
+    apiUrl: auth.apiUrl,
+    projectRef,
+    env: options.env,
+    branch,
+    profile: options.profile,
+  });
+
+  if (!projectClient) {
+    throw new Error("Failed to get project client");
+  }
+
+  // In attach mode the build-arg values are stored encrypted on the deployment
+  let buildEnvVars: Record<string, string> | undefined;
+
+  if (existingDeploymentId) {
+    const buildEnvVarsResult =
+      await projectClient.client.getDeploymentBuildEnvVars(existingDeploymentId);
+
+    if (!buildEnvVarsResult.success) {
+      throw new Error(
+        `Failed to fetch the build environment variables for deployment ${existingDeploymentId}: ${buildEnvVarsResult.error}`
+      );
+    }
+
+    buildEnvVars = buildEnvVarsResult.data.variables;
+  } else if (bundleManifest.build.env && Object.keys(bundleManifest.build.env).length > 0) {
+    // Extensions can set undefined values at runtime despite the manifest type
+    buildEnvVars = Object.fromEntries(
+      Object.entries(bundleManifest.build.env).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string"
+      )
+    );
+  }
+
+  if (!existingDeploymentId) {
+    logger.warn(
+      "No existing deployment to attach to — initializing a fresh local-build deployment from the bundle. This path is intended for testing."
+    );
+  }
+
+  const deployment = await initializeOrAttachDeployment(
+    projectClient.client,
+    {
+      contentHash: bundleManifest.contentHash,
+      type: "MANAGED",
+      runtime: bundleManifest.runtime,
+      isLocalBuild: true,
+      isNativeBuild: false,
+      triggeredVia: getTriggeredVia(),
+    },
+    existingDeploymentId
+  );
+
+  // Fail fast if we know local builds will fail
+  const buildxResult = await x("docker", ["buildx", "version"]);
+
+  if (buildxResult.exitCode !== 0) {
+    logger.debug(`"docker buildx version" failed (${buildxResult.exitCode}):`, buildxResult);
+    throw new Error(
+      "Failed to find docker buildx. Please install it: https://github.com/docker/buildx#installing."
+    );
+  }
+
+  await buildAndFinalizeFromBundle({
+    apiClient: projectClient.client,
+    projectId: projectClient.id,
+    projectRef,
+    deployment,
+    options,
+    dashboardUrl,
+    authAccessToken: auth.accessToken,
+    compilationPath: bundlePath,
+    buildEnvVars,
+    branch,
+    isLocalBuild: true,
+  });
 }

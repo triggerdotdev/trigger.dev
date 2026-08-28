@@ -22,6 +22,7 @@ jobs:
       webapp: ${{ steps.filter.outputs.webapp }}
       packages: ${{ steps.filter.outputs.packages }}
       internal: ${{ steps.filter.outputs.internal }}
+      obsmap: ${{ steps.filter.outputs.obsmap }}
       cli: ${{ steps.filter.outputs.cli }}
       sdk: ${{ steps.filter.outputs.sdk }}
     steps:
@@ -57,6 +58,7 @@ jobs:
               - '.github/workflows/unit-tests-webapp.yml'
               - '.github/workflows/e2e-webapp.yml'
               - '.github/workflows/runops-guard.yml'
+              - '.github/workflows/fk-cascade-guard.yml'
               - '.configs/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -81,6 +83,38 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
+            # The whole webapp app tree, not just its routes, and that is the whole reason this
+            # filter exists. Two tests in @internal/observability-map read it: integration.test.ts
+            # scans the live route tree, and webappSymbols.test.ts walks all of apps/webapp/app and
+            # fails when a guard, sensitive or audit symbol stops resolving. Routes-only was this
+            # filter's own bug: renaming e.g. requireUserId in app/services/session.server.ts
+            # matched `webapp` and nothing else, so no job ran the suite and the break landed on
+            # main, or on the next unrelated internal-packages PR.
+            #
+            # The cost of the wider set, measured over the last 400 commits on main: 31% touch
+            # routes, 52% touch apps/webapp/app, so the job goes from firing on roughly a third of
+            # PRs to roughly a half. It is the cheap one -- a single 4x runner, no containers, no
+            # database, no prisma generate -- which is what makes that affordable.
+            #
+            # observability-map.yml is here because integration.test.ts asserts on its text and no
+            # other filter watches it, so editing the report workflow alone ran nothing at all.
+            #
+            # Deliberately NOT here: this package's own paths, and packages/plugins/src and
+            # internal-packages/rbac/src, the other two trees webappSymbols.test.ts reads.
+            # `internal` above already matches `internal-packages/**` and `packages/**`, and
+            # `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`, which picks up
+            # @internal/observability-map and runs the same vitest suite. Listing them here as well
+            # ran the suite twice on every PR touching them, which was this filter's own doing.
+            #
+            # Also deliberately NOT here: pr_checks.yml, package.json, pnpm-lock.yaml,
+            # pnpm-workspace.yaml. `internal` already lists all four, so a PR touching only one of
+            # them ran this suite twice for the same reason as above. Editing pr_checks.yml no
+            # longer runs this job live as a result; integration.test.ts still asserts on its text
+            # via the `internal` job.
+            obsmap:
+              - 'apps/webapp/app/**'
+              - '.github/workflows/unit-tests-observability-map.yml'
+              - '.github/workflows/observability-map.yml'
             cli:
               - 'packages/cli-v3/**'
               - 'packages/build/**'
@@ -117,6 +151,11 @@ jobs:
     if: needs.changes.outputs.webapp == 'true'
     uses: ./.github/workflows/runops-guard.yml
 
+  fk-cascade-guard:
+    needs: changes
+    if: needs.changes.outputs.webapp == 'true'
+    uses: ./.github/workflows/fk-cascade-guard.yml
+
   webapp:
     needs: changes
     if: needs.changes.outputs.webapp == 'true'
@@ -149,6 +188,11 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  obsmap:
+    needs: changes
+    if: needs.changes.outputs.obsmap == 'true'
+    uses: ./.github/workflows/unit-tests-observability-map.yml
+
   e2e:
     needs: changes
     if: needs.changes.outputs.cli == 'true'
@@ -168,10 +212,12 @@ jobs:
       - code-quality
       - typecheck
       - runops-guard
+      - fk-cascade-guard
       - webapp
       - e2e-webapp
       - packages
       - internal
+      - obsmap
       - e2e
       - sdk-compat
     if: always()

@@ -1,8 +1,7 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { readFile } from "node:fs/promises";
-import typescriptPkg from "typescript";
-
-const { transpileModule, ModuleKind } = typescriptPkg;
+import { dirname } from "node:path";
+import { loadTypescript } from "./internal/loadTypescript.js";
 
 const decoratorMatcher = new RegExp(/((?<![(\s]\s*['"])@\w[.[\]\w\d]*\s*(?![;])[((?=\s)])/);
 
@@ -10,27 +9,35 @@ export function emitDecoratorMetadata(): BuildExtension {
   return {
     name: "emitDecoratorMetadata",
     onBuildStart(context) {
+      const { convertCompilerOptionsFromJson, transpileModule, ModuleKind } = loadTypescript(
+        context.workingDir
+      );
+
       context.registerPlugin({
         name: "emitDecoratorMetadata",
         async setup(build) {
-          const { parseNative, TSConfckCache } = await import("tsconfck");
+          const { parse, TSConfckCache } = await import("tsconfck");
           const cache = new TSConfckCache<any>();
 
           build.onLoad({ filter: /\.ts$/ }, async (args) => {
             context.logger.debug("emitDecoratorMetadata onLoad", { args });
 
-            const { tsconfigFile, tsconfig } = await parseNative(args.path, {
+            const { tsconfigFile, tsconfig } = await parse(args.path, {
               ignoreNodeModules: true,
               cache,
             });
+            const { options: compilerOptions } = convertCompilerOptionsFromJson(
+              tsconfig.compilerOptions ?? {},
+              tsconfigFile ? dirname(tsconfigFile) : context.workingDir
+            );
 
-            context.logger.debug("emitDecoratorMetadata parsed native tsconfig", {
+            context.logger.debug("emitDecoratorMetadata parsed tsconfig", {
               tsconfig,
               tsconfigFile,
               args,
             });
 
-            if (tsconfig.compilerOptions?.emitDecoratorMetadata !== true) {
+            if (compilerOptions.emitDecoratorMetadata !== true) {
               context.logger.debug("emitDecoratorMetadata skipping", {
                 args,
                 tsconfig,
@@ -55,7 +62,7 @@ export function emitDecoratorMetadata(): BuildExtension {
             const program = transpileModule(ts, {
               fileName: args.path,
               compilerOptions: {
-                ...tsconfig.compilerOptions,
+                ...compilerOptions,
                 module: ModuleKind.ES2022,
               },
             });

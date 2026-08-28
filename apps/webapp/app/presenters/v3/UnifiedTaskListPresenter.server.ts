@@ -8,12 +8,13 @@ import {
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { backstopPromise } from "~/utils/backstopPromise";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { agentListPresenter, type AgentActiveState } from "./AgentListPresenter.server";
 import { taskListPresenter, type TaskListItem } from "./TaskListPresenter.server";
 
-export type UnifiedTaskKind = "STANDARD" | "SCHEDULED" | "AGENT";
+export type UnifiedTaskKind = "STANDARD" | "SCHEDULED" | "AGENT" | "WEBHOOK";
 
 export type UnifiedTaskListItem = {
   kind: UnifiedTaskKind;
@@ -33,7 +34,7 @@ export type UnifiedRunningStates = Record<string, UnifiedRunningState>;
 
 /** One hour bucket: the bucket start date, a total count for axis scaling,
  *  and per-status counts (sparse — only statuses that occurred are present). */
-export type HourlyTaskActivityBucket = {
+type HourlyTaskActivityBucket = {
   date: Date;
   total: number;
 } & Partial<Record<TaskRunStatus, number>>;
@@ -41,7 +42,7 @@ export type HourlyTaskActivityBucket = {
 /** 24h hourly stacked-by-status series keyed by task slug. */
 export type HourlyTaskActivity = Record<string, HourlyTaskActivityBucket[]>;
 
-export class UnifiedTaskListPresenter {
+class UnifiedTaskListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call(args: {
@@ -69,26 +70,31 @@ export class UnifiedTaskListPresenter {
     const items = toUnifiedItems(taskResult.tasks, agentResult.agents);
     const allSlugs = items.map((item) => item.slug);
 
+    // Backstopped: the route subscribes via typeddefer only after further
+    // awaits, so a rejection in that gap would be unhandled.
     const hourlyActivity: Promise<HourlyTaskActivity> =
       allSlugs.length === 0
         ? Promise.resolve({})
-        : (async () => {
-            const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-              args.organizationId,
-              "standard"
-            );
-            return getHourlyTaskActivity(clickhouse, {
-              organizationId: args.organizationId,
-              projectId: args.projectId,
-              environmentId: args.environmentId,
-              slugs: allSlugs,
-            });
-          })();
+        : backstopPromise(
+            (async () => {
+              const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+                args.organizationId,
+                "standard"
+              );
+              return getHourlyTaskActivity(clickhouse, {
+                organizationId: args.organizationId,
+                projectId: args.projectId,
+                environmentId: args.environmentId,
+                slugs: allSlugs,
+              });
+            })()
+          );
 
-    const runningStates: Promise<UnifiedRunningStates> = Promise.all([
-      taskResult.runningStats,
-      agentResult.activeStates,
-    ]).then(([runningStats, activeStates]) => mergeRunningStates(runningStats, activeStates));
+    const runningStates: Promise<UnifiedRunningStates> = backstopPromise(
+      Promise.all([taskResult.runningStats, agentResult.activeStates]).then(
+        ([runningStats, activeStates]) => mergeRunningStates(runningStats, activeStates)
+      )
+    );
 
     return { items, hourlyActivity, runningStates };
   }
@@ -215,7 +221,12 @@ function toUnifiedItems(
 
   for (const task of tasks) {
     items.push({
-      kind: task.triggerSource === "SCHEDULED" ? "SCHEDULED" : "STANDARD",
+      kind:
+        task.triggerSource === "SCHEDULED"
+          ? "SCHEDULED"
+          : task.triggerSource === "WEBHOOK"
+            ? "WEBHOOK"
+            : "STANDARD",
       slug: task.slug,
       filePath: task.filePath,
       triggerSource: task.triggerSource,

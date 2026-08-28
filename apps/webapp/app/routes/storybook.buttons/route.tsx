@@ -1,404 +1,203 @@
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
-  ArrowUturnLeftIcon,
-  CheckIcon,
+  BookOpenIcon,
   ExclamationTriangleIcon,
-  FolderIcon,
-  GlobeAltIcon,
-  LightBulbIcon,
-  NoSymbolIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { EnvelopeIcon } from "@heroicons/react/24/solid";
-import {
-  AirtableIcon,
-  GitHubDarkIcon,
-  GitHubLightIcon,
-  SlackIcon,
-} from "@trigger.dev/companyicons";
-import { Button } from "~/components/primitives/Buttons";
-import { Header1, Header3 } from "~/components/primitives/Headers";
+import { AirtableIcon, GitHubLightIcon, SlackIcon } from "@trigger.dev/companyicons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import { Story, StoryGrid, StoryPage, StorySection, StorySubSection } from "../storybook/StoryKit";
 
-export default function Story() {
-  const isSelected = true;
-  const disabled = true;
+/* Driven off the variant list so the page can't drift from the component: every
+   family × size combination renders, plus the standalone menu-item variants. */
+const FAMILIES = [
+  "primary",
+  "secondary",
+  "tertiary",
+  "minimal",
+  "danger",
+  "warning",
+  "docs",
+  "ask-trigger",
+] as const;
+
+const SIZES = ["small", "medium", "large", "extra-large"] as const;
+
+/** ask-trigger has no extra-large; every other family covers all four sizes. */
+function sizesFor(family: (typeof FAMILIES)[number]) {
+  return family === "ask-trigger" ? SIZES.filter((s) => s !== "extra-large") : SIZES;
+}
+
+type ButtonVariant = Parameters<typeof Button>[0]["variant"];
+
+const MENU_VARIANTS = ["menu-item", "small-menu-item", "small-menu-sub-item"] as const;
+
+export default function Story_() {
   return (
-    <div className="bg-background-dimmed p-12">
-      <Header1 className="mb-2">Small buttons</Header1>
-      <div className="grid grid-cols-4 gap-8 border-b border-grid-bright pb-8">
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Basic</Header3>
-          <Button variant="primary/small">Primary button</Button>
-          <Button variant="secondary/small">Secondary button</Button>
-          <Button variant="tertiary/small">Tertiary button</Button>
-          <Button variant="minimal/small">Minimal button</Button>
-          <Button variant="danger/small">Danger button</Button>
-          <Button variant="warning/small">Warning button</Button>
+    <StoryPage
+      title="Buttons"
+      componentNames={["Buttons.tsx"]}
+      description="Every variant of Button and LinkButton: all 8 families across all sizes, plus the menu-item variants and every state."
+    >
+      <StorySection
+        title="All families and sizes"
+        description="One row per family; a column per size."
+      >
+        <div className="flex flex-col gap-4">
+          {FAMILIES.map((family) => (
+            <div key={family} className="rounded-sm border border-grid-dimmed p-3">
+              <Paragraph variant="extra-extra-small/caps" className="mb-2 text-text-dimmed">
+                {family}
+              </Paragraph>
+              <div className="flex flex-wrap items-center gap-3">
+                {sizesFor(family).map((size) => (
+                  <Button key={size} variant={`${family}/${size}` as ButtonVariant}>
+                    {size}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Icon left</Header3>
-          <Button variant="primary/small" LeadingIcon={ArrowLeftIcon}>
-            Primary button
-          </Button>
-          <Button variant="secondary/small" LeadingIcon={ArrowLeftIcon}>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/small" LeadingIcon={ArrowLeftIcon}>
-            Tertiary button
-          </Button>
-          <Button variant="minimal/small" LeadingIcon={ArrowLeftIcon}>
-            Minimal button
-          </Button>
-          <Button variant="danger/small" LeadingIcon={ArrowLeftIcon}>
-            Danger button
-          </Button>
+      </StorySection>
+
+      <StorySection title="Icon-only and menu variants">
+        <StoryGrid min="14rem">
+          <Story label="secondary/small-icon">
+            <Button variant="secondary/small-icon" LeadingIcon={PlusIcon} />
+          </Story>
+          {MENU_VARIANTS.map((variant) => (
+            <Story key={variant} label={variant}>
+              <Button variant={variant} LeadingIcon={BookOpenIcon}>
+                Menu label
+              </Button>
+            </Story>
+          ))}
+        </StoryGrid>
+      </StorySection>
+
+      <StorySection
+        title="States"
+        description="Each family's medium size in every state it can be in."
+      >
+        <div className="flex flex-col gap-4">
+          {(["Default", "Disabled", "Loading", "With shortcut"] as const).map((state) => (
+            <StorySubSection key={state} title={state}>
+              <div className="flex flex-wrap items-center gap-3 rounded-sm border border-grid-dimmed p-3">
+                {FAMILIES.map((family) => (
+                  <Button
+                    key={family}
+                    variant={`${family}/medium` as ButtonVariant}
+                    disabled={state === "Disabled"}
+                    isLoading={state === "Loading"}
+                    shortcut={
+                      state === "With shortcut" ? { key: "e", modifiers: ["mod"] } : undefined
+                    }
+                  >
+                    {family}
+                  </Button>
+                ))}
+              </div>
+            </StorySubSection>
+          ))}
         </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Icon right</Header3>
-          <Button variant="primary/small" TrailingIcon={ArrowRightIcon}>
-            Primary button
-          </Button>
-          <Button variant="secondary/small" TrailingIcon={ArrowRightIcon}>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/small" TrailingIcon={ArrowRightIcon}>
-            Tertiary button
-          </Button>
-          <Button variant="minimal/small" TrailingIcon={ArrowRightIcon}>
-            Minimal button
-          </Button>
-          <Button variant="danger/small" TrailingIcon={ArrowRightIcon}>
-            Danger button
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button variant="primary/small" shortcut={{ key: "s", modifiers: ["mod"] }}>
-            Primary button
-          </Button>
-          <Button variant="secondary/small" shortcut={{ key: "f" }}>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/small" shortcut={{ key: "i" }}>
-            Tertiary button
-          </Button>
-          <Button variant="minimal/small" shortcut={{ key: "i" }}>
-            Minimal button
-          </Button>
-          <Button variant="danger/small" shortcut={{ key: "s", modifiers: ["mod"] }}>
-            Danger button
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Named icon</Header3>
-          <Button LeadingIcon={AirtableIcon} variant="primary/small">
-            Connect to Airtable
-          </Button>
-          <Button LeadingIcon={GitHubDarkIcon} variant="primary/small">
-            Connect to GitHub
-          </Button>
-          <Button TrailingIcon={SlackIcon} variant="secondary/small">
-            Connect to Slack
-          </Button>
-          <Button TrailingIcon={ExclamationTriangleIcon} variant="secondary/small">
-            Trailing icon
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button
-            variant="primary/small"
-            LeadingIcon={<Spinner color="white" className="size-3.5" />}
-          >
-            Loading Primary…
-          </Button>
-          <Button variant="secondary/small" LeadingIcon={Spinner}>
-            Loading Secondary…
-          </Button>
-          <Button variant="tertiary/small" LeadingIcon={Spinner}>
-            Loading Tertiary…
-          </Button>
-          <Button variant="minimal/small" LeadingIcon={Spinner}>
-            Loading Minimal…
-          </Button>
-          <Button
-            variant="danger/small"
-            LeadingIcon={<Spinner color="white" className="size-3.5" />}
-          >
-            Loading Danger…
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Disabled</Header3>
-          <Button variant="primary/small" disabled>
-            Primary button
-          </Button>
-          <Button variant="secondary/small" disabled>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/small" disabled>
-            Tertiary button
-          </Button>
-          <Button variant="minimal/small" disabled>
-            Minimal button
-          </Button>
-          <Button variant="danger/small" disabled>
-            Danger button
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Icon only</Header3>
-          <Button variant="primary/small" LeadingIcon={ArrowRightIcon} />
-          <Button variant="secondary/small" LeadingIcon={LightBulbIcon} />
-          <Button variant="tertiary/small" LeadingIcon={ExclamationTriangleIcon} />
-          <Button variant="minimal/small" LeadingIcon={ExclamationTriangleIcon} />
-          <Button variant="danger/small" LeadingIcon={ExclamationTriangleIcon} />
-        </div>
-      </div>
-      <Header1 className="mb-2 mt-8">Medium buttons</Header1>
-      <div className="grid grid-cols-4 gap-8 border-b border-grid-bright pb-8">
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Basic</Header3>
-          <Button variant="primary/medium">Primary button</Button>
-          <Button variant="secondary/medium">Secondary button</Button>
-          <Button variant="tertiary/medium">Tertiary button</Button>
-          <Button variant="danger/medium">Danger button</Button>
-          <Button variant="warning/medium">Warning button</Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Icon left</Header3>
-          <Button variant="primary/medium" LeadingIcon={ArrowLeftIcon}>
-            Primary button
-          </Button>
-          <Button variant="secondary/medium" LeadingIcon={ArrowLeftIcon}>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/medium" LeadingIcon={ArrowLeftIcon}>
-            Tertiary button
-          </Button>
-          <Button variant="minimal/medium" LeadingIcon={ArrowLeftIcon}>
-            Minimal button
-          </Button>
-          <Button variant="danger/medium" LeadingIcon={ArrowLeftIcon}>
-            Danger button
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Icon right</Header3>
-          <Button variant="primary/medium" TrailingIcon={ArrowRightIcon}>
-            Primary button
-          </Button>
-          <Button variant="secondary/medium" TrailingIcon={ArrowRightIcon}>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/medium" TrailingIcon={ArrowRightIcon}>
-            Tertiary button
-          </Button>
-          <Button variant="minimal/medium" TrailingIcon={ArrowRightIcon}>
-            Minimal button
-          </Button>
-          <Button variant="danger/medium" TrailingIcon={ArrowRightIcon}>
-            Danger button
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button variant="primary/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
-            Primary button
-          </Button>
-          <Button variant="secondary/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
-            Tertiary button
-          </Button>
-          <Button variant="minimal/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
-            Minimal button
-          </Button>
-          <Button variant="danger/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
-            Danger button
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Named icon</Header3>
-          <Button LeadingIcon={AirtableIcon} variant="primary/medium">
-            Connect to Airtable
-          </Button>
-          <Button LeadingIcon={GitHubDarkIcon} variant="primary/medium">
-            Connect to GitHub
-          </Button>
-          <Button TrailingIcon={SlackIcon} variant="secondary/medium">
-            Connect to Slack
-          </Button>
-          <Button TrailingIcon={ExclamationTriangleIcon} variant="secondary/medium">
-            Connect to Slack
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Loading</Header3>
-          <Button
-            variant="primary/medium"
-            LeadingIcon={<Spinner color="white" className="size-4" />}
-          >
-            Loading Primary…
-          </Button>
-          <Button variant="secondary/medium" LeadingIcon={Spinner}>
-            Loading Secondary…
-          </Button>
-          <Button variant="tertiary/medium" LeadingIcon={Spinner}>
-            Loading Tertiary…
-          </Button>
-          <Button variant="minimal/medium" LeadingIcon={Spinner}>
-            Loading Minimal…
-          </Button>
-          <Button
-            variant="danger/medium"
-            LeadingIcon={<Spinner color="white" className="size-4" />}
-          >
-            Loading Danger…
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Disabled</Header3>
-          <Button variant="primary/medium" disabled>
-            Primary button
-          </Button>
-          <Button variant="secondary/medium" disabled>
-            Secondary button
-          </Button>
-          <Button variant="tertiary/medium" disabled>
-            Tertiary button
-          </Button>
-          <Button variant="tertiary/medium" disabled>
-            Minimal button
-          </Button>
-          <Button variant="danger/medium" disabled>
-            Danger button
-          </Button>
-        </div>
-        <div className="flex flex-col items-start gap-2">
-          <Header3 className="mb-1 uppercase">Icon only</Header3>
-          <Button variant="primary/medium" LeadingIcon={ArrowRightIcon} />
-          <Button variant="secondary/medium" LeadingIcon={LightBulbIcon} />
-          <Button variant="tertiary/medium" LeadingIcon={ExclamationTriangleIcon} />
-          <Button variant="minimal/medium" LeadingIcon={ExclamationTriangleIcon} />
-          <Button variant="danger/medium" LeadingIcon={ExclamationTriangleIcon} />
-        </div>
-      </div>
-      <Header1 className="mb-2 mt-8">Large buttons</Header1>
-      <div className="grid grid-cols-1 gap-8 pb-8">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col items-start gap-2">
-            <Button variant="primary/large" fullWidth>
-              <GitHubLightIcon className={"mr-1.5 size-[1.2rem]"} />
-              <span className="text-text-bright">Continue with GitHub</span>
+      </StorySection>
+
+      <StorySection title="Icons" description="Leading, trailing, both, and brand icons.">
+        <StoryGrid min="15rem">
+          <Story label="LeadingIcon">
+            <Button variant="secondary/medium" LeadingIcon={ArrowLeftIcon}>
+              Back
             </Button>
-            <Button variant="secondary/large" fullWidth>
-              <EnvelopeIcon className={"mr-1.5 size-[1.2rem] text-text-bright transition"} />
-              <span className="text-text-bright">Continue with Email</span>
+          </Story>
+          <Story label="TrailingIcon">
+            <Button variant="secondary/medium" TrailingIcon={ArrowRightIcon}>
+              Next
             </Button>
-            <Button variant="tertiary/large" fullWidth>
-              <GitHubLightIcon className={"mr-1.5 size-[1.2rem]"} />
-              <span className="text-text-bright">Continue with GitHub</span>
+          </Story>
+          <Story label="Both">
+            <Button
+              variant="secondary/medium"
+              LeadingIcon={ExclamationTriangleIcon}
+              TrailingIcon={ArrowRightIcon}
+            >
+              Review
             </Button>
-            <Button variant="danger/large" fullWidth>
-              <TrashIcon
-                className={
-                  "mr-1.5 h-4 w-4 text-text-bright transition group-hover:text-text-bright"
-                }
-              />
-              <span className="text-text-bright">This is a delete button</span>
+          </Story>
+          <Story label="Danger + icon">
+            <Button variant="danger/medium" LeadingIcon={TrashIcon}>
+              Delete
             </Button>
-            <Button variant="warning/large" fullWidth>
-              <TrashIcon className="mr-1.5 h-4 w-4" />
-              <span>This is a warning button</span>
+          </Story>
+          <Story label="Icon only">
+            <Button variant="minimal/medium" LeadingIcon={ExclamationTriangleIcon} />
+          </Story>
+          <Story label="Brand icon (Slack)">
+            <Button variant="secondary/medium" LeadingIcon={SlackIcon}>
+              Connect to Slack
             </Button>
-          </div>
-        </div>
-      </div>
-      <Header1 className="mb-2 mt-8">Extra Large buttons</Header1>
-      <div className="grid grid-cols-1 gap-8 pb-8">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col items-start gap-2">
-            <Button variant="primary/extra-large" fullWidth>
-              <GitHubLightIcon className={"mr-1.5 size-5"} />
-              <span className="text-text-bright">Continue with GitHub</span>
+          </Story>
+          <Story label="Brand icon (GitHub)">
+            <Button variant="secondary/medium" LeadingIcon={GitHubLightIcon}>
+              Connect to GitHub
             </Button>
-            <Button variant="secondary/extra-large" fullWidth>
-              <EnvelopeIcon className={"mr-1.5 h-5 w-5 text-text-bright transition"} />
-              <span className="text-text-bright">Continue with Email</span>
+          </Story>
+          <Story label="Brand icon (Airtable)">
+            <Button variant="secondary/medium" LeadingIcon={AirtableIcon}>
+              Connect to Airtable
             </Button>
-            <Button variant="tertiary/extra-large" fullWidth>
-              <GitHubLightIcon className={"mr-1.5 size-5"} />
-              <span className="text-text-bright">Continue with GitHub</span>
+          </Story>
+          <Story label="Explicit Spinner child">
+            <Button
+              variant="primary/medium"
+              LeadingIcon={<Spinner color="inherit" className="size-4" />}
+            >
+              Working…
             </Button>
-            <Button variant="danger/extra-large" fullWidth>
-              <TrashIcon
-                className={"mr-1.5 size-5 text-text-bright transition group-hover:text-text-bright"}
-              />
-              <span className="text-text-bright">This is a delete button</span>
-            </Button>
-            <Button variant="warning/extra-large" fullWidth>
-              <TrashIcon
-                className={"mr-1.5 size-5 text-text-bright transition group-hover:text-text-bright"}
-              />
-              <span>This is a warning button</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-      <Header1 className="mb-2 mt-8">Menu items</Header1>
-      <div className="grid grid-cols-1">
-        <div className="flex flex-col items-start gap-1 rounded border border-background-bright bg-background-dimmed p-1">
-          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon={FolderIcon}>
-            Acme Inc.
-          </Button>
-          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon={PlusIcon}>
-            New Project
-          </Button>
-          <Button
-            variant="menu-item"
+          </Story>
+        </StoryGrid>
+      </StorySection>
+
+      <StorySection title="Layout" description="fullWidth and left-aligned text.">
+        <div className="flex max-w-md flex-col gap-3">
+          <Button variant="primary/medium" fullWidth>
             fullWidth
-            textAlignLeft
-            LeadingIcon={GlobeAltIcon}
-            TrailingIcon={isSelected ? CheckIcon : undefined}
-            className={
-              isSelected ? "bg-background-hover group-hover:bg-background-hover" : undefined
-            }
-          >
-            Item enabled
           </Button>
-          <Button variant="menu-item" fullWidth textAlignLeft>
-            When a Stripe payment fails re-engage the customer
-          </Button>
-          <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon={Spinner}>
-            In Progress
-          </Button>
-          <Button
-            variant="menu-item"
-            fullWidth
-            textAlignLeft
-            LeadingIcon={ArrowUturnLeftIcon}
-            leadingIconClassName="text-text-dimmed"
-          >
-            Latest run payload
-          </Button>
-          <Button
-            variant="menu-item"
-            fullWidth
-            textAlignLeft
-            LeadingIcon={NoSymbolIcon}
-            leadingIconClassName="text-text-dimmed"
-            disabled
-            className={disabled ? "group-hover:bg-transparent" : undefined}
-          >
-            Disabled menu item
+          <Button variant="secondary/medium" fullWidth textAlignLeft LeadingIcon={PlusIcon}>
+            fullWidth + textAlignLeft
           </Button>
         </div>
-      </div>
-    </div>
+      </StorySection>
+
+      <StorySection
+        title="LinkButton"
+        componentName="Buttons.tsx"
+        description="Same variants, rendered as an anchor."
+      >
+        <StoryGrid min="15rem">
+          {(["primary", "secondary", "tertiary", "minimal", "docs"] as const).map((family) => (
+            <Story key={family} label={`${family}/medium`}>
+              <LinkButton to="/storybook/buttons" variant={`${family}/medium` as ButtonVariant}>
+                {family}
+              </LinkButton>
+            </Story>
+          ))}
+        </StoryGrid>
+      </StorySection>
+
+      <StorySection title="Tooltip" description="Any button can carry a tooltip.">
+        <StoryGrid min="15rem">
+          <Story label="With tooltip">
+            <Button variant="secondary/medium" tooltip="This explains the button">
+              Hover me
+            </Button>
+          </Story>
+        </StoryGrid>
+      </StorySection>
+    </StoryPage>
   );
 }

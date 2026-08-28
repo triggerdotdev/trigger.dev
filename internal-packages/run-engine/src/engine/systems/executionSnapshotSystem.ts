@@ -15,6 +15,7 @@ import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../error
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
 
+import { boundedIn } from "@trigger.dev/database";
 /** Chunk size for fetching waitpoints to avoid NAPI string conversion limits */
 const WAITPOINT_CHUNK_SIZE = 100;
 
@@ -57,7 +58,7 @@ function enhanceExecutionSnapshot(
  * Transforms a snapshot (with checkpoint but without waitpoints) into an EnhancedExecutionSnapshot
  * by combining it with pre-fetched waitpoints.
  */
-function enhanceExecutionSnapshotWithWaitpoints(
+export function enhanceExecutionSnapshotWithWaitpoints(
   snapshot: ExecutionSnapshotWithCheckpoint,
   waitpoints: Waitpoint[],
   completedWaitpointOrder: string[]
@@ -186,9 +187,13 @@ async function fetchWaitpointsInChunks(
   for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
     const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
     const waitpoints = runStore
-      ? await runStore.findManyWaitpoints({ where: { id: { in: chunk } } }, prisma, runId)
+      ? await runStore.findManyWaitpoints(
+          { where: { id: { in: boundedIn(chunk) } } },
+          prisma,
+          runId
+        )
       : await prisma.waitpoint.findMany({
-          where: { id: { in: chunk } },
+          where: { id: { in: boundedIn(chunk) } },
         });
     allWaitpoints.push(...waitpoints);
   }
@@ -562,7 +567,7 @@ export class ExecutionSnapshotSystem {
       });
     }
 
-    this.$.logger.info("heartbeatRun snapshot heartbeat updated", {
+    this.$.logger.debug("heartbeatRun snapshot heartbeat updated", {
       id: latestSnapshot.id,
       runId: latestSnapshot.runId,
       lastHeartbeatAt: new Date(),

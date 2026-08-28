@@ -1,29 +1,37 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { $replica } from "~/db.server";
+import {
+  checkMessageParts,
+  declaredBodyBytes,
+  exceedsMessageBodyBytes,
+  MAX_MESSAGE_BODY_BYTES,
+  MESSAGE_TOO_LARGE_CODE,
+  MESSAGE_TOO_LARGE_ERROR,
+} from "~/components/dashboard-agent/message-limits";
+import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
+  dashboardAgentUserApiOrigin,
   mintDashboardAgentUserActorToken,
   resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
+import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
+import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
+import {
+  agentTurnCountsAgainstQuota,
+  recordAgentMessageSent,
+  resolveAgentMessageQuota,
+} from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
-// Same-origin proxy for the chat "in"/append request. The transport routes the
-// `in` endpoint here (and the `out` SSE stream direct to the Trigger API), so
-// every turn passes through the dashboard's own session before reaching the
-// agent. We use that hop to mint a fresh read-only delegated token for the
-// signed-in user and inject it into the turn's metadata server-side. The token
-// reaches the agent without ever touching the browser, and minting stays tied
-// to the user's own session (no shared-secret backdoor).
-//
-// The append body is `{ kind, payload: { metadata, ... } }`; we add the token
-// (plus the API origin and the server-vouched project ref + env) to
-// `payload.metadata`. Only `kind === "message"` turns carry metadata — stop
-// chunks pass through untouched. We forward only the headers the API needs and
-// deliberately drop the dashboard session cookie.
+// Same-origin proxy for the chat append request. It mints a read-only delegated token scoped
+// to the environment in this URL, so the token never reaches the browser.
 
 const FORWARDED_HEADERS = [
   "authorization",
@@ -33,16 +41,27 @@ const FORWARDED_HEADERS = [
   "x-trigger-branch",
 ];
 
-// The API's env routes key on the canonical env name (dev/staging/prod/preview),
-// not the dashboard URL slug (e.g. staging's slug is "stg"). Map from the env
-// type so the agent's tools address the right environment. Preview branches
-// aren't threaded yet (they'd need the branch on every tool call) — a follow-up.
-const ENV_NAME_BY_TYPE: Record<string, string> = {
-  DEVELOPMENT: "dev",
-  STAGING: "staging",
-  PRODUCTION: "prod",
-  PREVIEW: "preview",
-};
+// The only turn metadata a browser may set: everything else the agent reads is injected
+// server-side. A whitelist — a new clientData field is server-owned until listed here on purpose.
+// `repoSnapshot` is the dangerous one to smuggle past this: its `tarballUrl` is fetched and
+// extracted on the agent worker, so a client-supplied one is SSRF from inside the worker
+// network plus an attacker-controlled untar.
+const CLIENT_METADATA_KEYS = ["currentPage", "pageContext"] as const;
+
+export function pickAgentClientMetadata(
+  metadata: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  if (!metadata) return picked;
+  for (const key of CLIENT_METADATA_KEYS) {
+    if (metadata[key] !== undefined) picked[key] = metadata[key];
+  }
+  return picked;
+}
+
+function tooLarge() {
+  return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
+}
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
@@ -59,6 +78,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Not found" }, { status: 404 });
   }
 
+  // The declared size is refused before any lookup. It is advisory, so the read below is
+  // bounded too: without it a chunked body would be buffered whole before being refused.
+  if (exceedsMessageBodyBytes(declaredBodyBytes(request.headers))) {
+    return tooLarge();
+  }
+
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
@@ -68,41 +93,96 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (!upstreamPath) return json({ error: "Not found" }, { status: 404 });
 
   const apiOrigin = dashboardAgentApiOrigin();
+  const userApiOrigin = dashboardAgentUserApiOrigin();
   const url = new URL(request.url);
   const upstreamUrl = `${apiOrigin.replace(/\/$/, "")}/${upstreamPath}${url.search}`;
 
-  // Resolve the dashboard env slug to the canonical API env name its tools use.
-  const runtimeEnv = await $replica.runtimeEnvironment.findFirst({
-    where: { projectId: project.id, slug: envParam },
-    select: { type: true },
-  });
-  const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
+  // Membership-scoped: `(projectId, slug)` is not unique because every developer has their own
+  // dev row, and a token must never be minted for someone else's environment — or for none.
+  const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, user.id);
+  if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
+  const environmentAddress = dashboardAgentEnvironmentAddress(runtimeEnv);
 
-  // When the project has a connected GitHub repo, resolve a signed source-archive
-  // pointer (code mode). Null otherwise -> the agent stays in assistant mode.
+  // Null without a connected GitHub repo, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
 
-  // Inject the delegated token + context into the turn's metadata.
-  const raw = await request.text();
+  const read = await readBoundedBodyText(request, MAX_MESSAGE_BODY_BYTES);
+  if (!read.ok) return tooLarge();
+
+  const raw = read.text;
   let body = raw;
-  try {
-    const parsed = JSON.parse(raw) as {
-      kind?: string;
-      payload?: { metadata?: Record<string, unknown> };
+  type AgentTurn = {
+    kind?: string;
+    payload?: {
+      trigger?: string;
+      metadata?: Record<string, unknown>;
+      message?: { parts?: unknown };
     };
+  };
+  let parsed: AgentTurn | undefined;
+  // Only the parse is tolerated: non-JSON is forwarded unchanged rather than break the turn.
+  // Everything after it must fail loudly — a swallowed mint would forward with no credential.
+  try {
+    parsed = JSON.parse(raw) as AgentTurn;
+  } catch {
+    parsed = undefined;
+  }
+
+  // Hoisted so it is visible after the fetch: quota is charged only once the send succeeds.
+  let countsAgainstQuota = false;
+
+  if (parsed) {
+    // Actions are placed by the server only, and this proxy is the one path a browser
+    // can reach `.in` through.
+    if (parsed.payload?.trigger === "action") {
+      return json({ error: "Not allowed" }, { status: 403 });
+    }
     if (parsed.kind === "message" && parsed.payload) {
+      // A body under the byte cap can still be one huge part or hundreds of small ones.
+      if (checkMessageParts(parsed.payload.message?.parts) !== null) {
+        return tooLarge();
+      }
+
+      wellFormMessageText(parsed.payload.message?.parts);
+
+      // Only a real user message consumes quota; action turns were refused above.
+      countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
+      if (countsAgainstQuota) {
+        const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
+          organizationId: project.organizationId,
+        });
+        if (quota?.reached) {
+          return json({ error: MESSAGE_QUOTA_REACHED_ERROR, limit: quota.limit }, { status: 403 });
+        }
+      }
+
+      let userActorToken: string;
+      try {
+        userActorToken = await mintDashboardAgentUserActorToken(user.id, {
+          environmentId: runtimeEnv.id,
+        });
+      } catch (error) {
+        logger.error("Dashboard agent in-proxy could not mint a token", { error, upstreamPath });
+        return json({ error: "The dashboard agent couldn't send that message." }, { status: 500 });
+      }
+
       parsed.payload.metadata = {
-        ...(parsed.payload.metadata ?? {}),
-        userActorToken: await mintDashboardAgentUserActorToken(user.id),
-        apiOrigin,
+        ...pickAgentClientMetadata(parsed.payload.metadata),
+        userActorToken,
+        apiOrigin: userApiOrigin,
         projectRef: project.externalRef,
-        environmentName,
+        // Server-owned: the eval opt-out and every tenancy check key on these.
+        organizationId: project.organizationId,
+        userId: user.id,
+        projectId: project.id,
+        // `(projectId, slug)` isn't unique (dev is per-member), so anything addressing
+        // one environment row uses this id. The address is for name-addressed tools.
+        environmentId: runtimeEnv.id,
+        ...environmentAddress,
         ...(repoSnapshot ? { repoSnapshot } : {}),
       };
       body = JSON.stringify(parsed);
     }
-  } catch {
-    // Non-JSON or unexpected shape — forward unchanged rather than break the turn.
   }
 
   const headers = new Headers();
@@ -114,6 +194,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const upstream = await fetch(upstreamUrl, { method: "POST", headers, body });
     const text = await upstream.text();
+    // Charge quota only for a delivered message: a non-2xx upstream (or a throw below)
+    // must not burn a send that never reached the agent.
+    if (countsAgainstQuota && upstream.ok) {
+      await recordAgentMessageSent(dashboardAgentDb, {
+        organizationId: project.organizationId,
+      });
+    }
     return new Response(text, {
       status: upstream.status,
       headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },

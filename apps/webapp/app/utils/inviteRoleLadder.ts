@@ -5,7 +5,7 @@
 
 export type LadderRole = { id: string };
 
-export function buildRoleLevel(roles: ReadonlyArray<LadderRole>): Record<string, number> {
+function buildRoleLevel(roles: ReadonlyArray<LadderRole>): Record<string, number> {
   const level: Record<string, number> = {};
   roles.forEach((r, i) => {
     // Top of the array = highest level; larger number means more authority.

@@ -1,5 +1,5 @@
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
-import { Await, type MetaFunction } from "@remix-run/react";
+import { Await } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense, useMemo } from "react";
@@ -36,14 +36,9 @@ import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/nu
 import { useBillingLimit } from "~/hooks/useOrganizations";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Usage | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Usage");
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -170,7 +165,7 @@ export default function Page() {
                   </p>
                 </div>
                 <div className="flex w-full flex-1 flex-col gap-1 pb-1">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-charcoal-700">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-background-raised">
                     <div
                       className="h-full rounded-full bg-blue-500"
                       style={{

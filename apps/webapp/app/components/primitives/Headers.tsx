@@ -1,6 +1,6 @@
 import { cn } from "~/utils/cn";
 
-const headerVariants = {
+export const headerVariants = {
   header1: {
     text: "font-sans text-2xl leading-5 md:leading-6 lg:leading-7 font-semibold tracking-tight",
     spacing: "mb-2",
@@ -19,8 +19,6 @@ const textColorVariants = {
   bright: "text-text-bright",
   dimmed: "text-text-dimmed",
 };
-
-export type HeaderVariant = keyof typeof headerVariants;
 
 type HeaderProps = {
   className?: string;

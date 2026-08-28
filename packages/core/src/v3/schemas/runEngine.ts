@@ -25,6 +25,7 @@ export const RunAnnotations = z.object({
   rootTriggerSource: TriggerSource,
   rootScheduleId: z.string().optional(),
   taskKind: TaskKind.optional(),
+  externalDeploymentId: z.string().optional(),
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;

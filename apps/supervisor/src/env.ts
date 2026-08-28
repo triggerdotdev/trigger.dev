@@ -1,7 +1,13 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
+import {
+  AdditionalEnvVars,
+  BoolEnv,
+  NodeLabelValue,
+  OrgPlacementOverrides,
+  Tolerations,
+} from "./envUtil.js";
 
 export const Env = z
   .object({
@@ -22,6 +28,7 @@ export const Env = z
     // also reject invalid tokens.
     WORKLOAD_TOKEN_SECRET: z.string().optional(),
     WORKLOAD_TOKEN_ENFORCEMENT: z.enum(["disabled", "log", "enforce"]).default("disabled"),
+    DELETE_CHECKPOINTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
     // Absolute expiry for minted deployment tokens. Deterministic (no wall-clock issued-at) so every
     // pod of a deployment carries an identical token; bump before this date. Must outlive any run.
     WORKLOAD_TOKEN_EXP: z.string().datetime().default("2032-01-01T00:00:00.000Z"),
@@ -79,7 +86,7 @@ export const Env = z
       .number()
       .int()
       .positive()
-      .default(15_000), // Stale verdict → fail-open (treat as not engaged)
+      .default(120_000), // Grace window: held verdict older than this → fail-open
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST: z.string().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT: z.coerce.number().int().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME: z.string().optional(),
@@ -173,11 +180,14 @@ export const Env = z
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
     KUBERNETES_NAMESPACE: z.string().default("default"),
-    KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
+    KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
     KUBERNETES_STRIP_IMAGE_DIGEST: BoolEnv.default(false),
+    KUBERNETES_IMAGE_REGISTRY_REWRITE_FROM: z.string().optional(),
+    KUBERNETES_IMAGE_REGISTRY_REWRITE_TO: z.string().optional(),
+    KUBERNETES_RUN_POD_PRIORITY_CLASS_NAME: z.string().optional(),
     KUBERNETES_CPU_REQUEST_MIN_CORES: z.coerce.number().min(0).default(0),
     KUBERNETES_CPU_REQUEST_RATIO: z.coerce.number().min(0).max(1).default(0.75), // Ratio of CPU limit, so 0.75 = 75% of CPU limit
     KUBERNETES_MEMORY_REQUEST_MIN_GB: z.coerce.number().min(0).default(0),
@@ -203,6 +213,16 @@ export const Env = z
 
     KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
+    KUBERNETES_RUNNER_SECCOMP_PROFILE_PATH: z
+      .string()
+      .trim()
+      .min(1)
+      .default("profiles/block-io-uring.json"),
+    KUBERNETES_RUNNER_SECCOMP_PROFILE_RUNTIMES: z
+      .enum(["none", "node-24-plus", "all"])
+      .default("node-24-plus"),
+    KUBERNETES_RUNNER_SECURITY_CONTEXT: z.enum(["off", "baseline", "restricted"]).default("off"),
+    KUBERNETES_RUNNER_RUN_AS_USER: z.coerce.number().int().min(1).default(1000),
 
     // Pod DNS config — override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
     // Default k8s ndots is 5: any name with fewer than 5 dots (e.g. `api.example.com`, 2 dots) is first walked
@@ -256,65 +276,13 @@ export const Env = z
       .max(100)
       .default(20),
 
-    // Schedule toleration settings - scheduled runs tolerate taints on the dedicated pool
-    // Comma-separated list of tolerations in the format: key=value:effect
-    // For Exists operator (no value): key:effect
-    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: z
-      .string()
-      .transform((val, ctx) => {
-        const tolerations = val
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0)
-          .map((entry) => {
-            const colonIdx = entry.lastIndexOf(":");
-            if (colonIdx === -1) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration format (missing effect): "${entry}"`,
-              });
-              return z.NEVER;
-            }
+    KUBERNETES_RUNNER_TOLERATIONS: Tolerations.optional(), // every run pod
+    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: Tolerations.optional(), // schedule-tree runs only
 
-            const effect = entry.slice(colonIdx + 1);
-            const validEffects = ["NoSchedule", "NoExecute", "PreferNoSchedule"];
-            if (!validEffects.includes(effect)) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration effect "${effect}" in "${entry}". Must be one of: ${validEffects.join(
-                  ", "
-                )}`,
-              });
-              return z.NEVER;
-            }
-
-            const keyValue = entry.slice(0, colonIdx);
-            const eqIdx = keyValue.indexOf("=");
-            const key = eqIdx === -1 ? keyValue : keyValue.slice(0, eqIdx);
-
-            if (!key) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `Invalid toleration format (empty key): "${entry}"`,
-              });
-              return z.NEVER;
-            }
-
-            if (eqIdx === -1) {
-              return { key, operator: "Exists" as const, effect };
-            }
-
-            return {
-              key,
-              operator: "Equal" as const,
-              value: keyValue.slice(eqIdx + 1),
-              effect,
-            };
-          });
-
-        return tolerations;
-      })
-      .optional(),
+    // Per-org placement overrides, JSON keyed by the internal org id
+    // (the `org` label on run pods):
+    // {"<orgId>": {"nodeSelector": {"<key>": "<value>"}, "tolerations": "<csv or array>"}}
+    KUBERNETES_ORG_PLACEMENT_OVERRIDES: OrgPlacementOverrides,
 
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
@@ -361,6 +329,22 @@ export const Env = z
         path: ["TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE"],
       });
     }
+    if (data.KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED && data.KUBERNETES_ORG_PLACEMENT_OVERRIDES) {
+      // Non-large presets carry a hard NotIn on the large-machine pool, so an org
+      // pinned to that pool could never schedule its non-large runs.
+      for (const [orgId, override] of Object.entries(data.KUBERNETES_ORG_PLACEMENT_OVERRIDES)) {
+        const pinnedPool =
+          override.nodeSelector?.[data.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY];
+
+        if (pinnedPool === data.KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Org "${orgId}" pins run pods to the large-machine pool, but non-large presets are required to stay off it, so those runs would never schedule. Use a different pool or disable KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED.`,
+            path: ["KUBERNETES_ORG_PLACEMENT_OVERRIDES"],
+          });
+        }
+      }
+    }
     if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_METADATA_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -381,6 +365,14 @@ export const Env = z
         message:
           "WORKLOAD_TOKEN_SECRET is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
         path: ["WORKLOAD_TOKEN_SECRET"],
+      });
+    }
+    if (data.DELETE_CHECKPOINTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "DELETE_CHECKPOINTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token, so with tokens disabled it would silently reclaim nothing",
+        path: ["DELETE_CHECKPOINTS_ON_COMPLETION"],
       });
     }
     if (

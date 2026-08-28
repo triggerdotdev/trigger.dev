@@ -4,6 +4,8 @@ import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
+import { batchStreamGrants } from "../concerns/batchStreamGrantsInstance.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -120,8 +122,15 @@ export class CreateBatchService extends WithRunEngine {
 
           this.onBatchTaskRunCreated.post(batch);
 
+          await batchStreamGrants.mint(environment.id, friendlyId);
+
           // Block parent run if this is a batchTriggerAndWait
           if (body.parentRunId && body.resumeParentOnCompletion) {
+            await this._engine.scheduleExpireBatch({
+              batchId: batch.id,
+              availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
+            });
+
             await this._engine.blockRunWithCreatedBatch({
               runId: RunId.fromFriendlyId(body.parentRunId),
               batchId: batch.id,

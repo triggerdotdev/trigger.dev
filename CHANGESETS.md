@@ -4,11 +4,13 @@ Trigger.dev uses [changesets](https://github.com/changesets/changesets) to manag
 
 ## Adding a changeset (package changes)
 
-To add a changeset, use `pnpm run changeset:add` and follow the instructions [here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md). Please only ever select one of our public packages when adding a changeset.
+Changesets and `.server-changes/` files are user-facing release notes, not a catalog of every change. Add one only when the change is something a user would notice or act on. Skip it for internal-only changes, refactors, chores, and packages that are not consumed independently (e.g. `@trigger.dev/redis-worker`). Anyone who wants the exact history reads the commits.
+
+To add a changeset, use `pnpm run changeset:add` and follow the [Changesets adding-a-changeset guide](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md). Please only ever select one of our public packages when adding a changeset.
 
 ## Adding a server change (server-only changes)
 
-If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.) and does NOT change any published packages, add a `.server-changes/` file instead of a changeset:
+If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.), does NOT change any published packages, AND the change is user-facing, add a `.server-changes/` file instead of a changeset:
 
 ```sh
 cat > .server-changes/fix-batch-queue-stalls.md << 'EOF'
@@ -24,17 +26,19 @@ EOF
 - `area`: `webapp` | `supervisor`
 - `type`: `feature` | `fix` | `improvement` | `breaking`
 
-For **mixed PRs** (both packages and server): just add a changeset. No `.server-changes/` file needed.
+For **mixed PRs** (both packages and server): the changeset covers it, so no `.server-changes/` file is needed. If the package change is internal and needs no changeset but the server change is user-facing, add a `.server-changes/` file for it.
 
 See `.server-changes/README.md` for full documentation.
 
 ## When to add which
 
+Only for user-facing changes. Skip the note entirely for internal-only or admin-only changes, refactors, and chores.
+
 | PR changes | What to add |
 |---|---|
-| Only packages (`packages/`) | Changeset (`pnpm run changeset:add`) |
-| Only server (`apps/`) | `.server-changes/` file |
-| Both packages and server | Just the changeset |
+| Only packages (`packages/` or `integrations/`) | Changeset (`pnpm run changeset:add`), if the package change is user-facing |
+| Only server (`apps/`) | `.server-changes/` file, if the server change is user-facing |
+| Both packages and server | The changeset covers it; if the package change needs no changeset but the server change is user-facing, add a `.server-changes/` file |
 
 ## Release instructions (CI)
 

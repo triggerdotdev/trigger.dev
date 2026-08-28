@@ -77,12 +77,12 @@ redis:
         memory: 512Mi
 
 # Production ClickHouse
+# The bundled ClickHouse serves plain HTTP inside the cluster. For TLS,
+# use an external ClickHouse (deploy: false) with secure: true (see below).
 clickhouse:
   auth:
     # Required — no built-in default. The webapp connection string uses clickhouse.auth.password.
     password: "your-strong-clickhouse-password"
-  # Set to true to enable TLS/secure connections in production
-  secure: true
   persistence:
     enabled: true
     size: 100Gi

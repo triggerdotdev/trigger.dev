@@ -9,8 +9,8 @@ import {
 import type { CustomerQuerySource } from "@trigger.dev/database";
 import {
   calculateTimeBucketInterval,
+  intervalToSeconds,
   type TableSchema,
-  type TimeBucketInterval,
   type WhereClauseCondition,
 } from "@internal/tsql";
 import { z } from "zod";
@@ -26,10 +26,8 @@ import {
 import { getLimit } from "./platform.v3.server";
 import { timeFilters, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import parse from "parse-duration";
-import { querySchemas, QueryScopeSchema, type QueryScope } from "~/v3/querySchemas";
-
-export { QueryScopeSchema };
-export type { TableSchema, TSQLQueryResult, QueryScope };
+import { querySchemas, type QueryScope } from "~/v3/querySchemas";
+export type { TSQLQueryResult, QueryScope };
 
 const scopeToEnum = {
   organization: "ORGANIZATION",
@@ -70,7 +68,10 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   organizationId: string;
   projectId: string;
   environmentId: string;
-  /** The scope of the query - determines tenant isolation */
+  /**
+   * The scope of the query - determines tenant isolation. Callers that take it from
+   * a request body must cap it against the credential first; see `v3/queryScope.ts`.
+   */
   scope: QueryScope;
   period?: string | null;
   from?: string | null;
@@ -100,6 +101,13 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   };
   /** Custom per-org concurrency limit (overrides default) */
   customOrgConcurrencyLimit?: number;
+  /**
+   * Set when the caller wrote `query` themselves, as on the public query API and
+   * the query editor. ClickHouse rejecting their SQL is then their mistake, so it
+   * is logged as a warning instead of raising an alert. Leave unset for TRQL we
+   * generate, where the same rejection is a bug worth alerting on.
+   */
+  userAuthoredQuery?: boolean;
 };
 
 /**
@@ -128,15 +136,6 @@ export function isQueryConcurrencyRejection(error: unknown): boolean {
   );
 }
 
-const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
-  SECOND: 1,
-  MINUTE: 60,
-  HOUR: 3_600,
-  DAY: 86_400,
-  WEEK: 604_800,
-  MONTH: 2_592_000,
-};
-
 function floorToSeconds(date: Date, alignSeconds: number): Date {
   const ms = alignSeconds * 1000;
   return new Date(Math.floor(date.getTime() / ms) * ms);
@@ -160,16 +159,21 @@ function resolveQueryClientType(schema: TableSchema | undefined): ClientType {
  * rollup's granularity. The rollup has identical logical columns, so only the physical
  * table (and therefore rows read) changes.
  */
-function resolveRollup(schema: TableSchema, timeRange: { from: Date; to: Date }): TableSchema {
+function resolveRollup(
+  schema: TableSchema,
+  timeRange: { from: Date; to: Date },
+  minBucketSeconds?: number
+): TableSchema {
   if (!schema.rollups || schema.rollups.length === 0) {
     return schema;
   }
   const interval = calculateTimeBucketInterval(
     timeRange.from,
     timeRange.to,
-    schema.timeBucketThresholds
+    schema.timeBucketThresholds,
+    minBucketSeconds
   );
-  const intervalSeconds = interval.value * INTERVAL_UNIT_SECONDS[interval.unit];
+  const intervalSeconds = intervalToSeconds(interval);
   const best = [...schema.rollups]
     .sort((a, b) => b.minIntervalSeconds - a.minIntervalSeconds)
     .find((r) => r.minIntervalSeconds <= intervalSeconds);
@@ -367,7 +371,9 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     );
     // Serve coarse-bucket queries from the table's rollup when one qualifies.
     const effectiveSchemas = matchedSchema?.rollups
-      ? querySchemas.map((s) => (s === matchedSchema ? resolveRollup(s, timeRange) : s))
+      ? querySchemas.map((s) =>
+          s === matchedSchema ? resolveRollup(s, timeRange, baseOptions.minBucketSeconds) : s
+        )
       : querySchemas;
 
     const queryCacheSettings: ClickHouseSettings = matchedSchema?.queryCache
@@ -389,6 +395,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         ...getDefaultClickhouseSettings(),
         ...queryCacheSettings,
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
+        readonly: "1", // Not overridable: every query through here is read-only.
       },
       querySettings: {
         maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,

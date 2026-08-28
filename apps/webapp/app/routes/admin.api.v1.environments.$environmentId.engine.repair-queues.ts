@@ -7,6 +7,7 @@ import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 
+import { boundedIn } from "@trigger.dev/database";
 const ParamsSchema = z.object({
   environmentId: z.string(),
 });
@@ -49,7 +50,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     where: {
       runtimeEnvironmentId: environment.id,
       version: "V2",
-      name: parsedBody.queues.length > 0 ? { in: parsedBody.queues } : undefined,
+      name: parsedBody.queues.length > 0 ? { in: boundedIn(parsedBody.queues) } : undefined,
     },
     select: {
       friendlyId: true,

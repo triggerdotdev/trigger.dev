@@ -1,126 +1,160 @@
-import { anthropic } from "@ai-sdk/anthropic";
-import {
-  createDashboardAgentDb,
-  ensureChat,
-  persistMessages,
-  persistTurn,
-  setChatTitleIfDefault,
-  type DashboardAgentDbClient,
-} from "@internal/dashboard-agent-db";
+import { isWatchRequestMessageId, sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
+import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
 import {
-  createProviderRegistry,
-  generateText,
-  stepCountIs,
-  streamText,
-  type LanguageModel,
-  type ModelMessage,
-  type ToolSet,
-  type UIMessage,
-} from "ai";
-import { z } from "zod";
+  orgAllowsTurnEvals,
+  redactEvalToolValue,
+  shouldEvalTurn,
+  turnReadSource,
+} from "./eval-policy";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
-import { codeSystemPrompt, systemPrompt, titlePrompt } from "./prompts";
-import { buildDashboardAgentTools } from "./tools";
+import {
+  buildTurnTools,
+  clientDataSchema,
+  dashboardAgentModelKey,
+  getStore,
+  getSystemPrompt,
+  modeFor,
+  resolveDashboardAgentModel,
+  sanitizeReplayedToolInputs,
+  settlementCardMessages,
+  clearOpenInvestigations,
+  pendingInvestigationSettlements,
+  withCacheBreakpointOnLast,
+  type DashboardAgentStore,
+} from "./agent-runtime";
+import { titlePrompt } from "./prompts";
+import { withCacheBreakpoint } from "./model-provider";
+import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
+import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
+import { dashboardAgentCompaction, withDurableState } from "./compaction";
+
+// The runtime and the watch lanes live in their own modules; re-exported here so
+// every existing import path still resolves.
+export {
+  clientDataSchema,
+  dashboardAgentModelKey,
+  dashboardAgentStoreKey,
+  dashboardAgentToolsKey,
+  sanitizeReplayedToolInputs,
+  type DashboardAgentStore,
+} from "./agent-runtime";
+// The eval's data-handling policy lives in `eval-policy.ts`; re-exported so every
+// existing import path still resolves.
+export {
+  DEFAULT_CI_EVAL_SAMPLE_RATE,
+  DEFAULT_EVAL_SAMPLE_RATE,
+  evalSampleRate,
+  isCiEvalContext,
+  orgAllowsTurnEvals,
+  redactEvalToolValue,
+  shouldEvalTurn,
+  turnReadSource,
+} from "./eval-policy";
+// The rolling step cache lives in `step-cache.ts`, shared with the watch lane;
+// re-exported so every existing import path still resolves.
+export {
+  markStepCacheBreakpoint,
+  MIN_STEP_CACHE_CHARS,
+  stepCacheAttributes,
+  STEP_CACHE_CONTROL,
+  withStepCacheBreakpoint,
+} from "./step-cache";
+export {
+  dashboardAgentActionSchema,
+  wakeStartsInvestigation,
+  watchInvestigateActionSchema,
+  watchWakeActionSchema,
+  type DashboardAgentAction,
+  type WatchInvestigateAction,
+  type WatchWakeAction,
+} from "./watch-actions";
 
 /**
  * The in-dashboard agent, built on chat.agent and deployed as an internal task
- * by the webapp. This is the launch-week dogfood: we run our own product on the
- * primitive we ship.
+ * by the webapp.
  *
- * No tools yet: it answers from a dashboard-managed system prompt (Anthropic,
- * resolved via the provider registry) with prompt caching, persists the
- * conversation to the agent's own datastore (NOT the main DB — the agent has no
- * access to that), and generates the chat title in the background. Runtime
- * history is owned by chat.agent's built-in object-store snapshot; the rows we
- * write here are the display read-model the dashboard's History tab and panel
- * render from.
+ * Persistence goes to the agent's own datastore, never the main DB — the agent
+ * has no access to that. chat.agent owns the runtime history snapshot; the rows
+ * written here are the display read-model the dashboard renders from.
  */
 
-// One connection pool per worker process. onBoot fires on every fresh worker
-// (initial, preloaded, and continuation runs), so the pool is established there
-// and reused across turns within the run.
-let dbClient: DashboardAgentDbClient | undefined;
+/**
+ * What a failed turn leaves in the transcript. Fixed wording: the provider's error
+ * string is not something to show a user, and this is persisted forever.
+ */
+export const TURN_FAILED_MESSAGE =
+  "Something went wrong on my side, so that turn didn't finish. Ask again and I'll pick it up.";
 
-function getDb(): DashboardAgentDbClient {
-  if (!dbClient) {
-    const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error(
-        "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the dashboard agent"
-      );
-    }
-    // Small client pool — the agent runs in many short-lived containers and the
-    // PlanetScale pooler does the real pooling.
-    dbClient = createDashboardAgentDb(connectionString, { max: 2 });
-  }
-  return dbClient;
+/** Stable per turn, so a re-run of the error path can't stack two records. */
+export function turnFailureMessageId(turn: number): string {
+  return `turn-error:${turn}`;
 }
 
-// Resolves the `"provider:model-id"` strings on our managed prompts to AI SDK
-// models. Anthropic only for now; add another @ai-sdk/* provider here to let
-// the dashboard pick its models on a prompt.
-const registry = createProviderRegistry({ anthropic });
+/**
+ * Set when this turn's stream errored. A mid-stream failure is converted to an
+ * error chunk rather than thrown, so `onTurnComplete` sees no `error` and no
+ * `finishReason` — the stream's own error hook is the only place it is visible.
+ * Reset every turn in `onTurnStart`.
+ */
+const turnErroredKey = locals.create<boolean>("dashboard-agent.turnErrored");
 
-// The persistence the agent does against its own datastore, behind an interface
-// so it can be injected. Production lazily builds one over the env-configured
-// Drizzle client (below); unit tests inject a fake via `locals` (the DI pattern
-// from the chat.agent testing guide) so the agent never needs a real database.
-export interface DashboardAgentStore {
-  ensureChat(args: Parameters<typeof ensureChat>[1]): Promise<unknown>;
-  persistMessages(args: Parameters<typeof persistMessages>[1]): Promise<unknown>;
-  persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<unknown>;
-  setChatTitleIfDefault(args: Parameters<typeof setChatTitleIfDefault>[1]): Promise<unknown>;
+/**
+ * Append-only by message id. Both the terminal settlement cards and the failure
+ * record carry stable ids, so a retried turn writes the same transcript rather
+ * than a second copy of either.
+ */
+export function mergeMessagesById(current: UIMessage[], incoming: UIMessage[]): UIMessage[] {
+  const missing = incoming.filter(
+    (message) => !current.some((existing) => existing.id === message.id)
+  );
+  return missing.length === 0 ? current : [...current, ...missing];
 }
 
-export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
-
-// Returns the injected store if a test seeded one, otherwise lazily builds the
-// production store over the env-configured Drizzle client and caches it.
-function getStore(): DashboardAgentStore {
-  const injected = locals.get(dashboardAgentStoreKey);
-  if (injected) return injected;
-  const { db } = getDb();
-  return locals.set(dashboardAgentStoreKey, {
-    ensureChat: (args) => ensureChat(db, args),
-    persistMessages: (args) => persistMessages(db, args),
-    persistTurn: (args) => persistTurn(db, args),
-    setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
-  });
+function turnFailureMessage(turn: number): UIMessage {
+  return {
+    id: turnFailureMessageId(turn),
+    role: "assistant",
+    parts: [{ type: "text", text: TURN_FAILED_MESSAGE }],
+  };
 }
 
-// Optional language-model override. Production leaves this unset and resolves the
-// model from the managed prompt through the provider registry; unit tests inject
-// a mock model here so `run()` and title generation never reach a provider.
-export const dashboardAgentModelKey = locals.create<LanguageModel>("dashboard-agent.model");
+// How the per-turn eval is enqueued. Unset in production; tests inject a
+// recorder to observe whether a turn was sampled.
+export type DashboardAgentEvalTrigger = (
+  payload: EvalTurnPayload,
+  options: { idempotencyKey: string }
+) => Promise<unknown>;
 
-// Optional tool-set override. Production leaves this unset and builds the real
-// tools per turn; tests and evals inject a fixture tool set (real schemas,
-// stubbed executes) so the model's tool choice can be observed and its answers
-// judged without a live API.
-export const dashboardAgentToolsKey = locals.create<ToolSet>("dashboard-agent.tools");
+export const dashboardAgentEvalTriggerKey = locals.create<DashboardAgentEvalTrigger>(
+  "dashboard-agent.eval-trigger"
+);
 
-// The system prompt is dashboard-managed (text + model + config). Resolving it
-// is an API call, so cache it per worker process — workers are short-lived
-// (idleTimeoutInSeconds), so a dashboard edit lands within a recycle.
-type DashboardAgentMode = "assistant" | "code";
+/**
+ * The org opt-out check. Unset in production; tests inject one so no turn depends on a
+ * network call.
+ */
+export type DashboardAgentEvalPolicyCheck = (params: {
+  apiOrigin?: string;
+  userActorToken?: string;
+  organizationId: string;
+}) => Promise<boolean>;
 
-// A turn is in `code` mode when the `in` proxy injected a repo snapshot (i.e. the
-// current project has a connected repo). Drives both the tool set and the prompt.
-function modeFor(clientData: { repoSnapshot?: unknown } | undefined): DashboardAgentMode {
-  return clientData?.repoSnapshot ? "code" : "assistant";
+export const dashboardAgentEvalPolicyKey = locals.create<DashboardAgentEvalPolicyCheck>(
+  "dashboard-agent.eval-policy"
+);
+
+function getEvalPolicyCheck(): DashboardAgentEvalPolicyCheck {
+  return locals.get(dashboardAgentEvalPolicyKey) ?? orgAllowsTurnEvals;
 }
 
-let cachedSystemPrompt: Awaited<ReturnType<typeof systemPrompt.resolve>> | undefined;
-let cachedCodePrompt: Awaited<ReturnType<typeof codeSystemPrompt.resolve>> | undefined;
-async function getSystemPrompt(mode: DashboardAgentMode = "assistant") {
-  if (mode === "code") {
-    cachedCodePrompt ??= await codeSystemPrompt.resolve({});
-    return cachedCodePrompt;
-  }
-  cachedSystemPrompt ??= await systemPrompt.resolve({});
-  return cachedSystemPrompt;
+function getEvalTrigger(): DashboardAgentEvalTrigger {
+  return (
+    locals.get(dashboardAgentEvalTriggerKey) ??
+    ((payload, options) =>
+      tasks.trigger<typeof evalTurn>("dashboard-agent-eval-turn", payload, options))
+  );
 }
 
 function extractText(message: UIMessage): string {
@@ -130,9 +164,69 @@ function extractText(message: UIMessage): string {
     .trim();
 }
 
-// Pair this turn's tool-calls with their results (the ground truth the eval
-// judge checks the answer against). Works off the model-format messages.
-function extractToolActivity(
+/**
+ * Cap on each tool output in the eval payload. The judge only has to check the
+ * answer against the result, which a prefix supports — a run trace or a file read
+ * is tens of thousands of characters of it.
+ */
+export const MAX_EVAL_TOOL_OUTPUT_CHARS = 1500;
+
+export const MAX_EVAL_TOOL_INPUT_CHARS = 500;
+
+export const MAX_EVAL_ACTIVITY_CHARS = 20_000;
+
+export function truncateEvalToolValue(value: unknown, limit: number): unknown {
+  if (value === undefined) return value;
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined || serialized.length <= limit) return value;
+  return {
+    truncated: true,
+    outputPrefix: sliceWellFormed(serialized, limit),
+    note: `[truncated: the first ${limit} of ${serialized.length} characters of this value]`,
+  };
+}
+
+export function truncateEvalToolOutput(output: unknown): unknown {
+  return truncateEvalToolValue(output, MAX_EVAL_TOOL_OUTPUT_CHARS);
+}
+
+export function unfoldEvalToolOutput(output: unknown): unknown {
+  if (output === null || typeof output !== "object") return output;
+  const envelope = output as { type?: unknown; value?: unknown };
+  if (typeof envelope.type !== "string") return output;
+
+  switch (envelope.type) {
+    case "json":
+    case "text":
+    case "content":
+      return envelope.value;
+    case "error-text":
+    case "error-json":
+      // `isError` and `error` are structural, so they survive redaction; `value` does not.
+      return { isError: true, error: { type: envelope.type }, value: envelope.value };
+    default:
+      return output;
+  }
+}
+
+export function capEvalToolActivity<T extends { toolName: string }>(activity: T[]): unknown[] {
+  const kept: unknown[] = [];
+  let used = 0;
+  for (const entry of activity) {
+    const size = JSON.stringify(entry)?.length ?? 0;
+    if (used + size > MAX_EVAL_ACTIVITY_CHARS) {
+      kept.push({ toolName: entry.toolName, omitted: true });
+      continue;
+    }
+    used += size;
+    kept.push(entry);
+  }
+  return kept;
+}
+
+// The customer's own data (payloads, outputs, query rows, file contents, error text)
+// must never leave here as itself.
+export function extractToolActivity(
   messages: ModelMessage[]
 ): Array<{ toolName: string; input?: unknown; output?: unknown }> {
   const byId = new Map<string, { toolName: string; input?: unknown; output?: unknown }>();
@@ -146,28 +240,62 @@ function extractToolActivity(
       output?: unknown;
     }>) {
       if (part.type === "tool-call" && part.toolCallId) {
-        byId.set(part.toolCallId, { toolName: String(part.toolName ?? ""), input: part.input });
+        const toolName = String(part.toolName ?? "");
+        byId.set(part.toolCallId, {
+          toolName,
+          input: truncateEvalToolValue(
+            redactEvalToolValue(part.input, toolName),
+            MAX_EVAL_TOOL_INPUT_CHARS
+          ),
+        });
       } else if (part.type === "tool-result" && part.toolCallId) {
         const existing = byId.get(part.toolCallId);
-        if (existing) existing.output = part.output;
+        if (existing) {
+          existing.output = truncateEvalToolValue(
+            redactEvalToolValue(unfoldEvalToolOutput(part.output), existing.toolName),
+            MAX_EVAL_TOOL_OUTPUT_CHARS
+          );
+        }
       }
     }
   }
-  return [...byId.values()];
+  return capEvalToolActivity([...byId.values()]) as Array<{
+    toolName: string;
+    input?: unknown;
+    output?: unknown;
+  }>;
 }
 
 function cleanTitle(raw: string): string {
-  return raw
+  const normalized = raw
     .trim()
     .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/\s+/g, " ")
-    .slice(0, 80)
-    .trim();
+    .replace(/\s+/g, " ");
+  return sliceWellFormed(normalized, 80).trim();
 }
 
-// Generate a short title from the first user message using the cheaper title
-// model, then write it only if the chat still has the default title. Runs in
-// the background (chat.defer) so it never blocks the response.
+/**
+ * Title generation in flight, per chat. Started in `onTurnStart` and awaited in
+ * `onBeforeTurnComplete`, while the stream is still open. The panel reloads its
+ * chat list once, when the turn settles, so the name must be on the row by then
+ * or the list reads "New chat".
+ */
+const pendingTitles = new Map<string, Promise<void>>();
+
+/**
+ * Whether this turn is the one that names the chat. Counted in user messages, not in
+ * transcript length: a head-started turn arrives with the warm first step already in
+ * `uiMessages`, so a length gate would see two messages on the very first exchange and
+ * never name the chat at all. A watch's consent record is a user message the user did
+ * not type, so it doesn't count as an exchange either.
+ */
+export function isFirstUserExchange(uiMessages: { role: string; id?: string }[]): boolean {
+  const typed = uiMessages.filter(
+    (message) => message.role === "user" && !isWatchRequestMessageId(message.id)
+  );
+  return typed.length <= 1;
+}
+
 async function generateAndSaveTitle(
   store: DashboardAgentStore,
   chatId: string,
@@ -181,9 +309,7 @@ async function generateAndSaveTitle(
   const { text } = await generateText({
     model:
       locals.get(dashboardAgentModelKey) ??
-      registry.languageModel(
-        (resolved.model ?? "anthropic:claude-haiku-4-5") as `anthropic:${string}`
-      ),
+      resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-haiku-4-5"),
     system: resolved.text,
     prompt: userText,
     ...resolved.toAISDKTelemetry(),
@@ -195,50 +321,64 @@ async function generateAndSaveTitle(
   }
 }
 
-// A chat belongs to an org + user. The current project/env (and the page) are
-// per-turn context for the agent, not chat identity — one conversation can span
-// several projects/envs.
-const clientDataSchema = z.object({
-  userId: z.string(),
-  organizationId: z.string(),
-  projectId: z.string().optional(),
-  environmentId: z.string().optional(),
-  currentPage: z.string().optional(),
-  // Injected server-side by the `in` proxy on each turn (never sent from the
-  // browser): a short-lived read-only delegated token for the user, the API
-  // origin to call back to, and the current project ref + env its tools read.
-  userActorToken: z.string().optional(),
-  apiOrigin: z.string().optional(),
-  projectRef: z.string().optional(),
-  environmentName: z.string().optional(),
-  // Injected only when the current project has a connected GitHub repo: a signed,
-  // short-lived archive pointer the code-mode source tools read from.
-  repoSnapshot: z
-    .object({
-      tarballUrl: z.string(),
-      owner: z.string(),
-      repo: z.string(),
-      sha: z.string(),
-      defaultBranch: z.string().optional(),
-    })
-    .optional(),
-});
+export type {
+  AgentPage,
+  AgentPageContext,
+  AgentPageSignal,
+} from "@internal/dashboard-agent-contracts";
+
+/**
+ * What the turn's model actually sees: replayed tool inputs the API would reject
+ * coerced back, the durable state pinned back on, and a cache breakpoint on the last
+ * message so the growing conversation prefix is read back cheaply.
+ *
+ * The between-steps compaction path rebuilds history as the summary alone and never
+ * reaches `compactModelMessages`, so the live investigation and watch state is pinned
+ * back here instead.
+ */
+export function prepareTurnMessages(args: {
+  messages: ModelMessage[];
+  reason: string;
+}): ModelMessage[] {
+  if (args.messages.length === 0) return args.messages;
+  return withCacheBreakpointOnLast(
+    sanitizeReplayedToolInputs(
+      args.reason === "run" ? args.messages : withDurableState(args.messages, chat.history.all())
+    )
+  );
+}
 
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
-  // Latency levers come next (Head Start, prompt caching, AI Prompts). Scaffold
-  // keeps a short idle window so suspended runs release their DB pool.
+  // Actions are not turns — see `narrateWatchWake`.
+  actionSchema: dashboardAgentActionSchema,
+  // Short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
 
+  uiMessageStreamOptions: {
+    // The stream carries the same sentence the transcript keeps, so the live chunk
+    // and the stored record never disagree. The provider's own message is logged
+    // here and goes no further.
+    onError: (error) => {
+      locals.set(turnErroredKey, true);
+      logger.error("dashboard-agent turn failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return TURN_FAILED_MESSAGE;
+    },
+  },
+
   // Read-only tools, rebuilt per turn from the delegated token the `in` proxy
-  // injects. Declaring them here (not just inside run) lets the SDK re-apply
-  // each tool's output conversion when it replays prior-turn history.
-  tools: async ({ clientData }) =>
-    locals.get(dashboardAgentToolsKey) ?? buildDashboardAgentTools(clientData ?? {}),
+  // injects. Declared here rather than only inside run so the SDK re-applies each
+  // tool's output conversion when it replays prior-turn history. The
+  // `investigations` capability is the one seam from the tool lane to the agent's
+  // datastore, wired here (where the chat id is known) so `tools.ts` stays free of
+  // the database package.
+  tools: async ({ chatId, clientData }) => buildTurnTools(chatId, clientData),
 
   onBoot: async () => {
-    // Establish the store (and, in production, its connection pool) once.
+    // Establish the store, and in production its connection pool, once.
     getStore();
   },
 
@@ -257,20 +397,47 @@ export const dashboardAgent = chat.agent({
     });
   },
 
+  // Every action is a watch action, handled in `watch-actions.ts`: one message
+  // deduped on the action id, piped inside so it reaches the history and read-model.
+  onAction: async ({ action, chatId, clientData, uiMessages, messages }) =>
+    handleWatchAction({ action, chatId, clientData, uiMessages, messages }),
+
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
-    // Make the user's message durable in the display copy before the model
-    // starts streaming. Awaited, never chat.defer — a mid-stream refresh must
-    // not read an empty transcript.
+    locals.set(turnErroredKey, false);
+
+    // Awaited, never chat.defer: a mid-stream refresh must not read an empty
+    // transcript.
     await getStore().persistMessages({ chatId, messages: uiMessages });
 
-    // Load the dashboard-managed system prompt for this turn. The code-mode
-    // variant is used when the project has a connected repo. Set every turn so
-    // continuation runs (which skip onChatStart) still get it; the resolve is
-    // cached per process. The Anthropic cache breakpoint on the system block
-    // carries through toStreamTextOptions() and survives suspend/resume.
+    // Name the chat on the first exchange, started here so it runs while the model
+    // answers. Awaited in `onBeforeTurnComplete`, not here; a failure only costs the
+    // generated name.
+    if (isFirstUserExchange(uiMessages) && !pendingTitles.has(chatId)) {
+      const store = getStore();
+      pendingTitles.set(
+        chatId,
+        generateAndSaveTitle(store, chatId, uiMessages).catch((error) => {
+          logger.error("Failed to generate a dashboard-agent chat title", { chatId, error });
+        })
+      );
+    }
+
+    // Set every turn so continuation runs (which skip onChatStart) still get the
+    // prompt; the resolve is cached per process. The cache breakpoint on the system
+    // block carries through toStreamTextOptions() and survives suspend/resume.
     chat.prompt.set(await getSystemPrompt(modeFor(clientData)), {
-      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+      providerOptions: withCacheBreakpoint(undefined, "prefix"),
     });
+  },
+
+  // The last point at which a write still lands ahead of the client's settle:
+  // `onTurnComplete` runs after the frontend stream closes. That is why the title
+  // is awaited here.
+  onBeforeTurnComplete: async ({ chatId }) => {
+    const pending = pendingTitles.get(chatId);
+    if (!pending) return;
+    pendingTitles.delete(chatId);
+    await pending;
   },
 
   onTurnComplete: async ({
@@ -278,109 +445,156 @@ export const dashboardAgent = chat.agent({
     turn,
     uiMessages,
     newMessages,
+    newUIMessages,
     responseMessage,
     clientData,
     chatAccessToken,
     lastEventId,
     runId,
+    finishReason,
+    error,
   }) => {
-    // Persist the finalized transcript + refreshed session state in one
-    // transaction so a refresh on the next page load reads both consistently.
     const store = getStore();
-    await store.persistTurn({
+
+    // The run is over, so a card left `in_progress` never settles on its own. The
+    // entry survives until the write commits, so a retried `onTurnComplete` settles it.
+    const settlements = pendingInvestigationSettlements(chatId);
+
+    // A turn that ended in an error is part of the conversation, not only a stream
+    // event: the browser rendered the error chunk but nothing recorded it, so
+    // reloading showed a turn that just stops.
+    const errored =
+      error !== undefined || finishReason === "error" || locals.get(turnErroredKey) === true;
+    const failure = errored ? turnFailureMessage(turn) : undefined;
+
+    // One database operation for all of it: transcript, session state, and the rows
+    // and closing cards of whatever was left running. Settling a row on a separate
+    // operation is what could leave a terminal row whose card never arrived — and the
+    // stale sweep only selects `in_progress`, so nothing would ever repair it.
+    // Only what this turn produced may be finalised; the rest of the snapshot is history.
+    const produced = [...(newUIMessages ?? []), ...(responseMessage ? [responseMessage] : [])]
+      .map((message) => (message as { id?: unknown }).id)
+      .filter((id): id is string => typeof id === "string");
+
+    const { settled } = await store.persistTurn({
       chatId,
-      messages: uiMessages,
+      messages: mergeMessagesById(uiMessages, failure ? [failure] : []),
+      finalizeMessageIds: [...produced, ...(failure ? [failure.id] : [])],
       session: {
         publicAccessToken: chatAccessToken,
         lastEventId,
         runId,
       },
+      settlements,
     });
+    clearOpenInvestigations(chatId);
 
-    // First exchange: generate a title with the cheaper title model in the
-    // background. Deferred from onTurnComplete, so it runs during the idle wait
-    // and never blocks the response; the write is conditional (default title).
-    if (uiMessages.length <= 2) {
-      chat.defer(generateAndSaveTitle(store, chatId, uiMessages));
+    // The row is only half of it — the panel renders the winning revision from the
+    // transcript's own render_view parts and never reads the investigations table.
+    const closingCards = settlementCardMessages(
+      chatId,
+      settled.map((card) => ({
+        investigationId: card.id,
+        revision: card.revision,
+        state: card.state,
+      }))
+    );
+    const terminal = mergeMessagesById(uiMessages, [
+      ...closingCards,
+      ...(failure ? [failure] : []),
+    ]);
+    if (terminal.length > uiMessages.length) {
+      // Into the accumulator too, so the next turn's wholesale write keeps them.
+      chat.history.set(terminal);
     }
 
-    // Runtime eval: score this turn in a SEPARATE, idempotency-keyed task so it
-    // never blocks or bills the agent run. Best-effort — enqueue failures must
-    // not break the turn. Every turn for now (internal, low volume); add a
-    // sample rate here when this scales.
-    if (clientData?.organizationId && clientData?.userId && responseMessage) {
+    // Score this turn in a separate, idempotency-keyed task so it never blocks or
+    // bills the agent run. Best-effort: an enqueue failure must not break the turn.
+    if (clientData?.organizationId && clientData?.userId && responseMessage && shouldEvalTurn()) {
       try {
-        const resolved = await getSystemPrompt(modeFor(clientData));
-        // The current turn's question. On a Head Start turn it arrives in the
-        // boot payload (not in newUIMessages), so take the latest user message
-        // from the full transcript, which holds for normal turns too.
-        const userMessage = [...uiMessages].reverse().find((m) => m.role === "user");
-        await tasks.trigger<typeof evalTurn>(
-          "dashboard-agent-eval-turn",
-          {
-            chatId,
-            turn,
-            agentRunId: runId,
+        const toolActivity = extractToolActivity(newMessages);
+        // A turn that read source is never judged at all: judging it either hands the
+        // customer's code to the judge or grades a source-grounded answer blind.
+        if (turnReadSource(toolActivity)) {
+          logger.debug("dashboard-agent turn eval skipped: the turn read source", { chatId, turn });
+        } else if (
+          // Fails closed: an org that opted out, or a setting we couldn't read, is not judged.
+          !(await getEvalPolicyCheck()({
+            apiOrigin: clientData.apiOrigin,
+            userActorToken: clientData.userActorToken,
             organizationId: clientData.organizationId,
-            userId: clientData.userId,
-            projectRef: clientData.projectRef,
-            environment: clientData.environmentName,
-            currentPage: clientData.currentPage,
-            model: resolved.model,
-            promptSlug: resolved.promptId,
-            promptVersion: resolved.version,
-            userText: userMessage ? extractText(userMessage) : "",
-            assistantText: extractText(responseMessage),
-            toolActivity: extractToolActivity(newMessages),
-          } satisfies EvalTurnPayload,
-          { idempotencyKey: `eval:${chatId}:${turn}` }
-        );
+          }))
+        ) {
+          logger.debug("dashboard-agent turn eval skipped: the org doesn't allow it", { chatId });
+        } else {
+          const resolved = await getSystemPrompt(modeFor(clientData));
+          // On a Head Start turn the question arrives in the boot payload rather than
+          // newUIMessages, so read the latest user message from the full transcript.
+          const userMessage = [...uiMessages].reverse().find((m) => m.role === "user");
+          await getEvalTrigger()(
+            {
+              chatId,
+              turn,
+              agentRunId: runId,
+              organizationId: clientData.organizationId,
+              userId: clientData.userId,
+              projectRef: clientData.projectRef,
+              environment: clientData.environmentName,
+              currentPage: clientData.currentPage,
+              model: resolved.model,
+              promptSlug: resolved.promptId,
+              promptVersion: resolved.version,
+              userText: userMessage ? extractText(userMessage) : "",
+              assistantText: extractText(responseMessage),
+              toolActivity,
+            } satisfies EvalTurnPayload,
+            { idempotencyKey: `eval:${chatId}:${turn}` }
+          );
+        }
       } catch (error) {
         logger.error("Failed to enqueue dashboard-agent turn eval", { error });
       }
     }
   },
 
-  // Roll an Anthropic cache breakpoint onto the last message every turn so the
-  // growing conversation prefix is cached and read back cheaply. Composes with
-  // the system-block breakpoint above. This is the canonical prompt-caching
-  // pattern; chat.agent keeps the Head Start handover's tool-approval tail
-  // intact across this hook, so it's safe on a resume turn.
-  prepareMessages: ({ messages }) => {
-    if (messages.length === 0) return messages;
-    const last = messages[messages.length - 1];
-    return [
-      ...messages.slice(0, -1),
-      {
-        ...last,
-        providerOptions: {
-          ...last.providerOptions,
-          anthropic: { cacheControl: { type: "ephemeral" } },
-        },
-      },
-    ];
-  },
+  // Summarise the older conversation once it outgrows the budget. UI messages are
+  // untouched, so the transcript the user reads never loses anything.
+  compaction: dashboardAgentCompaction,
 
-  // System prompt + model come from the managed prompt (set in onTurnStart),
-  // so they're dashboard-editable. toStreamTextOptions() supplies the system
-  // text (with its cache breakpoint), config, telemetry, and prepareStep
-  // wiring; the model string is resolved through the registry here so
-  // streamText keeps a typed model.
+  // Roll a cache breakpoint onto the last message every turn so the growing
+  // conversation prefix is cached and read back cheaply. Composes with the
+  // system-block breakpoint above. chat.agent keeps the Head Start handover's
+  // tool-approval tail intact across this hook, so it is safe on a resume turn.
+  prepareMessages: ({ messages, reason }) => prepareTurnMessages({ messages, reason }),
+
+  // System prompt and model come from the managed prompt set in onTurnStart, so
+  // they are dashboard-editable. toStreamTextOptions() supplies the system text
+  // with its cache breakpoint, config, telemetry and prepareStep wiring; the model
+  // string is resolved through the registry here so streamText keeps a typed model.
   run: async ({ messages, signal, tools }) => {
     const resolved = chat.prompt();
+    const options = chat.toStreamTextOptions({ tools });
+    let step = 0;
     return streamText({
-      ...chat.toStreamTextOptions({ tools }),
-      // Tests inject a mock model via locals; production resolves the managed
-      // prompt's model through the provider registry.
+      ...options,
       model:
         locals.get(dashboardAgentModelKey) ??
-        registry.languageModel(
-          (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
-        ),
+        resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
       messages,
       abortSignal: signal,
-      // toStreamTextOptions() defaults to a single step; override so the model
-      // can call a tool and then answer from its result in the same turn.
+      prepareStep: stepCachePrepareStep(options) as never,
+      // Per model call, so the head-start prefix and this one can be compared.
+      onStepFinish: (finished) =>
+        recordPromptCacheUsage({
+          source: "agent-turn",
+          usage: finished.usage,
+          system: resolved.text,
+          tools: tools ?? {},
+          step: step++,
+          providerMetadata: finished.providerMetadata,
+        }),
+      // toStreamTextOptions() defaults to a single step; override so the model can
+      // call a tool and then answer from its result in the same turn.
       stopWhen: stepCountIs(10),
     });
   },

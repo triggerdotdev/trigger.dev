@@ -1,10 +1,10 @@
 import type {
   Permission,
   Role,
-  RbacEnvironment,
   RbacUser,
   RbacSubject,
   RbacResource,
+  BearerAuthOptions,
   BearerAuthResult,
   PatAuthResult,
   SessionAuthResult,
@@ -20,9 +20,11 @@ import {
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
-import { validateJWT } from "@trigger.dev/core/v3/jwt";
-import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
+import { BearerCredentialResolver } from "./bearerCredentials.js";
+
+// Reads only: a capless token still has to reach its own JWT exchange (gated on `read:apiKeys`).
+export const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
 
 export type FallbackPrismaClients = {
   // Used for writes (setUserRole, mutateRole, etc.) and any reads that
@@ -48,6 +50,7 @@ function resolvePrismaClients(input: PrismaInput): FallbackPrismaClients {
 export type FallbackOptions = {
   // Platform secret for verifying delegated user-actor tokens (tr_uat_).
   userActorSecret?: string;
+  additionalApiKeyLookupEnabled?: () => boolean;
 };
 
 export class RoleBaseAccessFallback {
@@ -68,11 +71,15 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   private readonly prisma: PrismaClient; // alias for primary — used by writes
   private readonly replica: PrismaClient;
   private readonly userActorSecret?: string;
+  // Bearer-token resolution (JWTs, root keys, additional API keys) is always-on
+  // host logic, not an RBAC default — see bearerCredentials.ts.
+  private readonly bearer: BearerCredentialResolver;
 
   constructor(clients: FallbackPrismaClients, options?: FallbackOptions) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
     this.userActorSecret = options?.userActorSecret;
+    this.bearer = new BearerCredentialResolver(clients, options?.additionalApiKeyLookupEnabled);
   }
 
   async isUsingPlugin(): Promise<boolean> {
@@ -81,168 +88,9 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
   async authenticateBearer(
     request: Request,
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerAuthResult> {
-    // Deprecated public API keys (`pk_*` minted long before public JWTs
-    // landed) are intentionally NOT handled here. The legacy
-    // `findEnvironmentByPublicApiKey` path looked them up via the
-    // `pkApiKey` column, but that token format hasn't been issued for
-    // years and no live client should be sending one. Any `pk_*` bearer
-    // on a route that goes through the apiBuilder now returns 401 —
-    // public access goes through the JWT path (`isPublicJWT(rawToken)`
-    // below) instead. The deprecated lookup is still exported from
-    // `apps/webapp/app/models/runtimeEnvironment.server.ts` for the
-    // pre-RBAC routes that haven't been migrated, but it's a dead
-    // code path for any route that uses `createLoaderApiRoute` /
-    // `createActionApiRoute`.
-    const rawToken = request.headers
-      .get("Authorization")
-      ?.replace(/^Bearer /, "")
-      .trim();
-    if (!rawToken) return { ok: false, status: 401, error: "Invalid or Missing API key" };
-
-    if (options?.allowJWT && isPublicJWT(rawToken)) {
-      const envId = extractJWTSub(rawToken);
-      if (!envId) return { ok: false, status: 401, error: "Invalid Public Access Token" };
-
-      // Match the include shape of the slim AuthenticatedEnvironment so
-      // the bridge can use the returned env without a follow-up fetch.
-      const env = await this.replica.runtimeEnvironment.findFirst({
-        where: { id: envId },
-        include: {
-          project: true,
-          organization: true,
-          orgMember: {
-            select: {
-              userId: true,
-              user: { select: { id: true, displayName: true, name: true } },
-            },
-          },
-          parentEnvironment: { select: { id: true, apiKey: true } },
-        },
-      });
-      if (!env || env.project.deletedAt !== null) {
-        return { ok: false, status: 401, error: "Invalid Public Access Token" };
-      }
-
-      const signingKey = env.parentEnvironment?.apiKey ?? env.apiKey;
-      const result = await validateJWT(rawToken, signingKey);
-      if (!result.ok) return { ok: false, status: 401, error: "Public Access Token is invalid" };
-
-      const scopes = Array.isArray(result.payload.scopes)
-        ? (result.payload.scopes as string[])
-        : [];
-      const realtime = result.payload.realtime as { skipColumns?: string[] } | undefined;
-      const oneTimeUse = result.payload.otu === true;
-      // A JWT minted from a PAT/UAT exchange stamps `act: { sub: userId }` for
-      // attribution. Surface it so write handlers can record the acting user.
-      const act = result.payload.act as { sub?: unknown } | undefined;
-      const actSub = typeof act?.sub === "string" ? act.sub : undefined;
-
-      return {
-        ok: true,
-        environment: toAuthenticatedEnvironment(env),
-        subject: {
-          type: "publicJWT",
-          environmentId: env.id,
-          organizationId: env.organizationId,
-          projectId: env.projectId,
-        },
-        ability: buildJwtAbility(scopes),
-        jwt: { realtime, oneTimeUse, ...(actSub ? { act: { sub: actSub } } : {}) },
-      };
-    }
-
-    // PREVIEW (and DEVELOPMENT) envs are parents — operating "on a branch" means routing
-    // to a child env keyed by branchName. The customer authenticates
-    // with the parent's apiKey + an `x-trigger-branch` header. Mirror
-    // findEnvironmentByApiKey: include the matching child env so the
-    // pivot below can adopt its identity.
-    const branchName = sanitizeBranchName(request.headers.get("x-trigger-branch"));
-    // Match the include shape of the slim AuthenticatedEnvironment so
-    // the apiBuilder bridge can use the returned env directly without a
-    // follow-up findEnvironmentById call.
-    const include = {
-      project: true,
-      organization: true,
-      orgMember: {
-        select: {
-          userId: true,
-          user: { select: { id: true, displayName: true, name: true } },
-        },
-      },
-      parentEnvironment: { select: { id: true, apiKey: true } },
-      childEnvironments: branchName ? { where: { branchName, archivedAt: null } } : undefined,
-    } as const;
-    let env = await this.replica.runtimeEnvironment.findFirst({
-      where: { apiKey: rawToken },
-      include,
-    });
-
-    // Revoked API key grace window — mirrors `findEnvironmentByApiKey`
-    // in apps/webapp/app/models/runtimeEnvironment.server.ts. Recently
-    // rotated keys keep working until their `expiresAt`; without this
-    // branch a customer who rotates an env API key gets immediate 401s
-    // on the new auth path. The PR's e2e suite covers this in
-    // auth-cross-cutting.e2e.full.test.ts ("revoked key within grace").
-    if (!env) {
-      const revoked = await this.replica.revokedApiKey.findFirst({
-        where: { apiKey: rawToken, expiresAt: { gt: new Date() } },
-        include: { runtimeEnvironment: { include } },
-      });
-      env = revoked?.runtimeEnvironment ?? null;
-    }
-
-    if (!env || env.project.deletedAt !== null) {
-      return { ok: false, status: 401, error: "Invalid API key" };
-    }
-
-    if (env.type === "PREVIEW" && !branchName) {
-      return {
-        ok: false,
-        status: 401,
-        error: "x-trigger-branch header required for preview env",
-      };
-    }
-
-    if (env.type === "PREVIEW" || env.type === "DEVELOPMENT") {
-      // The "default" root branch is DEVELOPMENT-only: it maps to the dev root env
-      // (which carries no branch), so we skip the pivot there. For PREVIEW,
-      // "default" is an ordinary branch name and must still pivot to its child.
-      const isDevAndDefault = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
-      if (branchName !== null && !isDevAndDefault) {
-        const child = env.childEnvironments?.[0];
-        if (!child) {
-          return { ok: false, status: 401, error: "No matching branch env" };
-        }
-        // Pivot to the child env: child's id/type/branchName, parent's
-        // apiKey/orgMember/organization/project. parentEnvironment is set
-        // explicitly here so the slim shape stays internally consistent.
-        env = {
-          ...child,
-          apiKey: env.apiKey,
-          orgMember: env.orgMember,
-          organization: env.organization,
-          project: env.project,
-          parentEnvironment: { id: env.id, apiKey: env.apiKey },
-          childEnvironments: [],
-        };
-      }
-    }
-
-    const subject: RbacSubject = {
-      type: "user",
-      userId: env.orgMember?.userId ?? "",
-      organizationId: env.organizationId,
-      projectId: env.projectId,
-    };
-
-    return {
-      ok: true,
-      environment: toAuthenticatedEnvironment(env),
-      subject,
-      ability: permissiveAbility,
-    };
+    return this.bearer.authenticate(request, options);
   }
 
   async authenticateSession(
@@ -253,6 +101,21 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
     const user = await this.replica.user.findFirst({ where: { id: context.userId } });
     if (!user) return { ok: false, reason: "unauthenticated" };
+
+    // A non-member in a scoped context is denied, not handed a permissive
+    // ability. buildFallbackAbility is permissive for a non-admin
+    // (can: () => true), so ability.can is not a tenant floor; returning it here
+    // let a non-member act on any org whose slug they knew. An unscoped context
+    // stays permissive (identity-only checks predate any scope), and a platform
+    // admin keeps their ability.
+    if (!user.admin) {
+      const denied = await this.deniedByMembership(
+        context.organizationId,
+        context.projectId,
+        user.id
+      );
+      if (denied) return { ok: false, reason: "unauthorized" };
+    }
 
     const subject: RbacSubject = {
       type: "user",
@@ -269,10 +132,50 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     };
   }
 
+  /**
+   * Whether a non-admin user is outside the tenant a scoped context names. A project-only scope
+   * resolves through the project's organization, so the floor holds whichever scope a route
+   * resolves; an unscoped context is not a tenant claim and is never denied here.
+   *
+   * Both lookups read the replica first and fall back to the primary before denying: org creation,
+   * invite acceptance and SSO provisioning all write to the primary, so a member who just joined
+   * must not be bounced while the row replicates.
+   */
+  private async deniedByMembership(
+    organizationId: string | undefined,
+    projectId: string | undefined,
+    userId: string
+  ): Promise<boolean> {
+    let orgId = organizationId;
+
+    if (!orgId && projectId) {
+      const project =
+        (await this.replica.project.findFirst({
+          where: { id: projectId },
+          select: { organizationId: true },
+        })) ??
+        (await this.prisma.project.findFirst({
+          where: { id: projectId },
+          select: { organizationId: true },
+        }));
+      // An unresolvable project names no tenant, so there is nothing to deny against.
+      if (!project) return false;
+      orgId = project.organizationId;
+    }
+
+    if (!orgId) return false;
+
+    const where = { organizationId: orgId, userId };
+    const member =
+      (await this.replica.orgMember.findFirst({ where, select: { id: true } })) ??
+      (await this.prisma.orgMember.findFirst({ where, select: { id: true } }));
+    return !member;
+  }
+
   async authenticateAuthorizeBearer(
     request: Request,
     check: { action: string; resource: RbacResource | RbacResource[] },
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerAuthResult> {
     const auth = await this.authenticateBearer(request, options);
     if (!auth.ok) return auth;
@@ -357,18 +260,43 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     if (!claims) {
       return { ok: false, status: 401, error: "Invalid user-actor token" };
     }
+
+    // Same tenant floor as authenticateSession: in a scoped context a non-member's
+    // delegated token is denied here, not handed a usable ability (even for reads).
+    // Admins are exempt. An unscoped context is not a tenant claim — skip the lookup
+    // entirely and keep the prior behavior (no user query, no denial).
+    if (context.organizationId || context.projectId) {
+      const where = { id: claims.userId };
+      const user =
+        (await this.replica.user.findFirst({ where, select: { id: true, admin: true } })) ??
+        (await this.prisma.user.findFirst({ where, select: { id: true, admin: true } }));
+      if (!user) {
+        return { ok: false, status: 401, error: "Invalid user-actor token" };
+      }
+      if (!user.admin) {
+        const denied = await this.deniedByMembership(
+          context.organizationId,
+          context.projectId,
+          user.id
+        );
+        if (denied) return { ok: false, status: 403, error: "Unauthorized" };
+      }
+    }
+
     return {
       ok: true,
       userId: claims.userId,
+      claims,
       subject: {
         type: "userActor",
         userId: claims.userId,
         client: claims.client,
+        environmentId: claims.environmentId,
         organizationId: context.organizationId ?? "",
         projectId: context.projectId,
       },
-      // No plugin → permissive, matching the fallback's PAT behaviour.
-      ability: permissiveAbility,
+      // A delegated token is a downgrade of the user: never the blanket ability a PAT gets here.
+      ability: buildJwtAbility(claims.cap ?? CAPLESS_USER_ACTOR_SCOPES),
     };
   }
 
@@ -388,14 +316,14 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     taskIdentifiers?: string[];
   }) {
     // Without a plugin there is no preset catalogue, so full access is the only
-    // policy on offer, but the caller still has to ask for it by name. Any
+    // policy on offer — but the caller still has to ask for it by name. Any
     // other preset, or any task selection, is a restricted key and unavailable.
     if (params.presetId !== FULL_ACCESS_PRESET_ID || (params.taskIdentifiers?.length ?? 0) > 0) {
       return { ok: false as const, error: "API key access presets are not available" };
     }
 
-    // `presetId: null` because this install has no catalogue to reference. The
-    // persisted scopes remain the source of truth for authorization.
+    // `presetId: null` because this install has no catalogue to reference — the
+    // key is full-access, not an instance of a named preset.
     return {
       ok: true as const,
       policy: { presetId: null, scopes: ["admin"] },
@@ -461,48 +389,6 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   async removeTokenRole(): Promise<RoleAssignmentResult> {
     return { ok: false, error: "RBAC plugin not installed" };
   }
-}
-
-function isPublicJWT(token: string): boolean {
-  const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
-    );
-    return payload !== null && typeof payload === "object" && payload.pub === true;
-  } catch {
-    return false;
-  }
-}
-
-function extractJWTSub(token: string): string | undefined {
-  const parts = token.split(".");
-  if (parts.length !== 3) return undefined;
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")
-    );
-    return payload !== null && typeof payload === "object" && typeof payload.sub === "string"
-      ? payload.sub
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// Coerce a Prisma RuntimeEnvironment payload (with project/organization/
-// orgMember/parentEnvironment includes) into the slim AuthenticatedEnvironment
-// the auth contract carries. The slim type accepts both `number` and
-// Decimal-like for `concurrencyLimitBurstFactor`, but explicit coercion
-// here keeps the value a plain number across the auth boundary so
-// downstream consumers don't have to narrow before doing arithmetic.
-function toAuthenticatedEnvironment(env: RbacEnvironment): RbacEnvironment {
-  const burst = env.concurrencyLimitBurstFactor;
-  return {
-    ...env,
-    concurrencyLimitBurstFactor: typeof burst === "number" ? burst : burst.toNumber(),
-  };
 }
 
 function toRbacUser(user: {

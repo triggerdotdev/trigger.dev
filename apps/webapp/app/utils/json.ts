@@ -1,5 +1,3 @@
-import type { z } from "zod";
-
 export function safeJsonParse(json?: string): unknown {
   if (!json) {
     return;
@@ -10,57 +8,4 @@ export function safeJsonParse(json?: string): unknown {
   } catch (_e) {
     return null;
   }
-}
-
-export function safeJsonZodParse<T>(
-  schema: z.Schema<T>,
-  json: string
-): z.SafeParseReturnType<unknown, T> | undefined {
-  const parsed = safeJsonParse(json);
-
-  if (parsed === null) {
-    return;
-  }
-
-  return schema.safeParse(parsed);
-}
-
-export async function safeJsonFromResponse(response: Response) {
-  const json = await response.text();
-  return safeJsonParse(json);
-}
-
-export async function safeBodyFromResponse<T>(
-  response: Response,
-  schema: z.Schema<T>
-): Promise<T | undefined> {
-  const json = await response.text();
-  const unknownJson = safeJsonParse(json);
-
-  if (!unknownJson) {
-    return;
-  }
-
-  const parsedJson = schema.safeParse(unknownJson);
-
-  if (parsedJson.success) {
-    return parsedJson.data;
-  }
-}
-
-export async function safeParseBodyFromResponse<T>(
-  response: Response,
-  schema: z.Schema<T>
-): Promise<z.SafeParseReturnType<unknown, T> | undefined> {
-  try {
-    const unknownJson = await response.json();
-
-    if (!unknownJson) {
-      return;
-    }
-
-    const parsedJson = schema.safeParse(unknownJson);
-
-    return parsedJson;
-  } catch (_error) {}
 }

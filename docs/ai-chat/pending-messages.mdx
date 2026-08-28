@@ -10,7 +10,9 @@ When an AI agent is executing tool calls, users may want to send a message that 
 
 By default (without `pendingMessages`), a message sent while the agent is responding never interrupts the in-flight response: it's buffered and processed as its own turn once the current turn completes, with multiple messages running sequentially in arrival order.
 
-The `pendingMessages` option enables steering instead, injecting user messages between tool-call steps via the AI SDK's `prepareStep`. Messages that arrive during streaming are queued and injected at the next step boundary. If there are no more step boundaries (single-step response or final text generation), the message becomes the next turn automatically.
+The `pendingMessages` option enables steering instead, injecting user messages between tool-call steps via the AI SDK's `prepareStep`. Messages that arrive during streaming are queued and injected at the next step boundary. A message that is not injected becomes the next turn instead, whether that is because `shouldInject` returned `false` or because there were no more step boundaries (single-step response or final text generation). The backend handles that, so no client-side re-send is involved.
+
+Injection is what needs wiring: the `pendingMessages` options only reach `streamText` if you spread `chat.toStreamTextOptions()` (or pass `prepareStep`). Without that, nothing injects, so every mid-turn message is answered as the next turn. Deferral does not depend on it.
 
 ## How it works
 
@@ -20,7 +22,7 @@ The `pendingMessages` option enables steering instead, injecting user messages b
 4. At the next `prepareStep` boundary (between tool-call steps), `shouldInject` is called
 5. If it returns `true`, the message is injected into the LLM's context
 6. A `data-pending-message-injected` stream chunk confirms injection to the frontend
-7. If `prepareStep` never fires (no tool calls), the message becomes the next turn
+7. If `shouldInject` returns `false`, or `prepareStep` never fires (no tool calls), the message stays queued on the backend and is answered as the next turn
 
 ## Backend: chat.agent
 
@@ -310,7 +312,7 @@ function Chat({ chatId }: { chatId: string }) {
 
 ### Message lifecycle
 
-- **Steering messages** are sent via `transport.sendPendingMessage()` immediately. They appear as purple pending bubbles. If injected, they disappear from the overlay and render inline at the injection point. If not injected (no more step boundaries), they auto-send as the next turn when the response finishes.
+- **Steering messages** are sent via `transport.sendPendingMessage()` immediately. They appear as purple pending bubbles. If injected, they disappear from the overlay and render inline at the injection point. If not injected, the backend answers them as the next turn once the response finishes; the client does not need to re-send them.
 
 - **Queued messages** stay client-side until the turn completes, then auto-send as the next turn via `sendMessage()`. They can be promoted to steering mid-stream by clicking "Steer instead".
 

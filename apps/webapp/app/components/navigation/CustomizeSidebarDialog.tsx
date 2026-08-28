@@ -15,7 +15,7 @@ import { Icon, type RenderIcon } from "../primitives/Icon";
 import { Input } from "../primitives/Input";
 import { isItemHidden, orderByPreference } from "./sideMenuTypes";
 
-export type CustomizeSidebarItem = {
+type CustomizeSidebarItem = {
   id: string;
   name: string;
   icon: RenderIcon;
@@ -45,6 +45,8 @@ export type SidebarCustomizationPayload = {
   sectionItemOrder: Record<string, string[]> | null;
   favorites?: Array<{ id: string; label: string }>;
   removedFavoriteIds?: string[];
+  /** Item ids this dialog rendered, so the write leaves ids it never saw alone. */
+  knownItemIds: string[];
 };
 
 type DialogState = {
@@ -248,6 +250,7 @@ export function CustomizeSidebarDialog({
         ? favoriteOrder.map((id) => ({ id, label: state.labels[id] ?? "" }))
         : undefined,
       removedFavoriteIds: state.removed.length > 0 ? state.removed : undefined,
+      knownItemIds: sections.flatMap((section) => section.items.map((item) => item.id)),
     };
 
     onConfirm(payload);

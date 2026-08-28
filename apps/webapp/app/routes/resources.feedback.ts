@@ -1,12 +1,10 @@
 import { parseWithZod } from "@conform-to/zod";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { type PlainClient, uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/ui-components";
 import { z } from "zod";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { sendToPlain } from "~/utils/plain.server";
-
-let _client: PlainClient | undefined;
 
 export const feedbackTypes = {
   bug: {

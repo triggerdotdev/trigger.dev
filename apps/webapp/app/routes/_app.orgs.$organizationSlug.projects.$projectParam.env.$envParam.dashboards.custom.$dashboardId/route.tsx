@@ -49,7 +49,7 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { removeFavoritesByUrlSubstring } from "~/services/dashboardPreferences.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
   queryPath,
@@ -58,6 +58,14 @@ import {
 } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboards.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data }) => [
+  data?.title ?? "Dashboard",
+  "Dashboards",
+]);
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
@@ -98,7 +106,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   ]);
 
   // Admins and impersonating users can use EXPLAIN
-  const isAdmin = user.admin || user.isImpersonating;
+  const isAdmin = hasAdminDisplayAccess(user);
 
   // Compute widget count from dashboard layout
   const widgetCount = Object.keys(dashboard.layout.widgets).length;
@@ -179,6 +187,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       throw new Response("Invalid action", { status: 400 });
     }
   }
+};
+
+export const handle: Handle = {
+  agentPageContext: (data) => dashboardsAgentPageContext(data),
 };
 
 export default function Page() {
@@ -665,12 +677,14 @@ function RenameDashboardDialog({ title }: { title: string }) {
   // Close dialog when navigation completes
   useEffect(() => {
     if (navigation.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);
 
   // Sync newTitle state when title changes (after successful rename)
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- A completed rename intentionally resets this editable title draft.
     setNewTitle(title);
   }, [title]);
 
@@ -737,6 +751,7 @@ function DeleteDashboardDialog({ title }: { title: string }) {
   // Close dialog when navigation completes
   useEffect(() => {
     if (navigation.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setIsOpen(false);
     }
   }, [navigation.state]);

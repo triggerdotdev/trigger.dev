@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/mutations.ts"],
+  "compilerOptions": {
+    "noEmit": false,
+    // A build that does not compile must not leave a dist behind: three type errors shipped in the
+    // last wave while `build` still emitted, so the failure was only visible in the exit code.
+    "noEmitOnError": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"]
+  }
+}

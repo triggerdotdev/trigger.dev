@@ -38,14 +38,14 @@ export function configureSwitchProfilesCommand(program: Command) {
     });
 }
 
-export async function switchProfilesCommand(profile: string | undefined, options: unknown) {
+async function switchProfilesCommand(profile: string | undefined, options: unknown) {
   return await wrapCommandAction("switch", SwitchProfilesOptions, options, async (opts) => {
     await printInitialBanner(false);
     return await switchProfiles(profile, opts);
   });
 }
 
-export async function switchProfiles(profile: string | undefined, options: SwitchProfilesOptions) {
+async function switchProfiles(profile: string | undefined, options: SwitchProfilesOptions) {
   intro("Switch profiles");
 
   const authConfig = readAuthConfigFile();

@@ -7,6 +7,7 @@ import type {
 import type { RunStore } from "@internal/run-store";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
@@ -95,8 +96,8 @@ export class EnqueueSystem {
         {
           run: run,
           snapshot: {
-            executionStatus: snapshot?.status ?? "QUEUED",
-            description: snapshot?.description ?? "Run was QUEUED",
+            executionStatus: snapshot?.status ?? QUEUED_SNAPSHOT_STATUS,
+            description: snapshot?.description ?? QUEUED_SNAPSHOT_DESCRIPTION,
             metadata: snapshot?.metadata ?? undefined,
           },
           previousSnapshotId,
@@ -113,42 +114,74 @@ export class EnqueueSystem {
         store
       );
 
-      // Force development runs to use the environment id as the worker queue.
-      const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
-
-      const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
-      const timestamp = queuePositionMs - run.priorityMs;
-      const eligibleAtMs = anchorEligibilityAtQueuePosition ? queuePositionMs : Date.now();
-
-      let ttlExpiresAt: number | undefined;
-      if (includeTtl && run.ttl) {
-        const expireAt = parseNaturalLanguageDuration(run.ttl);
-        if (expireAt) {
-          ttlExpiresAt = expireAt.getTime();
-        }
-      }
-
-      await this.$.runQueue.enqueueMessage({
+      await this.publishRun({
+        run,
         env,
-        workerQueue,
+        includeTtl,
+        anchorEligibilityAtQueuePosition,
         enableFastPath,
-        message: {
-          runId: run.id,
-          taskIdentifier: run.taskIdentifier,
-          orgId: env.organization.id,
-          projectId: env.project.id,
-          environmentId: env.id,
-          environmentType: env.type,
-          queue: run.queue,
-          concurrencyKey: run.concurrencyKey ?? undefined,
-          timestamp,
-          eligibleAtMs,
-          attempt: 0,
-          ttlExpiresAt,
-        },
       });
 
       return newSnapshot;
+    });
+  }
+
+  /**
+   * Publishes the run to the RunQueue without writing an execution snapshot. Callers that already
+   * hold a `QUEUED` snapshot (the trigger path writes one inside the run-create transaction) use
+   * this so the run does not pay for a second snapshot write.
+   */
+  public async publishRun({
+    run,
+    env,
+    includeTtl = false,
+    anchorEligibilityAtQueuePosition = false,
+    enableFastPath = false,
+  }: {
+    run: TaskRun;
+    env: MinimalAuthenticatedEnvironment;
+    /** See `enqueueRun`. */
+    includeTtl?: boolean;
+    /** See `enqueueRun`. */
+    anchorEligibilityAtQueuePosition?: boolean;
+    /** When true, allow the queue to push directly to worker queue if concurrency is available. */
+    enableFastPath?: boolean;
+  }) {
+    // Force development runs to use the environment id as the worker queue.
+    const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
+
+    const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
+    const timestamp = queuePositionMs - run.priorityMs;
+    const eligibleAtMs = anchorEligibilityAtQueuePosition ? queuePositionMs : Date.now();
+
+    // Include TTL only when explicitly requested (first enqueue from trigger).
+    // Re-enqueues (waitpoint, checkpoint, delayed, pending version) must not add TTL.
+    let ttlExpiresAt: number | undefined;
+    if (includeTtl && run.ttl) {
+      const expireAt = parseNaturalLanguageDuration(run.ttl);
+      if (expireAt) {
+        ttlExpiresAt = expireAt.getTime();
+      }
+    }
+
+    await this.$.runQueue.enqueueMessage({
+      env,
+      workerQueue,
+      enableFastPath,
+      message: {
+        runId: run.id,
+        taskIdentifier: run.taskIdentifier,
+        orgId: env.organization.id,
+        projectId: env.project.id,
+        environmentId: env.id,
+        environmentType: env.type,
+        queue: run.queue,
+        concurrencyKey: run.concurrencyKey ?? undefined,
+        timestamp,
+        eligibleAtMs,
+        attempt: 0,
+        ttlExpiresAt,
+      },
     });
   }
 }

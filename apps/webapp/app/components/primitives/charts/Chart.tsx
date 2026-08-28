@@ -5,7 +5,9 @@ import { AnimatedNumber } from "../AnimatedNumber";
 import TooltipPortal from "../TooltipPortal";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
-const THEMES = { light: "", dark: '[data-theme="dark"]' } as const;
+// :is() keeps this one selector once interpolated below; a comma would break
+// scoping. `light` is unscoped on purpose: it's the base the dark rule overrides.
+const THEMES = { light: "", dark: ':is([data-theme="dark"], [data-theme="black"])' } as const;
 
 export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
 
@@ -250,8 +252,6 @@ const ChartTooltipContent = React.forwardRef<
 );
 ChartTooltipContent.displayName = "ChartTooltip";
 
-const ChartLegend = RechartsPrimitive.Legend;
-
 type ExtendedLegendPayload = Parameters<
   NonNullable<RechartsPrimitive.LegendProps["formatter"]>
 >[0] & {
@@ -456,12 +456,4 @@ function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key:
   return configLabelKey in config ? config[configLabelKey] : config[key as keyof typeof config];
 }
 
-export {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  ChartLegendContentRows,
-  ChartStyle,
-};
+export { ChartContainer, ChartTooltip, ChartTooltipContent };

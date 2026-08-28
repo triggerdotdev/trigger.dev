@@ -40,6 +40,9 @@ import {
   VercelOnboardingModal,
   VercelSettingsPanel,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Integrations");
 
 export const handle = { pageTitle: "Integrations" };
 
@@ -56,8 +59,9 @@ export const loader = dashboardLoader(
   async ({ params, user, ability }) => {
     const { projectParam, organizationSlug } = params;
 
+    const canManageBuildSettings = ability.can("write", { type: "github" });
     const canManageIntegrations =
-      ability.can("write", { type: "github" }) || ability.can("write", { type: "vercel" });
+      canManageBuildSettings || ability.can("write", { type: "vercel" });
 
     if (!canManageIntegrations) {
       throwPermissionDenied("With your current role, you can't manage integrations.");
@@ -99,6 +103,7 @@ export const loader = dashboardLoader(
       githubAppEnabled: gitHubApp.enabled,
       buildSettings,
       vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
+      canManageBuildSettings,
     });
   }
 );
@@ -205,7 +210,7 @@ export const action = dashboardAction(
 );
 
 export default function IntegrationsSettingsPage() {
-  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
+  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled, canManageBuildSettings } =
     useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -217,7 +222,16 @@ export default function IntegrationsSettingsPage() {
   const nextUrl = searchParams.get("next");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const vercelFetcher = useTypedFetcher<typeof vercelLoader>();
+  const loadVercelOnboarding = vercelFetcher.load;
   const onboardingData = vercelFetcher.data?.onboardingData ?? null;
+  const hasVercelFetcherData = vercelFetcher.data !== undefined;
+  const onboardingDataUnavailable =
+    hasVercelFetcherData && vercelFetcher.state === "idle" && onboardingData === null;
+  const vercelOnboardingPath = `${vercelResourcePath(
+    organization.slug,
+    project.slug,
+    environment.slug
+  )}?vercelOnboarding=true`;
 
   // Helper to open modal and ensure query param is present
   const openVercelOnboarding = useCallback(() => {
@@ -251,17 +265,12 @@ export default function IntegrationsSettingsPage() {
       if (onboardingData && vercelFetcher.state === "idle") {
         // Data is loaded, ensure modal is open (query param takes precedence)
         if (!isModalOpen) {
+          // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
           openVercelOnboarding();
         }
-      } else if (vercelFetcher.state === "idle" && vercelFetcher.data === undefined) {
+      } else if (vercelFetcher.state === "idle" && !hasVercelFetcherData) {
         // Load onboarding data
-        vercelFetcher.load(
-          `${vercelResourcePath(
-            organization.slug,
-            project.slug,
-            environment.slug
-          )}?vercelOnboarding=true`
-        );
+        loadVercelOnboarding(vercelOnboardingPath);
       }
     } else if (!hasQueryParam && isModalOpen) {
       // Query param removed but modal is open, close modal
@@ -270,14 +279,13 @@ export default function IntegrationsSettingsPage() {
   }, [
     hasQueryParam,
     vercelIntegrationEnabled,
-    organization.slug,
-    project.slug,
-    environment.slug,
     onboardingData,
-    vercelFetcher.data,
+    hasVercelFetcherData,
     vercelFetcher.state,
     isModalOpen,
     openVercelOnboarding,
+    loadVercelOnboarding,
+    vercelOnboardingPath,
   ]);
 
   // Ensure modal stays open when query param is present (even after data reloads)
@@ -286,6 +294,7 @@ export default function IntegrationsSettingsPage() {
     if (hasQueryParam && !isModalOpen) {
       // Query param is present but modal is closed, open it
       // This ensures the modal stays open during the onboarding flow
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       openVercelOnboarding();
     }
   }, [hasQueryParam, isModalOpen, openVercelOnboarding]);
@@ -295,10 +304,11 @@ export default function IntegrationsSettingsPage() {
     if (hasQueryParam && onboardingData && vercelFetcher.state === "idle") {
       // Data loaded and query param is present, ensure modal is open
       if (!isModalOpen) {
+        // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
         openVercelOnboarding();
       }
     }
-  }, [hasQueryParam, vercelFetcher.data, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
+  }, [hasQueryParam, onboardingData, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
 
   // Track if we're waiting for data from button click (not query param)
   const waitingForButtonClickRef = useRef(false);
@@ -319,19 +329,11 @@ export default function IntegrationsSettingsPage() {
     } else {
       // Need to load data first, mark that we're waiting for button click
       waitingForButtonClickRef.current = true;
-      vercelFetcher.load(
-        `${vercelResourcePath(
-          organization.slug,
-          project.slug,
-          environment.slug
-        )}?vercelOnboarding=true`
-      );
+      loadVercelOnboarding(vercelOnboardingPath);
     }
   }, [
-    organization.slug,
-    project.slug,
-    environment.slug,
-    vercelFetcher,
+    loadVercelOnboarding,
+    vercelOnboardingPath,
     onboardingData,
     setSearchParams,
     hasQueryParam,
@@ -351,7 +353,7 @@ export default function IntegrationsSettingsPage() {
     <>
       <SettingsContainer className="md:mt-6">
         {githubAppEnabled && (
-          <React.Fragment>
+          <>
             <SettingsSection>
               <SettingsHeader title="Git settings" />
               <GitHubSettingsPanel
@@ -377,24 +379,27 @@ export default function IntegrationsSettingsPage() {
                 />
               </SettingsSection>
             )}
-
-            <SettingsSection>
-              <SettingsHeader
-                title="Build settings"
-                description={
-                  <>
-                    Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
-                    <InlineCode variant="extra-small" className="whitespace-nowrap">
-                      --native-build-server
-                    </InlineCode>{" "}
-                    flag.
-                  </>
-                }
-              />
-              <BuildSettingsForm buildSettings={buildSettings ?? {}} />
-            </SettingsSection>
-          </React.Fragment>
+          </>
         )}
+
+        <SettingsSection>
+          <SettingsHeader
+            title="Build settings"
+            description={
+              <>
+                Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
+                <InlineCode variant="extra-small" className="whitespace-nowrap">
+                  --native-build-server
+                </InlineCode>{" "}
+                flag.
+              </>
+            }
+          />
+          <BuildSettingsForm
+            buildSettings={buildSettings ?? {}}
+            canManageBuildSettings={canManageBuildSettings}
+          />
+        </SettingsSection>
       </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
@@ -409,15 +414,12 @@ export default function IntegrationsSettingsPage() {
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
           hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          onboardingDataUnavailable={onboardingDataUnavailable}
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
-            vercelFetcher.load(
-              `${vercelResourcePath(
-                organization.slug,
-                project.slug,
-                environment.slug
-              )}?vercelOnboarding=true${
+            loadVercelOnboarding(
+              `${vercelOnboardingPath}${
                 vercelEnvironmentId
                   ? `&vercelEnvironmentId=${encodeURIComponent(vercelEnvironmentId)}`
                   : ""
@@ -430,7 +432,13 @@ export default function IntegrationsSettingsPage() {
   );
 }
 
-function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) {
+function BuildSettingsForm({
+  buildSettings,
+  canManageBuildSettings = true,
+}: {
+  buildSettings: BuildSettings;
+  canManageBuildSettings?: boolean;
+}) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
@@ -451,6 +459,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
       buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "") ||
       buildSettingsValues.useNativeBuildServer !== nativeBuildServerEnabled;
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasBuildSettingsChanges(hasChanges);
   }, [buildSettingsValues, buildSettings, nativeBuildServerEnabled]);
 
@@ -577,7 +586,12 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
           name="action"
           value="update-build-settings"
           variant="secondary/small"
-          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
+          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges || !canManageBuildSettings}
+          tooltip={
+            canManageBuildSettings
+              ? undefined
+              : "You don't have permission to manage build settings"
+          }
           LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
         >
           Save
