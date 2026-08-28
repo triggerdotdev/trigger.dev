@@ -572,6 +572,7 @@ describe("RunEngine attempt failures", () => {
 
         for (let attempt = 1; attempt <= taskMaxAttempts; attempt++) {
           await setTimeout(500);
+          await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id);
           const dequeued = await engine.dequeueFromWorkerQueue({
             consumerId: "test_12345",
             workerQueue: "main",
