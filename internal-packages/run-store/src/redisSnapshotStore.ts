@@ -7,6 +7,7 @@ import {
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
+import { CircuitBreaker, type CircuitBreakerOptions } from "./circuitBreaker.js";
 import { ResidencyCache } from "./residencyCache.js";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
@@ -242,6 +243,8 @@ export type RedisSnapshotStoreOptions = RedisSnapshotStoreConnection & {
   completedTtlMs: number;
   /** Entries in the per-process residency cache. See {@link ResidencyCache}. */
   residencyCacheMax?: number;
+  /** Tuning for the per-process breaker. See {@link CircuitBreaker}. */
+  breaker?: CircuitBreakerOptions;
   sinceLimit?: number;
   highWater?: { entryBytes?: number; cycleKeyBytes?: number; cycleCount?: number };
   metrics?: SnapshotStoreMetrics;
@@ -279,6 +282,12 @@ export class RedisSnapshotStore {
    * replies that are the cache's only ground truth.
    */
   readonly #residency: ResidencyCache;
+  /**
+   * Bounds what the residency cache cannot: the first probe for a run this process has not seen,
+   * which under a brownout costs the whole retry budget. After a few connectivity failures the store
+   * stops calling out at all, so a sick Redis removes itself from the run path with no operator.
+   */
+  readonly #breaker: CircuitBreaker;
   #quit?: Promise<void>;
 
   constructor(options: RedisSnapshotStoreOptions) {
@@ -290,6 +299,7 @@ export class RedisSnapshotStore {
     this.#residency = new ResidencyCache({
       ...(options.residencyCacheMax !== undefined && { max: options.residencyCacheMax }),
     });
+    this.#breaker = new CircuitBreaker(options.breaker ?? {});
     this.ownsClient = options.client === undefined;
     this.redis =
       options.client ??
@@ -315,13 +325,23 @@ export class RedisSnapshotStore {
     await this.#quit;
   }
 
+  /**
+   * Every command goes through here, so the breaker sits on the one seam rather than on each method.
+   * Latency is still recorded for a refused call: a call that cost nothing because the circuit was
+   * open is exactly the thing an operator wants to see in the latency series.
+   */
   async #timed<T>(op: string, fn: () => Promise<T>): Promise<T> {
     const started = Date.now();
     try {
-      return await fn();
+      return await this.#breaker.run(fn);
     } finally {
       this.metrics?.recordLatency(op, Date.now() - started);
     }
+  }
+
+  /** Test seam. */
+  get breakerState(): "closed" | "open" | "half-open" {
+    return this.#breaker.state;
   }
 
   /** Test seam. */

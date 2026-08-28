@@ -884,6 +884,29 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * Whether this run's reads come from Redis. Hashed on the run id so a run does not change store
    * between two reads of the same poll, which would let a caller see the log go backwards.
    */
+  /**
+   * Whether a failed Redis read may be answered from Postgres.
+   *
+   * The read paths fell back on a MISS and on a dangling cycle, but not on an ERROR, so a brownout
+   * at `redis-read` turned an engine read into a throw once the command timed out. Postgres still
+   * holds every row below `redis-only`, so falling back is strictly better than failing.
+   *
+   * At `redis-only` it is not an option: nothing else holds the rows, so the error is the answer and
+   * hiding it would serve an empty history as though it were real.
+   */
+  #readMayFallBack(): boolean {
+    return this.mode !== "redis-only";
+  }
+
+  #reportReadUnavailable(method: string, runId: string, error: unknown): void {
+    this.logger.warn("snapshot read fell back to Postgres after a store error", {
+      method,
+      runId,
+      error,
+    });
+    this.metrics?.recordRead(method, "postgres");
+  }
+
   protected readsFromRedis(runId: string): boolean {
     if (this.mode !== "redis-read" && this.mode !== "redis-only") return false;
 
@@ -917,7 +940,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
 
-    const read = await this.redis.getLatest(runId, { ...(environmentId && { environmentId }) });
+    let read;
+    try {
+      read = await this.redis.getLatest(runId, { ...(environmentId && { environmentId }) });
+    } catch (error) {
+      if (!this.#readMayFallBack()) throw error;
+      this.#reportReadUnavailable("findLatestExecutionSnapshot", runId, error);
+      return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
+    }
     if (!read) {
       // A miss is the coexistence path: a pre-cutover run, or expired history. It is not an error.
       this.metrics?.recordRead("findLatestExecutionSnapshot", "postgres");
@@ -945,9 +975,16 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findExecutionSnapshot(args, client);
     }
 
-    const found = await this.redis.getById(shape.runId, shape.id, {
-      ...(shape.environmentId && { environmentId: shape.environmentId }),
-    });
+    let found;
+    try {
+      found = await this.redis.getById(shape.runId, shape.id, {
+        ...(shape.environmentId && { environmentId: shape.environmentId }),
+      });
+    } catch (error) {
+      if (!this.#readMayFallBack()) throw error;
+      this.#reportReadUnavailable("findExecutionSnapshot", shape.runId, error);
+      return this.delegate.findExecutionSnapshot(args, client);
+    }
 
     if (!found) {
       this.metrics?.recordRead("findExecutionSnapshot", "postgres");
@@ -970,10 +1007,17 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
 
-    const result = await this.redis.getSinceCreatedAt(shape.runId, shape.createdAt, {
-      limit: shape.take,
-      ...(shape.environmentId && { environmentId: shape.environmentId }),
-    });
+    let result;
+    try {
+      result = await this.redis.getSinceCreatedAt(shape.runId, shape.createdAt, {
+        limit: shape.take,
+        ...(shape.environmentId && { environmentId: shape.environmentId }),
+      });
+    } catch (error) {
+      if (!this.#readMayFallBack()) throw error;
+      this.#reportReadUnavailable("findManyExecutionSnapshots", shape.runId, error);
+      return this.delegate.findManyExecutionSnapshots(args, client);
+    }
 
     if (result.kind === "miss") {
       this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
@@ -1007,7 +1051,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
 
-    const ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
+    let ids;
+    try {
+      ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
+    } catch (error) {
+      if (!this.#readMayFallBack()) throw error;
+      this.#reportReadUnavailable("findSnapshotCompletedWaitpointIds", runId, error);
+      return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
+    }
     if (!ids.present) {
       this.metrics?.recordRead("findSnapshotCompletedWaitpointIds", "postgres");
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
@@ -1026,7 +1077,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
 
-    const ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
+    let ids;
+    try {
+      ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
+    } catch (error) {
+      if (!this.#readMayFallBack()) throw error;
+      this.#reportReadUnavailable("findSnapshotCompletedWaitpointIdsWithPresence", runId, error);
+      return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
+    }
     if (!ids.present) {
       // present=false means this reader cannot see the snapshot, so its empty list is not
       // authoritative and the engine's read-repair needs the Postgres answer.

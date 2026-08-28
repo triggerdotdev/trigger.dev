@@ -184,3 +184,71 @@ describe("Redis stays off the hot path for a non-resident run", () => {
     }
   );
 });
+
+describe("a Redis that stops answering", () => {
+  containerTest(
+    "serves reads from Postgres instead of throwing into the engine",
+    async ({ prisma, redisOptions }) => {
+      // The read paths fell back on a miss and on a dangling cycle, but not on an ERROR, so a
+      // brownout at redis-read turned an engine read into a throw once the command timed out.
+      const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      const decorated = new TaskRunExecutionSnapshotStore(
+        new PostgresRunStore({ prisma, readOnlyPrisma: prisma }) as unknown as RunStore,
+        { store: redis, mode: "redis-read", readPercent: 100 }
+      );
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        await decorated.createRun({
+          data: buildCreateRunData(runId, env),
+          snapshot: birthSnapshot(env),
+        });
+
+        // Reads work while Redis answers.
+        expect(await decorated.findLatestExecutionSnapshot(runId)).not.toBeNull();
+
+        // Now take Redis away underneath it, the way a brownout does.
+        await redis.quit();
+
+        const served = await decorated.findLatestExecutionSnapshot(runId);
+        expect(served).not.toBeNull();
+        expect(served!.runId).toBe(runId);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest("stops calling out once the circuit opens", async ({ prisma, redisOptions }) => {
+    const redis = new RedisSnapshotStore({
+      redisOptions,
+      completedTtlMs: COMPLETED_TTL_MS,
+      breaker: { failureThreshold: 2, openDurationMs: 60_000 },
+    });
+    const decorated = new TaskRunExecutionSnapshotStore(
+      new PostgresRunStore({ prisma, readOnlyPrisma: prisma }) as unknown as RunStore,
+      { store: redis, mode: "redis-read", readPercent: 100 }
+    );
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = generateInternalId();
+      await decorated.createRun({
+        data: buildCreateRunData(runId, env),
+        snapshot: birthSnapshot(env),
+      });
+
+      await redis.quit();
+      expect(redis.breakerState).toBe("closed");
+
+      for (let i = 0; i < 4; i++) {
+        expect(await decorated.findLatestExecutionSnapshot(runId)).not.toBeNull();
+      }
+
+      // Open, so every later call is refused locally rather than waiting out another timeout. This
+      // is what bounds the cold-cache probe under a brownout.
+      expect(redis.breakerState).toBe("open");
+    } finally {
+      await redis.quit();
+    }
+  });
+});
