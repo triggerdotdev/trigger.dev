@@ -1,6 +1,11 @@
 import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { useLocation } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -12,9 +17,11 @@ import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentL
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
+  agentTakeoverClassName,
   FloatingAgentWindow,
-  readAgentFullscreen,
-  writeAgentFullscreen,
+  readAgentMode,
+  writeAgentMode,
+  type DashboardAgentMode,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
@@ -110,13 +117,12 @@ export function DashboardAgent({
     setUnreadWork(initialUnreadWork);
   }, [environment.id, initialUnreadWakes, initialUnreadWork]);
   // Read lazily so SSR always renders the side panel.
-  const [fullscreen, setFullscreen] = useState(readAgentFullscreen);
+  const [mode, setMode] = useState<DashboardAgentMode>(readAgentMode);
+  const fullscreen = mode === "fullscreen";
 
-  const toggleFullscreen = useCallback(() => {
-    setFullscreen((current) => {
-      writeAgentFullscreen(!current);
-      return !current;
-    });
+  const changeMode = useCallback((next: DashboardAgentMode) => {
+    writeAgentMode(next);
+    setMode(next);
   }, []);
 
   // Pathname only: filter and search-param changes must keep fullscreen.
@@ -125,9 +131,10 @@ export function DashboardAgent({
   useEffect(() => {
     if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
-    setFullscreen((current) => {
-      if (current) writeAgentFullscreen(false);
-      return false;
+    setMode((current) => {
+      if (current !== "fullscreen") return current;
+      writeAgentMode("floating");
+      return "floating";
     });
   }, [pathname]);
   const [newChatSeq, setNewChatSeq] = useState(0);
@@ -160,8 +167,11 @@ export function DashboardAgent({
       setOpen(false);
       // Pending requests must be dropped or a stale one re-applies on the next open.
       visibleChat.current = null;
-      setFullscreen(false);
-      writeAgentFullscreen(false);
+      setMode((current) => {
+        if (current !== "fullscreen") return current;
+        writeAgentMode("floating");
+        return "floating";
+      });
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       setWatchRequest(undefined);
@@ -344,27 +354,60 @@ export function DashboardAgent({
         // `relative` is the fullscreen takeover's containing block; the non-fullscreen
         // window is a page-wide floating overlay and doesn't need it.
         <div className="relative h-full min-h-0">
-          <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
-          <FloatingAgentWindow fullscreen={fullscreen}>
-            {({ dragHandleProps, dragHandleClassName }) => (
-              <DashboardAgentPanel
-                onClose={() => setPanelOpen(false)}
-                requestedMessage={requestedMessage}
-                openChatRequest={openChatRequest}
-                watchRequest={watchRequest}
-                newChatSeq={newChatSeq}
-                promotedPrompt={promotedPrompt}
-                onChatRead={markChatRead}
-                // The panel's own count, off the chat list it has already marked read.
-                onUnreadWorkChange={setUnreadWork}
-                onTurnActivityChange={handleTurnActivityChange}
-                isFullscreen={fullscreen}
-                onToggleFullscreen={toggleFullscreen}
-                dragHandleProps={dragHandleProps}
-                dragHandleClassName={dragHandleClassName}
-              />
-            )}
-          </FloatingAgentWindow>
+          {mode === "rightPanel" ? (
+            <ResizablePanelGroup
+              orientation="horizontal"
+              autosaveId="dashboard-agent-split"
+              className="h-full min-h-0"
+            >
+              <ResizablePanel id="dashboard-content" min="320px">
+                <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
+              </ResizablePanel>
+              <ResizableHandle id="dashboard-agent-handle" />
+              <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
+                <div className={agentTakeoverClassName(false)}>
+                  <DashboardAgentPanel
+                    onClose={() => setPanelOpen(false)}
+                    requestedMessage={requestedMessage}
+                    openChatRequest={openChatRequest}
+                    watchRequest={watchRequest}
+                    newChatSeq={newChatSeq}
+                    promotedPrompt={promotedPrompt}
+                    onChatRead={markChatRead}
+                    // The panel's own count, off the chat list it has already marked read.
+                    onUnreadWorkChange={setUnreadWork}
+                    onTurnActivityChange={handleTurnActivityChange}
+                    mode={mode}
+                    onModeChange={changeMode}
+                  />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          ) : (
+            <>
+              <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
+              <FloatingAgentWindow fullscreen={fullscreen}>
+                {({ dragHandleProps, dragHandleClassName }) => (
+                  <DashboardAgentPanel
+                    onClose={() => setPanelOpen(false)}
+                    requestedMessage={requestedMessage}
+                    openChatRequest={openChatRequest}
+                    watchRequest={watchRequest}
+                    newChatSeq={newChatSeq}
+                    promotedPrompt={promotedPrompt}
+                    onChatRead={markChatRead}
+                    // The panel's own count, off the chat list it has already marked read.
+                    onUnreadWorkChange={setUnreadWork}
+                    onTurnActivityChange={handleTurnActivityChange}
+                    mode={mode}
+                    onModeChange={changeMode}
+                    dragHandleProps={dragHandleProps}
+                    dragHandleClassName={dragHandleClassName}
+                  />
+                )}
+              </FloatingAgentWindow>
+            </>
+          )}
         </div>
       ) : (
         <div className="h-full min-h-0 overflow-hidden">{children}</div>

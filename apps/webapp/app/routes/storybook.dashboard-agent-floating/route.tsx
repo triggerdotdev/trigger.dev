@@ -5,7 +5,10 @@ import { ComponentNames } from "../storybook/StoryKit";
 import { ChatText, ChatTranscript, ChatTurn } from "~/components/dashboard-agent/chat-layout";
 import { DashboardAgentHeader } from "~/components/dashboard-agent/DashboardAgentHeader";
 import type { DashboardAgentChat } from "~/components/dashboard-agent/DashboardAgentHistory";
-import { FloatingAgentWindow } from "~/components/dashboard-agent/panel-layout";
+import {
+  FloatingAgentWindow,
+  type DashboardAgentMode,
+} from "~/components/dashboard-agent/panel-layout";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -15,10 +18,11 @@ const NO_CHATS: DashboardAgentChat[] = [];
 /** Static content only: this demos the shell (drag, resize, fullscreen), not a live backend. */
 export default function Story() {
   const [open, setOpen] = useState(true);
-  const [fullscreen, setFullscreen] = useState(false);
+  const [mode, setMode] = useState<DashboardAgentMode>("floating");
+  const fullscreen = mode === "fullscreen";
   const closeWindow = () => {
     setOpen(false);
-    setFullscreen(false);
+    setMode("floating");
   };
 
   // SSR has no window, so the initial rect (and hydrated one) would mismatch; render the
@@ -74,8 +78,8 @@ export default function Story() {
                   onOpenHistory={() => {}}
                   onSelectChat={() => {}}
                   onDeleteChat={() => {}}
-                  onToggleFullscreen={() => setFullscreen((f) => !f)}
-                  isFullscreen={fullscreen}
+                  mode={mode}
+                  onModeChange={setMode}
                   onClose={closeWindow}
                 />
               </motion.div>

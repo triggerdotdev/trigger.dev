@@ -21,6 +21,9 @@ export type FloatingDragProps = {
 };
 
 const AGENT_FULLSCREEN_STORAGE_KEY = "tdev:dashboard-agent:fullscreen";
+const AGENT_MODE_STORAGE_KEY = "tdev:dashboard-agent:mode";
+
+export type DashboardAgentMode = "floating" | "rightPanel" | "fullscreen";
 
 // V1 floating window: 380x512, bottom-right, matching the gallery's own panel frame.
 export const FLOATING_WIDTH = 380;
@@ -41,25 +44,31 @@ export function initialFloatingRect() {
   };
 }
 
-export function readAgentFullscreen(): boolean {
-  if (typeof window === "undefined") return false;
+// Reads the old boolean key once, so a browser that only ever knew fullscreen keeps its
+// choice after the upgrade to three modes.
+export function readAgentMode(): DashboardAgentMode {
+  if (typeof window === "undefined") return "floating";
   try {
-    return window.localStorage.getItem(AGENT_FULLSCREEN_STORAGE_KEY) === "true";
+    const stored = window.localStorage.getItem(AGENT_MODE_STORAGE_KEY);
+    if (stored === "floating" || stored === "rightPanel" || stored === "fullscreen") return stored;
+    return window.localStorage.getItem(AGENT_FULLSCREEN_STORAGE_KEY) === "true"
+      ? "fullscreen"
+      : "floating";
   } catch {
-    return false;
+    return "floating";
   }
 }
 
-export function writeAgentFullscreen(fullscreen: boolean): void {
+export function writeAgentMode(mode: DashboardAgentMode): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(AGENT_FULLSCREEN_STORAGE_KEY, fullscreen ? "true" : "false");
+    window.localStorage.setItem(AGENT_MODE_STORAGE_KEY, mode);
   } catch {
     /* ignore */
   }
 }
 
-function agentTakeoverClassName(fullscreen: boolean): string {
+export function agentTakeoverClassName(fullscreen: boolean): string {
   return fullscreen ? "absolute inset-0 z-10 bg-background-bright" : "h-full";
 }
 

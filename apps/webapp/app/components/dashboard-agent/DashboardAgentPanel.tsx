@@ -50,7 +50,7 @@ import {
   settleReadChats,
   unreadWorkCount,
 } from "./unread-counts";
-import { AgentPanelColumn } from "./panel-layout";
+import { AgentPanelColumn, type DashboardAgentMode } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
@@ -84,14 +84,14 @@ export function DashboardAgentPanel({
   onChatRead,
   onUnreadWorkChange,
   onTurnActivityChange,
-  isFullscreen = false,
-  onToggleFullscreen,
+  mode = "floating",
+  onModeChange,
   dragHandleProps,
   dragHandleClassName,
 }: {
   onClose: () => void;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
+  mode?: DashboardAgentMode;
+  onModeChange?: (mode: DashboardAgentMode) => void;
   /** Spread onto the header, which is the floating window's drag handle; already filtered by `FloatingAgentWindow`. */
   dragHandleProps?: Partial<PanHandlerProps>;
   dragHandleClassName?: string;
@@ -621,14 +621,14 @@ export function DashboardAgentPanel({
           onOpenHistory={loadHistory}
           onSelectChat={switchChat}
           onDeleteChat={deleteChat}
-          onToggleFullscreen={onToggleFullscreen ?? (() => {})}
-          isFullscreen={isFullscreen}
+          mode={mode}
+          onModeChange={onModeChange ?? (() => {})}
           onClose={onClose}
         />
       </motion.div>
 
       {/* Always mounted, so the chat keeps its transport, session and transcript. */}
-      <AgentPanelColumn fullscreen={isFullscreen}>
+      <AgentPanelColumn fullscreen={mode === "fullscreen"}>
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
             <AgentSpinner size={20} />

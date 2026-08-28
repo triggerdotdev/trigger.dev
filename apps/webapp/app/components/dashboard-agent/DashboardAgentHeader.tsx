@@ -1,9 +1,17 @@
-import { ArrowsPointingInIcon, ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
+import { ChatFloatingPanel } from "~/assets/icons/ChatFloatingPanel";
+import { ChatFullScreen } from "~/assets/icons/ChatFullScreen";
+import { ChatRightPanel } from "~/assets/icons/ChatRightPanel";
 import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { Button } from "~/components/primitives/Buttons";
-import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
 import {
@@ -12,6 +20,14 @@ import {
   type DashboardAgentChat,
 } from "./DashboardAgentHistory";
 import { chatHistoryTriggerLabel } from "./header-labels";
+import type { DashboardAgentMode } from "./panel-layout";
+
+const MODE_OPTIONS: { mode: DashboardAgentMode; label: string; Icon: typeof ChatFloatingPanel }[] =
+  [
+    { mode: "floating", label: "Floating window", Icon: ChatFloatingPanel },
+    { mode: "rightPanel", label: "Side panel", Icon: ChatRightPanel },
+    { mode: "fullscreen", label: "Fullscreen", Icon: ChatFullScreen },
+  ];
 
 // Display only. The key is registered once, in `DashboardAgent`; registering it
 // anywhere else makes the keystroke fire twice.
@@ -31,8 +47,8 @@ export function DashboardAgentHeader({
   onOpenHistory,
   onSelectChat,
   onDeleteChat,
-  onToggleFullscreen,
-  isFullscreen,
+  mode,
+  onModeChange,
   onClose,
 }: {
   title: string;
@@ -44,13 +60,16 @@ export function DashboardAgentHeader({
   onOpenHistory: () => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
-  onToggleFullscreen: () => void;
-  isFullscreen: boolean;
+  mode: DashboardAgentMode;
+  onModeChange: (mode: DashboardAgentMode) => void;
   onClose: () => void;
 }) {
   const [isHistoryOpen, setHistoryOpen] = useState(false);
   const [historyOpenedAt, setHistoryOpenedAt] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
+  const [isModeMenuOpen, setModeMenuOpen] = useState(false);
+  const CurrentModeIcon =
+    MODE_OPTIONS.find((option) => option.mode === mode)?.Icon ?? ChatFloatingPanel;
 
   return (
     <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright pl-1 pr-1.5">
@@ -119,20 +138,31 @@ export function DashboardAgentHeader({
             LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
           />
         )}
-        <Button
-          variant="minimal/small"
-          className="aspect-square h-6 p-1"
-          aria-label={isFullscreen ? "Collapse into the side panel" : "Expand"}
-          tooltip={isFullscreen ? "Collapse into the side panel" : "Expand"}
-          onClick={onToggleFullscreen}
-          LeadingIcon={
-            isFullscreen ? (
-              <ArrowsPointingInIcon className="size-4 text-text-dimmed" />
-            ) : (
-              <ArrowsPointingOutIcon className="size-4 text-text-dimmed" />
-            )
-          }
-        />
+        <Popover open={isModeMenuOpen} onOpenChange={setModeMenuOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="minimal/small"
+              className="aspect-square h-6 p-1"
+              aria-label="Change chat display mode"
+              tooltip="Display mode"
+              LeadingIcon={<CurrentModeIcon className="size-4 text-text-dimmed" />}
+            />
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-44 p-1">
+            {MODE_OPTIONS.map(({ mode: option, label, Icon }) => (
+              <PopoverMenuItem
+                key={option}
+                icon={Icon}
+                title={label}
+                isSelected={option === mode}
+                onClick={() => {
+                  onModeChange(option);
+                  setModeMenuOpen(false);
+                }}
+              />
+            ))}
+          </PopoverContent>
+        </Popover>
         <Button
           variant="minimal/small"
           className="aspect-square h-6 p-1"
