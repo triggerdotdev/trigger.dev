@@ -502,7 +502,11 @@ function ChangeProfilePhotoButton() {
   };
 
   // Only our own uploads are app-relative; OAuth avatars are absolute URLs.
-  const uploadedAvatarUrl = user.avatarUrl?.startsWith("/") ? user.avatarUrl : undefined;
+  // "//host/path" is protocol-relative, so it would point off-origin.
+  const uploadedAvatarUrl =
+    user.avatarUrl?.startsWith("/") && !user.avatarUrl.startsWith("//")
+      ? user.avatarUrl
+      : undefined;
 
   const remove = () => {
     actionRef.current = "remove";
