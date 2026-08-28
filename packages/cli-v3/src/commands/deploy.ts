@@ -10,10 +10,9 @@ import type {
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   GitMeta,
-  DeploymentFinalizedEvent,
   DeploymentTriggeredVia,
 } from "@trigger.dev/core/v3/schemas";
-import { BuildManifest, DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { BuildManifest } from "@trigger.dev/core/v3/schemas";
 import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
@@ -26,6 +25,12 @@ import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
+import {
+  BuildLogsMode,
+  createBuildLogRenderer,
+  resolveBuildLogsMode,
+  streamDeploymentEvents,
+} from "../deploy/buildLogs.js";
 import {
   applyBuildPathOptions,
   nativeOnlyFlagError,
@@ -103,6 +108,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   fromBundle: z.string().optional(),
   detach: z.boolean().default(false),
   plain: z.boolean().default(false),
+  buildLogs: BuildLogsMode.default("compact"),
   compression: z.enum(["zstd", "gzip"]).default("zstd"),
   cacheCompression: z.enum(["zstd", "gzip"]).default("zstd"),
   compressionLevel: z.number().optional(),
@@ -301,6 +307,14 @@ export function configureDeployCommand(program: Command) {
         )
       )
       .addOption(new CommandOption("--plain", "Plain output").hideHelp())
+      .addOption(
+        new CommandOption(
+          "--build-logs <mode>",
+          "How to show the build logs: compact (a single updating line) or full (every line). CI and piped output always use full."
+        )
+          .choices(["compact", "full"])
+          .default("compact")
+      )
       .action(async (path, options) => {
         await handleTelemetry(async () => {
           await printStandloneInitialBanner(true, options.profile);
@@ -749,7 +763,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     compressionLevel: options.compressionLevel,
     forceCompression: options.forceCompression,
     onLog: (logMessage) => {
-      if (options.plain || isCI) {
+      if (showFullBuildLogs(options)) {
         console.log(logMessage);
         return;
       }
@@ -867,7 +881,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       skipPushToRegistry: skipServerSideRegistryPush,
     },
     (logMessage) => {
-      if (options.plain || isCI) {
+      if (showFullBuildLogs(options)) {
         console.log(logMessage);
         return;
       }
@@ -1488,254 +1502,13 @@ async function handleNativeBuildServerDeploy({
     return process.exit(0);
   }
 
-  const $queuedSpinner = spinner();
-  $queuedSpinner.start("Build queued");
-
-  const abortController = new AbortController();
-
-  const s2 = new S2({ accessToken: eventStream.s2.accessToken });
-  const basin = s2.basin(eventStream.s2.basin);
-  const stream = basin.stream(eventStream.s2.stream);
-
-  const [readSessionError, readSession] = await tryCatch(
-    stream.readSession(
-      {
-        start: { from: { seqNum: 0 }, clamp: true },
-        stop: { waitSecs: 60 * 20 }, // 20 minutes
-      },
-      { signal: abortController.signal }
-    )
-  );
-
-  if (readSessionError) {
-    $queuedSpinner.stop("Failed to query build progress");
-    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
-
-    outro(
-      `Version ${deployment.version} is being deployed ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
-
-    return process.exit(0);
-  }
-
-  let finalDeploymentEvent: DeploymentFinalizedEvent["data"] | undefined;
-  let queuedSpinnerStopped = false;
-
-  for await (const record of readSession) {
-    const decoded = record.body;
-    const result = DeploymentEventFromString.safeParse(decoded);
-    if (!result.success) {
-      logger.debug("Failed to parse deployment event, skipping", {
-        error: result.error,
-        record: decoded,
-      });
-      continue;
-    }
-
-    const event = result.data;
-
-    switch (event.type) {
-      case "log": {
-        if (record.seqNum === 0) {
-          $queuedSpinner.stop("Build started");
-          console.log("│");
-          queuedSpinnerStopped = true;
-        }
-
-        const formattedTimestamp = chalkGrey(
-          new Date(record.timestamp).toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            fractionalSecondDigits: 3,
-          })
-        );
-
-        const { level, message } = event.data;
-        const formattedMessage =
-          level === "error"
-            ? chalk.bold(chalkError(message))
-            : level === "warn"
-              ? chalkWarning(message)
-              : level === "debug"
-                ? chalkGrey(message)
-                : message;
-
-        // We use console.log here instead of clack's logger as the current version does not support changing the line spacing.
-        // And the logs look verbose with the default spacing.
-        // We cannot upgrade because the newer versions introduced some weird issues with the spinner.
-        // Ideally, we'd use clack's `taskLog` to only show the recent n lines of logs as they are streamed, but that also seems brittle
-        // and has some issues with cursor movements/clearing lines that it shouldn't clear.
-        // We can revisit this on future versions of `@clack/prompts`.
-        console.log(`│  ${formattedTimestamp}  ${formattedMessage}`);
-        break;
-      }
-      case "finalized": {
-        finalDeploymentEvent = event.data;
-        abortController.abort(); // stop the stream
-        break;
-      }
-      default: {
-        event satisfies never;
-        logger.debug("Unknown deployment event, skipping", { event });
-        continue;
-      }
-    }
-  }
-
-  if (!queuedSpinnerStopped && !finalDeploymentEvent) {
-    // unlikely that it happens in practice, only in rare corner cases
-    // the timeout would kick in earlier if the build server fails to dequeue the build
-
-    $queuedSpinner.stop("Log stream stopped");
-
-    log.error("Failed dequeueing build, please try again shortly");
-
-    throw new OutroCommandError(
-      `Version ${deployment.version} ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
-  }
-
-  if (!finalDeploymentEvent) {
-    log.error(
-      "Stopped receiving updates from the build server, please check the deployment status in the dashboard"
-    );
-
-    if (!isLinksSupported) {
-      log.info(`View deployment: ${rawDeploymentLink}`);
-    }
-
-    throw new OutroCommandError(
-      `Version ${deployment.version} ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
-  }
-
-  switch (finalDeploymentEvent.result) {
-    case "succeeded": {
-      queuedSpinnerStopped
-        ? log.success("Deployment completed successfully")
-        : $queuedSpinner.stop("Deployment completed successfully");
-
-      if (finalDeploymentEvent.message) {
-        log.success(finalDeploymentEvent.message);
-      }
-
-      if (options.skipPromotion) {
-        log.info(
-          `This deployment was not automatically promoted. You can promote in the dashboard or via the promote command, e.g, \`npx trigger.dev promote ${deployment.version}\`.`
-        );
-      }
-
-      if (!isLinksSupported) {
-        log.info(`Test tasks: ${rawTestLink}`);
-      }
-
-      outro(
-        `Version ${deployment.version} was deployed ${
-          isLinksSupported
-            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
-                "View deployment",
-                rawDeploymentLink
-              )}`
-            : ""
-        }`
-      );
-      return process.exit(0);
-    }
-    case "failed": {
-      if (!queuedSpinnerStopped) {
-        $queuedSpinner.stop("Deployment failed");
-      }
-
-      log.error(
-        chalk.bold(
-          chalkError(
-            "Deployment failed" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
-          )
-        )
-      );
-
-      throw new OutroCommandError(
-        `Version ${deployment.version} deployment failed ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-        }`
-      );
-    }
-    case "timed_out": {
-      if (!queuedSpinnerStopped) {
-        $queuedSpinner.stop("Deployment timed out");
-      }
-
-      log.error(
-        chalk.bold(
-          chalkError(
-            "Deployment timed out" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
-          )
-        )
-      );
-
-      throw new OutroCommandError(
-        `Version ${deployment.version} deployment timed out ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-        }`
-      );
-    }
-    case "canceled": {
-      if (!queuedSpinnerStopped) {
-        $queuedSpinner.stop("Deployment was canceled");
-      }
-
-      log.error(
-        chalk.bold(
-          chalkError(
-            "Deployment was canceled" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
-          )
-        )
-      );
-
-      throw new OutroCommandError(
-        `Version ${deployment.version} deployment canceled ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-        }`
-      );
-    }
-    default: {
-      // This case is only relevant in case we extend the enum in the future.
-      // New enum values will not be treated as errors in older cli versions.
-      queuedSpinnerStopped
-        ? log.success("Log stream finished")
-        : $queuedSpinner.stop("Log stream finished");
-      if (finalDeploymentEvent.message) {
-        log.message(finalDeploymentEvent.message);
-      }
-
-      if (!isLinksSupported) {
-        log.info(`Test tasks: ${rawTestLink}`);
-      }
-
-      outro(
-        `Version ${deployment.version} ${
-          isLinksSupported
-            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
-                "View deployment",
-                rawDeploymentLink
-              )}`
-            : ""
-        }`
-      );
-      return process.exit(0);
-    }
-  }
+  await followBuildServerDeployment({
+    deployment,
+    eventStream,
+    options,
+    rawDeploymentLink,
+    rawTestLink,
+  });
 }
 
 export function verifyDirectory(dir: string, projectPath: string) {
@@ -2060,254 +1833,13 @@ async function handleLocalBundleDeploy({
     return process.exit(0);
   }
 
-  const $queuedSpinner = spinner();
-  $queuedSpinner.start("Build queued");
-
-  const abortController = new AbortController();
-
-  const s2 = new S2({ accessToken: eventStream.s2.accessToken });
-  const basin = s2.basin(eventStream.s2.basin);
-  const stream = basin.stream(eventStream.s2.stream);
-
-  const [readSessionError, readSession] = await tryCatch(
-    stream.readSession(
-      {
-        start: { from: { seqNum: 0 }, clamp: true },
-        stop: { waitSecs: 60 * 20 }, // 20 minutes
-      },
-      { signal: abortController.signal }
-    )
-  );
-
-  if (readSessionError) {
-    $queuedSpinner.stop("Failed to query build progress");
-    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
-
-    outro(
-      `Version ${deployment.version} is being deployed ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
-
-    return process.exit(0);
-  }
-
-  let finalDeploymentEvent: DeploymentFinalizedEvent["data"] | undefined;
-  let queuedSpinnerStopped = false;
-
-  for await (const record of readSession) {
-    const decoded = record.body;
-    const result = DeploymentEventFromString.safeParse(decoded);
-    if (!result.success) {
-      logger.debug("Failed to parse deployment event, skipping", {
-        error: result.error,
-        record: decoded,
-      });
-      continue;
-    }
-
-    const event = result.data;
-
-    switch (event.type) {
-      case "log": {
-        if (record.seqNum === 0) {
-          $queuedSpinner.stop("Build started");
-          console.log("│");
-          queuedSpinnerStopped = true;
-        }
-
-        const formattedTimestamp = chalkGrey(
-          new Date(record.timestamp).toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            fractionalSecondDigits: 3,
-          })
-        );
-
-        const { level, message } = event.data;
-        const formattedMessage =
-          level === "error"
-            ? chalk.bold(chalkError(message))
-            : level === "warn"
-              ? chalkWarning(message)
-              : level === "debug"
-                ? chalkGrey(message)
-                : message;
-
-        // We use console.log here instead of clack's logger as the current version does not support changing the line spacing.
-        // And the logs look verbose with the default spacing.
-        // We cannot upgrade because the newer versions introduced some weird issues with the spinner.
-        // Ideally, we'd use clack's `taskLog` to only show the recent n lines of logs as they are streamed, but that also seems brittle
-        // and has some issues with cursor movements/clearing lines that it shouldn't clear.
-        // We can revisit this on future versions of `@clack/prompts`.
-        console.log(`│  ${formattedTimestamp}  ${formattedMessage}`);
-        break;
-      }
-      case "finalized": {
-        finalDeploymentEvent = event.data;
-        abortController.abort(); // stop the stream
-        break;
-      }
-      default: {
-        event satisfies never;
-        logger.debug("Unknown deployment event, skipping", { event });
-        continue;
-      }
-    }
-  }
-
-  if (!queuedSpinnerStopped && !finalDeploymentEvent) {
-    // unlikely that it happens in practice, only in rare corner cases
-    // the timeout would kick in earlier if the build server fails to dequeue the build
-
-    $queuedSpinner.stop("Log stream stopped");
-
-    log.error("Failed dequeueing build, please try again shortly");
-
-    throw new OutroCommandError(
-      `Version ${deployment.version} ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
-  }
-
-  if (!finalDeploymentEvent) {
-    log.error(
-      "Stopped receiving updates from the build server, please check the deployment status in the dashboard"
-    );
-
-    if (!isLinksSupported) {
-      log.info(`View deployment: ${rawDeploymentLink}`);
-    }
-
-    throw new OutroCommandError(
-      `Version ${deployment.version} ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
-  }
-
-  switch (finalDeploymentEvent.result) {
-    case "succeeded": {
-      queuedSpinnerStopped
-        ? log.success("Deployment completed successfully")
-        : $queuedSpinner.stop("Deployment completed successfully");
-
-      if (finalDeploymentEvent.message) {
-        log.success(finalDeploymentEvent.message);
-      }
-
-      if (options.skipPromotion) {
-        log.info(
-          `This deployment was not automatically promoted. You can promote in the dashboard or via the promote command, e.g, \`npx trigger.dev promote ${deployment.version}\`.`
-        );
-      }
-
-      if (!isLinksSupported) {
-        log.info(`Test tasks: ${rawTestLink}`);
-      }
-
-      outro(
-        `Version ${deployment.version} was deployed ${
-          isLinksSupported
-            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
-                "View deployment",
-                rawDeploymentLink
-              )}`
-            : ""
-        }`
-      );
-      return process.exit(0);
-    }
-    case "failed": {
-      if (!queuedSpinnerStopped) {
-        $queuedSpinner.stop("Deployment failed");
-      }
-
-      log.error(
-        chalk.bold(
-          chalkError(
-            "Deployment failed" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
-          )
-        )
-      );
-
-      throw new OutroCommandError(
-        `Version ${deployment.version} deployment failed ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-        }`
-      );
-    }
-    case "timed_out": {
-      if (!queuedSpinnerStopped) {
-        $queuedSpinner.stop("Deployment timed out");
-      }
-
-      log.error(
-        chalk.bold(
-          chalkError(
-            "Deployment timed out" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
-          )
-        )
-      );
-
-      throw new OutroCommandError(
-        `Version ${deployment.version} deployment timed out ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-        }`
-      );
-    }
-    case "canceled": {
-      if (!queuedSpinnerStopped) {
-        $queuedSpinner.stop("Deployment was canceled");
-      }
-
-      log.error(
-        chalk.bold(
-          chalkError(
-            "Deployment was canceled" +
-              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
-          )
-        )
-      );
-
-      throw new OutroCommandError(
-        `Version ${deployment.version} deployment canceled ${
-          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-        }`
-      );
-    }
-    default: {
-      // This case is only relevant in case we extend the enum in the future.
-      // New enum values will not be treated as errors in older cli versions.
-      queuedSpinnerStopped
-        ? log.success("Log stream finished")
-        : $queuedSpinner.stop("Log stream finished");
-      if (finalDeploymentEvent.message) {
-        log.message(finalDeploymentEvent.message);
-      }
-
-      if (!isLinksSupported) {
-        log.info(`Test tasks: ${rawTestLink}`);
-      }
-
-      outro(
-        `Version ${deployment.version} ${
-          isLinksSupported
-            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
-                "View deployment",
-                rawDeploymentLink
-              )}`
-            : ""
-        }`
-      );
-      return process.exit(0);
-    }
-  }
+  await followBuildServerDeployment({
+    deployment,
+    eventStream,
+    options,
+    rawDeploymentLink,
+    rawTestLink,
+  });
 }
 
 // Builds the image locally from the bundle and finalizes the deployment.
@@ -2397,7 +1929,7 @@ async function buildAndFinalizeFromBundle({
     compressionLevel: options.compressionLevel,
     forceCompression: options.forceCompression,
     onLog: (logMessage) => {
-      if (options.plain || isCI) {
+      if (showFullBuildLogs(options)) {
         console.log(logMessage);
         return;
       }
@@ -2515,7 +2047,7 @@ async function buildAndFinalizeFromBundle({
       skipPushToRegistry: skipServerSideRegistryPush,
     },
     (logMessage) => {
-      if (options.plain || isCI) {
+      if (showFullBuildLogs(options)) {
         console.log(logMessage);
         return;
       }
@@ -2744,4 +2276,205 @@ async function handleFromBundleDeploy({
     branch,
     isLocalBuild: true,
   });
+}
+
+function buildLogsEnv(options: DeployCommandOptions) {
+  return { plain: options.plain, ci: isCI, tty: Boolean(process.stdout.isTTY) };
+}
+
+function showFullBuildLogs(options: DeployCommandOptions) {
+  return resolveBuildLogsMode(options.buildLogs, buildLogsEnv(options)) === "full";
+}
+
+async function followBuildServerDeployment({
+  deployment,
+  eventStream,
+  options,
+  rawDeploymentLink,
+  rawTestLink,
+}: {
+  deployment: Pick<InitializeDeploymentResponseBody, "version">;
+  eventStream: NonNullable<InitializeDeploymentResponseBody["eventStream"]>;
+  options: DeployCommandOptions;
+  rawDeploymentLink: string;
+  rawTestLink: string;
+}): Promise<never> {
+  const renderer = createBuildLogRenderer({
+    mode: resolveBuildLogsMode(options.buildLogs, buildLogsEnv(options)),
+    title: `Building version ${deployment.version}`,
+  });
+
+  const abortController = new AbortController();
+
+  const s2 = new S2({ accessToken: eventStream.s2.accessToken });
+  const basin = s2.basin(eventStream.s2.basin);
+  const stream = basin.stream(eventStream.s2.stream);
+
+  const [readSessionError, readSession] = await tryCatch(
+    stream.readSession(
+      {
+        start: { from: { seqNum: 0 }, clamp: true },
+        stop: { waitSecs: 60 * 20 }, // 20 minutes
+      },
+      { signal: abortController.signal }
+    )
+  );
+
+  if (readSessionError) {
+    renderer.finish("Failed to query build progress", "failure");
+    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
+
+    outro(
+      `Version ${deployment.version} is being deployed ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+
+    return process.exit(0);
+  }
+
+  const finalDeploymentEvent = await streamDeploymentEvents(readSession, renderer, () =>
+    abortController.abort()
+  );
+
+  if (!renderer.started && !finalDeploymentEvent) {
+    // unlikely that it happens in practice, only in rare corner cases
+    // the timeout would kick in earlier if the build server fails to dequeue the build
+
+    renderer.finish("Log stream stopped", "failure");
+
+    log.error("Failed dequeueing build, please try again shortly");
+
+    throw new OutroCommandError(
+      `Version ${deployment.version} ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+  }
+
+  if (!finalDeploymentEvent) {
+    log.error(
+      "Stopped receiving updates from the build server, please check the deployment status in the dashboard"
+    );
+
+    if (!isLinksSupported) {
+      log.info(`View deployment: ${rawDeploymentLink}`);
+    }
+
+    throw new OutroCommandError(
+      `Version ${deployment.version} ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+  }
+
+  switch (finalDeploymentEvent.result) {
+    case "succeeded": {
+      renderer.finish("Deployment completed successfully", "success");
+
+      if (finalDeploymentEvent.message) {
+        log.success(finalDeploymentEvent.message);
+      }
+
+      if (options.skipPromotion) {
+        log.info(
+          `This deployment was not automatically promoted. You can promote in the dashboard or via the promote command, e.g, \`npx trigger.dev promote ${deployment.version}\`.`
+        );
+      }
+
+      if (!isLinksSupported) {
+        log.info(`Test tasks: ${rawTestLink}`);
+      }
+
+      outro(
+        `Version ${deployment.version} was deployed ${
+          isLinksSupported
+            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+                "View deployment",
+                rawDeploymentLink
+              )}`
+            : ""
+        }`
+      );
+      return process.exit(0);
+    }
+    case "failed": {
+      renderer.finish("Deployment failed", "failure");
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment failed" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment failed ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    case "timed_out": {
+      renderer.finish("Deployment timed out", "failure");
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment timed out" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment timed out ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    case "canceled": {
+      renderer.finish("Deployment was canceled", "failure");
+
+      log.error(
+        chalk.bold(
+          chalkError(
+            "Deployment was canceled" +
+              (finalDeploymentEvent.message ? `: ${finalDeploymentEvent.message}` : "")
+          )
+        )
+      );
+
+      throw new OutroCommandError(
+        `Version ${deployment.version} deployment canceled ${
+          isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+        }`
+      );
+    }
+    default: {
+      // This case is only relevant in case we extend the enum in the future.
+      // New enum values will not be treated as errors in older cli versions.
+      renderer.finish("Log stream finished", "success");
+      if (finalDeploymentEvent.message) {
+        log.message(finalDeploymentEvent.message);
+      }
+
+      if (!isLinksSupported) {
+        log.info(`Test tasks: ${rawTestLink}`);
+      }
+
+      outro(
+        `Version ${deployment.version} ${
+          isLinksSupported
+            ? `| ${cliLink("Test tasks", rawTestLink)} | ${cliLink(
+                "View deployment",
+                rawDeploymentLink
+              )}`
+            : ""
+        }`
+      );
+      return process.exit(0);
+    }
+  }
 }
