@@ -1915,9 +1915,11 @@ describe("PostgresRunStore — delayed / debounce / metadata / idempotency / arr
       const stale = new Date("2020-01-01T00:00:00.000Z");
       await prisma.$executeRaw`UPDATE "TaskRun" SET "updatedAt" = ${stale} WHERE "id" = ${runId}`;
 
+      const before = Date.now();
       const result = await store.removeTags(runId, ["a"], {
         runtimeEnvironmentId: environment.id,
       });
+      const after = Date.now();
 
       const row = await prisma.taskRun.findFirst({
         where: { id: runId },
@@ -1929,6 +1931,12 @@ describe("PostgresRunStore — delayed / debounce / metadata / idempotency / arr
       // The returned value is the read-your-writes watermark, so it must be exactly
       // what landed on the row.
       expect(result?.updatedAt.getTime()).toBe(row?.updatedAt.getTime());
+      // ...and it must come from the APP clock, not the database's. The change router
+      // compares this watermark against `Date.now()` to estimate replica lag, so a
+      // `NOW()`-sourced value would drift by the database's clock skew and, because
+      // `updatedAt` is `timestamp(3)`, by its session `TimeZone` too.
+      expect(result!.updatedAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(result!.updatedAt.getTime()).toBeLessThanOrEqual(after);
     }
   );
 

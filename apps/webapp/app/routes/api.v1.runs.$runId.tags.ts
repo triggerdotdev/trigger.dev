@@ -188,7 +188,16 @@ async function removeRunTags(request: Request, params: ActionFunctionArgs["param
   const { environment: env, runId } = resolved;
 
   try {
-    const anyBody = await request.json();
+    // A DELETE with no body at all is the natural thing to try by hand, and
+    // `request.json()` throws on it. That's a malformed request, not a server fault, so
+    // map it to 400 instead of letting it fall through to the catch-all 500 + error log.
+    let anyBody: unknown;
+    try {
+      anyBody = await request.json();
+    } catch {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
     const body = RemoveTagsRequestBody.safeParse(anyBody);
     if (!body.success) {
       return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
@@ -208,9 +217,38 @@ async function removeRunTags(request: Request, params: ActionFunctionArgs["param
       organizationId: env.organizationId,
       bufferPatch: { type: "remove_tags", tags: nonEmptyTags },
       pgMutation: async (taskRun) => {
-        const existing = taskRun.runTags ?? [];
         const doomed = new Set(nonEmptyTags);
-        const remaining = existing.filter((t) => !doomed.has(t));
+        let existing = taskRun.runTags ?? [];
+        let remaining = existing.filter((t) => !doomed.has(t));
+
+        if (existing.length === remaining.length) {
+          // `taskRun` normally comes from the READ REPLICA, so "the run has none of
+          // these tags" can just be replication lag rather than the truth — and
+          // `tags.add("x")` immediately followed by `tags.delete("x")` is a completely
+          // ordinary pattern. Confirm against the primary before concluding there's
+          // nothing to do, the same disambiguation mutateWithFallback does for a
+          // replica-lag 404. Passing the writer as the read client makes the routing
+          // store read the OWNING store's primary, so this is read-your-writes for a
+          // run on either database.
+          //
+          // The add path's equivalent skip needs no such check because a stale read is
+          // safe in that direction: it can only make the write bigger, never skip a
+          // real one. Skipping a real removal, by contrast, would silently drop the
+          // customer's mutation and still answer 200.
+          const fresh = await runStore.findRun(
+            { id: taskRun.id, runtimeEnvironmentId: env.id },
+            { select: { runTags: true } },
+            prisma
+          );
+
+          if (!fresh) {
+            return json({ error: "Run not found" }, { status: 404 });
+          }
+
+          existing = fresh.runTags ?? [];
+          remaining = existing.filter((t) => !doomed.has(t));
+        }
+
         const removedCount = existing.length - remaining.length;
 
         // Removing tags the run doesn't have is an idempotent success, not a 404.
@@ -252,10 +290,13 @@ async function removeRunTags(request: Request, params: ActionFunctionArgs["param
       // mutateWithFallback's env-auth pre-check, so no extra Redis read) so the
       // message reports the same number the PG path would for the same input.
       synthesisedResponse: ({ bufferEntry }) => {
-        const existing = parseSnapshotTags(bufferEntry);
-        const removedCount = existing
-          ? existing.filter((t) => nonEmptyTags.includes(t)).length
-          : nonEmptyTags.length;
+        // `null` here means the snapshot carried no readable `tags` array. For a
+        // buffered run that is simply the shape of a run triggered without tags, so
+        // there was nothing to remove — unlike the add path, whose unknown-existing
+        // fallback is the request count, falling back to the request count here would
+        // report removals that never happened on the most common buffered shape.
+        const existing = parseSnapshotTags(bufferEntry) ?? [];
+        const removedCount = existing.filter((t) => nonEmptyTags.includes(t)).length;
         return json({ message: `Successfully removed ${removedCount} tags.` }, { status: 200 });
       },
       // No `rejectedResponse`: a `remove_tags` patch carries no cap, so the buffer

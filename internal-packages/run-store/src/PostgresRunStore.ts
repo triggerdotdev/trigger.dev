@@ -1471,7 +1471,12 @@ export class PostgresRunStore implements RunStore {
    * (and any duplicates) of the surviving tags — `EXCEPT` would dedupe and reorder them.
    *
    * Raw SQL does not fire Prisma's `@updatedAt`, so `"updatedAt"` is set explicitly and
-   * returned: realtime uses it as the read-your-writes watermark.
+   * returned: realtime uses it as the read-your-writes watermark. It is bound as a
+   * parameter off the app clock rather than `NOW()` — the watermark is compared against
+   * `Date.now()` when the change router estimates replica lag, and `NOW()` would source it
+   * from the database's clock and `TimeZone` instead (`TaskRun.updatedAt` is
+   * `timestamp(3)`, so `now()` is cast through the session time zone). This mirrors
+   * `expireRunsBatch`, which binds its timestamp the same way.
    *
    * Resolves to `null` when no run matched the id + environment.
    */
@@ -1482,6 +1487,7 @@ export class PostgresRunStore implements RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<{ updatedAt: Date } | null> {
     const prisma = tx ?? this.prisma;
+    const now = new Date();
 
     // Nothing to remove. Don't touch the row: bumping "updatedAt" would emit a pointless
     // replication event, and Prisma.join would build an invalid `IN ()` clause below.
@@ -1501,7 +1507,7 @@ export class PostgresRunStore implements RunStore {
             SET "runTags" = ARRAY(
                   SELECT t FROM unnest("runTags") AS t WHERE NOT (t = ANY(${tags}::text[]))
                 ),
-                "updatedAt" = NOW()
+                "updatedAt" = ${now}
             WHERE "id" = ${runId} AND "runtimeEnvironmentId" = ${where.runtimeEnvironmentId}
             RETURNING "updatedAt"
           `
@@ -1510,7 +1516,7 @@ export class PostgresRunStore implements RunStore {
             SET "runTags" = ARRAY(
                   SELECT t FROM unnest("runTags") AS t WHERE t NOT IN (${Prisma.join(tags)})
                 ),
-                "updatedAt" = NOW()
+                "updatedAt" = ${now}
             WHERE "id" = ${runId} AND "runtimeEnvironmentId" = ${where.runtimeEnvironmentId}
             RETURNING "updatedAt"
           `;
