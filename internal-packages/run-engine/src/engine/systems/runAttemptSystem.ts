@@ -1126,6 +1126,7 @@ export class RunAttemptSystem {
                   orgId: env.organizationId,
                   projectId: env.project.id,
                   timestamp: retryAt.getTime(),
+                  resetQueueAttempts: true,
                   error: {
                     type: "INTERNAL_ERROR",
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1249,6 +1250,7 @@ export class RunAttemptSystem {
     checkpointId,
     completedWaitpoints,
     batchId,
+    resetQueueAttempts = false,
     tx,
   }: {
     run: { id: string };
@@ -1269,6 +1271,11 @@ export class RunAttemptSystem {
       index?: number;
     }[];
     batchId?: string;
+    /**
+     * Pass when the run is being requeued after an attempt actually executed (a task retry), so
+     * the queue's "dequeued but never started" budget is reset rather than consumed.
+     */
+    resetQueueAttempts?: boolean;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1278,6 +1285,7 @@ export class RunAttemptSystem {
         orgId,
         messageId: run.id,
         retryAt: timestamp,
+        resetAttemptCount: resetQueueAttempts,
       });
 
       if (!gotRequeued) {

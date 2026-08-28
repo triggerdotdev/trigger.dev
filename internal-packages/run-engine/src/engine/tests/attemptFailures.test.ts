@@ -491,6 +491,133 @@ describe("RunEngine attempt failures", () => {
     }
   });
 
+  containerTest(
+    "task retries routed through the queue do not consume the queue's nack budget",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          retryOptions: {
+            maxAttempts: 2,
+          },
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        retryWarmStartThresholdMs: 0,
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        const taskMaxAttempts = 4;
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier, undefined, {
+          maxAttempts: taskMaxAttempts,
+          factor: 1,
+          minTimeoutInMs: 100,
+          maxTimeoutInMs: 100,
+          randomize: false,
+        });
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        const error = {
+          type: "BUILT_IN_ERROR" as const,
+          name: "Error",
+          message: "boom",
+          stackTrace: "Error: boom",
+        };
+
+        for (let attempt = 1; attempt <= taskMaxAttempts; attempt++) {
+          await setTimeout(500);
+          const dequeued = await engine.dequeueFromWorkerQueue({
+            consumerId: "test_12345",
+            workerQueue: "main",
+          });
+          expect(dequeued.length).toBe(1);
+
+          const attemptResult = await engine.startRunAttempt({
+            runId: dequeued[0].run.id,
+            snapshotId: dequeued[0].snapshot.id,
+          });
+          expect(attemptResult.run.attemptNumber).toBe(attempt);
+
+          const result = await engine.completeRunAttempt({
+            runId: dequeued[0].run.id,
+            snapshotId: attemptResult.snapshot.id,
+            completion: {
+              ok: false,
+              id: dequeued[0].run.id,
+              error,
+              retry: {
+                timestamp: Date.now() + 100,
+                delay: 100,
+              },
+            },
+          });
+
+          if (attempt < taskMaxAttempts) {
+            expect(result.attemptStatus).toBe("RETRY_QUEUED");
+            expect(result.run.status).toBe("PENDING");
+          } else {
+            expect(result.attemptStatus).toBe("RUN_FINISHED");
+            expect(result.run.status).toBe("COMPLETED_WITH_ERRORS");
+          }
+        }
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.run.attemptNumber).toBe(taskMaxAttempts);
+        expect(executionData.run.status).toBe("COMPLETED_WITH_ERRORS");
+        expect(await engine.runQueue.lengthOfDeadLetterQueue(authenticatedEnvironment)).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   containerTest("OOM retry on larger machine", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
