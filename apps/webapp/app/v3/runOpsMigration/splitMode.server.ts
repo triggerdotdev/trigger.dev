@@ -7,7 +7,11 @@
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { probeDistinctStores as defaultProbe } from "./distinctDbSentinel.server";
-import { nonAliasedShards, type ShardTarget } from "~/v3/runOpsShards.server";
+import {
+  nonAliasedShards,
+  type RunOpsShardDescriptor,
+  type ShardTarget,
+} from "~/v3/runOpsShards.server";
 
 export type SplitModeConfig = {
   flagEnabled: boolean;
@@ -75,7 +79,8 @@ export function assertSplitRealtimeInterlock(config: SplitRealtimeInterlockConfi
 
 export type ShardsRequireSplitConfig = {
   splitFlagEnabled: boolean;
-  shardKeys: string[];
+  /** Raw descriptors. The alias exemption is applied here so no call site can forget it. */
+  shards: RunOpsShardDescriptor[];
 };
 
 /**
@@ -86,11 +91,18 @@ export type ShardsRequireSplitConfig = {
  * distinct) already refuse to boot; this closes the one that does not.
  */
 export function assertShardsRequireSplit(config: ShardsRequireSplitConfig): void {
-  if (config.splitFlagEnabled || config.shardKeys.length === 0) {
+  if (config.splitFlagEnabled) {
+    return;
+  }
+  // An aliased shard owns no database: it shares its target's client by reference, so its rows are
+  // still read with the split off and nothing is dropped. Exempt here exactly as it is exempt from
+  // the distinctness sentinel, the coresidency loop and replication.
+  const owning = nonAliasedShards(config.shards).map((shard) => shard.key);
+  if (owning.length === 0) {
     return;
   }
   throw new Error(
-    `RUN_OPS_SHARDS configures shard(s) ${config.shardKeys.join(", ")} but RUN_OPS_SPLIT_ENABLED is off, so no shard client is built and rows on those databases would be silently missing; refusing to start.`
+    `RUN_OPS_SHARDS configures shard(s) ${owning.join(", ")} but RUN_OPS_SPLIT_ENABLED is off, so no shard client is built and rows on those databases would be silently missing; refusing to start.`
   );
 }
 

@@ -157,31 +157,54 @@ describe("assertSplitRealtimeInterlock (pure)", () => {
 });
 
 describe("assertShardsRequireSplit (pure)", () => {
+  const owning = (key: string) => ({
+    key,
+    region: "local",
+    url: `postgres://${key}`,
+    replication: { slotName: `s_${key}`, publicationName: `p_${key}`, originGeneration: 2 },
+  });
+  const aliased = (key: string) => ({ key, region: "local", aliasOf: "new" as const });
+
   it("allows shards when the split flag is on", () => {
     expect(() =>
-      assertShardsRequireSplit({ splitFlagEnabled: true, shardKeys: ["a"] })
+      assertShardsRequireSplit({ splitFlagEnabled: true, shards: [owning("a")] })
     ).not.toThrow();
   });
 
   it("allows the split flag off when no shard is configured", () => {
-    expect(() =>
-      assertShardsRequireSplit({ splitFlagEnabled: false, shardKeys: [] })
-    ).not.toThrow();
+    expect(() => assertShardsRequireSplit({ splitFlagEnabled: false, shards: [] })).not.toThrow();
   });
 
-  // Shards are only ever built on the split-on arm of selectRunOpsTopology, so configuring one
-  // while the split flag is off silently drops it: no shard client, no shard leg, and any row
-  // already resident on that database disappears from every list with no error.
-  it("refuses to boot when a shard is configured but the split flag is off", () => {
+  // Shards are only built on the split-on arm of selectRunOpsTopology, so configuring one while
+  // the split flag is off silently drops it: no client, no leg, and any row already resident on
+  // that database disappears from every list with no error.
+  it("refuses to boot when a shard that owns a database is configured but the split flag is off", () => {
     expect(() =>
-      assertShardsRequireSplit({ splitFlagEnabled: false, shardKeys: ["a", "b"] })
+      assertShardsRequireSplit({ splitFlagEnabled: false, shards: [owning("a"), owning("b")] })
     ).toThrow(/RUN_OPS_SHARDS/);
   });
 
-  it("names the configured shards so the operator can see which were dropped", () => {
+  it("names the dropped shards so the operator can see which ones they are", () => {
     expect(() =>
-      assertShardsRequireSplit({ splitFlagEnabled: false, shardKeys: ["a", "b"] })
+      assertShardsRequireSplit({ splitFlagEnabled: false, shards: [owning("a"), owning("b")] })
     ).toThrow(/a, b/);
+  });
+
+  // An aliased shard owns no database: it shares its target's client by reference, so its rows are
+  // still read with the split off. Refusing to boot for one is a false positive.
+  it("allows an alias-only config with the split flag off", () => {
+    expect(() =>
+      assertShardsRequireSplit({ splitFlagEnabled: false, shards: [aliased("a")] })
+    ).not.toThrow();
+  });
+
+  it("refuses only for the owning shards when the config mixes both", () => {
+    expect(() =>
+      assertShardsRequireSplit({
+        splitFlagEnabled: false,
+        shards: [aliased("a"), owning("b")],
+      })
+    ).toThrow(/shard\(s\) b /);
   });
 });
 

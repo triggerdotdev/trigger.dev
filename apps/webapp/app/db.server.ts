@@ -622,7 +622,7 @@ export async function assertRunOpsSplitSentinel(): Promise<void> {
   // checked BEFORE the split-off early return below, which would otherwise skip it in silence.
   assertShardsRequireSplit({
     splitFlagEnabled: env.RUN_OPS_SPLIT_ENABLED,
-    shardKeys: env.RUN_OPS_SHARDS.map((shard) => shard.key),
+    shards: env.RUN_OPS_SHARDS,
   });
   if (!env.RUN_OPS_SPLIT_ENABLED) return;
   // Realtime interlock (synchronous): Electric replicates only from the control-plane
