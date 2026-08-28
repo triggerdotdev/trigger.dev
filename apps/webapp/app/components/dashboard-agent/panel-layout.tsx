@@ -69,7 +69,7 @@ export function writeAgentMode(mode: DashboardAgentMode): void {
 }
 
 function agentTakeoverClassName(fullscreen: boolean): string {
-  return fullscreen ? "absolute inset-0 z-10 bg-background-bright" : "h-full";
+  return fullscreen ? "absolute inset-0 z-10 flex flex-col bg-background-bright" : "h-full";
 }
 
 // `invisible` rather than `display: none`: only this preserves the computed layout, so
