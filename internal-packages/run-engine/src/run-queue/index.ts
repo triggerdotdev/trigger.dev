@@ -185,6 +185,13 @@ export type RunQueueOptions = {
    * limit at admit time. Default false: admit paths are byte-identical to before, and
    * only the release-side SREM mirror runs (a no-op on an absent set), so the flag can
    * be flipped on a fleet that has fully rolled onto this build without draining queues.
+   *
+   * Runs already in flight when the flag turns on are not in the set, so a queue can
+   * transiently exceed its total limit by the number of those runs. The excess is
+   * one-time and self-corrects as each pre-flag run completes (its release mirror
+   * no-ops), after which the limit is enforced exactly. Every pod must run this build
+   * before enabling: an older pod releases without the mirror and would leak members
+   * the gate then counts forever.
    */
   totalConcurrencyEnabled?: boolean;
   workerOptions?: {
@@ -495,8 +502,10 @@ export class RunQueue {
 
   /**
    * Total in-flight runs across all concurrency-key variants of a queue (the
-   * groupConcurrency SET cardinality). Only maintained while totalConcurrencyEnabled
-   * is on; returns 0 otherwise.
+   * groupConcurrency SET cardinality). Admits only populate the set while
+   * totalConcurrencyEnabled is on. After the flag is turned off the set drains
+   * to zero through the release-side mirrors, so a nonzero read reflects real
+   * runs admitted while it was on, never stale state.
    */
   public async totalConcurrencyOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
     return this.redis.scard(this.keys.queueGroupConcurrencyKey(env, queue));

@@ -15,4 +15,4 @@ export const perUserQueue = queue({
 });
 ```
 
-Enforcement happens server side and only applies to runs triggered with a `concurrencyKey`. Servers that have not enabled total concurrency limits accept the option but do not enforce it yet.
+Enforcement happens server-side and only applies to runs triggered with a `concurrencyKey`. Servers that have not enabled total concurrency limits accept the option but do not enforce it yet.

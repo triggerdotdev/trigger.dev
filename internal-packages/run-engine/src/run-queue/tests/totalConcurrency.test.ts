@@ -259,24 +259,38 @@ describe("RunQueue total concurrency limit", () => {
       );
       expect(admitted).toBe(true);
 
+      /** A second run on another key waits behind the total limit of 1. */
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r1", concurrencyKey: "ck-b", timestamp: Date.now() - 500 }),
+        workerQueue: "main",
+      });
+
+      await setTimeout(2000);
+      expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
       const dequeued = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
       assertNonNullable(dequeued);
-
-      await queue.nackMessage({
-        orgId: authenticatedEnvDev.organization.id,
-        messageId: dequeued.messageId,
-      });
+      expect(dequeued.messageId).toBe("r0");
 
       /**
-       * The nack returns the run to the queue and must release its group slot; the
-       * master consumer then re-admits it, taking the slot again. Assert the
-       * intermediate release by checking the run is never counted twice.
+       * Nack r0 with a far-future retryAt so it cannot immediately reclaim the
+       * slot. If the nack released r0's group slot, r1 is the only eligible run
+       * and must be admitted; if the slot leaked, the queue stays blocked and r1
+       * never surfaces.
        */
-      const settled = await waitFor(async () => {
-        const total = await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task");
-        return total <= 1;
+      await queue.nackMessage({
+        orgId: authenticatedEnvDev.organization.id,
+        messageId: "r0",
+        retryAt: Date.now() + 120_000,
       });
-      expect(settled).toBe(true);
+
+      const r1Admitted = await waitFor(async () => {
+        const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
+        return next?.messageId === "r1";
+      });
+      expect(r1Admitted).toBe(true);
+      expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
     } finally {
       await queue.quit();
     }
