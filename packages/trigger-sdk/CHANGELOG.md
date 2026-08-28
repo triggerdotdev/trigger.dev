@@ -1,5 +1,67 @@
 # @trigger.dev/sdk
 
+## 4.5.13
+
+### Patch Changes
+
+- Fixed a chat agent hanging after an interrupted turn: when a run was killed mid-answer (out of memory, crash, or eviction) and only the one message it was answering was still outstanding, the new run never replied to it. That message is now re-answered on the new run. ([#4768](https://github.com/triggerdotdev/trigger.dev/pull/4768))
+- Browser chats now keep the active turn open across page reloads when older completion records are replayed. ([#4643](https://github.com/triggerdotdev/trigger.dev/pull/4643))
+- Add `chat.endAndContinue()` so fully hand-rolled custom chat agents can hand a conversation off to a fresh run on the latest deployed task version while preserving unconsumed Session input. ([#4647](https://github.com/triggerdotdev/trigger.dev/pull/4647))
+- Fix chat transport discarding the next turn after stopping generation. `skipToTurnComplete` is now reset when a new message or action is sent, so a message sent after `stopGeneration` streams normally instead of leaving the chat stuck in a streaming state. ([#4744](https://github.com/triggerdotdev/trigger.dev/pull/4744))
+- Custom chat agents now validate and parse client data declared with `chat.withClientData({ schema })` before passing it to agent code. ([#4646](https://github.com/triggerdotdev/trigger.dev/pull/4646))
+- Fixes a message sent while the agent was mid-answer being lost if the run then crashed. The cursor written at the end of each turn could point past a message that had arrived during that turn but had not been answered yet, so the next boot skipped it and no error was raised anywhere. Such a message is now held until a turn actually takes it. ([#4795](https://github.com/triggerdotdev/trigger.dev/pull/4795))
+
+  This also removes the in-memory buffer those messages used to sit in, on both `chat.agent` and `chat.createSession()`, so a message waiting for its turn is durable rather than only present in the worker that received it.
+
+- A message that arrives mid-turn and is not injected into that turn is now answered as the next turn, instead of being dropped. This is what the `pendingMessages` docs have always described, and it applies to the default too: configuring `pendingMessages` without a `shouldInject` declines every batch, which previously meant every mid-turn message was lost with no error at either end. ([#4795](https://github.com/triggerdotdev/trigger.dev/pull/4795))
+
+  ```ts
+  chat.agent({
+    id: "my-chat",
+    pendingMessages: {
+      onReceived: ({ message }) =>
+        logger.info("arrived mid-turn", { id: message.id }),
+      // Only interrupt once the agent has started calling tools.
+      shouldInject: ({ steps }) => steps.length > 0,
+    },
+    run: async ({ messages, signal }) =>
+      streamText({
+        model,
+        messages,
+        abortSignal: signal,
+        // Required for injection. Without it nothing injects, and every
+        // mid-turn message is answered as the next turn instead.
+        ...chat.toStreamTextOptions(),
+      }),
+  });
+  ```
+
+  A declined message keeps its place in the queue, so it survives a crash and is answered by whichever run picks the conversation up. An injected one is consumed at the moment it is injected, so it is never also answered as a later turn.
+
+- Fixes a case where a chat could silently lose a message. If a message arrived while the agent was between turns and a stop arrived after it, the cursor the next boot resumed from could point past that message, so it was never answered and no error was raised. This affected `chat.agent`, not just custom agents. ([#4644](https://github.com/triggerdotdev/trigger.dev/pull/4644))
+
+  Fixes a recovered answer being cut off. After a crash the agent replays the message it had not answered yet, but it was replaying the stop that arrived after that message too, so the turn answering it was aborted the moment it began. A stop is now only applied to the turn that was live when it arrived. That holds however the stop got there: sent after the last completed turn, or sent to a chat whose most recent turn was completed by an older version of the SDK.
+
+  One limitation to know about: the recovered answer is persisted correctly, but a chat page that stayed open across the crash keeps showing the partial answer it had already received. Reload the page to see the full recovered answer.
+
+  Also fixes a retried send being answered twice. When a send was retried and its idempotency claim was lost, the agent could consume the same message a second time.
+
+  Custom agent loops can now inspect pending chat input without consuming it, and consume one record at a time, with `chat.messages.hasPending()` and `chat.messages.next()`. Records carry stable identifiers so a redelivery is recognisable.
+
+  ```ts
+  if (await chat.messages.hasPending()) {
+    const record = await chat.messages.next({ timeoutInSeconds: 0 });
+    if (record) handle(record.payload);
+  }
+  ```
+
+  `hasPending()` answers for messages alone, so a message sitting behind a stop, or behind a record this version of the SDK does not recognise, still reports as pending and is still delivered. Anything the agent has no consumer for is discarded rather than left where it would make every message queued behind it undeliverable. `chat.messages.next()` returning `undefined` means no message became consumable before the timeout.
+
+  `chat.writeTurnComplete()`'s `sessionInEventId` is the cursor that is safe to resume from, not the sequence of the record the turn answered. It is held back behind any message still waiting to be handled, so a value below the record you just handled is expected.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.13`
+
 ## 4.5.12
 
 ### Patch Changes

@@ -1,5 +1,57 @@
 # internal-platform
 
+## 4.5.13
+
+### Patch Changes
+
+- `trigger.dev deploy` now asks the server whether to build with Depot or the native build server unless `--native-build`, `--depot-build`, or `--local-build` is passed, so the native build server can be rolled out per organization without a CLI change. `--local-bundle` and `--detach` now require `--native-build`. ([#4803](https://github.com/triggerdotdev/trigger.dev/pull/4803))
+- Add an experimental `--local-bundle` deploy flag that runs the install and bundling steps on your machine and uploads only the build output; the image is still built remotely. Useful when your project's install step needs tooling or credentials that only exist locally. ([#4331](https://github.com/triggerdotdev/trigger.dev/pull/4331))
+- A message that arrives mid-turn and is not injected into that turn is now answered as the next turn, instead of being dropped. This is what the `pendingMessages` docs have always described, and it applies to the default too: configuring `pendingMessages` without a `shouldInject` declines every batch, which previously meant every mid-turn message was lost with no error at either end. ([#4795](https://github.com/triggerdotdev/trigger.dev/pull/4795))
+
+  ```ts
+  chat.agent({
+    id: "my-chat",
+    pendingMessages: {
+      onReceived: ({ message }) =>
+        logger.info("arrived mid-turn", { id: message.id }),
+      // Only interrupt once the agent has started calling tools.
+      shouldInject: ({ steps }) => steps.length > 0,
+    },
+    run: async ({ messages, signal }) =>
+      streamText({
+        model,
+        messages,
+        abortSignal: signal,
+        // Required for injection. Without it nothing injects, and every
+        // mid-turn message is answered as the next turn instead.
+        ...chat.toStreamTextOptions(),
+      }),
+  });
+  ```
+
+  A declined message keeps its place in the queue, so it survives a crash and is answered by whichever run picks the conversation up. An injected one is consumed at the moment it is injected, so it is never also answered as a later turn.
+
+- Fixes a case where a chat could silently lose a message. If a message arrived while the agent was between turns and a stop arrived after it, the cursor the next boot resumed from could point past that message, so it was never answered and no error was raised. This affected `chat.agent`, not just custom agents. ([#4644](https://github.com/triggerdotdev/trigger.dev/pull/4644))
+
+  Fixes a recovered answer being cut off. After a crash the agent replays the message it had not answered yet, but it was replaying the stop that arrived after that message too, so the turn answering it was aborted the moment it began. A stop is now only applied to the turn that was live when it arrived. That holds however the stop got there: sent after the last completed turn, or sent to a chat whose most recent turn was completed by an older version of the SDK.
+
+  One limitation to know about: the recovered answer is persisted correctly, but a chat page that stayed open across the crash keeps showing the partial answer it had already received. Reload the page to see the full recovered answer.
+
+  Also fixes a retried send being answered twice. When a send was retried and its idempotency claim was lost, the agent could consume the same message a second time.
+
+  Custom agent loops can now inspect pending chat input without consuming it, and consume one record at a time, with `chat.messages.hasPending()` and `chat.messages.next()`. Records carry stable identifiers so a redelivery is recognisable.
+
+  ```ts
+  if (await chat.messages.hasPending()) {
+    const record = await chat.messages.next({ timeoutInSeconds: 0 });
+    if (record) handle(record.payload);
+  }
+  ```
+
+  `hasPending()` answers for messages alone, so a message sitting behind a stop, or behind a record this version of the SDK does not recognise, still reports as pending and is still delivered. Anything the agent has no consumer for is discarded rather than left where it would make every message queued behind it undeliverable. `chat.messages.next()` returning `undefined` means no message became consumable before the timeout.
+
+  `chat.writeTurnComplete()`'s `sessionInEventId` is the cursor that is safe to resume from, not the sequence of the record the turn answered. It is held back behind any message still waiting to be handled, so a value below the record you just handled is expected.
+
 ## 4.5.12
 
 ### Patch Changes
