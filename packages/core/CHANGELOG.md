@@ -1,5 +1,24 @@
 # internal-platform
 
+## 4.5.14
+
+### Patch Changes
+
+- Realtime stream subscriptions can now refresh an expired access token and reconnect, via a new optional `refreshAccessToken` option on the client configuration and the React hooks. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+- Subscribe to a realtime stream from its latest record instead of replaying the whole history. Pass `from: "latest"` to `useRealtimeStream`, `streams.read()`, or `fetchStream` to start at the current tail (the latest record, then live updates) instead of replaying (a live "last value" view), and `maxParts` to keep the accumulated `parts` array bounded. A reconnect or remount resumes from the last record it saw, so no records are missed and none are replayed. `from: "latest"` needs a server that supports it; older servers safely fall back to a full replay. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+
+  `useRealtimeStream` also gains a `lastEventId` option and returns the `lastEventId` of the last part seen, so you can persist the cursor (for example across a page reload) and resume exactly where you left off. An `onParts` callback delivers each throttled batch of parts with their event ids.
+
+  ```tsx
+  const { parts, lastEventId } = useRealtimeStream<Frame>(runId, "frames", {
+    from: "latest", // skip history, start at the current tail
+    maxParts: 1, // keep only the most recent frame
+    lastEventId: savedCursor, // resume from a persisted cursor
+    onParts: (batch) => save(batch.at(-1)?.id), // track the cursor
+    accessToken,
+  });
+  ```
+
 ## 4.5.13
 
 ### Patch Changes
