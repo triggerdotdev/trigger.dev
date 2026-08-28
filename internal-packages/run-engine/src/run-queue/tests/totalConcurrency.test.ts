@@ -295,4 +295,69 @@ describe("RunQueue total concurrency limit", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "reconciles a leaked group member instead of blocking the queue",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        const keys = testOptions.keys;
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueTotalConcurrencyLimits(authenticatedEnvDev, "task/my-task", 1);
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r0",
+            concurrencyKey: "ck-a",
+            timestamp: Date.now() - 1000,
+          }),
+          workerQueue: "main",
+        });
+
+        const admitted = await waitFor(
+          async () =>
+            (await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")) === 1
+        );
+        expect(admitted).toBe(true);
+
+        const dequeued = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
+        assertNonNullable(dequeued);
+        expect(dequeued.messageId).toBe("r0");
+
+        /**
+         * Simulate a terminal release from a build without the group mirror: the
+         * message key is deleted and the per-key and env sets are cleared, but the
+         * group member is left behind.
+         */
+        await queue.redis.del(keys.messageKey(authenticatedEnvDev.organization.id, "r0"));
+        await queue.redis.srem(
+          keys.queueCurrentConcurrencyKey(authenticatedEnvDev, "task/my-task", "ck-a"),
+          "r0"
+        );
+        await queue.redis.srem(keys.envCurrentConcurrencyKey(authenticatedEnvDev), "r0");
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
+        /** The next run must still be admitted: the gate prunes the dead member. */
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r1",
+            concurrencyKey: "ck-b",
+            timestamp: Date.now() - 500,
+          }),
+          workerQueue: "main",
+        });
+
+        const r1Admitted = await waitFor(async () => {
+          const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
+          return next?.messageId === "r1";
+        });
+        expect(r1Admitted).toBe(true);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });

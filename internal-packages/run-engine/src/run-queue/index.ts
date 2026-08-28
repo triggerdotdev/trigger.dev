@@ -189,9 +189,14 @@ export type RunQueueOptions = {
    * Runs already in flight when the flag turns on are not in the set, so a queue can
    * transiently exceed its total limit by the number of those runs. The excess is
    * one-time and self-corrects as each pre-flag run completes (its release mirror
-   * no-ops), after which the limit is enforced exactly. Every pod must run this build
-   * before enabling: an older pod releases without the mirror and would leak members
-   * the gate then counts forever.
+   * no-ops), after which the limit is enforced exactly.
+   *
+   * A release path that misses the group mirror (an instance on an older build during
+   * rollout) leaves the member behind, briefly under-admitting. The dequeue gate
+   * reconciles: when a queue sits at its total, members whose message key no longer
+   * exists are pruned, so such leaks clear within seconds instead of blocking the
+   * queue. Enabling only after every instance runs this build avoids the noise but is
+   * no longer load-bearing for correctness.
    */
   totalConcurrencyEnabled?: boolean;
   workerOptions?: {
@@ -4693,6 +4698,27 @@ if totalConcurrencyEnabled then
   if rawTotalLimit then
     local totalConcurrencyLimit = math.min(tonumber(rawTotalLimit), envConcurrencyLimit)
     local groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
+
+    -- Self-heal before holding the queue at its limit. A terminal release path
+    -- that misses the group mirror (an older build, or a future script) leaves
+    -- a member behind, but every terminal path deletes the run's message key,
+    -- so a member with no message key is provably dead. Members of re-queued
+    -- runs keep their message key and clear through the mirrored ack when the
+    -- run completes. The short lock bounds a saturated queue to one pass per
+    -- interval instead of one per dequeue attempt.
+    if groupCurrentConcurrency >= totalConcurrencyLimit then
+      local reconcileLockKey = groupConcurrencyKey .. ':reconcileLock'
+      if redis.call('SET', reconcileLockKey, '1', 'NX', 'EX', '10') then
+        local groupMembers = redis.call('SMEMBERS', groupConcurrencyKey)
+        for _, groupMemberId in ipairs(groupMembers) do
+          if redis.call('EXISTS', messageKeyPrefix .. groupMemberId) == 0 then
+            redis.call('SREM', groupConcurrencyKey, groupMemberId)
+          end
+        end
+        groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
+      end
+    end
+
     actualMaxCount = math.min(actualMaxCount, totalConcurrencyLimit - groupCurrentConcurrency)
   end
 end
