@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DeployBuildPath } from "@trigger.dev/core/v3";
 
 export const FEATURE_FLAG = {
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
@@ -37,6 +38,11 @@ export const FEATURE_FLAG = {
   // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
   runOpsMintShardOverride: "runOpsMintShardOverride",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
+  // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
+  deployBuildPath: "deployBuildPath",
+  deployBuildPathPreview: "deployBuildPathPreview",
+  deployBuildPathStaging: "deployBuildPathStaging",
+  deployBuildPathProduction: "deployBuildPathProduction",
   // Per-organization rollout for creating additional environment API keys.
   additionalApiKeysEnabled: "additionalApiKeysEnabled",
   // System-wide kill switch for issuing additional environment API keys.
@@ -148,6 +154,10 @@ export const FeatureFlagCatalog = {
   // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
+  [FEATURE_FLAG.deployBuildPath]: DeployBuildPath,
+  [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
+  [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
+  [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
   // Strict booleans prevent a stringified "false" from silently enabling API-key
   // creation or lookup. Cold/absent values resolve to the safe `false`.
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
