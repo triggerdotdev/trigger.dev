@@ -6,7 +6,7 @@ description: "Named, durable stream pairs on a Session, separate from the chat t
 
 **A side channel is a named `.in`/`.out` stream pair on a [Session](/ai-chat/sessions), separate from the reserved chat transcript.** Like the transcript it is durable and cross-run, but it is addressed by a name, and writing its `.in` does not wake or trigger a run.
 
-Use one when an agent needs to stream out-of-band data alongside the conversation: a feed of browser screenshots, progress telemetry, or a control channel the client writes to. The transcript stays clean, and many clients can read the side channel live while the agent produces it.
+Side channels are a Session primitive, not a chat feature. Any Session can carry them: a `chat.agent`, a task-bound Session, or an external process holding your secret key. Use one to stream out-of-band data alongside (or instead of) a transcript: a feed of browser screenshots, progress telemetry, or a control channel the client writes to. Many clients can read the channel live while a run, or your backend, produces it.
 
 ```mermaid
 flowchart LR
@@ -58,12 +58,41 @@ export const browserAgent = chat.agent({
 });
 ```
 
-Outside a `chat.agent` run, open the channel from a session handle instead: `sessions.open(sessionId).channel(screenshots)`. The handle exposes the same `.out` (`append` / `pipe` / `writer`) and `.in` (`send` / `on` / `once` / `peek`) surface as the reserved pair.
-
 <Note>
   A side channel's `.in` is subscribe-only from the run's side (`.on` / `.once` / `.peek`). `.wait()`
   is not supported on a named channel, because a side channel never suspends or wakes a run.
 </Note>
+
+## From a task or your backend
+
+Nothing here needs a `chat.agent`. Open a channel on any Session by id with `sessions.open(sessionId).channel(...)`; the handle exposes the same `.out` (`append` / `pipe` / `writer`) and `.in` (`send` / `on` / `once` / `peek`) surface as the reserved pair. Create the Session with [`sessions.start`](/ai-chat/sessions) bound to any task, then produce from that task's run:
+
+```ts /trigger/render-frames.ts
+import { sessions, task } from "@trigger.dev/sdk";
+import { screenshots } from "./channels";
+
+export const renderFrames = task({
+  id: "render-frames",
+  run: async (payload: { sessionId: string; steps: number }) => {
+    const frames = sessions.open(payload.sessionId).channel(screenshots);
+    for (let step = 1; step <= payload.steps; step++) {
+      frames.in.on((control) => setPaused(control.paused));
+      await frames.out.append({ url: await renderStep(step), step });
+    }
+  },
+});
+```
+
+Or produce from your own backend, which holds the secret key that `.out` writes require:
+
+```ts Your backend code
+import { sessions } from "@trigger.dev/sdk";
+import { screenshots } from "./trigger/channels";
+
+await sessions.open(sessionId).channel(screenshots).out.append({ url, step });
+```
+
+Either way the client reads the channel the same way, below.
 
 ## Read `.out` in React
 
