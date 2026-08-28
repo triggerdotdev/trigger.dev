@@ -107,6 +107,7 @@ import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
 import {
   DEFAULT_SNAPSHOT_SWEEP_BUDGET_MS,
   resolveSnapshotSweepCron,
+  seedSnapshotSweepOutcomes,
   snapshotSweepVisibilityTimeoutMs,
 } from "./snapshotSweepSchedule.js";
 import { workerCatalog } from "./workerCatalog.js";
@@ -365,6 +366,10 @@ export class RunEngine {
             "Orphan-sweep passes by outcome. A pass that throws emits outcome=failed, so silence is distinguishable from success",
         }
       );
+
+      // Seeded at zero so the series EXISTS from boot. Inside this block on purpose: a deployment
+      // that does not wire the sweep registers no series and cannot alert.
+      seedSnapshotSweepOutcomes(this.snapshotSweepPassCounter);
 
       this.snapshotSweepCountsHistogram = this.meter.createHistogram(
         "run_engine.snapshot_store.sweep_counts",

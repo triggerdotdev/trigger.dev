@@ -1034,13 +1034,16 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
 
-    this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
+    // Recorded AFTER hydration, not before. Hydration can fall back to Postgres, and recording
+    // `redis` up front then `postgres` on the way out made one logical read increment both series.
     // Hydration is inside the boundary too. It makes a SECOND Redis call when the entry has a wait
     // cycle whose ids the read did not carry, and a failure there is the same brownout the catch
     // above exists for. Leaving it outside meant a waitpoint-bearing run still threw into the
     // engine while a plain one fell back.
     try {
-      return await this.#hydrate(read, runId, client, { hydrateWaitpointRows: true });
+      const hydrated = await this.#hydrate(read, runId, client, { hydrateWaitpointRows: true });
+      this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
+      return hydrated;
     } catch (error) {
       if (!this.#readMayFallBack()) throw error;
       this.#reportReadUnavailable("findLatestExecutionSnapshot", runId, error);
@@ -1111,8 +1114,6 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
 
-    this.metrics?.recordRead("findManyExecutionSnapshots", "redis");
-
     // The engine asks for createdAt DESC and reverses app-side; the store returns ascending.
     const descending = [...result.entries].reverse();
     // Rows are hydrated for no entry here: the engine fetches the head's waitpoints itself, from
@@ -1124,6 +1125,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       const hydrated = await Promise.all(
         descending.map((entry) => this.#hydrate(entry, shape.runId, client))
       );
+      // Recorded once every entry hydrated, for the same reason as the sibling read.
+      this.metrics?.recordRead("findManyExecutionSnapshots", "redis");
       return hydrated as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
     } catch (error) {
       if (!this.#readMayFallBack()) throw error;

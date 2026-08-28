@@ -67,6 +67,22 @@ function completionInput(env: SnapshotFixtureEnv) {
   };
 }
 
+/**
+ * A real store whose waitpoint-id lookup fails. Used to make the SECOND Redis call of a read fail
+ * after the first has succeeded, which is the only way to reach the hydration fallback.
+ */
+class HydrationFailingStore extends RedisSnapshotStore {
+  hydrationCalls = 0;
+
+  override async getSnapshotWaitpointIds(
+    ...args: Parameters<RedisSnapshotStore["getSnapshotWaitpointIds"]>
+  ): ReturnType<RedisSnapshotStore["getSnapshotWaitpointIds"]> {
+    this.hydrationCalls += 1;
+    void args;
+    throw new Error("Command timed out");
+  }
+}
+
 describe("Redis stays off the hot path for a non-resident run", () => {
   containerTest(
     "a run born at off probes once, then never again",
@@ -258,7 +274,13 @@ describe("a Redis that stops answering", () => {
       // cycle whose ids were not carried by the read makes a follow-up Redis call inside #hydrate,
       // and a failure there threw straight into the engine at redis-read, which is the case the
       // fallback exists for.
-      const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      //
+      // A subclass rather than a replaced property: this is a real store on a real connection, so
+      // every other command still goes through the production path and the real cluster. Only the
+      // one command under test is specialised, because the scenario needs a SECOND Redis call to
+      // fail after a first has already succeeded, and no seam exposes that. The write-path fault
+      // injector models process crashes, not command failures, so it is the wrong tool here.
+      const redis = new HydrationFailingStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
       const plain = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
         store: redis,
@@ -309,14 +331,6 @@ describe("a Redis that stops answering", () => {
           organizationId: env.organizationId,
         } as never);
 
-        // Let the first read succeed and the hydration call fail, by breaking only that method.
-        const realWaitpointIds = redis.getSnapshotWaitpointIds.bind(redis);
-        let hydrationCalls = 0;
-        (redis as unknown as Record<string, unknown>).getSnapshotWaitpointIds = async () => {
-          hydrationCalls += 1;
-          throw new Error("Command timed out");
-        };
-
         // The WINDOW read, not the head read. The head read carries the waitpoint ids already, so
         // its hydration never asks Redis; the window entries do not, which is where the second call
         // lives and where the gap was.
@@ -330,10 +344,83 @@ describe("a Redis that stops answering", () => {
         expect(Array.isArray(served)).toBe(true);
         expect(served.length).toBeGreaterThan(0);
 
-        (redis as unknown as Record<string, unknown>).getSnapshotWaitpointIds = realWaitpointIds;
         // Asserted, not hoped for: without this the test passes on a run whose hydration never
         // reaches Redis, and proves nothing at all.
-        expect(hydrationCalls).toBeGreaterThanOrEqual(1);
+        expect(redis.hydrationCalls).toBeGreaterThanOrEqual(1);
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+  containerTest(
+    "records the read source ONCE, not once per attempt",
+    async ({ prisma, redisOptions }) => {
+      // Adding the hydration fallback after the recordRead call meant one logical read incremented
+      // BOTH series: `redis` on the way in, then `postgres` when hydration fell back. Any dashboard
+      // built on read_source then over-counts, and the redis/postgres split stops summing to the
+      // number of reads.
+      const redis = new HydrationFailingStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      const plain = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const reads: { method: string; servedBy: string }[] = [];
+      const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
+        store: redis,
+        mode: "redis-read",
+        readPercent: 100,
+        metrics: {
+          recordWrite: () => {},
+          recordAppendFailed: () => {},
+          recordRead: (method, servedBy) => reads.push({ method, servedBy }),
+        },
+      });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        await decorated.createRun({
+          data: buildCreateRunData(runId, env),
+          snapshot: birthSnapshot(env),
+        });
+
+        const waitpoint = await prisma.waitpoint.create({
+          data: {
+            friendlyId: `waitpoint_${generateInternalId()}`,
+            type: "MANUAL",
+            status: "COMPLETED",
+            completedAt: new Date(),
+            idempotencyKey: generateInternalId(),
+            userProvidedIdempotencyKey: false,
+            environmentId: env.id,
+            projectId: env.projectId,
+          },
+        });
+        await decorated.createExecutionSnapshot({
+          run: { id: runId, status: "EXECUTING" },
+          snapshot: { executionStatus: "EXECUTING", description: "Resumed" },
+          completedWaitpoints: [{ id: waitpoint.id, index: 0 }],
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+        } as never);
+        await decorated.createExecutionSnapshot({
+          run: { id: runId, status: "EXECUTING" },
+          snapshot: { executionStatus: "EXECUTING", description: "Still executing" },
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+        } as never);
+
+        reads.length = 0;
+        const served = await decorated.findManyExecutionSnapshots({
+          where: { runId, isValid: true, createdAt: { gt: new Date(Date.now() - 3_600_000) } },
+          include: { checkpoint: true },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        } as never);
+
+        expect(served.length).toBeGreaterThan(0);
+        // Hydration failed, so Postgres served it, and that is the ONLY thing recorded.
+        expect(reads).toEqual([{ method: "findManyExecutionSnapshots", servedBy: "postgres" }]);
       } finally {
         await redis.quit();
       }

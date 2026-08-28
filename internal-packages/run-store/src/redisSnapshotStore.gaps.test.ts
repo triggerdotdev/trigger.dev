@@ -248,4 +248,54 @@ describe("the gaps marker", () => {
       }
     }
   );
+  redisTest("drops a SPARSE wait cycle key with seq already gone", async ({ redisOptions }) => {
+    // A miss-streak early exit was wrong. Cycle keys can be sparse, so with seq absent (count reads
+    // as zero) and only wp:10 alive, stopping after a run of absent keys left it behind, and the
+    // entry hash is deleted in the same call so the sweep could never discover it either.
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+    const probe = createRedisClient(redisOptions, { onError: () => {} });
+    try {
+      const runId = "run_sparse_cycles";
+      const base = snapshotKeys(runId).e.slice(0, -2);
+      await seed(store, runId, 2);
+
+      await probe.hset(`${base}:wp:10`, "order", "[]");
+      await probe.del(snapshotKeys(runId).seq);
+
+      await store.dropRun(runId);
+
+      expect(await probe.exists(`${base}:wp:10`)).toBe(0);
+      for (const key of Object.values(snapshotKeys(runId))) {
+        expect(await probe.exists(key)).toBe(0);
+      }
+    } finally {
+      await Promise.all([store.quit(), probe.quit().catch(() => {})]);
+    }
+  });
+
+  redisTest("marks gaps when the repair's append is a DUPLICATE", async ({ redisOptions }) => {
+    // The script returned on duplicate before reaching the marker, so a repair whose entry had
+    // already landed left the keyspace serving short windows as though they were whole. A repair
+    // runs BECAUSE an append was lost, so the entries either side are gone regardless.
+    const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+    try {
+      const runId = "run_dup_gaps";
+      await seed(store, runId, 3);
+      expect(await store.hasGaps(runId)).toBe(false);
+
+      // Re-append an id that is already present but is not the head.
+      const result = await store.append({
+        entry: entry(runId, "snap_1", at(1)),
+        kind: "transition",
+        isTerminal: false,
+        markGaps: true,
+      });
+
+      expect(result.outcome).toBe("duplicate");
+      expect(await store.hasGaps(runId)).toBe(true);
+      expect((await store.getSinceCreatedAt(runId, at(0))).kind).toBe("miss");
+    } finally {
+      await store.quit();
+    }
+  });
 });

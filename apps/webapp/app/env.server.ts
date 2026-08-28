@@ -1330,9 +1330,6 @@ const EnvironmentSchema = z
     // (cross-slot pipelines are rejected), so a full pass is hours, not minutes. A budget that
     // truncates every pass stops rule 2 converging, because it needs consecutive sightings.
     RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS: z.coerce.number().int().default(10_800_000),
-    // The hard stop, "1" to halt. Separate from MODE because MODE governs births only: turning it
-    // down cannot stop a resident run mirroring. Holding this from the environment outranks the
-    // snapshotStoreHalt flag, which is the no-deploy control for the same thing.
     /**
      * RETIRED. The hard stop is the snapshotStoreHalt feature flag and nothing else: an environment
      * variable converged over a rolling deploy rather than a flag interval, and during that window a

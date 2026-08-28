@@ -24,3 +24,25 @@ export const DEFAULT_SNAPSHOT_SWEEP_BUDGET_MS = 10_800_000;
 export function snapshotSweepVisibilityTimeoutMs(budgetMs?: number): number {
   return (budgetMs ?? DEFAULT_SNAPSHOT_SWEEP_BUDGET_MS) + 2 * 60 * 60 * 1000;
 }
+
+/**
+ * Sweep outcomes whose time series must EXIST from boot, not merely once they first occur.
+ *
+ * The alert on the sweep asks whether there have been no completed passes in 24 hours, and
+ * `sum(increase(...)) == 0` matches nothing at all when the series is absent. That is precisely the
+ * case the alert exists for: a sweep that has never run. Seeding the counter at zero makes the
+ * absence visible instead of silent.
+ *
+ * Anything the alerting rules query by outcome belongs here.
+ */
+export const SNAPSHOT_SWEEP_SEEDED_OUTCOMES = ["completed"] as const;
+
+/** Minimal shape of an OTel counter, so this is testable without a meter. */
+type SeedableCounter = { add(value: number, attributes: Record<string, string>): void };
+
+/** Creates the series named in {@link SNAPSHOT_SWEEP_SEEDED_OUTCOMES} at zero. */
+export function seedSnapshotSweepOutcomes(counter: SeedableCounter): void {
+  for (const outcome of SNAPSHOT_SWEEP_SEEDED_OUTCOMES) {
+    counter.add(0, { outcome });
+  }
+}

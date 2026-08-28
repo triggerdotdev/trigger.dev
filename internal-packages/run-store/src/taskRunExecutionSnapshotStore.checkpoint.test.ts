@@ -114,20 +114,19 @@ describe("a checkpoint on a snapshot served from Redis", () => {
       // the hot path of every running run, which is what the entry's own checkpointId avoids.
       const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
       const plain = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      // Counted by wrapping the one method, not with a Proxy: the store holds private fields, and a
-      // Proxy's receiver is not an instance of the class, so every private access throws.
-      let delegateReads = 0;
-      const original = plain.findExecutionSnapshot.bind(plain);
-      (plain as unknown as Record<string, unknown>).findExecutionSnapshot = (
-        ...args: unknown[]
-      ) => {
-        delegateReads += 1;
-        return (original as (...a: unknown[]) => unknown)(...args);
-      };
+      // Observed through the store's own metrics seam rather than by replacing a method on the
+      // production store. `recordRead` reports which store served each read, which is exactly the
+      // question, and it is an injection point the class already offers.
+      const reads: { method: string; servedBy: string }[] = [];
       const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
         store: redis,
         mode: "redis-read",
         readPercent: 100,
+        metrics: {
+          recordWrite: () => {},
+          recordAppendFailed: () => {},
+          recordRead: (method, servedBy) => reads.push({ method, servedBy }),
+        },
       });
       try {
         const env = await seedSnapshotEnvironment(prisma);
@@ -137,12 +136,14 @@ describe("a checkpoint on a snapshot served from Redis", () => {
           snapshot: birthSnapshot(env),
         });
 
-        delegateReads = 0;
+        reads.length = 0;
         const read = await decorated.findLatestExecutionSnapshot(runId);
 
         expect(read).not.toBeNull();
         expect(read!.checkpoint).toBeNull();
-        expect(delegateReads).toBe(0);
+        // Served entirely by Redis. Hydrating unconditionally would put a Postgres read back on the
+        // hot path of every running run, which is the cost the entry's own checkpointId avoids.
+        expect(reads).toEqual([{ method: "findLatestExecutionSnapshot", servedBy: "redis" }]);
       } finally {
         await redis.quit();
       }

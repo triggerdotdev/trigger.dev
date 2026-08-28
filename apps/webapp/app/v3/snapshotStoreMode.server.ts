@@ -167,12 +167,21 @@ export function createOrgModeSource(clients?: {
       generations.set(organizationId, generation);
       cache.delete(organizationId);
       primaryPending.set(organizationId, generation);
-      void load(organizationId, primaryClient, generation).finally(() => {
+      void load(organizationId, primaryClient, generation).then((outcome) => {
         // Only if no NEWER save has claimed it since. Deleting unconditionally is what let an older
         // read reopen the window for a newer one.
-        if (primaryPending.get(organizationId) === generation) {
-          primaryPending.delete(organizationId);
+        if (primaryPending.get(organizationId) !== generation) {
+          return;
         }
+        // And only if the primary actually ANSWERED. `load` swallows its own errors, so a rejected
+        // primary read used to clear the flag with nothing cached, reopening the window to a lagging
+        // replica that would then restore the pre-save value for a full cache lifetime. Staying
+        // pending keeps replica refreshes out until a primary read succeeds; the resolver falls back
+        // to the deployment-wide position meanwhile, which is the safe answer.
+        if (outcome === "failed") {
+          return;
+        }
+        primaryPending.delete(organizationId);
       });
     },
     refresh: (organizationId) => {
@@ -217,7 +226,11 @@ export function createOrgModeSource(clients?: {
     },
   };
 
-  function load(organizationId: string, client: OrgModeClient, generation: number) {
+  function load(
+    organizationId: string,
+    client: OrgModeClient,
+    generation: number
+  ): Promise<"loaded" | "stale" | "failed"> {
     return client.organization
       .findFirst({ where: { id: organizationId }, select: { featureFlags: true } })
       .then((row) => {
@@ -228,15 +241,17 @@ export function createOrgModeSource(clients?: {
         ];
         // A newer invalidation happened while this read was in flight, so its answer is stale.
         if (generation < generationOf(organizationId)) {
-          return;
+          return "stale" as const;
         }
         cache.set(organizationId, cachedOrgModeFor(raw));
+        return "loaded" as const;
       })
       .catch((error) => {
         logger.warn("snapshotStoreMode: organisation override read failed", {
           organizationId,
           error,
         });
+        return "failed" as const;
       });
   }
 }

@@ -905,6 +905,13 @@ export class RedisSnapshotStore {
         -- CAS below -- a present id can only be this same retry, never a competitor's write.
         local prior = redis.call('HGET', eKey, id .. '#s')
         if prior then
+          -- Marked before returning. The caller that asks for a mark is the repair, and a repair
+          -- runs BECAUSE an append was lost, so the entries either side are gone whether or not
+          -- this particular id had already landed. Returning early without marking left the
+          -- keyspace serving short windows as though they were whole.
+          if markGaps then
+            redis.call('HSET', seqKey, 'g', '1')
+          end
           return { '${DUPLICATE}', prior }
         end
 
@@ -923,9 +930,7 @@ export class RedisSnapshotStore {
           end
         end
 
-        if markGaps then
-          redis.call('HSET', seqKey, 'g', '1')
-        end
+
 
         -- The index can go while the entry hash and seq survive, and keyspaceAlive does not test it.
         -- This append is about to recreate it holding only the new entry, and a window read would
@@ -1039,18 +1044,13 @@ export class RedisSnapshotStore {
         -- cycle key was left behind, while this command claimed to remove the whole keyspace. An
         -- orphan the sweep cannot see either, because it discovers keyspaces by the entry hash.
         --
-        -- So probe past the mark. A short miss tolerance covers a stale count as well as an absent
-        -- one, and the bound keeps a pathological run from turning a drop into a long script. Keys
-        -- here all share the {runId} tag, so this stays inside one slot.
-        local misses = 0
-        local probe = cycles + 1
-        while misses < 8 and probe <= cycles + 512 do
-          if redis.call('DEL', wpKey(probe)) == 1 then
-            misses = 0
-          else
-            misses = misses + 1
-          end
-          probe = probe + 1
+        -- So sweep a bounded range unconditionally. A miss-streak early exit was wrong: cycle keys
+        -- can be SPARSE, so with seq gone and only wp:10 alive, stopping after a run of absent keys
+        -- leaves it behind, and the entry hash is deleted below so the sweep can never find it
+        -- either. Every key here shares the {runId} tag, so this stays inside one slot, and the
+        -- bound keeps a pathological run from turning a drop into a long script.
+        for probe = cycles + 1, cycles + 512 do
+          redis.call('DEL', wpKey(probe))
         end
 
         return redis.call('DEL', eKey, idxKey, curKey, seqKey)

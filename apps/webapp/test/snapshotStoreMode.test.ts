@@ -260,4 +260,31 @@ describe("warming the organisation dial before a birth", () => {
     // Still unknown, so the synchronous resolve falls back exactly as it did before.
     expect(source.get("org_1")).toBeUndefined();
   });
+  it("keeps replica refreshes out after a FAILED primary read", async () => {
+    // load() swallows its own errors, so a rejected primary read used to clear primaryPending with
+    // nothing cached. A refresh could then read a lagging replica carrying the current generation,
+    // which the generation guard cannot discard, restoring the pre-save value for a cache lifetime.
+    const primary = deferred();
+    const replica = deferred();
+    const source = createOrgModeSource({
+      primary: clientFor(() => primary.promise),
+      replica: clientFor(() => replica.promise),
+    });
+
+    source.invalidate("org_1");
+
+    // The primary read FAILS.
+    primary.resolve(Promise.reject(new Error("primary unavailable")) as never);
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    // A refresh arriving now must not start a replica read, because no primary answer ever landed.
+    source.refresh("org_1");
+    replica.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } });
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Nothing cached: the resolver falls back to the deployment-wide position, which is the safe
+    // answer, rather than serving a stale replica value as though it were the saved one.
+    expect(source.get("org_1")).toBeUndefined();
+  });
 });
