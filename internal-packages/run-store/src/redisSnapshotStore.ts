@@ -344,6 +344,36 @@ export class RedisSnapshotStore {
     return this.#breaker.state;
   }
 
+  /**
+   * Records that this run's Redis history has a hole, so window reads must not serve it. Separate
+   * from the append path because a repair can conclude the head is already current and still know
+   * that entries were lost.
+   */
+  async markGaps(runId: string): Promise<void> {
+    await this.redis.hset(snapshotKeys(runId).seq, "g", "1");
+  }
+
+  /**
+   * Marks only a keyspace that exists, and reports whether it did.
+   *
+   * The unconditional form must not be used on a run whose residency is unknown: HSET creates the
+   * hash, so a non-resident run would be left holding a lone `seq` key with nothing but the marker.
+   * `keyspaceAlive` would stay false so no read would be affected, but the sweeper discovers
+   * keyspaces by scanning for the ENTRY hash, so it would never find that key either. An unbounded
+   * leak with no reader is the one outcome worse than the hole this marker exists to report.
+   */
+  async markGapsIfResident(runId: string): Promise<boolean> {
+    const k = snapshotKeys(runId);
+    return this.#timed("markGapsIfResident", async () => {
+      const marked = await this.redis.markSnapshotGaps(k.e, k.seq);
+      return marked === 1;
+    });
+  }
+
+  async hasGaps(runId: string): Promise<boolean> {
+    return (await this.redis.hget(snapshotKeys(runId).seq, "g")) === "1";
+  }
+
   /** Test seam. */
   residencyFor(runId: string): "resident" | "non-resident" | undefined {
     return this.#residency.get(runId);
@@ -365,6 +395,11 @@ export class RedisSnapshotStore {
     kind: "birth" | "transition";
     isTerminal: boolean;
     expectedCur?: string;
+    /**
+     * Marks the keyspace as holed, so window reads refuse and fall back to Postgres. Set by the
+     * repair, which only runs because an append was lost.
+     */
+    markGaps?: boolean;
     cycle?:
       | {
           kind: "new";
@@ -452,7 +487,8 @@ export class RedisSnapshotStore {
         orderCount,
         args.expectedCur ?? "",
         args.expectedCur !== undefined ? "1" : "0",
-        distinctJson
+        distinctJson,
+        args.markGaps ? "1" : "0"
       )) as string[];
 
       return this.#interpretAppend(reply, raw, orderJson, records, args.entry.runId);
@@ -819,6 +855,21 @@ export class RedisSnapshotStore {
       end
     `;
 
+    this.redis.defineCommand("markSnapshotGaps", {
+      numberOfKeys: 2,
+      lua: `
+        local eKey = KEYS[1]
+        local seqKey = KEYS[2]
+        -- Both anchors, the same pair keyspaceAlive uses. Marking on the strength of one of them
+        -- would create the other.
+        if redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', seqKey) == 0 then
+          return 0
+        end
+        redis.call('HSET', seqKey, 'g', '1')
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("appendSnapshotEntry", {
       numberOfKeys: 4,
       lua: `
@@ -839,6 +890,9 @@ export class RedisSnapshotStore {
         -- The COMPLETE distinct id set. Not the order deduped: order omits every id with no batch
         -- index, and those ids still have to come back on a read.
         local distinctJson = ARGV[14]
+        -- Set by the repair. A repair exists BECAUSE an append was lost, so whatever it manages to
+        -- put back, the entries between are gone and the window is short.
+        local markGaps    = ARGV[15] == '1' 
 
         -- Checking e alone would let a late transition recreate seq with no TTL and restart it at 1
         -- beside a surviving idx. A birth always creates both in this same script, so this never
@@ -860,8 +914,17 @@ export class RedisSnapshotStore {
         if casEnabled then
           local actual = redis.call('GET', curKey)
           if (actual or '') ~= expectedCur then
+            -- The one mutation a refused append makes, and it is not part of the append. A fork means
+            -- this keyspace and Postgres already disagree about the head, so its history cannot be
+            -- served as a window until something re-establishes that it can. The entry itself is
+            -- still not written.
+            redis.call('HSET', seqKey, 'g', '1')
             return { '${FORKED}', actual or '' }
           end
+        end
+
+        if markGaps then
+          redis.call('HSET', seqKey, 'g', '1')
         end
 
         local seq = redis.call('HINCRBY', seqKey, 'e', 1)
@@ -1019,6 +1082,11 @@ export class RedisSnapshotStore {
         -- on every poll for the rest of the run's life, with Postgres holding the transitions.
         if not keyspaceAlive() or redis.call('EXISTS', idxKey) == 0 then return nil end
 
+        -- A keyspace that lost an append has a hole, and no guard downstream can see one: a window
+        -- that should hold eight entries would return four and look complete. Refuse, and the
+        -- caller's existing miss path asks Postgres, which still holds the whole log.
+        if redis.call('HGET', seqKey, 'g') == '1' then return nil end
+
         -- STRICTLY greater than the cursor, and same-millisecond entries are dropped. Postgres
         -- serves this window with createdAt > cursor and drops them too; a Redis read that is more
         -- correct than the Postgres read shows up as divergence in compare mode.
@@ -1085,6 +1153,10 @@ export class RedisSnapshotStore {
         -- Same gate as the sibling window command: without it a lost index reports an empty HIT,
         -- so the caller stops asking Postgres for a window Postgres alone still holds.
         if not keyspaceAlive() or redis.call('EXISTS', idxKey) == 0 then return nil end
+
+        -- And the same hole gate, for the same reason. A caller that fell back on one window command
+        -- and not the other would still serve a short history through the second.
+        if redis.call('HGET', seqKey, 'g') == '1' then return nil end
 
         -- The index holds valid entries only, so an invalid since id misses ZSCORE. Its seq is still
         -- on its own '#s' field, which keeps the id resolvable without indexing invalid rows.
@@ -1165,6 +1237,11 @@ declare module "@internal/redis" {
       seqKey: string,
       callback?: Callback<number>
     ): Result<number, Context>;
+    markSnapshotGaps(
+      eKey: string,
+      seqKey: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
     appendSnapshotEntry(
       eKey: string,
       idxKey: string,
@@ -1184,6 +1261,7 @@ declare module "@internal/redis" {
       expectedCur: string,
       casEnabled: string,
       distinctJson: string,
+      markGaps: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     readSnapshotById(

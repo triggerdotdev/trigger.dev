@@ -101,6 +101,14 @@ class RecordingRedis {
   async dropRun(): Promise<void> {
     this.calls.push("dropRun");
   }
+
+  gapsMarked = 0;
+
+  async markGapsIfResident(): Promise<boolean> {
+    this.calls.push("markGapsIfResident");
+    this.gapsMarked += 1;
+    return true;
+  }
 }
 
 function redisHead(id: string, createdAt: Date): SnapshotRead {
@@ -284,7 +292,7 @@ describe("repairRedisHead", () => {
     expect(redis.appends[0]!.kind).toBe("transition");
   });
 
-  it("does nothing when the mirror already holds the Postgres head", async () => {
+  it("appends nothing when the mirror already holds the Postgres head, but still marks the hole", async () => {
     const redis = new RecordingRedis(redisHead("snap_lost", new Date("2026-01-01T00:00:10.000Z")));
     const store = harness({
       pg: pgHead({
@@ -298,9 +306,13 @@ describe("repairRedisHead", () => {
 
     await expect(store.repairRedisHead("run_1", "snap_lost")).resolves.toBe("alreadyCurrent");
     expect(redis.appends).toHaveLength(0);
+    // The head converged on its own, but the repair only ran because an append was lost, so entries
+    // behind it can still be missing. Observed live: four entries in Redis against eight in
+    // Postgres, with a matching head. Without the mark, that keyspace serves short windows as whole.
+    expect(redis.gapsMarked).toBe(1);
   });
 
-  it("refuses to append behind a mirror head that is newer than the Postgres head", async () => {
+  it("refuses to append behind a newer mirror head, and marks the hole", async () => {
     // Appending an older entry at the tail would leave the chain claiming a state the run has left.
     const redis = new RecordingRedis(redisHead("snap_newer", new Date("2026-01-01T00:00:20.000Z")));
     const store = harness({
@@ -315,6 +327,8 @@ describe("repairRedisHead", () => {
 
     await expect(store.repairRedisHead("run_1", "snap_lost")).resolves.toBe("redisAhead");
     expect(redis.appends).toHaveLength(0);
+    // Divergence either way round is still divergence.
+    expect(redis.gapsMarked).toBe(1);
   });
 
   it("heals the head even when the run has transitioned past the lost snapshot", async () => {

@@ -731,10 +731,17 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const head = await this.redis.getLatest(runId);
 
     if (head?.id === row.id) {
+      // The head converged on its own, but a repair only runs because an append was LOST, so the
+      // entries behind that head can still be missing. This is the case observed live: four entries
+      // in Redis against eight in Postgres, with a matching head. Returning here without marking is
+      // what let a short window be served as though it were whole.
+      await this.redis.markGapsIfResident(runId);
       return "alreadyCurrent";
     }
 
     if (head && headIsNewerThan(head, row.createdAt)) {
+      // Redis ahead of the Postgres head is divergence too, whichever way round it is.
+      await this.redis.markGapsIfResident(runId);
       return "redisAhead";
     }
 
@@ -749,6 +756,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       entry,
       kind: "transition",
       isTerminal: isTerminalEntry(entry),
+      // A repair runs BECAUSE an append was lost. Whatever it manages to put back, the entries in
+      // between are gone for good, and a window read cannot detect a hole. So the keyspace is marked
+      // and its windows fall back to Postgres, which still holds the whole log. Backfilling the lost
+      // entries instead would be worse: a late append takes a fresh seq, and the window scripts walk
+      // the index in seq order as though it were time order, so an old entry with a high seq
+      // truncates the window harder than the hole does.
+      markGaps: true,
       ...(cycle && { cycle }),
     });
 
