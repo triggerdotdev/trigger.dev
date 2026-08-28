@@ -91,6 +91,10 @@ export interface RunQueueKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
+  queueGroupConcurrencyKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueGroupConcurrencyKeyFromQueue(queue: string): string;
+  queueTotalConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueTotalConcurrencyLimitKeyFromQueue(queue: string): string;
 
   //env oncurrency
   envCurrentConcurrencyKey(env: EnvDescriptor): string;

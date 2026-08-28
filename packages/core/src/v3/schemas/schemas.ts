@@ -178,6 +178,12 @@ export const QueueManifest = z.object({
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment */
   concurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
+  /** An optional property that caps the total number of concurrent run executions across ALL
+   * `concurrencyKey` values of this queue. On a queue with a `concurrencyKey`, `concurrencyLimit`
+   * applies per key value; this is the ceiling for the whole queue.
+   *
+   * Only enforced for runs triggered with a `concurrencyKey`, and requires server-side support. */
+  totalConcurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
 });
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
