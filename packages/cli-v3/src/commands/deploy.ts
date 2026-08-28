@@ -6,6 +6,7 @@ import {
   tryCatch,
 } from "@trigger.dev/core/v3";
 import type {
+  DeployBuildPath,
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   GitMeta,
@@ -25,6 +26,11 @@ import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
+import {
+  applyBuildPathOptions,
+  nativeOnlyFlagError,
+  resolveBuildPath,
+} from "../deploy/buildPath.js";
 import { S2 } from "@s2-dev/streamstore";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
@@ -91,6 +97,8 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
   nativeBuildServer: z.boolean().default(false),
+  nativeBuild: z.boolean().default(false),
+  depotBuild: z.boolean().default(false),
   localBundle: z.boolean().default(false),
   fromBundle: z.string().optional(),
   detach: z.boolean().default(false),
@@ -221,13 +229,16 @@ export function configureDeployCommand(program: Command) {
           .implies({
             localBuild: true,
           })
-          .conflicts("nativeBuildServer")
+          .conflicts(["nativeBuild", "nativeBuildServer", "localBundle", "detach"])
           .hideHelp()
       )
       .addOption(
-        new CommandOption("--local-build", "Build the deployment image locally").conflicts(
-          "nativeBuildServer"
-        )
+        new CommandOption("--local-build", "Build the deployment image locally").conflicts([
+          "nativeBuild",
+          "nativeBuildServer",
+          "localBundle",
+          "detach",
+        ])
       )
       .addOption(new CommandOption("--push", "Push the image after local builds").hideHelp())
       .addOption(
@@ -247,17 +258,32 @@ export function configureDeployCommand(program: Command) {
       )
       .addOption(
         new CommandOption(
-          "--native-build-server",
-          "Use the native build server for building the image"
+          "--native-build",
+          "Build the image on the native build server, ignoring the build path configured for this project on the server"
         )
+          .implies({ nativeBuildServer: true })
+          .conflicts(["localBuild", "forceLocalBuild", "depotBuild", "fromBundle"])
+      )
+      .addOption(new CommandOption("--native-build-server", "Alias for --native-build").hideHelp())
+      .addOption(
+        new CommandOption(
+          "--depot-build",
+          "Build the image with Depot, ignoring the build path configured for this project on the server"
+        ).conflicts([
+          "nativeBuild",
+          "nativeBuildServer",
+          "localBundle",
+          "localBuild",
+          "forceLocalBuild",
+          "fromBundle",
+          "detach",
+        ])
       )
       .addOption(
         new CommandOption(
           "--local-bundle",
-          "Experimental: install and bundle locally, upload only the build output, and build the image remotely. Implies using the native build server."
-        )
-          .implies({ nativeBuildServer: true })
-          .conflicts(["localBuild", "forceLocalBuild"])
+          "Experimental: install and bundle locally and upload only the build output. Requires --native-build."
+        ).conflicts(["localBuild", "forceLocalBuild", "depotBuild"])
       )
       .addOption(
         new CommandOption(
@@ -265,14 +291,14 @@ export function configureDeployCommand(program: Command) {
           "Internal: build the image from a pre-built bundle directory. Implies a local build."
         )
           .implies({ localBuild: true })
-          .conflicts(["nativeBuildServer", "localBundle"])
+          .conflicts(["nativeBuild", "nativeBuildServer", "depotBuild", "localBundle", "detach"])
           .hideHelp()
       )
       .addOption(
         new CommandOption(
           "--detach",
-          "Return immediately after the deployment is queued, do not wait for the build to complete. Implies using the native build server."
-        ).implies({ nativeBuildServer: true })
+          "Return immediately after the deployment is queued, do not wait for the build to complete. Requires --native-build."
+        )
       )
       .addOption(new CommandOption("--plain", "Plain output").hideHelp())
       .action(async (path, options) => {
@@ -291,6 +317,11 @@ async function deployCommand(dir: string, options: unknown) {
 }
 
 async function _deployCommand(dir: string, options: DeployCommandOptions) {
+  const nativeOnlyError = nativeOnlyFlagError(options);
+  if (nativeOnlyError) {
+    throw new Error(nativeOnlyError);
+  }
+
   if (options.externalId !== undefined) {
     options.externalId = options.externalId.trim();
 
@@ -445,7 +476,18 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     resolvedConfig.runtime = projectClient.defaultRuntime;
   }
 
-  if (options.localBundle) {
+  const resolvedBuildPath = await resolveServerBuildPath(
+    projectClient.client,
+    resolvedConfig.project,
+    options
+  );
+  const buildPath = applyBuildPathOptions(resolvedBuildPath, options);
+
+  if (options.dryRun && resolvedBuildPath === "native" && buildPath === "depot") {
+    log.info("Dry run is not supported on the native build server path, bundling locally instead");
+  }
+
+  if (buildPath === "native_local_bundle") {
     await handleLocalBundleDeploy({
       apiClient: projectClient.client,
       config: resolvedConfig,
@@ -458,7 +500,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     return;
   }
 
-  if (options.nativeBuildServer) {
+  if (buildPath === "native") {
     await handleNativeBuildServerDeploy({
       apiClient: projectClient.client,
       config: resolvedConfig,
@@ -1235,6 +1277,39 @@ function getTriggeredVia(): DeploymentTriggeredVia {
   }
 
   return "cli:manual";
+}
+
+const DEPLOY_SETTINGS_TIMEOUT_MS = 5_000;
+
+async function resolveServerBuildPath(
+  apiClient: CliApiClient,
+  projectRef: string,
+  options: DeployCommandOptions
+): Promise<DeployBuildPath> {
+  const resolved = await resolveBuildPath(options, () =>
+    apiClient.getDeploySettings(
+      projectRef,
+      options.env,
+      AbortSignal.timeout(DEPLOY_SETTINGS_TIMEOUT_MS)
+    )
+  );
+
+  switch (resolved.from) {
+    case "flag":
+      logger.debug(`Build path ${resolved.buildPath} from ${resolved.flag}`);
+      break;
+    case "fallback":
+      logger.debug("Failed to fetch deploy settings", { failure: resolved.failure });
+      if (!resolved.silent) {
+        log.warn("Could not read the deploy settings from the server, using the Depot build path");
+      }
+      break;
+    case "server":
+      logger.debug(`Build path ${resolved.buildPath} (server)`);
+      break;
+  }
+
+  return resolved.buildPath;
 }
 
 async function handleNativeBuildServerDeploy({
