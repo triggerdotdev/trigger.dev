@@ -19,7 +19,6 @@ const NO_CHATS: DashboardAgentChat[] = [];
 export default function Story() {
   const [open, setOpen] = useState(true);
   const [mode, setMode] = useState<DashboardAgentMode>("floating");
-  const fullscreen = mode === "fullscreen";
   const closeWindow = () => {
     setOpen(false);
     setMode("floating");
@@ -64,7 +63,7 @@ export default function Story() {
         </div>
       )}
       {mounted && open && (
-        <FloatingAgentWindow fullscreen={fullscreen}>
+        <FloatingAgentWindow mode={mode}>
           {({ dragHandleProps, dragHandleClassName }) => (
             <div className="flex h-full flex-col bg-background-bright">
               <motion.div {...dragHandleProps} className={dragHandleClassName}>

@@ -12,6 +12,7 @@ import {
   FLOATING_WIDTH,
   FloatingAgentWindow,
   initialFloatingRect,
+  type DashboardAgentMode,
   type FloatingDragProps,
 } from "./panel-layout";
 
@@ -102,7 +103,7 @@ describe("the floating window's rect, wired with panel-layout's own constants", 
 function renderFloatingAgentWindow() {
   let latest!: FloatingDragProps;
   function Harness() {
-    return createElement(FloatingAgentWindow, { fullscreen: false }, (drag: FloatingDragProps) => {
+    return createElement(FloatingAgentWindow, { mode: "floating" }, (drag: FloatingDragProps) => {
       // oxlint-disable-next-line react/globals -- test harness capturing the render-prop's value.
       latest = drag;
       return createElement(
@@ -175,8 +176,8 @@ describe("FloatingAgentWindow's drag-vs-click filter", () => {
   });
 });
 
-describe("FloatingAgentWindow keeps its child mounted across a fullscreen toggle", () => {
-  it("never remounts the child when `fullscreen` flips (same tree shape both ways)", () => {
+describe("FloatingAgentWindow keeps its child mounted across every mode transition", () => {
+  it("never remounts the child across any of the three modes (same tree shape always)", () => {
     let mounts = 0;
     function Marker() {
       useEffect(() => {
@@ -184,26 +185,29 @@ describe("FloatingAgentWindow keeps its child mounted across a fullscreen toggle
       }, []);
       return null;
     }
-    function Harness({ fullscreen }: { fullscreen: boolean }) {
-      return createElement(FloatingAgentWindow, { fullscreen }, () => createElement(Marker));
+    function Harness({ mode }: { mode: DashboardAgentMode }) {
+      return createElement(FloatingAgentWindow, { mode }, () => createElement(Marker));
     }
 
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
-    act(() => {
-      root!.render(createElement(Harness, { fullscreen: false }));
-    });
-    expect(mounts).toBe(1);
 
-    act(() => {
-      root!.render(createElement(Harness, { fullscreen: true }));
-    });
-    expect(mounts).toBe(1);
-
-    act(() => {
-      root!.render(createElement(Harness, { fullscreen: false }));
-    });
-    expect(mounts).toBe(1);
+    // Every pairwise transition among the three modes, in both directions.
+    const sequence: DashboardAgentMode[] = [
+      "floating",
+      "rightPanel",
+      "floating",
+      "fullscreen",
+      "rightPanel",
+      "fullscreen",
+      "floating",
+    ];
+    for (const mode of sequence) {
+      act(() => {
+        root!.render(createElement(Harness, { mode }));
+      });
+      expect(mounts).toBe(1);
+    }
   });
 });

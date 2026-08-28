@@ -17,7 +17,6 @@ import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentL
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
-  agentTakeoverClassName,
   FloatingAgentWindow,
   readAgentMode,
   writeAgentMode,
@@ -116,7 +115,7 @@ export function DashboardAgent({
     setUnreadWakes(initialUnreadWakes);
     setUnreadWork(initialUnreadWork);
   }, [environment.id, initialUnreadWakes, initialUnreadWork]);
-  // Read lazily so SSR always renders the side panel.
+  // Read lazily: SSR has no localStorage, so the server always renders the floating default.
   const [mode, setMode] = useState<DashboardAgentMode>(readAgentMode);
   const fullscreen = mode === "fullscreen";
 
@@ -351,42 +350,33 @@ export function DashboardAgent({
   return (
     <DashboardAgentProvider value={context}>
       {open ? (
-        // `relative` is the fullscreen takeover's containing block; the non-fullscreen
-        // window is a page-wide floating overlay and doesn't need it.
+        // `relative` is the fullscreen takeover's containing block. The ResizablePanelGroup
+        // stays mounted across all three modes — only its sizing/handle degenerate outside
+        // rightPanel — so `FloatingAgentWindow` (and the chat panel inside it) sits at the
+        // same tree position in every mode and a mode switch never remounts it.
         <div className="relative h-full min-h-0">
-          {mode === "rightPanel" ? (
-            <ResizablePanelGroup
-              orientation="horizontal"
-              autosaveId="dashboard-agent-split"
-              className="h-full min-h-0"
-            >
-              <ResizablePanel id="dashboard-content" min="320px">
-                <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
-              </ResizablePanel>
-              <ResizableHandle id="dashboard-agent-handle" />
-              <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
-                <div className={agentTakeoverClassName(false)}>
-                  <DashboardAgentPanel
-                    onClose={() => setPanelOpen(false)}
-                    requestedMessage={requestedMessage}
-                    openChatRequest={openChatRequest}
-                    watchRequest={watchRequest}
-                    newChatSeq={newChatSeq}
-                    promotedPrompt={promotedPrompt}
-                    onChatRead={markChatRead}
-                    // The panel's own count, off the chat list it has already marked read.
-                    onUnreadWorkChange={setUnreadWork}
-                    onTurnActivityChange={handleTurnActivityChange}
-                    mode={mode}
-                    onModeChange={changeMode}
-                  />
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          ) : (
-            <>
+          <ResizablePanelGroup
+            orientation="horizontal"
+            autosaveId="dashboard-agent-split"
+            className="h-full min-h-0"
+          >
+            <ResizablePanel id="dashboard-content" min="320px">
               <div className={agentHiddenContentClassName(fullscreen)}>{children}</div>
-              <FloatingAgentWindow fullscreen={fullscreen}>
+            </ResizablePanel>
+            <ResizableHandle
+              id="dashboard-agent-handle"
+              className={mode === "rightPanel" ? undefined : "hidden"}
+            />
+            <ResizablePanel
+              id="dashboard-agent-panel"
+              default={mode === "rightPanel" ? "380px" : "0px"}
+              min={mode === "rightPanel" ? "320px" : "0px"}
+              max={mode === "rightPanel" ? "720px" : "0px"}
+              // Non-rightPanel modes render through position:fixed/absolute, which must
+              // escape this panel's own clipping box to avoid being cut to its 0px width.
+              className={mode === "rightPanel" ? undefined : "!overflow-visible"}
+            >
+              <FloatingAgentWindow mode={mode}>
                 {({ dragHandleProps, dragHandleClassName }) => (
                   <DashboardAgentPanel
                     onClose={() => setPanelOpen(false)}
@@ -406,8 +396,8 @@ export function DashboardAgent({
                   />
                 )}
               </FloatingAgentWindow>
-            </>
-          )}
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       ) : (
         <div className="h-full min-h-0 overflow-hidden">{children}</div>

@@ -1,4 +1,4 @@
-// Both class helpers apply to always-rendered wrappers, so toggling fullscreen is a
+// Both class helpers apply to always-rendered wrappers, so switching display mode is a
 // class change only and the open chat's transport, session and transcript survive it.
 import { useMemo, useRef, useState } from "react";
 import { motion, type PanInfo } from "framer-motion";
@@ -68,7 +68,7 @@ export function writeAgentMode(mode: DashboardAgentMode): void {
   }
 }
 
-export function agentTakeoverClassName(fullscreen: boolean): string {
+function agentTakeoverClassName(fullscreen: boolean): string {
   return fullscreen ? "absolute inset-0 z-10 bg-background-bright" : "h-full";
 }
 
@@ -81,14 +81,18 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
 /**
  * Owns the drag-vs-click filter, so the panel and the standalone story behave identically.
  * Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`, supplied by the caller.
+ * Always mounted as the sole wrapper of `children` across all three modes — the caller must
+ * never branch its own tree around this component, or a mode switch remounts the chat.
  */
 export function FloatingAgentWindow({
-  fullscreen,
+  mode,
   children,
 }: {
-  fullscreen: boolean;
+  mode: DashboardAgentMode;
   children: (drag: FloatingDragProps) => React.ReactNode;
 }) {
+  const fullscreen = mode === "fullscreen";
+  const docked = mode === "rightPanel";
   const initial = useMemo(() => initialFloatingRect(), []);
   const { style, dragHandleProps, resizeHandleProps } = useDraggableResizable({
     initial,
@@ -106,54 +110,62 @@ export function FloatingAgentWindow({
     ignoringGesture.current = !!(event.target as HTMLElement | null)?.closest(NO_DRAG_SELECTOR);
   };
 
-  // Same shape as `dragHandleProps` below empty, so fullscreen (no drag) doesn't change types.
-  const filteredDragHandleProps: Partial<PanHandlerProps> = fullscreen
-    ? {}
-    : {
-        onPanStart: (event: PointerEvent, info: PanInfo) => {
-          classifyGesture(event);
-          if (ignoringGesture.current) return;
-          setDragging(true);
-          dragHandleProps.onPanStart?.(event, info);
-        },
-        onPan: (event: PointerEvent, info: PanInfo) => {
-          classifyGesture(event);
-          if (ignoringGesture.current) return;
-          dragHandleProps.onPan?.(event, info);
-        },
-        onPanEnd: (event: PointerEvent, info: PanInfo) => {
-          gestureClassified.current = false;
-          ignoringGesture.current = false;
-          setDragging(false);
-          dragHandleProps.onPanEnd?.(event, info);
-        },
-      };
+  // Same shape as `dragHandleProps` below empty, so a mode with no drag doesn't change types.
+  const filteredDragHandleProps: Partial<PanHandlerProps> =
+    fullscreen || docked
+      ? {}
+      : {
+          onPanStart: (event: PointerEvent, info: PanInfo) => {
+            classifyGesture(event);
+            if (ignoringGesture.current) return;
+            setDragging(true);
+            dragHandleProps.onPanStart?.(event, info);
+          },
+          onPan: (event: PointerEvent, info: PanInfo) => {
+            classifyGesture(event);
+            if (ignoringGesture.current) return;
+            dragHandleProps.onPan?.(event, info);
+          },
+          onPanEnd: (event: PointerEvent, info: PanInfo) => {
+            gestureClassified.current = false;
+            ignoringGesture.current = false;
+            setDragging(false);
+            dragHandleProps.onPanEnd?.(event, info);
+          },
+        };
 
-  // Same two-`div` shape in both modes — only classes/style change — so toggling `fullscreen`
+  // Same two-`div` shape in all three modes — only classes/style change — so switching `mode`
   // never unmounts `children`; only className/style differ.
   return (
     <div
-      style={fullscreen ? undefined : style}
+      style={fullscreen || docked ? undefined : style}
       className={
         fullscreen
           ? agentTakeoverClassName(true)
-          : "z-30 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
+          : docked
+            ? "flex h-full flex-col"
+            : "z-30 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
       }
     >
       {/* Clips content to the rounded corners without clipping the resize handles below,
           which sit half outside this box's edges. */}
       <div
-        className={cn("flex min-h-0 flex-1 flex-col", !fullscreen && "overflow-hidden rounded-lg")}
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          !fullscreen && !docked && "overflow-hidden rounded-lg"
+        )}
       >
         {/* oxlint-disable-next-line react/refs -- the ref is only read inside event handlers, not during render. */}
         {children({
           dragHandleProps: filteredDragHandleProps,
-          dragHandleClassName: fullscreen
-            ? ""
-            : cn("select-none touch-none", dragging ? "cursor-grabbing" : "cursor-grab"),
+          dragHandleClassName:
+            fullscreen || docked
+              ? ""
+              : cn("select-none touch-none", dragging ? "cursor-grabbing" : "cursor-grab"),
         })}
       </div>
       {!fullscreen &&
+        !docked &&
         RESIZE_EDGES.map((edge) => (
           <motion.div
             key={edge}
