@@ -27,7 +27,7 @@ export type DashboardAgentMode = "floating" | "rightPanel" | "fullscreen";
 
 // V1 floating window: 380x512, bottom-right, matching the gallery's own panel frame.
 export const FLOATING_WIDTH = 380;
-export const FLOATING_HEIGHT = 360;
+export const FLOATING_HEIGHT = 600;
 export const FLOATING_MARGIN = 16;
 export const FLOATING_MIN_SIZE = { w: 320, h: 360 };
 const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
