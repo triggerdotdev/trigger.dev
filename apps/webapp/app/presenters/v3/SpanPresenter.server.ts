@@ -213,6 +213,7 @@ export class SpanPresenter extends BasePresenter {
     const span = await this.#getSpan({
       eventStore,
       spanId,
+      runFriendlyId,
       traceId,
       environmentId: parentRun.runtimeEnvironmentId,
       projectId: parentRun.projectId,
@@ -640,6 +641,7 @@ export class SpanPresenter extends BasePresenter {
     eventRepository,
     traceId,
     spanId,
+    runFriendlyId,
     environmentId,
     projectId,
     createdAt,
@@ -648,6 +650,7 @@ export class SpanPresenter extends BasePresenter {
     eventRepository: IEventRepository;
     traceId: string;
     spanId: string;
+    runFriendlyId: string;
     environmentId: string;
     projectId: string;
     eventStore: TaskEventStoreTable;
@@ -836,6 +839,46 @@ export class SpanPresenter extends BasePresenter {
               streamKey: s2StreamKey,
               displayName: streamId,
               metadata: undefined,
+            },
+          },
+        };
+      }
+      case "session-stream": {
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No session stream id`, {
+            spanId,
+            sessionStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const parts = span.entity.id.split(":");
+        const io = parts.at(-1);
+        const channel = parts.at(-2) ?? "";
+        const sessionId = parts.at(-3);
+
+        if (!sessionId || (io !== "out" && io !== "in")) {
+          logger.error(`SpanPresenter: Invalid session stream id`, {
+            spanId,
+            sessionStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const metadata = span.entity.metadata
+          ? (safeJsonParse(span.entity.metadata) as Record<string, unknown> | undefined)
+          : undefined;
+
+        return {
+          ...data,
+          entity: {
+            type: "session-stream" as const,
+            object: {
+              runId: runFriendlyId,
+              sessionId,
+              channel: channel.length > 0 ? channel : undefined,
+              io,
+              metadata,
             },
           },
         };
