@@ -4705,12 +4705,17 @@ if totalConcurrencyEnabled then
     -- so a member with no message key is provably dead. Members of re-queued
     -- runs keep their message key and clear through the mirrored ack when the
     -- run completes. The short lock bounds a saturated queue to one pass per
-    -- interval instead of one per dequeue attempt.
+    -- interval, and SSCAN with a persisted cursor bounds each pass to one
+    -- batch so a large set never blocks Redis for a full traversal; successive
+    -- passes cover the whole set.
     if groupCurrentConcurrency >= totalConcurrencyLimit then
       local reconcileLockKey = groupConcurrencyKey .. ':reconcileLock'
       if redis.call('SET', reconcileLockKey, '1', 'NX', 'EX', '10') then
-        local groupMembers = redis.call('SMEMBERS', groupConcurrencyKey)
-        for _, groupMemberId in ipairs(groupMembers) do
+        local reconcileCursorKey = groupConcurrencyKey .. ':reconcileCursor'
+        local reconcileCursor = redis.call('GET', reconcileCursorKey) or '0'
+        local scanResult = redis.call('SSCAN', groupConcurrencyKey, reconcileCursor, 'COUNT', '500')
+        redis.call('SET', reconcileCursorKey, scanResult[1], 'EX', '3600')
+        for _, groupMemberId in ipairs(scanResult[2]) do
           if redis.call('EXISTS', messageKeyPrefix .. groupMemberId) == 0 then
             redis.call('SREM', groupConcurrencyKey, groupMemberId)
           end
