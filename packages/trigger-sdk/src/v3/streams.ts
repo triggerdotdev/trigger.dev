@@ -381,8 +381,7 @@ async function readStreamImpl<T>(
   return await apiClient.fetchStream(runId, key, {
     signal: options?.signal,
     timeoutInSeconds: options?.timeoutInSeconds ?? 60,
-    lastEventId:
-      options?.startIndex !== undefined ? (options.startIndex - 1).toString() : undefined,
+    lastEventId: options?.startIndex ? (options.startIndex - 1).toString() : undefined,
     from: options?.from,
     onComplete: () => {
       span.end();

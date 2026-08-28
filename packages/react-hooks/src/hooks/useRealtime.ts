@@ -1197,7 +1197,7 @@ async function processRealtimeStream<TPart>(
     const resumeFromEventId =
       lastEventIdRef?.current ??
       userLastEventId ??
-      (startIndex !== undefined ? (startIndex - 1).toString() : undefined);
+      (startIndex ? (startIndex - 1).toString() : undefined);
 
     const partsQueue = createThrottledQueue<SSEStreamPart<TPart>>(async (batch) => {
       const combined = [...existingPartsRef.current, ...batch.map((part) => part.chunk)];
