@@ -82,6 +82,7 @@ export type RunStreamCallback<TRunTypes extends AnyRunTypes> = (
 
 export type RunShapeStreamOptions = {
   headers?: Record<string, string>;
+  resolveHeaders?: () => Promise<Record<string, string>>;
   fetchClient?: typeof fetch;
   closeOnComplete?: boolean;
   signal?: AbortSignal;
@@ -114,6 +115,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
     getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
     {
       headers: options?.headers,
+      resolveHeaders: options?.resolveHeaders,
       signal: abortController.signal,
     }
   );
@@ -420,12 +422,16 @@ export class SSEStreamSubscription implements StreamSubscription {
           "Could not subscribe to stream",
           Object.fromEntries(response.headers)
         );
-        this.options.onError?.(error);
         if (this.nonRetryableStatuses.has(response.status)) {
+          this.options.onError?.(error);
           controller.error(error);
           return;
         }
-        await this.refreshHeadersForAuthError(response.status);
+        // Only surface the error if we can't recover from it — a 401 that a
+        // token refresh fixes shouldn't reach the consumer.
+        if (!(await this.refreshHeadersForAuthError(response.status))) {
+          this.options.onError?.(error);
+        }
         throw error;
       }
 
@@ -438,7 +444,6 @@ export class SSEStreamSubscription implements StreamSubscription {
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
       this.sessionSettled = response.headers.get("X-Session-Settled") === "true";
       this.retryCount = 0; // reset on success
-      this.authRefreshed = false;
       armStall();
 
       // Dedup window for record ids. Bounded with FIFO eviction so a
@@ -554,6 +559,10 @@ export class SSEStreamSubscription implements StreamSubscription {
           }
 
           armStall(); // any chunk (including server keepalives) resets the silence timer
+          // The connection is genuinely live, so a later expiry may refresh
+          // again. Gated on a delivered chunk: a server that accepts then
+          // immediately drops must not win an unbounded mint loop.
+          this.authRefreshed = false;
           controller.enqueue(value);
         }
       } catch (error) {
@@ -590,16 +599,25 @@ export class SSEStreamSubscription implements StreamSubscription {
 
   /**
    * Re-resolve the headers after a 401/403 so the retry carries a fresh token.
-   * At most once per connection: if the refreshed token is rejected too, the
-   * auth error stays terminal.
+   * At most once per live connection: if the refreshed token is rejected too,
+   * the auth error stays terminal. Returns true when a retry should follow.
    */
-  private async refreshHeadersForAuthError(status: number): Promise<void> {
-    if (status !== 401 && status !== 403) return;
-    if (!this.options.resolveHeaders || this.authRefreshed) return;
+  private async refreshHeadersForAuthError(status: number): Promise<boolean> {
+    if (status !== 401 && status !== 403) return false;
+    if (!this.options.resolveHeaders || this.authRefreshed) return false;
 
     this.authRefreshed = true;
-    this.currentHeaders = await this.options.resolveHeaders();
+
+    try {
+      this.currentHeaders = await this.options.resolveHeaders();
+    } catch {
+      // A refresher that can't mint leaves us with the rejected token —
+      // keep the auth error terminal rather than retrying with it.
+      return false;
+    }
+
     this.retryAfterAuthRefresh = true;
+    return true;
   }
 
   private async retryConnection(

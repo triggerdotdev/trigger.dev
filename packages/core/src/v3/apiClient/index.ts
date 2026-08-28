@@ -299,6 +299,17 @@ export class ApiClient {
     };
   }
 
+  /** As {@link ApiClient.#resolveStreamHeaders}, for the leaner realtime header set. */
+  #resolveRealtimeHeaders(): (() => Promise<Record<string, string>>) | undefined {
+    const refreshAccessToken = this.refreshAccessToken;
+    if (!refreshAccessToken) return undefined;
+
+    return async () => {
+      const accessToken = await refreshAccessTokenOnce(refreshAccessToken);
+      return { ...this.#getRealtimeHeaders(), Authorization: `Bearer ${accessToken}` };
+    };
+  }
+
   async getRunResult(
     runId: string,
     requestOptions?: ZodFetchOptions
@@ -1685,6 +1696,7 @@ export class ApiClient {
         closeOnComplete:
           typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
         headers: this.#getRealtimeHeaders(),
+        resolveHeaders: this.#resolveRealtimeHeaders(),
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
@@ -1708,6 +1720,7 @@ export class ApiClient {
       {
         closeOnComplete: false,
         headers: this.#getRealtimeHeaders(),
+        resolveHeaders: this.#resolveRealtimeHeaders(),
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
@@ -1734,6 +1747,7 @@ export class ApiClient {
       {
         closeOnComplete: false,
         headers: this.#getRealtimeHeaders(),
+        resolveHeaders: this.#resolveRealtimeHeaders(),
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,

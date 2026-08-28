@@ -43,6 +43,33 @@ describe("SSEStreamSubscription retry behavior", () => {
     });
   }
 
+  /** An accepted connection that dies before delivering a single record. */
+  function makeDroppedResponse() {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("connection dropped"));
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "X-Stream-Version": "v1" },
+    });
+  }
+
+  /** One delivered record, then the connection dies. */
+  function makeChunkThenDropResponse() {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`id: 1\ndata: {"hello":1}\n\n`));
+        setTimeout(() => controller.error(new Error("connection dropped")), 20);
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "X-Stream-Version": "v1" },
+    });
+  }
+
   // Drain a ReadableStream<SSEStreamPart> until it closes or errors.
   // Returns received chunks plus terminal state.
   async function drain(stream: ReadableStream<{ id: string; chunk: unknown }>) {
@@ -494,6 +521,127 @@ describe("SSEStreamSubscription retry behavior", () => {
     expect(attempts).toBe(2);
     expect(refreshes).toBe(1);
     expect(result.error).toBeDefined();
+  });
+
+  it("retries a 403 once with the headers from resolveHeaders", async () => {
+    const seenTokens: Array<string | null> = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const token = new Headers(init.headers).get("Authorization");
+      seenTokens.push(token);
+      if (token !== "Bearer fresh") return new Response("forbidden", { status: 403 });
+      return makeSSEResponse();
+    });
+
+    const sub = new SSEStreamSubscription("http://example.test/sse", {
+      headers: { Authorization: "Bearer expired" },
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      resolveHeaders: async () => ({ Authorization: "Bearer fresh" }),
+    });
+
+    const result = await sub.subscribe().then(drain);
+    expect(seenTokens).toEqual(["Bearer expired", "Bearer fresh"]);
+    expect(result.error).toBeUndefined();
+    expect(result.chunks).toHaveLength(1);
+  });
+
+  it("does not report a 401 that the refresh recovered from", async () => {
+    let attempts = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      attempts++;
+      if (attempts === 1) return new Response("unauthorized", { status: 401 });
+      return makeSSEResponse();
+    });
+
+    const errors: Error[] = [];
+    const sub = new SSEStreamSubscription("http://example.test/sse", {
+      headers: { Authorization: "Bearer expired" },
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      onError: (e) => errors.push(e),
+      resolveHeaders: async () => ({ Authorization: "Bearer fresh" }),
+    });
+
+    const result = await sub.subscribe().then(drain);
+    expect(errors).toHaveLength(0);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("terminates on a 401 when the refresher itself throws", async () => {
+    let attempts = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      attempts++;
+      return new Response("unauthorized", { status: 401 });
+    });
+
+    const errors: Error[] = [];
+    const sub = new SSEStreamSubscription("http://example.test/sse", {
+      headers: { Authorization: "Bearer expired" },
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      onError: (e) => errors.push(e),
+      resolveHeaders: async () => {
+        throw new Error("mint failed");
+      },
+    });
+
+    const result = await sub.subscribe().then(drain);
+    expect(attempts).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(result.error).toBeDefined();
+  });
+
+  it("does not re-mint for a connection that is accepted but delivers nothing", async () => {
+    let attempts = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      attempts++;
+      // Accept the second attempt, then drop it without sending a record.
+      if (attempts === 2) return makeDroppedResponse();
+      return new Response("unauthorized", { status: 401 });
+    });
+
+    let refreshes = 0;
+    const sub = new SSEStreamSubscription("http://example.test/sse", {
+      headers: { Authorization: "Bearer expired" },
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      resolveHeaders: async () => {
+        refreshes++;
+        return { Authorization: `Bearer fresh-${refreshes}` };
+      },
+    });
+
+    const result = await sub.subscribe().then(drain);
+    expect(refreshes).toBe(1);
+    expect(attempts).toBe(3);
+    expect(result.error).toBeDefined();
+  });
+
+  it("allows another refresh once a connection has delivered a record", async () => {
+    let attempts = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      attempts++;
+      if (attempts === 2) return makeChunkThenDropResponse();
+      if (attempts === 4) return makeSSEResponse();
+      return new Response("unauthorized", { status: 401 });
+    });
+
+    let refreshes = 0;
+    const sub = new SSEStreamSubscription("http://example.test/sse", {
+      headers: { Authorization: "Bearer expired" },
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      resolveHeaders: async () => {
+        refreshes++;
+        return { Authorization: `Bearer fresh-${refreshes}` };
+      },
+    });
+
+    const result = await sub.subscribe().then(drain);
+    expect(refreshes).toBe(2);
+    expect(attempts).toBe(4);
+    expect(result.error).toBeUndefined();
+    expect(result.chunks).toHaveLength(2);
   });
 
   it("retries on 503 (caller-tunable nonRetryableStatuses)", async () => {
