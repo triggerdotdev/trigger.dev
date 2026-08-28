@@ -537,7 +537,9 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
     // Request SSE stream from S2 and return it directly
     const s2Response = await this.s2StreamRecords(s2Stream, {
-      ...(tailFromLatest ? { tail_offset: 1 } : { seq_num: startSeq ?? 0, clamp: true }),
+      ...(tailFromLatest
+        ? { tail_offset: 1, clamp: true }
+        : { seq_num: startSeq ?? 0, clamp: true }),
       wait: options?.timeoutInSeconds ?? this.s2WaitSeconds, // S2 will keep the connection open and stream new records
       signal, // Pass abort signal so S2 connection is cleaned up when client disconnects
     });

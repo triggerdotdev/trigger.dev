@@ -1217,7 +1217,7 @@ async function processRealtimeStream<TPart>(
       signal: abortControllerRef.current?.signal,
       timeoutInSeconds,
       lastEventId: resumeFromEventId,
-      from,
+      from: startIndex !== undefined ? undefined : from,
       onPart: (part) => {
         if (part.id && lastEventIdRef) {
           lastEventIdRef.current = part.id;

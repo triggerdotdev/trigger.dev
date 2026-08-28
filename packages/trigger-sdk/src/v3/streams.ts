@@ -382,7 +382,7 @@ async function readStreamImpl<T>(
     signal: options?.signal,
     timeoutInSeconds: options?.timeoutInSeconds ?? 60,
     lastEventId: options?.startIndex ? (options.startIndex - 1).toString() : undefined,
-    from: options?.from,
+    from: options?.startIndex !== undefined ? undefined : options?.from,
     onComplete: () => {
       span.end();
     },
