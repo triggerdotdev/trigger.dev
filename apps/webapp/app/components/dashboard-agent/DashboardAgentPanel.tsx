@@ -616,8 +616,6 @@ export function DashboardAgentPanel({
           chats={chats}
           currentChatId={active?.chatId ?? ""}
           thinkingChatId={thinkingChatId}
-          onNewChat={newChat}
-          showNewChat={active !== null}
           onOpenHistory={loadHistory}
           onSelectChat={switchChat}
           onDeleteChat={deleteChat}
@@ -663,6 +661,8 @@ export function DashboardAgentPanel({
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
             onQuotaChange={handleQuotaChange}
+            onNewChat={newChat}
+            showNewChat={active !== null}
           />
         ) : (
           <DashboardAgentDraft

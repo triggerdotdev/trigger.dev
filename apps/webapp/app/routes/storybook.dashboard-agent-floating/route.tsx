@@ -73,8 +73,6 @@ export default function Story() {
                   chats={NO_CHATS}
                   currentChatId=""
                   thinkingChatId={null}
-                  onNewChat={() => {}}
-                  showNewChat={false}
                   onOpenHistory={() => {}}
                   onSelectChat={() => {}}
                   onDeleteChat={() => {}}

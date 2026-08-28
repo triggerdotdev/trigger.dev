@@ -3,7 +3,6 @@ import { ChatFloatingPanel } from "~/assets/icons/ChatFloatingPanel";
 import { ChatFullScreen } from "~/assets/icons/ChatFullScreen";
 import { ChatRightPanel } from "~/assets/icons/ChatRightPanel";
 import { CrossIcon } from "~/assets/icons/CrossIcon";
-import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { Button } from "~/components/primitives/Buttons";
 import {
   Popover,
@@ -42,8 +41,6 @@ export function DashboardAgentHeader({
   chats,
   currentChatId,
   thinkingChatId,
-  onNewChat,
-  showNewChat,
   onOpenHistory,
   onSelectChat,
   onDeleteChat,
@@ -55,8 +52,6 @@ export function DashboardAgentHeader({
   chats: DashboardAgentChat[];
   currentChatId: string;
   thinkingChatId?: string | null;
-  onNewChat: () => void;
-  showNewChat: boolean;
   onOpenHistory: () => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
@@ -123,21 +118,6 @@ export function DashboardAgentHeader({
       />
 
       <div className="flex shrink-0 items-center gap-0.5" data-agent-no-drag>
-        {showNewChat && (
-          <Button
-            variant="minimal/small"
-            className="aspect-square h-6 p-1"
-            aria-label="New chat"
-            tooltip={
-              <span className="flex items-center">
-                New chat
-                <ShortcutKey shortcut={NEW_CHAT_SHORTCUT} variant="medium" />
-              </span>
-            }
-            onClick={onNewChat}
-            LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
-          />
-        )}
         <Popover open={isModeMenuOpen} onOpenChange={setModeMenuOpen}>
           <PopoverTrigger asChild>
             <Button
