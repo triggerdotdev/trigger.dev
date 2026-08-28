@@ -1126,6 +1126,7 @@ export class RunAttemptSystem {
                   orgId: env.organizationId,
                   projectId: env.project.id,
                   timestamp: retryAt.getTime(),
+                  resetQueueAttempts: !forceRequeue,
                   error: {
                     type: "INTERNAL_ERROR",
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1249,6 +1250,7 @@ export class RunAttemptSystem {
     checkpointId,
     completedWaitpoints,
     batchId,
+    resetQueueAttempts = false,
     tx,
   }: {
     run: { id: string };
@@ -1269,6 +1271,12 @@ export class RunAttemptSystem {
       index?: number;
     }[];
     batchId?: string;
+    /**
+     * Pass when the worker reported the attempt's failure itself (an ordinary task retry), so the
+     * queue's redelivery budget is reset rather than consumed. Engine-detected stalls and dequeue
+     * failures leave it unset so a run that never comes back healthy is still bounded.
+     */
+    resetQueueAttempts?: boolean;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1278,6 +1286,7 @@ export class RunAttemptSystem {
         orgId,
         messageId: run.id,
         retryAt: timestamp,
+        resetAttemptCount: resetQueueAttempts,
       });
 
       if (!gotRequeued) {

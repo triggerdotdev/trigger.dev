@@ -1116,12 +1116,19 @@ export class RunQueue {
     messageId,
     retryAt,
     incrementAttemptCount = true,
+    resetAttemptCount = false,
     skipDequeueProcessing = false,
   }: {
     orgId: string;
     messageId: string;
     retryAt?: number;
     incrementAttemptCount?: boolean;
+    /**
+     * Zero the message's attempt counter instead of incrementing it. The counter is the budget
+     * for dequeues that never reach execution; a caller that knows an attempt did execute passes
+     * this so an ordinary task retry cannot exhaust it and dead-letter the run.
+     */
+    resetAttemptCount?: boolean;
     skipDequeueProcessing?: boolean;
   }) {
     return this.#trace(
@@ -1148,7 +1155,9 @@ export class RunQueue {
           [SemanticAttributes.WORKER_QUEUE]: this.#getWorkerQueueFromMessage(message),
         });
 
-        if (incrementAttemptCount) {
+        if (resetAttemptCount) {
+          message.attempt = 0;
+        } else if (incrementAttemptCount) {
           message.attempt = message.attempt + 1;
           if (message.attempt >= maxAttempts) {
             await this.#callMoveToDeadLetterQueue({ message });
