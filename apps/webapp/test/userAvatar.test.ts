@@ -267,6 +267,25 @@ describe("the avatar object store", () => {
     );
   });
 
+  it("treats a whitespace-only base URL as unset", () => {
+    setAvatarEnv({ AVATARS_OBJECT_STORE_BASE_URL: "  ", AVATARS_OBJECT_STORE_BUCKET: "avatars" });
+
+    expect(() => presignUserAvatarUrl(`avatars/${USER_ID}/a.png`)).toThrow(
+      /AVATARS_OBJECT_STORE_BASE_URL/
+    );
+  });
+
+  it("treats a whitespace-only bucket as unset", () => {
+    setAvatarEnv({
+      AVATARS_OBJECT_STORE_BASE_URL: "https://avatars-blank-bucket.test",
+      AVATARS_OBJECT_STORE_BUCKET: " ",
+    });
+
+    expect(() => presignUserAvatarUrl(`avatars/${USER_ID}/a.png`)).toThrow(
+      /AVATARS_OBJECT_STORE_BUCKET/
+    );
+  });
+
   it("requires its own bucket", () => {
     setAvatarEnv({
       AVATARS_OBJECT_STORE_BASE_URL: "https://avatars-no-bucket.test",
@@ -399,6 +418,9 @@ describe("isAvatarUploadsEnabled", () => {
     ["only the bucket is set", undefined, "avatars"],
     ["the base URL is blank", "", "avatars"],
     ["the bucket is blank", "http://localhost:9005", ""],
+    ["the base URL is only whitespace", "   ", "avatars"],
+    ["the bucket is only whitespace", "http://localhost:9005", "  "],
+    ["both are only whitespace", " ", "\t"],
   ])("is off when %s", (_case, baseUrl, bucket) => {
     env.AVATARS_OBJECT_STORE_BASE_URL = baseUrl;
     env.AVATARS_OBJECT_STORE_BUCKET = bucket;

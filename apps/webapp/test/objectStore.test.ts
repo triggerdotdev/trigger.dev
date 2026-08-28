@@ -1,4 +1,4 @@
-import { postgresAndMinioTest } from "@internal/testcontainers";
+import { minioTest, postgresAndMinioTest } from "@internal/testcontainers";
 import { type IOPacket } from "@trigger.dev/core/v3";
 import { type PrismaClient } from "@trigger.dev/database";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,11 @@ import {
   resolveStoreProtocolForPacketPresign,
   uploadPacketToObjectStore,
 } from "~/v3/objectStore.server";
+import {
+  presignUserAvatarUrl,
+  readUserAvatarBytes,
+  uploadUserAvatar,
+} from "~/services/userAvatar.server";
 
 // Extend the timeout for container tests
 vi.setConfig({ testTimeout: 60_000 });
@@ -836,5 +841,60 @@ describe("Object Storage", () => {
     env.OBJECT_STORE_REGION = originalEnvObj.OBJECT_STORE_REGION;
     env.OBJECT_STORE_DEFAULT_PROTOCOL = originalEnvObj.OBJECT_STORE_DEFAULT_PROTOCOL;
     env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = originalEnvObj.TASK_PAYLOAD_OFFLOAD_THRESHOLD;
+  });
+});
+
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+
+/**
+ * The avatar store signs its own requests: aws4fetch guesses the SigV4 service from the
+ * hostname unless it is told, and guesses wrong for anything that is not amazonaws.com.
+ * Only a real S3-compatible host rejects that signature, so this has to run against MinIO.
+ */
+describe("the avatar object store against MinIO", () => {
+  const original = {
+    baseUrl: env.AVATARS_OBJECT_STORE_BASE_URL,
+    bucket: env.AVATARS_OBJECT_STORE_BUCKET,
+    accessKeyId: env.AVATARS_OBJECT_STORE_ACCESS_KEY_ID,
+    secretAccessKey: env.AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY,
+    region: env.AVATARS_OBJECT_STORE_REGION,
+  };
+
+  afterAll(() => {
+    env.AVATARS_OBJECT_STORE_BASE_URL = original.baseUrl;
+    env.AVATARS_OBJECT_STORE_BUCKET = original.bucket;
+    env.AVATARS_OBJECT_STORE_ACCESS_KEY_ID = original.accessKeyId;
+    env.AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY = original.secretAccessKey;
+    env.AVATARS_OBJECT_STORE_REGION = original.region;
+  });
+
+  minioTest("uploads, presigns and serves an avatar", async ({ minioConfig, minioContainer }) => {
+    await minioContainer.resetBucket("avatars");
+
+    env.AVATARS_OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
+    env.AVATARS_OBJECT_STORE_BUCKET = "avatars";
+    env.AVATARS_OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
+    env.AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+    env.AVATARS_OBJECT_STORE_REGION = minioConfig.region;
+
+    const userId = `usr_${Date.now().toString(36)}`;
+
+    const { avatarUrl, filename } = await uploadUserAvatar({
+      userId,
+      contentType: "image/png",
+      data: PNG_BYTES,
+    });
+
+    expect(avatarUrl).toBe(`/resources/account/avatar/${userId}/${filename}`);
+
+    const objectPath = `avatars/${userId}/${filename}`;
+
+    const presigned = await presignUserAvatarUrl(objectPath);
+    const response = await fetch(presigned);
+
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES);
+
+    expect(await readUserAvatarBytes(objectPath)).toEqual(PNG_BYTES);
   });
 });

@@ -22,12 +22,22 @@ const USER_ID_REGEX = /^[A-Za-z0-9_-]+$/;
  * configure no avatar store keep the account page exactly as it was before the feature.
  */
 export function isAvatarUploadsEnabled() {
-  return Boolean(env.AVATARS_OBJECT_STORE_BASE_URL && env.AVATARS_OBJECT_STORE_BUCKET);
+  const { baseUrl, bucket } = avatarObjectStoreSettings();
+
+  return Boolean(baseUrl && bucket);
+}
+
+/** Trimmed at the read point: a whitespace-only value is unset, not a usable URL. */
+function avatarObjectStoreSettings() {
+  return {
+    baseUrl: env.AVATARS_OBJECT_STORE_BASE_URL?.trim(),
+    bucket: env.AVATARS_OBJECT_STORE_BUCKET?.trim(),
+  };
 }
 
 /** Undefined when no avatar store is configured, so the policy stays unchanged. */
 export function avatarObjectStoreImageOrigin() {
-  return imageOriginFromUrl(env.AVATARS_OBJECT_STORE_BASE_URL);
+  return imageOriginFromUrl(avatarObjectStoreSettings().baseUrl);
 }
 
 /** Keyed by config so a changed base URL builds a fresh client instead of reusing a stale one. */
@@ -41,8 +51,7 @@ const avatarObjectStoreClients = singleton(
  * bucket, as with `packets/…`.
  */
 function requireAvatarObjectStore() {
-  const baseUrl = env.AVATARS_OBJECT_STORE_BASE_URL;
-  const bucket = env.AVATARS_OBJECT_STORE_BUCKET;
+  const { baseUrl, bucket } = avatarObjectStoreSettings();
 
   if (!baseUrl) {
     throw new Error("AVATARS_OBJECT_STORE_BASE_URL is required to store avatars");
@@ -59,9 +68,10 @@ function requireAvatarObjectStore() {
     client = ObjectStoreClient.create({
       baseUrl,
       bucket,
-      accessKeyId: env.AVATARS_OBJECT_STORE_ACCESS_KEY_ID || undefined,
-      secretAccessKey: env.AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY || undefined,
-      region: env.AVATARS_OBJECT_STORE_REGION || undefined,
+      accessKeyId: env.AVATARS_OBJECT_STORE_ACCESS_KEY_ID?.trim() || undefined,
+      secretAccessKey: env.AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY?.trim() || undefined,
+      region: env.AVATARS_OBJECT_STORE_REGION?.trim() || undefined,
+      service: env.AVATARS_OBJECT_STORE_SERVICE?.trim() || undefined,
     });
     avatarObjectStoreClients.set(cacheKey, client);
   }

@@ -867,6 +867,9 @@ const EnvironmentSchema = z
     AVATARS_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
     AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     AVATARS_OBJECT_STORE_REGION: z.string().optional(),
+    // Signed as "s3" unless told otherwise, like the shared store: aws4fetch otherwise
+    // guesses the SigV4 service from the hostname and gets it wrong off amazonaws.com.
+    AVATARS_OBJECT_STORE_SERVICE: z.string().default("s3"),
 
     ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
