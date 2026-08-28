@@ -148,7 +148,7 @@ describe("createBuildLogRenderer compact extras", () => {
     expect(calls[1]).toBe("message:t: a");
     expect(calls[2]).toBe("stop:Deployment failed:2");
     expect(calls[3]).toBe("print:│");
-    expect(calls[4]).toContain("Last 1 lines of the build log");
+    expect(calls[4]).toContain("Last 1 line of the build log");
     expect(calls[5]).toMatch(/  a$/);
   });
 

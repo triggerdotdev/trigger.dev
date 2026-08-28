@@ -2351,6 +2351,8 @@ async function followBuildServerDeployment({
   }
 
   if (!finalDeploymentEvent) {
+    renderer.finish("Log stream stopped", "failure");
+
     log.error(
       "Stopped receiving updates from the build server, please check the deployment status in the dashboard"
     );

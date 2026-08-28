@@ -135,7 +135,9 @@ export function createBuildLogRenderer(options: BuildLogRendererOptions): BuildL
 
       if (options.mode === "compact" && outcome === "failure" && tail.length > 0) {
         print("│");
-        print(`│  ${chalkGrey(`Last ${tail.length} lines of the build log:`)}`);
+        print(
+          `│  ${chalkGrey(`Last ${tail.length} ${tail.length === 1 ? "line" : "lines"} of the build log:`)}`
+        );
         for (const line of tail) {
           print(line);
         }
