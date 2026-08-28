@@ -4,7 +4,7 @@
 "@trigger.dev/sdk": patch
 ---
 
-Subscribe to a realtime stream from its latest record instead of replaying the whole history. Pass `from: "latest"` to `useRealtimeStream`, `streams.read()`, or `fetchStream` to receive only records appended after you connect (a live "last value" view), and `maxParts` to keep the accumulated `parts` array bounded. A reconnect or remount resumes from the last record it saw, so no records are missed and none are replayed.
+Subscribe to a realtime stream from its latest record instead of replaying the whole history. Pass `from: "latest"` to `useRealtimeStream`, `streams.read()`, or `fetchStream` to start at the current tail (the latest record, then live updates) instead of replaying (a live "last value" view), and `maxParts` to keep the accumulated `parts` array bounded. A reconnect or remount resumes from the last record it saw, so no records are missed and none are replayed. `from: "latest"` needs a server that supports it; older servers safely fall back to a full replay.
 
 `useRealtimeStream` also gains a `lastEventId` option and returns the `lastEventId` of the last part seen, so you can persist the cursor (for example across a page reload) and resume exactly where you left off. An `onParts` callback delivers each throttled batch of parts with their event ids.
 

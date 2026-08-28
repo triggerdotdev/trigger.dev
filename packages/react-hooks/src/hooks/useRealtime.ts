@@ -667,10 +667,10 @@ export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
    * Where a fresh subscription starts reading.
    *
    * - `"beginning"` (default): replay the full stream history, then live-tail.
-   * - `"latest"`: skip history and start at the current tail — only records
-   *   appended after the hook connects are delivered (a last-value / live
-   *   view). On reconnect or remount the subscription resumes from the last
-   *   record it saw, so no frames are missed and none are replayed.
+   * - `"latest"`: start at the current tail (the latest record, then live
+   *   updates) instead of replaying history, for a last-value / live view. On
+   *   reconnect or remount the subscription resumes from the last record it
+   *   saw, so no frames are missed and none are replayed.
    *
    * Ignored when `startIndex` is set (which pins an absolute start position).
    */
@@ -878,10 +878,8 @@ function useRealtimeStreamImplementation<TPart>(
   );
   const lastEventIdRef = useRef<string | undefined>(persistedLastEventId);
   useEffect(() => {
-    if (persistedLastEventId !== undefined) {
-      lastEventIdRef.current = persistedLastEventId;
-    }
-  }, [persistedLastEventId]);
+    lastEventIdRef.current = persistedLastEventId;
+  }, [idKey, runId, streamKey, persistedLastEventId]);
 
   // Add state to track when the subscription is complete
   const { data: _isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
@@ -1207,6 +1205,7 @@ async function processRealtimeStream<TPart>(
         maxParts != null && maxParts >= 0 && combined.length > maxParts
           ? combined.slice(combined.length - maxParts)
           : combined;
+      existingPartsRef.current = bounded;
       mutatePartsData(bounded);
       if (persistLastEventId && lastEventIdRef?.current) {
         persistLastEventId(lastEventIdRef.current);

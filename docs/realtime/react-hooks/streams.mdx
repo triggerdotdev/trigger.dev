@@ -149,7 +149,7 @@ The hook returns `lastEventId`, the cursor of the last part it received. Persist
 
 ### Live view: start from the latest record
 
-By default a subscriber replays the whole stream history, then live-tails. Pass `from: "latest"` to skip history and receive only records appended after you connect, and `maxParts` to keep memory bounded. Together they give a last-value view:
+By default a subscriber replays the whole stream history, then live-tails. Pass `from: "latest"` to start at the current tail (the latest record, then live updates) instead of replaying, and `maxParts` to keep memory bounded. Together they give a last-value view:
 
 ```tsx
 "use client";
@@ -159,7 +159,7 @@ import { useRealtimeStream } from "@trigger.dev/react-hooks";
 export function LatestFrame({ runId, accessToken }: { runId: string; accessToken: string }) {
   const { parts } = useRealtimeStream<{ url: string }>(runId, "frames", {
     accessToken,
-    from: "latest", // only frames appended after this component connects
+    from: "latest", // start at the latest frame, then live updates
     maxParts: 1, // keep just the most recent frame
   });
 

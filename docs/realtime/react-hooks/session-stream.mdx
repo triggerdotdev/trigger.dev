@@ -60,13 +60,13 @@ The return value:
 
 ## Start from the latest record
 
-By default the hook replays the channel history, then live-tails. Pass `from: "latest"` to receive only records appended after you connect, and `maxRecords` to bound memory:
+By default the hook replays the channel history, then live-tails. Pass `from: "latest"` to start at the current tail (the latest record, then live updates) instead of replaying, and `maxRecords` to bound memory:
 
 ```tsx
 const { records } = useSessionStream<{ url: string }>(sessionId, {
   accessToken,
   io: "out",
-  from: "latest", // only records appended after this component connects
+  from: "latest", // start at the latest record, then live updates
   maxRecords: 1, // keep just the most recent record
 });
 ```

@@ -65,8 +65,8 @@ export type UseSessionStreamOptions<TRecord> = UseApiClientOptions & {
    * Where a fresh subscription (no `lastEventId`) starts reading.
    *
    * - `"beginning"` (default): replay the full channel history, then live-tail.
-   * - `"latest"`: skip history and start at the current tail — only records
-   *   appended after the hook connects are delivered (a last-value / live view).
+   * - `"latest"`: start at the current tail (the latest record, then live
+   *   updates) instead of replaying history, for a last-value / live view.
    *
    * Ignored when `lastEventId` is set.
    */
@@ -170,6 +170,10 @@ export function useSessionStream<TRecord = unknown>(
     [idKey, sessionIdOrExternalId, io, "lastEventId"],
     null
   );
+  const lastEventIdRef = useRef<string | undefined>(lastEventId);
+  useEffect(() => {
+    lastEventIdRef.current = lastEventId;
+  }, [idKey, sessionIdOrExternalId, io, lastEventId]);
 
   const { data: lastControl = undefined, mutate: setLastControl } = useSWR<
     undefined | ControlEvent
@@ -243,7 +247,7 @@ export function useSessionStream<TRecord = unknown>(
         onControl,
         abortControllerRef,
         timeoutInSeconds,
-        startEventId !== undefined ? String(startEventId) : undefined,
+        startEventId !== undefined ? String(startEventId) : lastEventIdRef.current,
         throttleInMs ?? 16,
         from,
         maxRecords
@@ -358,6 +362,7 @@ async function processSessionStream<TRecord>(
         maxRecords != null && maxRecords >= 0 && combined.length > maxRecords
           ? combined.slice(combined.length - maxRecords)
           : combined;
+      existingRecordsRef.current = bounded;
       mutateRecordsData(bounded);
       publishLastEventId();
       flushParts();
