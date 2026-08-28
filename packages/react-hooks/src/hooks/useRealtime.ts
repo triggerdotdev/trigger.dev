@@ -8,6 +8,7 @@ import type {
   RealtimeDefinedStream,
   RealtimeRun,
   RealtimeRunSkipColumns,
+  SSEStreamPart,
 } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { KeyedMutator } from "../utils/trigger-swr.js";
@@ -615,6 +616,13 @@ export function useRealtimeBatch<TTask extends AnyTask>(
 export type UseRealtimeStreamInstance<TPart> = {
   parts: Array<TPart>;
 
+  /**
+   * The event id of the last part seen. Persist this (e.g. to localStorage) and
+   * pass it back as the `lastEventId` option to resume the stream where you left
+   * off after a page reload. Updated on each throttled flush.
+   */
+  lastEventId: string | undefined;
+
   error: Error | undefined;
 
   /**
@@ -648,6 +656,14 @@ export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
   startIndex?: number;
 
   /**
+   * The event id to resume from, as returned in `lastEventId`. Persist it across
+   * a page reload and pass it back to continue where the previous session left
+   * off, with no replay and no gap. Takes precedence over `startIndex` and
+   * `from`.
+   */
+  lastEventId?: string | number;
+
+  /**
    * Where a fresh subscription starts reading.
    *
    * - `"beginning"` (default): replay the full stream history, then live-tail.
@@ -675,6 +691,14 @@ export type UseRealtimeStreamOptions<TPart> = UseApiClientOptions & {
    * Callback this is called when new data is received.
    */
   onData?: (data: TPart) => void;
+
+  /**
+   * Callback invoked once per throttled flush with the batch of parts in that
+   * flush, each carrying its event `id`, `chunk` and `timestamp`. Use it to
+   * track the resume cursor without re-rendering on every record. Fires at the
+   * `throttleInMs` cadence, not per record.
+   */
+  onParts?: (parts: Array<SSEStreamPart<TPart>>) => void;
 };
 
 export function useRealtimeStream<TDefinedStream extends RealtimeDefinedStream<any>>(
@@ -890,9 +914,20 @@ function useRealtimeStreamImplementation<TPart>(
     [onDataCallback]
   );
 
+  const onPartsCallback = options?.onParts;
+  const onParts = useCallback(
+    (partsBatch: Array<SSEStreamPart<TPart>>) => {
+      if (onPartsCallback) {
+        onPartsCallback(partsBatch);
+      }
+    },
+    [onPartsCallback]
+  );
+
   const apiClient = useApiClient(options);
   const timeoutInSeconds = options?.timeoutInSeconds;
   const startIndex = options?.startIndex;
+  const startEventId = options?.lastEventId;
   const throttleInMs = options?.throttleInMs;
   const from = options?.from;
   const maxParts = options?.maxParts;
@@ -921,7 +956,9 @@ function useRealtimeStreamImplementation<TPart>(
         from,
         maxParts,
         lastEventIdRef,
-        (id) => mutateLastEventId(id, false)
+        (id) => mutateLastEventId(id, false),
+        startEventId !== undefined ? String(startEventId) : undefined,
+        onParts
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -947,8 +984,10 @@ function useRealtimeStreamImplementation<TPart>(
     setError,
     setIsComplete,
     onData,
+    onParts,
     timeoutInSeconds,
     startIndex,
+    startEventId,
     throttleInMs,
     from,
     maxParts,
@@ -972,7 +1011,7 @@ function useRealtimeStreamImplementation<TPart>(
     };
   }, [runId, stop, options?.enabled, requestSubscription]);
 
-  return { parts: parts ?? initialPartsFallback, error, stop };
+  return { parts: parts ?? initialPartsFallback, lastEventId: persistedLastEventId, error, stop };
 }
 
 async function processRealtimeBatch<TTask extends AnyTask = AnyTask>(
@@ -1152,11 +1191,28 @@ async function processRealtimeStream<TPart>(
   from?: "beginning" | "latest",
   maxParts?: number,
   lastEventIdRef?: React.MutableRefObject<string | undefined>,
-  persistLastEventId?: (id: string) => void
+  persistLastEventId?: (id: string) => void,
+  userLastEventId?: string,
+  onParts?: (parts: Array<SSEStreamPart<TPart>>) => void
 ) {
   try {
     const resumeFromEventId =
-      lastEventIdRef?.current ?? (startIndex ? (startIndex - 1).toString() : undefined);
+      lastEventIdRef?.current ??
+      userLastEventId ??
+      (startIndex ? (startIndex - 1).toString() : undefined);
+
+    const partsQueue = createThrottledQueue<SSEStreamPart<TPart>>(async (batch) => {
+      const combined = [...existingPartsRef.current, ...batch.map((part) => part.chunk)];
+      const bounded =
+        maxParts != null && maxParts >= 0 && combined.length > maxParts
+          ? combined.slice(combined.length - maxParts)
+          : combined;
+      mutatePartsData(bounded);
+      if (persistLastEventId && lastEventIdRef?.current) {
+        persistLastEventId(lastEventIdRef.current);
+      }
+      onParts?.(batch);
+    }, throttleInMs);
 
     const stream = await apiClient.fetchStream<TPart>(runId, streamKey, {
       signal: abortControllerRef.current?.signal,
@@ -1167,26 +1223,15 @@ async function processRealtimeStream<TPart>(
         if (part.id && lastEventIdRef) {
           lastEventIdRef.current = part.id;
         }
+        partsQueue.add(part);
       },
     });
 
-    // Throttle the stream
-    const streamQueue = createThrottledQueue<TPart>(async (parts) => {
-      const combined = [...existingPartsRef.current, ...parts];
-      const bounded =
-        maxParts != null && maxParts >= 0 && combined.length > maxParts
-          ? combined.slice(combined.length - maxParts)
-          : combined;
-      mutatePartsData(bounded);
-      if (persistLastEventId && lastEventIdRef?.current) {
-        persistLastEventId(lastEventIdRef.current);
-      }
-    }, throttleInMs);
-
     for await (const part of stream) {
       onData(part);
-      streamQueue.add(part);
     }
+
+    await partsQueue.flush();
   } catch (err) {
     if ((err as any).name === "AbortError") {
       return;
