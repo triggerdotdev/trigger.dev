@@ -364,4 +364,49 @@ describe("RunQueue total concurrency limit", () => {
       }
     }
   );
+
+  redisTest(
+    "reconciles a large leaked backlog across bounded passes",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        const keys = testOptions.keys;
+        const groupKey = keys.queueGroupConcurrencyKey(authenticatedEnvDev, "task/my-task");
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueTotalConcurrencyLimits(authenticatedEnvDev, "task/my-task", 1);
+
+        /** 1,200 dead members: more than one SSCAN batch, none with a message key. */
+        const dead = Array.from({ length: 1200 }, (_, i) => `dead-${i}`);
+        await queue.redis.sadd(groupKey, ...dead);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1200);
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r0",
+            concurrencyKey: "ck-a",
+            timestamp: Date.now() - 1000,
+          }),
+          workerQueue: "main",
+        });
+
+        /**
+         * Each dequeue attempt reconciles at most one SSCAN batch behind a 10s
+         * lock; dropping the lock between polls lets the passes run back to
+         * back instead of waiting out the interval.
+         */
+        const r0Admitted = await waitFor(async () => {
+          await queue.redis.del(`${groupKey}:reconcileLock`);
+          const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main", {
+            blockingPop: false,
+          });
+          return next?.messageId === "r0";
+        }, 30_000);
+        expect(r0Admitted).toBe(true);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });
