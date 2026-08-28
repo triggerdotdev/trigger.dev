@@ -73,6 +73,27 @@ export function assertSplitRealtimeInterlock(config: SplitRealtimeInterlockConfi
   }
 }
 
+export type ShardsRequireSplitConfig = {
+  splitFlagEnabled: boolean;
+  shardKeys: string[];
+};
+
+/**
+ * Boot-time shard interlock (pure predicate). Shard clients are only built on the split-on arm of
+ * `selectRunOpsTopology`, so a shard configured while the split flag is off is dropped in silence:
+ * no client, no fan-out leg, and any row already resident on that database vanishes from every
+ * list with no error. The other two ways split can end up disabled (URLs missing, sentinel not
+ * distinct) already refuse to boot; this closes the one that does not.
+ */
+export function assertShardsRequireSplit(config: ShardsRequireSplitConfig): void {
+  if (config.splitFlagEnabled || config.shardKeys.length === 0) {
+    return;
+  }
+  throw new Error(
+    `RUN_OPS_SHARDS configures shard(s) ${config.shardKeys.join(", ")} but RUN_OPS_SPLIT_ENABLED is off, so no shard client is built and rows on those databases would be silently missing; refusing to start.`
+  );
+}
+
 let cached: Promise<boolean> | undefined;
 
 export function isSplitEnabled(): Promise<boolean> {

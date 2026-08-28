@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import {
   computeSplitEnabled,
+  assertShardsRequireSplit,
   assertSplitRealtimeInterlock,
 } from "~/v3/runOpsMigration/splitMode.server";
 import { probeDistinctDatabases } from "~/v3/runOpsMigration/distinctDbSentinel.server";
@@ -152,6 +153,35 @@ describe("assertSplitRealtimeInterlock (pure)", () => {
     expect(() =>
       assertSplitRealtimeInterlock({ splitEnabled: false, nativeRealtimeEnabled: true })
     ).not.toThrow();
+  });
+});
+
+describe("assertShardsRequireSplit (pure)", () => {
+  it("allows shards when the split flag is on", () => {
+    expect(() =>
+      assertShardsRequireSplit({ splitFlagEnabled: true, shardKeys: ["a"] })
+    ).not.toThrow();
+  });
+
+  it("allows the split flag off when no shard is configured", () => {
+    expect(() =>
+      assertShardsRequireSplit({ splitFlagEnabled: false, shardKeys: [] })
+    ).not.toThrow();
+  });
+
+  // Shards are only ever built on the split-on arm of selectRunOpsTopology, so configuring one
+  // while the split flag is off silently drops it: no shard client, no shard leg, and any row
+  // already resident on that database disappears from every list with no error.
+  it("refuses to boot when a shard is configured but the split flag is off", () => {
+    expect(() =>
+      assertShardsRequireSplit({ splitFlagEnabled: false, shardKeys: ["a", "b"] })
+    ).toThrow(/RUN_OPS_SHARDS/);
+  });
+
+  it("names the configured shards so the operator can see which were dropped", () => {
+    expect(() =>
+      assertShardsRequireSplit({ splitFlagEnabled: false, shardKeys: ["a", "b"] })
+    ).toThrow(/a, b/);
   });
 });
 
