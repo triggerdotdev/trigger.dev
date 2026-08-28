@@ -281,25 +281,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   /**
-   * List the named side channels of a session by enumerating S2 streams under
-   * the session's `channels/` prefix. The reserved `.in`/`.out` pair lives at
-   * the two-part `sessions/{id}/{io}` name (not under `channels/`) so it is
-   * excluded. Server-side control-plane op using the webapp's own S2 token;
-   * kept off the hot path. Returns distinct channel names.
-   */
-  async listSessionChannels(friendlyId: string): Promise<string[]> {
-    const prefix = `${this.streamPrefix}/sessions/${friendlyId}/channels/`;
-    const names = await this.#s2ListStreamNames(prefix);
-    const channels = new Set<string>();
-    for (const name of names) {
-      const rest = name.slice(prefix.length);
-      const channel = rest.split("/")[0];
-      if (channel) channels.add(channel);
-    }
-    return [...channels];
-  }
-
-  /**
    * Ensure a named side channel's stream has native S2 retention applied: the
    * durable bound that keeps a run-independent channel from growing without a
    * turn loop trimming it. Creates the stream with the retention config (the
@@ -780,46 +761,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       status: res.status,
       statusText: res.statusText,
     });
-  }
-
-  async #s2ListStreamNames(prefix: string): Promise<string[]> {
-    const names: string[] = [];
-    let startAfter: string | undefined;
-
-    for (let page = 0; page < 100; page++) {
-      const qs = new URLSearchParams();
-      qs.set("prefix", prefix);
-      if (startAfter) qs.set("start_after", startAfter);
-
-      const res = await fetch(`${this.baseUrl}/streams?${qs}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          Accept: "application/json",
-          "S2-Basin": this.basin,
-        },
-      });
-
-      if (!res.ok) {
-        if (res.status === 404) return names;
-        const text = await res.text().catch(() => "");
-        throw new Error(`S2 listStreams failed: ${res.status} ${res.statusText} ${text}`);
-      }
-
-      const body = (await res.json()) as {
-        has_more?: boolean;
-        streams?: Array<{ name: string; deleted_at?: string | null }>;
-      };
-      const streams = body.streams ?? [];
-      for (const stream of streams) {
-        if (stream.deleted_at) continue;
-        names.push(stream.name);
-      }
-      if (!body.has_more || streams.length === 0) break;
-      startAfter = streams[streams.length - 1]!.name;
-    }
-
-    return names;
   }
 
   async #s2CreateStreamWithConfig(
