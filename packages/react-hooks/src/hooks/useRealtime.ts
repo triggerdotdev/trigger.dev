@@ -877,8 +877,13 @@ function useRealtimeStreamImplementation<TPart>(
     null
   );
   const lastEventIdRef = useRef<string | undefined>(persistedLastEventId);
+  const streamIdentityRef = useRef(`${idKey}:${runId}:${streamKey}`);
   useEffect(() => {
-    lastEventIdRef.current = persistedLastEventId;
+    const identity = `${idKey}:${runId}:${streamKey}`;
+    if (streamIdentityRef.current !== identity) {
+      streamIdentityRef.current = identity;
+      lastEventIdRef.current = persistedLastEventId;
+    }
   }, [idKey, runId, streamKey, persistedLastEventId]);
 
   // Add state to track when the subscription is complete
@@ -929,6 +934,15 @@ function useRealtimeStreamImplementation<TPart>(
   const throttleInMs = options?.throttleInMs;
   const from = options?.from;
   const maxParts = options?.maxParts;
+
+  useEffect(() => {
+    if (maxParts != null && maxParts >= 0) {
+      const current = partsRef.current;
+      if (current.length > maxParts) {
+        mutateParts(current.slice(current.length - maxParts));
+      }
+    }
+  }, [maxParts, mutateParts]);
 
   const triggerRequest = useCallback(async () => {
     try {

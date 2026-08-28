@@ -171,8 +171,13 @@ export function useSessionStream<TRecord = unknown>(
     null
   );
   const lastEventIdRef = useRef<string | undefined>(lastEventId);
+  const channelIdentityRef = useRef(`${idKey}:${sessionIdOrExternalId}:${io}`);
   useEffect(() => {
-    lastEventIdRef.current = lastEventId;
+    const identity = `${idKey}:${sessionIdOrExternalId}:${io}`;
+    if (channelIdentityRef.current !== identity) {
+      channelIdentityRef.current = identity;
+      lastEventIdRef.current = lastEventId;
+    }
   }, [idKey, sessionIdOrExternalId, io, lastEventId]);
 
   const { data: lastControl = undefined, mutate: setLastControl } = useSWR<
@@ -224,6 +229,15 @@ export function useSessionStream<TRecord = unknown>(
   const throttleInMs = options?.throttleInMs;
   const from = options?.from;
   const maxRecords = options?.maxRecords;
+
+  useEffect(() => {
+    if (maxRecords != null && maxRecords >= 0) {
+      const current = recordsRef.current;
+      if (current.length > maxRecords) {
+        mutateRecords(current.slice(current.length - maxRecords));
+      }
+    }
+  }, [maxRecords, mutateRecords]);
 
   const triggerRequest = useCallback(async () => {
     try {
