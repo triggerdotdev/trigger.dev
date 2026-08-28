@@ -59,7 +59,7 @@ function twoStepModel(onFirstStep: () => Promise<void>) {
   });
 }
 
-describe("injected steering messages (TRI-13388)", () => {
+describe("injected steering messages", () => {
   it("enter the accumulator, so onTurnComplete can see them", async () => {
     let captured: { ui: string[]; newUi: string[] } | undefined;
     let injectedCount = 0;

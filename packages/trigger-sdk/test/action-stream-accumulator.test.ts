@@ -32,7 +32,7 @@ function textOf(message: UIMessage): string {
   return message.parts.map((part) => (part.type === "text" ? part.text : "")).join("");
 }
 
-describe("a StreamTextResult returned from onAction (TRI-13378)", () => {
+describe("a StreamTextResult returned from onAction", () => {
   it("becomes part of the conversation, not just something the browser saw", async () => {
     const model = new MockLanguageModelV3({
       doStream: async () => ({ stream: textStream("regenerated answer") }),

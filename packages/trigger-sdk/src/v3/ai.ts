@@ -2713,7 +2713,6 @@ const chatInjectedInstructionsKey = locals.create<SystemModelMessage[]>(
   "chat.injectedInstructions"
 );
 
-
 /**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
  * same worker don't share state.
@@ -4267,7 +4266,7 @@ async function drainSteeringQueue(
       // its own turn, where it is accumulated the normal way.
       const currentUIMessages = locals.get(chatCurrentUIMessagesKey);
       const turnNew = locals.get(chatTurnNewUIMessagesKey);
-      for (const m of uiMessages) {
+      for (const m of claimedUIMessages) {
         if (currentUIMessages && !currentUIMessages.some((existing) => existing.id === m.id)) {
           currentUIMessages.push(m);
         }
@@ -4734,6 +4733,7 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   const injectedInstructions = locals.get(chatInjectedInstructionsKey);
   if (injectedInstructions && injectedInstructions.length > 0) {
     const injectedText = injectedInstructions
+      .splice(0)
       .map((block) => (typeof block.content === "string" ? block.content : ""))
       .filter(Boolean)
       .join("\n\n");
@@ -8046,10 +8046,22 @@ function chatAgent<
                        * store has to write the row itself — `chat.pipeAndCapture`
                        * hands back the same message for that.
                        */
-                      const { message: actionResponse } = await pipeChatAndCapture(
+                      const captured = await pipeChatAndCapture(
                         actionStreamResult as UIMessageStreamable,
                         { signal: combinedSignal, spanName: "stream response" }
                       );
+
+                      if (runSignal.aborted) return "exit";
+
+                      /**
+                       * A stopped action still commits what streamed, cleaned:
+                       * incomplete tool and text parts left mid-flight are what
+                       * strand the UI on a spinner forever once persisted.
+                       */
+                      const actionResponse =
+                        captured.status === "complete" || !captured.message
+                          ? captured.message
+                          : cleanupAbortedParts(captured.message);
 
                       if (actionResponse) {
                         const existingIdx = actionResponse.id

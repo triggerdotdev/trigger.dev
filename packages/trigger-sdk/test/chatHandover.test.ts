@@ -652,9 +652,7 @@ describe("chat.handover", () => {
         captured = {
           roles: uiMessages.map((m) => m.role),
           texts: uiMessages.map((m) =>
-            m.parts
-              .map((p) => (p.type === "text" ? p.text : ""))
-              .join("")
+            m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")
           ),
         };
       },
@@ -693,5 +691,4 @@ describe("chat.handover", () => {
       await harness.close();
     }
   });
-
 });

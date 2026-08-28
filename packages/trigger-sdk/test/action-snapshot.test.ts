@@ -39,7 +39,9 @@ function agentWithUndo(id: string) {
     },
     run: async ({ messages, signal }) =>
       streamText({
-        model: new MockLanguageModelV3({ doStream: async () => ({ stream: textStream("answer") }) }),
+        model: new MockLanguageModelV3({
+          doStream: async () => ({ stream: textStream("answer") }),
+        }),
         messages,
         abortSignal: signal,
       }),
