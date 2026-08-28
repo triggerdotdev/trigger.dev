@@ -1388,8 +1388,7 @@ export class ApiClient {
     sessionIdOrExternalId: string,
     io: "out" | "in",
     requestOptions?: ZodFetchOptions,
-    channel?: string,
-    retention?: { maxAgeSeconds?: number; deleteOnEmptyMinAgeSeconds?: number }
+    channel?: string
   ) {
     // The server returns S2 credentials in response headers alongside a tiny
     // JSON body with the realtime version. Follow the same shape as
@@ -1397,21 +1396,12 @@ export class ApiClient {
     // `StreamsWriterV2`.
     const base = `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
     const url = channel ? `${base}/channels/${encodeURIComponent(channel)}/${io}` : `${base}/${io}`;
-    const retentionHeaders: Record<string, string> = {};
-    if (channel && retention?.maxAgeSeconds != null) {
-      retentionHeaders["x-channel-max-age-seconds"] = String(retention.maxAgeSeconds);
-    }
-    if (channel && retention?.deleteOnEmptyMinAgeSeconds != null) {
-      retentionHeaders["x-channel-delete-on-empty-seconds"] = String(
-        retention.deleteOnEmptyMinAgeSeconds
-      );
-    }
     return zodfetch(
       CreateStreamResponseBody,
       url,
       {
         method: "PUT",
-        headers: { ...this.#getHeaders(false), ...retentionHeaders },
+        headers: this.#getHeaders(false),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     )

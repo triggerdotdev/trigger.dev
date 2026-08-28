@@ -110,7 +110,6 @@ import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
 import {
   type SessionChannelHandleFor,
-  type SessionChannelOptions,
   type SessionHandle,
   type SessionPipeStreamOptions,
   sessions,
@@ -11862,9 +11861,8 @@ export const chat = {
    * `chat.session().channel(name)`.
    */
   channel: <C extends AnySessionChannel = AnySessionChannel>(
-    channel: SessionChannelName<C> | C,
-    options?: SessionChannelOptions
-  ): SessionChannelHandleFor<C> => getChatSession().channel<C>(channel, options),
+    channel: SessionChannelName<C> | C
+  ): SessionChannelHandleFor<C> => getChatSession().channel<C>(channel),
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
   createStopSignal,
   /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */

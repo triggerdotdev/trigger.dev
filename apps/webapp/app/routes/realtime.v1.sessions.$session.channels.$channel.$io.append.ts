@@ -3,10 +3,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
-import {
-  DEFAULT_SESSION_CHANNEL_RETENTION,
-  S2RealtimeStreams,
-} from "~/services/realtime/s2realtimeStreams.server";
+import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import {
   SESSION_CHANNEL_NAME_REGEX,
   sessionChannelResources,
@@ -84,24 +81,6 @@ const { action, loader } = createActionApiRoute(
     }
 
     const addressingKey = canonicalSessionAddressingKey(session, params.session);
-
-    const [retentionError] = await tryCatch(
-      realtimeStream.ensureSessionChannelRetention(
-        addressingKey,
-        params.io,
-        params.channel,
-        DEFAULT_SESSION_CHANNEL_RETENTION
-      )
-    );
-    if (retentionError) {
-      logger.warn("Failed to ensure session channel retention", {
-        addressingKey,
-        channel: params.channel,
-        io: params.io,
-        error: retentionError,
-      });
-    }
-
     const claimKey = `${addressingKey}:channels:${params.channel}`;
 
     const part = await request.text();

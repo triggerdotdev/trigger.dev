@@ -124,18 +124,12 @@ The client writes the `.in` control with a session handle: `sessions.open(sessio
 
 ## Retention
 
-A side channel has no chat turn loop trimming it, so each channel gets a default native retention (bounded age plus delete-when-empty) applied on first use. Override it per channel:
-
-```ts
-chat.channel(screenshots, {
-  retention: { maxAgeSeconds: 60 * 60, deleteOnEmptyMinAgeSeconds: 5 * 60 },
-});
-```
+A side channel's streams are bounded by the same retention as the rest of your realtime streams: streams are created on demand when first written and age out on your plan's retention window, with empty streams cleaned up automatically. A channel needs no separate setup or trimming.
 
 <Warning>
   Records are capped at ~1 MiB each. Stream a pointer, not bytes: write large payloads (a screenshot
   PNG) to object storage and put the URL on the channel. A base64 image inflates ~33% and will exceed
-  the cap. Pointers also keep the channel small and cheap to keep-last.
+  the cap. Pointers also keep the channel small.
 </Warning>
 
 ## Auth

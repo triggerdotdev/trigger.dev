@@ -265,14 +265,13 @@ export class SessionHandle {
    * pair addressed by `name` rather than the reserved default pair. Writing a
    * side channel's `.in` does not wake or trigger a run; a run observes it via
    * `.in.on()` / `.in.once()`. Records outlive any single run and are bounded by
-   * the channel's retention (a sensible default, overridable via `options`).
+   * the org's stream retention, the same as the reserved chat streams.
    *
    * Pass a `sessions.defineChannel(...)` definition to type `.in`/`.out` records;
    * a bare name string works too, with records typed `unknown`.
    */
   channel<C extends AnySessionChannel = AnySessionChannel>(
-    channel: SessionChannelName<C> | C,
-    options?: SessionChannelOptions
+    channel: SessionChannelName<C> | C
   ): SessionChannelHandleFor<C> {
     const name = typeof channel === "string" ? channel : channel.name;
     if (!SESSION_CHANNEL_NAME_REGEX.test(name)) {
@@ -282,7 +281,7 @@ export class SessionHandle {
     }
     return {
       name,
-      out: new SessionOutputChannel(this.id, name, options?.retention),
+      out: new SessionOutputChannel(this.id, name),
       in: new SessionInputChannel(this.id, name),
     } as SessionChannelHandleFor<C>;
   }
@@ -323,20 +322,6 @@ function defineChannel<
 export type SessionPipeStreamOptions = Omit<PipeStreamOptions, "target">;
 
 /**
- * Retention for a named side channel. `maxAgeSeconds` and
- * `deleteOnEmptyMinAgeSeconds` are applied server-side as native S2 per-stream
- * config on first initialize.
- */
-export type SessionChannelRetention = {
-  maxAgeSeconds?: number;
-  deleteOnEmptyMinAgeSeconds?: number;
-};
-
-export type SessionChannelOptions = {
-  retention?: SessionChannelRetention;
-};
-
-/**
  * The `.out` side of a Session's bidirectional channel pair. Mirrors the
  * consume-side of {@link streams.define}: `pipe` / `writer` / `append`
  * for the task to produce records, `read` for external clients to
@@ -356,8 +341,7 @@ export class SessionOutputChannel<TOut = unknown> {
 
   constructor(
     public readonly sessionId: string,
-    public readonly channel?: string,
-    private readonly retention?: SessionChannelRetention
+    public readonly channel?: string
   ) {}
 
   /**
@@ -568,8 +552,7 @@ export class SessionOutputChannel<TOut = unknown> {
         this.sessionId,
         "out",
         options?.requestOptions,
-        this.channel,
-        this.retention
+        this.channel
       );
       this.#initPromise = fresh;
       // Evict on failure so the next call retries instead of returning a
