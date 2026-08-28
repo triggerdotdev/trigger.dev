@@ -58,8 +58,6 @@ import {
 } from "../deploy/logs.js";
 import {
   chalkError,
-  chalkGrey,
-  chalkWarning,
   cliLink,
   isLinksSupported,
   prettyError,
