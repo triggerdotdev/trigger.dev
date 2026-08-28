@@ -85,7 +85,6 @@ export function createBuildLogRenderer(options: BuildLogRendererOptions): BuildL
   const success = options.success ?? ((message: string) => log.success(message));
   const tailSize = options.tailSize ?? 20;
   const tail: string[] = [];
-  const notices: string[] = [];
   let started = false;
 
   $spinner.start("Build queued");
@@ -119,9 +118,6 @@ export function createBuildLogRenderer(options: BuildLogRendererOptions): BuildL
       if (tail.length > tailSize) {
         tail.shift();
       }
-      if ((entry.level === "warn" || entry.level === "error") && notices.length < tailSize) {
-        notices.push(line);
-      }
       const message = compactMessage(entry.message);
       if (message.length > 0 && !/^[-=#*_.\s]+$/.test(message)) {
         $spinner.message(`${options.title}: ${message}`);
@@ -137,27 +133,14 @@ export function createBuildLogRenderer(options: BuildLogRendererOptions): BuildL
 
       $spinner.stop(message, outcome === "failure" ? 2 : undefined);
 
-      if (options.mode !== "compact") {
-        return;
+      if (options.mode === "compact" && outcome === "failure" && tail.length > 0) {
+        print("│");
+        print(`│  ${chalkGrey(`Last ${tail.length} lines of the build log:`)}`);
+        for (const line of tail) {
+          print(line);
+        }
+        print("│");
       }
-
-      const lines = outcome === "failure" ? tail : outcome === "success" ? notices : [];
-      if (lines.length === 0) {
-        return;
-      }
-
-      print("│");
-      print(
-        `│  ${chalkGrey(
-          outcome === "failure"
-            ? `Last ${lines.length} lines of the build log:`
-            : `Build warnings (${lines.length}):`
-        )}`
-      );
-      for (const line of lines) {
-        print(line);
-      }
-      print("│");
     },
   };
 }

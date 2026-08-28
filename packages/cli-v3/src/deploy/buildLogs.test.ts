@@ -165,25 +165,6 @@ describe("createBuildLogRenderer compact extras", () => {
     expect(s.calls.at(-1)).toBe("message:t: green and bold");
   });
 
-  it("surfaces warn and error lines after a successful build", () => {
-    const s = fakeSpinner();
-    const print = vi.fn();
-    const r = createBuildLogRenderer({
-      mode: "compact",
-      title: "t",
-      spinner: s,
-      print,
-      columns: 200,
-    });
-    r.log(entry("fine"));
-    r.log(entry("deprecated thing", "warn"));
-    r.finish("Deployment completed successfully", "success");
-    const printed = print.mock.calls.map((c) => String(c[0]).replace(/\u001b\[[0-9;]*m/g, ""));
-    expect(printed[1]).toContain("Build warnings (1)");
-    expect(printed[2]).toMatch(/deprecated thing$/);
-    expect(printed.some((l) => /  fine$/.test(l))).toBe(false);
-  });
-
   it("stops without a tail when the stream was abandoned", () => {
     const s = fakeSpinner();
     const print = vi.fn();
