@@ -28,6 +28,7 @@ import { singleton } from "./utils/singleton";
 import { registerDatabaseMetricsSource } from "./utils/databaseMetrics.server";
 import {
   isSplitEnabled,
+  assertShardsRequireSplit,
   assertSplitRealtimeInterlock,
 } from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
@@ -617,6 +618,12 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
 // interlock). Async, so it cannot live in the synchronous singleton factory — called
 // fire-and-forget from the eager-boot path (routing is wired synchronously at module load).
 export async function assertRunOpsSplitSentinel(): Promise<void> {
+  // Shard interlock first: shard clients are only built on the split-on arm, so this case has to be
+  // checked BEFORE the split-off early return below, which would otherwise skip it in silence.
+  assertShardsRequireSplit({
+    splitFlagEnabled: env.RUN_OPS_SPLIT_ENABLED,
+    shards: env.RUN_OPS_SHARDS,
+  });
   if (!env.RUN_OPS_SPLIT_ENABLED) return;
   // Realtime interlock (synchronous): Electric replicates only from the control-plane
   // DB, so split-on without the native realtime backend leaves NEW-resident runs
