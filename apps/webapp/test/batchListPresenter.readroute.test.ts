@@ -852,6 +852,58 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
     }
   );
 
+  // The merge is not just a union: when one id exists on more than one store, precedence decides
+  // which copy the page shows. Ascending legacy -> new -> shards, last write wins, mirroring the
+  // routing store's #mergeById. Without this case every leg-order regression still passes, because
+  // a union is order-insensitive.
+  twoShardTest(
+    "a duplicated id resolves by precedence: a shard copy outranks new, and new outranks legacy",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardA = shardPrismas[0]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-precedence");
+
+      // Same id on legacy AND new. New is the higher authority, so its copy must win.
+      const onBothGenOne = "cmm000000000000000000prec";
+      await createBatch(legacyPrisma, ctx, {
+        id: onBothGenOne,
+        friendlyId: "fr_prec_gen1",
+        status: "PENDING",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await createBatch(newPrisma, ctx, {
+        id: onBothGenOne,
+        friendlyId: "fr_prec_gen1",
+        status: "COMPLETED",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+
+      // Same id on new AND a shard. The shard is the higher authority, so its copy must win.
+      const onNewAndShard = generateRunOpsIdV2("a");
+      await createBatch(newPrisma, ctx, {
+        id: onNewAndShard,
+        friendlyId: "fr_prec_shard",
+        status: "PENDING",
+        createdAt: new Date(Date.now() - 30_000),
+      });
+      await createBatch(shardA, ctx, {
+        id: onNewAndShard,
+        friendlyId: "fr_prec_shard",
+        status: "COMPLETED",
+        createdAt: new Date(Date.now() - 30_000),
+      });
+
+      const page = await shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+      ]).call(baseCall(ctx, { pageSize: 10 }));
+
+      // Each id appears exactly once, and each carries the higher-authority store's status.
+      expect(page.batches.map((b) => b.id).filter((id) => id === onBothGenOne)).toHaveLength(1);
+      expect(page.batches.map((b) => b.id).filter((id) => id === onNewAndShard)).toHaveLength(1);
+      expect(page.batches.find((b) => b.id === onBothGenOne)?.status).toBe("COMPLETED");
+      expect(page.batches.find((b) => b.id === onNewAndShard)?.status).toBe("COMPLETED");
+    }
+  );
+
   // Composition proof for the alias rule: a descriptor that declares `aliasOf` shares its target's
   // client BY REFERENCE, so `nonAliasedShardReplicas` drops it and the target's own leg returns the
   // rows. This is the soak topology — gen-2 ids living on the gen-1 new database.

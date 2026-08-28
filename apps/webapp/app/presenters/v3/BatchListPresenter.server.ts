@@ -142,8 +142,13 @@ export class BatchListPresenter extends BasePresenter {
     // The gen-1 pair keeps its original conditional form so its result stays byte-identical; the
     // shard legs then overwrite. Do NOT "simplify" the conditional insert below into an
     // unconditional one without also reordering the legs, or legacy would start winning over new.
-    // A gen-1 id and a gen-2 id cannot collide in any case: a batch is created on exactly one store,
-    // routed by its own id shape.
+    //
+    // Precedence is load-bearing, not decoration. Today a batch row has exactly one writer
+    // (PostgresRunStore.createBatchTaskRun), which routes by id shape, so a duplicate id is not
+    // produced by ordinary creates. But a row can still exist on two stores while data is being
+    // moved between them, which is why the routing store dedupes batches WITHOUT alarming
+    // (alarmOnDuplicate: false). When that happens the page must show the higher-authority copy,
+    // and that is what the leg order below decides.
     const byId = new Map<string, BatchRow>();
     for (const row of newRows) {
       byId.set(row.id, row);
