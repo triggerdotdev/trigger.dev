@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { STREAM_START_HEADER } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
@@ -185,12 +186,15 @@ const loader = createLoaderApiRoute(
     // turn's first chunk and the SSE closes before records land.
     const peekSettled = request.headers.get("X-Peek-Settled") === "1";
 
+    const startFrom =
+      request.headers.get(STREAM_START_HEADER)?.toLowerCase() === "latest" ? "latest" : undefined;
+
     return realtimeStream.streamResponseFromSessionStream(
       request,
       resource.addressingKey,
       params.io,
       getRequestAbortSignal(),
-      { lastEventId, timeoutInSeconds, peekSettled }
+      { lastEventId, timeoutInSeconds, peekSettled, startFrom }
     );
   }
 );

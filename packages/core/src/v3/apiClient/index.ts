@@ -1481,6 +1481,12 @@ export class ApiClient {
       onComplete?: () => void;
       onError?: (error: Error) => void;
       lastEventId?: string;
+      /**
+       * Where a fresh subscription (no `lastEventId`) starts reading. `"latest"`
+       * starts at the current tail (only records after connect); `"beginning"`
+       * (default) replays history.
+       */
+      from?: "beginning" | "latest";
       onPart?: (part: SSEStreamPart<T>) => void;
       /**
        * Fires when a `trigger-control` record arrives on the stream (e.g.
@@ -1500,6 +1506,7 @@ export class ApiClient {
       onError: options?.onError,
       timeoutInSeconds: options?.timeoutInSeconds,
       lastEventId: options?.lastEventId,
+      from: options?.from,
     });
 
     const stream = await subscription.subscribe();

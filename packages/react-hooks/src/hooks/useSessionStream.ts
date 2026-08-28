@@ -62,10 +62,29 @@ export type UseSessionStreamOptions<TRecord> = UseApiClientOptions & {
    */
   lastEventId?: string | number;
   /**
-   * Callback this is called when a record is received, before throttling. This fires for
-   * control records too, so you can track the cursor for every record on the channel.
+   * Where a fresh subscription (no `lastEventId`) starts reading.
+   *
+   * - `"beginning"` (default): replay the full channel history, then live-tail.
+   * - `"latest"`: skip history and start at the current tail — only records
+   *   appended after the hook connects are delivered (a last-value / live view).
+   *
+   * Ignored when `lastEventId` is set.
    */
-  onRecord?: (record: SSEStreamPart<TRecord>) => void;
+  from?: "beginning" | "latest";
+  /**
+   * Cap the number of records kept in the accumulated `records` array. When more
+   * than `maxRecords` have been received, only the most recent `maxRecords` are
+   * retained. Use `maxRecords: 1` with `from: "latest"` for a last-value view
+   * with bounded memory. When unset, `records` accumulates without bound.
+   */
+  maxRecords?: number;
+  /**
+   * Callback invoked once per throttled flush with the batch of records in that
+   * flush, each carrying its event `id`, `chunk` and `timestamp`. Fires at the
+   * `throttleInMs` cadence (not per record) and includes control records, so it
+   * can track the resume cursor for everything on the channel.
+   */
+  onRecords?: (records: Array<SSEStreamPart<TRecord>>) => void;
   /**
    * Callback this is called when a control record is received (e.g. `turn-complete`).
    */
@@ -175,14 +194,14 @@ export function useSessionStream<TRecord = unknown>(
     }
   }, []);
 
-  const onRecordCallback = options?.onRecord;
-  const onRecord = useCallback(
-    (record: SSEStreamPart<TRecord>) => {
-      if (onRecordCallback) {
-        onRecordCallback(record);
+  const onRecordsCallback = options?.onRecords;
+  const onRecords = useCallback(
+    (recordsBatch: Array<SSEStreamPart<TRecord>>) => {
+      if (onRecordsCallback) {
+        onRecordsCallback(recordsBatch);
       }
     },
-    [onRecordCallback]
+    [onRecordsCallback]
   );
 
   const onControlCallback = options?.onControl;
@@ -199,6 +218,8 @@ export function useSessionStream<TRecord = unknown>(
   const timeoutInSeconds = options?.timeoutInSeconds;
   const startEventId = options?.lastEventId;
   const throttleInMs = options?.throttleInMs;
+  const from = options?.from;
+  const maxRecords = options?.maxRecords;
 
   const triggerRequest = useCallback(async () => {
     try {
@@ -218,12 +239,14 @@ export function useSessionStream<TRecord = unknown>(
         setLastEventId,
         setLastControl,
         setError,
-        onRecord,
+        onRecords,
         onControl,
         abortControllerRef,
         timeoutInSeconds,
         startEventId !== undefined ? String(startEventId) : undefined,
-        throttleInMs ?? 16
+        throttleInMs ?? 16,
+        from,
+        maxRecords
       );
     } catch (err) {
       if ((err as any).name === "AbortError") {
@@ -248,11 +271,13 @@ export function useSessionStream<TRecord = unknown>(
     setLastControl,
     setError,
     setIsComplete,
-    onRecord,
+    onRecords,
     onControl,
     timeoutInSeconds,
     startEventId,
     throttleInMs,
+    from,
+    maxRecords,
   ]);
   const requestSubscription = useStableRequestCallback(triggerRequest);
 
@@ -284,15 +309,18 @@ async function processSessionStream<TRecord>(
   setLastEventId: KeyedMutator<undefined | string>,
   setLastControl: KeyedMutator<undefined | ControlEvent>,
   onError: (e: Error) => void,
-  onRecord: (record: SSEStreamPart<TRecord>) => void,
+  onRecords: (records: Array<SSEStreamPart<TRecord>>) => void,
   onControl: (event: ControlEvent) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>,
   timeoutInSeconds?: number,
   lastEventId?: string,
-  throttleInMs?: number
+  throttleInMs?: number,
+  from?: "beginning" | "latest",
+  maxRecords?: number
 ) {
   let lastSeenEventId: string | undefined;
   let publishedEventId: string | undefined;
+  let partsBatch: Array<SSEStreamPart<TRecord>> = [];
 
   const publishLastEventId = () => {
     if (lastSeenEventId !== publishedEventId) {
@@ -301,14 +329,22 @@ async function processSessionStream<TRecord>(
     }
   };
 
+  const flushParts = () => {
+    if (partsBatch.length === 0) return;
+    const batch = partsBatch;
+    partsBatch = [];
+    onRecords(batch);
+  };
+
   try {
     const stream = await apiClient.subscribeToSessionStream<TRecord>(sessionIdOrExternalId, io, {
       signal: abortControllerRef.current?.signal,
       timeoutInSeconds,
       lastEventId,
+      from,
       onPart: (part) => {
         lastSeenEventId = part.id;
-        onRecord(part);
+        partsBatch.push(part);
       },
       onControl: (event) => {
         setLastControl(event);
@@ -317,8 +353,14 @@ async function processSessionStream<TRecord>(
     });
 
     const recordsQueue = createThrottledQueue<TRecord>(async (newRecords) => {
-      mutateRecordsData([...existingRecordsRef.current, ...newRecords]);
+      const combined = [...existingRecordsRef.current, ...newRecords];
+      const bounded =
+        maxRecords != null && maxRecords >= 0 && combined.length > maxRecords
+          ? combined.slice(combined.length - maxRecords)
+          : combined;
+      mutateRecordsData(bounded);
       publishLastEventId();
+      flushParts();
     }, throttleInMs);
 
     for await (const record of stream) {
@@ -327,6 +369,7 @@ async function processSessionStream<TRecord>(
 
     await recordsQueue.flush();
     publishLastEventId();
+    flushParts();
   } catch (err) {
     if ((err as any).name === "AbortError") {
       return;
