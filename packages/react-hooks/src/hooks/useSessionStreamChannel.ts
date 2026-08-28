@@ -37,8 +37,11 @@ export type UseSessionStreamChannelOptions<
   TChannel extends AnySessionChannel,
   S extends "in" | "out",
 > = UseApiClientOptions & {
-  /** The id or external id of the session that owns the channel. */
-  sessionId: string;
+  /**
+   * The id or external id of the session that owns the channel. May be
+   * undefined while it resolves; the subscription starts once it is set.
+   */
+  sessionId?: string;
   id?: string;
   enabled?: boolean;
   /**
