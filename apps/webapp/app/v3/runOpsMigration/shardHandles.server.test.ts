@@ -48,8 +48,6 @@ describe("nonAliasedShardReplicas", () => {
     ]);
   });
 
-  // An aliased shard shares its target's client BY REFERENCE, so a leg for it scans one database
-  // twice. The router drops it the same way, on the DECLARATION rather than object identity.
   it("drops a shard that declares aliasOf", () => {
     expect(nonAliasedShardReplicas([{ ...handle("a"), aliasOf: "new" }, handle("b")])).toEqual([
       { key: "b", replica: { tag: "b-replica" } },

@@ -14,7 +14,6 @@ type ShardHandle = {
   key: string;
   writer: RunOpsPrismaClient;
   replica: RunOpsPrismaClient;
-  /** The DECLARED alias, if any. See nonAliasedShardReplicas. */
   aliasOf?: string;
 };
 
@@ -43,22 +42,6 @@ function resolveShardHandles(): ShardHandle[] {
   }
 }
 
-/**
- * The shards a FAN-OUT should visit: one entry per physical database, in configured order.
- *
- * A shard that declares `aliasOf` shares its target's client BY REFERENCE (db.server.ts sets the
- * alias target's own client into the shard map), so a leg for it would scan one database twice and
- * return rows the target's own leg already returned. `RoutingRunStore` drops aliased keys from its
- * store list for exactly this reason, and the discriminator there is the DECLARATION, not object
- * identity — identity cannot tell an alias from its target, and a shard that shares a database
- * WITHOUT declaring it is a misconfiguration the boot sentinel is there to catch, not something to
- * paper over here.
- *
- * Routed lookups keyed by a single id want `runOpsShardReplicas` instead: an aliased key is a
- * legitimate route target, it just is not a second database to scan.
- *
- * Generic in the client type so the caller keeps whatever type its handles carry — no cast.
- */
 export function nonAliasedShardReplicas<TClient>(
   handles: ReadonlyArray<{ key: string; replica: TClient; aliasOf?: string }>
 ): ReadonlyArray<{ key: string; replica: TClient }> {
@@ -67,11 +50,9 @@ export function nonAliasedShardReplicas<TClient>(
     .map((handle) => ({ key: handle.key, replica: handle.replica }));
 }
 
-// One resolve, both derivations — `resolveShardHandles` reads a module export behind a try/catch.
 const handles = resolveShardHandles();
 const maps = buildShardHandleMaps(handles);
 
 export const runOpsShardReplicas = maps.replicas;
 export const runOpsShardWriters = maps.writers;
-// Empty unless RUN_OPS_SHARDS is configured, which is what keeps every fan-out leg unreachable today.
 export const runOpsNonAliasedShardReplicas = nonAliasedShardReplicas(handles);

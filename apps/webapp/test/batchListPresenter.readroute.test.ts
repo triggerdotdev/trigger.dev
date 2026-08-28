@@ -626,14 +626,9 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
   );
 });
 
-// Gen-2 shards. `#scanBatchTaskRun` used to scan exactly two clients — the gen-1 new store and the
-// legacy replica — so a batch minted onto a gen-2 shard lived on neither and was silently absent
-// from the list: no error, nothing logged, and a keyset merge with no leg that could return it.
 describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard PG17 databases)", () => {
   const twoShardTest = makeNShardRunOpsPostgresTest(2);
 
-  // legacyPrisma carries the full control-plane schema, so it serves as BOTH the control-plane read
-  // handle and the legacy run-ops replica — the coresident topology, as the gen-1 cases above do.
   const shardPresenter = (
     legacyPrisma: PrismaClient,
     newPrisma: RunOpsPrismaClient,
@@ -657,7 +652,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       const newId = generateRunOpsId();
       const shardId = generateRunOpsIdV2("a");
 
-      // Oldest to newest, so the expected page order is the reverse.
       await createBatch(legacyPrisma, ctx, {
         id: legacyId,
         friendlyId: "fr_legacy",
@@ -681,7 +675,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       expect(page.batches.map((b) => b.id)).toEqual([shardId, newId, legacyId]);
       expect(page.batches.map((b) => b.friendlyId)).toContain("fr_shard_a");
 
-      // Without the shard leg the gen-2 batch is invisible — the defect this ticket fixes.
       const withoutShardLeg = await shardPresenter(legacyPrisma, newPrisma, []).call(
         baseCall(ctx, { pageSize: 10 })
       );
@@ -712,7 +705,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       await createBatch(shardA, ctx, { id: shardAId, friendlyId: "fr_o_a", createdAt: at(2) });
       await createBatch(shardB, ctx, { id: shardBId, friendlyId: "fr_o_b", createdAt: at(3) });
 
-      // An exact createdAt tie ACROSS two stores, so the id tiebreak is exercised over the seam.
       const tieTime = at(4);
       const tieOnNew = generateRunOpsId();
       const tieOnShardB = generateRunOpsIdV2("b");
@@ -732,8 +724,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
         { key: "b", replica: shardB },
       ]).call(baseCall(ctx, { pageSize: 10 }));
 
-      // createdAt DESC, then id DESC (ASCII codepoint) — computed from the seed, not hand-written,
-      // so the assertion cannot drift from the ids the generators produce.
       const tieHead = tieOnNew > tieOnShardB ? tieOnNew : tieOnShardB;
       const tieTail = tieOnNew > tieOnShardB ? tieOnShardB : tieOnNew;
       expect(page.batches.map((b) => b.id)).toEqual([
@@ -754,7 +744,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       const ctx = await seedParents(legacyPrisma, "gen2-paging");
 
       const t0 = Date.now() - 60 * 60_000;
-      // Round-robin across all four stores so EVERY page boundary spans a store.
       const seeded: string[] = [];
       for (let i = 0; i < 8; i++) {
         const store = [legacyPrisma, newPrisma, shardA, shardB][i % 4]!;
@@ -778,7 +767,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
         { key: "b", replica: shardB },
       ]);
 
-      // Forward: walk every page to the end.
       const forward: string[][] = [];
       let cursor: string | undefined;
       for (let guard = 0; guard < 10; guard++) {
@@ -791,7 +779,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       }
       expect(forward.flat()).toEqual(newestFirst);
 
-      // Backward: re-walk forward to capture the LAST page's `previous`, then page back to the start.
       let backCursor: string | undefined;
       cursor = undefined;
       for (let guard = 0; guard < 10; guard++) {
@@ -813,9 +800,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       }
 
       const backwardIds = backward.flat();
-      // 8 rows at pageSize 3 => forward pages of 3, 3, 2. Paging back from the last page's cursor
-      // returns the 6 rows above it, in two pages. Assert the count so an empty backward walk
-      // cannot pass the ordering assertion vacuously.
       expect(backwardIds).toHaveLength(6);
       expect(new Set(backwardIds).size).toBe(backwardIds.length);
       expect(backwardIds).toEqual(newestFirst.slice(0, 6));
@@ -828,7 +812,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       const shardB = shardPrismas[1]!;
       const ctx = await seedParents(legacyPrisma, "gen2-probe");
 
-      // Nothing on legacy, nothing on new — only the shard.
       await createBatch(shardB, ctx, {
         id: generateRunOpsIdV2("b"),
         friendlyId: "fr_probe_shard",
@@ -839,12 +822,10 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
         { key: "b", replica: shardB },
       ]);
 
-      // A friendlyId filter that matches nothing => empty page; the probe must still find the row.
       const page = await presenter.call(baseCall(ctx, { friendlyId: "fr_does_not_exist" }));
       expect(page.batches).toHaveLength(0);
       expect(page.hasAnyBatches).toBe(true);
 
-      // With no shard leg the same probe reports empty — the defect, on the empty-state path.
       const withoutShardLeg = await shardPresenter(legacyPrisma, newPrisma, []).call(
         baseCall(ctx, { friendlyId: "fr_does_not_exist" })
       );
@@ -852,17 +833,12 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
     }
   );
 
-  // The merge is not just a union: when one id exists on more than one store, precedence decides
-  // which copy the page shows. Ascending legacy -> new -> shards, last write wins, mirroring the
-  // routing store's #mergeById. Without this case every leg-order regression still passes, because
-  // a union is order-insensitive.
   twoShardTest(
     "a duplicated id resolves by precedence: a shard copy outranks new, and new outranks legacy",
     async ({ legacyPrisma, newPrisma, shardPrismas }) => {
       const shardA = shardPrismas[0]!;
       const ctx = await seedParents(legacyPrisma, "gen2-precedence");
 
-      // Same id on legacy AND new. New is the higher authority, so its copy must win.
       const onBothGenOne = "cmm000000000000000000prec";
       await createBatch(legacyPrisma, ctx, {
         id: onBothGenOne,
@@ -877,7 +853,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
         createdAt: new Date(Date.now() - 60_000),
       });
 
-      // Same id on new AND a shard. The shard is the higher authority, so its copy must win.
       const onNewAndShard = generateRunOpsIdV2("a");
       await createBatch(newPrisma, ctx, {
         id: onNewAndShard,
@@ -896,7 +871,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
         { key: "a", replica: shardA },
       ]).call(baseCall(ctx, { pageSize: 10 }));
 
-      // Each id appears exactly once, and each carries the higher-authority store's status.
       expect(page.batches.map((b) => b.id).filter((id) => id === onBothGenOne)).toHaveLength(1);
       expect(page.batches.map((b) => b.id).filter((id) => id === onNewAndShard)).toHaveLength(1);
       expect(page.batches.find((b) => b.id === onBothGenOne)?.status).toBe("COMPLETED");
@@ -904,16 +878,12 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
     }
   );
 
-  // Composition proof for the alias rule: a descriptor that declares `aliasOf` shares its target's
-  // client BY REFERENCE, so `nonAliasedShardReplicas` drops it and the target's own leg returns the
-  // rows. This is the soak topology — gen-2 ids living on the gen-1 new database.
   twoShardTest(
     "an aliased shard contributes no leg, and its rows still arrive once via the aliased store",
     async ({ legacyPrisma, newPrisma, shardPrismas }) => {
       const shardB = shardPrismas[1]!;
       const ctx = await seedParents(legacyPrisma, "gen2-alias");
 
-      // Soak: the gen-2 id is minted onto shard "a", which IS the gen-1 new database.
       const soakId = generateRunOpsIdV2("a");
       const realShardId = generateRunOpsIdV2("b");
       await createBatch(newPrisma, ctx, {
@@ -923,8 +893,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
       });
       await createBatch(shardB, ctx, { id: realShardId, friendlyId: "fr_real_shard" });
 
-      // Spy on the aliased client so a kept alias leg is OBSERVABLE. Without this the dedupe would
-      // absorb the duplicate scan and the page assertion below could not fail.
       const aliasedSpy = spyClient(newPrisma as unknown as PrismaClient);
 
       const legs = nonAliasedShardReplicas([
@@ -939,7 +907,6 @@ describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard 
         legs
       ).call(baseCall(ctx, { pageSize: 10 }));
       expect(page.batches.map((b) => b.id)).toEqual([realShardId, soakId]);
-      // Scanned exactly once — as the gen-1 `new` leg, never again as an alias leg.
       expect(aliasedSpy.counts.findMany).toBe(1);
     }
   );

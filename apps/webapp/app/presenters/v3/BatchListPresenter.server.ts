@@ -75,13 +75,6 @@ export class BatchListPresenter extends BasePresenter {
       runOpsNew?: RunOpsPrismaClient; // new run-ops client (run-ops brand ⇒ guard classifies as runops)
       runOpsLegacyReplica?: RunOpsPrismaClient; // legacy run-ops READ REPLICA only — never the legacy primary
       controlPlaneReplica?: PrismaClientOrTransaction; // control-plane DB (for project)
-      // Gen-2 shard replicas to fan out over, in configured order — ONE ENTRY PER PHYSICAL DATABASE.
-      // The route passes `runOpsNonAliasedShardReplicas`, which has already dropped every shard that
-      // declares `aliasOf` (an alias shares its target's client by reference, so a leg for it would
-      // scan one database twice). Empty (RUN_OPS_SHARDS unset) keeps today's exact two legs.
-      // NOTE: a shard configured without a `replicaUrl` reads its WRITER. That is the established
-      // behaviour of every shard handle consumer; the "never the legacy primary" rule below is
-      // scoped to the LEGACY store, which has no replica-less arm.
       shardReplicas?: ReadonlyArray<{ key: string; replica: RunOpsPrismaClient }>;
       splitEnabled?: boolean; // resolved boot constant
     }
@@ -114,20 +107,10 @@ export class BatchListPresenter extends BasePresenter {
       return scan(passthrough);
     }
 
-    // Always read EVERY store and merge. The old "skip legacy when new fills the page" shortcut is
+    // Always read BOTH stores and merge. The old "skip legacy when new fills the page" shortcut is
     // unsound across the residency split: legacy cuid ids ("c…") sort ABOVE new run-ops ids ("0…")
     // under id order, so a new-only page can hide pre-flip legacy batches that belong ahead of it.
-    // Ordering is by createdAt (id tiebreak), which is chronologically correct across every scheme.
-    //
-    // Every leg runs the SAME closure, so `take: pageSize + 1`, the cursor predicate and the two-key
-    // order are shared. A row's rank within its own leg is never worse than its global rank, so the
-    // true global first (pageSize + 1) rows are all present among the per-leg results — an argument
-    // in the number of legs, not in two.
-    //
-    // Promise.all, NOT allSettled: one store down must fail the page. A tolerant fan-out would
-    // return a SHORT page with no error, which is exactly the silent absence this routing exists to
-    // remove, with a wider blast radius. The routing store's own list fan-out is Promise.all for the
-    // same reason.
+    // Ordering is by createdAt (id tiebreak), which is chronologically correct across both schemes.
     const shardReplicas = this.readRoute.shardReplicas ?? [];
     const [newRows, legacyRows, ...shardRows] = await Promise.all([
       scan(this.readRoute.runOpsNew ?? passthrough),
@@ -135,20 +118,7 @@ export class BatchListPresenter extends BasePresenter {
       ...shardReplicas.map((shard) => scan(shard.replica)),
     ]);
 
-    // De-dupe by id, re-sort under the page's keyset order, re-apply the over-fetch LIMIT.
-    //
-    // Precedence ascends legacy → new → gen-2 shards, last write wins — the routing store's
-    // `#mergeById` semantics, which inserts unconditionally over legs supplied in precedence order.
-    // The gen-1 pair keeps its original conditional form so its result stays byte-identical; the
-    // shard legs then overwrite. Do NOT "simplify" the conditional insert below into an
-    // unconditional one without also reordering the legs, or legacy would start winning over new.
-    //
-    // Precedence is load-bearing, not decoration. Today a batch row has exactly one writer
-    // (PostgresRunStore.createBatchTaskRun), which routes by id shape, so a duplicate id is not
-    // produced by ordinary creates. But a row can still exist on two stores while data is being
-    // moved between them, which is why the routing store dedupes batches WITHOUT alarming
-    // (alarmOnDuplicate: false). When that happens the page must show the higher-authority copy,
-    // and that is what the leg order below decides.
+    // De-dupe by id (new wins), re-sort under the page's keyset order, re-apply the over-fetch LIMIT.
     const byId = new Map<string, BatchRow>();
     for (const row of newRows) {
       byId.set(row.id, row);
@@ -178,8 +148,7 @@ export class BatchListPresenter extends BasePresenter {
   }
 
   // Empty-state probe. Split on: probe the new run-ops DB first, then the legacy READ REPLICA only
-  // (never the legacy primary), then every configured gen-2 shard in parallel. Split off (single-DB
-  // / self-host): one plain `_replica` probe.
+  // (never the legacy primary). Split off (single-DB / self-host): one plain `_replica` probe.
   async #probeAnyBatch(environmentId: string): Promise<boolean> {
     // Single-DB / passthrough: `_replica` IS the run-ops database, and it is the SAME client the
     // scan uses, so the empty-state hint can't disagree with the page. Carry the run-ops brand
@@ -210,12 +179,6 @@ export class BatchListPresenter extends BasePresenter {
       return true;
     }
 
-    // The gen-1 pair above keeps its sequential short-circuit — it is two legs, and a project with
-    // no batches yet is the common case for this path. The shards then go in ONE round trip instead
-    // of N: the probe answers a boolean, so there is no precedence to resolve and nothing to
-    // short-circuit for. `RoutingRunStore.#probeFirst` parallelises above two legs for the same
-    // reason, though it switches on the TOTAL leg count rather than keeping a sequential head — so
-    // an empty project with N shards costs 3 round trips here, not 1.
     const shardReplicas = this.readRoute.shardReplicas ?? [];
     if (shardReplicas.length === 0) {
       return false;
