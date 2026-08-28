@@ -286,7 +286,9 @@ describe("RunQueue total concurrency limit", () => {
       });
 
       const r1Admitted = await waitFor(async () => {
-        const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
+        const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main", {
+          blockingPop: false,
+        });
         return next?.messageId === "r1";
       });
       expect(r1Admitted).toBe(true);
@@ -350,7 +352,9 @@ describe("RunQueue total concurrency limit", () => {
         });
 
         const r1Admitted = await waitFor(async () => {
-          const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
+          const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main", {
+            blockingPop: false,
+          });
           return next?.messageId === "r1";
         });
         expect(r1Admitted).toBe(true);

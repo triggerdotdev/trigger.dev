@@ -54,6 +54,9 @@ export type QueueOptions = {
    * ```
    *
    * Only enforced for runs triggered with a `concurrencyKey`, and requires server-side support.
+   *
+   * Omit for no total cap. Like `concurrencyLimit`, a value of `0` holds every keyed run in
+   * the queue rather than removing the cap.
    */
   totalConcurrencyLimit?: number;
 };
