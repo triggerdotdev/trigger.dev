@@ -449,18 +449,48 @@ export function DashboardAgentChat({
     onActivityChange?.(chatId, activity);
   }, [chatId, activity, onActivityChange]);
 
+  const isDraftState = messages.length === 0 && !pendingFirstMessage;
+
+  const contextBanner = (
+    <DashboardAgentContextBanner
+      projectSlug={projectSlug}
+      environmentSlug={environmentSlug}
+      currentPage={currentPage}
+    />
+  );
+
   return (
     <>
       <WatchChips
         watches={watches.filter((watch) => watch.status === "active")}
         onCancel={onCancelWatch}
       />
-      {messages.length === 0 && !pendingFirstMessage ? (
+      {isDraftState ? (
         <DashboardAgentHero
           onSelect={submit}
           pageContext={clientData.pageContext}
           promoted={promotedPrompt}
           promptsDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
+          composer={
+            atMessageCap ? (
+              <AgentUpgradeBlock
+                limit={messageCapLimit}
+                planResolved={messageCapPlanResolved}
+                context={contextBanner}
+              />
+            ) : (
+              <DashboardAgentComposer
+                layout="hero"
+                value={input}
+                onChange={setInput}
+                onSubmit={() => submit(input)}
+                onStop={stop}
+                isStreaming={isStreaming}
+                focusKey={sendRequest?.seq}
+                context={contextBanner}
+              />
+            )
+          }
         />
       ) : (
         <DashboardAgentMessages
@@ -477,17 +507,11 @@ export function DashboardAgentChat({
         />
       )}
       {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
-      {atMessageCap ? (
+      {isDraftState ? null : atMessageCap ? (
         <AgentUpgradeBlock
           limit={messageCapLimit}
           planResolved={messageCapPlanResolved}
-          context={
-            <DashboardAgentContextBanner
-              projectSlug={projectSlug}
-              environmentSlug={environmentSlug}
-              currentPage={currentPage}
-            />
-          }
+          context={contextBanner}
         />
       ) : (
         <>
@@ -498,13 +522,7 @@ export function DashboardAgentChat({
             onStop={stop}
             isStreaming={isStreaming}
             focusKey={sendRequest?.seq}
-            context={
-              <DashboardAgentContextBanner
-                projectSlug={projectSlug}
-                environmentSlug={environmentSlug}
-                currentPage={currentPage}
-              />
-            }
+            context={contextBanner}
             trailingAction={
               showNewChat && (
                 <Button
