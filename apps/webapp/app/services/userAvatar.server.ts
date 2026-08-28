@@ -17,6 +17,14 @@ const AVATAR_PRESIGN_EXPIRY_IN_SECONDS = 300;
 const AVATAR_FILENAME_REGEX = /^[0-9a-f]{32}\.(png|jpg|webp)$/;
 const USER_ID_REGEX = /^[A-Za-z0-9_-]+$/;
 
+/**
+ * Whether this deployment can store profile pictures at all. Self-hosted installs that
+ * configure no avatar store keep the account page exactly as it was before the feature.
+ */
+export function isAvatarUploadsEnabled() {
+  return Boolean(env.AVATARS_OBJECT_STORE_BASE_URL && env.AVATARS_OBJECT_STORE_BUCKET);
+}
+
 /** Undefined when no avatar store is configured, so the policy stays unchanged. */
 export function avatarObjectStoreImageOrigin() {
   return imageOriginFromUrl(env.AVATARS_OBJECT_STORE_BASE_URL);

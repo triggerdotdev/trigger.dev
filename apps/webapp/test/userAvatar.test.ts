@@ -6,6 +6,7 @@ import {
   isAvatarUploadRejection,
   absoluteUserAvatarUrl,
   avatarObjectStoreImageOrigin,
+  isAvatarUploadsEnabled,
   parseAvatarUpload,
   presignUserAvatarUrl,
   resolveStaleAvatarObjectPath,
@@ -371,5 +372,44 @@ describe("avatarContentTypeForFilename", () => {
     ["an empty name", ""],
   ])("is undefined for %s", (_case, filename) => {
     expect(avatarContentTypeForFilename(filename)).toBeUndefined();
+  });
+});
+
+describe("isAvatarUploadsEnabled", () => {
+  const original = {
+    baseUrl: env.AVATARS_OBJECT_STORE_BASE_URL,
+    bucket: env.AVATARS_OBJECT_STORE_BUCKET,
+  };
+
+  afterEach(() => {
+    env.AVATARS_OBJECT_STORE_BASE_URL = original.baseUrl;
+    env.AVATARS_OBJECT_STORE_BUCKET = original.bucket;
+  });
+
+  it("is on when the store is fully configured", () => {
+    env.AVATARS_OBJECT_STORE_BASE_URL = "http://localhost:9005";
+    env.AVATARS_OBJECT_STORE_BUCKET = "avatars";
+
+    expect(isAvatarUploadsEnabled()).toBe(true);
+  });
+
+  it.each([
+    ["nothing is configured", undefined, undefined],
+    ["only the base URL is set", "http://localhost:9005", undefined],
+    ["only the bucket is set", undefined, "avatars"],
+    ["the base URL is blank", "", "avatars"],
+    ["the bucket is blank", "http://localhost:9005", ""],
+  ])("is off when %s", (_case, baseUrl, bucket) => {
+    env.AVATARS_OBJECT_STORE_BASE_URL = baseUrl;
+    env.AVATARS_OBJECT_STORE_BUCKET = bucket;
+
+    expect(isAvatarUploadsEnabled()).toBe(false);
+  });
+
+  it("never builds a client, so an unconfigured install can ask freely", () => {
+    env.AVATARS_OBJECT_STORE_BASE_URL = undefined;
+    env.AVATARS_OBJECT_STORE_BUCKET = undefined;
+
+    expect(() => isAvatarUploadsEnabled()).not.toThrow();
   });
 });

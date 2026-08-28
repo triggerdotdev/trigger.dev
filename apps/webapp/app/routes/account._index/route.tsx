@@ -92,6 +92,7 @@ import {
 } from "~/utils/themePreference";
 import { cachedFlag, resolveOrganizationFeatureFlags } from "~/v3/featureFlags.server";
 import { requireUser } from "~/services/session.server";
+import { isAvatarUploadsEnabled } from "~/services/userAvatar.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { pageMeta } from "~/utils/pageTitle";
 import { cn } from "~/utils/cn";
@@ -263,7 +264,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  return json({ showThemeSwitcher, sidebarContext });
+  return json({
+    showThemeSwitcher,
+    sidebarContext,
+    avatarUploadsEnabled: isAvatarUploadsEnabled(),
+  });
 }
 
 export const action: ActionFunction = async ({ request }) => {
@@ -870,7 +875,8 @@ function CustomizeSidebarButton({
 
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
+  const { showThemeSwitcher, sidebarContext, avatarUploadsEnabled } =
+    useLoaderData<typeof loader>();
   const themeFetcher = useFetcher<ProfileUpdateResult>();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
@@ -990,7 +996,11 @@ export default function Page() {
                 <Label>Profile picture</Label>
               </InputGroup>
               <div className="flex flex-none items-center">
-                <ChangeProfilePhotoButton />
+                {avatarUploadsEnabled ? (
+                  <ChangeProfilePhotoButton />
+                ) : (
+                  <UserProfilePhoto className="size-8" strokeWidth={1.5} />
+                )}
               </div>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   deleteStaleUserAvatar,
   isAvatarUploadRejection,
+  isAvatarUploadsEnabled,
   parseAvatarUpload,
   uploadUserAvatar,
 } from "~/services/userAvatar.server";
@@ -18,6 +19,11 @@ export const action = dashboardAction({}, async ({ request, user }) => {
 
   if (method !== "POST" && method !== "DELETE") {
     return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  // An install with no avatar store hides this UI entirely; a stray request still answers.
+  if (!isAvatarUploadsEnabled()) {
+    return json({ error: "Profile pictures are not available on this instance." }, { status: 400 });
   }
 
   // Read from the cookie: the builder's session user reports isImpersonating false.

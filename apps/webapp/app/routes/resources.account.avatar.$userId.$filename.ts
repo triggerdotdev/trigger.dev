@@ -2,6 +2,7 @@ import { redirect } from "@remix-run/node";
 import { z } from "zod";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
+  isAvatarUploadsEnabled,
   presignUserAvatarUrl,
   readUserAvatarBytes,
   resolveUserAvatarObjectPath,
@@ -24,7 +25,9 @@ const ParamsSchema = z.object({
 export const loader = dashboardLoader(
   { params: ParamsSchema },
   async ({ params: { userId, filename }, request }) => {
-    const objectPath = resolveUserAvatarObjectPath(userId, filename);
+    const objectPath = isAvatarUploadsEnabled()
+      ? resolveUserAvatarObjectPath(userId, filename)
+      : undefined;
 
     if (!objectPath) {
       throw new Response("Not found", { status: 404 });
