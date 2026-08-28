@@ -1,4 +1,4 @@
-# Security Policy
+`# Security Policy
 
 We take the security of Trigger.dev seriously — for both our Cloud service and self-hosted deployments. This document explains how to report a vulnerability and what to expect from us.
 
@@ -9,7 +9,7 @@ We take the security of Trigger.dev seriously — for both our Cloud service and
 Use one of these private channels instead:
 
 1. **GitHub (preferred):** Open a private report from the repository's **Security** tab — click **"Report a vulnerability"** ([direct link](https://github.com/triggerdotdev/trigger.dev/security/advisories/new)).
-2. **Email:** `security-advisories@trigger.dev`
+2. **Email:** `security@trigger.dev`
 
 Please include as much of the following as you can:
 
