@@ -15,6 +15,14 @@ import { ApiError, isTriggerRealtimeAuthError } from "./errors.js";
 import type { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
 
+/**
+ * Request header carrying the start position for a fresh realtime-stream
+ * subscription. Value `"latest"` asks the server to start at the current tail
+ * (only records appended after connect). Only sent when there is no
+ * `Last-Event-ID`. Read by the realtime streams route on the server.
+ */
+export const STREAM_START_HEADER = "X-Trigger-Stream-Start";
+
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
       id: string;
@@ -82,6 +90,7 @@ export type RunStreamCallback<TRunTypes extends AnyRunTypes> = (
 
 export type RunShapeStreamOptions = {
   headers?: Record<string, string>;
+  resolveHeaders?: () => Promise<Record<string, string>>;
   fetchClient?: typeof fetch;
   closeOnComplete?: boolean;
   signal?: AbortSignal;
@@ -114,6 +123,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
     getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
     {
       headers: options?.headers,
+      resolveHeaders: options?.resolveHeaders,
       signal: abortController.signal,
     }
   );
@@ -159,6 +169,17 @@ export type CreateStreamSubscriptionOptions = {
   onError?: (error: Error) => void;
   timeoutInSeconds?: number;
   lastEventId?: string;
+  /**
+   * Where a fresh subscription (no `lastEventId`) starts reading from.
+   *
+   * - `"beginning"` (default): replay the full stream history, then live-tail.
+   * - `"latest"`: skip history and start at the current tail — the subscriber
+   *   sees only records appended after it connects (a last-value / live view).
+   *
+   * Ignored once `lastEventId` is set: a reconnect always resumes from the last
+   * seen record, so `"latest"` only governs the very first connect.
+   */
+  from?: "beginning" | "latest";
 };
 
 export interface StreamSubscriptionFactory {
@@ -196,6 +217,7 @@ type PumpItem = { type: "part"; part: SSEStreamPart };
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
+  private from: "beginning" | "latest";
   private retryCount = 0;
   private maxRetries: number;
   private retryDelayMs: number;
@@ -208,6 +230,12 @@ export class SSEStreamSubscription implements StreamSubscription {
   private internalAbort: AbortController | null = null;
   private cancelledByConsumer = false;
   private completeNotified = false;
+  /** Headers for the next attempt. Replaced by `resolveHeaders` after an auth failure. */
+  private currentHeaders: Record<string, string> | undefined;
+  /** A refresh has already been tried on this connection; a second auth failure is terminal. */
+  private authRefreshed = false;
+  /** Headers were just refreshed for the auth error now unwinding; retry once instead of failing. */
+  private retryAfterAuthRefresh = false;
 
   /**
    * True when the most recent response carried `X-Session-Settled: true` —
@@ -225,6 +253,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       onError?: (error: Error) => void;
       timeoutInSeconds?: number;
       lastEventId?: string;
+      from?: "beginning" | "latest";
       // Retry knobs. Defaults: retry forever, 100ms initial backoff,
       // capped at 5s with 50% jitter. Keeps mobile clients reconnecting
       // through transient drops without giving up after a fixed window
@@ -257,9 +286,12 @@ export class SSEStreamSubscription implements StreamSubscription {
       // the SSE connect through a custom path (proxy, custom headers,
       // tracing). Defaults to global `fetch`.
       fetchClient?: typeof fetch;
+      resolveHeaders?: () => Promise<Record<string, string>>;
     }
   ) {
+    this.currentHeaders = options.headers;
     this.lastEventId = options.lastEventId;
+    this.from = options.from ?? "beginning";
     this.maxRetries = options.maxRetries ?? Infinity;
     this.retryDelayMs = options.retryDelayMs ?? 100;
     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 5000;
@@ -388,9 +420,10 @@ export class SSEStreamSubscription implements StreamSubscription {
     try {
       const headers: Record<string, string> = {
         Accept: "text/event-stream",
-        ...this.options.headers,
+        ...this.currentHeaders,
       };
       if (this.lastEventId) headers["Last-Event-ID"] = this.lastEventId;
+      else if (this.from === "latest") headers[STREAM_START_HEADER] = "latest";
       if (this.options.timeoutInSeconds) {
         headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
       }
@@ -409,10 +442,13 @@ export class SSEStreamSubscription implements StreamSubscription {
           "Could not subscribe to stream",
           Object.fromEntries(response.headers)
         );
-        this.options.onError?.(error);
         if (this.nonRetryableStatuses.has(response.status)) {
+          this.options.onError?.(error);
           controller.error(error);
           return;
+        }
+        if (!(await this.refreshHeadersForAuthError(response.status))) {
+          this.options.onError?.(error);
         }
         throw error;
       }
@@ -541,6 +577,7 @@ export class SSEStreamSubscription implements StreamSubscription {
           }
 
           armStall(); // any chunk (including server keepalives) resets the silence timer
+          this.authRefreshed = false;
           controller.enqueue(value);
         }
       } catch (error) {
@@ -556,11 +593,15 @@ export class SSEStreamSubscription implements StreamSubscription {
       }
 
       if (isTriggerRealtimeAuthError(error)) {
-        // `onError` was already invoked in the `!response.ok` branch above
-        // (where the auth ApiError was originally constructed and thrown).
-        // Auth errors are non-retryable: terminate the stream cleanly.
-        controller.error(error as Error);
-        return;
+        if (this.retryAfterAuthRefresh) {
+          this.retryAfterAuthRefresh = false;
+        } else {
+          // `onError` was already invoked in the `!response.ok` branch above
+          // (where the auth ApiError was originally constructed and thrown).
+          // Auth errors are non-retryable: terminate the stream cleanly.
+          controller.error(error as Error);
+          return;
+        }
       }
 
       cleanupAttempt();
@@ -568,6 +609,29 @@ export class SSEStreamSubscription implements StreamSubscription {
     } finally {
       cleanupAttempt();
     }
+  }
+
+  /**
+   * Re-resolve the headers after a 401/403 so the retry carries a fresh token.
+   * At most once per live connection: if the refreshed token is rejected too,
+   * the auth error stays terminal. A refresher that can't mint leaves the
+   * rejected token in place so the auth error stays terminal too. Returns true
+   * when a retry should follow.
+   */
+  private async refreshHeadersForAuthError(status: number): Promise<boolean> {
+    if (status !== 401 && status !== 403) return false;
+    if (!this.options.resolveHeaders || this.authRefreshed) return false;
+
+    this.authRefreshed = true;
+
+    try {
+      this.currentHeaders = await this.options.resolveHeaders();
+    } catch {
+      return false;
+    }
+
+    this.retryAfterAuthRefresh = true;
+    return true;
   }
 
   private async retryConnection(
@@ -648,6 +712,7 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
     private options: {
       headers?: Record<string, string>;
       signal?: AbortSignal;
+      resolveHeaders?: () => Promise<Record<string, string>>;
     }
   ) {}
 
