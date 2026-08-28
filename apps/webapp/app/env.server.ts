@@ -860,9 +860,13 @@ const EnvironmentSchema = z
       .regex(/^[a-z0-9]+$/)
       .optional(),
 
-    // Declared because avatars are stored under the "s3" protocol and its origin has to
-    // reach the image policy. The rest of the OBJECT_STORE_S3_* set is read by protocol name.
-    OBJECT_STORE_S3_BASE_URL: z.string().optional(),
+    // Avatars get their own store, like artifacts: a public-facing image bucket is not
+    // the bucket task payloads live in.
+    AVATARS_OBJECT_STORE_BASE_URL: z.string().optional(),
+    AVATARS_OBJECT_STORE_BUCKET: z.string().optional(),
+    AVATARS_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
+    AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
+    AVATARS_OBJECT_STORE_REGION: z.string().optional(),
 
     ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),

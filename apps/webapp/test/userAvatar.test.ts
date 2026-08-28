@@ -200,94 +200,127 @@ describe("resolveStaleAvatarObjectPath", () => {
   });
 });
 
-const S3_ENV_KEYS = [
+const AVATAR_ENV_KEYS = [
+  "AVATARS_OBJECT_STORE_BASE_URL",
+  "AVATARS_OBJECT_STORE_BUCKET",
+  "AVATARS_OBJECT_STORE_ACCESS_KEY_ID",
+  "AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY",
+  "AVATARS_OBJECT_STORE_REGION",
+] as const;
+
+type AvatarEnvKey = (typeof AVATAR_ENV_KEYS)[number];
+
+const GENERIC_STORE_ENV_KEYS = [
+  "OBJECT_STORE_BASE_URL",
+  "OBJECT_STORE_BUCKET",
   "OBJECT_STORE_S3_BASE_URL",
   "OBJECT_STORE_S3_BUCKET",
   "OBJECT_STORE_S3_ACCESS_KEY_ID",
   "OBJECT_STORE_S3_SECRET_ACCESS_KEY",
-  "OBJECT_STORE_S3_REGION",
 ] as const;
 
 describe("the avatar object store", () => {
-  const originalS3Env = Object.fromEntries(S3_ENV_KEYS.map((key) => [key, process.env[key]]));
-  const originalDefaultBaseUrl = env.OBJECT_STORE_BASE_URL;
-  const originalDefaultBucket = env.OBJECT_STORE_BUCKET;
+  const originalAvatarEnv = Object.fromEntries(
+    AVATAR_ENV_KEYS.map((key) => [key, env[key]])
+  ) as Record<AvatarEnvKey, string | undefined>;
+  const originalGenericEnv = {
+    baseUrl: env.OBJECT_STORE_BASE_URL,
+    bucket: env.OBJECT_STORE_BUCKET,
+    processEnv: Object.fromEntries(GENERIC_STORE_ENV_KEYS.map((key) => [key, process.env[key]])),
+  };
 
-  function setS3Env(values: Partial<Record<(typeof S3_ENV_KEYS)[number], string>>) {
-    for (const key of S3_ENV_KEYS) delete process.env[key];
-    for (const [key, value] of Object.entries(values)) process.env[key] = value;
+  function setAvatarEnv(values: Partial<Record<AvatarEnvKey, string>>) {
+    for (const key of AVATAR_ENV_KEYS) env[key] = undefined;
+    for (const [key, value] of Object.entries(values)) env[key as AvatarEnvKey] = value;
+  }
+
+  /** A fully configured generic store the avatar code must never fall back to. */
+  function setGenericStoreEnv() {
+    env.OBJECT_STORE_BASE_URL = "https://generic-store.test";
+    env.OBJECT_STORE_BUCKET = "packets";
+    process.env.OBJECT_STORE_BASE_URL = "https://generic-store.test";
+    process.env.OBJECT_STORE_BUCKET = "packets";
+    process.env.OBJECT_STORE_S3_BASE_URL = "https://generic-s3-store.test";
+    process.env.OBJECT_STORE_S3_BUCKET = "packets";
+    process.env.OBJECT_STORE_S3_ACCESS_KEY_ID = "generic-key";
+    process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY = "generic-secret";
   }
 
   afterEach(() => {
-    for (const key of S3_ENV_KEYS) {
-      const original = originalS3Env[key];
+    for (const key of AVATAR_ENV_KEYS) env[key] = originalAvatarEnv[key];
+    env.OBJECT_STORE_BASE_URL = originalGenericEnv.baseUrl;
+    env.OBJECT_STORE_BUCKET = originalGenericEnv.bucket;
+    for (const key of GENERIC_STORE_ENV_KEYS) {
+      const original = originalGenericEnv.processEnv[key];
       if (original === undefined) delete process.env[key];
       else process.env[key] = original;
     }
-    env.OBJECT_STORE_BASE_URL = originalDefaultBaseUrl;
-    env.OBJECT_STORE_BUCKET = originalDefaultBucket;
   });
 
-  it("reads OBJECT_STORE_S3_*, never the default protocol", () => {
-    setS3Env({});
-    env.OBJECT_STORE_BASE_URL = "https://default-store.test";
-    env.OBJECT_STORE_BUCKET = "packets";
-    process.env.OBJECT_STORE_BASE_URL = "https://default-store.test";
-    process.env.OBJECT_STORE_BUCKET = "packets";
-
-    expect(() => presignUserAvatarUrl(`avatars/${USER_ID}/a.png`)).toThrow(/protocol: s3/);
-  });
-
-  it("requires its own bucket", () => {
-    setS3Env({
-      OBJECT_STORE_S3_BASE_URL: "https://s3-no-bucket.test",
-      OBJECT_STORE_S3_ACCESS_KEY_ID: "key",
-      OBJECT_STORE_S3_SECRET_ACCESS_KEY: "secret",
-    });
+  it("never falls back to the generic object store", () => {
+    setAvatarEnv({});
+    setGenericStoreEnv();
 
     expect(() => presignUserAvatarUrl(`avatars/${USER_ID}/a.png`)).toThrow(
-      /OBJECT_STORE_S3_BUCKET/
+      /AVATARS_OBJECT_STORE_BASE_URL/
     );
   });
 
-  it("signs a short-lived URL under the S3 bucket", async () => {
-    setS3Env({
-      OBJECT_STORE_S3_BASE_URL: "https://s3-signing.test",
-      OBJECT_STORE_S3_BUCKET: "avatars-bucket",
-      OBJECT_STORE_S3_ACCESS_KEY_ID: "key",
-      OBJECT_STORE_S3_SECRET_ACCESS_KEY: "secret",
-      OBJECT_STORE_S3_REGION: "us-east-1",
+  it("requires its own bucket", () => {
+    setAvatarEnv({
+      AVATARS_OBJECT_STORE_BASE_URL: "https://avatars-no-bucket.test",
+      AVATARS_OBJECT_STORE_ACCESS_KEY_ID: "key",
+      AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY: "secret",
     });
+    setGenericStoreEnv();
+
+    expect(() => presignUserAvatarUrl(`avatars/${USER_ID}/a.png`)).toThrow(
+      /AVATARS_OBJECT_STORE_BUCKET/
+    );
+  });
+
+  it("signs a short-lived URL under its own bucket and host", async () => {
+    setAvatarEnv({
+      AVATARS_OBJECT_STORE_BASE_URL: "https://avatars-signing.test",
+      AVATARS_OBJECT_STORE_BUCKET: "avatars-bucket",
+      AVATARS_OBJECT_STORE_ACCESS_KEY_ID: "key",
+      AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY: "secret",
+      AVATARS_OBJECT_STORE_REGION: "us-east-1",
+    });
+    setGenericStoreEnv();
 
     const url = await presignUserAvatarUrl(`avatars/${USER_ID}/a.png`);
 
+    expect(url).toContain("https://avatars-signing.test/");
     expect(url).toContain(`/avatars-bucket/avatars/${USER_ID}/a.png`);
     expect(url).toContain("X-Amz-Expires=300");
     expect(url).toContain("X-Amz-Signature=");
+    expect(url).not.toContain("generic");
+    expect(url).not.toContain("packets");
   });
 });
 
 describe("avatarObjectStoreImageOrigin", () => {
-  const originalBaseUrl = env.OBJECT_STORE_S3_BASE_URL;
+  const originalBaseUrl = env.AVATARS_OBJECT_STORE_BASE_URL;
 
   afterEach(() => {
-    env.OBJECT_STORE_S3_BASE_URL = originalBaseUrl;
+    env.AVATARS_OBJECT_STORE_BASE_URL = originalBaseUrl;
   });
 
   it("is the store's origin when one is configured, http included", () => {
-    env.OBJECT_STORE_S3_BASE_URL = "http://localhost:9005";
+    env.AVATARS_OBJECT_STORE_BASE_URL = "http://localhost:9005";
 
     expect(avatarObjectStoreImageOrigin()).toBe("http://localhost:9005");
   });
 
   it("keeps only the origin of a store URL that carries a path", () => {
-    env.OBJECT_STORE_S3_BASE_URL = "https://s3.eu-west-1.amazonaws.com/avatars";
+    env.AVATARS_OBJECT_STORE_BASE_URL = "https://s3.eu-west-1.amazonaws.com/avatars";
 
     expect(avatarObjectStoreImageOrigin()).toBe("https://s3.eu-west-1.amazonaws.com");
   });
 
   it("is undefined when no avatar store is configured", () => {
-    env.OBJECT_STORE_S3_BASE_URL = undefined;
+    env.AVATARS_OBJECT_STORE_BASE_URL = undefined;
 
     expect(avatarObjectStoreImageOrigin()).toBeUndefined();
   });

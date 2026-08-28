@@ -9,10 +9,9 @@ import {
   MAX_AVATAR_SIZE_IN_BYTES,
 } from "~/utils/avatarLimits";
 import { imageOriginFromUrl } from "~/utils/cspImageOrigins";
-import { getObjectStoreClient } from "~/v3/objectStore.server";
+import { singleton } from "~/utils/singleton";
+import { ObjectStoreClient } from "~/v3/objectStoreClient.server";
 
-/** Avatars always live in plain S3, never the default/R2 protocol. */
-const AVATAR_STORE_PROTOCOL = "s3";
 const AVATAR_PRESIGN_EXPIRY_IN_SECONDS = 300;
 
 const AVATAR_FILENAME_REGEX = /^[0-9a-f]{32}\.(png|jpg|webp)$/;
@@ -20,22 +19,46 @@ const USER_ID_REGEX = /^[A-Za-z0-9_-]+$/;
 
 /** Undefined when no avatar store is configured, so the policy stays unchanged. */
 export function avatarObjectStoreImageOrigin() {
-  return imageOriginFromUrl(env.OBJECT_STORE_S3_BASE_URL);
+  return imageOriginFromUrl(env.AVATARS_OBJECT_STORE_BASE_URL);
 }
 
-/** The first segment of a logical key is the bucket, as with `packets/…`. */
+/** Keyed by config so a changed base URL builds a fresh client instead of reusing a stale one. */
+const avatarObjectStoreClients = singleton(
+  "avatarObjectStoreClients",
+  () => new Map<string, ObjectStoreClient>()
+);
+
+/**
+ * Avatars have their own store, like artifacts. The first segment of a logical key is the
+ * bucket, as with `packets/…`.
+ */
 function requireAvatarObjectStore() {
-  const client = getObjectStoreClient(AVATAR_STORE_PROTOCOL);
+  const baseUrl = env.AVATARS_OBJECT_STORE_BASE_URL;
+  const bucket = env.AVATARS_OBJECT_STORE_BUCKET;
+
+  if (!baseUrl) {
+    throw new Error("AVATARS_OBJECT_STORE_BASE_URL is required to store avatars");
+  }
+
+  if (!bucket) {
+    throw new Error("AVATARS_OBJECT_STORE_BUCKET is required to store avatars");
+  }
+
+  const cacheKey = `${baseUrl}:${bucket}`;
+  let client = avatarObjectStoreClients.get(cacheKey);
 
   if (!client) {
-    throw new Error(`Object store is not configured for protocol: ${AVATAR_STORE_PROTOCOL}`);
+    client = ObjectStoreClient.create({
+      baseUrl,
+      bucket,
+      accessKeyId: env.AVATARS_OBJECT_STORE_ACCESS_KEY_ID || undefined,
+      secretAccessKey: env.AVATARS_OBJECT_STORE_SECRET_ACCESS_KEY || undefined,
+      region: env.AVATARS_OBJECT_STORE_REGION || undefined,
+    });
+    avatarObjectStoreClients.set(cacheKey, client);
   }
 
-  if (!client.bucket) {
-    throw new Error("OBJECT_STORE_S3_BUCKET is required to store avatars");
-  }
-
-  return { client, objectKey: (path: string) => `${client.bucket}/${path}` };
+  return { client, objectKey: (path: string) => `${bucket}/${path}` };
 }
 
 export function buildUserAvatarUrl(userId: string, filename: string) {
