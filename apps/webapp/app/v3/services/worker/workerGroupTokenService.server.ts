@@ -13,6 +13,7 @@ import type {
   StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
+import { getMeter } from "@internal/tracing";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { WORKER_HEADERS, type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
@@ -21,11 +22,9 @@ import { Prisma, WorkerInstanceGroupType } from "@trigger.dev/database";
 import { json } from "@remix-run/server-runtime";
 import { createHash, timingSafeEqual } from "crypto";
 import { customAlphabet } from "nanoid";
-import { Counter } from "prom-client";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { metricsRegister } from "~/metrics.server";
-import { evaluateCreatedAtGate } from "./workloadTokenAuthorization.server";
+import { evaluateCreatedAtGate, runAgeBucket } from "./workloadTokenAuthorization.server";
 import {
   isWorkerQueueDequeueDisabled,
   recordBlockedDequeue,
@@ -62,17 +61,11 @@ if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
 
 type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since";
 
-// singleton: module-scope registration double-registers under dev HMR
-const workloadAuthGateCounter = singleton(
-  "workloadAuthGateCounter",
-  () =>
-    new Counter({
-      name: "workload_auth_gate_total",
-      help: "Deployment token authorization outcomes on worker actions",
-      labelNames: ["outcome", "action"] as const,
-      registers: [metricsRegister],
-    })
-);
+const meter = getMeter("workload-auth-gate");
+
+const workloadAuthGateCounter = meter.createCounter("workload_auth_gate_total", {
+  description: "Deployment token authorization outcomes on worker actions",
+});
 
 function createAuthenticatedWorkerInstanceCache() {
   return createCache({
@@ -456,7 +449,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     if (environmentId) {
       // Scoping is delegated to the engine snapshot read; no run-row read here. Recorded so the
       // platform can see how much traffic is env-scoped as enforcement rolls out.
-      workloadAuthGateCounter.inc({ outcome: "env_scoped", action });
+      workloadAuthGateCounter.add(1, { outcome: "env_scoped", action });
       return;
     }
 
@@ -464,7 +457,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       return;
     }
 
-    const run = await this._engine.runStore.findRun({ id: runId }, { select: { createdAt: true } });
+    const run = await this._engine.runStore.findRun(
+      { id: runId },
+      { select: { createdAt: true, environmentType: true } }
+    );
 
     if (!run) {
       // Let the engine method surface the canonical not-found error.
@@ -476,7 +472,12 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       cutoff: workloadTokenCutoff,
     });
 
-    workloadAuthGateCounter.inc({ outcome, action });
+    workloadAuthGateCounter.add(1, {
+      outcome,
+      action,
+      env_type: run.environmentType ?? "unknown",
+      run_age_bucket: runAgeBucket(run.createdAt, new Date()),
+    });
 
     if (!allow) {
       logger.warn("[workload-auth] rejecting untokened worker action created after cutoff", {
