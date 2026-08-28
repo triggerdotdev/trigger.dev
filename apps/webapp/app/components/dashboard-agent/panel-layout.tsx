@@ -128,7 +128,7 @@ export function FloatingAgentWindow({
       className={
         fullscreen
           ? agentTakeoverClassName(true)
-          : "z-20 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
+          : "z-30 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
       }
     >
       {/* Clips content to the rounded corners without clipping the resize handles below,
