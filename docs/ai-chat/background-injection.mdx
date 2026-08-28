@@ -208,8 +208,20 @@ its own advice is to use the instructions option. `Instructions` accepts
 `Array<SystemModelMessage>`, so the injected block is appended there rather than
 smuggled into the transcript.
 
+<Warning>
+  The instructions lane is delivered by `chat.toStreamTextOptions()`, because that
+  is the only place the SDK can set `streamText`'s instructions for you. If your
+  `run()` calls `streamText({ model, messages, abortSignal })` without spreading
+  `chat.toStreamTextOptions()`, a `role: "system"` injection never reaches the
+  model. The conversational lane has no such requirement — it arrives through
+  `messages` either way.
+</Warning>
+
 Two things worth knowing:
 
+- An injection applies to the next inference call only. The lane is drained once
+  applied, so a block injected in `onTurnComplete` shapes the following turn and is
+  not repeated on every turn after it.
 - A new instruction block changes the cached prefix, so the first call carrying it
   misses the prompt cache. Only the turns where something was actually injected pay
   that.

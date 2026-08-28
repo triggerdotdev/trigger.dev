@@ -8076,6 +8076,15 @@ function chatAgent<
                         locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         actionChangedHistory = true;
                       }
+
+                      /**
+                       * Reported after the partial is committed, not instead of it.
+                       * `pipeChatAndCapture` returns a stream failure rather than
+                       * throwing, so without this a mid-stream failure writes a
+                       * normal turn-complete and the truncated answer is persisted
+                       * as if it were finished — the next turn then builds on it.
+                       */
+                      if (captured.status === "error") throw captured.error;
                     } catch (error) {
                       if (
                         error instanceof Error &&
