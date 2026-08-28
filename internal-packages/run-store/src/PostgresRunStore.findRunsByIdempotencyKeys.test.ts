@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient, TaskRunStatus } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 
@@ -38,6 +38,7 @@ async function createRun(
     taskIdentifier: string;
     idempotencyKey: string;
     idempotencyKeyExpiresAt?: Date;
+    status?: TaskRunStatus;
   }
 ) {
   await prisma.taskRun.create({
@@ -46,6 +47,7 @@ async function createRun(
       taskIdentifier: params.taskIdentifier,
       idempotencyKey: params.idempotencyKey,
       idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt ?? null,
+      status: params.status ?? "PENDING",
       payload: "{}",
       payloadType: "application/json",
       runtimeEnvironmentId: params.runtimeEnvironmentId,
@@ -103,6 +105,9 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
       expiresAt.toISOString()
     );
     expect(byKey.get("idem-2")?.idempotencyKeyExpiresAt).toBeNull();
+    // status must be returned so callers can check shouldIdempotencyKeyBeCleared
+    expect(byKey.get("idem-1")?.status).toBe("PENDING");
+    expect(byKey.get("idem-2")?.status).toBe("PENDING");
   });
 
   postgresTest("short-circuits on an empty key list without querying", async ({ prisma }) => {
@@ -116,5 +121,72 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
     });
 
     expect(rows).toEqual([]);
+  });
+
+  postgresTest(
+    "returns status for runs in failure states (CRASHED, SYSTEM_FAILURE, TIMED_OUT, EXPIRED, COMPLETED_WITH_ERRORS, INTERRUPTED)",
+    async ({ prisma }) => {
+      const { project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const failureStatuses: TaskRunStatus[] = [
+        "CRASHED",
+        "SYSTEM_FAILURE",
+        "TIMED_OUT",
+        "EXPIRED",
+        "COMPLETED_WITH_ERRORS",
+        "INTERRUPTED",
+      ];
+
+      for (let i = 0; i < failureStatuses.length; i++) {
+        await createRun(prisma, {
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          friendlyId: `run_fail_${i}`,
+          taskIdentifier: "task-a",
+          idempotencyKey: `idem-fail-${i}`,
+          status: failureStatuses[i],
+        });
+      }
+
+      const rows = await store.findRunsByIdempotencyKeys({
+        runtimeEnvironmentId: environment.id,
+        taskIdentifier: "task-a",
+        idempotencyKeys: failureStatuses.map((_, i) => `idem-fail-${i}`),
+      });
+
+      expect(rows).toHaveLength(failureStatuses.length);
+
+      const byKey = new Map(rows.map((r) => [r.idempotencyKey, r]));
+      for (let i = 0; i < failureStatuses.length; i++) {
+        const row = byKey.get(`idem-fail-${i}`);
+        expect(row).toBeDefined();
+        expect(row?.status).toBe(failureStatuses[i]);
+        expect(row?.friendlyId).toBe(`run_fail_${i}`);
+      }
+    }
+  );
+
+  postgresTest("returns status for a successfully completed run", async ({ prisma }) => {
+    const { project, environment } = await seedEnvironment(prisma);
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    await createRun(prisma, {
+      runtimeEnvironmentId: environment.id,
+      projectId: project.id,
+      friendlyId: "run_success",
+      taskIdentifier: "task-a",
+      idempotencyKey: "idem-success",
+      status: "COMPLETED_SUCCESSFULLY",
+    });
+
+    const rows = await store.findRunsByIdempotencyKeys({
+      runtimeEnvironmentId: environment.id,
+      taskIdentifier: "task-a",
+      idempotencyKeys: ["idem-success"],
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("COMPLETED_SUCCESSFULLY");
   });
 });

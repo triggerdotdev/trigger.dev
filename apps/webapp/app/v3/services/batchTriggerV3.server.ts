@@ -4,7 +4,7 @@ import type {
   IOPacket,
 } from "@trigger.dev/core/v3";
 import { packetRequiresOffloading, parsePacket } from "@trigger.dev/core/v3";
-import type { BatchTaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import type { BatchTaskRun, TaskRunAttempt, TaskRunStatus } from "@trigger.dev/database";
 import { isUniqueConstraintError, Prisma } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import pMap from "p-map";
@@ -27,7 +27,11 @@ import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.se
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
-import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import {
+  isFinalAttemptStatus,
+  isFinalRunStatus,
+  shouldIdempotencyKeyBeCleared,
+} from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
@@ -451,6 +455,21 @@ export class BatchTriggerV3Service extends BaseService {
 
         if (cachedRun) {
           if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {
+            expiredRunIds.add(cachedRun.friendlyId);
+
+            return {
+              id: await this.mintChildFriendlyId(environment, childAnchor, item.options?.region),
+              isCached: false,
+              idempotencyKey: item.options?.idempotencyKey ?? undefined,
+              taskIdentifier: item.task,
+            };
+          }
+
+          // Mirror the single-trigger path (IdempotencyKeyConcern.handleExistingRun):
+          // if the cached run is in a terminal failure state (CRASHED, SYSTEM_FAILURE,
+          // TIMED_OUT, EXPIRED, COMPLETED_WITH_ERRORS, INTERRUPTED), clear the
+          // idempotency key and re-trigger instead of returning the dead run.
+          if (shouldIdempotencyKeyBeCleared(cachedRun.status as TaskRunStatus)) {
             expiredRunIds.add(cachedRun.friendlyId);
 
             return {
