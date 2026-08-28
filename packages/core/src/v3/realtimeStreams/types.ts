@@ -125,6 +125,17 @@ export type ReadStreamOptions = {
    * @default 0 (start from beginning)
    */
   startIndex?: number;
+
+  /**
+   * Where a fresh read starts.
+   *
+   * - `"beginning"` (default): replay the full stream history, then live-tail.
+   * - `"latest"`: skip history and start at the current tail — only records
+   *   appended after this read connects are delivered (a last-value / live view).
+   *
+   * Ignored when `startIndex` is set (which pins an absolute start position).
+   */
+  from?: "beginning" | "latest";
 };
 
 /**

@@ -217,6 +217,7 @@
                   "realtime/react-hooks/triggering",
                   "realtime/react-hooks/subscribe",
                   "realtime/react-hooks/streams",
+                  "realtime/react-hooks/session-stream",
                   "realtime/react-hooks/swr",
                   "realtime/react-hooks/use-wait-token"
                 ]
