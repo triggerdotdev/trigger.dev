@@ -74,11 +74,15 @@ const SemanticAttributes = {
 const QUEUE_GATES_LUA_HELPERS = `
 local function __gateKeys(gatesKeyPrefix, msg, gate)
   local base = gatesKeyPrefix .. '{org:' .. msg.orgId .. '}:proj:' .. msg.projectId .. ':env:' .. msg.environmentId .. ':queue:' .. gate.queue
-  local variant = base
-  if gate.concurrencyKey and gate.concurrencyKey ~= '' then
-    variant = base .. ':ck:' .. gate.concurrencyKey
+  local gateKey = gate.concurrencyKey
+  if (not gateKey or gateKey == '') and msg.concurrencyKey and msg.concurrencyKey ~= '' then
+    gateKey = msg.concurrencyKey
   end
-  return base, variant
+  local variant = base
+  if gateKey and gateKey ~= '' then
+    variant = base .. ':ck:' .. gateKey
+  end
+  return base, variant, gateKey
 end
 
 local function __gateReconcile(setKey, msgKeyPrefix)
@@ -96,22 +100,23 @@ local function __gateReconcile(setKey, msgKeyPrefix)
   end
 end
 
-local function __gatesHaveCapacity(gatesKeyPrefix, msg, envLimit, msgKeyPrefix)
+local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msgKeyPrefix)
   if not msg.gates then return true end
   for _, gate in ipairs(msg.gates) do
-    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
+    local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
     local occupancy = tonumber(redis.call('SCARD', variant .. ':currentConcurrency') or '0')
     local perKeyLimit = math.min(tonumber(redis.call('GET', base .. ':concurrency') or '1000000'), envLimit)
-    if occupancy >= perKeyLimit then
+    if occupancy >= perKeyLimit and redis.call('SISMEMBER', variant .. ':currentConcurrency', messageId) == 0 then
       __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix)
       return false
     end
-    if gate.concurrencyKey and gate.concurrencyKey ~= '' then
+    if gateKey and gateKey ~= '' then
       local rawTotal = redis.call('GET', base .. ':totalConcurrency')
       if rawTotal then
         local totalLimit = math.min(tonumber(rawTotal), envLimit)
-        if tonumber(redis.call('SCARD', base .. ':groupConcurrency') or '0') >= totalLimit then
-          __gateReconcile(base .. ':groupConcurrency', msgKeyPrefix)
+        local groupKey = base .. ':groupConcurrency'
+        if tonumber(redis.call('SCARD', groupKey) or '0') >= totalLimit and redis.call('SISMEMBER', groupKey, messageId) == 0 then
+          __gateReconcile(groupKey, msgKeyPrefix)
           return false
         end
       end
@@ -123,9 +128,9 @@ end
 local function __gatesAcquire(gatesKeyPrefix, msg, messageId)
   if not msg.gates then return end
   for _, gate in ipairs(msg.gates) do
-    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
+    local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
     redis.call('SADD', variant .. ':currentConcurrency', messageId)
-    if gate.concurrencyKey and gate.concurrencyKey ~= '' then
+    if gateKey and gateKey ~= '' then
       redis.call('SADD', base .. ':groupConcurrency', messageId)
     end
   end
@@ -137,9 +142,9 @@ local function __gatesRelease(gatesKeyPrefix, rawPayload, messageId)
   local ok, msg = pcall(cjson.decode, rawPayload)
   if not ok or type(msg) ~= 'table' or not msg.gates then return end
   for _, gate in ipairs(msg.gates) do
-    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
+    local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
     local removed = redis.call('SREM', variant .. ':currentConcurrency', messageId)
-    if removed == 1 and gate.concurrencyKey and gate.concurrencyKey ~= '' then
+    if removed == 1 and gateKey and gateKey ~= '' then
       redis.call('SREM', base .. ':groupConcurrency', messageId)
     end
   end
@@ -3589,7 +3594,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
           end
         end
 
@@ -3703,7 +3708,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
           end
         end
 
@@ -4063,7 +4068,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
           end
         end
 
@@ -4234,7 +4239,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
           end
         end
 
@@ -4636,7 +4641,7 @@ for i = 1, #messages, 2 do
         else
             local gatesAllow = true
             if gatesEnabled then
-              gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, envConcurrencyLimit, messageKeyPrefix)
+              gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix)
             end
 
             if gatesAllow then
@@ -4887,11 +4892,13 @@ local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurren
 local envAvailableCapacity = envConcurrencyLimitWithBurstFactor - envCurrentConcurrency
 local actualMaxCount = math.min(maxCount, envAvailableCapacity)
 
--- Total-cap gate: bound this batch by the remaining headroom across ALL ck
--- variants (groupConcurrency SCARD vs the env-clamped total limit). Each admit
--- below SADDs into the group set and bumps dequeuedCount, and dequeuedCount is
--- bounded by actualMaxCount, so tightening here is sufficient to prevent
--- over-admitting past the cap within a single batch.
+-- Total-cap gate: track the remaining headroom across ALL ck variants
+-- (groupConcurrency SCARD vs the env-clamped total limit). Admission below
+-- decrements the headroom per new member, and a message that is ALREADY a
+-- group member passes even at zero headroom: it holds its own slot (an
+-- unmirrored release from an older build can leave a queued run's membership
+-- behind, and blocking on it would deadlock the run against itself).
+local totalHeadroom = nil
 if totalConcurrencyEnabled then
   local rawTotalLimit = redis.call('GET', totalConcurrencyLimitKey)
   if rawTotalLimit then
@@ -4923,7 +4930,7 @@ if totalConcurrencyEnabled then
       end
     end
 
-    actualMaxCount = math.min(actualMaxCount, totalConcurrencyLimit - groupCurrentConcurrency)
+    totalHeadroom = totalConcurrencyLimit - groupCurrentConcurrency
   end
 end
 
@@ -4981,10 +4988,17 @@ for _, ckQueueName in ipairs(ckQueues) do
         else
           local gatesAllow = true
           if gatesEnabled then
-            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, envConcurrencyLimit, messageKeyPrefix)
+            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix)
           end
 
-          if gatesAllow then
+          local alreadyInGroup = false
+          local totalAllows = true
+          if totalHeadroom ~= nil then
+            alreadyInGroup = redis.call('SISMEMBER', groupConcurrencyKey, messageId) == 1
+            totalAllows = alreadyInGroup or totalHeadroom > 0
+          end
+
+          if gatesAllow and totalAllows then
             redis.call('ZREM', fullQueueKey, messageId)
             redis.call('ZREM', envQueueKey, messageId)
             decrLengthCounter()
@@ -4992,6 +5006,9 @@ for _, ckQueueName in ipairs(ckQueues) do
             redis.call('SADD', envCurrentConcurrencyKey, messageId)
             if totalConcurrencyEnabled then
               redis.call('SADD', groupConcurrencyKey, messageId)
+              if totalHeadroom ~= nil and not alreadyInGroup then
+                totalHeadroom = totalHeadroom - 1
+              end
             end
             if gatesEnabled then
               __gatesAcquire(keyPrefix, messageData, messageId)
