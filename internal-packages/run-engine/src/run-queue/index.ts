@@ -114,13 +114,13 @@ local function __gateReconcile(setKey, msgKeyPrefix, reconcileKeyPrefix)
   end
 end
 
-local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msgKeyPrefix)
+local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msgKeyPrefix, ckOverridesEnabled)
   if not msg.gates then return true end
   for _, gate in ipairs(msg.gates) do
     local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
     local occupancy = tonumber(redis.call('SCARD', variant .. ':currentConcurrency') or '0')
     local perKeyLimit = math.min(tonumber(redis.call('GET', base .. ':concurrency') or '1000000'), envLimit)
-    if gateKey and gateKey ~= '' then
+    if ckOverridesEnabled and gateKey and gateKey ~= '' then
       local gateOverride = redis.call('HGET', base .. ':ckLimits', string.sub(variant, #gatesKeyPrefix + 1))
       if gateOverride then
         perKeyLimit = math.min(tonumber(gateOverride), envLimit)
@@ -2557,6 +2557,7 @@ export class RunQueue {
         enableFastPathArg,
         this.options.redis.keyPrefix ?? "",
         this.options.gatesEnabled ? "1" : "0",
+        this.options.totalConcurrencyEnabled ? "1" : "0",
         metricsGaugeArg
       );
     } else {
@@ -2586,6 +2587,7 @@ export class RunQueue {
         enableFastPathArg,
         this.options.redis.keyPrefix ?? "",
         this.options.gatesEnabled ? "1" : "0",
+        this.options.totalConcurrencyEnabled ? "1" : "0",
         metricsGaugeArg
       );
     }
@@ -2667,6 +2669,7 @@ export class RunQueue {
         this.options.redis.keyPrefix ?? "",
         String(maxCount),
         this.options.gatesEnabled ? "1" : "0",
+        this.options.totalConcurrencyEnabled ? "1" : "0",
         metricsGaugeArg
       );
 
@@ -3664,6 +3667,7 @@ local currentTime = ARGV[8]
 local enableFastPath = ARGV[9]
 local keyPrefix = ARGV[10]
 local gatesEnabled = ARGV[11] == '1'
+local totalConcurrencyEnabled = ARGV[12] == '1'
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
@@ -3691,7 +3695,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil, totalConcurrencyEnabled)
           end
         end
 
@@ -3778,6 +3782,7 @@ local currentTime = ARGV[10]
 local enableFastPath = ARGV[11]
 local keyPrefix = ARGV[12]
 local gatesEnabled = ARGV[13] == '1'
+local totalConcurrencyEnabled = ARGV[14] == '1'
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
@@ -3805,7 +3810,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil, totalConcurrencyEnabled)
           end
         end
 
@@ -4172,7 +4177,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil, totalConcurrencyEnabled)
           end
         end
 
@@ -4350,7 +4355,7 @@ if enableFastPath == '1' then
           local okDecode, decoded = pcall(cjson.decode, messageData)
           if okDecode and type(decoded) == 'table' and decoded.gates then
             gateMsg = decoded
-            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil)
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, messageId, envLimit, nil, totalConcurrencyEnabled)
           end
         end
 
@@ -4680,6 +4685,7 @@ local defaultEnvConcurrencyBurstFactor = ARGV[4]
 local keyPrefix = ARGV[5]
 local maxCount = tonumber(ARGV[6] or '1')
 local gatesEnabled = ARGV[7] == '1'
+local totalConcurrencyEnabled = ARGV[8] == '1'
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
 ${QUEUE_METRICS_GAUGE_LUA}
@@ -4752,7 +4758,7 @@ for i = 1, #messages, 2 do
         else
             local gatesAllow = true
             if gatesEnabled then
-              gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix)
+              gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix, totalConcurrencyEnabled)
             end
 
             if gatesAllow then
@@ -5101,7 +5107,7 @@ for _, ckQueueName in ipairs(ckQueues) do
         else
           local gatesAllow = true
           if gatesEnabled then
-            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix)
+            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix, totalConcurrencyEnabled)
           end
           if not gatesAllow then
             blockedByGates = true
@@ -6209,6 +6215,7 @@ declare module "@internal/redis" {
       enableFastPath: string,
       keyPrefix: string,
       gatesEnabled: string,
+      totalConcurrencyEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -6242,6 +6249,7 @@ declare module "@internal/redis" {
       enableFastPath: string,
       keyPrefix: string,
       gatesEnabled: string,
+      totalConcurrencyEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -6280,6 +6288,7 @@ declare module "@internal/redis" {
       keyPrefix: string,
       maxCount: string,
       gatesEnabled: string,
+      totalConcurrencyEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[string[] | null, number[] | null]>
     ): Result<[string[] | null, number[] | null], Context>;
