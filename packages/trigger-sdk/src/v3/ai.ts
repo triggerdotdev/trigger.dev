@@ -11588,6 +11588,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
+    // IDs too long to fit within the tag length limit get no automatic tag.
     const tags = chatRunTags(
       params.chatId,
       params.triggerConfig?.tags ?? options?.triggerConfig?.tags

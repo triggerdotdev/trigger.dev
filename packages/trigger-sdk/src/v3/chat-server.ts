@@ -199,7 +199,8 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
   /**
    * Run options for the auto-triggered `handover-prepare` session run —
    * tags, queue, machine, etc. Mirrors `chat.createStartSessionAction`.
-   * The `chat:{chatId}` tag is prepended automatically.
+   * The `chat:{chatId}` tag is prepended automatically when it fits within
+   * the tag length limit (see `chatRunTags`).
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
   /**
@@ -529,7 +530,7 @@ async function openHandoverSession(opts: {
 
   // Merge the customer's trigger options. `handover-prepare` and `chatId` in
   // `basePayload` are ours and can't be overridden; the `chat:{chatId}` tag is
-  // prepended.
+  // prepended when it fits within the tag length limit (see `chatRunTags`).
   const tags = chatRunTags(chatId, opts.triggerConfig?.tags);
 
   const triggerConfig: SessionTriggerConfig = {
