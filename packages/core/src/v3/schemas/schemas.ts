@@ -183,7 +183,7 @@ export const QueueManifest = z.object({
    * applies per key value; this is the ceiling for the whole queue.
    *
    * Only enforced for runs triggered with a `concurrencyKey`, and requires server-side support. */
-  totalConcurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
+  combinedConcurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
 });
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
