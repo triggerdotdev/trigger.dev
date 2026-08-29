@@ -671,7 +671,7 @@ export class AgentChat<TAgent = unknown> {
       },
       ...(this.triggerConfigDefault?.machine ? { machine: this.triggerConfigDefault.machine } : {}),
       ...(this.triggerConfigDefault?.queue ? { queue: this.triggerConfigDefault.queue } : {}),
-      ...(this.triggerConfigDefault?.tags ? { tags: this.triggerConfigDefault.tags } : {}),
+      tags: [`chat:${this.chatId}`, ...(this.triggerConfigDefault?.tags ?? [])].slice(0, 10),
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
         : {}),
