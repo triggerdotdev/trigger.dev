@@ -109,7 +109,7 @@ function decode(slug: string, raw: string): TaskMetadataEntry | null {
       triggerSource: parsed.k,
       queueId: parsed.q,
       queueName: parsed.n,
-      gates: parsed.g ?? null,
+      gates: parseTaskGates(parsed.g ?? null),
     };
   } catch (error) {
     logger.error("Failed to decode task metadata cache entry", { slug, error });

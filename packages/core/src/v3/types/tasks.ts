@@ -223,22 +223,10 @@ type CommonTaskOptions<
    * ```
    */
   queue?:
-    | {
-        name?: string;
-        concurrencyLimit?: number;
-        totalConcurrencyLimit?: number;
-      }
-    | [
-        (
-          | string
-          | {
-              name?: string;
-              concurrencyLimit?: number;
-              totalConcurrencyLimit?: number;
-            }
-        ),
-        ...QueueGateRef[],
-      ];
+    | TaskQueueIn
+    | [TaskQueueIn | string]
+    | [TaskQueueIn | string, QueueGateRef]
+    | [TaskQueueIn | string, QueueGateRef, QueueGateRef];
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example
@@ -414,6 +402,12 @@ type CommonTaskOptions<
  * literal `concurrencyKey` instead of inheriting the run's own key.
  */
 export type QueueGateRef = string | { name: string; concurrencyKey?: string };
+
+type TaskQueueIn = {
+  name?: string;
+  concurrencyLimit?: number;
+  totalConcurrencyLimit?: number;
+};
 
 export type TaskOptions<
   TIdentifier extends string,
@@ -833,7 +827,7 @@ export type TriggerOptions = {
    * run must also hold a concurrency slot in while it executes. A gate without a
    * `concurrencyKey` uses the run's own `concurrencyKey`.
    */
-  queue?: string | [string, ...QueueGateRef[]];
+  queue?: string | [string] | [string, QueueGateRef] | [string, QueueGateRef, QueueGateRef];
 
   /**
    * The `concurrencyKey` creates a copy of the queue for every unique value of the key.
