@@ -97,6 +97,7 @@
                   "ai-chat/frontend",
                   "ai-chat/server-chat",
                   "ai-chat/sessions",
+                  "ai-chat/side-channels",
                   "ai-chat/chat-local",
                   "ai-chat/types",
                   "ai-chat/custom-agents",

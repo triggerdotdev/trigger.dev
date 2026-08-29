@@ -13,6 +13,10 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { logger } from "~/services/logger.server";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
 import {
+  isSafeSessionExternalId,
+  SESSION_CHANNEL_SCOPE_INFIX,
+} from "~/services/realtime/sessionChannels.server";
+import {
   ensureRunForSession,
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
@@ -168,6 +172,13 @@ const { action } = createActionApiRoute(
   },
   async ({ authentication, body }) => {
     try {
+      if (body.externalId && !isSafeSessionExternalId(body.externalId)) {
+        return json(
+          { error: `externalId cannot contain "${SESSION_CHANNEL_SCOPE_INFIX}"` },
+          { status: 422 }
+        );
+      }
+
       // Idempotent on (env, externalId): two concurrent POSTs converge to the same row, and
       // `triggerConfig` is refreshed on the cached path so a redeployed config reaches the next run.
       const { session, isCached } = await findOrCreateSession({

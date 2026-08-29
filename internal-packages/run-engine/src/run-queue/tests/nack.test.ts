@@ -131,6 +131,81 @@ describe("RunQueue.nackMessage", () => {
   });
 
   redisTest(
+    "nacking with resetAttemptCount zeroes the counter instead of dead-lettering",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        retryOptions: {
+          ...testOptions.retryOptions,
+          maxAttempts: 2,
+        },
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: authenticatedEnvDev.id,
+        });
+
+        await setTimeout(1000);
+
+        const dequeued = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(dequeued);
+
+        const first = await queue.nackMessage({
+          orgId: messageDev.orgId,
+          messageId: messageDev.runId,
+        });
+        expect(first).toBe(true);
+
+        const afterFirst = await queue.readMessage(messageDev.orgId, messageDev.runId);
+        expect(afterFirst?.attempt).toBe(1);
+
+        await setTimeout(1000);
+
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(dequeued2);
+
+        // A plain nack here would hit maxAttempts and dead-letter the run
+        const second = await queue.nackMessage({
+          orgId: messageDev.orgId,
+          messageId: messageDev.runId,
+          resetAttemptCount: true,
+        });
+        expect(second).toBe(true);
+
+        const afterReset = await queue.readMessage(messageDev.orgId, messageDev.runId);
+        expect(afterReset?.attempt).toBe(0);
+
+        expect(await queue.lengthOfEnvQueue(authenticatedEnvDev)).toBe(1);
+        expect(await queue.lengthOfDeadLetterQueue(authenticatedEnvDev)).toBe(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "nacking a message with maxAttempts reached should be moved to dead letter queue",
     async ({ redisContainer }) => {
       const queue = new RunQueue({

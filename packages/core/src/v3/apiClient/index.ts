@@ -1401,15 +1401,18 @@ export class ApiClient {
   async initializeSessionStream(
     sessionIdOrExternalId: string,
     io: "out" | "in",
-    requestOptions?: ZodFetchOptions
+    requestOptions?: ZodFetchOptions,
+    channel?: string
   ) {
     // The server returns S2 credentials in response headers alongside a tiny
     // JSON body with the realtime version. Follow the same shape as
     // `createStream` so downstream clients can feed them into
     // `StreamsWriterV2`.
+    const base = `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
+    const url = channel ? `${base}/channels/${encodeURIComponent(channel)}/${io}` : `${base}/${io}`;
     return zodfetch(
       CreateStreamResponseBody,
-      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`,
+      url,
       {
         method: "PUT",
         headers: this.#getHeaders(false),
@@ -1427,16 +1430,21 @@ export class ApiClient {
     sessionIdOrExternalId: string,
     io: "out" | "in",
     part: TBody,
-    requestOptions?: ZodFetchOptions
+    requestOptions?: ZodFetchOptions,
+    channel?: string
   ) {
     // Generated once per logical append, outside zodfetch, so its internal
     // retries reuse the same part id and the server-side dedupe collapses a
     // retried POST whose first attempt actually committed. Full-length nanoid
     // (~126 bits) to match the browser transport's randomUUID entropy.
     const partId = nanoid();
+    const base = `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
+    const appendUrl = channel
+      ? `${base}/channels/${encodeURIComponent(channel)}/${io}/append`
+      : `${base}/${io}/append`;
     return zodfetch(
       AppendToStreamResponseBody,
-      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}/append`,
+      appendUrl,
       {
         method: "POST",
         headers: { ...this.#getHeaders(false), "X-Part-Id": partId },
@@ -1460,15 +1468,19 @@ export class ApiClient {
   async readSessionStreamRecords(
     sessionIdOrExternalId: string,
     io: "out" | "in",
-    options?: { afterEventId?: string; baseUrl?: string }
+    options?: { afterEventId?: string; baseUrl?: string; channel?: string }
   ) {
     const qs = new URLSearchParams();
     if (options?.afterEventId !== undefined) {
       qs.set("afterEventId", options.afterEventId);
     }
-    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(
+    const recordsBase = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(
       sessionIdOrExternalId
-    )}/${io}/records${qs.toString() ? `?${qs.toString()}` : ""}`;
+    )}`;
+    const recordsPath = options?.channel
+      ? `${recordsBase}/channels/${encodeURIComponent(options.channel)}/${io}/records`
+      : `${recordsBase}/${io}/records`;
+    const url = `${recordsPath}${qs.toString() ? `?${qs.toString()}` : ""}`;
     return zodfetch(
       ReadSessionStreamRecordsResponseBody,
       url,
@@ -1491,6 +1503,11 @@ export class ApiClient {
     options?: {
       signal?: AbortSignal;
       baseUrl?: string;
+      /**
+       * A named side channel on the session. When omitted, the session's
+       * reserved default channel (`session.in` / `session.out`) is used.
+       */
+      channel?: string;
       timeoutInSeconds?: number;
       onComplete?: () => void;
       onError?: (error: Error) => void;
@@ -1510,7 +1527,10 @@ export class ApiClient {
       onControl?: (event: ControlEvent) => void;
     }
   ): Promise<AsyncIterableStream<T>> {
-    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`;
+    const sessionSegment = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
+    const url = options?.channel
+      ? `${sessionSegment}/channels/${encodeURIComponent(options.channel)}/${io}`
+      : `${sessionSegment}/${io}`;
 
     const subscription = new SSEStreamSubscription(url, {
       headers: this.getHeaders(),

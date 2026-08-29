@@ -4,6 +4,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { SESSION_CHANNEL_NAME_REGEX } from "~/services/realtime/sessionChannels.server";
 import {
   canonicalSessionAddressingKey,
   resolveSessionWithWriterFallback,
@@ -14,25 +15,14 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   sessionParam: z.string(),
+  channel: z.string().regex(SESSION_CHANNEL_NAME_REGEX),
   io: z.enum(["out", "in"]),
 });
 
-// GET: SSE stream subscription for a Session's `.out` / `.in` channel.
-// Dashboard-auth counterpart to the public API's
-// `/realtime/v1/sessions/:sessionId/:io`. Used by the Sessions detail
-// view (and the run page's Agent tab) to observe assistant chunks
-// (`.out`) and user-side ChatInputChunk payloads (`.in`).
-//
-// The `:sessionParam` segment accepts either the `session_*` friendlyId
-// or the externalId the transport registered for the chat (typically the
-// browser's `chatId`).
-//
-// Authenticated by the dashboard session — the user must have access to
-// the project and environment. The session must live in that environment.
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
-  const { sessionParam, io } = ParamsSchema.parse(params);
+  const { sessionParam, channel, io } = ParamsSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -67,9 +57,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }
   }
 
-  // The agent writes via the canonical addressing key (externalId if
-  // set, else friendlyId). Subscribe with the same key so the read
-  // hits the same S2 stream the agent is writing into.
   const addressingKey = canonicalSessionAddressingKey(session, sessionParam);
 
   return realtimeStream.streamResponseFromSessionStream(
@@ -77,6 +64,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     addressingKey,
     io,
     getRequestAbortSignal(),
-    { lastEventId, timeoutInSeconds }
+    { lastEventId, timeoutInSeconds },
+    channel
   );
 }

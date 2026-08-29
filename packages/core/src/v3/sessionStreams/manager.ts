@@ -47,8 +47,8 @@ type TailState = {
   promise: Promise<void>;
 };
 
-function keyFor(sessionId: string, io: SessionChannelIO): string {
-  return `${sessionId}:${io}`;
+function keyFor(sessionId: string, io: SessionChannelIO, channel?: string): string {
+  return `${sessionId}:${channel ?? ""}:${io}`;
 }
 
 /**
@@ -103,8 +103,13 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     private debug: boolean = false
   ) {}
 
-  on(sessionId: string, io: SessionChannelIO, handler: SessionStreamHandler): { off: () => void } {
-    return this.#register(sessionId, io, { kind: "data", fn: handler });
+  on(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: SessionStreamHandler,
+    channel?: string
+  ): { off: () => void } {
+    return this.#register(sessionId, io, { kind: "data", fn: handler }, channel);
   }
 
   /**
@@ -114,17 +119,19 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   onRecord(
     sessionId: string,
     io: SessionChannelIO,
-    handler: SessionStreamRecordHandler
+    handler: SessionStreamRecordHandler,
+    channel?: string
   ): { off: () => void } {
-    return this.#register(sessionId, io, { kind: "record", fn: handler });
+    return this.#register(sessionId, io, { kind: "record", fn: handler }, channel);
   }
 
   #register(
     sessionId: string,
     io: SessionChannelIO,
-    handler: RegisteredHandler
+    handler: RegisteredHandler,
+    channel?: string
   ): { off: () => void } {
-    const key = keyFor(sessionId, io);
+    const key = keyFor(sessionId, io, channel);
 
     let handlerSet = this.handlers.get(key);
     if (!handlerSet) {
@@ -136,7 +143,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     // Explicit re-attach clears the "explicitly disconnected" suppression
     // so the tail can subscribe again now that callers want delivery back.
     this.explicitlyDisconnected.delete(key);
-    this.#ensureTailConnected(sessionId, io);
+    this.#ensureTailConnected(sessionId, io, channel);
 
     // Selective drain: offer each buffered record to the new handler and
     // remove ONLY the ones it consumed (returned `true` — e.g. the
@@ -181,9 +188,10 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   once(
     sessionId: string,
     io: SessionChannelIO,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<unknown> {
-    const recordPromise = this.onceRecord(sessionId, io, options);
+    const recordPromise = this.onceRecord(sessionId, io, options, channel);
     return new InputStreamOncePromise<unknown>((resolve, reject) => {
       recordPromise.then((result) => {
         resolve(result.ok ? { ok: true, output: result.output.data } : result);
@@ -194,27 +202,30 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   onceRecord(
     sessionId: string,
     io: SessionChannelIO,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<SessionStreamRecord> {
-    return this.#onceRecord(sessionId, io, undefined, options);
+    return this.#onceRecord(sessionId, io, undefined, options, channel);
   }
 
   onceRecordWhere(
     sessionId: string,
     io: SessionChannelIO,
     predicate: SessionStreamRecordPredicate,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<SessionStreamRecord> {
-    return this.#onceRecord(sessionId, io, predicate, options);
+    return this.#onceRecord(sessionId, io, predicate, options, channel);
   }
 
   #onceRecord(
     sessionId: string,
     io: SessionChannelIO,
     predicate: SessionStreamRecordPredicate | undefined,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<SessionStreamRecord> {
-    const key = keyFor(sessionId, io);
+    const key = keyFor(sessionId, io, channel);
 
     if (options?.timeoutMs === 0) {
       const record = this.#takeBufferedRecord(key, predicate);
@@ -228,7 +239,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
 
     this.explicitlyDisconnected.delete(key);
-    this.#ensureTailConnected(sessionId, io);
+    this.#ensureTailConnected(sessionId, io, channel);
 
     const record = this.#takeBufferedRecord(key, predicate);
     if (record) {
@@ -293,28 +304,32 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     return record;
   }
 
-  peek(sessionId: string, io: SessionChannelIO): unknown | undefined {
-    return this.peekRecord(sessionId, io)?.data;
+  peek(sessionId: string, io: SessionChannelIO, channel?: string): unknown | undefined {
+    return this.peekRecord(sessionId, io, channel)?.data;
   }
 
-  peekRecord(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined {
-    return this.buffer.get(keyFor(sessionId, io))?.[0];
+  peekRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    channel?: string
+  ): SessionStreamRecord | undefined {
+    return this.buffer.get(keyFor(sessionId, io, channel))?.[0];
   }
 
-  lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.seqNums.get(keyFor(sessionId, io));
+  lastSeqNum(sessionId: string, io: SessionChannelIO, channel?: string): number | undefined {
+    return this.seqNums.get(keyFor(sessionId, io, channel));
   }
 
-  setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
-    const key = keyFor(sessionId, io);
+  setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number, channel?: string): void {
+    const key = keyFor(sessionId, io, channel);
     const current = this.seqNums.get(key);
     if (current === undefined || seqNum > current) {
       this.seqNums.set(key, seqNum);
     }
   }
 
-  consumeRecord(sessionId: string, io: SessionChannelIO, seqNum: number): void {
-    const key = keyFor(sessionId, io);
+  consumeRecord(sessionId: string, io: SessionChannelIO, seqNum: number, channel?: string): void {
+    const key = keyFor(sessionId, io, channel);
     const buffered = this.buffer.get(key);
     const index = buffered?.findIndex((record) => record.seqNum === seqNum) ?? -1;
 
@@ -329,8 +344,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.#drainOnceWaitersFromBuffer(key);
   }
 
-  lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    const key = keyFor(sessionId, io);
+  lastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    channel?: string
+  ): number | undefined {
+    const key = keyFor(sessionId, io, channel);
     const highWatermark = this.lastDispatchedSeqNums.get(key);
     if (highWatermark === undefined) return undefined;
 
@@ -346,10 +365,15 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     return safeCursor >= 0 ? safeCursor : undefined;
   }
 
-  setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+  setLastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    seqNum: number,
+    channel?: string
+  ): void {
     if (!Number.isFinite(seqNum)) return;
 
-    this.#advanceLastDispatched(keyFor(sessionId, io), seqNum);
+    this.#advanceLastDispatched(keyFor(sessionId, io, channel), seqNum);
   }
 
   #advanceLastDispatched(key: string, seqNum: number): void {
@@ -380,8 +404,13 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
-  setMinTimestamp(sessionId: string, io: SessionChannelIO, minTimestamp: number | undefined): void {
-    const key = keyFor(sessionId, io);
+  setMinTimestamp(
+    sessionId: string,
+    io: SessionChannelIO,
+    minTimestamp: number | undefined,
+    channel?: string
+  ): void {
+    const key = keyFor(sessionId, io, channel);
     if (minTimestamp === undefined) {
       this.minTimestamps.delete(key);
     } else {
@@ -389,8 +418,8 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
-  shiftBuffer(sessionId: string, io: SessionChannelIO): boolean {
-    const key = keyFor(sessionId, io);
+  shiftBuffer(sessionId: string, io: SessionChannelIO, channel?: string): boolean {
+    const key = keyFor(sessionId, io, channel);
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
       const record = buffered.shift()!;
@@ -404,8 +433,8 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     return false;
   }
 
-  disconnectStream(sessionId: string, io: SessionChannelIO): void {
-    const key = keyFor(sessionId, io);
+  disconnectStream(sessionId: string, io: SessionChannelIO, channel?: string): void {
+    const key = keyFor(sessionId, io, channel);
     const tail = this.tails.get(key);
     // Mark as explicitly disconnected BEFORE we abort, so the tail's
     // `.finally` reconnect path sees the flag when it runs (which can be
@@ -429,10 +458,10 @@ export class StandardSessionStreamManager implements SessionStreamManager {
    * its handler just to clear the suppression flag would replay the buffer at
    * it.
    */
-  reconnectStream(sessionId: string, io: SessionChannelIO): void {
-    const key = keyFor(sessionId, io);
+  reconnectStream(sessionId: string, io: SessionChannelIO, channel?: string): void {
+    const key = keyFor(sessionId, io, channel);
     this.explicitlyDisconnected.delete(key);
-    this.#ensureTailConnected(sessionId, io);
+    this.#ensureTailConnected(sessionId, io, channel);
   }
 
   clearHandlers(): void {
@@ -485,12 +514,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.buffer.clear();
   }
 
-  #ensureTailConnected(sessionId: string, io: SessionChannelIO): void {
-    const key = keyFor(sessionId, io);
+  #ensureTailConnected(sessionId: string, io: SessionChannelIO, channel?: string): void {
+    const key = keyFor(sessionId, io, channel);
     if (this.tails.has(key)) return;
 
     const abortController = new AbortController();
-    const promise = this.#runTail(sessionId, io, abortController.signal)
+    const promise = this.#runTail(sessionId, io, abortController.signal, channel)
       .catch((error) => {
         if (this.debug) {
           console.error(`[SessionStreamManager] Tail error for "${key}":`, error);
@@ -530,15 +559,20 @@ export class StandardSessionStreamManager implements SessionStreamManager {
             const stillHasWaiters =
               this.onceWaiters.has(key) && this.onceWaiters.get(key)!.length > 0;
             if (!stillHasHandlers && !stillHasWaiters) return;
-            this.#ensureTailConnected(sessionId, io);
+            this.#ensureTailConnected(sessionId, io, channel);
           }, delayMs);
         }
       });
     this.tails.set(key, { abortController, promise });
   }
 
-  async #runTail(sessionId: string, io: SessionChannelIO, signal: AbortSignal): Promise<void> {
-    const key = keyFor(sessionId, io);
+  async #runTail(
+    sessionId: string,
+    io: SessionChannelIO,
+    signal: AbortSignal,
+    channel?: string
+  ): Promise<void> {
+    const key = keyFor(sessionId, io, channel);
     try {
       const lastSeq = this.seqNums.get(key);
       // Dispatch is driven from `onPart` (not the for-await loop) so each
@@ -549,6 +583,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       const stream = await this.apiClient.subscribeToSessionStream<unknown>(sessionId, io, {
         signal,
         baseUrl: this.baseUrl,
+        channel,
         timeoutInSeconds: 600,
         lastEventId: lastSeq !== undefined ? String(lastSeq) : undefined,
         onPart: (part) => {
