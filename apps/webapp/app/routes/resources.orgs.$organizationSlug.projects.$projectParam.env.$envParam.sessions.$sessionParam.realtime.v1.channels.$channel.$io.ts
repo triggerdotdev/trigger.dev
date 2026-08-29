@@ -1,6 +1,5 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { $replica } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
@@ -8,7 +7,7 @@ import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server"
 import { SESSION_CHANNEL_NAME_REGEX } from "~/services/realtime/sessionChannels.server";
 import {
   canonicalSessionAddressingKey,
-  resolveSessionByIdOrExternalId,
+  resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { requireUserId } from "~/services/session.server";
@@ -35,7 +34,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Environment not found", { status: 404 });
   }
 
-  const session = await resolveSessionByIdOrExternalId($replica, environment.id, sessionParam);
+  const session = await resolveSessionWithWriterFallback(environment.id, sessionParam);
   if (!session) {
     return new Response("Session not found", { status: 404 });
   }
