@@ -709,7 +709,8 @@ function QueuesWithMetricsView() {
                 <TableHeaderCell
                   alignment="right"
                   disableTooltipHoverableContent
-                  tooltip="How many runs can execute at once. For queues with a combinedConcurrencyLimit, the limit applies per concurrency key and the combined limit applies across all keys."
+                  tooltip="How many runs can execute at once. When a queue sets a combinedConcurrencyLimit, the main value applies per concurrency key and the bracketed value caps runs across all keys."
+                  tooltipContentClassName="max-w-xs"
                 >
                   Limit
                 </TableHeaderCell>
@@ -888,14 +889,32 @@ function QueuesWithMetricsView() {
                           limit
                         )}
                         {queue.concurrency?.combined?.current != null ? (
-                          <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
-                            /key ·{" "}
-                            {Math.min(
-                              queue.concurrency.combined.current,
-                              environment.concurrencyLimit
-                            )}{" "}
-                            combined
-                          </span>
+                          <SimpleTooltip
+                            disableHoverableContent
+                            buttonClassName="ml-1 cursor-default"
+                            button={
+                              <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px] group-hover/table-row:text-text-bright">
+                                (
+                                {Math.min(
+                                  queue.concurrency.combined.current,
+                                  environment.concurrencyLimit
+                                )}
+                                )
+                              </span>
+                            }
+                            content={
+                              <>
+                                Combined limit: at most{" "}
+                                {Math.min(
+                                  queue.concurrency.combined.current,
+                                  environment.concurrencyLimit
+                                )}{" "}
+                                runs across all concurrency keys of this queue. The main limit
+                                applies to each key separately.
+                              </>
+                            }
+                            className="max-w-[260px]"
+                          />
                         ) : null}
                       </TableCell>
                       <TableCell
@@ -1809,7 +1828,8 @@ function ClassicQueuesView() {
                   <TableHeaderCell alignment="right">Running</TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
-                    tooltip="How many runs can execute at once. For queues with a combinedConcurrencyLimit, the limit applies per concurrency key and the combined limit applies across all keys."
+                    tooltip="How many runs can execute at once. When a queue sets a combinedConcurrencyLimit, the main value applies per concurrency key and the bracketed value caps runs across all keys."
+                    tooltipContentClassName="max-w-xs"
                   >
                     Limit
                   </TableHeaderCell>
@@ -1942,14 +1962,32 @@ function ClassicQueuesView() {
                         >
                           {limit}
                           {queue.concurrency?.combined?.current != null ? (
-                            <span className="ml-1 text-text-dimmed">
-                              /key ·{" "}
-                              {Math.min(
-                                queue.concurrency.combined.current,
-                                environment.concurrencyLimit
-                              )}{" "}
-                              combined
-                            </span>
+                            <SimpleTooltip
+                              disableHoverableContent
+                              buttonClassName="ml-1 cursor-default"
+                              button={
+                                <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px]">
+                                  (
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}
+                                  )
+                                </span>
+                              }
+                              content={
+                                <>
+                                  Combined limit: at most{" "}
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}{" "}
+                                  runs across all concurrency keys of this queue. The main limit
+                                  applies to each key separately.
+                                </>
+                              }
+                              className="max-w-[260px]"
+                            />
                           ) : null}
                         </TableCell>
                         <TableCell
