@@ -32,11 +32,17 @@ const authenticatedEnvDev = {
   organization: { id: "o1234" },
 };
 
-function createQueue(redisContainer: any, totalConcurrencyEnabled: boolean, maxOverrides?: number) {
+function createQueue(
+  redisContainer: any,
+  totalConcurrencyEnabled: boolean,
+  maxOverrides?: number,
+  dequeueCount?: number
+) {
   return new RunQueue({
     ...testOptions,
     totalConcurrencyEnabled,
     maxConcurrencyKeyOverridesPerQueue: maxOverrides,
+    masterQueueConsumerDequeueCount: dequeueCount,
     queueSelectionStrategy: new FairQueueSelectionStrategy({
       redis: {
         keyPrefix: "runqueue:test:",
@@ -238,6 +244,61 @@ describe("RunQueue per-concurrency-key limit overrides", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "blocked keys cannot pin the candidate window and starve later keys",
+    async ({ redisContainer }) => {
+      /** dequeueCount 2 makes the candidate window 6 variants wide. */
+      const queue = createQueue(redisContainer, true, undefined, 2);
+      try {
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+
+        /**
+         * Ten zero-limit keys with OLDER messages fill the window many times over;
+         * without the blocked-key backoff the runnable key behind them would never
+         * be examined.
+         */
+        const now = Date.now();
+        for (let i = 0; i < 10; i++) {
+          const ck = `blocked-${i}`;
+          await queue.updateQueueConcurrencyKeyLimit(authenticatedEnvDev, "task/my-task", ck, 0);
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `b${i}`,
+              concurrencyKey: ck,
+              timestamp: now - 10_000 + i,
+            }),
+            workerQueue: "main",
+          });
+        }
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "good-0",
+            concurrencyKey: "ck-good",
+            timestamp: now - 500,
+          }),
+          workerQueue: "main",
+        });
+
+        const goodAdmitted = await waitFor(
+          async () =>
+            (await queue.currentConcurrencyOfQueue(
+              authenticatedEnvDev,
+              "task/my-task",
+              "ck-good"
+            )) === 1,
+          30_000
+        );
+        expect(goodAdmitted).toBe(true);
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(10);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 
   redisTest("overrides are ignored when disabled", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, false);

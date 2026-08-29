@@ -104,6 +104,7 @@ export class ConcurrencySystem {
       },
       resetTotalConcurrencyLimit: (environment: AuthenticatedEnvironment, queue: QueueInput) => {
         return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) => syncQueueTotalConcurrencyResetToEngine(environment, queue))
           .andThen((queue) => resetQueueTotalConcurrencyLimit(this.db, queue))
           .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
@@ -134,7 +135,9 @@ export class ConcurrencySystem {
         concurrencyKey: string
       ) => {
         return findQueueFromInput(this.db, environment, queue)
-          .andThen((queue) => resetQueueConcurrencyKeyLimit(this.db, environment, queue, concurrencyKey))
+          .andThen((queue) =>
+            resetQueueConcurrencyKeyLimit(this.db, environment, queue, concurrencyKey)
+          )
           .andThen((queue) => getQueueStats(environment, queue));
       },
       /**
@@ -420,6 +423,35 @@ function overrideQueueTotalConcurrencyLimit(
   );
 }
 
+/**
+ * Enforce first, then persist: syncs the engine to the declared base BEFORE clearing
+ * the override marker, so an engine failure leaves the marker set and a retry
+ * converges instead of being rejected while the overridden limit stays enforced.
+ */
+function syncQueueTotalConcurrencyResetToEngine(
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  if (queue.totalConcurrencyLimitOverriddenAt === null) {
+    return errAsync({ type: "queue_not_overridden" as const });
+  }
+
+  if (typeof queue.totalConcurrencyLimitBase === "number") {
+    return fromPromise(
+      updateQueueTotalConcurrencyLimits(environment, queue.name, queue.totalConcurrencyLimitBase),
+      (error) => ({
+        type: "sync_queue_concurrency_to_engine_failed" as const,
+        cause: error,
+      })
+    ).andThen(() => okAsync(queue));
+  }
+
+  return fromPromise(removeQueueTotalConcurrencyLimits(environment, queue.name), (error) => ({
+    type: "sync_queue_concurrency_to_engine_failed" as const,
+    cause: error,
+  })).andThen(() => okAsync(queue));
+}
+
 function resetQueueTotalConcurrencyLimit(db: PrismaClientOrTransaction, queue: TaskQueue) {
   if (queue.totalConcurrencyLimitOverriddenAt === null) {
     return errAsync({ type: "queue_not_overridden" as const });
@@ -466,6 +498,13 @@ function syncQueueTotalConcurrencyToEngine(
   })).andThen(() => okAsync(queue));
 }
 
+/**
+ * Persist first, then enforce: a database failure leaves nothing enforced and the
+ * request errors cleanly, while an engine failure after persistence leaves a durable
+ * record and a retry converges (the upsert is idempotent). When the engine rejects a
+ * NEW key for exceeding the per-queue override cap, the just-created row is removed
+ * again so the record never claims an override the engine refused.
+ */
 function overrideQueueConcurrencyKeyLimit(
   db: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
@@ -491,20 +530,13 @@ function overrideQueueConcurrencyKeyLimit(
   }
 
   return fromPromise(
-    engine.runQueue.updateQueueConcurrencyKeyLimit(
-      environment,
-      queue.name,
-      concurrencyKey,
-      concurrencyLimit
-    ),
-    (error) => {
-      if (error instanceof RunQueueConcurrencyKeyLimitExceededError) {
-        return { type: "too_many_key_overrides" as const, message: error.message };
-      }
-      return { type: "sync_queue_concurrency_to_engine_failed" as const, cause: error };
-    }
+    db.taskQueueConcurrencyKeyOverride.findFirst({
+      where: { taskQueueId: queue.id, concurrencyKey },
+      select: { id: true },
+    }),
+    (error) => ({ type: "other" as const, cause: error })
   )
-    .andThen(() =>
+    .andThen((existing) =>
       fromPromise(
         db.taskQueueConcurrencyKeyOverride.upsert({
           where: { taskQueueId_concurrencyKey: { taskQueueId: queue.id, concurrencyKey } },
@@ -524,11 +556,42 @@ function overrideQueueConcurrencyKeyLimit(
           type: "queue_update_failed" as const,
           cause: error,
         })
-      )
+      ).map(() => existing)
+    )
+    .andThen((existing) =>
+      fromPromise(
+        engine.runQueue.updateQueueConcurrencyKeyLimit(
+          environment,
+          queue.name,
+          concurrencyKey,
+          concurrencyLimit
+        ),
+        (error) => {
+          if (error instanceof RunQueueConcurrencyKeyLimitExceededError) {
+            return { type: "too_many_key_overrides" as const, message: error.message };
+          }
+          return { type: "sync_queue_concurrency_to_engine_failed" as const, cause: error };
+        }
+      ).orElse((error) => {
+        if (!existing && error.type === "too_many_key_overrides") {
+          return fromPromise(
+            db.taskQueueConcurrencyKeyOverride.deleteMany({
+              where: { taskQueueId: queue.id, concurrencyKey },
+            }),
+            () => error
+          ).andThen(() => errAsync(error));
+        }
+        return errAsync(error);
+      })
     )
     .andThen(() => okAsync(queue));
 }
 
+/**
+ * Enforce first, then persist: removing the engine limit is idempotent, so an engine
+ * failure leaves the override row in place and a retry converges instead of being
+ * rejected as not overridden while the old limit is still enforced.
+ */
 function resetQueueConcurrencyKeyLimit(
   db: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
@@ -536,15 +599,13 @@ function resetQueueConcurrencyKeyLimit(
   concurrencyKey: string
 ) {
   return fromPromise(
-    db.taskQueueConcurrencyKeyOverride.deleteMany({
+    db.taskQueueConcurrencyKeyOverride.findFirst({
       where: { taskQueueId: queue.id, concurrencyKey },
+      select: { id: true },
     }),
-    (error) => ({
-      type: "queue_update_failed" as const,
-      cause: error,
-    })
-  ).andThen((deleted) => {
-    if (deleted.count === 0) {
+    (error) => ({ type: "other" as const, cause: error })
+  ).andThen((existing) => {
+    if (!existing) {
       return errAsync({ type: "queue_not_overridden" as const });
     }
 
@@ -554,7 +615,19 @@ function resetQueueConcurrencyKeyLimit(
         type: "sync_queue_concurrency_to_engine_failed" as const,
         cause: error,
       })
-    ).andThen(() => okAsync(queue));
+    )
+      .andThen(() =>
+        fromPromise(
+          db.taskQueueConcurrencyKeyOverride.deleteMany({
+            where: { taskQueueId: queue.id, concurrencyKey },
+          }),
+          (error) => ({
+            type: "queue_update_failed" as const,
+            cause: error,
+          })
+        )
+      )
+      .andThen(() => okAsync(queue));
   });
 }
 
