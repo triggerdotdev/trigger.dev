@@ -709,6 +709,13 @@ function QueuesWithMetricsView() {
                 <TableHeaderCell alignment="right">Limit</TableHeaderCell>
                 <TableHeaderCell
                   alignment="right"
+                  disableTooltipHoverableContent
+                  tooltip="Runs in flight across all concurrency keys, against the queue's total concurrency limit. Only queues with a totalConcurrencyLimit show a value."
+                >
+                  Total
+                </TableHeaderCell>
+                <TableHeaderCell
+                  alignment="right"
                   tooltipContentClassName="max-w-max"
                   disableTooltipHoverableContent
                   tooltip={
@@ -878,6 +885,29 @@ function QueuesWithMetricsView() {
                       <TableCell
                         to={queueDetailPath}
                         alignment="right"
+                        actionClassName="pl-16 tabular-nums"
+                        className={cn(
+                          "w-[1%]",
+                          queue.paused ? "opacity-50" : undefined,
+                          queue.concurrency?.total?.current != null &&
+                            (queue.concurrency.total.running ?? 0) >=
+                              Math.min(
+                                queue.concurrency.total.current,
+                                environment.concurrencyLimit
+                              ) &&
+                            "text-warning"
+                        )}
+                      >
+                        {queue.concurrency?.total?.current != null
+                          ? `${queue.concurrency.total.running ?? 0}/${Math.min(
+                              queue.concurrency.total.current,
+                              environment.concurrencyLimit
+                            )}`
+                          : "–"}
+                      </TableCell>
+                      <TableCell
+                        to={queueDetailPath}
+                        alignment="right"
                         actionClassName="pl-16"
                         className={cn("w-[1%]", queue.paused ? "opacity-50" : undefined)}
                         // Keep the whole row navigable: the override explainer is a tooltip
@@ -1021,7 +1051,7 @@ function QueuesWithMetricsView() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9}>
+                  <TableCell colSpan={10}>
                     <div className="grid place-items-center py-6 text-text-dimmed">
                       <Paragraph>
                         {hasFilters ? "No queues found matching your filters" : "No queues found"}

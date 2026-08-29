@@ -9,7 +9,10 @@ import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 import { toQueueItem } from "./QueueRetrievePresenter.server";
 
-type QueueListEngine = Pick<RunEngine, "lengthOfQueues" | "currentConcurrencyOfQueues">;
+type QueueListEngine = Pick<
+  RunEngine,
+  "lengthOfQueues" | "currentConcurrencyOfQueues" | "totalConcurrencyOfQueues"
+>;
 
 export const QUEUE_LIST_DEFAULT_ITEMS_PER_PAGE = 25;
 const MAX_ITEMS_PER_PAGE = 100;
@@ -34,6 +37,9 @@ const queueListSelect = {
   concurrencyLimitOverriddenAt: true,
   concurrencyLimitOverriddenBy: true,
   concurrencyLimitOverridePercent: true,
+  totalConcurrencyLimit: true,
+  totalConcurrencyLimitBase: true,
+  totalConcurrencyLimitOverriddenAt: true,
   type: true,
   paused: true,
 } satisfies Prisma.TaskQueueSelect;
@@ -333,11 +339,15 @@ export class QueueListPresenter extends BasePresenter {
       concurrencyLimitOverriddenAt: Date | null;
       concurrencyLimitOverriddenBy: string | null;
       concurrencyLimitOverridePercent: Prisma.Decimal | null;
+      totalConcurrencyLimit: number | null;
+      totalConcurrencyLimitBase: number | null;
+      totalConcurrencyLimitOverriddenAt: Date | null;
       type: TaskQueueType;
       paused: boolean;
     }[]
   ): Promise<QueueListItem[]> {
-    const [queuedByQueue, runningByQueue] = await Promise.all([
+    const queuesWithTotalCap = queues.filter((q) => q.totalConcurrencyLimit !== null);
+    const [queuedByQueue, runningByQueue, totalRunningByQueue] = await Promise.all([
       this.engineClient.lengthOfQueues(
         environment,
         queues.map((q) => q.name)
@@ -346,6 +356,12 @@ export class QueueListPresenter extends BasePresenter {
         environment,
         queues.map((q) => q.name)
       ),
+      queuesWithTotalCap.length > 0
+        ? this.engineClient.totalConcurrencyOfQueues(
+            environment,
+            queuesWithTotalCap.map((q) => q.name)
+          )
+        : Promise.resolve({} as Record<string, number>),
     ]);
 
     // Manually "join" the overridden users because there is no way to implement the relationship
@@ -373,6 +389,11 @@ export class QueueListPresenter extends BasePresenter {
           ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
           : null,
         paused: queue.paused,
+        totalConcurrencyLimit: queue.totalConcurrencyLimit,
+        totalConcurrencyLimitBase: queue.totalConcurrencyLimitBase,
+        totalConcurrencyLimitOverriddenAt: queue.totalConcurrencyLimitOverriddenAt,
+        totalRunning:
+          queue.totalConcurrencyLimit !== null ? (totalRunningByQueue[queue.name] ?? 0) : null,
       }),
       // Prisma returns Decimal; the client only needs a plain number (null for absolute overrides).
       concurrencyLimitOverridePercent:

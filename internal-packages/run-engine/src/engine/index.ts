@@ -1740,6 +1740,20 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
   }
 
+  async totalConcurrencyOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.totalConcurrencyOfQueues(environment, queues);
+  }
+
+  async totalConcurrencyLimitsOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number | undefined>> {
+    return this.runQueue.totalConcurrencyLimitsOfQueues(environment, queues);
+  }
+
   async concurrencyKeyBreakdown(
     environment: MinimalAuthenticatedEnvironment,
     queue: string,

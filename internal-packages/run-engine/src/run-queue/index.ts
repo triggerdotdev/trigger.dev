@@ -219,7 +219,8 @@ const QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   enabledArg: "ARGV[#ARGV] == '1'",
   queued: "redis.call('ZCARD', queueKey)",
   running: "redis.call('SCARD', queueCurrentConcurrencyKey)",
-  queueLimit: "redis.call('GET', queueConcurrencyLimitKey) or '1000000'",
+  queueLimit:
+    "redis.call('HGET', ckLimitsKey, queueName) or redis.call('GET', queueConcurrencyLimitKey) or '1000000'",
   envQueued: "redis.call('ZCARD', envQueueKey)",
   envRunning: "redis.call('SCARD', envCurrentConcurrencyKey)",
   envLimit: "redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit",
@@ -250,6 +251,8 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   envLimit: "redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit",
   throttledExpr: "false",
   ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
+  totalRunning: "redis.call('SCARD', groupConcurrencyKey)",
+  totalLimit: "redis.call('GET', totalConcurrencyLimitKey) or '0'",
 });
 
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
@@ -708,6 +711,46 @@ export class RunQueue {
       limits[variantName.slice(ckIndex + 4)] = Number(value);
     }
     return limits;
+  }
+
+  /** Batch variant of totalConcurrencyOfQueue: one pipeline of group SCARDs. */
+  public async totalConcurrencyOfQueues(
+    env: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    const pipeline = this.redis.pipeline();
+    queues.forEach((queue) => {
+      pipeline.scard(this.keys.queueGroupConcurrencyKey(env, queue));
+    });
+
+    const results = await pipeline.exec();
+
+    return queues.reduce(
+      (acc, queue, index) => {
+        const value = results?.[index]?.[1];
+        acc[queue] = typeof value === "number" ? value : 0;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+  }
+
+  /** Batch read of the RAW stored total concurrency limits (undefined = no cap). */
+  public async totalConcurrencyLimitsOfQueues(
+    env: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number | undefined>> {
+    const keys = queues.map((queue) => this.keys.queueTotalConcurrencyLimitKey(env, queue));
+    const values = keys.length > 0 ? await this.redis.mget(...keys) : [];
+
+    return queues.reduce(
+      (acc, queue, index) => {
+        const value = values[index];
+        acc[queue] = value != null ? Number(value) : undefined;
+        return acc;
+      },
+      {} as Record<string, number | undefined>
+    );
   }
 
   public async updateEnvConcurrencyLimits(env: MinimalAuthenticatedEnvironment) {
@@ -2340,6 +2383,10 @@ export class RunQueue {
     if (gauge.length >= 9) {
       fields.ckq = ckq;
       fields.ckw = ckw;
+    }
+    if (gauge.length >= 11) {
+      fields.tcc = gauge[9];
+      fields.tlim = gauge[10];
     }
     this.options.queueMetrics?.emitGauge(queue, fields);
   }
