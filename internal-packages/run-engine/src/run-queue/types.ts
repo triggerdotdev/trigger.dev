@@ -10,8 +10,8 @@ import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
  * queue name; the org/project/env scope comes from the run's own payload.
  */
 const QueueGate = z.object({
-  queue: z.string(),
-  concurrencyKey: z.string().optional(),
+  queue: z.string().min(1).max(128),
+  concurrencyKey: z.string().min(1).max(128).optional(),
 });
 type QueueGate = z.infer<typeof QueueGate>;
 

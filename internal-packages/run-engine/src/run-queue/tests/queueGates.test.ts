@@ -282,6 +282,75 @@ describe("RunQueue gates", () => {
     }
   });
 
+  redisTest(
+    "a run already holding its own gate slot is never deadlocked by it",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        const keys = testOptions.keys;
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "shared-gate", 1);
+
+        /**
+         * An unmirrored release (an older build's nack) leaves the run's own
+         * membership behind while the run goes back to waiting in its queue. The
+         * gate is "full" with the run itself; admission must still let it through.
+         */
+        await queue.redis.sadd(
+          keys.queueCurrentConcurrencyKey(authenticatedEnvDev, "shared-gate"),
+          "r0"
+        );
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r0",
+            timestamp: Date.now() - 1000,
+            gates: [{ queue: "shared-gate" }],
+          }),
+          workerQueue: "main",
+        });
+
+        const r0Admitted = await waitFor(() => popWorkerQueue(queue, "r0"), 30_000);
+        expect(r0Admitted).toBe(true);
+        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "shared-gate")).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "a gate without a key inherits the run's concurrency key",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "tenant", 1);
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r0",
+            concurrencyKey: "acme",
+            timestamp: Date.now() - 1000,
+            gates: [{ queue: "tenant" }],
+          }),
+          workerQueue: "main",
+        });
+
+        const admitted = await waitFor(
+          async () =>
+            (await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "tenant", "acme")) === 1
+        );
+        expect(admitted).toBe(true);
+        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "tenant")).toBe(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest("enqueue fast path respects a full gate", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, true);
     try {
