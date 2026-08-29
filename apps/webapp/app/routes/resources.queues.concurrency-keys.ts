@@ -43,6 +43,8 @@ export type ConcurrencyKeyRow = {
   peakBacklog: number;
   peakRunning: number;
   meanWaitMs: number;
+  /** Per-key concurrency limit override, when one is set for this key (null = inherits the queue limit). */
+  limitOverride: number | null;
 };
 
 export type ConcurrencyKeysResponse =
@@ -151,8 +153,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const total = rankingRows?.[0]?.ranked_total ?? 0;
     const keys = (rankingRows ?? []).map((r) => r.concurrency_key);
 
-    // Enrich just this page's keys with live "now" counts from Redis.
-    const live = await engine.concurrencyKeyLiveStats(environment, queueName, keys);
+    // Enrich just this page's keys with live "now" counts and any per-key limit overrides from Redis.
+    const [live, keyLimitOverrides] = await Promise.all([
+      engine.concurrencyKeyLiveStats(environment, queueName, keys),
+      engine.runQueue.getQueueConcurrencyKeyLimits(environment, queueName),
+    ]);
     const loadedAt = Date.now();
 
     const rows: ConcurrencyKeyRow[] = (rankingRows ?? []).map((r) => {
@@ -168,6 +173,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         peakBacklog: r.peak_backlog,
         peakRunning: r.peak_running,
         meanWaitMs: r.mean_wait_ms,
+        limitOverride: keyLimitOverrides[r.concurrency_key] ?? null,
       };
     });
 
