@@ -1817,6 +1817,12 @@ function ClassicQueuesView() {
                   <TableHeaderCell alignment="right">Limit</TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
+                    tooltip="Runs in flight across all concurrency keys, against the queue's total concurrency limit. Only queues with a totalConcurrencyLimit show a value."
+                  >
+                    Total
+                  </TableHeaderCell>
+                  <TableHeaderCell
+                    alignment="right"
                     tooltip={
                       <div className="max-w-xs space-y-2 p-1 text-left">
                         <div className="space-y-0.5">
@@ -1940,6 +1946,27 @@ function ClassicQueuesView() {
                         <TableCell
                           alignment="right"
                           className={cn(
+                            "w-[1%] pl-16 tabular-nums",
+                            queue.paused ? "opacity-50" : undefined,
+                            queue.concurrency?.total?.current != null &&
+                              (queue.concurrency.total.running ?? 0) >=
+                                Math.min(
+                                  queue.concurrency.total.current,
+                                  environment.concurrencyLimit
+                                ) &&
+                              "text-warning"
+                          )}
+                        >
+                          {queue.concurrency?.total?.current != null
+                            ? `${queue.concurrency.total.running ?? 0}/${Math.min(
+                                queue.concurrency.total.current,
+                                environment.concurrencyLimit
+                              )}`
+                            : "–"}
+                        </TableCell>
+                        <TableCell
+                          alignment="right"
+                          className={cn(
                             "w-[1%] pl-16",
                             queue.paused ? "opacity-50" : undefined,
                             isAtConcurrencyLimit && "text-warning",
@@ -2020,7 +2047,7 @@ function ClassicQueuesView() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={8}>
                       <div className="grid place-items-center py-6 text-text-dimmed">
                         <Paragraph>
                           {hasFilters ? "No queues found matching your filters" : "No queues found"}
