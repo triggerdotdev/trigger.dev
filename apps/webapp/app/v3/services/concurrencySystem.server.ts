@@ -537,7 +537,7 @@ function overrideQueueConcurrencyKeyLimit(
     }),
     (error) => ({ type: "other" as const, cause: error })
   )
-    .andThen((existing) =>
+    .andThen(() =>
       fromPromise(
         db.taskQueueConcurrencyKeyOverride.upsert({
           where: { taskQueueId_concurrencyKey: { taskQueueId: queue.id, concurrencyKey } },
@@ -557,9 +557,9 @@ function overrideQueueConcurrencyKeyLimit(
           type: "queue_update_failed" as const,
           cause: error,
         })
-      ).map(() => existing)
+      )
     )
-    .andThen((existing) =>
+    .andThen((written) =>
       fromPromise(
         engine.runQueue.updateQueueConcurrencyKeyLimit(
           environment,
@@ -576,8 +576,13 @@ function overrideQueueConcurrencyKeyLimit(
       ).orElse((error) => {
         if (error.type === "too_many_key_overrides") {
           return fromPromise(
+            /**
+             * Deletes only the exact row generation this request wrote, so a
+             * concurrent request that succeeded after capacity freed keeps its
+             * durable record.
+             */
             db.taskQueueConcurrencyKeyOverride.deleteMany({
-              where: { taskQueueId: queue.id, concurrencyKey },
+              where: { id: written.id, overriddenAt: written.overriddenAt },
             }),
             () => error
           ).andThen(() => errAsync(error));
