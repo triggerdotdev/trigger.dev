@@ -122,6 +122,10 @@ export function Screencast({ sessionId, accessToken }: { sessionId: string; acce
 
 The client writes the `.in` control with a session handle: `sessions.open(sessionId).channel(screenshots).in.send({ paused: true })`. This appends to the channel and does not wake a run.
 
+## From MCP
+
+An MCP client can read and write a session's channels with two [MCP tools](/mcp-tools): `read_session_channel` drains a channel's records (with an optional `timeoutInSeconds` to wait for the next one), and `write_session_channel` appends a record to a channel's `.in` to send control input to a running agent. Reading `.out` gives the producer feed (e.g. the screencast); writing `.in` does not wake a run, and `.out` stays producer-only.
+
 ## Retention
 
 A side channel's streams are bounded by the same retention as the rest of your realtime streams: streams are created on demand when first written and age out on your plan's retention window, with empty streams cleaned up automatically. A channel needs no separate setup or trimming.
