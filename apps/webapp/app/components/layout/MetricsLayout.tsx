@@ -9,6 +9,7 @@
  *   - `Grid` — tiles; columns derived from tile count unless `columns` is set. `kind="charts"`
  *     bakes the fixed chart-row height.
  *   - `Content` — table / tabs below the tiles. Full-bleed by default; `inset` for a padded column.
+ *     `toolbar` adds a bar flush above the content for controls that scope only this region.
  *
  * Optional:
  *   - `Sidebar` — a persistent right-hand panel; fixed `width` or `resizable`. Present ⇒ Root
@@ -22,12 +23,14 @@
  * ```tsx
  * <MetricsLayout.Root>
  *   <MetricsLayout.Filters>
- *     <div className="flex items-center gap-2">…search + TimeFilter…</div>
- *     <PaginationControls … />
+ *     <div className="flex items-center gap-2">…TimeFilter…</div>
+ *     <div className="flex items-center gap-2">…page-wide actions…</div>
  *   </MetricsLayout.Filters>
  *   <MetricsLayout.Grid>…stat tiles…</MetricsLayout.Grid>
  *   <MetricsLayout.Grid kind="charts">…chart tiles…</MetricsLayout.Grid>
- *   <MetricsLayout.Content>…table…</MetricsLayout.Content>
+ *   <MetricsLayout.Content toolbar={<>…search…<PaginationControls … /></>}>
+ *     …table…
+ *   </MetricsLayout.Content>
  * </MetricsLayout.Root>
  * ```
  */
@@ -341,16 +344,44 @@ function MetricsLayoutGrid({
  * spans edge to edge with its own top border; pass `inset` for a padded column (the detail page's
  * tabs + charts). Separation from the tiles above comes from the scroll column's gap alone (no
  * extra top margin), so the tile → content step matches the gap between tile rows.
+ *
+ * Pass `toolbar` for controls that scope this region only (search, pagination) — they sit flush on
+ * top of the content instead of in the page-wide `Filters` bar, so their scope is visible.
  */
 function MetricsLayoutContent({
   children,
   inset = false,
+  toolbar,
 }: {
   children: ReactNode;
   /** Pad the content into a column (page gutter) instead of letting it span edge to edge. */
   inset?: boolean;
+  /**
+   * Controls that act on this region alone. Rendered as a bar directly above the content with no
+   * gap, so it reads as belonging to the table below rather than to the tiles above. Compose
+   * left/right clusters as child divs — `justify-between` spreads them.
+   */
+  toolbar?: ReactNode;
 }) {
-  return <div className={cn("flex flex-col gap-2.5", inset && "px-2.5")}>{children}</div>;
+  const content = <div className={cn("flex flex-col gap-2.5", inset && "px-2.5")}>{children}</div>;
+
+  if (!toolbar) {
+    return content;
+  }
+
+  return (
+    <div className="flex flex-col">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5",
+          inset && "mx-2.5"
+        )}
+      >
+        {toolbar}
+      </div>
+      {content}
+    </div>
+  );
 }
 
 export const MetricsLayout = {
