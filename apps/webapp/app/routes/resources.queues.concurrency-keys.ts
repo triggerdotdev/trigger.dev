@@ -156,7 +156,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Enrich just this page's keys with live "now" counts and any per-key limit overrides from Redis.
     const [live, keyLimitOverrides] = await Promise.all([
       engine.concurrencyKeyLiveStats(environment, queueName, keys),
-      engine.runQueue.getQueueConcurrencyKeyLimits(environment, queueName),
+      engine.runQueue.getQueueConcurrencyKeyLimitsForKeys(environment, queueName, keys),
     ]);
     const loadedAt = Date.now();
 
