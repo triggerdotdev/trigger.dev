@@ -32,6 +32,15 @@ const ReadSessionChannelInput = CommonProjectsInput.extend({
     .max(500)
     .describe("Maximum records to return (default 100).")
     .default(100),
+  timeoutInSeconds: z
+    .number()
+    .int()
+    .positive()
+    .max(60)
+    .describe(
+      "Wait up to this many seconds for at least one record when none exist yet (a bounded tail). Omit for an immediate point-in-time read."
+    )
+    .optional(),
 });
 
 export const readSessionChannelTool = {
@@ -64,10 +73,21 @@ export const readSessionChannelTool = {
       branch: input.branch,
     });
 
-    const { records } = await apiClient.readSessionStreamRecords(input.sessionId, input.io, {
-      channel: input.channel,
-      afterEventId: input.afterEventId,
-    });
+    const drain = () =>
+      apiClient.readSessionStreamRecords(input.sessionId, input.io, {
+        channel: input.channel,
+        afterEventId: input.afterEventId,
+      });
+
+    let { records } = await drain();
+
+    if (records.length === 0 && input.timeoutInSeconds !== undefined) {
+      const deadline = Date.now() + input.timeoutInSeconds * 1000;
+      while (records.length === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        ({ records } = await drain());
+      }
+    }
 
     const limited = records.slice(0, input.maxRecords);
     const hasMore = records.length > limited.length;
@@ -105,9 +125,9 @@ const WriteSessionChannelInput = CommonProjectsInput.extend({
     .describe("The session id (session_* friendlyId) or the externalId it was created with."),
   channel: z.string().describe("The named side channel to write to."),
   value: z
-    .string()
+    .union([z.string(), z.record(z.unknown())])
     .describe(
-      "The record to append to the channel's `in` stream. Pass a JSON string for structured records (e.g. '{\"paused\":true}')."
+      "The record to append to the channel's `in` stream. Pass an object for a structured record (e.g. { paused: true }) or a string for a raw record."
     ),
 });
 
@@ -141,13 +161,9 @@ export const writeSessionChannelTool = {
       branch: input.branch,
     });
 
-    await apiClient.appendToSessionStream(
-      input.sessionId,
-      "in",
-      input.value,
-      undefined,
-      input.channel
-    );
+    const body = typeof input.value === "string" ? input.value : JSON.stringify(input.value);
+
+    await apiClient.appendToSessionStream(input.sessionId, "in", body, undefined, input.channel);
 
     return {
       content: [

@@ -245,12 +245,12 @@ export const toolsMetadata = {
     name: "read_session_channel",
     title: "Read Session Channel",
     description:
-      "Read records from a session's realtime stream: a named side channel (pass `channel`) or the reserved chat transcript pair (omit `channel`). Returns whatever records currently exist after the optional cursor and closes, so it is a point-in-time drain, not a live subscription. Read `out` for the producer's feed (e.g. a screencast) or `in` for what clients have sent. Use the returned nextCursor as `afterEventId` to page forward.",
+      "Read records from a session's realtime stream: a named side channel (pass `channel`) or the reserved chat transcript pair (omit `channel`). By default returns whatever records exist after the optional cursor and closes (a point-in-time drain). Set `timeoutInSeconds` to wait for the next record when none exist yet. Read `out` for the producer's feed (e.g. a screencast) or `in` for what clients have sent. Use the returned nextCursor as `afterEventId` to page forward.",
   },
   write_session_channel: {
     name: "write_session_channel",
     title: "Write Session Channel",
     description:
-      "Append one record to a named side channel's `in` stream on a session. Use this to send control input to a running agent (e.g. a pause/viewport command) without waking or triggering a run. Requires a `channel` name; the reserved transcript and the `out` side are not writable here (`out` is producer-only). Pass a JSON string as `value` for structured records.",
+      "Append one record to a named side channel's `in` stream on a session. Use this to send control input to a running agent (e.g. a pause/viewport command) without waking or triggering a run. Requires a `channel` name; the reserved transcript and the `out` side are not writable here (`out` is producer-only). Pass `value` as an object for a structured record or a string for a raw one.",
   },
 };
