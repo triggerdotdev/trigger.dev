@@ -214,6 +214,14 @@ const QUEUE_METRICS_CK_GAUGE_EXTRAS = {
   ckMaxWaitMs: "__ckwait",
 };
 
+// Total-concurrency tail (gauge[10]/gauge[11]): live group cardinality + raw stored cap.
+// Requires groupConcurrencyKey/totalConcurrencyLimitKey locals; the CK scripts that actually
+// run (the Tracked variants and the CK dequeue) all declare them for the total-cap gate.
+const QUEUE_METRICS_TOTAL_GAUGE_EXTRAS = {
+  totalRunning: "redis.call('SCARD', groupConcurrencyKey)",
+  totalLimit: "redis.call('GET', totalConcurrencyLimitKey) or '0'",
+};
+
 // CK enqueue variants of the two gauges above, extended with the CK-health tail.
 const QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   enabledArg: "ARGV[#ARGV] == '1'",
@@ -225,6 +233,7 @@ const QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   envRunning: "redis.call('SCARD', envCurrentConcurrencyKey)",
   envLimit: "redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit",
   ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
+  ...QUEUE_METRICS_TOTAL_GAUGE_EXTRAS,
 });
 
 const QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA = createMetricsGaugeComputeLua({
@@ -236,6 +245,7 @@ const QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA = createMetricsGaugeComputeLua
   envRunning: "envCurrent",
   envLimit: "envLimit",
   ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
+  ...QUEUE_METRICS_TOTAL_GAUGE_EXTRAS,
 });
 
 // CK dequeue: depth/running from the per-base-queue aggregate counters the run-queue already
@@ -251,8 +261,7 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   envLimit: "redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit",
   throttledExpr: "false",
   ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
-  totalRunning: "redis.call('SCARD', groupConcurrencyKey)",
-  totalLimit: "redis.call('GET', totalConcurrencyLimitKey) or '0'",
+  ...QUEUE_METRICS_TOTAL_GAUGE_EXTRAS,
 });
 
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
@@ -710,6 +719,29 @@ export class RunQueue {
       }
       limits[variantName.slice(ckIndex + 4)] = Number(value);
     }
+    return limits;
+  }
+
+  /** Per-key limit overrides for just the given keys: one HMGET, O(keys) not O(overrides). */
+  public async getQueueConcurrencyKeyLimitsForKeys(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKeys: string[]
+  ): Promise<Record<string, number>> {
+    if (concurrencyKeys.length === 0) {
+      return {};
+    }
+
+    const fields = concurrencyKeys.map((key) => this.keys.queueKey(env, queue, key));
+    const values = await this.redis.hmget(this.keys.queueCkLimitsKey(env, queue), ...fields);
+
+    const limits: Record<string, number> = {};
+    concurrencyKeys.forEach((key, index) => {
+      const value = values[index];
+      if (value != null) {
+        limits[key] = Number(value);
+      }
+    });
     return limits;
   }
 
