@@ -193,8 +193,8 @@ export type QueueManifest = z.infer<typeof QueueManifest>;
  * `concurrencyKey` is used, so the gate is keyed per tenant; a literal value pins
  * the gate to one shared slot pool. */
 export const QueueGateManifest = z.object({
-  queue: z.string().max(128),
-  concurrencyKey: z.string().max(128).optional(),
+  queue: z.string().min(1).max(128),
+  concurrencyKey: z.string().min(1).max(128).optional(),
 });
 
 export type QueueGateManifest = z.infer<typeof QueueGateManifest>;
