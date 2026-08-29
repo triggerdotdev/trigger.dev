@@ -198,6 +198,26 @@ function normalizeTriggerQueue(
   };
 }
 
+/**
+ * Builds the queue and gates fields of a trigger request body from the `queue`
+ * option, normalizing once per call site.
+ */
+function triggerQueueBody(
+  queue: Parameters<typeof normalizeTriggerQueue>[0],
+  fallbackQueueName?: string
+): {
+  queue?: { name: string };
+  gates?: Array<{ queue: string; concurrencyKey?: string }>;
+} {
+  const normalized = normalizeTriggerQueue(queue);
+  const name = normalized.queueName ?? fallbackQueueName;
+
+  return {
+    queue: name ? { name } : undefined,
+    gates: normalized.gates,
+  };
+}
+
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);
 
@@ -801,10 +821,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
           task: item.id,
           payload: payloadPacket.data,
           options: {
-            queue: normalizeTriggerQueue(item.options?.queue).queueName
-              ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-              : undefined,
-            gates: normalizeTriggerQueue(item.options?.queue).gates,
+            ...triggerQueueBody(item.options?.queue),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1064,10 +1081,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           payload: payloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: normalizeTriggerQueue(item.options?.queue).queueName
-              ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-              : undefined,
-            gates: normalizeTriggerQueue(item.options?.queue).gates,
+            ...triggerQueueBody(item.options?.queue),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1332,10 +1346,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           task: item.task.id,
           payload: payloadPacket.data,
           options: {
-            queue: normalizeTriggerQueue(item.options?.queue).queueName
-              ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-              : undefined,
-            gates: normalizeTriggerQueue(item.options?.queue).gates,
+            ...triggerQueueBody(item.options?.queue),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1600,10 +1611,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           payload: payloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: normalizeTriggerQueue(item.options?.queue).queueName
-              ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-              : undefined,
-            gates: normalizeTriggerQueue(item.options?.queue).gates,
+            ...triggerQueueBody(item.options?.queue),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2089,10 +2097,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
       task: item.id,
       payload: payloadPacket.data,
       options: {
-        queue: normalizeTriggerQueue(item.options?.queue).queueName
-          ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-          : undefined,
-        gates: normalizeTriggerQueue(item.options?.queue).gates,
+        ...triggerQueueBody(item.options?.queue),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2148,10 +2153,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
       payload: payloadPacket.data,
       options: {
         lockToVersion: taskContext.worker?.version,
-        queue: normalizeTriggerQueue(item.options?.queue).queueName
-          ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-          : undefined,
-        gates: normalizeTriggerQueue(item.options?.queue).gates,
+        ...triggerQueueBody(item.options?.queue),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2201,10 +2203,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
       task: item.task.id,
       payload: payloadPacket.data,
       options: {
-        queue: normalizeTriggerQueue(item.options?.queue).queueName
-          ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-          : undefined,
-        gates: normalizeTriggerQueue(item.options?.queue).gates,
+        ...triggerQueueBody(item.options?.queue),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2259,10 +2258,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
       payload: payloadPacket.data,
       options: {
         lockToVersion: taskContext.worker?.version,
-        queue: normalizeTriggerQueue(item.options?.queue).queueName
-          ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-          : undefined,
-        gates: normalizeTriggerQueue(item.options?.queue).gates,
+        ...triggerQueueBody(item.options?.queue),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2310,12 +2306,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
       task: taskIdentifier,
       payload: payloadPacket.data,
       options: {
-        queue: normalizeTriggerQueue(item.options?.queue).queueName
-          ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-          : queue
-            ? { name: queue }
-            : undefined,
-        gates: normalizeTriggerQueue(item.options?.queue).gates,
+        ...triggerQueueBody(item.options?.queue, queue),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2375,12 +2366,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
       payload: payloadPacket.data,
       options: {
         lockToVersion: taskContext.worker?.version,
-        queue: normalizeTriggerQueue(item.options?.queue).queueName
-          ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-          : queue
-            ? { name: queue }
-            : undefined,
-        gates: normalizeTriggerQueue(item.options?.queue).gates,
+        ...triggerQueueBody(item.options?.queue, queue),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2430,10 +2416,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
     {
       payload: triggerPayloadPacket.data,
       options: {
-        queue: normalizeTriggerQueue(options?.queue).queueName
-          ? { name: normalizeTriggerQueue(options?.queue).queueName! }
-          : undefined,
-        gates: normalizeTriggerQueue(options?.queue).gates,
+        ...triggerQueueBody(options?.queue),
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: triggerPayloadPacket.dataType,
@@ -2518,12 +2501,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           task: taskIdentifier,
           payload: payloadPacket.data,
           options: {
-            queue: normalizeTriggerQueue(item.options?.queue).queueName
-              ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-              : queue
-                ? { name: queue }
-                : undefined,
-            gates: normalizeTriggerQueue(item.options?.queue).gates,
+            ...triggerQueueBody(item.options?.queue, queue),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2703,10 +2681,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
           payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
-            queue: normalizeTriggerQueue(options?.queue).queueName
-              ? { name: normalizeTriggerQueue(options?.queue).queueName! }
-              : undefined,
-            gates: normalizeTriggerQueue(options?.queue).gates,
+            ...triggerQueueBody(options?.queue),
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
@@ -2796,10 +2771,7 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
           payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: normalizeTriggerQueue(options?.queue).queueName
-              ? { name: normalizeTriggerQueue(options?.queue).queueName! }
-              : undefined,
-            gates: normalizeTriggerQueue(options?.queue).gates,
+            ...triggerQueueBody(options?.queue),
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
@@ -2961,12 +2933,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           payload: payloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: normalizeTriggerQueue(item.options?.queue).queueName
-              ? { name: normalizeTriggerQueue(item.options?.queue).queueName! }
-              : queue
-                ? { name: queue }
-                : undefined,
-            gates: normalizeTriggerQueue(item.options?.queue).gates,
+            ...triggerQueueBody(item.options?.queue, queue),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
