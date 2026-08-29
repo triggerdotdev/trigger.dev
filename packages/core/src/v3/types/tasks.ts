@@ -406,7 +406,7 @@ export type QueueGateRef = string | { name: string; concurrencyKey?: string };
 type TaskQueueIn = {
   name?: string;
   concurrencyLimit?: number;
-  totalConcurrencyLimit?: number;
+  combinedConcurrencyLimit?: number;
 };
 
 export type TaskOptions<
