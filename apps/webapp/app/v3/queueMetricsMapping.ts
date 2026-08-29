@@ -131,8 +131,8 @@ export function mapEntryToRows(
         throttled: num(f.thr),
         ck_backlogged: num(f.ckq),
         ck_max_wait_ms: num(f.ckw),
-        total_running: num(f.tcc),
-        total_limit: num(f.tlim),
+        combined_running: num(f.tcc),
+        combined_limit: num(f.tlim),
       },
     ];
   }

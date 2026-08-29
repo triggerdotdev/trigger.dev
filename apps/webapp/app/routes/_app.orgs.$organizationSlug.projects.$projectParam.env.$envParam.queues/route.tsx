@@ -707,7 +707,7 @@ function QueuesWithMetricsView() {
                 <TableHeaderCell
                   alignment="right"
                   disableTooltipHoverableContent
-                  tooltip="How many runs can execute at once. For queues with a totalConcurrencyLimit, the limit applies per concurrency key and the total applies across all keys."
+                  tooltip="How many runs can execute at once. For queues with a combinedConcurrencyLimit, the limit applies per concurrency key and the combined limit applies across all keys."
                 >
                   Limit
                 </TableHeaderCell>
@@ -853,10 +853,10 @@ function QueuesWithMetricsView() {
                         className={cn(
                           "w-[1%]",
                           queue.paused ? "opacity-50" : undefined,
-                          queue.concurrency?.total?.current != null &&
-                            (queue.concurrency.total.running ?? 0) >=
+                          queue.concurrency?.combined?.current != null &&
+                            (queue.concurrency.combined.running ?? 0) >=
                               Math.min(
-                                queue.concurrency.total.current,
+                                queue.concurrency.combined.current,
                                 environment.concurrencyLimit
                               )
                             ? "text-warning"
@@ -885,14 +885,14 @@ function QueuesWithMetricsView() {
                         ) : (
                           limit
                         )}
-                        {queue.concurrency?.total?.current != null ? (
+                        {queue.concurrency?.combined?.current != null ? (
                           <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
                             /key ·{" "}
                             {Math.min(
-                              queue.concurrency.total.current,
+                              queue.concurrency.combined.current,
                               environment.concurrencyLimit
                             )}{" "}
-                            total
+                            combined
                           </span>
                         ) : null}
                       </TableCell>
@@ -1807,7 +1807,7 @@ function ClassicQueuesView() {
                   <TableHeaderCell alignment="right">Running</TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
-                    tooltip="How many runs can execute at once. For queues with a totalConcurrencyLimit, the limit applies per concurrency key and the total applies across all keys."
+                    tooltip="How many runs can execute at once. For queues with a combinedConcurrencyLimit, the limit applies per concurrency key and the combined limit applies across all keys."
                   >
                     Limit
                   </TableHeaderCell>
@@ -1917,10 +1917,10 @@ function ClassicQueuesView() {
                           className={cn(
                             "w-[1%] pl-16 tabular-nums",
                             queue.paused ? "opacity-50" : undefined,
-                            queue.concurrency?.total?.current != null &&
-                              (queue.concurrency.total.running ?? 0) >=
+                            queue.concurrency?.combined?.current != null &&
+                              (queue.concurrency.combined.running ?? 0) >=
                                 Math.min(
-                                  queue.concurrency.total.current,
+                                  queue.concurrency.combined.current,
                                   environment.concurrencyLimit
                                 )
                               ? "text-warning"
@@ -1939,14 +1939,14 @@ function ClassicQueuesView() {
                           )}
                         >
                           {limit}
-                          {queue.concurrency?.total?.current != null ? (
+                          {queue.concurrency?.combined?.current != null ? (
                             <span className="ml-1 text-text-dimmed">
                               /key ·{" "}
                               {Math.min(
-                                queue.concurrency.total.current,
+                                queue.concurrency.combined.current,
                                 environment.concurrencyLimit
                               )}{" "}
-                              total
+                              combined
                             </span>
                           ) : null}
                         </TableCell>
