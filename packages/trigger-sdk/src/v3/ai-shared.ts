@@ -222,3 +222,19 @@ export function slimSubmitMessageForWire<TMsg extends UIMessage | undefined>(mes
     parts: slimParts,
   } as unknown as TMsg;
 }
+
+/** Run tags accept at most 10 entries of at most 128 characters each. */
+const MAX_RUN_TAGS = 10;
+const MAX_RUN_TAG_LENGTH = 128;
+
+/**
+ * Build the run tags for a chat session: the automatic `chat:{chatId}` tag
+ * followed by the caller's tags, capped at the run tag limit. The chat tag
+ * is skipped when the chat ID is too long to fit within a single tag, so a
+ * long ID degrades to "not filterable by chat" rather than failing to start.
+ */
+export function chatRunTags(chatId: string, userTags: string[] = []): string[] {
+  const chatTag = `chat:${chatId}`;
+  const tags = chatTag.length <= MAX_RUN_TAG_LENGTH ? [chatTag, ...userTags] : [...userTags];
+  return tags.slice(0, MAX_RUN_TAGS);
+}
