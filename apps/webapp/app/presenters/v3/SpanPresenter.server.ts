@@ -213,7 +213,6 @@ export class SpanPresenter extends BasePresenter {
     const span = await this.#getSpan({
       eventStore,
       spanId,
-      runFriendlyId,
       traceId,
       environmentId: parentRun.runtimeEnvironmentId,
       projectId: parentRun.projectId,
@@ -641,7 +640,6 @@ export class SpanPresenter extends BasePresenter {
     eventRepository,
     traceId,
     spanId,
-    runFriendlyId,
     environmentId,
     projectId,
     createdAt,
@@ -650,7 +648,6 @@ export class SpanPresenter extends BasePresenter {
     eventRepository: IEventRepository;
     traceId: string;
     spanId: string;
-    runFriendlyId: string;
     environmentId: string;
     projectId: string;
     eventStore: TaskEventStoreTable;
@@ -874,7 +871,6 @@ export class SpanPresenter extends BasePresenter {
           entity: {
             type: "session-stream" as const,
             object: {
-              runId: runFriendlyId,
               sessionId,
               channel: channel.length > 0 ? channel : undefined,
               io,

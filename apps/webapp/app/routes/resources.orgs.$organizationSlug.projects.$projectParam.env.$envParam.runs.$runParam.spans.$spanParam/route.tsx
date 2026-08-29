@@ -1804,8 +1804,8 @@ function SpanEntity({ span }: { span: Span }) {
       );
     }
     case "session-stream": {
-      const { runId, sessionId, channel, io } = span.entity.object;
-      const base = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runId}/realtime/v1/sessions/${encodeURIComponent(sessionId)}`;
+      const { sessionId, channel, io } = span.entity.object;
+      const base = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodeURIComponent(sessionId)}/realtime/v1`;
       const resourcePath = channel
         ? `${base}/channels/${encodeURIComponent(channel)}/${io}`
         : `${base}/${io}`;
