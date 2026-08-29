@@ -26,6 +26,7 @@ const constants = {
   RUNNING_COUNTER_PART: "runningCounter",
   GROUP_CONCURRENCY_PART: "groupConcurrency",
   TOTAL_CONCURRENCY_LIMIT_PART: "totalConcurrency",
+  CK_LIMITS_PART: "ckLimits",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -364,6 +365,20 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   queueTotalConcurrencyLimitKeyFromQueue(queue: string): string {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.TOTAL_CONCURRENCY_LIMIT_PART}`;
+  }
+
+  /**
+   * HASH of per-concurrency-key limit overrides for a queue. Lives at the base
+   * queue; each field is the EXACT full ck-variant queue name (the ckIndex ZSET
+   * member), so reads need no parsing, and values are the raw requested limits
+   * (readers clamp to the environment limit).
+   */
+  queueCkLimitsKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.CK_LIMITS_PART}`;
+  }
+
+  queueCkLimitsKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.CK_LIMITS_PART}`;
   }
 
   isCkWildcard(queue: string): boolean {
