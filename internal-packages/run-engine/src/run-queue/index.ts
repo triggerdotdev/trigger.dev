@@ -85,16 +85,24 @@ local function __gateKeys(gatesKeyPrefix, msg, gate)
   return base, variant, gateKey
 end
 
-local function __gateReconcile(setKey, msgKeyPrefix)
+local function __gateReconcile(setKey, msgKeyPrefix, reconcileKeyPrefix)
   if not msgKeyPrefix then return end
   if redis.call('SET', setKey .. ':reconcileLock', '1', 'NX', 'EX', '10') then
     local cursorKey = setKey .. ':reconcileCursor'
     local cursor = redis.call('GET', cursorKey) or '0'
-    local scanResult = redis.call('SSCAN', setKey, cursor, 'COUNT', '500')
+    local scanResult = redis.call('SSCAN', setKey, cursor, 'COUNT', '100')
     redis.call('SET', cursorKey, scanResult[1], 'EX', '3600')
     for _, memberId in ipairs(scanResult[2]) do
-      if redis.call('EXISTS', msgKeyPrefix .. memberId) == 0 then
+      local rawMemberPayload = redis.call('GET', msgKeyPrefix .. memberId)
+      if not rawMemberPayload then
         redis.call('SREM', setKey, memberId)
+      elseif reconcileKeyPrefix then
+        local okMember, member = pcall(cjson.decode, rawMemberPayload)
+        if okMember and type(member) == 'table' and type(member.queue) == 'string' then
+          if redis.call('ZSCORE', reconcileKeyPrefix .. member.queue, memberId) then
+            redis.call('SREM', setKey, memberId)
+          end
+        end
       end
     end
   end
@@ -107,7 +115,7 @@ local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msg
     local occupancy = tonumber(redis.call('SCARD', variant .. ':currentConcurrency') or '0')
     local perKeyLimit = math.min(tonumber(redis.call('GET', base .. ':concurrency') or '1000000'), envLimit)
     if occupancy >= perKeyLimit and redis.call('SISMEMBER', variant .. ':currentConcurrency', messageId) == 0 then
-      __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix)
+      __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix, gatesKeyPrefix)
       return false
     end
     if gateKey and gateKey ~= '' then
@@ -116,7 +124,7 @@ local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msg
         local totalLimit = math.min(tonumber(rawTotal), envLimit)
         local groupKey = base .. ':groupConcurrency'
         if tonumber(redis.call('SCARD', groupKey) or '0') >= totalLimit and redis.call('SISMEMBER', groupKey, messageId) == 0 then
-          __gateReconcile(groupKey, msgKeyPrefix)
+          __gateReconcile(groupKey, msgKeyPrefix, gatesKeyPrefix)
           return false
         end
       end
@@ -4905,29 +4913,14 @@ if totalConcurrencyEnabled then
     local totalConcurrencyLimit = math.min(tonumber(rawTotalLimit), envConcurrencyLimit)
     local groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
 
-    -- Self-heal before holding the queue at its limit. A terminal release path
-    -- that misses the group mirror (an older build, or a future script) leaves
-    -- a member behind, but every terminal path deletes the run's message key,
-    -- so a member with no message key is provably dead. Members of re-queued
-    -- runs keep their message key and clear through the mirrored ack when the
-    -- run completes. The short lock bounds a saturated queue to one pass per
-    -- interval, and SSCAN with a persisted cursor bounds each pass to one
-    -- batch so a large set never blocks Redis for a full traversal; successive
-    -- passes cover the whole set.
+    -- Self-heal before holding the queue at its limit: a member with no message
+    -- key was terminally released without the mirror and is dead, and a member
+    -- whose message is QUEUED (in its variant zset) holds no legitimate slot,
+    -- since queued and in-flight are mutually exclusive on every path. Both are
+    -- pruned by the shared bounded reconcile.
     if groupCurrentConcurrency >= totalConcurrencyLimit then
-      local reconcileLockKey = groupConcurrencyKey .. ':reconcileLock'
-      if redis.call('SET', reconcileLockKey, '1', 'NX', 'EX', '10') then
-        local reconcileCursorKey = groupConcurrencyKey .. ':reconcileCursor'
-        local reconcileCursor = redis.call('GET', reconcileCursorKey) or '0'
-        local scanResult = redis.call('SSCAN', groupConcurrencyKey, reconcileCursor, 'COUNT', '500')
-        redis.call('SET', reconcileCursorKey, scanResult[1], 'EX', '3600')
-        for _, groupMemberId in ipairs(scanResult[2]) do
-          if redis.call('EXISTS', messageKeyPrefix .. groupMemberId) == 0 then
-            redis.call('SREM', groupConcurrencyKey, groupMemberId)
-          end
-        end
-        groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
-      end
+      __gateReconcile(groupConcurrencyKey, messageKeyPrefix, keyPrefix)
+      groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
     end
 
     totalHeadroom = totalConcurrencyLimit - groupCurrentConcurrency
