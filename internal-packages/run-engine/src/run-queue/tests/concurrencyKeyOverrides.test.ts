@@ -36,11 +36,13 @@ function createQueue(
   redisContainer: any,
   totalConcurrencyEnabled: boolean,
   maxOverrides?: number,
-  dequeueCount?: number
+  dequeueCount?: number,
+  gatesEnabled?: boolean
 ) {
   return new RunQueue({
     ...testOptions,
     totalConcurrencyEnabled,
+    gatesEnabled,
     maxConcurrencyKeyOverridesPerQueue: maxOverrides,
     masterQueueConsumerDequeueCount: dequeueCount,
     queueSelectionStrategy: new FairQueueSelectionStrategy({
@@ -299,6 +301,42 @@ describe("RunQueue per-concurrency-key limit overrides", () => {
       }
     }
   );
+
+  redisTest("gate admission honors the gate queue per-key override", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer, true, undefined, undefined, true);
+    try {
+      await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+      await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "tenant", 1);
+      await queue.updateQueueConcurrencyKeyLimit(authenticatedEnvDev, "tenant", "acme", 2);
+
+      const now = Date.now();
+      for (const [i, ck] of ["ck-a", "ck-b", "ck-c"].entries()) {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: `r${i}`,
+            concurrencyKey: ck,
+            timestamp: now - 1000 + i,
+            gates: [{ queue: "tenant", concurrencyKey: "acme" }],
+          }),
+          workerQueue: "main",
+        });
+      }
+
+      /** The declared gate limit is 1; the override raises acme to 2. */
+      const twoAdmitted = await waitFor(
+        async () =>
+          (await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "tenant", "acme")) === 2
+      );
+      expect(twoAdmitted).toBe(true);
+
+      await setTimeout(2000);
+      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "tenant", "acme")).toBe(2);
+      expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+    } finally {
+      await queue.quit();
+    }
+  });
 
   redisTest("overrides are ignored when disabled", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, false);

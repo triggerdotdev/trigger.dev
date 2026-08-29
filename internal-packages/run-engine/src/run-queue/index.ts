@@ -120,6 +120,12 @@ local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msg
     local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
     local occupancy = tonumber(redis.call('SCARD', variant .. ':currentConcurrency') or '0')
     local perKeyLimit = math.min(tonumber(redis.call('GET', base .. ':concurrency') or '1000000'), envLimit)
+    if gateKey and gateKey ~= '' then
+      local gateOverride = redis.call('HGET', base .. ':ckLimits', string.sub(variant, #gatesKeyPrefix + 1))
+      if gateOverride then
+        perKeyLimit = math.min(tonumber(gateOverride), envLimit)
+      end
+    end
     if occupancy >= perKeyLimit and redis.call('SISMEMBER', variant .. ':currentConcurrency', messageId) == 0 then
       __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix, gatesKeyPrefix)
       return false
