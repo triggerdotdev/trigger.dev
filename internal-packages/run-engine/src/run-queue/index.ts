@@ -257,6 +257,13 @@ export interface RunQueueMetricsEmitter {
   emitGauge(shardKey: string, fields: Record<string, string | number>): void;
 }
 
+export class RunQueueConcurrencyKeyLimitExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunQueueConcurrencyKeyLimitExceededError";
+  }
+}
+
 export type RunQueueOptions = {
   name: string;
   tracer: Tracer;
@@ -316,6 +323,8 @@ export type RunQueueOptions = {
    * the total cap covering releases from builds without the mirror.
    */
   gatesEnabled?: boolean;
+  /** Cap on per-concurrency-key limit overrides stored per queue. Default 1000. */
+  maxConcurrencyKeyOverridesPerQueue?: number;
   workerOptions?: {
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -429,6 +438,7 @@ export class RunQueue {
   private queueSelectionStrategy: RunQueueSelectionStrategy;
   private shardCount: number;
   private counterTtlSeconds: number;
+  private maxConcurrencyKeyOverridesPerQueue: number;
   private abortController: AbortController;
   private worker: Worker<typeof workerCatalog>;
   private workerQueueResolver: WorkerQueueResolver;
@@ -439,6 +449,7 @@ export class RunQueue {
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
     this.counterTtlSeconds = options.counterTtlSeconds ?? 86400;
+    this.maxConcurrencyKeyOverridesPerQueue = options.maxConcurrencyKeyOverridesPerQueue ?? 1000;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -631,6 +642,62 @@ export class RunQueue {
    */
   public async totalConcurrencyOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
     return this.redis.scard(this.keys.queueGroupConcurrencyKey(env, queue));
+  }
+
+  /**
+   * Sets a per-concurrency-key limit override for a queue. The stored value is the
+   * raw requested limit; admit paths clamp to the environment limit at read time.
+   * Throws RunQueueConcurrencyKeyLimitExceededError when a NEW key would push the
+   * queue past maxConcurrencyKeyOverridesPerQueue (updates to existing keys always
+   * succeed).
+   */
+  public async updateQueueConcurrencyKeyLimit(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey: string,
+    limit: number
+  ) {
+    const result = await this.redis.setQueueConcurrencyKeyLimit(
+      this.keys.queueCkLimitsKey(env, queue),
+      this.keys.queueKey(env, queue, concurrencyKey),
+      String(limit),
+      String(this.maxConcurrencyKeyOverridesPerQueue)
+    );
+
+    if (result === 0) {
+      throw new RunQueueConcurrencyKeyLimitExceededError(
+        `Cannot add a concurrency key override to queue ${queue}: the queue already has ${this.maxConcurrencyKeyOverridesPerQueue} overrides`
+      );
+    }
+  }
+
+  public async removeQueueConcurrencyKeyLimit(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey: string
+  ) {
+    return this.redis.hdel(
+      this.keys.queueCkLimitsKey(env, queue),
+      this.keys.queueKey(env, queue, concurrencyKey)
+    );
+  }
+
+  /** Returns the raw per-concurrency-key limit overrides for a queue, keyed by concurrency key value. */
+  public async getQueueConcurrencyKeyLimits(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string
+  ): Promise<Record<string, number>> {
+    const raw = await this.redis.hgetall(this.keys.queueCkLimitsKey(env, queue));
+
+    const limits: Record<string, number> = {};
+    for (const [variantName, value] of Object.entries(raw)) {
+      const ckIndex = variantName.indexOf(":ck:");
+      if (ckIndex === -1) {
+        continue;
+      }
+      limits[variantName.slice(ckIndex + 4)] = Number(value);
+    }
+    return limits;
   }
 
   public async updateEnvConcurrencyLimits(env: MinimalAuthenticatedEnvironment) {
@@ -5879,6 +5946,26 @@ __gatesRelease(keyPrefix, redis.call('GET', messageKey), messageId)
 `,
     });
 
+    this.redis.defineCommand("setQueueConcurrencyKeyLimit", {
+      numberOfKeys: 1,
+      lua: `
+local ckLimitsKey = KEYS[1]
+
+local fieldName = ARGV[1]
+local limit = ARGV[2]
+local maxFields = tonumber(ARGV[3])
+
+if redis.call('HEXISTS', ckLimitsKey, fieldName) == 0 then
+  if redis.call('HLEN', ckLimitsKey) >= maxFields then
+    return 0
+  end
+end
+
+redis.call('HSET', ckLimitsKey, fieldName, limit)
+return 1
+`,
+    });
+
     this.redis.defineCommand("updateEnvironmentConcurrencyLimits", {
       numberOfKeys: 2,
       lua: `
@@ -6239,6 +6326,14 @@ declare module "@internal/redis" {
       keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
+
+    setQueueConcurrencyKeyLimit(
+      ckLimitsKey: string,
+      fieldName: string,
+      limit: string,
+      maxFields: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
 
     updateEnvironmentConcurrencyLimits(
       // keys
