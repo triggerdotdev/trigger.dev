@@ -183,14 +183,14 @@ export function overrideConcurrencyLimit(
 }
 
 /**
- * Overrides the total concurrency limit of a queue: the cap on concurrent runs across
+ * Overrides the combined concurrency limit of a queue: the cap on concurrent runs across
  * all of its `concurrencyKey` values.
  *
  * @param queue - The ID of the queue, or the type and name
- * @param concurrencyLimit - The total concurrency limit to apply
+ * @param concurrencyLimit - The combined concurrency limit to apply
  * @returns The updated queue state
  */
-export function overrideTotalConcurrencyLimit(
+export function overrideCombinedConcurrencyLimit(
   queue: RetrieveQueueParam,
   concurrencyLimit: number,
   requestOptions?: ApiRequestOptions
@@ -200,7 +200,7 @@ export function overrideTotalConcurrencyLimit(
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
-      name: "queues.overrideTotalConcurrencyLimit()",
+      name: "queues.overrideCombinedConcurrencyLimit()",
       icon: "queue",
       attributes: {
         ...flattenAttributes({ queue }),
@@ -218,16 +218,16 @@ export function overrideTotalConcurrencyLimit(
     requestOptions
   );
 
-  return apiClient.overrideQueueTotalConcurrencyLimit(queue, concurrencyLimit, $requestOptions);
+  return apiClient.overrideQueueCombinedConcurrencyLimit(queue, concurrencyLimit, $requestOptions);
 }
 
 /**
- * Resets the total concurrency limit of a queue back to its declared value.
+ * Resets the combined concurrency limit of a queue back to its declared value.
  *
  * @param queue - The ID of the queue, or the type and name
  * @returns The updated queue state
  */
-export function resetTotalConcurrencyLimit(
+export function resetCombinedConcurrencyLimit(
   queue: RetrieveQueueParam,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<QueueItem> {
@@ -236,7 +236,7 @@ export function resetTotalConcurrencyLimit(
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
-      name: "queues.resetTotalConcurrencyLimit()",
+      name: "queues.resetCombinedConcurrencyLimit()",
       icon: "queue",
       attributes: {
         ...flattenAttributes({ queue }),
@@ -254,7 +254,7 @@ export function resetTotalConcurrencyLimit(
     requestOptions
   );
 
-  return apiClient.resetQueueTotalConcurrencyLimit(queue, $requestOptions);
+  return apiClient.resetQueueCombinedConcurrencyLimit(queue, $requestOptions);
 }
 
 /**
