@@ -58,6 +58,93 @@ const SemanticAttributes = {
   ORG_ID: "runqueue.orgId",
 };
 
+/**
+ * Gate helpers, spliced into scripts that admit or release runs. A gate is another
+ * queue named in the message payload that the run must also hold a slot in while it
+ * executes (payload shape: gates = [{queue, concurrencyKey?}]). Keys are built from
+ * the payload's own org/proj/env, so gates always live in the message's hash slot.
+ *
+ * __gatesHaveCapacity / __gatesAcquire run on admit paths behind the gatesEnabled
+ * flag. __gatesRelease runs on every release path UNCONDITIONALLY and is payload-
+ * driven (a cheap substring probe before decoding), so slots acquired while the flag
+ * was on always drain, and gateless messages pay near zero. __gateReconcile is the
+ * same bounded self-heal as the total-cap gate: a member whose message key is gone
+ * was terminally released by a path that missed the mirror and is provably dead.
+ */
+const QUEUE_GATES_LUA_HELPERS = `
+local function __gateKeys(gatesKeyPrefix, msg, gate)
+  local base = gatesKeyPrefix .. '{org:' .. msg.orgId .. '}:proj:' .. msg.projectId .. ':env:' .. msg.environmentId .. ':queue:' .. gate.queue
+  local variant = base
+  if gate.concurrencyKey and gate.concurrencyKey ~= '' then
+    variant = base .. ':ck:' .. gate.concurrencyKey
+  end
+  return base, variant
+end
+
+local function __gateReconcile(setKey, msgKeyPrefix)
+  if not msgKeyPrefix then return end
+  if redis.call('SET', setKey .. ':reconcileLock', '1', 'NX', 'EX', '10') then
+    local cursorKey = setKey .. ':reconcileCursor'
+    local cursor = redis.call('GET', cursorKey) or '0'
+    local scanResult = redis.call('SSCAN', setKey, cursor, 'COUNT', '500')
+    redis.call('SET', cursorKey, scanResult[1], 'EX', '3600')
+    for _, memberId in ipairs(scanResult[2]) do
+      if redis.call('EXISTS', msgKeyPrefix .. memberId) == 0 then
+        redis.call('SREM', setKey, memberId)
+      end
+    end
+  end
+end
+
+local function __gatesHaveCapacity(gatesKeyPrefix, msg, envLimit, msgKeyPrefix)
+  if not msg.gates then return true end
+  for _, gate in ipairs(msg.gates) do
+    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
+    local occupancy = tonumber(redis.call('SCARD', variant .. ':currentConcurrency') or '0')
+    local perKeyLimit = math.min(tonumber(redis.call('GET', base .. ':concurrency') or '1000000'), envLimit)
+    if occupancy >= perKeyLimit then
+      __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix)
+      return false
+    end
+    if gate.concurrencyKey and gate.concurrencyKey ~= '' then
+      local rawTotal = redis.call('GET', base .. ':totalConcurrency')
+      if rawTotal then
+        local totalLimit = math.min(tonumber(rawTotal), envLimit)
+        if tonumber(redis.call('SCARD', base .. ':groupConcurrency') or '0') >= totalLimit then
+          __gateReconcile(base .. ':groupConcurrency', msgKeyPrefix)
+          return false
+        end
+      end
+    end
+  end
+  return true
+end
+
+local function __gatesAcquire(gatesKeyPrefix, msg, messageId)
+  if not msg.gates then return end
+  for _, gate in ipairs(msg.gates) do
+    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
+    redis.call('SADD', variant .. ':currentConcurrency', messageId)
+    if gate.concurrencyKey and gate.concurrencyKey ~= '' then
+      redis.call('SADD', base .. ':groupConcurrency', messageId)
+    end
+  end
+end
+
+local function __gatesRelease(gatesKeyPrefix, rawPayload, messageId)
+  if not rawPayload or rawPayload == false then return end
+  if not string.find(rawPayload, '"gates"', 1, true) then return end
+  local ok, msg = pcall(cjson.decode, rawPayload)
+  if not ok or type(msg) ~= 'table' or not msg.gates then return end
+  for _, gate in ipairs(msg.gates) do
+    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
+    local removed = redis.call('SREM', variant .. ':currentConcurrency', messageId)
+    if removed == 1 and gate.concurrencyKey and gate.concurrencyKey ~= '' then
+      redis.call('SREM', base .. ':groupConcurrency', messageId)
+    end
+  end
+end`;
+
 // Prelude spliced at the top of every gauge-carrying script: declares the gauge slot and
 // the return wrapper. A splice fills __qm_g; every return goes through __qmret so the reply
 // is always {original, gauge}. A nil original becomes false, else Lua drops it from the
@@ -199,6 +286,15 @@ export type RunQueueOptions = {
    * no longer load-bearing for correctness.
    */
   totalConcurrencyEnabled?: boolean;
+  /**
+   * When true, admit paths enforce the gates carried in a message's payload: the run
+   * must also have capacity in, and holds a slot in, each gate queue until release.
+   * Default false: gated messages admit as if they had no gates. Release-side gate
+   * removal is payload-driven and always on, so slots acquired while the flag was on
+   * drain correctly after it is turned off, with the same message-key self-heal as
+   * the total cap covering releases from builds without the mirror.
+   */
+  gatesEnabled?: boolean;
   workerOptions?: {
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -1305,6 +1401,7 @@ export class RunQueue {
             this.keys.queueRunningCounterKeyFromQueue(message.queue),
             this.keys.ckIndexKeyFromQueue(message.queue),
             this.keys.queueGroupConcurrencyKeyFromQueue(message.queue),
+            this.keys.messageKey(message.orgId, messageId),
             messageId,
             this.options.redis.keyPrefix ?? "",
             String(this.counterTtlSeconds)
@@ -1316,7 +1413,9 @@ export class RunQueue {
           this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
           this.keys.queueCurrentDequeuedKeyFromQueue(message.queue),
           this.keys.envCurrentDequeuedKeyFromQueue(message.queue),
-          messageId
+          this.keys.messageKey(message.orgId, messageId),
+          messageId,
+          this.options.redis.keyPrefix ?? ""
         );
       },
       {
@@ -2301,6 +2400,7 @@ export class RunQueue {
           ckKeyPrefix,
           String(this.counterTtlSeconds),
           totalConcurrencyEnabledArg,
+          this.options.gatesEnabled ? "1" : "0",
           metricsGaugeArg
         );
       } else {
@@ -2337,6 +2437,7 @@ export class RunQueue {
           ckKeyPrefix,
           String(this.counterTtlSeconds),
           totalConcurrencyEnabledArg,
+          this.options.gatesEnabled ? "1" : "0",
           metricsGaugeArg
         );
       }
@@ -2369,6 +2470,8 @@ export class RunQueue {
         defaultEnvConcurrencyBurstFactor,
         currentTime,
         enableFastPathArg,
+        this.options.redis.keyPrefix ?? "",
+        this.options.gatesEnabled ? "1" : "0",
         metricsGaugeArg
       );
     } else {
@@ -2396,6 +2499,8 @@ export class RunQueue {
         defaultEnvConcurrencyBurstFactor,
         currentTime,
         enableFastPathArg,
+        this.options.redis.keyPrefix ?? "",
+        this.options.gatesEnabled ? "1" : "0",
         metricsGaugeArg
       );
     }
@@ -2476,6 +2581,7 @@ export class RunQueue {
         String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
         this.options.redis.keyPrefix ?? "",
         String(maxCount),
+        this.options.gatesEnabled ? "1" : "0",
         metricsGaugeArg
       );
 
@@ -2612,6 +2718,7 @@ export class RunQueue {
         this.options.redis.keyPrefix ?? "",
         String(maxCount),
         this.options.totalConcurrencyEnabled ? "1" : "0",
+        this.options.gatesEnabled ? "1" : "0",
         metricsGaugeArg
       );
 
@@ -2866,7 +2973,8 @@ export class RunQueue {
         messageQueue,
         messageKeyValue,
         removeFromWorkerQueue ? "1" : "0",
-        ckWildcardName
+        ckWildcardName,
+        this.options.redis.keyPrefix ?? ""
       );
     }
 
@@ -2883,7 +2991,8 @@ export class RunQueue {
       messageId,
       messageQueue,
       messageKeyValue,
-      removeFromWorkerQueue ? "1" : "0"
+      removeFromWorkerQueue ? "1" : "0",
+      this.options.redis.keyPrefix ?? ""
     );
   }
 
@@ -2926,6 +3035,7 @@ export class RunQueue {
         this.keys.queueRunningCounterKeyFromQueue(queue),
         this.keys.ckIndexKeyFromQueue(queue),
         this.keys.queueGroupConcurrencyKeyFromQueue(queue),
+        messageKey,
         messageId,
         this.options.redis.keyPrefix ?? "",
         String(this.counterTtlSeconds)
@@ -2937,7 +3047,9 @@ export class RunQueue {
       envCurrentConcurrencyKey,
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
-      messageId
+      messageKey,
+      messageId,
+      this.options.redis.keyPrefix ?? ""
     );
   }
 
@@ -3017,7 +3129,8 @@ export class RunQueue {
         messageId,
         messageQueue,
         JSON.stringify(message),
-        String(messageScore)
+        String(messageScore),
+        this.options.redis.keyPrefix ?? ""
       );
     }
   }
@@ -3059,7 +3172,8 @@ export class RunQueue {
         this.keys.queueGroupConcurrencyKeyFromQueue(messageQueue),
         messageId,
         messageQueue,
-        ckWildcardName
+        ckWildcardName,
+        this.options.redis.keyPrefix ?? ""
       );
     } else {
       await this.redis.moveToDeadLetterQueue(
@@ -3073,7 +3187,8 @@ export class RunQueue {
         envQueueKey,
         deadLetterQueueKey,
         messageId,
-        messageQueue
+        messageQueue,
+        this.options.redis.keyPrefix ?? ""
       );
     }
   }
@@ -3461,8 +3576,11 @@ local defaultEnvConcurrencyLimit = ARGV[6]
 local defaultEnvConcurrencyBurstFactor = ARGV[7]
 local currentTime = ARGV[8]
 local enableFastPath = ARGV[9]
+local keyPrefix = ARGV[10]
+local gatesEnabled = ARGV[11] == '1'
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Fast path: check if we can skip the queue and go directly to worker queue
 if enableFastPath == '1' then
@@ -3481,12 +3599,27 @@ if enableFastPath == '1' then
       )
 
       if queueCurrent < queueLimit then
-        redis.call('SET', messageKey, messageData)
-        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-        redis.call('SADD', envCurrentConcurrencyKey, messageId)
-        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        local gateMsg = nil
+        local gatesAllowFastPath = true
+        if gatesEnabled and string.find(messageData, '"gates"', 1, true) then
+          local okDecode, decoded = pcall(cjson.decode, messageData)
+          if okDecode and type(decoded) == 'table' and decoded.gates then
+            gateMsg = decoded
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+          end
+        end
+
+        if gatesAllowFastPath then
+          redis.call('SET', messageKey, messageData)
+          redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+          redis.call('SADD', envCurrentConcurrencyKey, messageId)
+          if gateMsg then
+            __gatesAcquire(keyPrefix, gateMsg, messageId)
+          end
+          redis.call('RPUSH', workerQueueKey, messageKeyValue)
 ${QUEUE_METRICS_ENQUEUE_FASTPATH_GAUGE_LUA}
-        return __qmret(1)
+          return __qmret(1)
+        end
       end
     end
   end
@@ -3516,6 +3649,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, messageData, messageId)
 ${QUEUE_METRICS_GAUGE_LUA}
 
 return __qmret(0)
@@ -3556,8 +3690,11 @@ local defaultEnvConcurrencyLimit = ARGV[8]
 local defaultEnvConcurrencyBurstFactor = ARGV[9]
 local currentTime = ARGV[10]
 local enableFastPath = ARGV[11]
+local keyPrefix = ARGV[12]
+local gatesEnabled = ARGV[13] == '1'
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Fast path: check if we can skip the queue and go directly to worker queue
 if enableFastPath == '1' then
@@ -3576,13 +3713,28 @@ if enableFastPath == '1' then
       )
 
       if queueCurrent < queueLimit then
-        redis.call('SET', messageKey, messageData)
-        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-        redis.call('SADD', envCurrentConcurrencyKey, messageId)
-        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        local gateMsg = nil
+        local gatesAllowFastPath = true
+        if gatesEnabled and string.find(messageData, '"gates"', 1, true) then
+          local okDecode, decoded = pcall(cjson.decode, messageData)
+          if okDecode and type(decoded) == 'table' and decoded.gates then
+            gateMsg = decoded
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+          end
+        end
+
+        if gatesAllowFastPath then
+          redis.call('SET', messageKey, messageData)
+          redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+          redis.call('SADD', envCurrentConcurrencyKey, messageId)
+          if gateMsg then
+            __gatesAcquire(keyPrefix, gateMsg, messageId)
+          end
+          redis.call('RPUSH', workerQueueKey, messageKeyValue)
 ${QUEUE_METRICS_ENQUEUE_FASTPATH_GAUGE_LUA}
         -- Skip TTL sorted set: the expireRun worker job handles TTL expiry independently
-        return __qmret(1)
+          return __qmret(1)
+        end
       end
     end
   end
@@ -3615,6 +3767,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, messageData, messageId)
 ${QUEUE_METRICS_GAUGE_LUA}
 
 return __qmret(0)
@@ -3884,8 +4037,10 @@ local keyPrefix = ARGV[11]
 -- TTL (seconds) applied to counter lazy-init SETs
 local counterTtl = ARGV[12]
 local totalConcurrencyEnabled = ARGV[13] == '1'
+local gatesEnabled = ARGV[14] == '1'
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Fast path: check if we can skip the queue and go directly to worker queue
 if enableFastPath == '1' then
@@ -3918,12 +4073,25 @@ if enableFastPath == '1' then
           end
         end
 
-        if totalAllowsFastPath then
+        local gateMsg = nil
+        local gatesAllowFastPath = true
+        if gatesEnabled and string.find(messageData, '"gates"', 1, true) then
+          local okDecode, decoded = pcall(cjson.decode, messageData)
+          if okDecode and type(decoded) == 'table' and decoded.gates then
+            gateMsg = decoded
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+          end
+        end
+
+        if totalAllowsFastPath and gatesAllowFastPath then
           redis.call('SET', messageKey, messageData)
           redis.call('SADD', queueCurrentConcurrencyKey, messageId)
           redis.call('SADD', envCurrentConcurrencyKey, messageId)
           if totalConcurrencyEnabled then
             redis.call('SADD', groupConcurrencyKey, messageId)
+          end
+          if gateMsg then
+            __gatesAcquire(keyPrefix, gateMsg, messageId)
           end
           redis.call('RPUSH', workerQueueKey, messageKeyValue)
 ${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
@@ -3992,6 +4160,7 @@ end
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, messageData, messageId)
 ${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
@@ -4041,8 +4210,10 @@ local keyPrefix = ARGV[13]
 -- TTL (seconds) applied to counter lazy-init SETs
 local counterTtl = ARGV[14]
 local totalConcurrencyEnabled = ARGV[15] == '1'
+local gatesEnabled = ARGV[16] == '1'
 
 ${QUEUE_METRICS_GAUGE_PRELUDE}
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Fast path: check if we can skip the queue and go directly to worker queue
 if enableFastPath == '1' then
@@ -4073,12 +4244,25 @@ if enableFastPath == '1' then
           end
         end
 
-        if totalAllowsFastPath then
+        local gateMsg = nil
+        local gatesAllowFastPath = true
+        if gatesEnabled and string.find(messageData, '"gates"', 1, true) then
+          local okDecode, decoded = pcall(cjson.decode, messageData)
+          if okDecode and type(decoded) == 'table' and decoded.gates then
+            gateMsg = decoded
+            gatesAllowFastPath = __gatesHaveCapacity(keyPrefix, decoded, envLimit, nil)
+          end
+        end
+
+        if totalAllowsFastPath and gatesAllowFastPath then
           redis.call('SET', messageKey, messageData)
           redis.call('SADD', queueCurrentConcurrencyKey, messageId)
           redis.call('SADD', envCurrentConcurrencyKey, messageId)
           if totalConcurrencyEnabled then
             redis.call('SADD', groupConcurrencyKey, messageId)
+          end
+          if gateMsg then
+            __gatesAcquire(keyPrefix, gateMsg, messageId)
           end
           redis.call('RPUSH', workerQueueKey, messageKeyValue)
 ${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
@@ -4140,6 +4324,7 @@ end
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, messageData, messageId)
 ${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
@@ -4275,6 +4460,7 @@ local function decrFloored(key)
     redis.call('DECR', key)
   end
 end
+${QUEUE_GATES_LUA_HELPERS}
 
 local expiredMembers = redis.call('ZRANGEBYSCORE', ttlQueueKey, '-inf', currentTime, 'LIMIT', 0, batchSize)
 
@@ -4306,6 +4492,7 @@ for i, member in ipairs(expiredMembers) do
 
       local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
 
+      local rawPayload = redis.call('GET', messageKey)
       redis.call('DEL', messageKey)
 
       -- ZREM from queue; if successful AND this is a CK variant, DECR lengthCounter.
@@ -4321,6 +4508,7 @@ for i, member in ipairs(expiredMembers) do
       local dequeuedKey = queueKey .. ":currentDequeued"
       local removedFromCurrent = redis.call('SREM', concurrencyKey, runId)
       local removedFromDequeued = redis.call('SREM', dequeuedKey, runId)
+      __gatesRelease(keyPrefix, rawPayload, runId)
 
       local projMatch = string.match(rawQueueKey, ":proj:([^:]+):env:")
       local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentConcurrency"
@@ -4391,7 +4579,9 @@ local defaultEnvConcurrencyLimit = ARGV[3]
 local defaultEnvConcurrencyBurstFactor = ARGV[4]
 local keyPrefix = ARGV[5]
 local maxCount = tonumber(ARGV[6] or '1')
+local gatesEnabled = ARGV[7] == '1'
 ${QUEUE_METRICS_GAUGE_PRELUDE}
+${QUEUE_GATES_LUA_HELPERS}
 ${QUEUE_METRICS_GAUGE_LUA}
 
 -- Check current env concurrency against the limit
@@ -4460,24 +4650,31 @@ for i = 1, #messages, 2 do
                 redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
             end
         else
-            -- Not expired - process normally
-            redis.call('ZREM', queueKey, messageId)
-            redis.call('ZREM', envQueueKey, messageId)
-            redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-            redis.call('SADD', envCurrentConcurrencyKey, messageId)
-
-            -- Remove from TTL set if provided (run is being executed, not expired)
-            if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
-                local ttlMember = queueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
-                redis.call('ZREM', ttlQueueKey, ttlMember)
+            local gatesAllow = true
+            if gatesEnabled then
+              gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, envConcurrencyLimit, messageKeyPrefix)
             end
 
-            -- Add to results
-            table.insert(results, messageId)
-            table.insert(results, messageScore)
-            table.insert(results, messagePayload)
+            if gatesAllow then
+              redis.call('ZREM', queueKey, messageId)
+              redis.call('ZREM', envQueueKey, messageId)
+              redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+              redis.call('SADD', envCurrentConcurrencyKey, messageId)
+              if gatesEnabled then
+                __gatesAcquire(keyPrefix, messageData, messageId)
+              end
 
-            dequeuedCount = dequeuedCount + 1
+              if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
+                  local ttlMember = queueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+                  redis.call('ZREM', ttlQueueKey, ttlMember)
+              end
+
+              table.insert(results, messageId)
+              table.insert(results, messageScore)
+              table.insert(results, messagePayload)
+
+              dequeuedCount = dequeuedCount + 1
+            end
         end
     else
         -- Stale entry: message key was already deleted (e.g. acknowledged),
@@ -4680,7 +4877,9 @@ local defaultEnvConcurrencyBurstFactor = ARGV[4]
 local keyPrefix = ARGV[5]
 local maxCount = tonumber(ARGV[6] or '1')
 local totalConcurrencyEnabled = ARGV[7] == '1'
+local gatesEnabled = ARGV[8] == '1'
 ${QUEUE_METRICS_GAUGE_PRELUDE}
+${QUEUE_GATES_LUA_HELPERS}
 ${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
 
 local function decrLengthCounter()
@@ -4796,25 +4995,35 @@ for _, ckQueueName in ipairs(ckQueues) do
             redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
           end
         else
-          redis.call('ZREM', fullQueueKey, messageId)
-          redis.call('ZREM', envQueueKey, messageId)
-          decrLengthCounter()
-          redis.call('SADD', ckConcurrencyKey, messageId)
-          redis.call('SADD', envCurrentConcurrencyKey, messageId)
-          if totalConcurrencyEnabled then
-            redis.call('SADD', groupConcurrencyKey, messageId)
+          local gatesAllow = true
+          if gatesEnabled then
+            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, envConcurrencyLimit, messageKeyPrefix)
           end
 
-          if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
-            local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
-            redis.call('ZREM', ttlQueueKey, ttlMember)
+          if gatesAllow then
+            redis.call('ZREM', fullQueueKey, messageId)
+            redis.call('ZREM', envQueueKey, messageId)
+            decrLengthCounter()
+            redis.call('SADD', ckConcurrencyKey, messageId)
+            redis.call('SADD', envCurrentConcurrencyKey, messageId)
+            if totalConcurrencyEnabled then
+              redis.call('SADD', groupConcurrencyKey, messageId)
+            end
+            if gatesEnabled then
+              __gatesAcquire(keyPrefix, messageData, messageId)
+            end
+
+            if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
+              local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+              redis.call('ZREM', ttlQueueKey, ttlMember)
+            end
+
+            table.insert(results, messageId)
+            table.insert(results, messageScore)
+            table.insert(results, messagePayload)
+
+            dequeuedCount = dequeuedCount + 1
           end
-
-          table.insert(results, messageId)
-          table.insert(results, messageScore)
-          table.insert(results, messagePayload)
-
-          dequeuedCount = dequeuedCount + 1
         end
       else
         redis.call('ZREM', fullQueueKey, messageId)
@@ -4990,6 +5199,10 @@ local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local messageKeyValue = ARGV[3]
 local removeFromWorkerQueue = ARGV[4]
+local keyPrefix = ARGV[5]
+${QUEUE_GATES_LUA_HELPERS}
+
+local rawPayload = redis.call('GET', messageKey)
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
@@ -5011,6 +5224,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, rawPayload, messageId)
 
 -- Remove the message from the worker queue
 if removeFromWorkerQueue == '1' then
@@ -5037,6 +5251,8 @@ local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local messageData = ARGV[3]
 local messageScore = tonumber(ARGV[4])
+local keyPrefix = ARGV[5]
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Update the message data
 redis.call('SET', messageKey, messageData)
@@ -5046,6 +5262,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, messageData, messageId)
 
 -- Enqueue the message into the queue
 redis.call('ZADD', messageQueueKey, messageScore, messageId)
@@ -5078,6 +5295,10 @@ local deadLetterQueueKey = KEYS[9]
 -- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
+local keyPrefix = ARGV[3]
+${QUEUE_GATES_LUA_HELPERS}
+
+local rawPayload = redis.call('GET', messageKey)
 
 -- Remove the message from the queue
 redis.call('ZREM', messageQueue, messageId)
@@ -5099,6 +5320,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, rawPayload, messageId)
 `,
     });
 
@@ -5316,6 +5538,10 @@ local messageQueueName = ARGV[2]
 local messageKeyValue = ARGV[3]
 local removeFromWorkerQueue = ARGV[4]
 local ckWildcardName = ARGV[5]
+local keyPrefix = ARGV[6]
+${QUEUE_GATES_LUA_HELPERS}
+
+local rawPayload = redis.call('GET', messageKey)
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -5373,6 +5599,7 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 if removedFromDequeued == 1 then
   decrFloored(runningCounterKey)
 end
+__gatesRelease(keyPrefix, rawPayload, messageId)
 
 -- Remove the message from the worker queue
 if removeFromWorkerQueue == '1' then
@@ -5411,6 +5638,7 @@ local ckWildcardName = ARGV[5]
 local keyPrefix = ARGV[6]
 -- TTL (seconds) applied to counter lazy-init SETs
 local counterTtl = ARGV[7]
+${QUEUE_GATES_LUA_HELPERS}
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -5436,6 +5664,7 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 if removedFromDequeued == 1 then
   decrFloored(runningCounterKey)
 end
+__gatesRelease(keyPrefix, messageData, messageId)
 
 -- Lazy-init lengthCounter if missing (e.g. expired via 24h TTL). nack re-queues a
 -- message, which means lengthCounter must be present before we INCR. Without this,
@@ -5506,6 +5735,10 @@ local groupConcurrencyKey = KEYS[13]
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local ckWildcardName = ARGV[3]
+local keyPrefix = ARGV[4]
+${QUEUE_GATES_LUA_HELPERS}
+
+local rawPayload = redis.call('GET', messageKey)
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -5562,26 +5795,31 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 if removedFromDequeued == 1 then
   decrFloored(runningCounterKey)
 end
+__gatesRelease(keyPrefix, rawPayload, messageId)
 `,
     });
 
     this.redis.defineCommand("releaseConcurrency", {
-      numberOfKeys: 4,
+      numberOfKeys: 5,
       lua: `
 -- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
 local envCurrentConcurrencyKey = KEYS[2]
 local queueCurrentDequeuedKey = KEYS[3]
 local envCurrentDequeuedKey = KEYS[4]
+local messageKey = KEYS[5]
 
 -- Args:
 local messageId = ARGV[1]
+local keyPrefix = ARGV[2]
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, redis.call('GET', messageKey), messageId)
 `,
     });
 
@@ -5590,7 +5828,7 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
     // something. Caller should only invoke this variant for CK queues — non-CK
     // queues should keep calling releaseConcurrency.
     this.redis.defineCommand("releaseConcurrencyTracked", {
-      numberOfKeys: 7,
+      numberOfKeys: 8,
       lua: `
 -- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
@@ -5600,12 +5838,14 @@ local envCurrentDequeuedKey = KEYS[4]
 local runningCounterKey = KEYS[5]
 local ckIndexKey = KEYS[6]
 local groupConcurrencyKey = KEYS[7]
+local messageKey = KEYS[8]
 
 -- Args:
 local messageId = ARGV[1]
 local keyPrefix = ARGV[2]
 -- TTL (seconds) applied to counter lazy-init SETs
 local counterTtl = ARGV[3]
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Lazy-init runningCounter if missing (e.g. expired via 24h TTL). Runs BEFORE
 -- the SREM so the seed captures pre-release state; the subsequent DECR accounts
@@ -5634,6 +5874,7 @@ if removedFromDequeued == 1 then
     redis.call('DECR', runningCounterKey)
   end
 end
+__gatesRelease(keyPrefix, redis.call('GET', messageKey), messageId)
 `,
     });
 
@@ -5717,29 +5958,33 @@ return results
     });
 
     this.redis.defineCommand("clearMessageFromConcurrencySets", {
-      numberOfKeys: 4,
+      numberOfKeys: 5,
       lua: `
 -- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
 local envCurrentConcurrencyKey = KEYS[2]
 local queueCurrentDequeuedKey = KEYS[3]
 local envCurrentDequeuedKey = KEYS[4]
+local messageKey = KEYS[5]
 
 -- Args:
 local messageId = ARGV[1]
+local keyPrefix = ARGV[2]
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+__gatesRelease(keyPrefix, redis.call('GET', messageKey), messageId)
 `,
     });
 
     // Tracked variant of clearMessageFromConcurrencySets — see releaseConcurrencyTracked
     // for the contract. Only invoke for CK queues.
     this.redis.defineCommand("clearMessageFromConcurrencySetsTracked", {
-      numberOfKeys: 7,
+      numberOfKeys: 8,
       lua: `
 -- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
@@ -5749,12 +5994,14 @@ local envCurrentDequeuedKey = KEYS[4]
 local runningCounterKey = KEYS[5]
 local ckIndexKey = KEYS[6]
 local groupConcurrencyKey = KEYS[7]
+local messageKey = KEYS[8]
 
 -- Args:
 local messageId = ARGV[1]
 local keyPrefix = ARGV[2]
 -- TTL (seconds) applied to counter lazy-init SETs
 local counterTtl = ARGV[3]
+${QUEUE_GATES_LUA_HELPERS}
 
 -- Lazy-init runningCounter if missing — see releaseConcurrencyTracked for rationale.
 if redis.call('EXISTS', runningCounterKey) == 0 then
@@ -5779,6 +6026,7 @@ if removedFromDequeued == 1 then
     redis.call('DECR', runningCounterKey)
   end
 end
+__gatesRelease(keyPrefix, redis.call('GET', messageKey), messageId)
 `,
     });
   }
@@ -5818,6 +6066,8 @@ declare module "@internal/redis" {
       defaultEnvConcurrencyBurstFactor: string,
       currentTime: string,
       enableFastPath: string,
+      keyPrefix: string,
+      gatesEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -5849,6 +6099,8 @@ declare module "@internal/redis" {
       defaultEnvConcurrencyBurstFactor: string,
       currentTime: string,
       enableFastPath: string,
+      keyPrefix: string,
+      gatesEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -5886,6 +6138,7 @@ declare module "@internal/redis" {
       defaultEnvConcurrencyBurstFactor: string,
       keyPrefix: string,
       maxCount: string,
+      gatesEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[string[] | null, number[] | null]>
     ): Result<[string[] | null, number[] | null], Context>;
@@ -5919,6 +6172,7 @@ declare module "@internal/redis" {
       messageQueueName: string,
       messageKeyValue: string,
       removeFromWorkerQueue: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -5928,8 +6182,10 @@ declare module "@internal/redis" {
       envCurrentConcurrencyKey: string,
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
+      messageKey: string,
       // args
       messageId: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -5948,6 +6204,7 @@ declare module "@internal/redis" {
       messageQueueName: string,
       messageData: string,
       messageScore: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -5965,6 +6222,7 @@ declare module "@internal/redis" {
       // args
       messageId: string,
       messageQueueName: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -5974,8 +6232,10 @@ declare module "@internal/redis" {
       envCurrentConcurrencyKey: string,
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
+      messageKey: string,
       // args
       messageId: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -6178,6 +6438,7 @@ declare module "@internal/redis" {
       keyPrefix: string,
       counterTtl: string,
       totalConcurrencyEnabled: string,
+      gatesEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -6216,6 +6477,7 @@ declare module "@internal/redis" {
       keyPrefix: string,
       counterTtl: string,
       totalConcurrencyEnabled: string,
+      gatesEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
@@ -6241,6 +6503,7 @@ declare module "@internal/redis" {
       keyPrefix: string,
       maxCount: string,
       totalConcurrencyEnabled: string,
+      gatesEnabled: string,
       metricsEnabled: string,
       callback?: Callback<[string[] | null, number[] | null]>
     ): Result<[string[] | null, number[] | null], Context>;
@@ -6271,6 +6534,7 @@ declare module "@internal/redis" {
       messageKeyValue: string,
       removeFromWorkerQueue: string,
       ckWildcardName: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -6314,6 +6578,7 @@ declare module "@internal/redis" {
       messageId: string,
       messageQueueName: string,
       ckWildcardName: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -6337,6 +6602,7 @@ declare module "@internal/redis" {
       runningCounterKey: string,
       ckIndexKey: string,
       groupConcurrencyKey: string,
+      messageKey: string,
       messageId: string,
       keyPrefix: string,
       counterTtl: string,
@@ -6351,6 +6617,7 @@ declare module "@internal/redis" {
       runningCounterKey: string,
       ckIndexKey: string,
       groupConcurrencyKey: string,
+      messageKey: string,
       messageId: string,
       keyPrefix: string,
       counterTtl: string,
