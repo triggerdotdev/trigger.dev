@@ -1983,7 +1983,13 @@ model TaskQueue {
   concurrencyLimitOverridePercent Decimal?  @db.Decimal(5, 2)
   /// Caps total concurrent runs across ALL concurrencyKey values of this queue
   /// (concurrencyLimit applies per key value). Null = no total cap.
-  totalConcurrencyLimit           Int?
+  totalConcurrencyLimit             Int?
+  /// When the total concurrency limit was overridden
+  totalConcurrencyLimitOverriddenAt DateTime?
+  /// Who overrode the total concurrency limit (null when overridden via the API)
+  totalConcurrencyLimitOverriddenBy String?
+  /// If totalConcurrencyLimit is overridden, the declared value it reverts to on reset
+  totalConcurrencyLimitBase         Int?
   rateLimit                       Json?
 
   paused Boolean @default(false)
@@ -1995,7 +2001,29 @@ model TaskQueue {
   tasks    BackgroundWorkerTask[]
   workers  BackgroundWorker[]
 
+  concurrencyKeyOverrides TaskQueueConcurrencyKeyOverride[]
+
   @@unique([runtimeEnvironmentId, name])
+}
+
+/// A per-concurrency-key limit override for a queue: the named key value gets this
+/// limit instead of the queue's concurrencyLimit. Deleting the row resets the key.
+model TaskQueueConcurrencyKeyOverride {
+  id String @id @default(cuid())
+
+  taskQueue   TaskQueue @relation(fields: [taskQueueId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskQueueId String
+
+  concurrencyKey   String
+  concurrencyLimit Int
+
+  overriddenAt DateTime  @default(now())
+  overriddenBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([taskQueueId, concurrencyKey])
 }
 
 enum TaskQueueType {
