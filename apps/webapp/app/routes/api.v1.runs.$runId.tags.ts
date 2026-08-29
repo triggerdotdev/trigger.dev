@@ -104,8 +104,38 @@ async function addRunTags(request: Request, params: ActionFunctionArgs["params"]
       organizationId: env.organizationId,
       bufferPatch: { type: "append_tags", tags: nonEmptyTags, maxTags: MAX_TAGS_PER_RUN },
       pgMutation: async (taskRun) => {
-        const existing = taskRun.runTags ?? [];
-        const newTags = nonEmptyTags.filter((t) => !existing.includes(t));
+        let existing = taskRun.runTags ?? [];
+        let newTags = nonEmptyTags.filter((t) => !existing.includes(t));
+
+        if (newTags.length < nonEmptyTags.length) {
+          // At least one requested tag looks like it's already on the run. But `taskRun`
+          // normally comes from the READ REPLICA, so "the run already has this tag" can
+          // be replication lag rather than the truth -- and now that `tags.delete()`
+          // exists the replica can be stale in the direction that LOSES a write:
+          // `tags.delete("x")` immediately followed by `tags.add("x")` is an ordinary
+          // pattern, and a replica still carrying the deleted "x" would make us dedup it
+          // away and answer 200 with the run left untagged. Confirm against the primary
+          // before skipping any tag, mirroring the removal path's no-op confirmation.
+          //
+          // Passing the writer as the read client makes the routing store read the
+          // OWNING store's primary, so this is read-your-writes for a run on either
+          // database. Only an apparent duplicate pays for the extra primary read: a
+          // plain add of genuinely-new tags takes the replica row straight to the write.
+          // When the tags really are present the fresh read agrees and we still skip.
+          const fresh = await runStore.findRun(
+            { id: taskRun.id, runtimeEnvironmentId: env.id },
+            { select: { runTags: true } },
+            prisma
+          );
+
+          // The run vanished (or moved environment) between the replica read and here.
+          if (!fresh) {
+            return json({ error: "Run not found" }, { status: 404 });
+          }
+
+          existing = fresh.runTags ?? [];
+          newTags = nonEmptyTags.filter((t) => !existing.includes(t));
+        }
 
         if (existing.length + newTags.length > MAX_TAGS_PER_RUN) {
           return json(
@@ -231,9 +261,9 @@ async function removeRunTags(request: Request, params: ActionFunctionArgs["param
           // store read the OWNING store's primary, so this is read-your-writes for a
           // run on either database.
           //
-          // The add path's equivalent skip needs no such check because a stale read is
-          // safe in that direction: it can only make the write bigger, never skip a
-          // real one. Skipping a real removal, by contrast, would silently drop the
+          // The add path performs the mirror-image confirmation, for the same reason:
+          // once removals exist a stale replica can equally make an add dedup away a
+          // tag that is no longer on the run. Either direction would silently drop the
           // customer's mutation and still answer 200.
           const fresh = await runStore.findRun(
             { id: taskRun.id, runtimeEnvironmentId: env.id },
