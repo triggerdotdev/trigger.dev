@@ -136,7 +136,7 @@ function resolveTriggerExternalDeploymentId(explicit?: string): string | undefin
 }
 
 type NormalizedTaskQueue = {
-  queue?: { name?: string; concurrencyLimit?: number; totalConcurrencyLimit?: number };
+  queue?: { name?: string; concurrencyLimit?: number; combinedConcurrencyLimit?: number };
   gates?: Array<{ queue: string; concurrencyKey?: string }>;
 };
 
@@ -364,7 +364,7 @@ export function createTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      totalConcurrencyLimit: queue.totalConcurrencyLimit,
+      combinedConcurrencyLimit: queue.combinedConcurrencyLimit,
     });
   }
 
@@ -523,7 +523,7 @@ export function createSchemaTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      totalConcurrencyLimit: queue.totalConcurrencyLimit,
+      combinedConcurrencyLimit: queue.combinedConcurrencyLimit,
     });
   }
 
