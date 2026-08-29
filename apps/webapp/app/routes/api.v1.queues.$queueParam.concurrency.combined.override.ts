@@ -46,6 +46,9 @@ const route = createActionApiRoute(
               concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt,
               concurrencyLimitOverriddenBy: null,
               paused: queue.paused,
+              totalConcurrencyLimit: queue.totalConcurrencyLimit,
+              totalConcurrencyLimitBase: queue.totalConcurrencyLimitBase,
+              totalConcurrencyLimitOverriddenAt: queue.totalConcurrencyLimitOverriddenAt,
             }),
             { status: 200 }
           );

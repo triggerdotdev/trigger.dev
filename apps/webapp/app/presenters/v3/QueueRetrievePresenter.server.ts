@@ -92,6 +92,7 @@ export class QueueRetrievePresenter extends BasePresenter {
     const results = await Promise.all([
       engine.lengthOfQueues(environment, [queue.name]),
       engine.currentConcurrencyOfQueues(environment, [queue.name]),
+      engine.totalConcurrencyOfQueues(environment, [queue.name]),
     ]);
 
     // Transform queues to include running and queued counts
@@ -109,6 +110,11 @@ export class QueueRetrievePresenter extends BasePresenter {
           concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
           concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
           paused: queue.paused,
+          totalConcurrencyLimit: queue.totalConcurrencyLimit ?? null,
+          totalConcurrencyLimitBase: queue.totalConcurrencyLimitBase ?? null,
+          totalConcurrencyLimitOverriddenAt: queue.totalConcurrencyLimitOverriddenAt ?? null,
+          totalRunning:
+            queue.totalConcurrencyLimit != null ? (results[2]?.[queue.name] ?? 0) : null,
         }),
         // The percent source-of-truth for percent-based overrides isn't part of the shared
         // `QueueItem` schema (that's a public contract), so we surface it as an extra field on
@@ -150,6 +156,10 @@ export function toQueueItem(data: {
   concurrencyLimitOverriddenAt: Date | null;
   concurrencyLimitOverriddenBy: User | null;
   paused: boolean;
+  totalConcurrencyLimit?: number | null;
+  totalConcurrencyLimitBase?: number | null;
+  totalConcurrencyLimitOverriddenAt?: Date | null;
+  totalRunning?: number | null;
 }): QueueItem & { releaseConcurrencyOnWaitpoint: boolean } {
   return {
     id: data.friendlyId,
@@ -166,6 +176,16 @@ export function toQueueItem(data: {
       override: data.concurrencyLimitOverriddenAt ? data.concurrencyLimit : null,
       overriddenBy: toQueueConcurrencyOverriddenBy(data.concurrencyLimitOverriddenBy),
       overriddenAt: data.concurrencyLimitOverriddenAt,
+      total:
+        data.totalConcurrencyLimit !== undefined
+          ? {
+              current: data.totalConcurrencyLimit,
+              base: data.totalConcurrencyLimitBase ?? null,
+              override: data.totalConcurrencyLimitOverriddenAt ? data.totalConcurrencyLimit : null,
+              overriddenAt: data.totalConcurrencyLimitOverriddenAt ?? null,
+              running: data.totalRunning ?? null,
+            }
+          : undefined,
     },
     // TODO: This needs to be removed but keeping this here for now to avoid breaking existing clients
     releaseConcurrencyOnWaitpoint: true,
