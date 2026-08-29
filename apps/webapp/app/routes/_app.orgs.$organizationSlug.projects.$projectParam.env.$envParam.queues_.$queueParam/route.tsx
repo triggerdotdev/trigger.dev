@@ -396,7 +396,7 @@ export default function Page() {
               ids={ids}
               timeRange={timeRange}
               queueName={fullName}
-              hasTotalLimit={queue.concurrency?.total?.current != null}
+              hasTotalLimit={queue.concurrency?.combined?.current != null}
             />
           )}
         </MetricsLayout.Content>
@@ -494,25 +494,25 @@ function OverviewCharts({
         />
         {hasTotalLimit ? (
           <QueueDetailChartCard
-            title="Total concurrency"
+            title="Combined concurrency"
             info={
               <>
                 Runs in flight across ALL concurrency keys (
-                <ColorSwatch color={COLORS.running} />) versus the queue's total limit (
+                <ColorSwatch color={COLORS.running} />) versus the queue's combined limit (
                 <ColorSwatch color={COLORS.limit} />
                 ).
               </>
             }
             showLegend
             className="aspect-[2/1]"
-            query={`SELECT timeBucket() AS t, max(max_total_running) AS running, least(max(max_total_limit), max(max_env_limit)) AS cap\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            query={`SELECT timeBucket() AS t, max(max_combined_running) AS running, least(max(max_combined_limit), max(max_env_limit)) AS cap\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
             fillGaps
             minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
             ids={ids}
             timeRange={timeRange}
             queueName={queueName}
             series={[
-              { key: "cap", label: "Total limit", color: COLORS.limit },
+              { key: "cap", label: "Combined limit", color: COLORS.limit },
               { key: "running", label: "Running", color: COLORS.running },
             ]}
             thresholdStroke={{

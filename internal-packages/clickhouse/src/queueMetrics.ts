@@ -21,8 +21,8 @@ export const QueueMetricsRawV1Input = z.object({
   throttled: z.number().optional(),
   ck_backlogged: z.number().optional(),
   ck_max_wait_ms: z.number().optional(),
-  total_running: z.number().optional(),
-  total_limit: z.number().optional(),
+  combined_running: z.number().optional(),
+  combined_limit: z.number().optional(),
   wait_ms: z.number().optional(),
   cumulative: z.number().optional(),
 });

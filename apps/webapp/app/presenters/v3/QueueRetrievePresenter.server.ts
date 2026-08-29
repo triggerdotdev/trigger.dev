@@ -176,7 +176,7 @@ export function toQueueItem(data: {
       override: data.concurrencyLimitOverriddenAt ? data.concurrencyLimit : null,
       overriddenBy: toQueueConcurrencyOverriddenBy(data.concurrencyLimitOverriddenBy),
       overriddenAt: data.concurrencyLimitOverriddenAt,
-      total:
+      combined:
         data.totalConcurrencyLimit !== undefined
           ? {
               current: data.totalConcurrencyLimit,

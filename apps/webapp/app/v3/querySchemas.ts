@@ -770,19 +770,19 @@ const queueMetricsSchema: TableSchema = {
         fillMode: "carry",
       }),
     },
-    max_total_running: {
-      name: "max_total_running",
+    max_combined_running: {
+      name: "max_combined_running",
       ...column("UInt32", {
         description:
           "Peak in-flight runs across ALL concurrency keys of the queue in the bucket (only emitted for keyed queues). Aggregate with max().",
         fillMode: "carry",
       }),
     },
-    max_total_limit: {
-      name: "max_total_limit",
+    max_combined_limit: {
+      name: "max_combined_limit",
       ...column("UInt32", {
         description:
-          "The queue's total concurrency limit across all keys, as stored (0 = no cap; clamp against max_env_limit). Aggregate with max().",
+          "The queue's combined concurrency limit across all keys, as stored (0 = no cap; clamp against max_env_limit). Aggregate with max().",
         fillMode: "carry",
       }),
     },
