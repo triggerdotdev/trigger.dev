@@ -17,6 +17,9 @@
   ],
   "tshy": {
     "selfLink": false,
+    "exclude": [
+      "src/**/*.test.ts"
+    ],
     "main": true,
     "module": true,
     "project": "./tsconfig.src.json",
