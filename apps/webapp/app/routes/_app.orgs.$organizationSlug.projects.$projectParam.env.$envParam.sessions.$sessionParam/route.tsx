@@ -57,6 +57,14 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import {
+  canonicalSessionAddressingKey,
+  resolveSessionByIdOrExternalId,
+} from "~/services/realtime/sessions.server";
+import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
+import { logger } from "~/services/logger.server";
 import {
   type StreamChunk,
   useRealtimeStream,
@@ -115,11 +123,34 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Session not found", { status: 404 });
   }
 
-  return typedjson({ session, loadedAt: Date.now() });
+  let channels: string[] = [];
+  const streamSessionId = session.agentView?.sessionId;
+  if (streamSessionId) {
+    const [channelsError, listed] = await tryCatch(
+      (async () => {
+        const row = await resolveSessionByIdOrExternalId($replica, environment.id, streamSessionId);
+        if (!row) return [] as string[];
+        const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session: row });
+        if (!(realtimeStream instanceof S2RealtimeStreams)) return [] as string[];
+        const addressingKey = canonicalSessionAddressingKey(row, streamSessionId);
+        return realtimeStream.listSessionChannels(addressingKey);
+      })()
+    );
+    if (channelsError) {
+      logger.warn("Failed to list session channels", {
+        sessionId: streamSessionId,
+        error: channelsError,
+      });
+    } else {
+      channels = listed ?? [];
+    }
+  }
+
+  return typedjson({ session, channels, loadedAt: Date.now() });
 };
 
 export default function Page() {
-  const { session, loadedAt } = useTypedLoaderData<typeof loader>();
+  const { session, channels, loadedAt } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -158,7 +189,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="session-conversation" min={"300px"}>
-            <ConversationPane session={session} />
+            <ConversationPane session={session} channels={channels} />
           </ResizablePanel>
           <ResizableHandle id="session-handle" />
           <ResizablePanel
@@ -177,18 +208,49 @@ export default function Page() {
 
 type LoadedSession = ReturnType<typeof useTypedLoaderData<typeof loader>>["session"];
 
-function ConversationPane({ session }: { session: LoadedSession }) {
+function ConversationPane({ session, channels }: { session: LoadedSession; channels: string[] }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const isRaw = value("raw") === "1";
+  const channelParam = value("channel");
+  const activeChannel = channelParam && channels.includes(channelParam) ? channelParam : undefined;
 
   const sessionId = session.agentView.sessionId;
   const encodedSession = encodeURIComponent(sessionId);
   const sessionResourceBase = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodedSession}/realtime/v1`;
 
-  const setView = useCallback((raw: boolean) => replace({ raw: raw ? "1" : undefined }), [replace]);
+  const setView = useCallback(
+    (raw: boolean) => replace({ raw: raw ? "1" : undefined, channel: undefined }),
+    [replace]
+  );
+  const selectChannel = useCallback(
+    (channel: string) => replace({ channel, raw: undefined }),
+    [replace]
+  );
+
+  const utilityBarProps = {
+    channels,
+    activeChannel,
+    onSelectChannel: selectChannel,
+  };
+
+  if (activeChannel) {
+    const channelBase = `${sessionResourceBase}/channels/${encodeURIComponent(activeChannel)}`;
+    return (
+      <div className="flex h-full max-h-full flex-col overflow-hidden bg-background-bright">
+        <RawConversationView
+          key={activeChannel}
+          inResourcePath={`${channelBase}/in`}
+          outResourcePath={`${channelBase}/out`}
+          isRaw={isRaw}
+          onChangeView={setView}
+          {...utilityBarProps}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full max-h-full flex-col overflow-hidden bg-background-bright">
@@ -198,10 +260,11 @@ function ConversationPane({ session }: { session: LoadedSession }) {
           outResourcePath={`${sessionResourceBase}/out`}
           isRaw={isRaw}
           onChangeView={setView}
+          {...utilityBarProps}
         />
       ) : (
         <>
-          <ConversationUtilityBar isRaw={isRaw} onChangeView={setView} />
+          <ConversationUtilityBar isRaw={isRaw} onChangeView={setView} {...utilityBarProps} />
           <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <AgentView agentView={session.agentView} />
           </div>
@@ -214,29 +277,45 @@ function ConversationPane({ session }: { session: LoadedSession }) {
 function ConversationUtilityBar({
   isRaw,
   onChangeView,
+  channels = [],
+  activeChannel,
+  onSelectChannel,
   right,
 }: {
   isRaw: boolean;
   onChangeView: (raw: boolean) => void;
+  channels?: string[];
+  activeChannel?: string;
+  onSelectChannel?: (channel: string) => void;
   right?: React.ReactNode;
 }) {
   return (
     <div className="flex h-9 items-center justify-between gap-3 border-b border-grid-bright px-3">
       <TabContainer className="-mb-2">
         <TabButton
-          isActive={!isRaw}
+          isActive={!isRaw && !activeChannel}
           layoutId="conversation-view-mode"
           onClick={() => onChangeView(false)}
         >
           Rendered
         </TabButton>
         <TabButton
-          isActive={isRaw}
+          isActive={isRaw && !activeChannel}
           layoutId="conversation-view-mode"
           onClick={() => onChangeView(true)}
         >
           Raw
         </TabButton>
+        {channels.map((channel) => (
+          <TabButton
+            key={channel}
+            isActive={activeChannel === channel}
+            layoutId="conversation-view-mode"
+            onClick={() => onSelectChannel?.(channel)}
+          >
+            {channel}
+          </TabButton>
+        ))}
       </TabContainer>
       {right}
     </div>
@@ -266,11 +345,17 @@ function RawConversationView({
   outResourcePath,
   isRaw,
   onChangeView,
+  channels,
+  activeChannel,
+  onSelectChannel,
 }: {
   inResourcePath: string;
   outResourcePath: string;
   isRaw: boolean;
   onChangeView: (raw: boolean) => void;
+  channels?: string[];
+  activeChannel?: string;
+  onSelectChannel?: (channel: string) => void;
 }) {
   const {
     chunks: inChunks,
@@ -496,7 +581,14 @@ function RawConversationView({
 
   return (
     <>
-      <ConversationUtilityBar isRaw={isRaw} onChangeView={onChangeView} right={controls} />
+      <ConversationUtilityBar
+        isRaw={isRaw}
+        onChangeView={onChangeView}
+        channels={channels}
+        activeChannel={activeChannel}
+        onSelectChannel={onSelectChannel}
+        right={controls}
+      />
       <div className="flex min-h-0 flex-1 flex-col bg-background-deep">
         <div
           ref={scrollRef}
