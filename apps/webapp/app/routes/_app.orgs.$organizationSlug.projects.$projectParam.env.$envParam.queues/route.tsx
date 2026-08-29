@@ -856,7 +856,7 @@ function QueuesWithMetricsView() {
                           "w-[1%]",
                           queue.paused ? "opacity-50" : undefined,
                           queue.concurrency?.total?.current != null &&
-                            queue.running >=
+                            (queue.concurrency.total.running ?? 0) >=
                               Math.min(
                                 queue.concurrency.total.current,
                                 environment.concurrencyLimit
@@ -1920,7 +1920,7 @@ function ClassicQueuesView() {
                             "w-[1%] pl-16 tabular-nums",
                             queue.paused ? "opacity-50" : undefined,
                             queue.concurrency?.total?.current != null &&
-                              queue.running >=
+                              (queue.concurrency.total.running ?? 0) >=
                                 Math.min(
                                   queue.concurrency.total.current,
                                   environment.concurrencyLimit
