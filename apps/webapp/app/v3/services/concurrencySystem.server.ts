@@ -501,9 +501,10 @@ function syncQueueTotalConcurrencyToEngine(
 /**
  * Persist first, then enforce: a database failure leaves nothing enforced and the
  * request errors cleanly, while an engine failure after persistence leaves a durable
- * record and a retry converges (the upsert is idempotent). When the engine rejects a
- * NEW key for exceeding the per-queue override cap, the just-created row is removed
- * again so the record never claims an override the engine refused.
+ * record and a retry converges (the upsert is idempotent). A cap rejection deletes
+ * the row unconditionally: the cap only rejects keys absent from the engine hash
+ * (updates to present keys always succeed), so a cap-rejected row is never backing
+ * an enforced limit and must not survive as an authoritative override.
  */
 function overrideQueueConcurrencyKeyLimit(
   db: PrismaClientOrTransaction,
@@ -573,7 +574,7 @@ function overrideQueueConcurrencyKeyLimit(
           return { type: "sync_queue_concurrency_to_engine_failed" as const, cause: error };
         }
       ).orElse((error) => {
-        if (!existing && error.type === "too_many_key_overrides") {
+        if (error.type === "too_many_key_overrides") {
           return fromPromise(
             db.taskQueueConcurrencyKeyOverride.deleteMany({
               where: { taskQueueId: queue.id, concurrencyKey },
@@ -601,7 +602,7 @@ function resetQueueConcurrencyKeyLimit(
   return fromPromise(
     db.taskQueueConcurrencyKeyOverride.findFirst({
       where: { taskQueueId: queue.id, concurrencyKey },
-      select: { id: true },
+      select: { id: true, overriddenAt: true },
     }),
     (error) => ({ type: "other" as const, cause: error })
   ).andThen((existing) => {
@@ -618,8 +619,16 @@ function resetQueueConcurrencyKeyLimit(
     )
       .andThen(() =>
         fromPromise(
+          /**
+           * Deletes only the exact row generation this reset read, so a concurrent
+           * override that re-wrote the row after the reset began keeps its record
+           * (its next write, or the deploy-time restore, re-syncs the engine).
+           */
           db.taskQueueConcurrencyKeyOverride.deleteMany({
-            where: { taskQueueId: queue.id, concurrencyKey },
+            where: {
+              id: existing.id,
+              overriddenAt: existing.overriddenAt,
+            },
           }),
           (error) => ({
             type: "queue_update_failed" as const,
