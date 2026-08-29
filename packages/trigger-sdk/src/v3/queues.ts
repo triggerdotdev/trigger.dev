@@ -170,7 +170,7 @@ export function overrideConcurrencyLimit(
     requestOptions
   );
 
-  if (concurrencyKey) {
+  if (concurrencyKey !== undefined) {
     return apiClient.overrideQueueConcurrencyKeyLimit(
       queue,
       concurrencyKey,
@@ -291,7 +291,7 @@ export function resetConcurrencyLimit(
     requestOptions
   );
 
-  if (concurrencyKey) {
+  if (concurrencyKey !== undefined) {
     return apiClient.resetQueueConcurrencyKeyLimit(queue, concurrencyKey, $requestOptions);
   }
 

@@ -312,6 +312,10 @@ export type RunQueueOptions = {
    * that dead-lettered or suspended through a mirror-less path. Enabling only after
    * every instance runs this build avoids the noise but is no longer load-bearing
    * for correctness.
+   *
+   * Per-concurrency-key limit overrides are part of the same concurrency-limits
+   * feature and are deliberately enforced behind this flag too: writes are always
+   * accepted and durable, and enforcement of both arrives together.
    */
   totalConcurrencyEnabled?: boolean;
   /**
@@ -5045,6 +5049,7 @@ for _, ckQueueName in ipairs(ckQueues) do
   end
 
   local fullQueueKey = keyPrefix .. ckQueueName
+  local blockedByGates = false
 
   local ckConcurrencyKey = fullQueueKey .. ':currentConcurrency'
   local ckCurrentConcurrency = tonumber(redis.call('SCARD', ckConcurrencyKey) or '0')
@@ -5055,6 +5060,14 @@ for _, ckQueueName in ipairs(ckQueues) do
     if perKeyOverride then
       perKeyLimit = math.min(tonumber(perKeyOverride), envConcurrencyLimit)
     end
+  end
+
+  if ckCurrentConcurrency >= perKeyLimit then
+    -- Back a blocked variant off so it cannot pin the bounded candidate window
+    -- and starve later keys (acute with a zero per-key override, which never
+    -- self-clears). Acks and nacks rebalance the score back to the oldest
+    -- message, so the key is eligible again the moment capacity frees.
+    redis.call('ZADD', ckIndexKey, currentTime + 1000, ckQueueName)
   end
 
   if ckCurrentConcurrency < perKeyLimit then
@@ -5083,6 +5096,9 @@ for _, ckQueueName in ipairs(ckQueues) do
           local gatesAllow = true
           if gatesEnabled then
             gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix)
+          end
+          if not gatesAllow then
+            blockedByGates = true
           end
 
           local alreadyInGroup = false
@@ -5126,11 +5142,15 @@ for _, ckQueueName in ipairs(ckQueues) do
         decrLengthCounter()
       end
 
-      local earliest = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
-      if #earliest == 0 then
-        redis.call('ZREM', ckIndexKey, ckQueueName)
+      if blockedByGates then
+        redis.call('ZADD', ckIndexKey, currentTime + 1000, ckQueueName)
       else
-        redis.call('ZADD', ckIndexKey, earliest[2], ckQueueName)
+        local earliest = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
+        if #earliest == 0 then
+          redis.call('ZREM', ckIndexKey, ckQueueName)
+        else
+          redis.call('ZADD', ckIndexKey, earliest[2], ckQueueName)
+        end
       end
     else
       local any = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
