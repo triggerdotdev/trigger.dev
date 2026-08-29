@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { stripClientWebhookActionSource } from "~/services/realtime/sanitizeSessionInput.server";
 import {
   SESSION_CHANNEL_NAME_REGEX,
   sessionChannelResources,
@@ -83,7 +84,10 @@ const { action, loader } = createActionApiRoute(
     const addressingKey = canonicalSessionAddressingKey(session, params.session);
     const claimKey = `${addressingKey}:channels:${params.channel}`;
 
-    const part = await request.text();
+    let part = await request.text();
+    if (params.io === "in") {
+      part = stripClientWebhookActionSource(part);
+    }
 
     const clientPartId = request.headers.get("X-Part-Id");
     const partId = clientPartId ?? nanoid(7);

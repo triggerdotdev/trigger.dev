@@ -1,6 +1,5 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { $replica } from "~/db.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import {
   SESSION_CHANNEL_NAME_REGEX,
@@ -9,7 +8,7 @@ import {
 import {
   canonicalSessionAddressingKey,
   isSessionFriendlyIdForm,
-  resolveSessionByIdOrExternalId,
+  resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -31,11 +30,7 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      const row = await resolveSessionByIdOrExternalId(
-        $replica,
-        auth.environment.id,
-        params.session
-      );
+      const row = await resolveSessionWithWriterFallback(auth.environment.id, params.session);
       if (!row && isSessionFriendlyIdForm(params.session)) {
         return undefined;
       }

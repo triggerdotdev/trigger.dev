@@ -56,6 +56,10 @@ const { action } = createActionApiRoute(
       return new Response("Cannot initialize a channel on a closed session", { status: 400 });
     }
 
+    if (maybeSession?.expiresAt && maybeSession.expiresAt.getTime() < Date.now()) {
+      return new Response("Cannot initialize a channel on an expired session", { status: 400 });
+    }
+
     const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
       session: maybeSession,
       organization: maybeSession ? null : authentication.environment.organization,
