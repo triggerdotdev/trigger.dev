@@ -312,8 +312,8 @@ export const TriggerTaskRequestBody = z
         gates: z
           .array(
             z.object({
-              queue: z.string().max(128),
-              concurrencyKey: z.string().max(128).optional(),
+              queue: z.string().min(1).max(128),
+              concurrencyKey: z.string().min(1).max(128).optional(),
             })
           )
           .max(2)
@@ -427,8 +427,8 @@ export const BatchTriggerTaskItem = z.object({
       gates: z
         .array(
           z.object({
-            queue: z.string().max(128),
-            concurrencyKey: z.string().max(128).optional(),
+            queue: z.string().min(1).max(128),
+            concurrencyKey: z.string().min(1).max(128).optional(),
           })
         )
         .max(2)
