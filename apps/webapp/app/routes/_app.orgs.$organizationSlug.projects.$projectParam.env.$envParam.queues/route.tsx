@@ -706,13 +706,12 @@ function QueuesWithMetricsView() {
                 <TableHeaderCell>Name</TableHeaderCell>
                 <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                 <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                <TableHeaderCell alignment="right">Limit</TableHeaderCell>
                 <TableHeaderCell
                   alignment="right"
                   disableTooltipHoverableContent
-                  tooltip="Runs in flight across all concurrency keys, against the queue's total concurrency limit. Only queues with a totalConcurrencyLimit show a value."
+                  tooltip="How many runs can execute at once. For queues with a totalConcurrencyLimit, the limit applies per concurrency key and the total applies across all keys."
                 >
-                  Total
+                  Limit
                 </TableHeaderCell>
                 <TableHeaderCell
                   alignment="right"
@@ -856,7 +855,14 @@ function QueuesWithMetricsView() {
                         className={cn(
                           "w-[1%]",
                           queue.paused ? "opacity-50" : undefined,
-                          queue.running > 0 && "text-text-bright"
+                          queue.concurrency?.total?.current != null &&
+                            queue.running >=
+                              Math.min(
+                                queue.concurrency.total.current,
+                                environment.concurrencyLimit
+                              )
+                            ? "text-warning"
+                            : queue.running > 0 && "text-text-bright"
                         )}
                       >
                         {queue.running}
@@ -881,29 +887,16 @@ function QueuesWithMetricsView() {
                         ) : (
                           limit
                         )}
-                      </TableCell>
-                      <TableCell
-                        to={queueDetailPath}
-                        alignment="right"
-                        actionClassName="pl-16 tabular-nums"
-                        className={cn(
-                          "w-[1%]",
-                          queue.paused ? "opacity-50" : undefined,
-                          queue.concurrency?.total?.current != null &&
-                            (queue.concurrency.total.running ?? 0) >=
-                              Math.min(
-                                queue.concurrency.total.current,
-                                environment.concurrencyLimit
-                              ) &&
-                            "text-warning"
-                        )}
-                      >
-                        {queue.concurrency?.total?.current != null
-                          ? `${queue.concurrency.total.running ?? 0}/${Math.min(
+                        {queue.concurrency?.total?.current != null ? (
+                          <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
+                            /key ·{" "}
+                            {Math.min(
                               queue.concurrency.total.current,
                               environment.concurrencyLimit
-                            )}`
-                          : "–"}
+                            )}{" "}
+                            total
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell
                         to={queueDetailPath}
@@ -1051,7 +1044,7 @@ function QueuesWithMetricsView() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={10}>
+                  <TableCell colSpan={9}>
                     <div className="grid place-items-center py-6 text-text-dimmed">
                       <Paragraph>
                         {hasFilters ? "No queues found matching your filters" : "No queues found"}
@@ -1814,12 +1807,11 @@ function ClassicQueuesView() {
                   <TableHeaderCell>Name</TableHeaderCell>
                   <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                   <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Limit</TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
-                    tooltip="Runs in flight across all concurrency keys, against the queue's total concurrency limit. Only queues with a totalConcurrencyLimit show a value."
+                    tooltip="How many runs can execute at once. For queues with a totalConcurrencyLimit, the limit applies per concurrency key and the total applies across all keys."
                   >
-                    Total
+                    Limit
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
@@ -1927,7 +1919,14 @@ function ClassicQueuesView() {
                           className={cn(
                             "w-[1%] pl-16 tabular-nums",
                             queue.paused ? "opacity-50" : undefined,
-                            queue.running > 0 && "text-text-bright",
+                            queue.concurrency?.total?.current != null &&
+                              queue.running >=
+                                Math.min(
+                                  queue.concurrency.total.current,
+                                  environment.concurrencyLimit
+                                )
+                              ? "text-warning"
+                              : queue.running > 0 && "text-text-bright",
                             isAtConcurrencyLimit && "text-warning"
                           )}
                         >
@@ -1942,27 +1941,16 @@ function ClassicQueuesView() {
                           )}
                         >
                           {limit}
-                        </TableCell>
-                        <TableCell
-                          alignment="right"
-                          className={cn(
-                            "w-[1%] pl-16 tabular-nums",
-                            queue.paused ? "opacity-50" : undefined,
-                            queue.concurrency?.total?.current != null &&
-                              (queue.concurrency.total.running ?? 0) >=
-                                Math.min(
-                                  queue.concurrency.total.current,
-                                  environment.concurrencyLimit
-                                ) &&
-                              "text-warning"
-                          )}
-                        >
-                          {queue.concurrency?.total?.current != null
-                            ? `${queue.concurrency.total.running ?? 0}/${Math.min(
+                          {queue.concurrency?.total?.current != null ? (
+                            <span className="ml-1 text-text-dimmed">
+                              /key ·{" "}
+                              {Math.min(
                                 queue.concurrency.total.current,
                                 environment.concurrencyLimit
-                              )}`
-                            : "–"}
+                              )}{" "}
+                              total
+                            </span>
+                          ) : null}
                         </TableCell>
                         <TableCell
                           alignment="right"
@@ -2047,7 +2035,7 @@ function ClassicQueuesView() {
                   })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={7}>
                       <div className="grid place-items-center py-6 text-text-dimmed">
                         <Paragraph>
                           {hasFilters ? "No queues found matching your filters" : "No queues found"}
