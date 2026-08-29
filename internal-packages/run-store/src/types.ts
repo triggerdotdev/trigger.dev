@@ -174,6 +174,8 @@ export type CreateRunData = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
+  /** Other queues this run must also hold a concurrency slot in while executing. */
+  gates?: Array<{ queue: string; concurrencyKey?: string }>;
   queue: string;
   lockedQueueId?: string;
   workerQueue?: string;

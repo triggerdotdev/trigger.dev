@@ -188,6 +188,17 @@ export const QueueManifest = z.object({
 
 export type QueueManifest = z.infer<typeof QueueManifest>;
 
+/** A gate a task's runs must also hold a concurrency slot in while executing.
+ * `queue` is the gate queue's name. When `concurrencyKey` is omitted the run's own
+ * `concurrencyKey` is used, so the gate is keyed per tenant; a literal value pins
+ * the gate to one shared slot pool. */
+export const QueueGateManifest = z.object({
+  queue: z.string().max(128),
+  concurrencyKey: z.string().max(128).optional(),
+});
+
+export type QueueGateManifest = z.infer<typeof QueueGateManifest>;
+
 export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
@@ -203,6 +214,7 @@ const taskMetadata = {
   id: z.string(),
   description: z.string().optional(),
   queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
+  gates: QueueGateManifest.array().max(2).optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),

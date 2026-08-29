@@ -9,11 +9,11 @@ import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
  * the entry is keyed) and an extra slot held until release. `queue` is the bare
  * queue name; the org/project/env scope comes from the run's own payload.
  */
-const QueueGate = z.object({
+export const QueueGate = z.object({
   queue: z.string().min(1).max(128),
   concurrencyKey: z.string().min(1).max(128).optional(),
 });
-type QueueGate = z.infer<typeof QueueGate>;
+export type QueueGate = z.infer<typeof QueueGate>;
 
 export const InputPayload = z.object({
   runId: z.string(),

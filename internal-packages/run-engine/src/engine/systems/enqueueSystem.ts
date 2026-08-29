@@ -16,6 +16,33 @@ export type EnqueueSystemOptions = {
   executionSnapshotSystem: ExecutionSnapshotSystem;
 };
 
+/**
+ * TaskRun.gates is an untyped Json column; admit correctness only needs well-shaped
+ * entries, so anything malformed is dropped rather than failing the enqueue.
+ */
+function parseRunGates(
+  gates: unknown
+): Array<{ queue: string; concurrencyKey?: string }> | undefined {
+  if (!Array.isArray(gates) || gates.length === 0) {
+    return undefined;
+  }
+
+  const parsed = gates.flatMap((gate) => {
+    if (!gate || typeof gate !== "object" || typeof (gate as any).queue !== "string") {
+      return [];
+    }
+    const concurrencyKey = (gate as any).concurrencyKey;
+    return [
+      {
+        queue: (gate as any).queue,
+        concurrencyKey: typeof concurrencyKey === "string" ? concurrencyKey : undefined,
+      },
+    ];
+  });
+
+  return parsed.length > 0 ? parsed.slice(0, 2) : undefined;
+}
+
 export class EnqueueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -177,6 +204,7 @@ export class EnqueueSystem {
         environmentType: env.type,
         queue: run.queue,
         concurrencyKey: run.concurrencyKey ?? undefined,
+        gates: parseRunGates(run.gates),
         timestamp,
         eligibleAtMs,
         attempt: 0,

@@ -23,6 +23,7 @@ import type { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
 import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
+import type { QueueGate } from "../run-queue/types.js";
 
 /**
  * Structural mirror of the webapp's CrossSeamGuardDecision
@@ -331,6 +332,8 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
+  /** Other queues this run must also hold a concurrency slot in while executing. At most two. */
+  gates?: QueueGate[];
   workerQueue?: string;
   region?: string;
   /** When true, the run queue may push directly to the worker queue if concurrency is available.
