@@ -140,6 +140,26 @@ A side channel's streams are bounded by the same retention as the rest of your r
 
 A side channel is covered by the session's public access token: a token scoped to `read:sessions:{id}` / `write:sessions:{id}` grants every channel of that session. Mint a narrower token scoped to a single channel with `read:sessions:{id}:channels:{name}`. Writing a channel's `.out` requires secret-key auth (only the agent run), so a browser cannot forge frames; `.in` is writable with the session token. See [Realtime auth](/realtime/auth).
 
+### Scope tokens to the channel, not the whole session
+
+Two properties of the session token are worth designing around when a browser only needs one channel:
+
+- **A session-wide token grants every channel, including ones added later.** `read:sessions:{id}` reads the reserved chat transcript and all named channels. If a client should see only the screencast frames and not the chat, give it `read:sessions:{id}:channels:screencast` instead. The channel-scoped token reads only that channel: it cannot read another channel or the reserved transcript.
+- **A session write token can write the reserved `.in` too, not just a channel's.** `write:sessions:{id}` can send a chat message on the reserved `.in`, so a client meant only to send control input on one channel should hold `write:sessions:{id}:channels:{name}`, which confines it to that channel's `.in`.
+
+```ts Mint a channel-scoped token (your backend)
+import { auth } from "@trigger.dev/sdk";
+
+const token = await auth.createPublicToken({
+  scopes: { read: { sessions: `${sessionId}:channels:screencast` } },
+});
+```
+
+<Note>
+  A session's `externalId` cannot contain `:channels:`, since that is the delimiter the channel scope
+  uses. `sessions.start` rejects it. Any other string, including single colons, is fine.
+</Note>
+
 ## Next steps
 
 <CardGroup cols={2}>

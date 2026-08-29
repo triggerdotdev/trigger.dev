@@ -9,6 +9,19 @@ import type { RbacResource } from "@trigger.dev/rbac";
 export const SESSION_CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
+ * The infix the channel-scope fold uses in the RBAC resource id
+ * (`${key}:channels:${channel}`). A session externalId is used verbatim as a
+ * resource key, so an externalId containing this infix could equal a
+ * channel-scoped token's folded id and collide with it. Reject it at session
+ * creation so a bare session key can never look like a folded channel key.
+ */
+export const SESSION_CHANNEL_SCOPE_INFIX = ":channels:";
+
+export function isSafeSessionExternalId(externalId: string): boolean {
+  return !externalId.includes(SESSION_CHANNEL_SCOPE_INFIX);
+}
+
+/**
  * Build the authorization resource set for a named channel. For each candidate
  * session key (URL form, friendlyId, externalId) we authorize BOTH the
  * channel-folded id (`${key}:channels:${channel}`, matched by a narrow
