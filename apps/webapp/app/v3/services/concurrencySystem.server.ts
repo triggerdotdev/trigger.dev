@@ -3,7 +3,13 @@ import { errAsync, fromPromise, okAsync } from "neverthrow";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
+import {
+  removeQueueConcurrencyLimits,
+  removeQueueTotalConcurrencyLimits,
+  updateQueueConcurrencyLimits,
+  updateQueueTotalConcurrencyLimits,
+} from "../runQueue.server";
+import { RunQueueConcurrencyKeyLimitExceededError } from "@internal/run-engine";
 import { engine } from "../runEngine.server";
 
 export type ConcurrencySystemOptions = {
@@ -75,6 +81,60 @@ export class ConcurrencySystem {
         return findQueueFromInput(this.db, environment, queue)
           .andThen((queue) => resetQueueConcurrencyLimit(this.db, queue))
           .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      overrideTotalConcurrencyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        totalConcurrencyLimit: number,
+        overriddenBy?: User
+      ) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) =>
+            overrideQueueTotalConcurrencyLimit(
+              this.db,
+              environment,
+              queue,
+              totalConcurrencyLimit,
+              overriddenBy
+            )
+          )
+          .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      resetTotalConcurrencyLimit: (environment: AuthenticatedEnvironment, queue: QueueInput) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) => resetQueueTotalConcurrencyLimit(this.db, queue))
+          .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      overrideConcurrencyKeyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        concurrencyKey: string,
+        concurrencyLimit: number,
+        overriddenBy?: User
+      ) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) =>
+            overrideQueueConcurrencyKeyLimit(
+              this.db,
+              environment,
+              queue,
+              concurrencyKey,
+              concurrencyLimit,
+              overriddenBy
+            )
+          )
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      resetConcurrencyKeyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        concurrencyKey: string
+      ) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) => resetQueueConcurrencyKeyLimit(this.db, environment, queue, concurrencyKey))
           .andThen((queue) => getQueueStats(environment, queue));
       },
       /**
@@ -314,6 +374,188 @@ function syncQueueConcurrencyToEngine(environment: AuthenticatedEnvironment, que
       cause: error,
     })).andThen(() => okAsync(queue));
   }
+}
+
+function overrideQueueTotalConcurrencyLimit(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue,
+  totalConcurrencyLimit: number,
+  overriddenBy?: User
+) {
+  const maximum = environment.maximumConcurrencyLimit;
+
+  if (!Number.isFinite(totalConcurrencyLimit) || totalConcurrencyLimit < 0) {
+    return errAsync({
+      type: "invalid_override" as const,
+      message: "Total concurrency limit must be a non-negative number",
+    });
+  }
+
+  if (totalConcurrencyLimit > maximum) {
+    return errAsync({
+      type: "concurrency_limit_exceeds_maximum" as const,
+      message: `Total concurrency limit (${totalConcurrencyLimit}) cannot exceed the environment limit (${maximum})`,
+    });
+  }
+
+  const totalConcurrencyLimitBase = queue.totalConcurrencyLimitOverriddenAt
+    ? queue.totalConcurrencyLimitBase
+    : queue.totalConcurrencyLimit;
+
+  return fromPromise(
+    db.taskQueue.update({
+      where: { id: queue.id },
+      data: {
+        totalConcurrencyLimit,
+        totalConcurrencyLimitBase: totalConcurrencyLimitBase ?? null,
+        totalConcurrencyLimitOverriddenAt: new Date(),
+        totalConcurrencyLimitOverriddenBy: overriddenBy?.id ?? null,
+      },
+    }),
+    (error) => ({
+      type: "queue_update_failed" as const,
+      cause: error,
+    })
+  );
+}
+
+function resetQueueTotalConcurrencyLimit(db: PrismaClientOrTransaction, queue: TaskQueue) {
+  if (queue.totalConcurrencyLimitOverriddenAt === null) {
+    return errAsync({ type: "queue_not_overridden" as const });
+  }
+
+  return fromPromise(
+    db.taskQueue.update({
+      where: { id: queue.id },
+      data: {
+        totalConcurrencyLimit: queue.totalConcurrencyLimitBase,
+        totalConcurrencyLimitBase: null,
+        totalConcurrencyLimitOverriddenAt: null,
+        totalConcurrencyLimitOverriddenBy: null,
+      },
+    }),
+    (error) => ({
+      type: "queue_update_failed" as const,
+      cause: error,
+    })
+  );
+}
+
+/**
+ * The total limit key is separate from the per-queue limit key that pause zeroes,
+ * so it syncs regardless of the paused state.
+ */
+function syncQueueTotalConcurrencyToEngine(
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  if (typeof queue.totalConcurrencyLimit === "number") {
+    return fromPromise(
+      updateQueueTotalConcurrencyLimits(environment, queue.name, queue.totalConcurrencyLimit),
+      (error) => ({
+        type: "sync_queue_concurrency_to_engine_failed" as const,
+        cause: error,
+      })
+    ).andThen(() => okAsync(queue));
+  }
+
+  return fromPromise(removeQueueTotalConcurrencyLimits(environment, queue.name), (error) => ({
+    type: "sync_queue_concurrency_to_engine_failed" as const,
+    cause: error,
+  })).andThen(() => okAsync(queue));
+}
+
+function overrideQueueConcurrencyKeyLimit(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue,
+  concurrencyKey: string,
+  concurrencyLimit: number,
+  overriddenBy?: User
+) {
+  const maximum = environment.maximumConcurrencyLimit;
+
+  if (!Number.isFinite(concurrencyLimit) || concurrencyLimit < 0) {
+    return errAsync({
+      type: "invalid_override" as const,
+      message: "Concurrency limit must be a non-negative number",
+    });
+  }
+
+  if (concurrencyLimit > maximum) {
+    return errAsync({
+      type: "concurrency_limit_exceeds_maximum" as const,
+      message: `Concurrency limit (${concurrencyLimit}) cannot exceed the environment limit (${maximum})`,
+    });
+  }
+
+  return fromPromise(
+    engine.runQueue.updateQueueConcurrencyKeyLimit(
+      environment,
+      queue.name,
+      concurrencyKey,
+      concurrencyLimit
+    ),
+    (error) => {
+      if (error instanceof RunQueueConcurrencyKeyLimitExceededError) {
+        return { type: "too_many_key_overrides" as const, message: error.message };
+      }
+      return { type: "sync_queue_concurrency_to_engine_failed" as const, cause: error };
+    }
+  )
+    .andThen(() =>
+      fromPromise(
+        db.taskQueueConcurrencyKeyOverride.upsert({
+          where: { taskQueueId_concurrencyKey: { taskQueueId: queue.id, concurrencyKey } },
+          create: {
+            taskQueueId: queue.id,
+            concurrencyKey,
+            concurrencyLimit,
+            overriddenBy: overriddenBy?.id ?? null,
+          },
+          update: {
+            concurrencyLimit,
+            overriddenAt: new Date(),
+            overriddenBy: overriddenBy?.id ?? null,
+          },
+        }),
+        (error) => ({
+          type: "queue_update_failed" as const,
+          cause: error,
+        })
+      )
+    )
+    .andThen(() => okAsync(queue));
+}
+
+function resetQueueConcurrencyKeyLimit(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue,
+  concurrencyKey: string
+) {
+  return fromPromise(
+    db.taskQueueConcurrencyKeyOverride.deleteMany({
+      where: { taskQueueId: queue.id, concurrencyKey },
+    }),
+    (error) => ({
+      type: "queue_update_failed" as const,
+      cause: error,
+    })
+  ).andThen((deleted) => {
+    if (deleted.count === 0) {
+      return errAsync({ type: "queue_not_overridden" as const });
+    }
+
+    return fromPromise(
+      engine.runQueue.removeQueueConcurrencyKeyLimit(environment, queue.name, concurrencyKey),
+      (error) => ({
+        type: "sync_queue_concurrency_to_engine_failed" as const,
+        cause: error,
+      })
+    ).andThen(() => okAsync(queue));
+  });
 }
 
 function getQueueStats(environment: AuthenticatedEnvironment, queue: TaskQueue) {

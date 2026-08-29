@@ -660,6 +660,7 @@ async function upsertWorkerQueueRecord(
       });
     } else {
       const hasOverride = taskQueue.concurrencyLimitOverriddenAt !== null;
+      const hasTotalOverride = taskQueue.totalConcurrencyLimitOverriddenAt !== null;
 
       taskQueue = await prisma.taskQueue.update({
         where: {
@@ -672,7 +673,8 @@ async function upsertWorkerQueueRecord(
           // If overridden, keep current limit and update base; otherwise update limit normally
           concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
           concurrencyLimitBase: hasOverride ? concurrencyLimit : undefined,
-          totalConcurrencyLimit,
+          totalConcurrencyLimit: hasTotalOverride ? undefined : totalConcurrencyLimit,
+          totalConcurrencyLimitBase: hasTotalOverride ? totalConcurrencyLimit : undefined,
         },
       });
     }
