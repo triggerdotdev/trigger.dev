@@ -877,6 +877,39 @@ function QueuesWithMetricsView() {
                           queue.paused ? "opacity-50" : undefined,
                           queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                         )}
+                        // The combined-limit hint is a tooltip button, so it renders beside the
+                        // link (trailing) rather than nested inside the <a>; the number stays the
+                        // link.
+                        trailingContent={
+                          queue.concurrency?.combined?.current != null ? (
+                            <SimpleTooltip
+                              disableHoverableContent
+                              buttonClassName="-ml-1 cursor-default"
+                              button={
+                                <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px] group-hover/table-row:text-text-bright">
+                                  (
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}
+                                  )
+                                </span>
+                              }
+                              content={
+                                <>
+                                  Combined limit: at most{" "}
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}{" "}
+                                  runs across all concurrency keys of this queue. The main limit
+                                  applies to each key separately.
+                                </>
+                              }
+                              className="max-w-[260px]"
+                            />
+                          ) : undefined
+                        }
                       >
                         {queue.concurrencyLimitOverridePercent !== null ? (
                           <>
@@ -888,34 +921,6 @@ function QueuesWithMetricsView() {
                         ) : (
                           limit
                         )}
-                        {queue.concurrency?.combined?.current != null ? (
-                          <SimpleTooltip
-                            disableHoverableContent
-                            buttonClassName="ml-1 cursor-default"
-                            button={
-                              <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px] group-hover/table-row:text-text-bright">
-                                (
-                                {Math.min(
-                                  queue.concurrency.combined.current,
-                                  environment.concurrencyLimit
-                                )}
-                                )
-                              </span>
-                            }
-                            content={
-                              <>
-                                Combined limit: at most{" "}
-                                {Math.min(
-                                  queue.concurrency.combined.current,
-                                  environment.concurrencyLimit
-                                )}{" "}
-                                runs across all concurrency keys of this queue. The main limit
-                                applies to each key separately.
-                              </>
-                            }
-                            className="max-w-[260px]"
-                          />
-                        ) : null}
                       </TableCell>
                       <TableCell
                         to={queueDetailPath}
