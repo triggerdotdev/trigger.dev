@@ -79,16 +79,15 @@ export function useTaskTrigger<TTask extends AnyTask>(
      */
     const queueOption = options?.queue;
     const queueName = typeof queueOption === "string" ? queueOption : queueOption?.[0];
-    const gates =
-      Array.isArray(queueOption) && queueOption.length > 1
-        ? queueOption
-            .slice(1)
-            .map((gate) =>
-              typeof gate === "string"
-                ? { queue: gate }
-                : { queue: gate.name, concurrencyKey: gate.concurrencyKey }
-            )
-        : undefined;
+    const gates = Array.isArray(queueOption)
+      ? queueOption
+          .slice(1)
+          .map((gate) =>
+            typeof gate === "string"
+              ? { queue: gate }
+              : { queue: gate.name, concurrencyKey: gate.concurrencyKey }
+          )
+      : undefined;
 
     const handle = await apiClient.triggerTask(id, {
       payload: payloadPacket.data,
