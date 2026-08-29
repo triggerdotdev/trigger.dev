@@ -41,6 +41,8 @@ import {
   type RouterCheckpoint,
   type SessionRouteTable,
   type SessionStreamRecord,
+  type AnySessionChannel,
+  type SessionChannelName,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -107,6 +109,7 @@ type ToolCallOptions = {
 import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
 import {
+  type SessionChannelHandleFor,
   type SessionHandle,
   type SessionPipeStreamOptions,
   sessions,
@@ -11849,6 +11852,17 @@ export const chat = {
   response: chatResponse,
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
+  /** The current chat.agent run's Session handle. See {@link SessionHandle}. */
+  session: getChatSession,
+  /**
+   * Open a named side channel on the current chat.agent run's Session: a
+   * durable, cross-run `.in`/`.out` pair addressed by `name`, separate from the
+   * chat transcript. Writing its `.in` does not wake a run. Shortcut for
+   * `chat.session().channel(name)`.
+   */
+  channel: <C extends AnySessionChannel = AnySessionChannel>(
+    channel: SessionChannelName<C> | C
+  ): SessionChannelHandleFor<C> => getChatSession().channel<C>(channel),
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
   createStopSignal,
   /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */

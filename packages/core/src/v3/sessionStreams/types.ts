@@ -47,7 +47,8 @@ export interface SessionStreamManager {
   on(
     sessionId: string,
     io: SessionChannelIO,
-    handler: (data: unknown) => void | boolean | Promise<void>
+    handler: (data: unknown) => void | boolean | Promise<void>,
+    channel?: string
   ): { off: () => void };
 
   /**
@@ -57,21 +58,24 @@ export interface SessionStreamManager {
   onRecord?(
     sessionId: string,
     io: SessionChannelIO,
-    handler: (record: SessionStreamRecord) => void | boolean | Promise<void>
+    handler: (record: SessionStreamRecord) => void | boolean | Promise<void>,
+    channel?: string
   ): { off: () => void };
 
   /** Wait for the next record on the given channel (buffered or live). */
   once(
     sessionId: string,
     io: SessionChannelIO,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<unknown>;
 
   /** Wait for and consume the next record, including its durable metadata. */
   onceRecord?(
     sessionId: string,
     io: SessionChannelIO,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<SessionStreamRecord>;
 
   /**
@@ -83,23 +87,28 @@ export interface SessionStreamManager {
     sessionId: string,
     io: SessionChannelIO,
     predicate: SessionStreamRecordPredicate,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<SessionStreamRecord>;
 
   /** Non-blocking peek at the head of the channel buffer. */
-  peek(sessionId: string, io: SessionChannelIO): unknown | undefined;
+  peek(sessionId: string, io: SessionChannelIO, channel?: string): unknown | undefined;
 
   /** Non-blocking peek at the head record, including its durable metadata. */
-  peekRecord?(sessionId: string, io: SessionChannelIO): SessionStreamRecord | undefined;
+  peekRecord?(
+    sessionId: string,
+    io: SessionChannelIO,
+    channel?: string
+  ): SessionStreamRecord | undefined;
 
   /** Last S2 sequence number seen on the given channel. */
-  lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
+  lastSeqNum(sessionId: string, io: SessionChannelIO, channel?: string): number | undefined;
 
   /** Advance the last-seen sequence number (prevents SSE replay after `.wait` resume). */
-  setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
+  setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number, channel?: string): void;
 
   /** Consume one exact record delivered through the waitpoint path. */
-  consumeRecord?(sessionId: string, io: SessionChannelIO, seqNum: number): void;
+  consumeRecord?(sessionId: string, io: SessionChannelIO, seqNum: number, channel?: string): void;
 
   /**
    * Highest sequence number that is safe to persist as consumed. When a later
@@ -111,7 +120,11 @@ export interface SessionStreamManager {
    * `turn-complete` control record so the next worker boot can resume
    * the channel from this point without replaying processed messages.
    */
-  lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
+  lastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    channel?: string
+  ): number | undefined;
 
   /**
    * Seed the committed-consume cursor at worker boot — e.g. from the
@@ -119,7 +132,12 @@ export interface SessionStreamManager {
    * `.out`. Monotonic: only ever advances forward, never backwards. Existing
    * unconsumed records still constrain {@link lastDispatchedSeqNum}.
    */
-  setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
+  setLastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    seqNum: number,
+    channel?: string
+  ): void;
 
   /**
    * Set a per-stream lower-bound SSE timestamp. Records whose timestamp
@@ -129,16 +147,21 @@ export interface SessionStreamManager {
    *
    * Pass `undefined` to clear the filter.
    */
-  setMinTimestamp(sessionId: string, io: SessionChannelIO, minTimestamp: number | undefined): void;
+  setMinTimestamp(
+    sessionId: string,
+    io: SessionChannelIO,
+    minTimestamp: number | undefined,
+    channel?: string
+  ): void;
 
   /** Remove and discard the first buffered record. Returns true if one was removed. */
-  shiftBuffer(sessionId: string, io: SessionChannelIO): boolean;
+  shiftBuffer(sessionId: string, io: SessionChannelIO, channel?: string): boolean;
 
   /** Abort the SSE tail while preserving buffered records. Called before `.wait` suspends. */
-  disconnectStream(sessionId: string, io: SessionChannelIO): void;
+  disconnectStream(sessionId: string, io: SessionChannelIO, channel?: string): void;
 
   /** Re-open a channel closed by {@link disconnectStream}, registering nothing. */
-  reconnectStream?(sessionId: string, io: SessionChannelIO): void;
+  reconnectStream?(sessionId: string, io: SessionChannelIO, channel?: string): void;
 
   /** Clear all `.on` handlers; abort tails without pending once-waiters. */
   clearHandlers(): void;

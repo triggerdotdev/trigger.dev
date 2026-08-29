@@ -96,7 +96,7 @@ describe("SessionOutputChannel initializeSessionStream cache", () => {
     await Promise.all([p1.waitUntilComplete(), p2.waitUntilComplete(), p3.waitUntilComplete()]);
 
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith("session-1", "out", undefined);
+    expect(spy).toHaveBeenCalledWith("session-1", "out", undefined, undefined);
   });
 
   it("evicts on initialize failure so the next call retries instead of returning a poisoned entry", async () => {
@@ -150,8 +150,8 @@ describe("SessionOutputChannel initializeSessionStream cache", () => {
     ]);
 
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy).toHaveBeenCalledWith("session-a", "out", undefined);
-    expect(spy).toHaveBeenCalledWith("session-b", "out", undefined);
+    expect(spy).toHaveBeenCalledWith("session-a", "out", undefined, undefined);
+    expect(spy).toHaveBeenCalledWith("session-b", "out", undefined, undefined);
   });
 
   it("evicts the cache when a writer's wait() rejects (simulated stale-token failure)", async () => {

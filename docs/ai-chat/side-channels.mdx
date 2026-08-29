@@ -1,0 +1,172 @@
+---
+title: "Side channels"
+sidebarTitle: "Side channels"
+description: "Named, durable stream pairs on a Session, separate from the chat transcript. A side channel outlives a single run, is shared across runs, and its input does not wake a run."
+---
+
+**A side channel is a named `.in`/`.out` stream pair on a [Session](/ai-chat/sessions), separate from the reserved chat transcript.** Like the transcript it is durable and cross-run, but it is addressed by a name, and writing its `.in` does not wake or trigger a run.
+
+Side channels are a Session primitive, not a chat feature. Any Session can carry them: a `chat.agent`, a task-bound Session, or an external process holding your secret key. Use one to stream out-of-band data alongside (or instead of) a transcript: a feed of browser screenshots, progress telemetry, or a control channel the client writes to. Many clients can read the channel live while a run, or your backend, produces it.
+
+```mermaid
+flowchart LR
+  A["chat.agent run"] -- "frames" --> OUT([channel .out])
+  OUT --> C[Browser clients]
+  C -- "control (pause, viewport)" --> IN([channel .in])
+  IN -. "observed, no run wake" .-> A
+```
+
+## Define the channel once
+
+Declare the channel's record types in one shared module with `sessions.defineChannel`, then import it on both the producer and the consumer so the types line up.
+
+```ts /trigger/channels.ts
+import { sessions } from "@trigger.dev/sdk";
+
+export type ScreenshotFrame = { url: string; step: number };
+export type ViewportControl = { paused: boolean };
+
+export const screenshots = sessions.defineChannel<{
+  out: ScreenshotFrame;
+  in: ViewportControl;
+}>("screenshots");
+```
+
+## Produce on `.out` from a chat.agent
+
+Inside a `chat.agent` run, `chat.channel(...)` opens a channel on the current run's Session. Writing `.out` is durable and cross-run, and wakes nothing. The client control arrives on `.in.on(...)` without waking a run:
+
+```ts /trigger/browser-agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { screenshots } from "./channels";
+
+export const browserAgent = chat.agent({
+  id: "browser-agent",
+  run: async ({ messages, signal }) => {
+    const frames = chat.channel(screenshots);
+
+    frames.in.on((control) => setPaused(control.paused)); // control: ViewportControl
+
+    driveBrowser({
+      signal,
+      onFrame: (frame) => frames.out.append(frame), // frame: ScreenshotFrame
+    });
+
+    return streamText({ model, messages, abortSignal: signal }); // transcript, as usual
+  },
+});
+```
+
+<Note>
+  A side channel's `.in` is subscribe-only from the run's side (`.on` / `.once` / `.peek`). `.wait()`
+  is not supported on a named channel, because a side channel never suspends or wakes a run.
+</Note>
+
+## From a task or your backend
+
+Nothing here needs a `chat.agent`. Open a channel on any Session by id with `sessions.open(sessionId).channel(...)`; the handle exposes the same `.out` (`append` / `pipe` / `writer`) and `.in` (`send` / `on` / `once` / `peek`) surface as the reserved pair. Create the Session with [`sessions.start`](/ai-chat/sessions) bound to any task, then produce from that task's run:
+
+```ts /trigger/render-frames.ts
+import { sessions, task } from "@trigger.dev/sdk";
+import { screenshots } from "./channels";
+
+export const renderFrames = task({
+  id: "render-frames",
+  run: async (payload: { sessionId: string; steps: number }) => {
+    const frames = sessions.open(payload.sessionId).channel(screenshots);
+    for (let step = 1; step <= payload.steps; step++) {
+      frames.in.on((control) => setPaused(control.paused));
+      await frames.out.append({ url: await renderStep(step), step });
+    }
+  },
+});
+```
+
+Or produce from your own backend, which holds the secret key that `.out` writes require:
+
+```ts Your backend code
+import { sessions } from "@trigger.dev/sdk";
+import { screenshots } from "./trigger/channels";
+
+await sessions.open(sessionId).channel(screenshots).out.append({ url, step });
+```
+
+Either way the client reads the channel the same way, below.
+
+## Read `.out` in React
+
+`useSessionStreamChannel` reads one side of a channel and updates a `records` array. Pass the channel definition as the type argument so `records` is typed from it. `from: "latest"` with `maxRecords: 1` gives a live "latest frame" view with bounded memory:
+
+```tsx app/components/Screencast.tsx
+"use client";
+
+import { useSessionStreamChannel } from "@trigger.dev/react-hooks";
+import type { screenshots } from "../trigger/channels";
+
+export function Screencast({ sessionId, accessToken }: { sessionId: string; accessToken: string }) {
+  const { records } = useSessionStreamChannel<typeof screenshots>("screenshots", {
+    sessionId,
+    accessToken,
+    io: "out",
+    from: "latest",
+    maxRecords: 1,
+  });
+
+  const latest = records[0]; // ScreenshotFrame | undefined
+  return latest ? <img src={latest.url} alt={`frame ${latest.step}`} /> : <p>Waiting…</p>;
+}
+```
+
+`useSessionStreamChannel` has the same options and return shape as [`useSessionStream`](/realtime/react-hooks/session-stream) (`io`, `from`, `maxRecords`, `lastEventId`, `onRecords`, `onControl`, `throttleInMs`, `timeoutInSeconds`), plus the typed channel generic. A bare name string works without the generic, with `records` typed `unknown`.
+
+The client writes the `.in` control with a session handle: `sessions.open(sessionId).channel(screenshots).in.send({ paused: true })`. This appends to the channel and does not wake a run.
+
+## From MCP
+
+An MCP client can read and write a session's channels with two [MCP tools](/mcp-tools): `read_session_channel` drains a channel's records (with an optional `timeoutInSeconds` to wait for the next one), and `write_session_channel` appends a record to a channel's `.in` to send control input to a running agent. Reading `.out` gives the producer feed (e.g. the screencast); writing `.in` does not wake a run, and `.out` stays producer-only.
+
+## Retention
+
+A side channel's streams are bounded by the same retention as the rest of your realtime streams: streams are created on demand when first written and age out on your plan's retention window, with empty streams cleaned up automatically. A channel needs no separate setup or trimming.
+
+<Warning>
+  Records are capped at ~1 MiB each. Stream a pointer, not bytes: write large payloads (a screenshot
+  PNG) to object storage and put the URL on the channel. A base64 image inflates ~33% and will exceed
+  the cap. Pointers also keep the channel small.
+</Warning>
+
+## Auth
+
+A side channel is covered by the session's public access token: a token scoped to `read:sessions:{id}` / `write:sessions:{id}` grants every channel of that session. Mint a narrower token scoped to a single channel with `read:sessions:{id}:channels:{name}`. Writing a channel's `.out` requires secret-key auth (only the agent run), so a browser cannot forge frames; `.in` is writable with the session token. See [Realtime auth](/realtime/auth).
+
+### Scope tokens to the channel, not the whole session
+
+Two properties of the session token are worth designing around when a browser only needs one channel:
+
+- **A session-wide token grants every channel, including ones added later.** `read:sessions:{id}` reads the reserved chat transcript and all named channels. If a client should see only the screencast frames and not the chat, give it `read:sessions:{id}:channels:screencast` instead. The channel-scoped token reads only that channel: it cannot read another channel or the reserved transcript.
+- **A session write token can write the reserved `.in` too, not just a channel's.** `write:sessions:{id}` can send a chat message on the reserved `.in`, so a client meant only to send control input on one channel should hold `write:sessions:{id}:channels:{name}`, which confines it to that channel's `.in`.
+
+```ts Mint a channel-scoped token (your backend)
+import { auth } from "@trigger.dev/sdk";
+
+const token = await auth.createPublicToken({
+  scopes: { read: { sessions: `${sessionId}:channels:screencast` } },
+});
+```
+
+<Note>
+  A session's `externalId` cannot contain `:channels:`, since that is the delimiter the channel scope
+  uses. `sessions.start` rejects it. Any other string, including single colons, is fine.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="layer-group" href="/ai-chat/sessions">
+    The durable, cross-run primitive side channels are built on.
+  </Card>
+  <Card title="Read a session channel in React" icon="react" href="/realtime/react-hooks/session-stream">
+    The `useSessionStream` hook `useSessionStreamChannel` mirrors.
+  </Card>
+</CardGroup>

@@ -271,3 +271,40 @@ Close an agent chat conversation. The agent exits its loop gracefully. Without t
 <Callout type="warning">
   The `start_agent_chat`, `send_agent_message`, and `close_agent_chat` tools are write operations and are not available in readonly mode.
 </Callout>
+
+## Session Channel Tools
+
+Read and write a session's realtime streams: a named [side channel](/ai-chat/side-channels) or the reserved chat transcript pair. Use these to observe an agent's out-of-band output (a screencast, telemetry) or to send it control input.
+
+### read_session_channel
+
+Read records from a session's realtime stream. By default it returns the records that exist right now after an optional cursor and closes, so it is a point-in-time drain, not a live subscription. Set `timeoutInSeconds` to wait for the next record when none exist yet.
+
+**Parameters:**
+- `sessionId` (required): the session id (`session_*`) or the externalId it was created with
+- `channel` (optional): the named side channel to read. Omit to read the reserved chat transcript pair
+- `io` (optional, default: `out`): which side to read, `out` (producer feed) or `in` (client input)
+- `afterEventId` (optional): cursor. Only return records after this event id. Use the `nextCursor` from a prior read to page forward
+- `maxRecords` (optional, default: `100`): maximum records to return
+- `timeoutInSeconds` (optional): wait up to this many seconds for at least one record when none exist yet
+
+**Example usage:**
+- `"Read the latest frames on the screencast channel for this session"`
+- `"Wait for the next control message on the session's status channel"`
+
+### write_session_channel
+
+Append one record to a named side channel's `in` stream. Sends control input to a running agent (e.g. a pause command) without waking or triggering a run. The reserved transcript and a channel's `out` side are not writable here; `out` is producer-only.
+
+**Parameters:**
+- `sessionId` (required): the session id or externalId
+- `channel` (required): the named side channel to write to
+- `value` (required): the record to append. Pass an object for a structured record (e.g. `{ paused: true }`) or a string for a raw one
+
+**Example usage:**
+- `"Pause the screencast on this session"`
+- `"Send { paused: true } to the viewport channel"`
+
+<Callout type="warning">
+  `write_session_channel` is a write operation and is not available in readonly mode.
+</Callout>
