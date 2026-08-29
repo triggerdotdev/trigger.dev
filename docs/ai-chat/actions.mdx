@@ -70,7 +70,34 @@ onAction: async ({ action, messages }) => {
 }
 ```
 
-This is useful for actions that both mutate state and want a fresh model response (regenerate-from-here, retry-with-different-style). Persistence is your responsibility inside `onAction` itself; you have access to the streamed response object.
+This is useful for actions that both mutate state and want a fresh model response (regenerate-from-here, retry-with-different-style).
+
+### Actions and persistence
+
+An action is not a turn, so `onTurnComplete` never fires — and that is where an app that owns its own transcript normally writes. What that means depends on which persistence model you use.
+
+**Platform-managed** (no `hydrateMessages`): nothing to do. After an action that changed the conversation — a `chat.history` mutation, a response returned from `onAction`, or both — the runtime writes the snapshot, so the change survives the run ending.
+
+**Your own store** (`hydrateMessages` registered): the runtime deliberately does not write, because your store is the source of truth. A history mutation and a returned response both live only in the running worker until you persist them, and a continuation rehydrates from your store, not from what the worker had in memory. `chat.pipeAndCapture` hands you the same assistant message the runtime would have captured:
+
+```ts
+onAction: async ({ action, messages }) => {
+  if (action.type === "undo") {
+    chat.history.slice(0, -2);
+    await db.deleteLastExchange(chatId); // the rollback is yours to persist
+  }
+
+  if (action.type === "regenerate") {
+    chat.history.slice(0, -1);
+    const { message } = await chat.pipeAndCapture(
+      streamText({ model: anthropic("claude-sonnet-4-5"), messages })
+    );
+    if (message) await db.saveMessage(message); // and so is the replacement
+  }
+},
+```
+
+Returning the stream instead of piping it yourself still works and still reaches the browser — you just have no message to store, so the next run will not know about it.
 
 ## Gating actions on HITL state
 
