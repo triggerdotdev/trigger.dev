@@ -144,6 +144,55 @@ export function pause(
 export function overrideConcurrencyLimit(
   queue: RetrieveQueueParam,
   concurrencyLimit: number,
+  options?: ApiRequestOptions & { concurrencyKey?: string }
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+  const { concurrencyKey, ...requestOptions } = options ?? {};
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.overrideConcurrencyLimit()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue, concurrencyKey }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  if (concurrencyKey) {
+    return apiClient.overrideQueueConcurrencyKeyLimit(
+      queue,
+      concurrencyKey,
+      concurrencyLimit,
+      $requestOptions
+    );
+  }
+
+  return apiClient.overrideQueueConcurrencyLimit(queue, concurrencyLimit, $requestOptions);
+}
+
+/**
+ * Overrides the total concurrency limit of a queue: the cap on concurrent runs across
+ * all of its `concurrencyKey` values.
+ *
+ * @param queue - The ID of the queue, or the type and name
+ * @param concurrencyLimit - The total concurrency limit to apply
+ * @returns The updated queue state
+ */
+export function overrideTotalConcurrencyLimit(
+  queue: RetrieveQueueParam,
+  concurrencyLimit: number,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<QueueItem> {
   const apiClient = apiClientManager.clientOrThrow();
@@ -151,7 +200,7 @@ export function overrideConcurrencyLimit(
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
-      name: "queues.overrideConcurrencyLimit()",
+      name: "queues.overrideTotalConcurrencyLimit()",
       icon: "queue",
       attributes: {
         ...flattenAttributes({ queue }),
@@ -169,7 +218,43 @@ export function overrideConcurrencyLimit(
     requestOptions
   );
 
-  return apiClient.overrideQueueConcurrencyLimit(queue, concurrencyLimit, $requestOptions);
+  return apiClient.overrideQueueTotalConcurrencyLimit(queue, concurrencyLimit, $requestOptions);
+}
+
+/**
+ * Resets the total concurrency limit of a queue back to its declared value.
+ *
+ * @param queue - The ID of the queue, or the type and name
+ * @returns The updated queue state
+ */
+export function resetTotalConcurrencyLimit(
+  queue: RetrieveQueueParam,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.resetTotalConcurrencyLimit()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.resetQueueTotalConcurrencyLimit(queue, $requestOptions);
 }
 
 /**
@@ -180,9 +265,10 @@ export function overrideConcurrencyLimit(
  */
 export function resetConcurrencyLimit(
   queue: RetrieveQueueParam,
-  requestOptions?: ApiRequestOptions
+  options?: ApiRequestOptions & { concurrencyKey?: string }
 ): ApiPromise<QueueItem> {
   const apiClient = apiClientManager.clientOrThrow();
+  const { concurrencyKey, ...requestOptions } = options ?? {};
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -190,7 +276,7 @@ export function resetConcurrencyLimit(
       name: "queues.resetConcurrencyLimit()",
       icon: "queue",
       attributes: {
-        ...flattenAttributes({ queue }),
+        ...flattenAttributes({ queue, concurrencyKey }),
         ...accessoryAttributes({
           items: [
             {
@@ -204,6 +290,10 @@ export function resetConcurrencyLimit(
     },
     requestOptions
   );
+
+  if (concurrencyKey) {
+    return apiClient.resetQueueConcurrencyKeyLimit(queue, concurrencyKey, $requestOptions);
+  }
 
   return apiClient.resetQueueConcurrencyLimit(queue, $requestOptions);
 }
