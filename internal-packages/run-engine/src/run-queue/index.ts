@@ -2447,6 +2447,7 @@ export class RunQueue {
       const totalConcurrencyLimitKey = this.keys.queueTotalConcurrencyLimitKeyFromQueue(
         message.queue
       );
+      const ckLimitsKey = this.keys.queueCkLimitsKeyFromQueue(message.queue);
       const totalConcurrencyEnabledArg = this.options.totalConcurrencyEnabled ? "1" : "0";
 
       if (ttlInfo) {
@@ -2470,6 +2471,7 @@ export class RunQueue {
           baseQueueKey,
           groupConcurrencyKey,
           totalConcurrencyLimitKey,
+          ckLimitsKey,
           // args
           queueName,
           messageId,
@@ -2509,6 +2511,7 @@ export class RunQueue {
           baseQueueKey,
           groupConcurrencyKey,
           totalConcurrencyLimitKey,
+          ckLimitsKey,
           // args
           queueName,
           messageId,
@@ -2796,6 +2799,7 @@ export class RunQueue {
         runningCounterKey,
         this.keys.queueGroupConcurrencyKeyFromQueue(ckWildcardQueue),
         this.keys.queueTotalConcurrencyLimitKeyFromQueue(ckWildcardQueue),
+        this.keys.queueCkLimitsKeyFromQueue(ckWildcardQueue),
         //args
         ckWildcardQueue,
         String(Date.now()),
@@ -4084,7 +4088,7 @@ return __qmret(0)
     // *Tracked variants of dequeueMessageFromKey and the ack/nack/dlq/release/clear
     // scripts.
     this.redis.defineCommand("enqueueMessageCkTracked", {
-      numberOfKeys: 17,
+      numberOfKeys: 18,
       lua: `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
@@ -4106,6 +4110,7 @@ local baseQueueKey = KEYS[15]
 -- Total-cap keys (KEYS 16-17)
 local groupConcurrencyKey = KEYS[16]
 local totalConcurrencyLimitKey = KEYS[17]
+local ckLimitsKey = KEYS[18]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -4143,6 +4148,12 @@ if enableFastPath == '1' then
         tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
         envLimit
       )
+      if totalConcurrencyEnabled then
+        local perKeyOverride = redis.call('HGET', ckLimitsKey, queueName)
+        if perKeyOverride then
+          queueLimit = math.min(tonumber(perKeyOverride), envLimit)
+        end
+      end
 
       if queueCurrent < queueLimit then
         -- Total-cap gate: a fast-path admit consumes a group slot, so it must
@@ -4254,7 +4265,7 @@ return __qmret(0)
     });
 
     this.redis.defineCommand("enqueueMessageWithTtlCkTracked", {
-      numberOfKeys: 18,
+      numberOfKeys: 19,
       lua: `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
@@ -4277,6 +4288,7 @@ local baseQueueKey = KEYS[16]
 -- Total-cap keys (KEYS 17-18)
 local groupConcurrencyKey = KEYS[17]
 local totalConcurrencyLimitKey = KEYS[18]
+local ckLimitsKey = KEYS[19]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -4316,6 +4328,12 @@ if enableFastPath == '1' then
         tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
         envLimit
       )
+      if totalConcurrencyEnabled then
+        local perKeyOverride = redis.call('HGET', ckLimitsKey, queueName)
+        if perKeyOverride then
+          queueLimit = math.min(tonumber(perKeyOverride), envLimit)
+        end
+      end
 
       if queueCurrent < queueLimit then
         -- Total-cap gate: see enqueueMessageCkTracked.
@@ -4940,7 +4958,7 @@ return results
     // (normal dequeue, TTL-expired, or stale-orphan path — all of which were
     // counted at enqueue time).
     this.redis.defineCommand("dequeueMessagesFromCkQueueTracked", {
-      numberOfKeys: 13,
+      numberOfKeys: 14,
       lua: `
 local ckIndexKey = KEYS[1]
 local queueConcurrencyLimitKey = KEYS[2]
@@ -4955,6 +4973,7 @@ local lengthCounterKey = KEYS[10]
 local runningCounterKey = KEYS[11]
 local groupConcurrencyKey = KEYS[12]
 local totalConcurrencyLimitKey = KEYS[13]
+local ckLimitsKey = KEYS[14]
 
 local ckWildcardName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -5044,7 +5063,15 @@ for _, ckQueueName in ipairs(ckQueues) do
   local ckConcurrencyKey = fullQueueKey .. ':currentConcurrency'
   local ckCurrentConcurrency = tonumber(redis.call('SCARD', ckConcurrencyKey) or '0')
 
-  if ckCurrentConcurrency < queueConcurrencyLimit then
+  local perKeyLimit = queueConcurrencyLimit
+  if totalConcurrencyEnabled then
+    local perKeyOverride = redis.call('HGET', ckLimitsKey, ckQueueName)
+    if perKeyOverride then
+      perKeyLimit = math.min(tonumber(perKeyOverride), envConcurrencyLimit)
+    end
+  end
+
+  if ckCurrentConcurrency < perKeyLimit then
     local messages = redis.call('ZRANGEBYSCORE', fullQueueKey, '-inf', tostring(currentTime), 'WITHSCORES', 'LIMIT', 0, 1)
 
     if #messages >= 2 then
@@ -6535,6 +6562,7 @@ declare module "@internal/redis" {
       baseQueueKey: string,
       groupConcurrencyKey: string,
       totalConcurrencyLimitKey: string,
+      ckLimitsKey: string,
       queueName: string,
       messageId: string,
       messageData: string,
@@ -6572,6 +6600,7 @@ declare module "@internal/redis" {
       baseQueueKey: string,
       groupConcurrencyKey: string,
       totalConcurrencyLimitKey: string,
+      ckLimitsKey: string,
       queueName: string,
       messageId: string,
       messageData: string,
@@ -6606,6 +6635,7 @@ declare module "@internal/redis" {
       runningCounterKey: string,
       groupConcurrencyKey: string,
       totalConcurrencyLimitKey: string,
+      ckLimitsKey: string,
       ckWildcardName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
