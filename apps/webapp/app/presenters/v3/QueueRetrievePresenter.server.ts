@@ -90,7 +90,9 @@ export class QueueRetrievePresenter extends BasePresenter {
     const results = await Promise.all([
       engine.lengthOfQueues(environment, [queue.name]),
       engine.currentConcurrencyOfQueues(environment, [queue.name]),
-      engine.totalConcurrencyOfQueues(environment, [queue.name]),
+      queue.totalConcurrencyLimit != null
+        ? engine.totalConcurrencyOfQueues(environment, [queue.name])
+        : undefined,
     ]);
 
     // Transform queues to include running and queued counts
