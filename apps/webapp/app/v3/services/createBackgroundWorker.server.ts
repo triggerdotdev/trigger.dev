@@ -403,7 +403,7 @@ async function createWorkerTask(
         {
           name: task.queue?.name ?? `task/${task.id}`,
           concurrencyLimit: task.queue?.concurrencyLimit,
-          totalConcurrencyLimit: task.queue?.totalConcurrencyLimit,
+          combinedConcurrencyLimit: task.queue?.combinedConcurrencyLimit,
         },
         task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
@@ -558,7 +558,7 @@ async function createWorkerQueue(
   const taskQueue = await upsertWorkerQueueRecord(
     queueName,
     baseConcurrencyLimit ?? null,
-    queue.totalConcurrencyLimit ?? null,
+    queue.combinedConcurrencyLimit ?? null,
     orderableName,
     queueType,
     worker,

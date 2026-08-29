@@ -40,7 +40,7 @@ export type QueueOptions = {
    *
    * On a queue used with a `concurrencyKey`, `concurrencyLimit` applies to each key value
    * independently — ten active keys with `concurrencyLimit: 5` can run 50 at once. Setting
-   * `totalConcurrencyLimit: 20` bounds the whole queue to 20 while each key still gets at
+   * `combinedConcurrencyLimit: 20` bounds the whole queue to 20 while each key still gets at
    * most `concurrencyLimit`.
    *
    * @example
@@ -49,7 +49,7 @@ export type QueueOptions = {
    * const perUserQueue = queue({
       name: "per-user-queue",
       concurrencyLimit: 1,
-      totalConcurrencyLimit: 10,
+      combinedConcurrencyLimit: 10,
     });
    * ```
    *
@@ -58,5 +58,5 @@ export type QueueOptions = {
    * Omit for no total cap. Like `concurrencyLimit`, a value of `0` holds every keyed run in
    * the queue rather than removing the cap.
    */
-  totalConcurrencyLimit?: number;
+  combinedConcurrencyLimit?: number;
 };
