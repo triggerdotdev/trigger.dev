@@ -366,6 +366,64 @@ describe("RunQueue total concurrency limit", () => {
   );
 
   redisTest(
+    "reconciles a member whose run went back to waiting in a queue",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        const keys = testOptions.keys;
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueTotalConcurrencyLimits(authenticatedEnvDev, "task/my-task", 1);
+
+        /**
+         * A run on ANOTHER queue whose message exists and is queued there, leaked
+         * into this queue's group set by an unmirrored release. It can never be a
+         * dequeue candidate here, so only the reconcile can free the slot: queued
+         * and in-flight are mutually exclusive, so a queued member holds nothing.
+         */
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "x0",
+            queue: "other-queue",
+            concurrencyKey: "ck-x",
+            timestamp: Date.now() + 3_600_000,
+          }),
+          workerQueue: "main",
+        });
+        await queue.redis.sadd(
+          keys.queueGroupConcurrencyKey(authenticatedEnvDev, "task/my-task"),
+          "x0"
+        );
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r0",
+            concurrencyKey: "ck-a",
+            timestamp: Date.now() - 1000,
+          }),
+          workerQueue: "main",
+        });
+
+        const r0Admitted = await waitFor(async () => {
+          await queue.redis.del(
+            `${keys.queueGroupConcurrencyKey(authenticatedEnvDev, "task/my-task")}:reconcileLock`
+          );
+          const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main", {
+            blockingPop: false,
+          });
+          return next?.messageId === "r0";
+        }, 30_000);
+        expect(r0Admitted).toBe(true);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "reconciles a large leaked backlog across bounded passes",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer, true);
