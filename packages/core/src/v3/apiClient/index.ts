@@ -1765,7 +1765,7 @@ export class ApiClient {
     );
   }
 
-  overrideQueueTotalConcurrencyLimit(
+  overrideQueueCombinedConcurrencyLimit(
     queue: RetrieveQueueParam,
     concurrencyLimit: number,
     requestOptions?: ZodFetchOptions
@@ -1777,7 +1777,7 @@ export class ApiClient {
 
     return zodfetch(
       QueueItem,
-      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/total/override`,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/combined/override`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
@@ -1790,7 +1790,7 @@ export class ApiClient {
     );
   }
 
-  resetQueueTotalConcurrencyLimit(queue: RetrieveQueueParam, requestOptions?: ZodFetchOptions) {
+  resetQueueCombinedConcurrencyLimit(queue: RetrieveQueueParam, requestOptions?: ZodFetchOptions) {
     const type = typeof queue === "string" ? "id" : queue.type;
     const value = typeof queue === "string" ? queue : queue.name;
 
@@ -1798,7 +1798,7 @@ export class ApiClient {
 
     return zodfetch(
       QueueItem,
-      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/total/reset`,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/combined/reset`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
