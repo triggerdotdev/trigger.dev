@@ -77,6 +77,7 @@ import {
   type InferChatUIMessageFromTools,
   PENDING_MESSAGE_INJECTED_TYPE,
   upsertIncomingMessage,
+  chatRunTags,
 } from "./ai-shared.js";
 import { auth } from "./auth.js";
 import { locals } from "./locals.js";
@@ -11587,9 +11588,10 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
-    const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
-    // SessionTriggerConfig.tags allows at most 10; the auto chat tag takes one slot.
-    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 10);
+    const tags = chatRunTags(
+      params.chatId,
+      params.triggerConfig?.tags ?? options?.triggerConfig?.tags
+    );
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};

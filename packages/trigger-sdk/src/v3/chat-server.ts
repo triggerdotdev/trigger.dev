@@ -71,6 +71,7 @@ import {
 } from "../imports/ai-runtime.js";
 import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
+import { chatRunTags } from "./ai-shared.js";
 
 // `StreamTextResult` is defined locally rather than imported from `ai`: its
 // generic arity diverged (v6 `StreamTextResult<TOOLS, OUTPUT>`, v7
@@ -528,9 +529,8 @@ async function openHandoverSession(opts: {
 
   // Merge the customer's trigger options. `handover-prepare` and `chatId` in
   // `basePayload` are ours and can't be overridden; the `chat:{chatId}` tag is
-  // prepended (SessionTriggerConfig.tags caps at 10).
-  const userTags = opts.triggerConfig?.tags ?? [];
-  const tags = [`chat:${chatId}`, ...userTags].slice(0, 10);
+  // prepended.
+  const tags = chatRunTags(chatId, opts.triggerConfig?.tags);
 
   const triggerConfig: SessionTriggerConfig = {
     basePayload: {

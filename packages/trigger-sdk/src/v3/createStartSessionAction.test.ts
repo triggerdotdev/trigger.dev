@@ -120,6 +120,19 @@ describe("chat.createStartSessionAction — runtime", () => {
     ]);
   });
 
+  it("omits the chat tag when the chat ID would exceed the tag length limit", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { tags: ["org:acme"] },
+    });
+    const longChatId = "c".repeat(200);
+    await start({ chatId: longChatId });
+
+    expect(lastStartBody?.triggerConfig.tags).toEqual(["org:acme"]);
+    expect(lastStartBody?.externalId).toBe(longChatId);
+  });
+
   it("forwards maxDuration, region, and lockToVersion from triggerConfig", async () => {
     installStartFixture();
 
