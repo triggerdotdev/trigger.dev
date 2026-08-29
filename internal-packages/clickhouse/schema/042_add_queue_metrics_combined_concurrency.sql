@@ -1,22 +1,22 @@
 -- +goose Up
 
--- Total-concurrency gauges: total_running is the in-flight count across ALL
--- concurrency-key variants of a queue (the groupConcurrency set), total_limit the
+-- Total-concurrency gauges: combined_running is the in-flight count across ALL
+-- concurrency-key variants of a queue (the groupConcurrency set), combined_limit the
 -- RAW stored total cap (0 = none, readers clamp against max_env_limit). Emitted on
 -- base-queue gauge rows only. Per-key gauge rows now carry the EFFECTIVE per-key
 -- limit in queue_limit (override-aware), surfaced in the ck tier as max_limit.
 
 ALTER TABLE trigger_dev.queue_metrics_raw_v1
-  ADD COLUMN IF NOT EXISTS total_running UInt32 DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS total_limit UInt32 DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS combined_running UInt32 DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS combined_limit UInt32 DEFAULT 0;
 
 ALTER TABLE trigger_dev.queue_metrics_v1
-  ADD COLUMN IF NOT EXISTS max_total_running SimpleAggregateFunction(max, UInt32),
-  ADD COLUMN IF NOT EXISTS max_total_limit SimpleAggregateFunction(max, UInt32);
+  ADD COLUMN IF NOT EXISTS max_combined_running SimpleAggregateFunction(max, UInt32),
+  ADD COLUMN IF NOT EXISTS max_combined_limit SimpleAggregateFunction(max, UInt32);
 
 ALTER TABLE trigger_dev.queue_metrics_5m_v1
-  ADD COLUMN IF NOT EXISTS max_total_running SimpleAggregateFunction(max, UInt32),
-  ADD COLUMN IF NOT EXISTS max_total_limit SimpleAggregateFunction(max, UInt32);
+  ADD COLUMN IF NOT EXISTS max_combined_running SimpleAggregateFunction(max, UInt32),
+  ADD COLUMN IF NOT EXISTS max_combined_limit SimpleAggregateFunction(max, UInt32);
 
 ALTER TABLE trigger_dev.queue_metrics_ck_v1
   ADD COLUMN IF NOT EXISTS max_limit SimpleAggregateFunction(max, UInt32);
@@ -45,8 +45,8 @@ SELECT
   max(env_limit)          AS max_env_limit,
   max(ck_backlogged)      AS max_ck_backlogged,
   max(ck_max_wait_ms)     AS max_ck_wait_ms,
-  max(total_running)      AS max_total_running,
-  max(total_limit)        AS max_total_limit,
+  max(combined_running)      AS max_combined_running,
+  max(combined_limit)        AS max_combined_limit,
   sumIf(wait_ms, op = 'started' AND concurrency_key = '')                 AS wait_ms_sum,
   countIf(op = 'started' AND wait_ms > 0 AND concurrency_key = '')        AS wait_ms_count,
   quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0 AND concurrency_key = '') AS wait_quantiles
@@ -73,8 +73,8 @@ SELECT
   max(env_limit)          AS max_env_limit,
   max(ck_backlogged)      AS max_ck_backlogged,
   max(ck_max_wait_ms)     AS max_ck_wait_ms,
-  max(total_running)      AS max_total_running,
-  max(total_limit)        AS max_total_limit,
+  max(combined_running)      AS max_combined_running,
+  max(combined_limit)        AS max_combined_limit,
   sumIf(wait_ms, op = 'started' AND concurrency_key = '')                 AS wait_ms_sum,
   countIf(op = 'started' AND wait_ms > 0 AND concurrency_key = '')        AS wait_ms_count,
   quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0 AND concurrency_key = '') AS wait_quantiles
@@ -104,9 +104,9 @@ DROP VIEW IF EXISTS trigger_dev.queue_metrics_ck_mv_v1;
 DROP VIEW IF EXISTS trigger_dev.queue_metrics_5m_mv_v1;
 DROP VIEW IF EXISTS trigger_dev.queue_metrics_mv_v1;
 ALTER TABLE trigger_dev.queue_metrics_ck_v1 DROP COLUMN IF EXISTS max_limit;
-ALTER TABLE trigger_dev.queue_metrics_5m_v1 DROP COLUMN IF EXISTS max_total_running, DROP COLUMN IF EXISTS max_total_limit;
-ALTER TABLE trigger_dev.queue_metrics_v1 DROP COLUMN IF EXISTS max_total_running, DROP COLUMN IF EXISTS max_total_limit;
-ALTER TABLE trigger_dev.queue_metrics_raw_v1 DROP COLUMN IF EXISTS total_running, DROP COLUMN IF EXISTS total_limit;
+ALTER TABLE trigger_dev.queue_metrics_5m_v1 DROP COLUMN IF EXISTS max_combined_running, DROP COLUMN IF EXISTS max_combined_limit;
+ALTER TABLE trigger_dev.queue_metrics_v1 DROP COLUMN IF EXISTS max_combined_running, DROP COLUMN IF EXISTS max_combined_limit;
+ALTER TABLE trigger_dev.queue_metrics_raw_v1 DROP COLUMN IF EXISTS combined_running, DROP COLUMN IF EXISTS combined_limit;
 
 -- Recreate the pre-042 materialized views (the definitions from 036) so ingestion keeps
 -- feeding every aggregate table after a rollback.
