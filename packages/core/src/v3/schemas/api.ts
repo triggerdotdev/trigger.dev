@@ -309,6 +309,15 @@ export const TriggerTaskRequestBody = z
             concurrencyLimit: z.number().int().optional(),
           })
           .optional(),
+        gates: z
+          .array(
+            z.object({
+              queue: z.string().max(128),
+              concurrencyKey: z.string().max(128).optional(),
+            })
+          )
+          .max(2)
+          .optional(),
         concurrencyKey: ConcurrencyKeySchema.optional(),
         delay: z.string().or(z.coerce.date()).optional(),
         idempotencyKey: z
@@ -414,6 +423,15 @@ export const BatchTriggerTaskItem = z.object({
         .object({
           name: z.string(),
         })
+        .optional(),
+      gates: z
+        .array(
+          z.object({
+            queue: z.string().max(128),
+            concurrencyKey: z.string().max(128).optional(),
+          })
+        )
+        .max(2)
         .optional(),
       tags: RunTags.optional(),
       test: z.boolean().optional(),

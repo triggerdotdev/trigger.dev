@@ -437,6 +437,7 @@ async function createWorkerTask(
         exportName: task.exportName,
         retryConfig: task.retry,
         queueConfig: task.queue,
+        gates: task.gates,
         machineConfig: task.machine,
         triggerSource: resolvedTriggerSource,
         config: task.agentConfig ? (task.agentConfig as any) : undefined,
@@ -454,6 +455,7 @@ async function createWorkerTask(
       triggerSource: resolvedTriggerSource,
       queueId: queue.id,
       queueName: queue.name,
+      gates: task.gates ?? null,
     };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -477,6 +479,7 @@ async function createWorkerTask(
             triggerSource: resolvedTriggerSource,
             queueId: queue.id,
             queueName: queue.name,
+            gates: task.gates ?? null,
           };
         }
       } else {

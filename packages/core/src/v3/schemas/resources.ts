@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
+import { QueueGateManifest, QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 import {
   WebhookVerifierArtifact,
@@ -19,6 +19,7 @@ export const TaskResource = z.object({
   filePath: z.string(),
   exportName: z.string().optional(),
   queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
+  gates: QueueGateManifest.array().max(2).optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
