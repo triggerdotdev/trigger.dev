@@ -11588,8 +11588,8 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
     const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
-    // SessionTriggerConfig.tags allows at most 5; the auto chat tag takes one slot.
-    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+    // SessionTriggerConfig.tags allows at most 10; the auto chat tag takes one slot.
+    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 10);
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};

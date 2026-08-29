@@ -96,12 +96,12 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.basePayload).not.toHaveProperty("metadata");
   });
 
-  it("prepends chat:{chatId} to triggerConfig.tags and caps at 5", async () => {
+  it("prepends chat:{chatId} to triggerConfig.tags and caps at 10", async () => {
     installStartFixture();
 
     const start = chat.createStartSessionAction("fake-chat", {
       triggerConfig: {
-        tags: ["org:acme", "a", "b", "c", "d", "e"],
+        tags: ["org:acme", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
       },
     });
     await start({ chatId: "chat-tags" });
@@ -112,6 +112,11 @@ describe("chat.createStartSessionAction — runtime", () => {
       "a",
       "b",
       "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
     ]);
   });
 

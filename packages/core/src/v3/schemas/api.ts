@@ -1852,7 +1852,7 @@ export const SessionTriggerConfig = z.object({
   basePayload: z.record(z.unknown()),
   machine: MachinePresetName.optional(),
   queue: z.string().max(128).optional(),
-  tags: z.array(z.string().max(128)).max(5).optional(),
+  tags: z.array(z.string().max(128)).max(10).optional(),
   maxAttempts: z.number().int().positive().max(10).optional(),
   /** Per-run wall-clock cap (seconds). Forwarded to `TaskRunOptions.maxDuration`. */
   maxDuration: z.number().int().positive().optional(),

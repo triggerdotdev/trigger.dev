@@ -111,7 +111,7 @@ const { id, runId, publicAccessToken, isCached } = await sessions.start({
 | `type` | `string` | Free-form discriminator. `chat.agent` uses `"chat.agent"`. |
 | `externalId` | `string?` | Your stable identity. Cannot start with `session_` (reserved). |
 | `taskIdentifier` | `string` | Task this session triggers runs against. |
-| `triggerConfig` | `SessionTriggerConfig` | Trigger options applied to every run: `tags`, `queue`, `machine`, `maxAttempts`, `idleTimeoutInSeconds`, `basePayload`. |
+| `triggerConfig` | `SessionTriggerConfig` | Trigger options applied to every run: `tags` (up to 10, same as [run tags](/tags); for `chat.agent` the auto-added `chat:{chatId}` tag uses one slot), `queue`, `machine`, `maxAttempts`, `idleTimeoutInSeconds`, `basePayload`. |
 | `tags` | `string[]?` | Up to 10 tags on the Session row (separate from `triggerConfig.tags`). |
 | `metadata` | `Record<string, unknown>?` | Arbitrary JSON. |
 | `expiresAt` | `Date?` | Hard retention deadline. |

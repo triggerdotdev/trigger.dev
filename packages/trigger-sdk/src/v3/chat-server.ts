@@ -528,9 +528,9 @@ async function openHandoverSession(opts: {
 
   // Merge the customer's trigger options. `handover-prepare` and `chatId` in
   // `basePayload` are ours and can't be overridden; the `chat:{chatId}` tag is
-  // prepended (SessionTriggerConfig.tags caps at 5).
+  // prepended (SessionTriggerConfig.tags caps at 10).
   const userTags = opts.triggerConfig?.tags ?? [];
-  const tags = [`chat:${chatId}`, ...userTags].slice(0, 5);
+  const tags = [`chat:${chatId}`, ...userTags].slice(0, 10);
 
   const triggerConfig: SessionTriggerConfig = {
     basePayload: {
