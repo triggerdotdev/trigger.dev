@@ -21,6 +21,7 @@ import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { featuresForRequest } from "~/features.server";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
@@ -99,11 +100,14 @@ export const loader = dashboardLoader(
 
     const { gitHubApp, buildSettings } = resultOrFail.value;
 
+    const { isManagedCloud } = featuresForRequest(request);
+
     return typedjson({
       githubAppEnabled: gitHubApp.enabled,
       buildSettings,
       vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
       canManageBuildSettings,
+      isManagedCloud,
     });
   }
 );
@@ -572,6 +576,12 @@ function BuildSettingsForm({
               }));
             }}
           />
+        }
+        disabled={!isManagedCloud}
+        description={
+          !isManagedCloud
+            ? "Native build server is only available on Trigger.dev Cloud. Self-hosted instances use the CLI or GitHub Action for deployments."
+            : undefined
         }
       />
 

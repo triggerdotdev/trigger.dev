@@ -19,6 +19,7 @@ import {
   enqueueBuild,
   generateRegistryCredentials,
   isBillingConfigured,
+  isCloud,
 } from "~/services/platform.v3.server";
 import { FEATURE_FLAG, type FeatureFlagKey } from "../featureFlags";
 import { flags } from "../featureFlags.server";
@@ -450,6 +451,14 @@ export class DeploymentService extends BaseService {
       fromBundle?: boolean;
     }
   ) {
+    if (!isCloud()) {
+      return errAsync({
+        type: "native_build_not_available" as const,
+        message:
+          "Native (Git-based) deployments are only available on Trigger.dev Cloud. Use the CLI or GitHub Action for deployments.",
+      });
+    }
+
     return fromPromise(
       enqueueBuild(authenticatedEnv.projectId, deployment.friendlyId, artifactKey, options),
       (error) => ({
