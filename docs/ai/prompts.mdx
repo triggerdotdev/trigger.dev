@@ -419,8 +419,8 @@ When you use `toAISDKTelemetry()`, AI generation spans in the run trace get a cu
 ## Type utilities
 
 ```ts
-import type { PromptHandle, PromptIdentifier, PromptVariables } from "@trigger.dev/sdk";
+import type { prompts } from "@trigger.dev/sdk";
 
-type Id = PromptIdentifier<typeof supportPrompt>;   // "customer-support"
-type Vars = PromptVariables<typeof supportPrompt>;   // { customerName: string; plan: string; issue: string }
+type Id = prompts.PromptIdentifier<typeof supportPrompt>;   // "customer-support"
+type Vars = prompts.PromptVariables<typeof supportPrompt>;   // { customerName: string; plan: string; issue: string }
 ```
