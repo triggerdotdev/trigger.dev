@@ -921,6 +921,15 @@ export const GetDeploymentResponseBody = z.object({
   imageReference: z.string().nullish(),
   imagePlatform: z.string(),
   commitSHA: z.string().nullish(),
+  /**
+   * The `--external-id` this deployment was deployed under, used by version skew
+   * protection to pin runs. Distinct from `commitSHA`, which is git metadata.
+   *
+   * `optional`, not `nullish`, to stay assignable to the CLI's narrower
+   * `InitializeDeploymentResponseBody` shape, which this is spread into on the
+   * attach-to-existing-deployment path (`cli-v3/src/commands/deploy.ts:1156`).
+   */
+  externalId: z.string().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
   canceledReason: z.string().nullish(),
@@ -2201,6 +2210,12 @@ export const ApiDeploymentListResponseItem = z.object({
   deployedAt: z.coerce.date().optional(),
   git: z.record(z.any()).optional(),
   error: DeploymentErrorData.optional(),
+  /**
+   * The `--external-id` this deployment was deployed under, used by version skew
+   * protection to pin runs. Nullish on deployments created without one, and on
+   * servers older than this field.
+   */
+  externalId: z.string().nullish(),
 });
 
 export type ApiDeploymentListResponseItem = z.infer<typeof ApiDeploymentListResponseItem>;

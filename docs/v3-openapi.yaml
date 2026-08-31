@@ -895,6 +895,12 @@ paths:
                           type: object
                           nullable: true
                           description: Error data if the deployment failed
+                        externalId:
+                          type: string
+                          nullable: true
+                          description: >-
+                            The external deployment id this deployment was deployed under
+                            (`--external-id`), used by version skew protection to pin runs
                   pagination:
                     type: object
                     properties:

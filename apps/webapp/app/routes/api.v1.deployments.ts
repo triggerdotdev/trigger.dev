@@ -135,8 +135,9 @@ export const loader = createLoaderApiRoute(
         runtimeVersion: deployment.runtimeVersion,
         status: deployment.status,
         deployedAt: deployment.deployedAt,
-        git: deployment.git,
+        git: deployment.git ?? undefined,
         error: deployment.errorData ?? undefined,
+        externalId: deployment.externalId ?? undefined,
       })),
       pagination: {
         next: nextCursor,
