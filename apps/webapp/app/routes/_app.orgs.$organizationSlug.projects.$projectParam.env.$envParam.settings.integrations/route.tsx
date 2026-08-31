@@ -390,7 +390,7 @@ export default function IntegrationsSettingsPage() {
               <>
                 Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
                 <InlineCode variant="extra-small" className="whitespace-nowrap">
-                  --native-build-server
+                  --native-build
                 </InlineCode>{" "}
                 flag.
               </>
@@ -487,7 +487,7 @@ function BuildSettingsForm({
         align="start"
         htmlFor={fields.triggerConfigFilePath.id}
         title="Trigger config file"
-        description="Auto-detected by default. Set a path relative to your repo root to override."
+        description="Path relative to your repo root. Auto-detected by default."
         action={
           <SettingsControl>
             <Input
@@ -538,14 +538,14 @@ function BuildSettingsForm({
         align="start"
         htmlFor={fields.preBuildCommand.id}
         title="Pre-build command"
-        description="Runs from your repo root, before the build, e.g., npm run prisma:generate."
+        description="Runs from your repo root, before the build."
         action={
           <SettingsControl>
             <Input
               {...getInputProps(fields.preBuildCommand, { type: "text" })}
               variant="medium"
               defaultValue={buildSettings?.preBuildCommand || ""}
-              placeholder="npm run prisma:generate"
+              placeholder="e.g., npm run prisma:generate"
               onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
