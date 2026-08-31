@@ -24,6 +24,17 @@ const authenticatedEnvDev = {
   organization: { id: "o1234" },
 };
 
+// A dead Redis leaves waitUntilReady() pending forever (the client retries
+// indefinitely), which would burn the whole test timeout with no diagnostic.
+async function emitterReady(emitter: MetricsStreamEmitter) {
+  await Promise.race([
+    emitter.waitUntilReady(),
+    setTimeout(15_000).then(() => {
+      throw new Error("metrics emitter Redis connection never became ready");
+    }),
+  ]);
+}
+
 async function readAllEntries(
   redisOptions: {
     host: string;
@@ -81,7 +92,7 @@ describe("RunQueue queue-metrics emission", () => {
       definition,
       flag: { enabled: () => true },
     });
-    await emitter.waitUntilReady();
+    await emitterReady(emitter);
 
     const queue = new RunQueue({
       name: "rq",
@@ -184,7 +195,7 @@ describe("RunQueue queue-metrics emission", () => {
         definition,
         flag: { enabled: () => true },
       });
-      await emitter.waitUntilReady();
+      await emitterReady(emitter);
       const queue = new RunQueue({
         name: "rq",
         tracer: trace.getTracer("rq"),
@@ -257,7 +268,7 @@ describe("RunQueue queue-metrics emission", () => {
       maxLen: 1000,
     };
     const emitter = new MetricsStreamEmitter({ redis, definition, flag: { enabled: () => true } });
-    await emitter.waitUntilReady();
+    await emitterReady(emitter);
     const queue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
@@ -357,7 +368,7 @@ describe("RunQueue queue-metrics emission", () => {
       flag: { enabled: () => true },
       gaugeSampleRate: 0,
     });
-    await emitter.waitUntilReady();
+    await emitterReady(emitter);
     const queue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
