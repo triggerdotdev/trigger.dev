@@ -247,6 +247,11 @@ export class RunnerEnv {
       OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
       TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
       UV_USE_IO_URING: this.UV_USE_IO_URING,
+      // Identifies the node the run is executing on. On Kubernetes the
+      // supervisor sources this from the downward API (spec.nodeName), so
+      // without it here a user's `trigger.config.ts` telemetry resource has no
+      // way to recover the host and OTLP spans export with an empty hostname.
+      TRIGGER_WORKER_INSTANCE_NAME: this.TRIGGER_WORKER_INSTANCE_NAME,
     };
 
     // Filter out undefined values
