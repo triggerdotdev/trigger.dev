@@ -101,6 +101,9 @@ export class PauseQueueService extends BaseService {
           concurrencyLimitOverriddenAt: updatedQueue.concurrencyLimitOverriddenAt ?? null,
           concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
           paused: updatedQueue.paused,
+          totalConcurrencyLimit: updatedQueue.totalConcurrencyLimit ?? null,
+          totalConcurrencyLimitBase: updatedQueue.totalConcurrencyLimitBase ?? null,
+          totalConcurrencyLimitOverriddenAt: updatedQueue.totalConcurrencyLimitOverriddenAt ?? null,
         }),
       };
     } catch (error) {

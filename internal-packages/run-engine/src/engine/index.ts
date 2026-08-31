@@ -3001,6 +3001,7 @@ export class RunEngine {
             {
               select: {
                 queue: true,
+                concurrencyKey: true,
               },
             },
             this.prisma
@@ -3022,6 +3023,7 @@ export class RunEngine {
             runId,
             orgId: latestSnapshot.organizationId,
             queue: taskRun.queue,
+            concurrencyKey: taskRun.concurrencyKey ?? undefined,
             env: {
               id: latestSnapshot.environmentId,
               type: latestSnapshot.environmentType,

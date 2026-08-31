@@ -1426,7 +1426,7 @@ const queueMetricsByKeySchema: TableSchema = {
       name: "max_limit",
       ...column("UInt32", {
         description:
-          "The queue concurrency limit that applied to this key in the bucket. Aggregate with max().",
+          "The queue concurrency limit that applied to this key in the bucket (1000000 = no explicit limit). Aggregate with max().",
         fillMode: "carry",
       }),
     },
