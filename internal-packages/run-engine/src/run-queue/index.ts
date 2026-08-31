@@ -173,8 +173,9 @@ local __qm_g = false
 local function __qmret(r) if r == nil then r = false end return {r, __qm_g} end`;
 
 // Fresh-read gauge for splice points with no reusable locals: enqueue slow-path (before
-// return 0) and the base dequeue top. Gated on the last ARGV so it is inert unless the
-// caller opts in. CK queues emit per-subqueue depth (queue_name aggregates via the MV).
+// return 0) and the base dequeue's sample-at-return wrapper. Gated on the last ARGV so it
+// is inert unless the caller opts in. CK queues emit per-subqueue depth (queue_name
+// aggregates via the MV).
 const QUEUE_METRICS_GAUGE_LUA = createMetricsGaugeComputeLua({
   enabledArg: "ARGV[#ARGV] == '1'",
   queued: "redis.call('ZCARD', queueKey)",
@@ -4680,7 +4681,16 @@ local gatesEnabled = ARGV[7] == '1'
 local totalConcurrencyEnabled = ARGV[8] == '1'
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
+-- Sample-at-return: the gauge is computed once, by the return wrapper, so every
+-- exit emits the state as of that exit (post-admission on the success path) and
+-- no path pays for a sample that a later one would overwrite.
+local function __qmsample()
 ${QUEUE_METRICS_GAUGE_LUA}
+end
+do
+  local __qmret_inner = __qmret
+  __qmret = function(r) __qmsample() return __qmret_inner(r) end
+end
 
 -- Check current env concurrency against the limit
 local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
@@ -4791,10 +4801,6 @@ if #earliestMessage == 0 then
 else
   redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
 end
-
--- Re-sample the gauge so the emitted snapshot includes this batch's admissions;
--- the top-of-script sample only covers the early returns where nothing was admitted.
-${QUEUE_METRICS_GAUGE_LUA}
 
 -- Return results as a flat array: [messageId1, messageScore1, messagePayload1, messageId2, messageScore2, messagePayload2, ...]
 return __qmret(results)
@@ -4989,7 +4995,16 @@ local totalConcurrencyEnabled = ARGV[7] == '1'
 local gatesEnabled = ARGV[8] == '1'
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
+-- Sample-at-return: the gauge is computed once, by the return wrapper, so every
+-- exit emits the state as of that exit (post-admission on the success path) and
+-- no path pays for a sample that a later one would overwrite.
+local function __qmsample()
 ${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
+end
+do
+  local __qmret_inner = __qmret
+  __qmret = function(r) __qmsample() return __qmret_inner(r) end
+end
 
 local function decrLengthCounter()
   if tonumber(redis.call('GET', lengthCounterKey) or '0') > 0 then
@@ -5177,10 +5192,6 @@ if #earliestIdx == 0 then
 else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
-
--- Re-sample the gauge so the emitted snapshot includes this batch's admissions;
--- the top-of-script sample only covers the early returns where nothing was admitted.
-${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
 
 return __qmret(results)
       `,
