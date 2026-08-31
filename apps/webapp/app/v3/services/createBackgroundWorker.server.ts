@@ -405,7 +405,7 @@ async function createWorkerTask(
           concurrencyLimit: task.queue?.concurrencyLimit,
           combinedConcurrencyLimit: task.queue?.combinedConcurrencyLimit,
         },
-        task.id,
+        task.queue?.name ?? task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
         worker,
         environment,
