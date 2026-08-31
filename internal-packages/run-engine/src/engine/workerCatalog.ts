@@ -80,10 +80,11 @@ export const workerCatalog = {
   /**
    * Write-ahead guard enqueued before every run-finish commit and acked when the
    * inline finalization side effects (waitpoint completion, parent unblock fan-out,
-   * batch nudge) all succeed. It must never dead-letter: it is the recovery
-   * mechanism for a finish whose side effects were lost mid-flight, so the retry
-   * budget is effectively unbounded with a capped backoff — it has to outlive any
-   * database outage.
+   * batch nudge) all succeed. It is the recovery mechanism for a finish whose side
+   * effects were lost mid-flight, so its retry budget must outlive any database
+   * outage: roughly five weeks at the capped backoff before it dead-letters, where
+   * a genuinely poisoned item becomes visible and redrivable instead of retrying
+   * silently forever.
    */
   ensureRunFinalized: {
     schema: z.object({

@@ -240,6 +240,143 @@ describe("RunEngine ensureRunFinalized guard", () => {
   );
 
   containerTest(
+    "a failed guard enqueue fails the completion request with nothing committed",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { parentRun, childRun, childAttempt } = await setupParentAndChild(
+          engine,
+          prisma,
+          authenticatedEnvironment
+        );
+
+        const worker = (engine as any).worker;
+        const originalEnqueue = worker.enqueue.bind(worker);
+        const enqueueSpy = vi.spyOn(worker, "enqueue").mockImplementation(async (opts: any) => {
+          if (opts.job === "ensureRunFinalized") {
+            throw new Error("simulated redis enqueue failure");
+          }
+          return originalEnqueue(opts);
+        });
+
+        await expect(
+          engine.completeRunAttempt({
+            runId: childRun.id,
+            snapshotId: childAttempt.snapshot.id,
+            completion: {
+              id: childRun.id,
+              ok: true,
+              output: '{"foo":"bar"}',
+              outputType: "application/json",
+            },
+          })
+        ).rejects.toThrow("simulated redis enqueue failure");
+
+        const childAfterFailure = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterFailure.status).toBe("EXECUTING");
+        expect(childAfterFailure.associatedWaitpoint?.status).toBe("PENDING");
+
+        enqueueSpy.mockRestore();
+
+        await engine.completeRunAttempt({
+          runId: childRun.id,
+          snapshotId: childAttempt.snapshot.id,
+          completion: {
+            id: childRun.id,
+            ok: true,
+            output: '{"foo":"bar"}',
+            outputType: "application/json",
+          },
+        });
+
+        await setTimeout(1_000);
+
+        const parentExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionData);
+        expect(parentExecutionData.snapshot.executionStatus).toBe("EXECUTING");
+        expect(parentExecutionData.completedWaitpoints?.length).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a stale guard does not resume the parent while a cancellation is still in flight",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { parentRun, childRun, childAttempt } = await setupParentAndChild(
+          engine,
+          prisma,
+          authenticatedEnvironment
+        );
+
+        vi.spyOn((engine as any).runStore, "completeAttemptSuccess").mockRejectedValueOnce(
+          new Error("simulated finish commit failure")
+        );
+
+        await expect(
+          engine.completeRunAttempt({
+            runId: childRun.id,
+            snapshotId: childAttempt.snapshot.id,
+            completion: {
+              id: childRun.id,
+              ok: true,
+              output: '{"foo":"bar"}',
+              outputType: "application/json",
+            },
+          })
+        ).rejects.toThrow("simulated finish commit failure");
+
+        await engine.cancelRun({ runId: childRun.id });
+
+        const childAfterCancel = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterCancel.status).toBe("CANCELED");
+
+        await setTimeout(5_000);
+
+        const childDuringPendingCancel = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childDuringPendingCancel.associatedWaitpoint?.status).toBe("PENDING");
+
+        const parentWhilePending = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentWhilePending);
+        expect(parentWhilePending.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        await engine.cancelRun({ runId: childRun.id, finalizeRun: true });
+
+        await setTimeout(1_000);
+
+        const childAfterFinalize = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterFinalize.associatedWaitpoint?.status).toBe("COMPLETED");
+
+        const parentAfterFinalize = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentAfterFinalize);
+        expect(parentAfterFinalize.snapshot.executionStatus).toBe("EXECUTING");
+        expect(parentAfterFinalize.completedWaitpoints?.length).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "guard is acked on the happy path and never executes",
     async ({ prisma, redisOptions }) => {
       const engine = createEngine(prisma, redisOptions);

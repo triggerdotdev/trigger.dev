@@ -1854,6 +1854,25 @@ export class RunAttemptSystem {
         return;
       }
 
+      if (run.status === "CANCELED") {
+        const latestSnapshot = await getLatestExecutionSnapshot(
+          this.$.prisma,
+          runId,
+          this.$.runStore
+        );
+
+        if (latestSnapshot.executionStatus !== "FINISHED") {
+          this.$.logger.info(
+            "ensureRunFinalized: run is canceled but execution has not finished, the cancellation finalize path owns the re-delivery",
+            {
+              runId,
+              executionStatus: latestSnapshot.executionStatus,
+            }
+          );
+          return;
+        }
+      }
+
       span.setAttribute("runStatus", run.status);
 
       if (run.associatedWaitpoint) {
