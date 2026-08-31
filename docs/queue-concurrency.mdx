@@ -247,6 +247,17 @@ export const syncToProvider = task({
 });
 ```
 
+```ts app/api/sync/route.ts
+//the combined cap only counts keyed runs, so every trigger passes a key
+await syncToProvider.trigger(payload, { concurrencyKey: tenantId });
+```
+
+<Warning>
+  This pattern requires every trigger to pass a `concurrencyKey`. A run triggered without one
+  bypasses the combined limit entirely. If some runs have no natural key, use the pinned-key
+  pool below instead.
+</Warning>
+
 ### One shared pool ignoring keys
 
 Give a gate a literal `concurrencyKey` to pin every run into a single first-come-first-served pool, regardless of each run's own key:
