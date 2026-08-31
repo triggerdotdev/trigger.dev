@@ -6,6 +6,8 @@ import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { fromPromise } from "neverthrow";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { ProjectConnectSelect } from "~/components/integrations/ProjectConnectSelect";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
@@ -17,7 +19,8 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { Header1 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -36,6 +39,7 @@ import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema, v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
+import { useOrganization } from "~/hooks/useOrganizations";
 
 export const meta = pageMeta("Vercel integration");
 
@@ -259,15 +263,32 @@ export default function VercelIntegrationPage() {
   const isUninstalling =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "uninstall";
 
+  // The org context (parent loader) carries the project list for the connect CTA.
+  const { projects } = useOrganization();
+
   if (!vercelIntegration) {
     return (
       <PageContainer>
+        <NavBar>
+          <PageTitle title="Vercel integration" />
+        </NavBar>
         <PageBody>
-          <div className="flex flex-col items-center justify-center py-8">
-            <Header1>No Vercel Integration Found</Header1>
-            <Paragraph className="mt-2 text-center text-text-dimmed">
-              This organization doesn't have a Vercel integration configured.
+          <div className="flex h-full flex-col items-center justify-center gap-3">
+            <VercelLogo className="mb-2 size-16 text-secondary" />
+            <Header2>No Vercel integration found</Header2>
+            <Paragraph className="max-w-md text-center text-text-dimmed">
+              Your organization doesn't have a Vercel integration. Configure it in your projects
+              integrations page.
             </Paragraph>
+            {projects.length > 0 ? (
+              <ProjectConnectSelect
+                projects={projects}
+                configurePathFor={(project) =>
+                  // Default to the production environment, matching the connected-state links.
+                  v3ProjectSettingsIntegrationsPath(organization, project, { slug: "prod" })
+                }
+              />
+            ) : null}
           </div>
         </PageBody>
       </PageContainer>
@@ -276,14 +297,10 @@ export default function VercelIntegrationPage() {
 
   return (
     <PageContainer>
+      <NavBar>
+        <PageTitle title="Vercel integration" />
+      </NavBar>
       <PageBody>
-        <div className="mb-8">
-          <Header1>Vercel Integration</Header1>
-          <Paragraph className="mt-2 text-text-dimmed">
-            Manage your organization's Vercel integration and connected projects.
-          </Paragraph>
-        </div>
-
         {/* Integration Info Section */}
         <div className="mb-8 rounded-lg border border-grid-bright bg-background-bright p-6">
           <div className="flex items-center justify-between">

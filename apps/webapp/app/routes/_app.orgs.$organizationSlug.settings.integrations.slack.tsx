@@ -5,8 +5,8 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { TrashIcon } from "@heroicons/react/20/solid";
-import { BugIcon } from "~/assets/icons/BugIcon";
 import { SlackMonoIcon } from "~/assets/icons/SlackMonoIcon";
+import { ProjectConnectSelect } from "~/components/integrations/ProjectConnectSelect";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -38,7 +38,12 @@ import {
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
-import { OrganizationParamsSchema, organizationSlackIntegrationPath } from "~/utils/pathBuilder";
+import {
+  OrganizationParamsSchema,
+  organizationSlackIntegrationPath,
+  v3ErrorsPath,
+} from "~/utils/pathBuilder";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { logger } from "~/services/logger.server";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -191,6 +196,10 @@ export default function SlackIntegrationPage() {
   const isUninstalling =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "uninstall";
 
+  // The org context (parent loader) carries the project list for the connect CTA.
+  const organization = useOrganization();
+  const projects = organization.projects;
+
   if (!slackIntegration) {
     return (
       <PageContainer>
@@ -202,11 +211,18 @@ export default function SlackIntegrationPage() {
             <SlackMonoIcon className="mb-2 size-16 text-secondary" />
             <Header2>No Slack integration found</Header2>
             <Paragraph className="max-w-md text-center text-text-dimmed">
-              Your organization doesn't have a Slack integration configured. You can connect Slack
-              when setting up alerts from the{" "}
-              <BugIcon className="-ml-0.5 mb-0.5 inline size-5 text-errors" />
-              <span className="text-text-bright">Errors</span> page.
+              Your organization doesn't have a Slack integration. Connect Slack when setting up
+              alerts from the Errors page.
             </Paragraph>
+            {projects.length > 0 ? (
+              <ProjectConnectSelect
+                projects={projects}
+                configurePathFor={(project) =>
+                  // Slack alerts are configured from the Errors page; ?alerts=true opens the sheet.
+                  `${v3ErrorsPath(organization, project, { slug: "prod" })}?alerts=true`
+                }
+              />
+            ) : null}
           </div>
         </PageBody>
       </PageContainer>
