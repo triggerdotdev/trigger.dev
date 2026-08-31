@@ -86,8 +86,10 @@ function fakePanInfo(dx: number, dy: number): PanInfo {
   };
 }
 
-function fakePanInfoAt(point: { x: number; y: number }): PanInfo {
-  return { delta: { x: 0, y: 0 }, offset: { x: 0, y: 0 }, point, velocity: { x: 0, y: 0 } };
+// Dock zones read the pointer event's client coordinates, not PanInfo.point (which is page
+// coordinates), so drag-to-dock tests build events carrying clientX/clientY.
+function fakePointerEventAt(target: PointerEvent["target"], x: number, y: number): PointerEvent {
+  return { target, clientX: x, clientY: y } as unknown as PointerEvent;
 }
 
 describe("the floating window's rect, wired with panel-layout's own constants", () => {
@@ -198,32 +200,34 @@ describe("FloatingAgentWindow's drag-to-dock zones", () => {
     const target = view.titleEl() as unknown as PointerEvent["target"];
 
     act(() => {
-      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfoAt({ x: 0, y: 0 }));
-      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfoAt({ x: 1190, y: 400 }));
+      view.dragHandleProps.onPanStart!(fakePointerEventAt(target, 0, 0), fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!(fakePointerEventAt(target, 1190, 400), fakePanInfo(-20, 0));
     });
 
     expect(document.body.textContent).toContain("Dock right");
   });
 
-  it("calls onRequestModeChange with rightPanel on release in the right zone, without a rect jump", () => {
+  it("restores the pre-drag rect and calls onRequestModeChange(rightPanel) on release in the right zone", () => {
     stubViewport(1200, 900);
     const onRequestModeChange = vi.fn();
     const view = renderFloatingAgentWindow(onRequestModeChange);
     const target = view.titleEl() as unknown as PointerEvent["target"];
+    const leftBeforeDrag = view.outerLeft();
 
     act(() => {
-      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfoAt({ x: 0, y: 0 }));
-      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfoAt({ x: 1190, y: 400 }));
+      view.dragHandleProps.onPanStart!(fakePointerEventAt(target, 0, 0), fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!(fakePointerEventAt(target, 1190, 400), fakePanInfo(-200, 0));
     });
-    const leftBeforeRelease = view.outerLeft();
+    // The drag really did move the rect, so the restore below undoes a real change.
+    expect(view.outerLeft()).not.toBe(leftBeforeDrag);
 
     act(() => {
-      view.dragHandleProps.onPanEnd!({ target } as PointerEvent, fakePanInfoAt({ x: 1190, y: 400 }));
+      view.dragHandleProps.onPanEnd!(fakePointerEventAt(target, 1190, 400), fakePanInfo(0, 0));
     });
 
     expect(onRequestModeChange).toHaveBeenCalledTimes(1);
     expect(onRequestModeChange).toHaveBeenCalledWith("rightPanel");
-    expect(view.outerLeft()).toBe(leftBeforeRelease);
+    expect(view.outerLeft()).toBe(leftBeforeDrag);
     expect(document.body.textContent).not.toContain("Dock right");
   });
 
@@ -234,13 +238,13 @@ describe("FloatingAgentWindow's drag-to-dock zones", () => {
     const target = view.titleEl() as unknown as PointerEvent["target"];
 
     act(() => {
-      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfoAt({ x: 0, y: 0 }));
-      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfoAt({ x: 500, y: 5 }));
+      view.dragHandleProps.onPanStart!(fakePointerEventAt(target, 0, 0), fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!(fakePointerEventAt(target, 500, 5), fakePanInfo(0, -20));
     });
     expect(document.body.textContent).toContain("Fullscreen");
 
     act(() => {
-      view.dragHandleProps.onPanEnd!({ target } as PointerEvent, fakePanInfoAt({ x: 500, y: 5 }));
+      view.dragHandleProps.onPanEnd!(fakePointerEventAt(target, 500, 5), fakePanInfo(0, 0));
     });
 
     expect(onRequestModeChange).toHaveBeenCalledTimes(1);
@@ -255,11 +259,11 @@ describe("FloatingAgentWindow's drag-to-dock zones", () => {
     const startLeft = view.outerLeft();
 
     act(() => {
-      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfo(0, 0));
-      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfo(-20, 0));
+      view.dragHandleProps.onPanStart!(fakePointerEventAt(target, 0, 0), fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!(fakePointerEventAt(target, 500, 400), fakePanInfo(-20, 0));
     });
     act(() => {
-      view.dragHandleProps.onPanEnd!({ target } as PointerEvent, fakePanInfoAt({ x: 500, y: 400 }));
+      view.dragHandleProps.onPanEnd!(fakePointerEventAt(target, 500, 400), fakePanInfo(0, 0));
     });
 
     expect(onRequestModeChange).not.toHaveBeenCalled();

@@ -13,6 +13,7 @@ import {
   dockZoneForPoint,
   type DockZone,
   type Point,
+  type Rect,
 } from "~/components/primitives/draggableResizableMath";
 import { cn } from "~/utils/cn";
 
@@ -134,16 +135,20 @@ export function FloatingAgentWindow({
   const fullscreen = mode === "fullscreen";
   const docked = mode === "rightPanel";
   const initial = useMemo(() => initialFloatingRect(), []);
-  const { style, dragHandleProps, resizeHandleProps } = useDraggableResizable({
-    initial,
-    minSize: FLOATING_MIN_SIZE,
-    viewportPadding: FLOATING_MARGIN,
-  });
+  const { style, dragHandleProps, resizeHandleProps, position, size, setRect } =
+    useDraggableResizable({
+      initial,
+      minSize: FLOATING_MIN_SIZE,
+      viewportPadding: FLOATING_MARGIN,
+    });
   const [dragging, setDragging] = useState(false);
   const [dockZone, setDockZone] = useState<DockZone | null>(null);
   // onPan can arrive before onPanStart, so the no-drag check runs once, on whichever fires first.
   const gestureClassified = useRef(false);
   const ignoringGesture = useRef(false);
+  // The rect as it stood before this gesture, so a zoned drop can restore it — dragHandleProps.onPan
+  // (called below) has already folded the drop point's delta into the hook's own state by then.
+  const preDragRect = useRef<Rect | null>(null);
 
   const classifyGesture = (event: PointerEvent) => {
     if (gestureClassified.current) return;
@@ -151,7 +156,9 @@ export function FloatingAgentWindow({
     ignoringGesture.current = !!(event.target as HTMLElement | null)?.closest(NO_DRAG_SELECTOR);
   };
 
-  const zoneForPoint = (point: Point) =>
+  // PanInfo.point is page coordinates; the dock zones compare against the viewport, so use the
+  // pointer event's client coordinates instead.
+  const zoneForClientPoint = (point: Point) =>
     dockZoneForPoint(point, { width: window.innerWidth, height: window.innerHeight });
 
   // Same shape as `dragHandleProps` below empty, so a mode with no drag doesn't change types.
@@ -162,13 +169,17 @@ export function FloatingAgentWindow({
           onPanStart: (event: PointerEvent, info: PanInfo) => {
             classifyGesture(event);
             if (ignoringGesture.current) return;
+            preDragRect.current = { ...position, ...size };
             setDragging(true);
             dragHandleProps.onPanStart?.(event, info);
           },
           onPan: (event: PointerEvent, info: PanInfo) => {
             classifyGesture(event);
             if (ignoringGesture.current) return;
-            setDockZone(zoneForPoint(info.point));
+            // onPan can arrive before onPanStart, so both capture the pre-drag rect and flip dragging.
+            if (!preDragRect.current) preDragRect.current = { ...position, ...size };
+            setDragging(true);
+            setDockZone(zoneForClientPoint({ x: event.clientX, y: event.clientY }));
             dragHandleProps.onPan?.(event, info);
           },
           onPanEnd: (event: PointerEvent, info: PanInfo) => {
@@ -177,8 +188,13 @@ export function FloatingAgentWindow({
             ignoringGesture.current = false;
             setDragging(false);
             setDockZone(null);
-            const droppedZone = wasIgnoring ? null : zoneForPoint(info.point);
+            const droppedZone = wasIgnoring
+              ? null
+              : zoneForClientPoint({ x: event.clientX, y: event.clientY });
+            const rectBeforeDrag = preDragRect.current;
+            preDragRect.current = null;
             if (droppedZone) {
+              if (rectBeforeDrag) setRect(rectBeforeDrag);
               onRequestModeChange?.(droppedZone);
               return;
             }

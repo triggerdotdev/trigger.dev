@@ -38,6 +38,8 @@ export type UseDraggableResizableResult = {
   resizeHandleProps: (edge: ResizeEdge) => PanHandlerProps;
   position: Point;
   size: Size;
+  /** Escape hatch to force the rect, e.g. restoring it after a drag that ended somewhere else (a dock zone). */
+  setRect: (rect: Rect) => void;
 };
 
 function getViewport(): Viewport {
@@ -111,6 +113,7 @@ export function useDraggableResizable({
     resizeHandleProps,
     position: { x: rect.x, y: rect.y },
     size: { w: rect.w, h: rect.h },
+    setRect,
   };
 }
 
