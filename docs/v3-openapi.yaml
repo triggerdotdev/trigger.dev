@@ -3136,7 +3136,8 @@ paths:
           description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
           example: queue_1234
       requestBody:
-        required: false
+        required: true
+        description: At least an empty JSON object `{}` must be sent; a zero-length body is rejected with a 400.
         content:
           application/json:
             schema:
@@ -3190,7 +3191,8 @@ paths:
           description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
           example: queue_1234
       requestBody:
-        required: false
+        required: true
+        description: At least an empty JSON object `{}` must be sent; a zero-length body is rejected with a 400.
         content:
           application/json:
             schema:
@@ -4449,11 +4451,13 @@ components:
               format: date-time
               nullable: true
               description: When the concurrency limit was overridden
+              example: null
             combined:
               type: object
               description: |
                 The combined concurrency cap across all `concurrencyKey` values of the queue.
-                Present when the queue has a `combinedConcurrencyLimit`.
+                Always present; `current` is null when the queue has no combined limit, so
+                check `combined.current !== null` rather than the field's presence.
               properties:
                 current:
                   type: integer
@@ -4480,7 +4484,6 @@ components:
                   nullable: true
                   description: Runs currently in flight across all concurrencyKey values
                   example: 4
-              example: null
             overriddenBy:
               type: string
               nullable: true
