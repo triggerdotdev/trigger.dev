@@ -4456,8 +4456,9 @@ components:
               type: object
               description: |
                 The combined concurrency cap across all `concurrencyKey` values of the queue.
-                Always present; `current` is null when the queue has no combined limit, so
-                check `combined.current !== null` rather than the field's presence.
+                Servers on this version always emit it, with `current` null when the queue
+                has no combined limit; older servers may omit the field entirely, so check
+                `combined?.current != null` rather than relying on its presence.
               properties:
                 current:
                   type: integer
