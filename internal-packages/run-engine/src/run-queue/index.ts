@@ -5261,6 +5261,10 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
+-- Re-sample the gauge so the emitted snapshot includes this batch's admissions;
+-- the top-of-script sample only covers the early returns where nothing was admitted.
+${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
+
 return __qmret(results)
       `,
     });
