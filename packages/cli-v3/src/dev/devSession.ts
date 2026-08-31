@@ -16,6 +16,11 @@ import {
   resolvePluginsForContext,
 } from "../build/extensions.js";
 import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/externals.js";
+import {
+  collectCreateRequireWarningMessages,
+  CreateRequireCollector,
+  extensionInstalledPackageMatchers,
+} from "../build/createRequireWarnings.js";
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
@@ -83,6 +88,8 @@ export async function startDevSession({
   });
 
   const externalsExtension = createExternalsBuildExtension("dev", rawConfig, alwaysExternal);
+  const createRequireCollector = new CreateRequireCollector(rawConfig.workingDir);
+  const extensionPackages = extensionInstalledPackageMatchers(rawConfig);
   const buildContext = createBuildContext("dev", rawConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
@@ -114,6 +121,17 @@ export async function startDevSession({
     // whose task files read CLI-injected vars at module top level).
 
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
+
+    const createRequireWarnings = collectCreateRequireWarningMessages({
+      usages: createRequireCollector.usages,
+      buildManifest,
+      extensionPackages,
+      target: "dev",
+    });
+
+    if (createRequireWarnings.length > 0) {
+      logBuildWarnings(createRequireWarnings);
+    }
 
     try {
       logger.debug("Updated bundle", { bundle, buildManifest });
@@ -194,7 +212,7 @@ export async function startDevSession({
         destination: destination.path,
         watch: true,
         resolvedConfig: rawConfig,
-        plugins: [...pluginsFromExtensions, onEnd],
+        plugins: [createRequireCollector.plugin, ...pluginsFromExtensions, onEnd],
         jsxFactory: rawConfig.build.jsx.factory,
         jsxFragment: rawConfig.build.jsx.fragment,
         jsxAutomatic: rawConfig.build.jsx.automatic,

@@ -1523,6 +1523,9 @@ importers:
 
   packages/cli-v3:
     dependencies:
+      '@babel/parser':
+        specifier: ^7.29.7
+        version: 7.29.7
       '@clack/prompts':
         specifier: 0.11.0
         version: 0.11.0
@@ -2793,11 +2796,6 @@ packages:
   '@babel/helpers@7.22.15':
     resolution: {integrity: sha512-7pAjK0aSdxOwR+CcYAqgWOGy5dcfvzsTIfFTb2odQqW47MDfv14UaJDY6eng8ylM2EaeKXdxaSWESbkmaQHTmw==}
     engines: {node: '>=6.9.0'}
-
-  '@babel/parser@7.24.7':
-    resolution: {integrity: sha512-9uUYRm6OqQrCqQdG1iCBwBPZgN8ciDBro2nIOFaiRz1/BCxaI7CNvQbDHvsArAC7Tw9Hda/B3U+6ui9u4HWXPw==}
-    engines: {node: '>=6.0.0'}
-    hasBin: true
 
   '@babel/parser@7.27.0':
     resolution: {integrity: sha512-iaepho73/2Pz7w2eMS0Q5f83+0RKI7i4xmiYeBmDzfRVbQtTOG7Ts0S4HzJVsTMGI9keU8rNfuZr8DKfSt7Yyg==}
@@ -16899,10 +16897,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/parser@7.24.7':
-    dependencies:
-      '@babel/types': 7.29.7
-
   '@babel/parser@7.27.0':
     dependencies:
       '@babel/types': 7.29.7
@@ -26043,7 +26037,7 @@ snapshots:
 
   magicast@0.3.4:
     dependencies:
-      '@babel/parser': 7.24.7
+      '@babel/parser': 7.29.7
       '@babel/types': 7.24.7
       source-map-js: 1.2.0
 
