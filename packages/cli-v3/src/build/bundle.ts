@@ -55,6 +55,7 @@ export type BundleResult = {
   stop: (() => Promise<void>) | undefined;
   /** Maps output file paths to their content hashes for deduplication */
   outputHashes: Record<string, string>;
+  warnings: esbuild.Message[];
 };
 
 export class BundleError extends Error {
@@ -323,6 +324,7 @@ export async function getBundleResultFromBuild(
     contentHash: hasher.digest("hex"),
     metafile: result.metafile,
     outputHashes,
+    warnings: result.warnings,
   };
 }
 
@@ -340,7 +342,7 @@ function dirToEntryPointGlob(dir: string): string[] {
   ];
 }
 
-export function logBuildWarnings(warnings: esbuild.Message[]) {
+export function logBuildWarnings(warnings: esbuild.PartialMessage[]) {
   const logs = esbuild.formatMessagesSync(warnings, { kind: "warning", color: true });
   for (const log of logs) {
     console.warn(log);

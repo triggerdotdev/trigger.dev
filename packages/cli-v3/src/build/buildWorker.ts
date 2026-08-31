@@ -1,6 +1,13 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
-import { BundleResult, bundleWorker, createBuildManifestFromBundle } from "./bundle.js";
+import * as esbuild from "esbuild";
+import {
+  BundleResult,
+  bundleWorker,
+  createBuildManifestFromBundle,
+  logBuildWarnings,
+} from "./bundle.js";
+import { CreateRequireCollector, createRequireUsageToWarning } from "./createRequireWarnings.js";
 import { bundleSkills } from "./bundleSkills.js";
 import {
   createBuildContext,
@@ -72,6 +79,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);
 
   const sdkVersionExtractor = new SdkVersionExtractor();
+  const createRequireCollector = new CreateRequireCollector(resolvedConfig.workingDir);
 
   options.listener?.onBundleStart?.();
 
@@ -81,7 +89,11 @@ export async function buildWorker(options: BuildWorkerOptions) {
     destination: options.destination,
     watch: false,
     resolvedConfig,
-    plugins: [sdkVersionExtractor.plugin, ...pluginsFromExtensions],
+    plugins: [
+      sdkVersionExtractor.plugin,
+      ...(options.target === "dev" ? [] : [createRequireCollector.plugin]),
+      ...pluginsFromExtensions,
+    ],
     jsxFactory: resolvedConfig.build.jsx.factory,
     jsxFragment: resolvedConfig.build.jsx.fragment,
     jsxAutomatic: resolvedConfig.build.jsx.automatic,
@@ -127,6 +139,16 @@ export async function buildWorker(options: BuildWorkerOptions) {
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
   if (options.target !== "dev") {
+    const buildWarnings = collectDeployBuildWarnings(
+      bundleResult,
+      createRequireCollector,
+      buildManifest
+    );
+
+    if (buildWarnings.length > 0) {
+      logBuildWarnings(buildWarnings);
+    }
+
     buildManifest = options.rewritePaths
       ? rewriteBuildManifestPaths(buildManifest, options.destination)
       : buildManifest;
@@ -140,6 +162,31 @@ export async function buildWorker(options: BuildWorkerOptions) {
   }
 
   return buildManifest;
+}
+
+/**
+ * Deploy-only diagnostics: esbuild's own warnings scoped to the user's files,
+ * plus packages loaded via createRequire() that end up neither bundled nor
+ * installed in the image (i.e. not in the manifest's externals).
+ */
+function collectDeployBuildWarnings(
+  bundleResult: BundleResult,
+  createRequireCollector: CreateRequireCollector,
+  buildManifest: BuildManifest
+): esbuild.PartialMessage[] {
+  const esbuildWarnings = bundleResult.warnings.filter(
+    (warning) => warning.location?.file && !warning.location.file.includes("node_modules")
+  );
+
+  const installedPackages = new Set(
+    (buildManifest.externals ?? []).map((external) => external.name)
+  );
+
+  const createRequireWarnings = createRequireCollector.usages
+    .filter((usage) => !installedPackages.has(usage.packageName))
+    .map(createRequireUsageToWarning);
+
+  return [...esbuildWarnings, ...createRequireWarnings];
 }
 
 /** @knipignore Exported for the CLI end-to-end suite. */
