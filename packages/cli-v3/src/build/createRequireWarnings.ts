@@ -7,7 +7,13 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import pLimit from "p-limit";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { logger } from "../utilities/logger.js";
-import { isBuiltinModule, makeExternalRegexp, packageNameForImportPath } from "./externals.js";
+import {
+  escapeRegExp,
+  isBareModuleImport,
+  isBuiltinModule,
+  makeExternalRegexp,
+  packageNameForImportPath,
+} from "./externals.js";
 
 export { packageNameForImportPath as packageNameForSpecifier } from "./externals.js";
 
@@ -140,6 +146,12 @@ export function scanSource(
     }
   }
 
+  for (const name of collected.exportSpecifierNames) {
+    if (requireFnNames.has(name)) {
+      exportedRequireFns.add(name);
+    }
+  }
+
   if (isKnownRequireFnImport) {
     for (const relativeImport of collected.relativeNamedImports) {
       if (isKnownRequireFnImport(relativeImport.importedName, relativeImport.fromSpecifier)) {
@@ -210,6 +222,8 @@ function parseWithFallbacks(source: string): AstNode | undefined {
 type AstFacts = {
   moduleImports: Array<{ kind: "createRequire" | "namespace"; localName: string }>;
   bindings: Array<{ name: string; value: AstNode; exported: boolean }>;
+  /** Local names exported via `export { name }` (specifier form) */
+  exportSpecifierNames: string[];
   relativeNamedImports: Array<{ importedName: string; localName: string; fromSpecifier: string }>;
   calls: Array<{
     callee: AstNode;
@@ -224,6 +238,7 @@ function collectAstFacts(ast: AstNode): AstFacts {
   const facts: AstFacts = {
     moduleImports: [],
     bindings: [],
+    exportSpecifierNames: [],
     relativeNamedImports: [],
     calls: [],
   };
@@ -235,6 +250,14 @@ function collectAstFacts(ast: AstNode): AstFacts {
 
         if (declaration) {
           visit(declaration, true);
+        } else if (!node.source) {
+          for (const specifier of (node.specifiers as AstNode[]) ?? []) {
+            const local = specifier.local as AstNode | undefined;
+
+            if (specifier.type === "ExportSpecifier" && local?.type === "Identifier") {
+              facts.exportSpecifierNames.push(local.name as string);
+            }
+          }
         }
 
         return;
@@ -429,13 +452,17 @@ function stringArgumentValue(node: AstNode | undefined): string | undefined {
 }
 
 function isWarnableSpecifier(specifier: string): boolean {
-  const nonPackagePrefixes = [".", "/", "~", "#", "file:", "data:", "node:"];
-
-  if (nonPackagePrefixes.some((prefix) => specifier.startsWith(prefix)) || specifier.length === 0) {
+  if (
+    specifier.length === 0 ||
+    specifier.startsWith("#") ||
+    specifier.startsWith("node:") ||
+    specifier.includes("\\") ||
+    /^[A-Za-z]:/.test(specifier)
+  ) {
     return false;
   }
 
-  return !isBuiltinModule(packageNameForImportPath(specifier));
+  return isBareModuleImport(specifier) && !isBuiltinModule(packageNameForImportPath(specifier));
 }
 
 const SCANNABLE_FILE_REGEX = /\.(?:m|c)?(?:j|t)sx?$/;
@@ -478,14 +505,14 @@ export class CreateRequireCollector {
       name: "create-require-collector",
       setup: (build) => {
         build.onEnd(async (result) => {
-          this._usages = [];
-
           if (!result.metafile) {
+            this._usages = [];
+
             return;
           }
 
           try {
-            await this.collect(result.metafile);
+            this._usages = await this.collect(result.metafile);
           } catch (error) {
             logger.debug("[createRequire] Scan failed; skipping warnings", { error });
             this._usages = [];
@@ -497,7 +524,8 @@ export class CreateRequireCollector {
     return this._plugin;
   }
 
-  private async collect(metafile: esbuild.Metafile): Promise<void> {
+  private async collect(metafile: esbuild.Metafile): Promise<CreateRequireUsage[]> {
+    const usages: CreateRequireUsage[] = [];
     const files: Array<{ inputPath: string; filePath: string }> = [];
     const seenPaths = new Set<string>();
     const importResolutions = new Map<string, Map<string, string>>();
@@ -601,22 +629,49 @@ export class CreateRequireCollector {
       .sort()
       .join(",");
 
+    const exportedNamePattern =
+      exportedNames.size > 0
+        ? new RegExp(`\\b(?:${Array.from(exportedNames).map(escapeRegExp).join("|")})\\b`)
+        : undefined;
+
+    const needsSource = scanned.filter(
+      (entry) =>
+        entry.source === undefined &&
+        !(entry.cached && entry.cached.knownsSignature === knownsSignature)
+    );
+
+    await Promise.all(
+      needsSource.map((entry) =>
+        limit(async () => {
+          const [readError, contents] = await tryCatch(readFile(entry.filePath, "utf8"));
+
+          if (readError) {
+            logger.debug("[createRequire] Unable to re-read bundle input file", {
+              filePath: entry.filePath,
+              error: readError,
+            });
+
+            return;
+          }
+
+          entry.source = contents;
+        })
+      )
+    );
+
     for (const entry of scanned) {
       let finalSpecifiers: CreateRequireSpecifier[];
 
       if (entry.cached && entry.cached.knownsSignature === knownsSignature) {
         finalSpecifiers = entry.cached.finalSpecifiers;
       } else {
-        const source =
-          entry.source ?? (await tryCatch(readFile(entry.filePath, "utf8")))[1] ?? undefined;
+        const source = entry.source;
 
         if (source === undefined) {
           continue;
         }
 
-        const mentionsExportedName = Array.from(exportedNames).some((name) =>
-          source.includes(name)
-        );
+        const mentionsExportedName = exportedNamePattern?.test(source) ?? false;
 
         if (!mentionsExportedName) {
           finalSpecifiers = entry.base.specifiers;
@@ -647,26 +702,29 @@ export class CreateRequireCollector {
       }
 
       for (const found of finalSpecifiers) {
-        this._usages.push({
+        usages.push({
           ...found,
           file: entry.inputPath,
           packageName: packageNameForImportPath(found.specifier),
         });
       }
     }
+
+    return usages;
   }
 }
 
 export type ExtensionInstalledPackages = {
   matchers: RegExp[];
   /**
-   * True when what extensions install can't be fully determined: an extension
-   * hook threw, or an extension participates in the build (has build hooks)
-   * without declaring installedPackagesForTarget or externalsForTarget, so it
-   * may install packages invisibly (e.g. via a build layer). Dev-mode
-   * warnings must stay silent in that case rather than risk false "deploys
-   * will fail" claims; deploy-mode warnings are unaffected because the
-   * manifest externals capture layer dependencies there.
+   * True when what extensions install can't be determined in a way that
+   * makes false warnings likely: an extension hook threw, or an
+   * additionalPackages extension predates the installedPackagesForTarget
+   * hook (the exact extension the warning's own fix advice prescribes).
+   * Dev-mode warnings stay silent in that case; deploy-mode warnings are
+   * unaffected because the manifest externals capture layer dependencies
+   * there. Extensions that declare nothing are assumed to install nothing:
+   * package-installing extensions are the rare case and declare themselves.
    */
   incomplete: boolean;
 };
@@ -694,12 +752,12 @@ export function extensionInstalledPackageMatchers(
       const declaresPackages =
         typeof buildExtension.installedPackagesForTarget === "function" ||
         typeof buildExtension.externalsForTarget === "function";
-      const hasBuildHooks =
-        typeof buildExtension.onBuildStart === "function" ||
-        typeof buildExtension.onBuildComplete === "function";
 
-      if (!declaresPackages && hasBuildHooks) {
-        incomplete = true;
+      if (!declaresPackages) {
+        if (buildExtension.name === "additionalPackages") {
+          incomplete = true;
+        }
+
         continue;
       }
 
@@ -757,7 +815,18 @@ export function packagesInstalledByCommands(commands: ReadonlyArray<string>): st
   for (const command of commands) {
     for (const match of command.matchAll(INSTALL_COMMAND_REGEX)) {
       for (const token of match[1]!.trim().split(/\s+/)) {
-        if (token.length === 0 || token.startsWith("-") || token.includes(":")) {
+        if (token.length === 0 || token.startsWith("-")) {
+          continue;
+        }
+
+        const aliasIndex = token.indexOf("@npm:");
+
+        if (aliasIndex > 0) {
+          names.add(token.slice(0, aliasIndex));
+          continue;
+        }
+
+        if (token.includes(":")) {
           continue;
         }
 

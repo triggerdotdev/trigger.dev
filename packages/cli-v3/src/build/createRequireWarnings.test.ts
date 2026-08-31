@@ -348,6 +348,24 @@ const pg = req("pg");
     expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
   });
 
+  it("ignores literal Windows path specifiers", () => {
+    const source =
+      'import { createRequire } from "node:module";\n' +
+      "const req = createRequire(import.meta.url);\n" +
+      'const helper = req("C:\\\\tools\\\\helper.cjs");\n';
+
+    expect(scanSourceForCreateRequire(source)).toEqual([]);
+  });
+
+  it("records require functions exported in specifier form", () => {
+    const source = `import { createRequire } from "node:module";
+const cjsRequire = createRequire(import.meta.url);
+export { cjsRequire };
+`;
+
+    expect(scanSource(source).exportedRequireFns).toEqual(["cjsRequire"]);
+  });
+
   it("follows require functions imported from other scanned files", () => {
     const util = `import { createRequire } from "node:module";
 export const cjsRequire = createRequire(import.meta.url);
@@ -712,18 +730,21 @@ describe("extensionInstalledPackageMatchers", () => {
     expect(incomplete).toBe(true);
   });
 
-  it("marks the result incomplete for any hook-bearing extension that declares no packages", () => {
-    const oldAdditionalPackages = extensionInstalledPackageMatchers(
+  it("assumes an undeclared extension installs nothing", () => {
+    const { matchers, incomplete } = extensionInstalledPackageMatchers(
+      configWith([{ name: "someThirdPartyExtension", onBuildComplete: () => {} }])
+    );
+
+    expect(incomplete).toBe(false);
+    expect(matchers).toEqual([]);
+  });
+
+  it("marks the result incomplete for an additionalPackages extension that predates the hook", () => {
+    const { incomplete } = extensionInstalledPackageMatchers(
       configWith([{ name: "additionalPackages", onBuildStart: () => {} }])
     );
 
-    expect(oldAdditionalPackages.incomplete).toBe(true);
-
-    const layerInstaller = extensionInstalledPackageMatchers(
-      configWith([{ name: "syncEnvVars", onBuildComplete: () => {} }])
-    );
-
-    expect(layerInstaller.incomplete).toBe(true);
+    expect(incomplete).toBe(true);
   });
 });
 
@@ -828,12 +849,20 @@ describe("packagesInstalledByCommands", () => {
       "npm install @prisma/engines@5.0.0",
       "pnpm add wrangler prisma@3.0.0 --save-dev",
       "yarn add -D typescript",
+      "npm install sqlite3@npm:@vscode/sqlite3",
+      "npm install file:../local-lib",
       "bun run generate",
       "npm ci",
       "apt-get install -y ffmpeg",
     ]);
 
-    expect(packages.sort()).toEqual(["@prisma/engines", "prisma", "typescript", "wrangler"]);
+    expect(packages.sort()).toEqual([
+      "@prisma/engines",
+      "prisma",
+      "sqlite3",
+      "typescript",
+      "wrangler",
+    ]);
   });
 });
 

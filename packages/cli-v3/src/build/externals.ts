@@ -525,7 +525,7 @@ export function makeExternalRegexp(packageName: string): RegExp {
   return new RegExp(pattern);
 }
 
-function escapeRegExp(value: string): string {
+export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -572,7 +572,7 @@ function resolveSync(id: string, resolveDir: string) {
   }
 }
 
-function isBareModuleImport(path: string): boolean {
+export function isBareModuleImport(path: string): boolean {
   const excludes = [".", "/", "~", "file:", "data:"];
   return !excludes.some((exclude) => path.startsWith(exclude));
 }
