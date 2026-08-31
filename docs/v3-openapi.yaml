@@ -3048,6 +3048,132 @@ paths:
               20
             );
 
+  "/api/v1/queues/{queueParam}/concurrency/combined/override":
+    post:
+      operationId: override_queue_combined_concurrency_v1
+      summary: Override combined concurrency limit
+      description: |
+        Override the combined concurrency limit of a queue: the cap on concurrent runs across
+        all of the queue's `concurrencyKey` values. Useful for temporarily scaling a whole
+        keyed queue up or down without changing each key's own limit.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["combinedConcurrencyLimit"]
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+                combinedConcurrencyLimit:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  description: |
+                    The new combined concurrency limit to set for the queue. It may not exceed
+                    your environment's maximum concurrency limit: a higher value is rejected
+                    with a 400, not capped to the maximum.
+      responses:
+        "200":
+          description: Combined concurrency limit overridden successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: |
+            Invalid request parameters, or the requested combined concurrency limit exceeds
+            the environment's maximum concurrency limit.
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Allow up to 100 runs across all concurrency keys
+            await queues.overrideCombinedConcurrencyLimit("queue_1234", 100);
+
+            // Using type and name
+            await queues.overrideCombinedConcurrencyLimit(
+              { type: "custom", name: "per-user-queue" },
+              100
+            );
+
+  "/api/v1/queues/{queueParam}/concurrency/combined/reset":
+    post:
+      operationId: reset_queue_combined_concurrency_v1
+      summary: Reset combined concurrency limit
+      description: Reset the combined concurrency limit of a queue back to the `combinedConcurrencyLimit` declared in your code.
+      parameters:
+        - in: path
+          name: queueParam
+          required: true
+          schema:
+            type: string
+          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
+          example: queue_1234
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [id, task, custom]
+                  default: id
+                  description: |
+                    How to interpret the `queueParam` path parameter:
+                    - `id`: Treat as a queue ID (default)
+                    - `task`: Treat as a task ID to get the task's default queue
+                    - `custom`: Treat as a custom queue name
+      responses:
+        "200":
+          description: Combined concurrency limit reset successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/QueueObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Queue not found
+      tags:
+        - queues
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { queues } from "@trigger.dev/sdk";
+
+            // Revert to the combinedConcurrencyLimit declared in code
+            await queues.resetCombinedConcurrencyLimit("queue_1234");
+
   "/api/v1/queues/{queueParam}/concurrency/reset":
     post:
       operationId: reset_queue_concurrency_v1
@@ -4321,6 +4447,37 @@ components:
               format: date-time
               nullable: true
               description: When the concurrency limit was overridden
+            combined:
+              type: object
+              description: |
+                The combined concurrency cap across all `concurrencyKey` values of the queue.
+                Present when the queue has a `combinedConcurrencyLimit`.
+              properties:
+                current:
+                  type: integer
+                  nullable: true
+                  description: The current combined concurrency limit as declared or overridden (null = no cap). Enforcement clamps it to the environment concurrency limit at admit time.
+                  example: 10
+                base:
+                  type: integer
+                  nullable: true
+                  description: The declared combined limit an override reverts to on reset
+                  example: 10
+                override:
+                  type: integer
+                  nullable: true
+                  description: The overridden combined limit, when an override is active
+                  example: null
+                overriddenAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: When the combined override was applied
+                running:
+                  type: integer
+                  nullable: true
+                  description: Runs currently in flight across all concurrencyKey values
+                  example: 4
               example: null
             overriddenBy:
               type: string
