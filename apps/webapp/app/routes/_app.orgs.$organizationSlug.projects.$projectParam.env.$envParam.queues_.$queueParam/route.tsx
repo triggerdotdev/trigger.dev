@@ -407,13 +407,7 @@ export default function Page() {
         {view === "keys" && hasKeys ? (
           <>
             <MetricsLayout.Content>
-              <KeyStatsTable
-                ids={ids}
-                timeRange={timeRange}
-                queueName={fullName}
-                defaultKeyLimit={queue.concurrencyLimit ?? environmentConcurrencyLimit}
-                envLimit={environmentConcurrencyLimit}
-              />
+              <KeyStatsTable ids={ids} timeRange={timeRange} queueName={fullName} />
             </MetricsLayout.Content>
             {selectedKey ? (
               <MetricsLayout.Content inset>
@@ -966,15 +960,10 @@ function KeyStatsTable({
   ids,
   timeRange,
   queueName,
-  defaultKeyLimit,
-  envLimit,
 }: {
   ids: Ids;
   timeRange: TimeRangeParams;
   queueName: string;
-  /** The limit a key inherits when it has no override (the queue's limit, else the env limit). */
-  defaultKeyLimit: number;
-  envLimit: number;
 }) {
   const { value, replace, del } = useSearchParams();
   const selectedKey = value("key");
@@ -1017,12 +1006,6 @@ function KeyStatsTable({
             <TableHeaderCell>Key</TableHeaderCell>
             <TableHeaderCell alignment="right">Queued now</TableHeaderCell>
             <TableHeaderCell alignment="right">Running now</TableHeaderCell>
-            <TableHeaderCell
-              alignment="right"
-              tooltip="The key's concurrency limit. Keys inherit the queue's limit unless a per-key override is set via the API."
-            >
-              Limit
-            </TableHeaderCell>
             <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
             <TableHeaderCell alignment="right">Started</TableHeaderCell>
             <TableHeaderCell alignment="right">Peak backlog</TableHeaderCell>
@@ -1031,11 +1014,11 @@ function KeyStatsTable({
         </TableHeader>
         <TableBody>
           {showLoading ? (
-            <TableBlankRow colSpan={8} className="text-text-dimmed">
+            <TableBlankRow colSpan={7} className="text-text-dimmed">
               Loading…
             </TableBlankRow>
           ) : rows.length === 0 ? (
-            <TableBlankRow colSpan={8} className="text-text-dimmed">
+            <TableBlankRow colSpan={7} className="text-text-dimmed">
               {search ? `No keys match “${search}”` : "No concurrency keys"}
             </TableBlankRow>
           ) : (
@@ -1049,12 +1032,6 @@ function KeyStatsTable({
                 <TableCell>{row.key}</TableCell>
                 <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
                 <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
-                <TableCell
-                  alignment="right"
-                  className={row.limitOverride !== null ? undefined : "text-text-dimmed"}
-                >
-                  {Math.min(row.limitOverride ?? defaultKeyLimit, envLimit).toLocaleString()}
-                </TableCell>
                 <TableCell alignment="right">
                   {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
                 </TableCell>

@@ -4,7 +4,7 @@
 -- concurrency-key variants of a queue (the groupConcurrency set), combined_limit the
 -- RAW stored total cap (0 = none, readers clamp against max_env_limit). Emitted on
 -- base-queue gauge rows only. Per-key gauge rows now carry the EFFECTIVE per-key
--- limit in queue_limit (override-aware), surfaced in the ck tier as max_limit.
+-- limit in queue_limit, surfaced in the ck tier as max_limit.
 
 ALTER TABLE trigger_dev.queue_metrics_raw_v1
   ADD COLUMN IF NOT EXISTS combined_running UInt32 DEFAULT 0,
