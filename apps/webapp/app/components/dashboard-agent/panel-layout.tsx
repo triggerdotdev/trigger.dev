@@ -1,6 +1,6 @@
 // Both class helpers apply to always-rendered wrappers, so switching display mode is a
 // class change only and the open chat's transport, session and transcript survive it.
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { motion, type PanInfo } from "framer-motion";
 import {
@@ -64,6 +64,34 @@ export function initialFloatingRect() {
  * account preference, defaulting to floating. */
 export function initialAgentMode(preference: DashboardAgentMode | undefined): DashboardAgentMode {
   return preference ?? "floating";
+}
+
+/**
+ * Owns the chat's mode state for `DashboardAgent`: starts from the account preference,
+ * lets in-chat switches (toggle, drag-to-dock) apply transiently, and resets to the
+ * preference on close or on leaving fullscreen. Extracted so this wiring — not just
+ * `initialAgentMode` in isolation — is the exact code under test.
+ */
+export function useAgentPanelMode(modePreference: DashboardAgentMode | undefined) {
+  const [mode, setMode] = useState<DashboardAgentMode>(() => initialAgentMode(modePreference));
+
+  const changeMode = useCallback((next: DashboardAgentMode) => {
+    setMode(next);
+  }, []);
+
+  // Any transient in-chat mode switch applied only until close; the next open starts
+  // from the account preference again.
+  const resetToPreference = useCallback(() => {
+    setMode(initialAgentMode(modePreference));
+  }, [modePreference]);
+
+  // Pathname changes must drop fullscreen back to the preference, but leave any other
+  // transient mode (e.g. rightPanel) alone.
+  const revertFullscreen = useCallback(() => {
+    setMode((current) => (current !== "fullscreen" ? current : initialAgentMode(modePreference)));
+  }, [modePreference]);
+
+  return { mode, changeMode, resetToPreference, revertFullscreen };
 }
 
 function agentTakeoverClassName(fullscreen: boolean): string {

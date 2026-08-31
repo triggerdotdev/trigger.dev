@@ -1123,36 +1123,41 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-
-              <div className={cn(SETTINGS_SECTION_GAP, "w-full border-b border-grid-dimmed pb-3")}>
-                <Header2>Interface</Header2>
-              </div>
-              {sidebarContext && (
-                <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-                  <div className="flex w-full items-center justify-between gap-4">
-                    <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                      <Label>App sidebar</Label>
-                      <SettingsRowDescription>
-                        Customize sidebar item visibility, order and rename favorites
-                      </SettingsRowDescription>
-                    </div>
-                    <div className="flex flex-none items-center">
-                      <CustomizeSidebarButton context={sidebarContext} />
-                    </div>
-                  </div>
+            </>
+          )}
+          {/* Always visible: the Interface section holds the chat-open-mode preference,
+              which every user (not just admins/flag holders) can set. */}
+          <div className={cn(SETTINGS_SECTION_GAP, "w-full border-b border-grid-dimmed pb-3")}>
+            <Header2>Interface</Header2>
+          </div>
+          {sidebarContext && (
+            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+              <div className="flex w-full items-center justify-between gap-4">
+                <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                  <Label>App sidebar</Label>
+                  <SettingsRowDescription>
+                    Customize sidebar item visibility, order and rename favorites
+                  </SettingsRowDescription>
                 </div>
-              )}
-              <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-                <div className="flex w-full items-center justify-between gap-4">
-                  <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
-                    <Label>Ask Trigger chat</Label>
-                    <SettingsRowDescription>Choose where the chat opens</SettingsRowDescription>
-                  </div>
-                  <div className="flex flex-none items-center">
-                    <ChatOpenModePicker />
-                  </div>
+                <div className="flex flex-none items-center">
+                  <CustomizeSidebarButton context={sidebarContext} />
                 </div>
               </div>
+            </div>
+          )}
+          <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+            <div className="flex w-full items-center justify-between gap-4">
+              <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                <Label>Ask Trigger chat</Label>
+                <SettingsRowDescription>Choose where the chat opens</SettingsRowDescription>
+              </div>
+              <div className="flex flex-none items-center">
+                <ChatOpenModePicker />
+              </div>
+            </div>
+          </div>
+          {showThemeSwitcher && (
+            <>
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
                   <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>

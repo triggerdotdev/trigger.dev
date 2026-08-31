@@ -20,8 +20,7 @@ import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
   FloatingAgentWindow,
-  initialAgentMode,
-  type DashboardAgentMode,
+  useAgentPanelMode,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
@@ -124,12 +123,9 @@ export function DashboardAgent({
   }, [environment.id, initialUnreadWakes, initialUnreadWork]);
   // Every open starts from the account preference; in-chat switches (toggle, drag-to-dock)
   // are transient and never write it back.
-  const [mode, setMode] = useState<DashboardAgentMode>(() => initialAgentMode(modePreference));
+  const { mode, changeMode, resetToPreference, revertFullscreen } =
+    useAgentPanelMode(modePreference);
   const fullscreen = mode === "fullscreen";
-
-  const changeMode = useCallback((next: DashboardAgentMode) => {
-    setMode(next);
-  }, []);
 
   // Superseded localStorage keys; harmless to skip if storage is unavailable.
   useEffect(() => {
@@ -146,8 +142,8 @@ export function DashboardAgent({
   useEffect(() => {
     if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
-    setMode((current) => (current !== "fullscreen" ? current : initialAgentMode(modePreference)));
-  }, [pathname, modePreference]);
+    revertFullscreen();
+  }, [pathname, revertFullscreen]);
   const [newChatSeq, setNewChatSeq] = useState(0);
   const [requestedMessage, setRequestedMessage] = useState<
     { text: string; seq: number } | undefined
@@ -180,12 +176,12 @@ export function DashboardAgent({
       visibleChat.current = null;
       // Any transient in-chat mode switch applied only until close; the next open
       // starts from the account preference again.
-      setMode(initialAgentMode(modePreference));
+      resetToPreference();
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       setWatchRequest(undefined);
     },
-    [openPanel, modePreference]
+    [openPanel, resetToPreference]
   );
 
   const openChat = useCallback(

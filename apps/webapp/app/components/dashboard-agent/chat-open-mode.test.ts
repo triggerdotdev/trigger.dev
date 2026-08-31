@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { createElement, useCallback, useState } from "react";
+import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
-import { initialAgentMode, type DashboardAgentMode } from "./panel-layout";
+import { initialAgentMode, useAgentPanelMode, type DashboardAgentMode } from "./panel-layout";
 
 describe("initialAgentMode", () => {
   it("opens in the account preference when one is set", () => {
@@ -16,13 +16,6 @@ describe("initialAgentMode", () => {
   });
 });
 
-type HarnessHandle = {
-  mode: DashboardAgentMode;
-  changeMode: (mode: DashboardAgentMode) => void;
-  close: () => void;
-  reopen: () => void;
-};
-
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
 
@@ -33,20 +26,13 @@ afterEach(() => {
   root = undefined;
 });
 
-// Mirrors DashboardAgent.tsx's own state shape: mode starts from the preference, an
-// in-chat switch is transient (setMode only), and closing reverts to the preference —
-// so the next open starts clean regardless of what the last session left it on.
-function renderHarness(preference: DashboardAgentMode | undefined) {
-  let latest!: HarnessHandle;
+// Renders the real hook DashboardAgent.tsx uses for its mode state — not a re-implementation
+// — so a regression in the actual reset wiring fails this test.
+function renderAgentPanelMode(preference: DashboardAgentMode | undefined) {
+  let latest!: ReturnType<typeof useAgentPanelMode>;
   function Harness() {
-    const [mode, setMode] = useState<DashboardAgentMode>(() => initialAgentMode(preference));
-
-    const changeMode = useCallback((next: DashboardAgentMode) => setMode(next), []);
-    const close = useCallback(() => setMode(initialAgentMode(preference)), []);
-    const reopen = useCallback(() => {}, []);
-
-    // oxlint-disable-next-line react/globals -- test harness capturing the latest state/handlers.
-    latest = { mode, changeMode, close, reopen };
+    // oxlint-disable-next-line react/globals -- test harness capturing the hook's return value.
+    latest = useAgentPanelMode(preference);
     return null;
   }
   container = document.createElement("div");
@@ -62,18 +48,37 @@ function renderHarness(preference: DashboardAgentMode | undefined) {
   };
 }
 
-describe("a transient in-chat mode switch reverts on close", () => {
-  it("switching mode while open, then closing and reopening, lands back on the preference", () => {
-    const harness = renderHarness("rightPanel");
+describe("useAgentPanelMode", () => {
+  it("starts from the account preference", () => {
+    const hook = renderAgentPanelMode("rightPanel");
+    expect(hook.current.mode).toBe("rightPanel");
+  });
 
-    expect(harness.current.mode).toBe("rightPanel");
+  it("defaults to floating when there is no preference", () => {
+    const hook = renderAgentPanelMode(undefined);
+    expect(hook.current.mode).toBe("floating");
+  });
 
-    act(() => harness.current.changeMode("fullscreen"));
-    expect(harness.current.mode).toBe("fullscreen");
+  it("a transient changeMode applies immediately but resetToPreference (the close path) reverts it", () => {
+    const hook = renderAgentPanelMode("rightPanel");
 
-    act(() => harness.current.close());
-    act(() => harness.current.reopen());
+    act(() => hook.current.changeMode("fullscreen"));
+    expect(hook.current.mode).toBe("fullscreen");
 
-    expect(harness.current.mode).toBe("rightPanel");
+    // This is exactly what DashboardAgent.tsx's setPanelOpen calls on close.
+    act(() => hook.current.resetToPreference());
+    expect(hook.current.mode).toBe("rightPanel");
+  });
+
+  it("revertFullscreen (the pathname-change path) drops fullscreen but leaves other transient modes alone", () => {
+    const hook = renderAgentPanelMode("floating");
+
+    act(() => hook.current.changeMode("fullscreen"));
+    act(() => hook.current.revertFullscreen());
+    expect(hook.current.mode).toBe("floating");
+
+    act(() => hook.current.changeMode("rightPanel"));
+    act(() => hook.current.revertFullscreen());
+    expect(hook.current.mode).toBe("rightPanel");
   });
 });
