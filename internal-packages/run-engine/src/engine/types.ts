@@ -218,6 +218,12 @@ export type RunEngineOptions = {
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
+  /**
+   * Delay before the `ensureRunFinalized` write-ahead guard fires after a run-finish
+   * commit whose inline side effects never acked it. Long enough that the guard
+   * stays a pure failure path in steady state. Default: 60s.
+   */
+  finalizationGuardDelayMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;

@@ -7,7 +7,7 @@ import {
   RedisCacheStore,
 } from "@internal/cache";
 import type { RedisOptions } from "@internal/redis";
-import { startSpan } from "@internal/tracing";
+import { startSpan, type Counter } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import type {
   CompleteRunAttemptResult,
@@ -41,6 +41,7 @@ import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
 import {
   isExecuting,
+  isFinalRunStatus,
   isFinishedOrPendingFinished,
   isInitialState,
   isPendingExecuting,
@@ -67,6 +68,7 @@ export type RunAttemptSystemOptions = {
   waitpointSystem: WaitpointSystem;
   delayedRunSystem: DelayedRunSystem;
   retryWarmStartThresholdMs?: number;
+  finalizationGuardDelayMs?: number;
   machines: RunEngineOptions["machines"];
   redisOptions: RedisOptions;
 };
@@ -108,6 +110,8 @@ export class RunAttemptSystem {
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
+  private readonly finalizationGuardDelayMs: number;
+  private readonly rederivationsCounter: Counter;
   private readonly cache: UnkeyCache<{
     tasks: BackwardsCompatibleTaskRunExecution["task"];
     machinePresets: MachinePreset;
@@ -123,6 +127,15 @@ export class RunAttemptSystem {
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
     this.delayedRunSystem = options.delayedRunSystem;
+    this.finalizationGuardDelayMs = options.finalizationGuardDelayMs ?? 60_000;
+    this.rederivationsCounter = this.$.meter.createCounter(
+      "run_attempt_system.finalization_rederivations",
+      {
+        description:
+          "Lost run-finalization side effects re-delivered by the ensureRunFinalized guard",
+        unit: "runs",
+      }
+    );
 
     const ctx = new DefaultStatefulContext();
     const memory = createLRUMemoryStore(5000);
@@ -756,6 +769,8 @@ export class RunAttemptSystem {
             machinePresetName: currentRun.machinePreset,
             environmentType: latestSnapshot.environmentType,
           });
+
+          await this.#scheduleFinalizationGuard(runId);
 
           const run = await this.$.runStore.completeAttemptSuccess(
             runId,
@@ -1532,6 +1547,8 @@ export class RunAttemptSystem {
           // finalizeRun is true — fall through to finish the run immediately
         }
 
+        await this.#scheduleFinalizationGuard(runId);
+
         //not executing, so we will actually finish the run
         const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
           run,
@@ -1654,6 +1671,8 @@ export class RunAttemptSystem {
         environmentType: latestSnapshot.environmentType,
       });
 
+      await this.#scheduleFinalizationGuard(runId);
+
       //run permanently failed
       const run = await this.$.runStore.failRunPermanently(
         runId,
@@ -1769,6 +1788,96 @@ export class RunAttemptSystem {
 
     //cancel the heartbeats
     await this.$.worker.ack(`heartbeatSnapshot.${id}`);
+
+    await this.$.worker.ack(`ensureRunFinalized:${id}`);
+  }
+
+  /**
+   * Write-ahead guard for run finalization. Enqueued BEFORE the finish commit (so no
+   * finish write can exist without a durable watcher) and acked at the end of
+   * {@link #finalizeRun} once every inline side effect succeeded. It only ever
+   * executes when the inline path died in between.
+   */
+  async #scheduleFinalizationGuard(runId: string): Promise<void> {
+    await this.$.worker.enqueue({
+      id: `ensureRunFinalized:${runId}`,
+      job: "ensureRunFinalized",
+      payload: { runId },
+      availableAt: new Date(Date.now() + this.finalizationGuardDelayMs),
+    });
+  }
+
+  /**
+   * Re-delivers a finished run's finalization side effects: the associated waitpoint's
+   * completion, the parent unblock fan-out, and the batch completion nudge. Safe to run
+   * at-least-once and to race the inline path — every leg is idempotent, and completing
+   * an already-completed waitpoint still re-runs the blocked-run fan-out (which covers a
+   * lost `continueRunIfUnblocked` enqueue). A non-final run means the finish commit
+   * itself never landed; the caller's retry re-runs the whole completion, so there is
+   * nothing to re-deliver.
+   */
+  public async ensureRunFinalized({ runId }: { runId: string }): Promise<void> {
+    return startSpan(this.$.tracer, "ensureRunFinalized", async (span) => {
+      span.setAttribute("runId", runId);
+
+      const run = await this.$.runStore.findRun(
+        { id: runId },
+        {
+          select: {
+            id: true,
+            status: true,
+            output: true,
+            outputType: true,
+            error: true,
+            batchId: true,
+            associatedWaitpoint: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+          },
+        },
+        this.$.prisma
+      );
+
+      if (!run) {
+        this.$.logger.error("ensureRunFinalized: run not found", { runId });
+        return;
+      }
+
+      if (!isFinalRunStatus(run.status)) {
+        this.$.logger.debug("ensureRunFinalized: run is not final, nothing to re-deliver", {
+          runId,
+          status: run.status,
+        });
+        return;
+      }
+
+      span.setAttribute("runStatus", run.status);
+
+      if (run.associatedWaitpoint) {
+        const wasPending = run.associatedWaitpoint.status === "PENDING";
+
+        if (wasPending) {
+          this.rederivationsCounter.add(1, { leg: "waitpoint" });
+          this.$.logger.warn("ensureRunFinalized: re-deriving lost waitpoint completion", {
+            runId,
+            runStatus: run.status,
+            waitpointId: run.associatedWaitpoint.id,
+          });
+        }
+
+        await this.waitpointSystem.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: this.waitpointSystem.buildWaitpointOutputFromRun(run),
+        });
+      }
+
+      if (run.batchId) {
+        await this.batchSystem.scheduleCompleteBatch({ batchId: run.batchId });
+      }
+    });
   }
 
   async #resolveTaskRunExecutionTask(
