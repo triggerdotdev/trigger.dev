@@ -183,7 +183,7 @@ The combined limit only applies to runs triggered with a `concurrencyKey`; runs 
 
 ## Holding slots in more than one queue (queue gates)
 
-Sometimes one limit isn't enough: a webhook processor should be capped as a task, but each tenant should also have a global cap across every task they run. Queue gates let a run hold a concurrency slot in more than one queue at once.
+Sometimes one limit isn't enough: each tenant's webhook processing should be capped, but the tenant should also have a global cap across every task they run. Queue gates let a run hold a concurrency slot in more than one queue at once.
 
 Pass an array as `queue`: the first entry is the run's home queue (where it waits), and up to two more entries name gates — other queues the run must also have capacity in before it starts, and occupies while it executes:
 
@@ -203,6 +203,8 @@ export const processWebhook = task({
 //the run waits in "webhooks" and also counts towards this tenant's cap
 await processWebhook.trigger(payload, { concurrencyKey: tenantId });
 ```
+
+Because the trigger passes a `concurrencyKey`, the home queue splits per key as usual: `concurrencyLimit: 2` caps each tenant's webhook runs, not the task overall (add a `combinedConcurrencyLimit` to the home queue to bound it across all tenants).
 
 A gate without a `concurrencyKey` uses the run's own key, so the shared `tenant` queue above caps each tenant across every task that names it as a gate. Give the gate a literal key to pin it to a single slot pool instead, for example capping all traffic to one external provider across your whole environment:
 
