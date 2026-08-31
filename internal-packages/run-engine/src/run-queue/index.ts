@@ -329,7 +329,6 @@ export type RunQueueOptions = {
    * the total cap covering releases from builds without the mirror.
    */
   gatesEnabled?: boolean;
-  /** Cap on per-concurrency-key limit overrides stored per queue. Default 1000. */
   workerOptions?: {
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -1547,6 +1546,7 @@ export class RunQueue {
     runId: string;
     orgId: string;
     queue: string;
+    concurrencyKey?: string;
     env: RunQueueKeyProducerEnvironment;
   }) {
     return this.#callClearMessageFromConcurrencySets(params);
@@ -3082,18 +3082,30 @@ export class RunQueue {
     runId,
     orgId,
     queue,
+    concurrencyKey,
     env,
   }: {
     runId: string;
     orgId: string;
     queue: string;
+    concurrencyKey?: string;
     env: RunQueueKeyProducerEnvironment;
   }) {
     const messageId = runId;
     const messageKey = this.keys.messageKey(orgId, messageId);
-    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKey(env, queue);
+    /**
+     * Callers pass the bare TaskRun queue name plus its concurrencyKey; the run's
+     * slots live on the ck variant, and the tracked clear additionally mirrors the
+     * group set and counters that only keyed queues maintain.
+     */
+    const fullQueue = concurrencyKey ? this.keys.queueKey(env, queue, concurrencyKey) : queue;
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKey(
+      env,
+      queue,
+      concurrencyKey
+    );
     const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKey(env);
-    const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKey(env, queue);
+    const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKey(env, queue, concurrencyKey);
     const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKey(env);
 
     this.logger.debug("Calling clearMessageFromConcurrencySets", {
@@ -3108,15 +3120,15 @@ export class RunQueue {
       service: this.name,
     });
 
-    if (queue.includes(":ck:")) {
+    if (fullQueue.includes(":ck:")) {
       return this.redis.clearMessageFromConcurrencySetsTracked(
         queueCurrentConcurrencyKey,
         envCurrentConcurrencyKey,
         queueCurrentDequeuedKey,
         envCurrentDequeuedKey,
-        this.keys.queueRunningCounterKeyFromQueue(queue),
-        this.keys.ckIndexKeyFromQueue(queue),
-        this.keys.queueGroupConcurrencyKeyFromQueue(queue),
+        this.keys.queueRunningCounterKeyFromQueue(fullQueue),
+        this.keys.ckIndexKeyFromQueue(fullQueue),
+        this.keys.queueGroupConcurrencyKeyFromQueue(fullQueue),
         messageKey,
         messageId,
         this.options.redis.keyPrefix ?? "",
@@ -4141,8 +4153,6 @@ if enableFastPath == '1' then
         tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
         envLimit
       )
-      if totalConcurrencyEnabled then
-      end
 
       if queueCurrent < queueLimit then
         -- Total-cap gate: a fast-path admit consumes a group slot, so it must
@@ -4316,8 +4326,6 @@ if enableFastPath == '1' then
         tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
         envLimit
       )
-      if totalConcurrencyEnabled then
-      end
 
       if queueCurrent < queueLimit then
         -- Total-cap gate: see enqueueMessageCkTracked.
@@ -4782,6 +4790,10 @@ if #earliestMessage == 0 then
 else
   redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
 end
+
+-- Re-sample the gauge so the emitted snapshot includes this batch's admissions;
+-- the top-of-script sample only covers the early returns where nothing was admitted.
+${QUEUE_METRICS_GAUGE_LUA}
 
 -- Return results as a flat array: [messageId1, messageScore1, messagePayload1, messageId2, messageScore2, messagePayload2, ...]
 return __qmret(results)
