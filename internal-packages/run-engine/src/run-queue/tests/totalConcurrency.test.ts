@@ -424,6 +424,79 @@ describe("RunQueue total concurrency limit", () => {
   );
 
   redisTest(
+    "reconciles a member whose run dead-lettered or suspended without the mirror",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        const keys = testOptions.keys;
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueTotalConcurrencyLimits(authenticatedEnvDev, "task/my-task", 1);
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r0",
+            concurrencyKey: "ck-a",
+            timestamp: Date.now() - 1000,
+          }),
+          workerQueue: "main",
+        });
+
+        const admitted = await waitFor(
+          async () =>
+            (await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")) === 1
+        );
+        expect(admitted).toBe(true);
+
+        const dequeued = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
+        assertNonNullable(dequeued);
+        expect(dequeued.messageId).toBe("r0");
+
+        /**
+         * Simulate a dead-letter or checkpoint release from a build without the
+         * group mirror: the per-key and env sets are cleared but the MESSAGE KEY
+         * SURVIVES (dead-letter keeps it for redrive; suspension keeps it until
+         * the terminal ack) and the run sits in no queue zset. Only the
+         * home-currentConcurrency reconcile rule can prune this member.
+         */
+        await queue.redis.srem(
+          keys.queueCurrentConcurrencyKey(authenticatedEnvDev, "task/my-task", "ck-a"),
+          "r0"
+        );
+        await queue.redis.srem(keys.envCurrentConcurrencyKey(authenticatedEnvDev), "r0");
+        expect(
+          await queue.redis.exists(keys.messageKey(authenticatedEnvDev.organization.id, "r0"))
+        ).toBe(1);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r1",
+            concurrencyKey: "ck-b",
+            timestamp: Date.now() - 500,
+          }),
+          workerQueue: "main",
+        });
+
+        const r1Admitted = await waitFor(async () => {
+          await queue.redis.del(
+            `${keys.queueGroupConcurrencyKey(authenticatedEnvDev, "task/my-task")}:reconcileLock`
+          );
+          const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main", {
+            blockingPop: false,
+          });
+          return next?.messageId === "r1";
+        }, 30_000);
+        expect(r1Admitted).toBe(true);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "reconciles a large leaked backlog across bounded passes",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer, true);

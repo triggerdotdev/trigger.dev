@@ -68,8 +68,13 @@ const SemanticAttributes = {
  * flag. __gatesRelease runs on every release path UNCONDITIONALLY and is payload-
  * driven (a cheap substring probe before decoding), so slots acquired while the flag
  * was on always drain, and gateless messages pay near zero. __gateReconcile is the
- * same bounded self-heal as the total-cap gate: a member whose message key is gone
- * was terminally released by a path that missed the mirror and is provably dead.
+ * same bounded self-heal as the total-cap gate. Group and gate sets are strict
+ * mirrors of the member's home-queue currentConcurrency set (admits populate both
+ * in one script), so a member whose message key is gone, or who is absent from its
+ * home currentConcurrency set, holds no legitimate slot and is pruned. The home-set
+ * rule is what heals leaks from release paths without the mirror (older builds
+ * during a rolling upgrade), including runs parked in the DLQ or suspended on
+ * checkpoints, which older rules based on the queue zset could never prune.
  */
 const QUEUE_GATES_LUA_HELPERS = `
 local function __gateKeys(gatesKeyPrefix, msg, gate)
@@ -99,7 +104,8 @@ local function __gateReconcile(setKey, msgKeyPrefix, reconcileKeyPrefix)
       elseif reconcileKeyPrefix then
         local okMember, member = pcall(cjson.decode, rawMemberPayload)
         if okMember and type(member) == 'table' and type(member.queue) == 'string' then
-          if redis.call('ZSCORE', reconcileKeyPrefix .. member.queue, memberId) then
+          local homeConcurrencyKey = reconcileKeyPrefix .. member.queue .. ':currentConcurrency'
+          if homeConcurrencyKey ~= setKey and redis.call('SISMEMBER', homeConcurrencyKey, memberId) == 0 then
             redis.call('SREM', setKey, memberId)
           end
         end
@@ -294,9 +300,11 @@ export type RunQueueOptions = {
    * A release path that misses the group mirror (an instance on an older build during
    * rollout) leaves the member behind, briefly under-admitting. The dequeue gate
    * reconciles: when a queue sits at its total, members whose message key no longer
-   * exists are pruned, so such leaks clear within seconds instead of blocking the
-   * queue. Enabling only after every instance runs this build avoids the noise but is
-   * no longer load-bearing for correctness.
+   * exists or who are absent from their home currentConcurrency set are pruned, so
+   * such leaks clear within seconds instead of blocking the queue, including runs
+   * that dead-lettered or suspended through a mirror-less path. Enabling only after
+   * every instance runs this build avoids the noise but is no longer load-bearing
+   * for correctness.
    */
   totalConcurrencyEnabled?: boolean;
   /**
@@ -4914,10 +4922,9 @@ if totalConcurrencyEnabled then
     local groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
 
     -- Self-heal before holding the queue at its limit: a member with no message
-    -- key was terminally released without the mirror and is dead, and a member
-    -- whose message is QUEUED (in its variant zset) holds no legitimate slot,
-    -- since queued and in-flight are mutually exclusive on every path. Both are
-    -- pruned by the shared bounded reconcile.
+    -- key is dead, and a member absent from its home currentConcurrency set is
+    -- not in flight (group membership is a strict mirror of it), so neither
+    -- holds a legitimate slot. Both are pruned by the shared bounded reconcile.
     if groupCurrentConcurrency >= totalConcurrencyLimit then
       __gateReconcile(groupConcurrencyKey, messageKeyPrefix, keyPrefix)
       groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
