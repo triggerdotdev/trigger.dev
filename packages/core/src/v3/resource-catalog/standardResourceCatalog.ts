@@ -71,18 +71,26 @@ export class StandardResourceCatalog implements ResourceCatalog {
   registerQueueMetadata(queue: QueueManifest): void {
     const existingQueue = this._queueMetadata.get(queue.name);
 
-    //if it exists already AND concurrencyLimit is different, log a warning
+    //if it exists already with different settings, log a warning and keep the first definition
     if (existingQueue) {
       const isConcurrencyLimitDifferent = existingQueue.concurrencyLimit !== queue.concurrencyLimit;
+      const isCombinedLimitDifferent =
+        existingQueue.combinedConcurrencyLimit !== queue.combinedConcurrencyLimit;
 
-      if (isConcurrencyLimitDifferent) {
+      if (isConcurrencyLimitDifferent || isCombinedLimitDifferent) {
         let message = `Queue "${queue.name}" is defined twice, with different settings.`;
         if (isConcurrencyLimitDifferent) {
           message += `\n        - concurrencyLimit: ${existingQueue.concurrencyLimit} vs ${queue.concurrencyLimit}`;
         }
+        if (isCombinedLimitDifferent) {
+          message += `\n        - combinedConcurrencyLimit: ${existingQueue.combinedConcurrencyLimit} vs ${queue.combinedConcurrencyLimit}`;
+        }
 
         message += "\n       Keeping the first definition:";
         message += `\n        - concurrencyLimit: ${existingQueue.concurrencyLimit}`;
+        if (existingQueue.combinedConcurrencyLimit != null) {
+          message += `\n        - combinedConcurrencyLimit: ${existingQueue.combinedConcurrencyLimit}`;
+        }
         console.warn(message);
         return;
       }
