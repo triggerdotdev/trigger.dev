@@ -34,7 +34,7 @@ async function emitterReady(emitter: MetricsStreamEmitter) {
   const winner = await Promise.race([emitter.waitUntilReady().then(() => "ready"), timedOut]);
   abort.abort();
   if (winner === "timeout") {
-    await emitter.close().catch(() => {});
+    void emitter.close().catch(() => {});
     throw new Error("metrics emitter Redis connection never became ready");
   }
 }
