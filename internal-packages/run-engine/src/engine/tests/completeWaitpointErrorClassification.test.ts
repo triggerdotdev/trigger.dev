@@ -49,6 +49,20 @@ describe("completeWaitpoint store-resolution error classification", () => {
     ).rejects.not.toBeInstanceOf(UnclassifiableWaitpointId);
   });
 
+  it("wraps a classification failure from a foreign module instance (matched by name, not instanceof)", async () => {
+    const waitpointId = "waitpoint_foreign_instance";
+    const foreignError = new Error(`Unclassifiable run-ops id: ${waitpointId}`);
+    foreignError.name = "UnclassifiableRunId";
+    const waitpointSystem = createWaitpointSystem(() => Promise.reject(foreignError));
+
+    const caught = (await waitpointSystem
+      .completeWaitpoint({ id: waitpointId })
+      .catch((error: unknown) => error)) as UnclassifiableWaitpointId;
+    expect(caught).toBeInstanceOf(UnclassifiableWaitpointId);
+    expect(caught.waitpointId).toBe(waitpointId);
+    expect(caught.cause).toBe(foreignError);
+  });
+
   it("wraps a genuine UnclassifiableRunId as UnclassifiableWaitpointId with the original as cause", async () => {
     const waitpointId = "waitpoint_unclassifiable";
     const classificationError = new UnclassifiableRunId(waitpointId);

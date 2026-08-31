@@ -127,7 +127,11 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
       // database/infra error (e.g. can't reach the database) can surface here too. Those MUST
       // bubble up unchanged so they keep their original type, retryability, and error grouping
       // instead of being mislabelled as an unclassifiable id.
-      if (error instanceof UnclassifiableRunId) {
+      const isClassificationFailure =
+        error instanceof UnclassifiableRunId ||
+        (error instanceof Error && error.name === "UnclassifiableRunId");
+
+      if (isClassificationFailure) {
         this.logger.error("completeWaitpoint: unclassifiable waitpointId", {
           waitpointId,
           error,
