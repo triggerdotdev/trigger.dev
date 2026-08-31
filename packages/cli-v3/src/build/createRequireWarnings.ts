@@ -22,8 +22,8 @@ export type CreateRequireUsage = CreateRequireSpecifier & {
 
 const IDENTIFIER = "[A-Za-z_$][\\w$]*";
 const STRING_LITERAL = `(["'])([^"'\\n]+)\\1`;
-const NESTED_CALL_ARGS = `(?:[^()]|\\([^()]*\\))*`;
-const MODULE_IMPORT_REGEX = /(?:from\s*|require\(\s*|import\(\s*)["'](?:node:)?module["']/;
+const NESTED_CALL_ARGS = `(?:[^()]|\\((?:[^()]|\\([^()]*\\))*\\))*`;
+const MODULE_SPECIFIER = `["'](?:node:)?module["']`;
 
 /**
  * Finds string-literal package specifiers loaded through `createRequire`, e.g.
@@ -32,17 +32,36 @@ const MODULE_IMPORT_REGEX = /(?:from\s*|require\(\s*|import\(\s*)["'](?:node:)?m
  *
  * esbuild treats `createRequire` as an opaque call: nothing it loads is ever
  * resolved, so such packages are neither bundled nor collected as externals
- * and are missing from deployed images. This scan is a best-effort heuristic —
- * computed specifiers or a re-exported `createRequire` are not detected.
+ * and are missing from deployed images. Scanning runs on a comment-stripped
+ * copy of the source and only recognizes createRequire bindings that actually
+ * come from the `module` builtin. Still a best-effort heuristic: computed
+ * specifiers or a re-exported `createRequire` are not detected.
  */
 export function scanSourceForCreateRequire(source: string): CreateRequireSpecifier[] {
-  if (!source.includes("createRequire") || !MODULE_IMPORT_REGEX.test(source)) {
+  if (!source.includes("createRequire")) {
     return [];
   }
 
-  const aliases = collectCreateRequireAliases(source);
-  const aliasPattern = Array.from(aliases).map(escapeRegExp).join("|");
-  const createRequireCall = `(?:${IDENTIFIER}\\s*\\.\\s*)?(?:${aliasPattern})\\s*\\(${NESTED_CALL_ARGS}\\)`;
+  const code = stripCommentsAndTemplateText(source);
+  const { aliases, namespaces } = collectCreateRequireBindings(code);
+
+  if (aliases.size === 0 && namespaces.size === 0) {
+    return [];
+  }
+
+  const callHeads: string[] = [];
+
+  if (aliases.size > 0) {
+    callHeads.push(`(?:${Array.from(aliases).map(escapeRegExp).join("|")})`);
+  }
+
+  if (namespaces.size > 0) {
+    callHeads.push(
+      `(?:${Array.from(namespaces).map(escapeRegExp).join("|")})\\s*\\.\\s*createRequire`
+    );
+  }
+
+  const createRequireCall = `(?:${callHeads.join("|")})\\s*\\(${NESTED_CALL_ARGS}\\)`;
 
   const results: CreateRequireSpecifier[] = [];
   const seen = new Set<string>();
@@ -54,14 +73,8 @@ export function scanSourceForCreateRequire(source: string): CreateRequireSpecifi
       return;
     }
 
-    const location = locationAt(source, index);
-
-    if (isCommentedOut(location.lineText, location.column)) {
-      return;
-    }
-
     seen.add(key);
-    results.push({ specifier, ...location });
+    results.push({ specifier, ...locationAt(source, index) });
   };
 
   const directCallRegex = new RegExp(
@@ -69,18 +82,18 @@ export function scanSourceForCreateRequire(source: string): CreateRequireSpecifi
     "g"
   );
 
-  for (const match of source.matchAll(directCallRegex)) {
+  for (const match of code.matchAll(directCallRegex)) {
     pushHit(match.index!, match[2]!);
   }
 
   const assignmentRegex = new RegExp(
-    `(?:const|let|var)\\s+(${IDENTIFIER})\\s*=\\s*${createRequireCall}(?!\\s*\\()`,
+    `(?:const|let|var)\\s+(${IDENTIFIER})\\s*(?::\\s*[^=\\n;]+?)?\\s*=\\s*${createRequireCall}(?!\\s*\\()`,
     "g"
   );
 
   const requireFnNames = new Set<string>();
 
-  for (const match of source.matchAll(assignmentRegex)) {
+  for (const match of code.matchAll(assignmentRegex)) {
     requireFnNames.add(match[1]!);
   }
 
@@ -90,7 +103,7 @@ export function scanSourceForCreateRequire(source: string): CreateRequireSpecifi
       "g"
     );
 
-    for (const match of source.matchAll(callRegex)) {
+    for (const match of code.matchAll(callRegex)) {
       pushHit(match.index!, match[2]!);
     }
   }
@@ -100,30 +113,184 @@ export function scanSourceForCreateRequire(source: string): CreateRequireSpecifi
   return results;
 }
 
-function collectCreateRequireAliases(source: string): Set<string> {
-  const aliases = new Set<string>(["createRequire"]);
+type CreateRequireBindings = {
+  /** Local names bound to createRequire itself (named import or destructure) */
+  aliases: Set<string>;
+  /** Local names bound to the module builtin's namespace or default export */
+  namespaces: Set<string>;
+};
 
-  const bindingRegexes = [
-    new RegExp(`import\\s*(?:type\\s*)?\\{([^}]*)\\}\\s*from\\s*["'](?:node:)?module["']`, "g"),
+function collectCreateRequireBindings(code: string): CreateRequireBindings {
+  const aliases = new Set<string>();
+  const namespaces = new Set<string>();
+
+  const namedBindingRegexes = [
     new RegExp(
-      `(?:const|let|var)\\s*\\{([^}]*)\\}\\s*=\\s*require\\(\\s*["'](?:node:)?module["']\\s*\\)`,
+      `import\\s*(?:type\\s+)?(?:(${IDENTIFIER})\\s*,\\s*)?\\{([^}]*)\\}\\s*from\\s*${MODULE_SPECIFIER}`,
+      "g"
+    ),
+    new RegExp(
+      `(?:const|let|var)\\s*()\\{([^}]*)\\}\\s*=\\s*require\\s*\\(\\s*${MODULE_SPECIFIER}\\s*\\)`,
       "g"
     ),
   ];
 
-  for (const regex of bindingRegexes) {
-    for (const match of source.matchAll(regex)) {
-      const aliasMatch = match[1]!.match(
-        new RegExp(`createRequire\\s*(?:as\\s+|:\\s*)(${IDENTIFIER})`)
-      );
+  for (const regex of namedBindingRegexes) {
+    for (const match of code.matchAll(regex)) {
+      if (match[1]) {
+        namespaces.add(match[1]);
+      }
 
-      if (aliasMatch) {
-        aliases.add(aliasMatch[1]!);
+      for (const binding of match[2]!.split(",")) {
+        const bindingMatch = binding.match(
+          new RegExp(`^\\s*createRequire\\s*(?:(?:as\\s+|:\\s*)(${IDENTIFIER}))?\\s*$`)
+        );
+
+        if (bindingMatch) {
+          aliases.add(bindingMatch[1] ?? "createRequire");
+        }
       }
     }
   }
 
-  return aliases;
+  const namespaceBindingRegexes = [
+    new RegExp(`import\\s+(${IDENTIFIER})\\s+from\\s*${MODULE_SPECIFIER}`, "g"),
+    new RegExp(`import\\s*\\*\\s*as\\s+(${IDENTIFIER})\\s+from\\s*${MODULE_SPECIFIER}`, "g"),
+    new RegExp(
+      `(?:const|let|var)\\s+(${IDENTIFIER})\\s*=\\s*require\\s*\\(\\s*${MODULE_SPECIFIER}\\s*\\)`,
+      "g"
+    ),
+  ];
+
+  for (const regex of namespaceBindingRegexes) {
+    for (const match of code.matchAll(regex)) {
+      namespaces.add(match[1]!);
+    }
+  }
+
+  return { aliases, namespaces };
+}
+
+/**
+ * Blanks out comments and template-literal text (interpolation code is kept)
+ * while preserving every character offset and newline, so regex scanning
+ * never matches inside a comment or a code snippet embedded in a template
+ * string, and locations computed on the result map 1:1 onto the original.
+ * Single- and double-quoted string contents are kept because specifier
+ * literals must stay extractable. Regex literals are not lexed (a rare
+ * unescaped `//` inside one reads as a line comment).
+ */
+export function stripCommentsAndTemplateText(source: string): string {
+  const out = source.split("");
+  const interpolationBraceDepths: number[] = [];
+  let mode: "code" | "line" | "block" | "single" | "double" | "template" = "code";
+  let i = 0;
+
+  const blank = (index: number) => {
+    if (out[index] !== "\n") {
+      out[index] = " ";
+    }
+  };
+
+  while (i < source.length) {
+    const c = source[i]!;
+    const d = source[i + 1];
+
+    switch (mode) {
+      case "code": {
+        if (c === "/" && d === "/") {
+          mode = "line";
+          blank(i);
+          blank(i + 1);
+          i += 2;
+        } else if (c === "/" && d === "*") {
+          mode = "block";
+          blank(i);
+          blank(i + 1);
+          i += 2;
+        } else if (c === "'") {
+          mode = "single";
+          i += 1;
+        } else if (c === '"') {
+          mode = "double";
+          i += 1;
+        } else if (c === "`") {
+          mode = "template";
+          i += 1;
+        } else if (c === "{" && interpolationBraceDepths.length > 0) {
+          interpolationBraceDepths[interpolationBraceDepths.length - 1]!++;
+          i += 1;
+        } else if (c === "}" && interpolationBraceDepths.length > 0) {
+          const depth = interpolationBraceDepths[interpolationBraceDepths.length - 1]!;
+
+          if (depth === 0) {
+            interpolationBraceDepths.pop();
+            mode = "template";
+          } else {
+            interpolationBraceDepths[interpolationBraceDepths.length - 1] = depth - 1;
+          }
+
+          i += 1;
+        } else {
+          i += 1;
+        }
+        break;
+      }
+      case "line": {
+        if (c === "\n") {
+          mode = "code";
+        } else {
+          blank(i);
+        }
+        i += 1;
+        break;
+      }
+      case "block": {
+        if (c === "*" && d === "/") {
+          mode = "code";
+          blank(i);
+          blank(i + 1);
+          i += 2;
+        } else {
+          blank(i);
+          i += 1;
+        }
+        break;
+      }
+      case "single":
+      case "double": {
+        if (c === "\\") {
+          i += 2;
+        } else {
+          if (c === (mode === "single" ? "'" : '"') || c === "\n") {
+            mode = "code";
+          }
+          i += 1;
+        }
+        break;
+      }
+      case "template": {
+        if (c === "\\") {
+          blank(i);
+          blank(i + 1);
+          i += 2;
+        } else if (c === "`") {
+          mode = "code";
+          i += 1;
+        } else if (c === "$" && d === "{") {
+          interpolationBraceDepths.push(0);
+          mode = "code";
+          i += 2;
+        } else {
+          blank(i);
+          i += 1;
+        }
+        break;
+      }
+    }
+  }
+
+  return out.join("");
 }
 
 export function packageNameForSpecifier(specifier: string): string {
@@ -146,21 +313,6 @@ function isWarnableSpecifier(specifier: string): boolean {
   return !builtinModules.includes(packageNameForSpecifier(specifier));
 }
 
-/**
- * Line-level heuristic for hits inside comments (commented-out code is the
- * realistic false-positive source). A `//` or `/*` before the hit on the same
- * line, or a line shaped like a block-comment continuation, means skip.
- */
-function isCommentedOut(lineText: string, column: number): boolean {
-  const prefix = lineText.slice(0, column);
-
-  if (prefix.includes("//") || prefix.includes("/*")) {
-    return true;
-  }
-
-  return lineText.trimStart().startsWith("*");
-}
-
 function locationAt(
   source: string,
   index: number
@@ -181,6 +333,7 @@ function escapeRegExp(value: string): string {
 }
 
 const SCANNABLE_FILE_REGEX = /\.(?:m|c)?(?:j|t)sx?$/;
+const NODE_MODULES_SEGMENT_REGEX = /(?:^|[\\/])node_modules[\\/]/;
 
 /**
  * Scans the bundle's input files for packages loaded through `createRequire`.
@@ -210,7 +363,10 @@ export class CreateRequireCollector {
           for (const inputPath of Object.keys(result.metafile.inputs)) {
             const cleanPath = inputPath.split("?")[0]!;
 
-            if (!SCANNABLE_FILE_REGEX.test(cleanPath) || cleanPath.includes("node_modules")) {
+            if (
+              !SCANNABLE_FILE_REGEX.test(cleanPath) ||
+              NODE_MODULES_SEGMENT_REGEX.test(cleanPath)
+            ) {
               continue;
             }
 

@@ -165,6 +165,80 @@ const plugin = load("mssql");
     expect(scanSourceForCreateRequire(source)).toEqual([]);
   });
 
+  it("ignores a local createRequire function even when the module builtin is imported for something else", () => {
+    const source = `import { builtinModules } from "node:module";
+function createRequire(config: string) {
+  return (name: string) => registry.get(config, name);
+}
+const load = createRequire("defaults");
+const plugin = load("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source)).toEqual([]);
+  });
+
+  it("does not register require names from commented-out assignments", () => {
+    const source = `import { createRequire } from "node:module";
+// const req = createRequire(import.meta.url);
+declare function req(name: string): unknown;
+const y = req("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source)).toEqual([]);
+  });
+
+  it("still finds calls after a closed inline block comment", () => {
+    const source = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url);
+/* driver */ const mssql = req("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["mssql"]);
+  });
+
+  it("is not confused by // inside a string on the same line", () => {
+    const source = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url);
+const api = "https://example.com"; const pg = req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
+  it("ignores code embedded in template literals", () => {
+    const source =
+      'import { createRequire } from "node:module";\nconst req = createRequire(import.meta.url);\nconst snippet = `const x = req("fake-pkg");`;\n';
+
+    expect(scanSourceForCreateRequire(source)).toEqual([]);
+  });
+
+  it("supports whitespace before the require parenthesis in CJS bindings", () => {
+    const source = `const { createRequire } = require ("module");
+const req = createRequire(__filename);
+const lib = req("canvas");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["canvas"]);
+  });
+
+  it("supports a type annotation on the assigned require variable", () => {
+    const source = `import { createRequire } from "node:module";
+const req: NodeRequire = createRequire(import.meta.url);
+const mssql = req("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["mssql"]);
+  });
+
+  it("supports two levels of nesting in the createRequire argument", () => {
+    const source = `import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+const mssql = createRequire(fileURLToPath(new URL(".", import.meta.url)))("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["mssql"]);
+  });
+
   it("returns nothing when the source doesn't mention createRequire", () => {
     const source = `import mssql from "mssql";
 export const pool = mssql.connect();
@@ -219,6 +293,21 @@ export const mssql = createRequire(import.meta.url)("mssql");
         file: "entry.ts",
         line: 2,
       });
+
+      await build({
+        entryPoints: [entryPoint],
+        bundle: true,
+        metafile: true,
+        write: false,
+        format: "esm",
+        platform: "node",
+        outdir: dir,
+        absWorkingDir: dir,
+        logLevel: "silent",
+        plugins: [collector.plugin],
+      });
+
+      expect(collector.usages).toHaveLength(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
