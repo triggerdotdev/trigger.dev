@@ -533,7 +533,7 @@ function BuildSettingsForm({
               {...getInputProps(fields.installCommand, { type: "text" })}
               variant="medium"
               defaultValue={buildSettings?.installCommand || ""}
-              placeholder="pnpm install"
+              placeholder="e.g., pnpm install"
               onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
