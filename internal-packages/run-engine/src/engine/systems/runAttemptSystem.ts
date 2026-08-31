@@ -2008,6 +2008,7 @@ export class RunAttemptSystem {
         runtime: worker.deployment.runtime ?? "unknown",
         runtimeVersion: worker.deployment.runtimeVersion ?? "unknown",
         git: safeParseGitMeta(worker.deployment.git),
+        externalId: worker.deployment.externalId ?? undefined,
       };
     });
 
