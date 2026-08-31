@@ -26,13 +26,16 @@ const authenticatedEnvDev = {
 
 // A dead Redis leaves waitUntilReady() pending forever (the client retries
 // indefinitely), which would burn the whole test timeout with no diagnostic.
+// Races values, not throws: a rejection in the losing branch of a settled race
+// is an unhandled rejection, so the timer is aborted and swallowed instead.
 async function emitterReady(emitter: MetricsStreamEmitter) {
-  await Promise.race([
-    emitter.waitUntilReady(),
-    setTimeout(15_000).then(() => {
-      throw new Error("metrics emitter Redis connection never became ready");
-    }),
-  ]);
+  const abort = new AbortController();
+  const timedOut = setTimeout(15_000, "timeout", { signal: abort.signal }).catch(() => "aborted");
+  const winner = await Promise.race([emitter.waitUntilReady().then(() => "ready"), timedOut]);
+  abort.abort();
+  if (winner === "timeout") {
+    throw new Error("metrics emitter Redis connection never became ready");
+  }
 }
 
 async function readAllEntries(
