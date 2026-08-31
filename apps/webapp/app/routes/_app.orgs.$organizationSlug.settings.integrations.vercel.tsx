@@ -1,4 +1,4 @@
-import { TrashIcon } from "@heroicons/react/20/solid";
+import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 import { DialogClose } from "@radix-ui/react-dialog";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
@@ -18,10 +18,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { CopyableText } from "~/components/primitives/CopyableText";
+import { DateTime } from "~/components/primitives/DateTime";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  SettingsContainer,
+  SettingsHeader,
+  SettingsRow,
+  SettingsSection,
+} from "~/components/primitives/SettingsLayout";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   Table,
   TableBody,
@@ -42,18 +51,6 @@ import { pageMeta } from "~/utils/pageTitle";
 import { useOrganization } from "~/hooks/useOrganizations";
 
 export const meta = pageMeta("Vercel integration");
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  }).format(date);
-}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
@@ -301,131 +298,154 @@ export default function VercelIntegrationPage() {
         <PageTitle title="Vercel integration" />
       </NavBar>
       <PageBody>
-        {/* Integration Info Section */}
-        <div className="mb-8 rounded-lg border border-grid-bright bg-background-bright p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-medium text-text-bright">Integration Details</h2>
-              <div className="mt-2 space-y-1 text-sm text-text-dimmed">
-                {teamId && (
-                  <div>
-                    <span className="font-medium">Vercel Team ID:</span> {teamId}
-                  </div>
-                )}
-                {installationId && (
-                  <div>
-                    <span className="font-medium">Installation ID:</span> {installationId}
-                  </div>
-                )}
-                <div>
-                  <span className="font-medium">Installed:</span>{" "}
-                  {formatDate(new Date(vercelIntegration.createdAt))}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="danger/medium"
-                    LeadingIcon={TrashIcon}
-                    disabled={isUninstalling || !canManageVercel}
-                    tooltip={
-                      canManageVercel
-                        ? undefined
-                        : "You don't have permission to manage the Vercel integration"
-                    }
-                  >
-                    Remove Integration
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Remove Vercel Integration</DialogTitle>
-                  </DialogHeader>
-                  <DialogDescription>
-                    This will permanently remove the Vercel integration and disconnect all projects.
-                    This action cannot be undone.
-                  </DialogDescription>
-                  <FormButtons
-                    confirmButton={
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="uninstall" />
-                        <Button
-                          variant="danger/medium"
-                          LeadingIcon={TrashIcon}
-                          type="submit"
-                          disabled={isUninstalling}
-                        >
-                          {isUninstalling ? "Removing..." : "Remove Integration"}
-                        </Button>
-                      </Form>
-                    }
-                    cancelButton={
-                      <DialogClose asChild>
-                        <Button variant="tertiary/medium">Cancel</Button>
-                      </DialogClose>
-                    }
+        <SettingsContainer>
+          <SettingsSection>
+            <SettingsHeader title="Overview" />
+            {teamId ? (
+              <SettingsRow
+                title="Vercel team ID"
+                action={
+                  <CopyableText
+                    value={teamId}
+                    className="font-mono text-sm font-medium text-text-bright"
                   />
-                </DialogContent>
-              </Dialog>
-              {actionData?.error && (
-                <Paragraph variant="small" className="text-error">
-                  {actionData.error}
-                </Paragraph>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Connected Projects Section */}
-        <div>
-          <h2 className="mb-4 text-lg font-medium text-text-bright">
-            Connected Projects ({connectedProjects.length})
-          </h2>
-
-          {connectedProjects.length === 0 ? (
-            <div className="rounded-lg border border-grid-bright bg-background-bright p-6 text-center">
-              <Paragraph className="text-text-dimmed">
-                No projects are currently connected to this Vercel integration.
-              </Paragraph>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell>Project Name</TableHeaderCell>
-                  <TableHeaderCell>Vercel Project ID</TableHeaderCell>
-                  <TableHeaderCell>Connected</TableHeaderCell>
-                  <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {connectedProjects.map((projectIntegration) => (
-                  <TableRow key={projectIntegration.id}>
-                    <TableCell>{projectIntegration.project.name}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {projectIntegration.externalEntityId}
-                    </TableCell>
-                    <TableCell>{formatDate(new Date(projectIntegration.createdAt))}</TableCell>
-                    <TableCell>
-                      <LinkButton
-                        variant="minimal/small"
-                        to={v3ProjectSettingsIntegrationsPath(
-                          organization,
-                          projectIntegration.project,
-                          { slug: "prod" } // Default to production environment
-                        )}
+                }
+              />
+            ) : null}
+            {installationId ? (
+              <SettingsRow
+                title="Installation ID"
+                action={
+                  <CopyableText
+                    value={installationId}
+                    className="font-mono text-sm font-medium text-text-bright"
+                  />
+                }
+              />
+            ) : null}
+            <SettingsRow
+              title="Installed"
+              action={
+                <span className="text-sm text-text-bright">
+                  <DateTime date={vercelIntegration.createdAt} />
+                </span>
+              }
+            />
+            <SettingsRow
+              title="Remove integration"
+              align="end"
+              action={
+                <div className="flex flex-col items-end gap-1">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="danger/small"
+                        disabled={isUninstalling || !canManageVercel}
+                        tooltip={
+                          canManageVercel
+                            ? undefined
+                            : "You don't have permission to manage the Vercel integration"
+                        }
                       >
-                        Configure
-                      </LinkButton>
-                    </TableCell>
+                        Remove integration…
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Remove Vercel integration</DialogTitle>
+                      </DialogHeader>
+                      <DialogDescription>
+                        This will permanently remove the Vercel integration and disconnect all
+                        projects. This action cannot be undone.
+                      </DialogDescription>
+                      <FormButtons
+                        confirmButton={
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="uninstall" />
+                            <Button variant="danger/medium" type="submit" disabled={isUninstalling}>
+                              {isUninstalling ? "Removing…" : "Remove integration"}
+                            </Button>
+                          </Form>
+                        }
+                        cancelButton={
+                          <DialogClose asChild>
+                            <Button variant="secondary/medium">Cancel</Button>
+                          </DialogClose>
+                        }
+                      />
+                    </DialogContent>
+                  </Dialog>
+                  {actionData?.error ? (
+                    <Paragraph variant="small" className="text-error">
+                      {actionData.error}
+                    </Paragraph>
+                  ) : null}
+                </div>
+              }
+            />
+          </SettingsSection>
+
+          <SettingsSection>
+            <SettingsHeader
+              // Keep the header's divide when there's no table; the table's own top
+              // border is the divide once rows are present.
+              className={connectedProjects.length === 0 ? undefined : "border-b-0"}
+              title={`${connectedProjects.length} connected ${
+                connectedProjects.length === 1 ? "project" : "projects"
+              }`}
+            />
+            {connectedProjects.length === 0 ? (
+              <Paragraph variant="small" className="pt-4 text-text-dimmed">
+                No projects are connected to this Vercel integration yet.
+              </Paragraph>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>Project name</TableHeaderCell>
+                    <TableHeaderCell>Vercel project ID</TableHeaderCell>
+                    <TableHeaderCell>Connected</TableHeaderCell>
+                    <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+                </TableHeader>
+                <TableBody>
+                  {connectedProjects.map((projectIntegration) => (
+                    <TableRow key={projectIntegration.id}>
+                      <TableCell>{projectIntegration.project.name}</TableCell>
+                      <TableCell className="font-mono text-xs font-medium text-text-dimmed transition-[color] group-hover/table-row:text-text-bright">
+                        {projectIntegration.externalEntityId}
+                      </TableCell>
+                      <TableCell>
+                        <DateTime date={projectIntegration.createdAt} />
+                      </TableCell>
+                      <TableCell isSticky>
+                        <SimpleTooltip
+                          asChild
+                          disableHoverableContent
+                          content="Configure"
+                          button={
+                            <span className="flex">
+                              <LinkButton
+                                variant="secondary/small-icon"
+                                LeadingIcon={Cog6ToothIcon}
+                                className="w-6 min-w-0 px-0"
+                                to={v3ProjectSettingsIntegrationsPath(
+                                  organization,
+                                  projectIntegration.project,
+                                  { slug: "prod" } // Default to production environment
+                                )}
+                              />
+                            </span>
+                          }
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </SettingsSection>
+        </SettingsContainer>
       </PageBody>
     </PageContainer>
   );
