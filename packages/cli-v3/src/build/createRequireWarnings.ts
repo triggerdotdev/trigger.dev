@@ -21,6 +21,8 @@ export type CreateRequireUsage = CreateRequireSpecifier & {
 
 const IDENTIFIER = "[A-Za-z_$][\\w$]*";
 const STRING_LITERAL = `(["'])([^"'\\n]+)\\1`;
+const NESTED_CALL_ARGS = `(?:[^()]|\\([^()]*\\))*`;
+const MODULE_IMPORT_REGEX = /(?:from\s*|require\(\s*|import\(\s*)["'](?:node:)?module["']/;
 
 /**
  * Finds string-literal package specifiers loaded through `createRequire`, e.g.
@@ -33,13 +35,13 @@ const STRING_LITERAL = `(["'])([^"'\\n]+)\\1`;
  * computed specifiers or a re-exported `createRequire` are not detected.
  */
 export function scanSourceForCreateRequire(source: string): CreateRequireSpecifier[] {
-  if (!source.includes("createRequire")) {
+  if (!source.includes("createRequire") || !MODULE_IMPORT_REGEX.test(source)) {
     return [];
   }
 
   const aliases = collectCreateRequireAliases(source);
   const aliasPattern = Array.from(aliases).map(escapeRegExp).join("|");
-  const createRequireCall = `(?:${IDENTIFIER}\\s*\\.\\s*)?(?:${aliasPattern})\\s*\\([^()]*\\)`;
+  const createRequireCall = `(?:${IDENTIFIER}\\s*\\.\\s*)?(?:${aliasPattern})\\s*\\(${NESTED_CALL_ARGS}\\)`;
 
   const results: CreateRequireSpecifier[] = [];
   const seen = new Set<string>();
@@ -51,8 +53,14 @@ export function scanSourceForCreateRequire(source: string): CreateRequireSpecifi
       return;
     }
 
+    const location = locationAt(source, index);
+
+    if (isCommentedOut(location.lineText, location.column)) {
+      return;
+    }
+
     seen.add(key);
-    results.push({ specifier, ...locationAt(source, index) });
+    results.push({ specifier, ...location });
   };
 
   const directCallRegex = new RegExp(
@@ -135,6 +143,21 @@ function isWarnableSpecifier(specifier: string): boolean {
   }
 
   return !builtinModules.includes(packageNameForSpecifier(specifier));
+}
+
+/**
+ * Line-level heuristic for hits inside comments (commented-out code is the
+ * realistic false-positive source). A `//` or `/*` before the hit on the same
+ * line, or a line shaped like a block-comment continuation, means skip.
+ */
+function isCommentedOut(lineText: string, column: number): boolean {
+  const prefix = lineText.slice(0, column);
+
+  if (prefix.includes("//") || prefix.includes("/*")) {
+    return true;
+  }
+
+  return lineText.trimStart().startsWith("*");
 }
 
 function locationAt(

@@ -128,6 +128,41 @@ globalThis.require = createRequire(import.meta.url);
     expect(scanSourceForCreateRequire(source)).toEqual([]);
   });
 
+  it("finds calls when the createRequire argument contains a nested call", () => {
+    const source = `import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+const mssql = createRequire(fileURLToPath(import.meta.url))("mssql");
+const req = createRequire(fileURLToPath(import.meta.url));
+const pg = req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["mssql", "pg"]);
+  });
+
+  it("ignores hits inside comments", () => {
+    const source = `import { createRequire } from "node:module";
+// const mssql = createRequire(import.meta.url)("mssql");
+/* const pg = createRequire(import.meta.url)("pg"); */
+/**
+ * Example: createRequire(import.meta.url)("sharp")
+ */
+const real = createRequire(import.meta.url)("bcrypt");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["bcrypt"]);
+  });
+
+  it("ignores files that never import the module builtin", () => {
+    const source = `function createRequire(config: string) {
+  return (name: string) => registry.get(config, name);
+}
+const load = createRequire("defaults");
+const plugin = load("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source)).toEqual([]);
+  });
+
   it("returns nothing when the source doesn't mention createRequire", () => {
     const source = `import mssql from "mssql";
 export const pool = mssql.connect();
