@@ -5,7 +5,6 @@ import { ResolvedConfig } from "./resolvedConfig.js";
 export function esbuildPlugin(plugin: Plugin, options: RegisterPluginOptions = {}): BuildExtension {
   return {
     name: plugin.name,
-    installedPackagesForTarget: () => [],
     onBuildStart(context) {
       context.registerPlugin(plugin, options);
     },
@@ -19,7 +18,8 @@ export interface BuildExtension {
    * Package names this extension installs into the deployed image for the
    * given target. Diagnostics only: the bundler ignores this, it just tells
    * build warnings (e.g. the createRequire scan) the package will be
-   * available at runtime.
+   * available at runtime. Extensions that install no packages don't need to
+   * implement this.
    */
   installedPackagesForTarget?: (target: BuildTarget) => string[] | undefined;
   onBuildStart?: (context: BuildContext) => Promise<void> | void;

@@ -24,7 +24,6 @@ export type FfmpegOptions = {
 export function ffmpeg(options: FfmpegOptions = {}): BuildExtension {
   return {
     name: "ffmpeg",
-    installedPackagesForTarget: () => [],
     onBuildComplete(context) {
       if (context.target === "dev") {
         return;

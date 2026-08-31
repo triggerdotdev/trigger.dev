@@ -1,5 +1,5 @@
 import { build, type BuildResult, type PluginBuild } from "esbuild";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,7 +12,6 @@ import {
   extensionInstalledPackageMatchers,
   packageNameForSpecifier,
   packagesInstalledByCommands,
-  scanSource,
   scanSourceForCreateRequire,
   unavailableCreateRequireUsages,
 } from "./createRequireWarnings.js";
@@ -357,33 +356,6 @@ const pg = req("pg");
     expect(scanSourceForCreateRequire(source)).toEqual([]);
   });
 
-  it("records require functions exported in specifier form", () => {
-    const source = `import { createRequire } from "node:module";
-const cjsRequire = createRequire(import.meta.url);
-export { cjsRequire };
-`;
-
-    expect(scanSource(source).exportedRequireFns).toEqual(["cjsRequire"]);
-  });
-
-  it("follows require functions imported from other scanned files", () => {
-    const util = `import { createRequire } from "node:module";
-export const cjsRequire = createRequire(import.meta.url);
-`;
-    const task = `import { cjsRequire } from "./util.js";
-const mssql = cjsRequire("mssql");
-`;
-
-    const { exportedRequireFns, specifiers } = scanSource(util);
-
-    expect(exportedRequireFns).toEqual(["cjsRequire"]);
-    expect(specifiers).toEqual([]);
-
-    const taskResults = scanSourceForCreateRequire(task, new Set(exportedRequireFns));
-
-    expect(taskResults.map((r) => r.specifier)).toEqual(["mssql"]);
-  });
-
   it("returns nothing when the source doesn't mention createRequire", () => {
     const source = `import mssql from "mssql";
 export const pool = mssql.connect();
@@ -453,141 +425,6 @@ export const mssql = createRequire(import.meta.url)("mssql");
       });
 
       expect(collector.usages).toHaveLength(1);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("collects usages of a require function imported from another module", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "create-require-collector-"));
-
-    try {
-      await writeFile(
-        join(dir, "util.ts"),
-        `import { createRequire } from "node:module";
-export const cjsRequire = createRequire(import.meta.url);
-`
-      );
-
-      const entryPoint = join(dir, "entry.ts");
-      await writeFile(
-        entryPoint,
-        `import { cjsRequire } from "./util.js";
-export const mssql = cjsRequire("mssql");
-`
-      );
-
-      const collector = new CreateRequireCollector(dir);
-
-      await build({
-        entryPoints: [entryPoint],
-        bundle: true,
-        metafile: true,
-        write: false,
-        format: "esm",
-        platform: "node",
-        outdir: dir,
-        absWorkingDir: dir,
-        logLevel: "silent",
-        plugins: [collector.plugin],
-      });
-
-      expect(collector.usages).toHaveLength(1);
-      expect(collector.usages[0]).toMatchObject({
-        specifier: "mssql",
-        packageName: "mssql",
-        file: "entry.ts",
-      });
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("ignores a same-named import that resolves to a module without the require export", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "create-require-collector-"));
-
-    try {
-      await writeFile(
-        join(dir, "util.ts"),
-        `import { createRequire } from "node:module";
-export const cjsRequire = createRequire(import.meta.url);
-export const unused = cjsRequire;
-`
-      );
-      await writeFile(
-        join(dir, "pluginLoader.ts"),
-        `export const cjsRequire = (name: string) => ({ name });
-`
-      );
-
-      const entryPoint = join(dir, "entry.ts");
-      await writeFile(
-        entryPoint,
-        `import { cjsRequire } from "./pluginLoader.js";
-import { unused } from "./util.js";
-export const plugin = cjsRequire("my-plugin");
-export const keep = unused;
-`
-      );
-
-      const collector = new CreateRequireCollector(dir);
-
-      await build({
-        entryPoints: [entryPoint],
-        bundle: true,
-        metafile: true,
-        write: false,
-        format: "esm",
-        platform: "node",
-        outdir: dir,
-        absWorkingDir: dir,
-        logLevel: "silent",
-        plugins: [collector.plugin],
-      });
-
-      expect(collector.usages).toEqual([]);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("follows a require function exported from an index file", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "create-require-collector-"));
-
-    try {
-      await mkdir(join(dir, "util"));
-      await writeFile(
-        join(dir, "util", "index.ts"),
-        `import { createRequire } from "node:module";
-export const cjsRequire = createRequire(import.meta.url);
-`
-      );
-
-      const entryPoint = join(dir, "entry.ts");
-      await writeFile(
-        entryPoint,
-        `import { cjsRequire } from "./util";
-export const mssql = cjsRequire("mssql");
-`
-      );
-
-      const collector = new CreateRequireCollector(dir);
-
-      await build({
-        entryPoints: [entryPoint],
-        bundle: true,
-        metafile: true,
-        write: false,
-        format: "esm",
-        platform: "node",
-        outdir: dir,
-        absWorkingDir: dir,
-        logLevel: "silent",
-        plugins: [collector.plugin],
-      });
-
-      expect(collector.usages).toHaveLength(1);
-      expect(collector.usages[0]).toMatchObject({ specifier: "mssql", file: "entry.ts" });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

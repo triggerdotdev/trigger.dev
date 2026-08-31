@@ -3,12 +3,11 @@ import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { readFile, stat } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import pLimit from "p-limit";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { logger } from "../utilities/logger.js";
 import {
-  escapeRegExp,
   isBareModuleImport,
   isBuiltinModule,
   makeExternalRegexp,
@@ -31,19 +30,6 @@ export type CreateRequireUsage = CreateRequireSpecifier & {
   packageName: string;
 };
 
-export type SourceScanResult = {
-  specifiers: CreateRequireSpecifier[];
-  /** Names of require functions this file creates and exports (`export const req = createRequire(...)`) */
-  exportedRequireFns: string[];
-};
-
-/**
- * Decides whether an imported binding is a require function created in
- * another scanned file. Receives the binding's exported name and the import
- * specifier it came from.
- */
-export type KnownRequireFnImportPredicate = (name: string, fromSpecifier: string) => boolean;
-
 /**
  * Finds string-literal package specifiers loaded through `createRequire`, e.g.
  * `createRequire(import.meta.url)("mssql")` or
@@ -54,44 +40,19 @@ export type KnownRequireFnImportPredicate = (name: string, fromSpecifier: string
  * and are missing from deployed images. The source is parsed with
  * `@babel/parser`, so comments, strings, templates, regex literals and JSX
  * can never confuse the scan; a file that fails to parse is skipped
- * (diagnostics must never fail a build). Binding tracking is name-based at
- * module level: computed specifiers, re-exports of createRequire itself, and
- * shadowed names are not followed.
+ * (diagnostics must never fail a build). Binding tracking is name-based,
+ * module-level, and per-file: computed specifiers, shadowed names, and a
+ * require function imported from another file are not followed.
  */
-export function scanSourceForCreateRequire(
-  source: string,
-  knownRequireFnExports?: ReadonlySet<string>
-): CreateRequireSpecifier[] {
-  return scanSource(
-    source,
-    knownRequireFnExports ? (name) => knownRequireFnExports.has(name) : undefined
-  ).specifiers;
-}
-
-type AstNode = {
-  type: string;
-  start?: number | null;
-  loc?: { start: { line: number; column: number } } | null;
-  [key: string]: unknown;
-};
-
-const MODULE_BUILTIN_SPECIFIERS = new Set(["module", "node:module"]);
-const PARSER_PLUGIN_ATTEMPTS: ParserPlugin[][] = [["typescript", "jsx"], ["typescript"], []];
-
-export function scanSource(
-  source: string,
-  isKnownRequireFnImport?: KnownRequireFnImportPredicate
-): SourceScanResult {
-  const empty: SourceScanResult = { specifiers: [], exportedRequireFns: [] };
-
-  if (!source.includes("createRequire") && !isKnownRequireFnImport) {
-    return empty;
+export function scanSourceForCreateRequire(source: string): CreateRequireSpecifier[] {
+  if (!source.includes("createRequire")) {
+    return [];
   }
 
   const ast = parseWithFallbacks(source);
 
   if (!ast) {
-    return empty;
+    return [];
   }
 
   const collected = collectAstFacts(ast);
@@ -105,6 +66,10 @@ export function scanSource(
     } else {
       namespaces.add(moduleImport.localName);
     }
+  }
+
+  if (aliases.size === 0 && namespaces.size === 0) {
+    return [];
   }
 
   const isCreateRequireCall = (node: AstNode): boolean => {
@@ -134,29 +99,10 @@ export function scanSource(
   };
 
   const requireFnNames = new Set<string>();
-  const exportedRequireFns = new Set<string>();
 
   for (const binding of collected.bindings) {
     if (isCreateRequireCall(binding.value)) {
       requireFnNames.add(binding.name);
-
-      if (binding.exported) {
-        exportedRequireFns.add(binding.name);
-      }
-    }
-  }
-
-  for (const name of collected.exportSpecifierNames) {
-    if (requireFnNames.has(name)) {
-      exportedRequireFns.add(name);
-    }
-  }
-
-  if (isKnownRequireFnImport) {
-    for (const relativeImport of collected.relativeNamedImports) {
-      if (isKnownRequireFnImport(relativeImport.importedName, relativeImport.fromSpecifier)) {
-        requireFnNames.add(relativeImport.localName);
-      }
     }
   }
 
@@ -199,8 +145,18 @@ export function scanSource(
 
   specifiers.sort((a, b) => a.line - b.line || a.column - b.column);
 
-  return { specifiers, exportedRequireFns: Array.from(exportedRequireFns) };
+  return specifiers;
 }
+
+type AstNode = {
+  type: string;
+  start?: number | null;
+  loc?: { start: { line: number; column: number } } | null;
+  [key: string]: unknown;
+};
+
+const MODULE_BUILTIN_SPECIFIERS = new Set(["module", "node:module"]);
+const PARSER_PLUGIN_ATTEMPTS: ParserPlugin[][] = [["typescript", "jsx"], ["typescript"], []];
 
 function parseWithFallbacks(source: string): AstNode | undefined {
   for (const plugins of PARSER_PLUGIN_ATTEMPTS) {
@@ -221,10 +177,7 @@ function parseWithFallbacks(source: string): AstNode | undefined {
 
 type AstFacts = {
   moduleImports: Array<{ kind: "createRequire" | "namespace"; localName: string }>;
-  bindings: Array<{ name: string; value: AstNode; exported: boolean }>;
-  /** Local names exported via `export { name }` (specifier form) */
-  exportSpecifierNames: string[];
-  relativeNamedImports: Array<{ importedName: string; localName: string; fromSpecifier: string }>;
+  bindings: Array<{ name: string; value: AstNode }>;
   calls: Array<{
     callee: AstNode;
     specifier: string | undefined;
@@ -238,44 +191,18 @@ function collectAstFacts(ast: AstNode): AstFacts {
   const facts: AstFacts = {
     moduleImports: [],
     bindings: [],
-    exportSpecifierNames: [],
-    relativeNamedImports: [],
     calls: [],
   };
 
-  const visit = (node: AstNode, exported: boolean) => {
+  const visit = (node: AstNode) => {
     switch (node.type) {
-      case "ExportNamedDeclaration": {
-        const declaration = node.declaration as AstNode | null;
-
-        if (declaration) {
-          visit(declaration, true);
-        } else if (!node.source) {
-          for (const specifier of (node.specifiers as AstNode[]) ?? []) {
-            const local = specifier.local as AstNode | undefined;
-
-            if (specifier.type === "ExportSpecifier" && local?.type === "Identifier") {
-              facts.exportSpecifierNames.push(local.name as string);
-            }
-          }
-        }
-
-        return;
-      }
-      case "VariableDeclaration": {
-        for (const declarator of node.declarations as AstNode[]) {
-          visit(declarator, exported);
-        }
-
-        return;
-      }
       case "ImportDeclaration": {
         collectImportDeclaration(node, facts);
 
         return;
       }
       case "VariableDeclarator": {
-        collectVariableDeclarator(node, exported, facts);
+        collectVariableDeclarator(node, facts);
         break;
       }
       case "AssignmentExpression": {
@@ -283,7 +210,7 @@ function collectAstFacts(ast: AstNode): AstFacts {
         const right = node.right as AstNode;
 
         if (node.operator === "=" && left.type === "Identifier") {
-          facts.bindings.push({ name: left.name as string, value: right, exported: false });
+          facts.bindings.push({ name: left.name as string, value: right });
         }
 
         break;
@@ -303,24 +230,20 @@ function collectAstFacts(ast: AstNode): AstFacts {
       }
     }
 
-    visitChildren(node);
-  };
-
-  const visitChildren = (node: AstNode) => {
     for (const value of Object.values(node)) {
       if (Array.isArray(value)) {
         for (const item of value) {
           if (isAstNode(item)) {
-            visit(item, false);
+            visit(item);
           }
         }
       } else if (isAstNode(value)) {
-        visit(value, false);
+        visit(value);
       }
     }
   };
 
-  visit(ast, false);
+  visit(ast);
 
   return facts;
 }
@@ -331,43 +254,27 @@ function isAstNode(value: unknown): value is AstNode {
 
 function collectImportDeclaration(node: AstNode, facts: AstFacts) {
   const importSource = node.source as AstNode;
-  const specifierValue = importSource.value as string;
-  const specifiers = node.specifiers as AstNode[];
 
-  if (MODULE_BUILTIN_SPECIFIERS.has(specifierValue)) {
-    for (const specifier of specifiers) {
-      const localName = (specifier.local as AstNode).name as string;
+  if (!MODULE_BUILTIN_SPECIFIERS.has(importSource.value as string)) {
+    return;
+  }
 
-      if (specifier.type === "ImportSpecifier") {
-        const imported = specifier.imported as AstNode;
+  for (const specifier of node.specifiers as AstNode[]) {
+    const localName = (specifier.local as AstNode).name as string;
 
-        if (imported.type === "Identifier" && imported.name === "createRequire") {
-          facts.moduleImports.push({ kind: "createRequire", localName });
-        }
-      } else {
-        facts.moduleImports.push({ kind: "namespace", localName });
-      }
-    }
-  } else if (specifierValue.startsWith(".")) {
-    for (const specifier of specifiers) {
-      if (specifier.type !== "ImportSpecifier") {
-        continue;
-      }
-
+    if (specifier.type === "ImportSpecifier") {
       const imported = specifier.imported as AstNode;
 
-      if (imported.type === "Identifier") {
-        facts.relativeNamedImports.push({
-          importedName: imported.name as string,
-          localName: (specifier.local as AstNode).name as string,
-          fromSpecifier: specifierValue,
-        });
+      if (imported.type === "Identifier" && imported.name === "createRequire") {
+        facts.moduleImports.push({ kind: "createRequire", localName });
       }
+    } else {
+      facts.moduleImports.push({ kind: "namespace", localName });
     }
   }
 }
 
-function collectVariableDeclarator(node: AstNode, exported: boolean, facts: AstFacts) {
+function collectVariableDeclarator(node: AstNode, facts: AstFacts) {
   const id = node.id as AstNode;
   const init = node.init as AstNode | null;
 
@@ -375,9 +282,7 @@ function collectVariableDeclarator(node: AstNode, exported: boolean, facts: AstF
     return;
   }
 
-  const moduleLoad = isModuleBuiltinLoad(init);
-
-  if (moduleLoad) {
+  if (isModuleBuiltinLoad(init)) {
     if (id.type === "Identifier") {
       facts.moduleImports.push({ kind: "namespace", localName: id.name as string });
     } else if (id.type === "ObjectPattern") {
@@ -403,7 +308,7 @@ function collectVariableDeclarator(node: AstNode, exported: boolean, facts: AstF
   }
 
   if (id.type === "Identifier") {
-    facts.bindings.push({ name: id.name as string, value: init, exported });
+    facts.bindings.push({ name: id.name as string, value: init });
   }
 }
 
@@ -472,22 +377,15 @@ const FILE_READ_CONCURRENCY = 16;
 type CollectorCacheEntry = {
   mtimeMs: number;
   size: number;
-  /** Scan without cross-file require-fn knowledge */
-  base: SourceScanResult;
-  /** Signature of the cross-file exports under which finalSpecifiers was computed */
-  knownsSignature: string;
-  finalSpecifiers: CreateRequireSpecifier[];
+  specifiers: CreateRequireSpecifier[];
 };
 
 /**
  * Scans the bundle's input files for packages loaded through `createRequire`.
  * Only files outside `node_modules` are scanned: bundled libraries commonly
  * use optional-require patterns that would drown real findings in noise.
- * Require functions exported from one scanned file and imported into another
- * are followed, resolving import specifiers through the metafile's own
- * resolved import records (with a filesystem fallback), so index files and
- * path aliases work. Scan results are cached per file by mtime and size so
- * dev rebuilds only re-read changed files.
+ * Each file is scanned independently; results are cached per file by mtime
+ * and size so dev rebuilds only re-read changed files.
  */
 export class CreateRequireCollector {
   private _usages: CreateRequireUsage[] = [];
@@ -525,183 +423,81 @@ export class CreateRequireCollector {
   }
 
   private async collect(metafile: esbuild.Metafile): Promise<CreateRequireUsage[]> {
-    const usages: CreateRequireUsage[] = [];
     const files: Array<{ inputPath: string; filePath: string }> = [];
     const seenPaths = new Set<string>();
-    const importResolutions = new Map<string, Map<string, string>>();
 
-    for (const [inputPath, input] of Object.entries(metafile.inputs)) {
+    for (const inputPath of Object.keys(metafile.inputs)) {
       const cleanPath = inputPath.split("?")[0]!;
 
-      if (!SCANNABLE_FILE_REGEX.test(cleanPath) || NODE_MODULES_SEGMENT_REGEX.test(cleanPath)) {
+      if (
+        seenPaths.has(cleanPath) ||
+        !SCANNABLE_FILE_REGEX.test(cleanPath) ||
+        NODE_MODULES_SEGMENT_REGEX.test(cleanPath)
+      ) {
         continue;
       }
 
-      const resolutions = importResolutions.get(cleanPath) ?? new Map<string, string>();
-
-      for (const record of input.imports) {
-        if (record.original !== undefined && !record.external) {
-          resolutions.set(record.original, record.path.split("?")[0]!);
-        }
-      }
-
-      importResolutions.set(cleanPath, resolutions);
-
-      if (!seenPaths.has(cleanPath)) {
-        seenPaths.add(cleanPath);
-        files.push({
-          inputPath: cleanPath,
-          filePath: isAbsolute(cleanPath) ? cleanPath : resolve(this.workingDir, cleanPath),
-        });
-      }
+      seenPaths.add(cleanPath);
+      files.push({
+        inputPath: cleanPath,
+        filePath: isAbsolute(cleanPath) ? cleanPath : resolve(this.workingDir, cleanPath),
+      });
     }
 
     const limit = pLimit(FILE_READ_CONCURRENCY);
 
-    const scanned = (
-      await Promise.all(
-        files.map((file) =>
-          limit(async () => {
-            const [statError, stats] = await tryCatch(stat(file.filePath));
-
-            if (statError) {
-              logger.debug("[createRequire] Unable to stat bundle input file", {
-                filePath: file.filePath,
-                error: statError,
-              });
-
-              return undefined;
-            }
-
-            const cached = this._cache.get(file.filePath);
-            const unchanged =
-              cached !== undefined &&
-              cached.mtimeMs === stats.mtimeMs &&
-              cached.size === stats.size;
-
-            let source: string | undefined;
-            let base: SourceScanResult;
-
-            if (unchanged) {
-              base = cached.base;
-            } else {
-              const [readError, contents] = await tryCatch(readFile(file.filePath, "utf8"));
-
-              if (readError) {
-                logger.debug("[createRequire] Unable to read bundle input file", {
-                  filePath: file.filePath,
-                  error: readError,
-                });
-
-                return undefined;
-              }
-
-              source = contents;
-              base = scanSource(contents);
-            }
-
-            return { ...file, stats, cached: unchanged ? cached : undefined, source, base };
-          })
-        )
-      )
-    ).filter((entry) => entry !== undefined);
-
-    const fileKey = (filePath: string) => filePath.replace(SCANNABLE_FILE_REGEX, "");
-    const exportsByInputPath = new Map<string, Set<string>>();
-    const exportsByFileKey = new Map<string, Set<string>>();
-    const exportedNames = new Set<string>();
-
-    for (const entry of scanned) {
-      if (entry.base.exportedRequireFns.length > 0) {
-        const names = new Set(entry.base.exportedRequireFns);
-
-        exportsByInputPath.set(entry.inputPath, names);
-        exportsByFileKey.set(fileKey(entry.filePath), names);
-
-        for (const name of names) {
-          exportedNames.add(name);
-        }
-      }
-    }
-
-    const knownsSignature = Array.from(exportsByInputPath.entries())
-      .flatMap(([inputPath, names]) => Array.from(names).map((name) => `${inputPath}#${name}`))
-      .sort()
-      .join(",");
-
-    const exportedNamePattern =
-      exportedNames.size > 0
-        ? new RegExp(`\\b(?:${Array.from(exportedNames).map(escapeRegExp).join("|")})\\b`)
-        : undefined;
-
-    const needsSource = scanned.filter(
-      (entry) =>
-        entry.source === undefined &&
-        !(entry.cached && entry.cached.knownsSignature === knownsSignature)
-    );
-
-    await Promise.all(
-      needsSource.map((entry) =>
+    const scanned = await Promise.all(
+      files.map((file) =>
         limit(async () => {
-          const [readError, contents] = await tryCatch(readFile(entry.filePath, "utf8"));
+          const [statError, stats] = await tryCatch(stat(file.filePath));
+
+          if (statError) {
+            logger.debug("[createRequire] Unable to stat bundle input file", {
+              filePath: file.filePath,
+              error: statError,
+            });
+
+            return undefined;
+          }
+
+          const cached = this._cache.get(file.filePath);
+
+          if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+            return { inputPath: file.inputPath, specifiers: cached.specifiers };
+          }
+
+          const [readError, contents] = await tryCatch(readFile(file.filePath, "utf8"));
 
           if (readError) {
-            logger.debug("[createRequire] Unable to re-read bundle input file", {
-              filePath: entry.filePath,
+            logger.debug("[createRequire] Unable to read bundle input file", {
+              filePath: file.filePath,
               error: readError,
             });
 
-            return;
+            return undefined;
           }
 
-          entry.source = contents;
+          const specifiers = scanSourceForCreateRequire(contents);
+
+          this._cache.set(file.filePath, {
+            mtimeMs: stats.mtimeMs,
+            size: stats.size,
+            specifiers,
+          });
+
+          return { inputPath: file.inputPath, specifiers };
         })
       )
     );
 
+    const usages: CreateRequireUsage[] = [];
+
     for (const entry of scanned) {
-      let finalSpecifiers: CreateRequireSpecifier[];
-
-      if (entry.cached && entry.cached.knownsSignature === knownsSignature) {
-        finalSpecifiers = entry.cached.finalSpecifiers;
-      } else {
-        const source = entry.source;
-
-        if (source === undefined) {
-          continue;
-        }
-
-        const mentionsExportedName = exportedNamePattern?.test(source) ?? false;
-
-        if (!mentionsExportedName) {
-          finalSpecifiers = entry.base.specifiers;
-        } else {
-          const resolutions = importResolutions.get(entry.inputPath);
-          const importerDir = dirname(entry.filePath);
-
-          finalSpecifiers = scanSource(source, (name, fromSpecifier) => {
-            const metafileResolved = resolutions?.get(fromSpecifier);
-
-            if (metafileResolved !== undefined) {
-              return exportsByInputPath.get(metafileResolved)?.has(name) ?? false;
-            }
-
-            const key = fileKey(resolve(importerDir, fromSpecifier));
-
-            return exportsByFileKey.get(key)?.has(name) ?? false;
-          }).specifiers;
-        }
-
-        this._cache.set(entry.filePath, {
-          mtimeMs: entry.stats.mtimeMs,
-          size: entry.stats.size,
-          base: entry.base,
-          knownsSignature,
-          finalSpecifiers,
-        });
+      if (!entry) {
+        continue;
       }
 
-      for (const found of finalSpecifiers) {
+      for (const found of entry.specifiers) {
         usages.push({
           ...found,
           file: entry.inputPath,

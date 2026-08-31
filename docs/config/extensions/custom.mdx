@@ -91,7 +91,7 @@ export default defineConfig({
 
 ### installedPackagesForTarget
 
-This tells build diagnostics which packages your extension installs into the deployed image for a given target, so warnings (like the one for packages loaded via `createRequire()`) don't fire for packages that will actually be available at runtime. The bundler ignores this hook, so declaring it never changes the build output. Return an empty array to declare that your extension installs no packages, which keeps those diagnostics active in `dev` for projects using your extension.
+This tells build diagnostics which packages your extension installs into the deployed image for a given target, so warnings (like the one for packages loaded via `createRequire()`) don't fire for packages that will actually be available at runtime. The bundler ignores this hook, so declaring it never changes the build output. Only implement it if your extension installs packages; extensions without it are assumed to install none.
 
 ```ts
 {

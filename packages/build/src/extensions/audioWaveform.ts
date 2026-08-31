@@ -17,10 +17,6 @@ export function audioWaveform(options: AudioWaveformOptions = {}): BuildExtensio
 class AudioWaveformExtension implements BuildExtension {
   public readonly name = "AudioWaveformExtension";
 
-  installedPackagesForTarget() {
-    return [];
-  }
-
   constructor(private options: AudioWaveformOptions = {}) {}
 
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
