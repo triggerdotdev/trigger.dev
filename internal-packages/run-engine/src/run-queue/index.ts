@@ -207,11 +207,12 @@ const QUEUE_METRICS_CK_GAUGE_EXTRAS = {
 };
 
 // Total-concurrency tail (gauge[10]/gauge[11]): live group cardinality + raw stored cap.
-// Requires groupConcurrencyKey/totalConcurrencyLimitKey locals; the CK scripts that actually
-// run (the Tracked variants and the CK dequeue) all declare them for the total-cap gate.
+// Requires the groupConcurrencyKey local and the __totalLimitRaw memo (one GET shared with
+// the total-cap gate); the CK scripts that run this (the Tracked variants and the CK
+// dequeue) declare both. The group SCARD stays a fresh read: it must be post-admission.
 const QUEUE_METRICS_TOTAL_GAUGE_EXTRAS = {
   totalRunning: "redis.call('SCARD', groupConcurrencyKey)",
-  totalLimit: "redis.call('GET', totalConcurrencyLimitKey) or '0'",
+  totalLimit: "__totalLimitRaw() or '0'",
 };
 
 // CK enqueue variants of the two gauges above, extended with the CK-health tail.
@@ -4116,6 +4117,13 @@ local baseQueueKey = KEYS[15]
 -- Total-cap keys (KEYS 16-17)
 local groupConcurrencyKey = KEYS[16]
 local totalConcurrencyLimitKey = KEYS[17]
+local __rawTotalLimit = nil
+local function __totalLimitRaw()
+  if __rawTotalLimit == nil then
+    __rawTotalLimit = redis.call('GET', totalConcurrencyLimitKey) or false
+  end
+  return __rawTotalLimit
+end
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -4160,7 +4168,7 @@ if enableFastPath == '1' then
         -- slow path (the message queues; the dequeue gate holds it).
         local totalAllowsFastPath = true
         if totalConcurrencyEnabled then
-          local rawTotalLimit = redis.call('GET', totalConcurrencyLimitKey)
+          local rawTotalLimit = __totalLimitRaw()
           if rawTotalLimit then
             local totalLimit = math.min(tonumber(rawTotalLimit), envLimit)
             if tonumber(redis.call('SCARD', groupConcurrencyKey) or '0') >= totalLimit then
@@ -4287,6 +4295,13 @@ local baseQueueKey = KEYS[16]
 -- Total-cap keys (KEYS 17-18)
 local groupConcurrencyKey = KEYS[17]
 local totalConcurrencyLimitKey = KEYS[18]
+local __rawTotalLimit = nil
+local function __totalLimitRaw()
+  if __rawTotalLimit == nil then
+    __rawTotalLimit = redis.call('GET', totalConcurrencyLimitKey) or false
+  end
+  return __rawTotalLimit
+end
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -4331,7 +4346,7 @@ if enableFastPath == '1' then
         -- Total-cap gate: see enqueueMessageCkTracked.
         local totalAllowsFastPath = true
         if totalConcurrencyEnabled then
-          local rawTotalLimit = redis.call('GET', totalConcurrencyLimitKey)
+          local rawTotalLimit = __totalLimitRaw()
           if rawTotalLimit then
             local totalLimit = math.min(tonumber(rawTotalLimit), envLimit)
             if tonumber(redis.call('SCARD', groupConcurrencyKey) or '0') >= totalLimit then
@@ -4970,6 +4985,13 @@ local lengthCounterKey = KEYS[10]
 local runningCounterKey = KEYS[11]
 local groupConcurrencyKey = KEYS[12]
 local totalConcurrencyLimitKey = KEYS[13]
+local __rawTotalLimit = nil
+local function __totalLimitRaw()
+  if __rawTotalLimit == nil then
+    __rawTotalLimit = redis.call('GET', totalConcurrencyLimitKey) or false
+  end
+  return __rawTotalLimit
+end
 
 local ckWildcardName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -5012,7 +5034,7 @@ local actualMaxCount = math.min(maxCount, envAvailableCapacity)
 -- behind, and blocking on it would deadlock the run against itself).
 local totalHeadroom = nil
 if totalConcurrencyEnabled then
-  local rawTotalLimit = redis.call('GET', totalConcurrencyLimitKey)
+  local rawTotalLimit = __totalLimitRaw()
   if rawTotalLimit then
     local totalConcurrencyLimit = math.min(tonumber(rawTotalLimit), envConcurrencyLimit)
     local groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
