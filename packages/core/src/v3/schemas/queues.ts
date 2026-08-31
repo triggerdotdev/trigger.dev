@@ -48,7 +48,7 @@ export const QueueItem = z.object({
       /** The combined concurrency cap across all concurrencyKey values of the queue */
       combined: z
         .object({
-          /** The effective/current combined concurrency limit (null = no cap) */
+          /** The current combined concurrency limit as declared or overridden (null = no cap). Enforcement clamps it to the environment concurrency limit at admit time. */
           current: z.number().nullable(),
           /** The declared combined limit an override reverts to on reset */
           base: z.number().nullable(),
