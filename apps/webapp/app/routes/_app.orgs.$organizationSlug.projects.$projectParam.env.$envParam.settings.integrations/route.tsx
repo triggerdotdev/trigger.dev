@@ -19,6 +19,7 @@ import {
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import {
@@ -443,6 +444,8 @@ function BuildSettingsForm({
   const navigation = useNavigation();
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
+  const hasAdminAccess = useHasAdminAccess();
+
   // The native build server is enabled by default; it's only off when the
   // project has explicitly opted out via `disableNativeBuildServer`.
   const nativeBuildServerEnabled = buildSettings?.disableNativeBuildServer !== true;
@@ -484,7 +487,7 @@ function BuildSettingsForm({
         align="start"
         htmlFor={fields.triggerConfigFilePath.id}
         title="Trigger config file"
-        description="Path relative to your repo root."
+        description="Auto-detected by default. Set a path relative to your repo root to override."
         action={
           <SettingsControl>
             <Input
@@ -535,7 +538,7 @@ function BuildSettingsForm({
         align="start"
         htmlFor={fields.preBuildCommand.id}
         title="Pre-build command"
-        description="Runs from your repo root, before the build."
+        description="Runs from your repo root, before the build, e.g., npm run prisma:generate."
         action={
           <SettingsControl>
             <Input
@@ -557,27 +560,36 @@ function BuildSettingsForm({
         }
       />
 
-      <SettingsRow
-        title="Use native build server"
-        description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
-        action={
-          <Switch
-            variant="medium"
-            name={fields.useNativeBuildServer.name}
-            defaultChecked={nativeBuildServerEnabled}
-            onCheckedChange={(isChecked) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                useNativeBuildServer: isChecked,
-              }));
-            }}
+      {hasAdminAccess ? (
+        <>
+          <SettingsRow
+            title="Use native build server"
+            description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
+            action={
+              <Switch
+                variant="medium"
+                name={fields.useNativeBuildServer.name}
+                defaultChecked={nativeBuildServerEnabled}
+                onCheckedChange={(isChecked) => {
+                  setBuildSettingsValues((prev) => ({
+                    ...prev,
+                    useNativeBuildServer: isChecked,
+                  }));
+                }}
+              />
+            }
           />
-        }
-      />
 
-      <FormError id={fields.useNativeBuildServer.errorId}>
-        {fields.useNativeBuildServer.errors}
-      </FormError>
+          <FormError id={fields.useNativeBuildServer.errorId}>
+            {fields.useNativeBuildServer.errors}
+          </FormError>
+        </>
+      ) : (
+        // An absent field would read as an opt-out on save, so keep submitting the stored value.
+        nativeBuildServerEnabled && (
+          <input type="hidden" name={fields.useNativeBuildServer.name} value="on" />
+        )
+      )}
       <FormError>{buildSettingsForm.errors}</FormError>
 
       <SettingsActions>
