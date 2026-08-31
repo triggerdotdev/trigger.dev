@@ -2001,30 +2001,10 @@ model TaskQueue {
   tasks    BackgroundWorkerTask[]
   workers  BackgroundWorker[]
 
-  concurrencyKeyOverrides TaskQueueConcurrencyKeyOverride[]
 
   @@unique([runtimeEnvironmentId, name])
 }
 
-/// A per-concurrency-key limit override for a queue: the named key value gets this
-/// limit instead of the queue's concurrencyLimit. Deleting the row resets the key.
-model TaskQueueConcurrencyKeyOverride {
-  id String @id @default(cuid())
-
-  taskQueue   TaskQueue @relation(fields: [taskQueueId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  taskQueueId String
-
-  concurrencyKey   String
-  concurrencyLimit Int
-
-  overriddenAt DateTime  @default(now())
-  overriddenBy String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([taskQueueId, concurrencyKey])
-}
 
 enum TaskQueueType {
   VIRTUAL
