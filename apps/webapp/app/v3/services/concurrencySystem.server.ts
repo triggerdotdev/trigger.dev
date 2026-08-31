@@ -359,14 +359,14 @@ function overrideQueueTotalConcurrencyLimit(
   if (!Number.isFinite(totalConcurrencyLimit) || totalConcurrencyLimit < 0) {
     return errAsync({
       type: "invalid_override" as const,
-      message: "Total concurrency limit must be a non-negative number",
+      message: "Combined concurrency limit must be a non-negative number",
     });
   }
 
   if (totalConcurrencyLimit > maximum) {
     return errAsync({
       type: "concurrency_limit_exceeds_maximum" as const,
-      message: `Total concurrency limit (${totalConcurrencyLimit}) cannot exceed the environment limit (${maximum})`,
+      message: `Combined concurrency limit (${totalConcurrencyLimit}) cannot exceed the environment limit (${maximum})`,
     });
   }
 
