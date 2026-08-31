@@ -157,6 +157,86 @@ export async function POST(request: Request) {
 }
 ```
 
+## Combined concurrency across keys
+
+`concurrencyKey` gives every key value its own copy of the queue, each with the queue's full `concurrencyLimit`. That means the queue's total concurrency grows with the number of active keys: ten active users on a queue with `concurrencyLimit: 5` can run 50 at once.
+
+To bound the whole queue, set `combinedConcurrencyLimit`. Each key still gets at most `concurrencyLimit`, and the queue as a whole never exceeds the combined limit across all keys:
+
+```ts /trigger/per-user.ts
+export const perUserQueue = queue({
+  name: "per-user-queue",
+  //each user runs at most 1 at a time...
+  concurrencyLimit: 1,
+  //...and at most 10 users can be running at once
+  combinedConcurrencyLimit: 10,
+});
+```
+
+The combined limit only applies to runs triggered with a `concurrencyKey`; runs without a key are governed by `concurrencyLimit` alone. On the Queues page in the dashboard, a queue with a combined limit shows it in brackets next to the per-key limit, e.g. `1 (10)`.
+
+<Note>
+  If you self-host, combined limits are enforced by default and can be disabled with
+  `RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED=0`. When enforcement is disabled the limit is
+  still accepted, stored, and shown, but runs are not held back by it.
+</Note>
+
+## Holding slots in more than one queue (queue gates)
+
+Sometimes one limit isn't enough: a webhook processor should be capped as a task, but each tenant should also have a global cap across every task they run. Queue gates let a run hold a concurrency slot in more than one queue at once.
+
+Pass an array as `queue`: the first entry is the run's home queue (where it waits), and up to two more entries name gates — other queues the run must also have capacity in before it starts, and occupies while it executes:
+
+```ts /trigger/webhooks.ts
+export const tenantQueue = queue({ name: "tenant", concurrencyLimit: 10 });
+
+export const processWebhook = task({
+  id: "process-webhook",
+  queue: [{ name: "webhooks", concurrencyLimit: 2 }, "tenant"],
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+```ts app/api/webhook/route.ts
+//the run waits in "webhooks" and also counts towards this tenant's cap
+await processWebhook.trigger(payload, { concurrencyKey: tenantId });
+```
+
+A gate without a `concurrencyKey` uses the run's own key, so the shared `tenant` queue above caps each tenant across every task that names it as a gate. Give the gate a literal key to pin it to a single slot pool instead, for example capping all traffic to one external provider across your whole environment:
+
+```ts /trigger/sync.ts
+export const syncToProvider = task({
+  id: "sync-to-provider",
+  queue: [
+    { name: "sync-home", concurrencyLimit: 20 },
+    //every run shares one "provider-api" pool regardless of its own key
+    { name: "provider-api", concurrencyKey: "shared" },
+  ],
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+The same array form works when you trigger, replacing the task's gates for that run:
+
+```ts
+await processWebhook.trigger(payload, {
+  queue: ["webhooks", "tenant"],
+  concurrencyKey: tenantId,
+});
+```
+
+A run starts only when its home queue and every gate all have capacity, and it releases all of its slots together when it finishes or suspends.
+
+<Note>
+  Queue gates are enforced when the server has them enabled. If you self-host, set
+  `RUN_ENGINE_QUEUE_GATES_ENABLED=1`; servers without gates enabled accept the option but run
+  without it.
+</Note>
+
 ## Concurrency and subtasks
 
 When you trigger a task that has subtasks, the subtasks will not inherit the queue from the parent task. Unless otherwise specified, subtasks will run on their own queue
@@ -356,3 +436,19 @@ await queues.resetConcurrencyLimit("queue_1234");
 // Or using type and name
 await queues.resetConcurrencyLimit({ type: "task", name: "my-task-id" });
 ```
+
+### Overriding the combined concurrency limit
+
+Queues with a `combinedConcurrencyLimit` can have that cap overridden and reset in the same way:
+
+```ts
+import { queues } from "@trigger.dev/sdk";
+
+// Allow up to 100 runs across all concurrency keys
+await queues.overrideCombinedConcurrencyLimit("queue_1234", 100);
+
+// Revert to the combinedConcurrencyLimit declared in your code
+await queues.resetCombinedConcurrencyLimit("queue_1234");
+```
+
+Overrides survive deploys: redeploying your code keeps an active override until you reset it.
