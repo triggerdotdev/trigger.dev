@@ -8,6 +8,7 @@ const decoratorMatcher = new RegExp(/((?<![(\s]\s*['"])@\w[.[\]\w\d]*\s*(?![;])[
 export function emitDecoratorMetadata(): BuildExtension {
   return {
     name: "emitDecoratorMetadata",
+    installedPackagesForTarget: () => [],
     onBuildStart(context) {
       const { convertCompilerOptionsFromJson, transpileModule, ModuleKind } = loadTypescript(
         context.workingDir

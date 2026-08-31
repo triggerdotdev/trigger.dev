@@ -1,5 +1,5 @@
 import { build, type BuildResult, type PluginBuild } from "esbuild";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import {
   createRequireUsageToWarning,
   extensionInstalledPackageMatchers,
   packageNameForSpecifier,
+  packagesInstalledByCommands,
   scanSource,
   scanSourceForCreateRequire,
   unavailableCreateRequireUsages,
@@ -301,6 +302,42 @@ const w = a! / b; const mssql = req("mssql");
     expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg", "mssql"]);
   });
 
+  it("handles a negated regex test without corrupting later template scanning", () => {
+    const source =
+      'import { createRequire } from "node:module";\n' +
+      "const req = createRequire(import.meta.url);\n" +
+      "if (!/[`'\"]/.test(input)) run();\n" +
+      'const doc = `example: req("fake-pkg")`;\n' +
+      'const pg = req("pg");\n';
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
+  it("handles comment-adjacent division in both directions", () => {
+    const falsePositiveCase = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url);
+const ratio = a /* per item */ / b; const example = "req('evil-pkg')";
+`;
+
+    expect(scanSourceForCreateRequire(falsePositiveCase)).toEqual([]);
+
+    const falseNegativeCase = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url); // setup
+/["']/.test(input) && req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(falseNegativeCase).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
+  it("supports a plain template literal as the specifier", () => {
+    const source =
+      'import { createRequire } from "node:module";\n' +
+      "const req = createRequire(import.meta.url);\n" +
+      "const pg = req(`pg`);\n";
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
   it("does not let a misread division corrupt string tracking", () => {
     const source = `import { createRequire } from "node:module";
 const req = createRequire(import.meta.url);
@@ -491,6 +528,48 @@ export const keep = unused;
       });
 
       expect(collector.usages).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("follows a require function exported from an index file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "create-require-collector-"));
+
+    try {
+      await mkdir(join(dir, "util"));
+      await writeFile(
+        join(dir, "util", "index.ts"),
+        `import { createRequire } from "node:module";
+export const cjsRequire = createRequire(import.meta.url);
+`
+      );
+
+      const entryPoint = join(dir, "entry.ts");
+      await writeFile(
+        entryPoint,
+        `import { cjsRequire } from "./util";
+export const mssql = cjsRequire("mssql");
+`
+      );
+
+      const collector = new CreateRequireCollector(dir);
+
+      await build({
+        entryPoints: [entryPoint],
+        bundle: true,
+        metafile: true,
+        write: false,
+        format: "esm",
+        platform: "node",
+        outdir: dir,
+        absWorkingDir: dir,
+        logLevel: "silent",
+        plugins: [collector.plugin],
+      });
+
+      expect(collector.usages).toHaveLength(1);
+      expect(collector.usages[0]).toMatchObject({ specifier: "mssql", file: "entry.ts" });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -705,32 +784,56 @@ describe("collectCreateRequireWarningMessages", () => {
     expect(messages).toHaveLength(1);
   });
 
-  it("stays silent when a build-layer command runs a JS package manager", () => {
+  it("suppresses only the packages named in build-layer install commands", () => {
+    const manifest = {
+      externals: [],
+      build: { commands: ["npm install @prisma/engines@5.0.0"] },
+    } as unknown as BuildManifest;
+
+    const engineUsage = {
+      ...usage,
+      specifier: "@prisma/engines",
+      packageName: "@prisma/engines",
+    };
+
     const messages = collectCreateRequireWarningMessages({
-      usages: [usage],
-      buildManifest: {
-        externals: [],
-        build: { commands: ["npm install @prisma/engines@5.0.0"] },
-      } as unknown as BuildManifest,
+      usages: [usage, engineUsage],
+      buildManifest: manifest,
       extensionPackages: { matchers: [], incomplete: false },
       target: "deploy",
     });
 
-    expect(messages).toEqual([]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.text).toContain("mssql");
   });
 
-  it("still warns when build-layer commands don't install JS packages", () => {
+  it("does not suppress anything for commands that install no specific package", () => {
     const messages = collectCreateRequireWarningMessages({
       usages: [usage],
       buildManifest: {
         externals: [],
-        build: { commands: ["apt-get install -y ffmpeg"] },
+        build: { commands: ["bun run generate", "apt-get install -y ffmpeg", "npm ci"] },
       } as unknown as BuildManifest,
       extensionPackages: { matchers: [], incomplete: false },
       target: "deploy",
     });
 
     expect(messages).toHaveLength(1);
+  });
+});
+
+describe("packagesInstalledByCommands", () => {
+  it("extracts package names from install commands and ignores everything else", () => {
+    const packages = packagesInstalledByCommands([
+      "npm install @prisma/engines@5.0.0",
+      "pnpm add wrangler prisma@3.0.0 --save-dev",
+      "yarn add -D typescript",
+      "bun run generate",
+      "npm ci",
+      "apt-get install -y ffmpeg",
+    ]);
+
+    expect(packages.sort()).toEqual(["@prisma/engines", "prisma", "typescript", "wrangler"]);
   });
 });
 

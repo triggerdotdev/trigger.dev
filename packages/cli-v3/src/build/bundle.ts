@@ -342,8 +342,14 @@ function dirToEntryPointGlob(dir: string): string[] {
   ];
 }
 
-export function logBuildWarnings(warnings: esbuild.PartialMessage[]) {
-  const logs = esbuild.formatMessagesSync(warnings, { kind: "warning", color: true });
+export function logBuildWarnings(
+  warnings: esbuild.PartialMessage[],
+  options: { color?: boolean } = {}
+) {
+  const logs = esbuild.formatMessagesSync(warnings, {
+    kind: "warning",
+    color: options.color ?? true,
+  });
   for (const log of logs) {
     console.warn(log);
   }

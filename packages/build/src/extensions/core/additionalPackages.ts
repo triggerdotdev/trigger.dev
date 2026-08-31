@@ -20,7 +20,7 @@ export function additionalPackages(options: AdditionalPackagesOptions): BuildExt
   return {
     name: "additionalPackages",
     installedPackagesForTarget(target) {
-      if (target === "dev") {
+      if (target !== "deploy") {
         return [];
       }
 

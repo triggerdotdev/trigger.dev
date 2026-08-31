@@ -7,6 +7,7 @@ export type AptGetOptions = {
 export function aptGet(options: AptGetOptions): BuildExtension {
   return {
     name: "aptGet",
+    installedPackagesForTarget: () => [],
     onBuildComplete(context) {
       if (context.target === "dev") {
         return;

@@ -1,3 +1,4 @@
+import { parse, ParserPlugin } from "@babel/parser";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
@@ -6,12 +7,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import pLimit from "p-limit";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { logger } from "../utilities/logger.js";
-import {
-  escapeRegExp,
-  isBuiltinModule,
-  makeExternalRegexp,
-  packageNameForImportPath,
-} from "./externals.js";
+import { isBuiltinModule, makeExternalRegexp, packageNameForImportPath } from "./externals.js";
 
 export { packageNameForImportPath as packageNameForSpecifier } from "./externals.js";
 
@@ -37,16 +33,10 @@ export type SourceScanResult = {
 
 /**
  * Decides whether an imported binding is a require function created in
- * another scanned file. Receives the local binding's exported name and the
- * import specifier it came from.
+ * another scanned file. Receives the binding's exported name and the import
+ * specifier it came from.
  */
 export type KnownRequireFnImportPredicate = (name: string, fromSpecifier: string) => boolean;
-
-const IDENTIFIER = "[A-Za-z_$][\\w$]*";
-const STRING_LITERAL = `(["'])([^"'\\n]+)\\1`;
-const NESTED_CALL_ARGS = `(?:[^()]|\\((?:[^()]|\\([^()]*\\))*\\))*`;
-const MODULE_SPECIFIER = `["'](?:node:)?module["']`;
-const MODULE_LOAD = `(?:await\\s+)?(?:require|import)\\s*\\(\\s*${MODULE_SPECIFIER}\\s*\\)`;
 
 /**
  * Finds string-literal package specifiers loaded through `createRequire`, e.g.
@@ -55,12 +45,12 @@ const MODULE_LOAD = `(?:await\\s+)?(?:require|import)\\s*\\(\\s*${MODULE_SPECIFI
  *
  * esbuild treats `createRequire` as an opaque call: nothing it loads is ever
  * resolved, so such packages are neither bundled nor collected as externals
- * and are missing from deployed images. Scanning runs on a lexed copy of the
- * source (comments, template text and regex literals blanked, string spans
- * excluded from matching) and only recognizes createRequire bindings that
- * actually come from the `module` builtin. Still a best-effort heuristic:
- * computed or template-literal specifiers and re-exported createRequire are
- * not detected.
+ * and are missing from deployed images. The source is parsed with
+ * `@babel/parser`, so comments, strings, templates, regex literals and JSX
+ * can never confuse the scan; a file that fails to parse is skipped
+ * (diagnostics must never fail a build). Binding tracking is name-based at
+ * module level: computed specifiers, re-exports of createRequire itself, and
+ * shadowed names are not followed.
  */
 export function scanSourceForCreateRequire(
   source: string,
@@ -72,6 +62,16 @@ export function scanSourceForCreateRequire(
   ).specifiers;
 }
 
+type AstNode = {
+  type: string;
+  start?: number | null;
+  loc?: { start: { line: number; column: number } } | null;
+  [key: string]: unknown;
+};
+
+const MODULE_BUILTIN_SPECIFIERS = new Set(["module", "node:module"]);
+const PARSER_PLUGIN_ATTEMPTS: ParserPlugin[][] = [["typescript", "jsx"], ["typescript"], []];
+
 export function scanSource(
   source: string,
   isKnownRequireFnImport?: KnownRequireFnImportPredicate
@@ -82,103 +82,107 @@ export function scanSource(
     return empty;
   }
 
-  const { code, stringSpans } = lexSource(source);
+  const ast = parseWithFallbacks(source);
 
-  const inString = (index: number) =>
-    stringSpans.some(([start, end]) => index >= start && index < end);
+  if (!ast) {
+    return empty;
+  }
 
-  const requireFnNames = new Set<string>();
-  const exportedRequireFns = new Set<string>();
-  const specifiers: CreateRequireSpecifier[] = [];
-  const seen = new Set<string>();
+  const collected = collectAstFacts(ast);
 
-  const pushHit = (index: number, specifier: string) => {
-    const key = `${index}:${specifier}`;
+  const aliases = new Set<string>();
+  const namespaces = new Set<string>();
 
-    if (seen.has(key) || inString(index) || !isWarnableSpecifier(specifier)) {
-      return;
+  for (const moduleImport of collected.moduleImports) {
+    if (moduleImport.kind === "createRequire") {
+      aliases.add(moduleImport.localName);
+    } else {
+      namespaces.add(moduleImport.localName);
+    }
+  }
+
+  const isCreateRequireCall = (node: AstNode): boolean => {
+    if (node.type !== "CallExpression") {
+      return false;
     }
 
-    seen.add(key);
-    specifiers.push({ specifier, ...locationAt(source, index) });
-  };
+    const callee = node.callee as AstNode;
 
-  const { aliases, namespaces } = collectCreateRequireBindings(code, inString);
-
-  if (aliases.size > 0 || namespaces.size > 0) {
-    const callHeads: string[] = [];
-
-    if (aliases.size > 0) {
-      callHeads.push(`(?:${Array.from(aliases).map(escapeRegExp).join("|")})`);
+    if (callee.type === "Identifier") {
+      return aliases.has(callee.name as string);
     }
 
-    if (namespaces.size > 0) {
-      callHeads.push(
-        `(?:${Array.from(namespaces).map(escapeRegExp).join("|")})\\s*\\.\\s*createRequire`
+    if (callee.type === "MemberExpression") {
+      const object = callee.object as AstNode;
+      const property = callee.property as AstNode;
+
+      return (
+        object.type === "Identifier" &&
+        namespaces.has(object.name as string) &&
+        property.type === "Identifier" &&
+        property.name === "createRequire"
       );
     }
 
-    const createRequireCall = `(?:${callHeads.join("|")})\\s*\\(${NESTED_CALL_ARGS}\\)`;
+    return false;
+  };
 
-    const directCallRegex = new RegExp(
-      `(?<![.\\w$])${createRequireCall}\\s*\\(\\s*${STRING_LITERAL}\\s*\\)`,
-      "g"
-    );
+  const requireFnNames = new Set<string>();
+  const exportedRequireFns = new Set<string>();
 
-    for (const match of code.matchAll(directCallRegex)) {
-      pushHit(match.index!, match[2]!);
-    }
+  for (const binding of collected.bindings) {
+    if (isCreateRequireCall(binding.value)) {
+      requireFnNames.add(binding.name);
 
-    const assignmentRegex = new RegExp(
-      `(?<![.\\w$])(?:(export)\\s+)?(?:(?:const|let|var)\\s+)?(${IDENTIFIER})\\s*(?::\\s*[^=\\n;]+?)?\\s*=\\s*${createRequireCall}(?!\\s*[(=])`,
-      "g"
-    );
-
-    for (const match of code.matchAll(assignmentRegex)) {
-      if (inString(match.index!)) {
-        continue;
-      }
-
-      requireFnNames.add(match[2]!);
-
-      if (match[1]) {
-        exportedRequireFns.add(match[2]!);
+      if (binding.exported) {
+        exportedRequireFns.add(binding.name);
       }
     }
   }
 
   if (isKnownRequireFnImport) {
-    const relativeImportRegex = new RegExp(
-      `import\\s*(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*["'](\\.[^"'\\n]*)["']`,
-      "g"
-    );
-
-    for (const match of code.matchAll(relativeImportRegex)) {
-      if (inString(match.index!)) {
-        continue;
-      }
-
-      for (const binding of match[1]!.split(",")) {
-        const bindingMatch = binding.match(
-          new RegExp(`^\\s*(${IDENTIFIER})\\s*(?:as\\s+(${IDENTIFIER}))?\\s*$`)
-        );
-
-        if (bindingMatch && isKnownRequireFnImport(bindingMatch[1]!, match[2]!)) {
-          requireFnNames.add(bindingMatch[2] ?? bindingMatch[1]!);
-        }
+    for (const relativeImport of collected.relativeNamedImports) {
+      if (isKnownRequireFnImport(relativeImport.importedName, relativeImport.fromSpecifier)) {
+        requireFnNames.add(relativeImport.localName);
       }
     }
   }
 
-  for (const name of requireFnNames) {
-    const callRegex = new RegExp(
-      `(?<![.\\w$])${escapeRegExp(name)}(?:\\s*\\.\\s*resolve)?\\s*\\(\\s*${STRING_LITERAL}\\s*\\)`,
-      "g"
-    );
+  const lines = source.split("\n");
+  const specifiers: CreateRequireSpecifier[] = [];
+  const seenStarts = new Set<number>();
 
-    for (const match of code.matchAll(callRegex)) {
-      pushHit(match.index!, match[2]!);
+  for (const call of collected.calls) {
+    const callee = call.callee;
+
+    const isRequireFnCall =
+      (callee.type === "Identifier" && requireFnNames.has(callee.name as string)) ||
+      (callee.type === "MemberExpression" &&
+        (callee.object as AstNode).type === "Identifier" &&
+        requireFnNames.has((callee.object as AstNode).name as string) &&
+        (callee.property as AstNode).type === "Identifier" &&
+        (callee.property as AstNode).name === "resolve");
+
+    if (!isRequireFnCall && !isCreateRequireCall(callee)) {
+      continue;
     }
+
+    if (
+      call.specifier === undefined ||
+      call.start === undefined ||
+      seenStarts.has(call.start) ||
+      !isWarnableSpecifier(call.specifier)
+    ) {
+      continue;
+    }
+
+    seenStarts.add(call.start);
+    specifiers.push({
+      specifier: call.specifier,
+      line: call.line,
+      column: call.column,
+      lineText: lines[call.line - 1] ?? "",
+    });
   }
 
   specifiers.sort((a, b) => a.line - b.line || a.column - b.column);
@@ -186,312 +190,256 @@ export function scanSource(
   return { specifiers, exportedRequireFns: Array.from(exportedRequireFns) };
 }
 
-type CreateRequireBindings = {
-  /** Local names bound to createRequire itself (named import or destructure) */
-  aliases: Set<string>;
-  /** Local names bound to the module builtin's namespace or default export */
-  namespaces: Set<string>;
-};
-
-function collectCreateRequireBindings(
-  code: string,
-  inString: (index: number) => boolean
-): CreateRequireBindings {
-  const aliases = new Set<string>();
-  const namespaces = new Set<string>();
-
-  const namedBindingRegexes = [
-    new RegExp(
-      `import\\s*(?:type\\s+)?(?:(${IDENTIFIER})\\s*,\\s*)?\\{([^}]*)\\}\\s*from\\s*${MODULE_SPECIFIER}`,
-      "g"
-    ),
-    new RegExp(`(?:const|let|var)\\s*()\\{([^}]*)\\}\\s*=\\s*${MODULE_LOAD}`, "g"),
-  ];
-
-  for (const regex of namedBindingRegexes) {
-    for (const match of code.matchAll(regex)) {
-      if (inString(match.index!)) {
-        continue;
-      }
-
-      if (match[1]) {
-        namespaces.add(match[1]);
-      }
-
-      for (const binding of match[2]!.split(",")) {
-        const bindingMatch = binding.match(
-          new RegExp(`^\\s*createRequire\\s*(?:(?:as\\s+|:\\s*)(${IDENTIFIER}))?\\s*$`)
-        );
-
-        if (bindingMatch) {
-          aliases.add(bindingMatch[1] ?? "createRequire");
-        }
-      }
+function parseWithFallbacks(source: string): AstNode | undefined {
+  for (const plugins of PARSER_PLUGIN_ATTEMPTS) {
+    try {
+      return parse(source, {
+        sourceType: "unambiguous",
+        errorRecovery: true,
+        allowReturnOutsideFunction: true,
+        plugins,
+      }) as unknown as AstNode;
+    } catch (error) {
+      logger.debug("[createRequire] Parse attempt failed", { plugins, error });
     }
   }
 
-  const namespaceBindingRegexes = [
-    new RegExp(`import\\s+(${IDENTIFIER})\\s+from\\s*${MODULE_SPECIFIER}`, "g"),
-    new RegExp(`import\\s*\\*\\s*as\\s+(${IDENTIFIER})\\s+from\\s*${MODULE_SPECIFIER}`, "g"),
-    new RegExp(`(?:const|let|var)\\s+(${IDENTIFIER})\\s*=\\s*${MODULE_LOAD}`, "g"),
-  ];
-
-  for (const regex of namespaceBindingRegexes) {
-    for (const match of code.matchAll(regex)) {
-      if (!inString(match.index!)) {
-        namespaces.add(match[1]!);
-      }
-    }
-  }
-
-  return { aliases, namespaces };
+  return undefined;
 }
 
-type LexedSource = {
-  /** Source with comments, template text and regex-literal bodies blanked (offsets preserved) */
-  code: string;
-  /** Spans (start inclusive, end exclusive) of single/double-quoted strings, quotes included */
-  stringSpans: Array<[number, number]>;
+type AstFacts = {
+  moduleImports: Array<{ kind: "createRequire" | "namespace"; localName: string }>;
+  bindings: Array<{ name: string; value: AstNode; exported: boolean }>;
+  relativeNamedImports: Array<{ importedName: string; localName: string; fromSpecifier: string }>;
+  calls: Array<{
+    callee: AstNode;
+    specifier: string | undefined;
+    start: number | undefined;
+    line: number;
+    column: number;
+  }>;
 };
 
-/**
- * Blanks out comments, template-literal text (interpolation code is kept) and
- * regex-literal bodies while preserving every character offset and newline,
- * and records the spans of single/double-quoted strings. Regex scanning then
- * never matches inside a comment, a code snippet embedded in a template
- * string, or a regex literal, and matches inside quoted strings can be
- * rejected by span. Quoted string contents are kept in the output because
- * specifier literals must stay extractable. Regex-vs-division detection uses
- * the standard preceding-token heuristic and can misread rare forms.
- */
-function lexSource(source: string): LexedSource {
-  const out = source.split("");
-  const stringSpans: Array<[number, number]> = [];
-  const interpolationBraceDepths: number[] = [];
-  let mode: "code" | "line" | "block" | "single" | "double" | "template" | "regex" = "code";
-  let inCharClass = false;
-  let stringStart = 0;
-  let i = 0;
+function collectAstFacts(ast: AstNode): AstFacts {
+  const facts: AstFacts = {
+    moduleImports: [],
+    bindings: [],
+    relativeNamedImports: [],
+    calls: [],
+  };
 
-  const blank = (index: number) => {
-    if (out[index] !== "\n") {
-      out[index] = " ";
+  const visit = (node: AstNode, exported: boolean) => {
+    switch (node.type) {
+      case "ExportNamedDeclaration": {
+        const declaration = node.declaration as AstNode | null;
+
+        if (declaration) {
+          visit(declaration, true);
+        }
+
+        return;
+      }
+      case "VariableDeclaration": {
+        for (const declarator of node.declarations as AstNode[]) {
+          visit(declarator, exported);
+        }
+
+        return;
+      }
+      case "ImportDeclaration": {
+        collectImportDeclaration(node, facts);
+
+        return;
+      }
+      case "VariableDeclarator": {
+        collectVariableDeclarator(node, exported, facts);
+        break;
+      }
+      case "AssignmentExpression": {
+        const left = node.left as AstNode;
+        const right = node.right as AstNode;
+
+        if (node.operator === "=" && left.type === "Identifier") {
+          facts.bindings.push({ name: left.name as string, value: right, exported: false });
+        }
+
+        break;
+      }
+      case "CallExpression": {
+        const args = node.arguments as AstNode[];
+
+        facts.calls.push({
+          callee: node.callee as AstNode,
+          specifier: stringArgumentValue(args[0]),
+          start: node.start ?? undefined,
+          line: node.loc?.start.line ?? 1,
+          column: node.loc?.start.column ?? 0,
+        });
+
+        break;
+      }
+    }
+
+    visitChildren(node);
+  };
+
+  const visitChildren = (node: AstNode) => {
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (isAstNode(item)) {
+            visit(item, false);
+          }
+        }
+      } else if (isAstNode(value)) {
+        visit(value, false);
+      }
     }
   };
 
-  while (i < source.length) {
-    const c = source[i]!;
-    const d = source[i + 1];
+  visit(ast, false);
 
-    switch (mode) {
-      case "code": {
-        if (c === "/" && d === "/") {
-          mode = "line";
-          blank(i);
-          blank(i + 1);
-          i += 2;
-        } else if (c === "/" && d === "*") {
-          mode = "block";
-          blank(i);
-          blank(i + 1);
-          i += 2;
-        } else if (c === "/" && regexLiteralAllowedAt(source, i)) {
-          mode = "regex";
-          inCharClass = false;
-          i += 1;
-        } else if (c === "'") {
-          mode = "single";
-          stringStart = i;
-          i += 1;
-        } else if (c === '"') {
-          mode = "double";
-          stringStart = i;
-          i += 1;
-        } else if (c === "`") {
-          mode = "template";
-          i += 1;
-        } else if (c === "{" && interpolationBraceDepths.length > 0) {
-          interpolationBraceDepths[interpolationBraceDepths.length - 1]!++;
-          i += 1;
-        } else if (c === "}" && interpolationBraceDepths.length > 0) {
-          const depth = interpolationBraceDepths[interpolationBraceDepths.length - 1]!;
-
-          if (depth === 0) {
-            interpolationBraceDepths.pop();
-            mode = "template";
-          } else {
-            interpolationBraceDepths[interpolationBraceDepths.length - 1] = depth - 1;
-          }
-
-          i += 1;
-        } else {
-          i += 1;
-        }
-        break;
-      }
-      case "line": {
-        if (c === "\n") {
-          mode = "code";
-        } else {
-          blank(i);
-        }
-        i += 1;
-        break;
-      }
-      case "block": {
-        if (c === "*" && d === "/") {
-          mode = "code";
-          blank(i);
-          blank(i + 1);
-          i += 2;
-        } else {
-          blank(i);
-          i += 1;
-        }
-        break;
-      }
-      case "single":
-      case "double": {
-        if (c === "\\") {
-          i += 2;
-        } else {
-          if (c === (mode === "single" ? "'" : '"')) {
-            stringSpans.push([stringStart, i + 1]);
-            mode = "code";
-          } else if (c === "\n") {
-            stringSpans.push([stringStart, i]);
-            mode = "code";
-          }
-          i += 1;
-        }
-        break;
-      }
-      case "template": {
-        if (c === "\\") {
-          blank(i);
-          blank(i + 1);
-          i += 2;
-        } else if (c === "`") {
-          mode = "code";
-          i += 1;
-        } else if (c === "$" && d === "{") {
-          interpolationBraceDepths.push(0);
-          mode = "code";
-          i += 2;
-        } else {
-          blank(i);
-          i += 1;
-        }
-        break;
-      }
-      case "regex": {
-        if (c === "\\") {
-          blank(i);
-          blank(i + 1);
-          i += 2;
-        } else if (c === "[") {
-          inCharClass = true;
-          blank(i);
-          i += 1;
-        } else if (c === "]") {
-          inCharClass = false;
-          blank(i);
-          i += 1;
-        } else if (c === "/" && !inCharClass) {
-          mode = "code";
-          i += 1;
-        } else if (c === "\n") {
-          mode = "code";
-          i += 1;
-        } else {
-          blank(i);
-          i += 1;
-        }
-        break;
-      }
-    }
-  }
-
-  if (mode === "single" || mode === "double") {
-    stringSpans.push([stringStart, source.length]);
-  }
-
-  return { code: out.join(""), stringSpans };
+  return facts;
 }
 
-const REGEX_PRECEDING_KEYWORDS = new Set([
-  "return",
-  "typeof",
-  "instanceof",
-  "in",
-  "of",
-  "new",
-  "delete",
-  "void",
-  "do",
-  "else",
-  "case",
-  "yield",
-  "await",
-]);
+function isAstNode(value: unknown): value is AstNode {
+  return typeof value === "object" && value !== null && typeof (value as AstNode).type === "string";
+}
 
-function regexLiteralAllowedAt(source: string, index: number): boolean {
-  let j = index - 1;
+function collectImportDeclaration(node: AstNode, facts: AstFacts) {
+  const importSource = node.source as AstNode;
+  const specifierValue = importSource.value as string;
+  const specifiers = node.specifiers as AstNode[];
 
-  while (j >= 0 && /\s/.test(source[j]!)) {
-    j--;
+  if (MODULE_BUILTIN_SPECIFIERS.has(specifierValue)) {
+    for (const specifier of specifiers) {
+      const localName = (specifier.local as AstNode).name as string;
+
+      if (specifier.type === "ImportSpecifier") {
+        const imported = specifier.imported as AstNode;
+
+        if (imported.type === "Identifier" && imported.name === "createRequire") {
+          facts.moduleImports.push({ kind: "createRequire", localName });
+        }
+      } else {
+        facts.moduleImports.push({ kind: "namespace", localName });
+      }
+    }
+  } else if (specifierValue.startsWith(".")) {
+    for (const specifier of specifiers) {
+      if (specifier.type !== "ImportSpecifier") {
+        continue;
+      }
+
+      const imported = specifier.imported as AstNode;
+
+      if (imported.type === "Identifier") {
+        facts.relativeNamedImports.push({
+          importedName: imported.name as string,
+          localName: (specifier.local as AstNode).name as string,
+          fromSpecifier: specifierValue,
+        });
+      }
+    }
+  }
+}
+
+function collectVariableDeclarator(node: AstNode, exported: boolean, facts: AstFacts) {
+  const id = node.id as AstNode;
+  const init = node.init as AstNode | null;
+
+  if (!init) {
+    return;
   }
 
-  if (j < 0) {
-    return true;
-  }
+  const moduleLoad = isModuleBuiltinLoad(init);
 
-  const prev = source[j]!;
+  if (moduleLoad) {
+    if (id.type === "Identifier") {
+      facts.moduleImports.push({ kind: "namespace", localName: id.name as string });
+    } else if (id.type === "ObjectPattern") {
+      for (const property of id.properties as AstNode[]) {
+        if (property.type !== "ObjectProperty") {
+          continue;
+        }
 
-  if (/[\w$]/.test(prev)) {
-    let start = j;
+        const key = property.key as AstNode;
+        const value = property.value as AstNode;
 
-    while (start > 0 && /[\w$]/.test(source[start - 1]!)) {
-      start--;
+        if (
+          key.type === "Identifier" &&
+          key.name === "createRequire" &&
+          value.type === "Identifier"
+        ) {
+          facts.moduleImports.push({ kind: "createRequire", localName: value.name as string });
+        }
+      }
     }
 
-    return REGEX_PRECEDING_KEYWORDS.has(source.slice(start, j + 1));
+    return;
   }
 
-  if (prev === "+" || prev === "-") {
-    return source[j - 1] !== prev;
+  if (id.type === "Identifier") {
+    facts.bindings.push({ name: id.name as string, value: init, exported });
+  }
+}
+
+function isModuleBuiltinLoad(node: AstNode): boolean {
+  const call = node.type === "AwaitExpression" ? (node.argument as AstNode) : node;
+
+  if (call.type !== "CallExpression") {
+    return false;
   }
 
-  return !/[)\]"'`.!<]/.test(prev);
+  const callee = call.callee as AstNode;
+  const isLoader =
+    (callee.type === "Identifier" && callee.name === "require") || callee.type === "Import";
+
+  if (!isLoader) {
+    return false;
+  }
+
+  const args = call.arguments as AstNode[];
+  const arg = args[0];
+
+  return (
+    arg !== undefined &&
+    arg.type === "StringLiteral" &&
+    MODULE_BUILTIN_SPECIFIERS.has(arg.value as string)
+  );
+}
+
+function stringArgumentValue(node: AstNode | undefined): string | undefined {
+  if (!node) {
+    return undefined;
+  }
+
+  if (node.type === "StringLiteral") {
+    return node.value as string;
+  }
+
+  if (node.type === "TemplateLiteral" && (node.expressions as AstNode[]).length === 0) {
+    const quasis = node.quasis as AstNode[];
+    const value = quasis[0]?.value as { cooked?: string } | undefined;
+
+    return value?.cooked;
+  }
+
+  return undefined;
 }
 
 function isWarnableSpecifier(specifier: string): boolean {
   const nonPackagePrefixes = [".", "/", "~", "#", "file:", "data:", "node:"];
 
-  if (nonPackagePrefixes.some((prefix) => specifier.startsWith(prefix))) {
+  if (nonPackagePrefixes.some((prefix) => specifier.startsWith(prefix)) || specifier.length === 0) {
     return false;
   }
 
   return !isBuiltinModule(packageNameForImportPath(specifier));
 }
 
-function locationAt(
-  source: string,
-  index: number
-): { line: number; column: number; lineText: string } {
-  const before = source.slice(0, index);
-  const lineStart = before.lastIndexOf("\n") + 1;
-  const lineEnd = source.indexOf("\n", index);
-
-  return {
-    line: (before.match(/\n/g)?.length ?? 0) + 1,
-    column: index - lineStart,
-    lineText: source.slice(lineStart, lineEnd === -1 ? undefined : lineEnd),
-  };
-}
-
 const SCANNABLE_FILE_REGEX = /\.(?:m|c)?(?:j|t)sx?$/;
-const NODE_MODULES_SEGMENT_REGEX = /(?:^|[\\/])node_modules[\\/]/;
+export const NODE_MODULES_SEGMENT_REGEX = /(?:^|[\\/])node_modules[\\/]/;
 const FILE_READ_CONCURRENCY = 16;
 
 type CollectorCacheEntry = {
@@ -508,10 +456,11 @@ type CollectorCacheEntry = {
  * Scans the bundle's input files for packages loaded through `createRequire`.
  * Only files outside `node_modules` are scanned: bundled libraries commonly
  * use optional-require patterns that would drown real findings in noise.
- * Require functions exported from one scanned file and imported (by name,
- * from a relative path resolving to the exporting file) into another are
- * followed. Scan results are cached per file by mtime and size so dev
- * rebuilds only re-read changed files.
+ * Require functions exported from one scanned file and imported into another
+ * are followed, resolving import specifiers through the metafile's own
+ * resolved import records (with a filesystem fallback), so index files and
+ * path aliases work. Scan results are cached per file by mtime and size so
+ * dev rebuilds only re-read changed files.
  */
 export class CreateRequireCollector {
   private _usages: CreateRequireUsage[] = [];
@@ -551,23 +500,32 @@ export class CreateRequireCollector {
   private async collect(metafile: esbuild.Metafile): Promise<void> {
     const files: Array<{ inputPath: string; filePath: string }> = [];
     const seenPaths = new Set<string>();
+    const importResolutions = new Map<string, Map<string, string>>();
 
-    for (const inputPath of Object.keys(metafile.inputs)) {
+    for (const [inputPath, input] of Object.entries(metafile.inputs)) {
       const cleanPath = inputPath.split("?")[0]!;
 
-      if (
-        seenPaths.has(cleanPath) ||
-        !SCANNABLE_FILE_REGEX.test(cleanPath) ||
-        NODE_MODULES_SEGMENT_REGEX.test(cleanPath)
-      ) {
+      if (!SCANNABLE_FILE_REGEX.test(cleanPath) || NODE_MODULES_SEGMENT_REGEX.test(cleanPath)) {
         continue;
       }
 
-      seenPaths.add(cleanPath);
-      files.push({
-        inputPath: cleanPath,
-        filePath: isAbsolute(cleanPath) ? cleanPath : resolve(this.workingDir, cleanPath),
-      });
+      const resolutions = importResolutions.get(cleanPath) ?? new Map<string, string>();
+
+      for (const record of input.imports) {
+        if (record.original !== undefined && !record.external) {
+          resolutions.set(record.original, record.path.split("?")[0]!);
+        }
+      }
+
+      importResolutions.set(cleanPath, resolutions);
+
+      if (!seenPaths.has(cleanPath)) {
+        seenPaths.add(cleanPath);
+        files.push({
+          inputPath: cleanPath,
+          filePath: isAbsolute(cleanPath) ? cleanPath : resolve(this.workingDir, cleanPath),
+        });
+      }
     }
 
     const limit = pLimit(FILE_READ_CONCURRENCY);
@@ -620,22 +578,26 @@ export class CreateRequireCollector {
       )
     ).filter((entry) => entry !== undefined);
 
+    const fileKey = (filePath: string) => filePath.replace(SCANNABLE_FILE_REGEX, "");
+    const exportsByInputPath = new Map<string, Set<string>>();
     const exportsByFileKey = new Map<string, Set<string>>();
     const exportedNames = new Set<string>();
-    const fileKey = (filePath: string) => filePath.replace(SCANNABLE_FILE_REGEX, "");
 
     for (const entry of scanned) {
       if (entry.base.exportedRequireFns.length > 0) {
-        exportsByFileKey.set(fileKey(entry.filePath), new Set(entry.base.exportedRequireFns));
+        const names = new Set(entry.base.exportedRequireFns);
 
-        for (const name of entry.base.exportedRequireFns) {
+        exportsByInputPath.set(entry.inputPath, names);
+        exportsByFileKey.set(fileKey(entry.filePath), names);
+
+        for (const name of names) {
           exportedNames.add(name);
         }
       }
     }
 
-    const knownsSignature = Array.from(exportsByFileKey.entries())
-      .flatMap(([key, names]) => Array.from(names).map((name) => `${key}#${name}`))
+    const knownsSignature = Array.from(exportsByInputPath.entries())
+      .flatMap(([inputPath, names]) => Array.from(names).map((name) => `${inputPath}#${name}`))
       .sort()
       .join(",");
 
@@ -659,9 +621,16 @@ export class CreateRequireCollector {
         if (!mentionsExportedName) {
           finalSpecifiers = entry.base.specifiers;
         } else {
+          const resolutions = importResolutions.get(entry.inputPath);
           const importerDir = dirname(entry.filePath);
 
           finalSpecifiers = scanSource(source, (name, fromSpecifier) => {
+            const metafileResolved = resolutions?.get(fromSpecifier);
+
+            if (metafileResolved !== undefined) {
+              return exportsByInputPath.get(metafileResolved)?.has(name) ?? false;
+            }
+
             const key = fileKey(resolve(importerDir, fromSpecifier));
 
             return exportsByFileKey.get(key)?.has(name) ?? false;
@@ -704,8 +673,11 @@ export type ExtensionInstalledPackages = {
 
 /**
  * Package-name matchers for everything the configured build extensions
- * declare they install into or externalize for the deployed image. Never
- * throws: diagnostics must not fail a build.
+ * declare they install into or externalize for the deployed image. Reads
+ * only the user's configured extensions; call it before internal extensions
+ * (e.g. the externals collector) are prepended to the build context, and it
+ * skips them by name as a second guard. Never throws: diagnostics must not
+ * fail a build.
  */
 export function extensionInstalledPackageMatchers(
   config: ResolvedConfig
@@ -714,6 +686,10 @@ export function extensionInstalledPackageMatchers(
   let incomplete = false;
 
   for (const buildExtension of config.build?.extensions ?? []) {
+    if (buildExtension.name === "externals") {
+      continue;
+    }
+
     try {
       const declaresPackages =
         typeof buildExtension.installedPackagesForTarget === "function" ||
@@ -767,16 +743,44 @@ export function unavailableCreateRequireUsages(
   );
 }
 
-const PACKAGE_INSTALL_COMMAND_REGEX = /\b(?:npm|pnpm|yarn|bun)\b/i;
+const INSTALL_COMMAND_REGEX = /\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|add)\b([^&|;]*)/gi;
+
+/**
+ * Package names installed by build-layer commands (`RUN npm install pkg`
+ * etc.). Such installs never reach the manifest externals, so the packages
+ * they name must not warn; commands that install nothing specific (npm ci,
+ * bun run) contribute nothing.
+ */
+export function packagesInstalledByCommands(commands: ReadonlyArray<string>): string[] {
+  const names = new Set<string>();
+
+  for (const command of commands) {
+    for (const match of command.matchAll(INSTALL_COMMAND_REGEX)) {
+      for (const token of match[1]!.trim().split(/\s+/)) {
+        if (token.length === 0 || token.startsWith("-") || token.includes(":")) {
+          continue;
+        }
+
+        const versionAt = token.lastIndexOf("@");
+        const name = versionAt > 0 ? token.slice(0, versionAt) : token;
+
+        if (name.length > 0 && !name.startsWith(".") && !name.startsWith("/")) {
+          names.add(name);
+        }
+      }
+    }
+  }
+
+  return Array.from(names);
+}
 
 /**
  * The shared dev/deploy warning pipeline: suppress usages that will be
- * available in the image, render the rest. Returns [] instead of throwing on
- * any internal failure, stays silent for dev when extension-installed
- * packages can't be determined (see ExtensionInstalledPackages.incomplete),
- * and stays silent for every target when a build-layer command runs a JS
- * package manager, since such commands can install packages invisibly to the
- * manifest externals.
+ * available in the image (manifest externals, extension-declared packages,
+ * packages named in build-layer install commands), render the rest. Returns
+ * [] instead of throwing on any internal failure, and stays silent for dev
+ * when extension-installed packages can't be determined (see
+ * ExtensionInstalledPackages.incomplete).
  */
 export function collectCreateRequireWarningMessages({
   usages,
@@ -794,21 +798,18 @@ export function collectCreateRequireWarningMessages({
       return [];
     }
 
-    const commands = buildManifest.build?.commands ?? [];
-
-    if (commands.some((command) => PACKAGE_INSTALL_COMMAND_REGEX.test(command))) {
-      return [];
-    }
+    const matchers = [
+      ...extensionPackages.matchers,
+      ...packagesInstalledByCommands(buildManifest.build?.commands ?? []).map(makeExternalRegexp),
+    ];
 
     const installedPackages = new Set(
       (buildManifest.externals ?? []).map((external) => external.name)
     );
 
-    return unavailableCreateRequireUsages(
-      usages,
-      installedPackages,
-      extensionPackages.matchers
-    ).map((usage) => createRequireUsageToWarning(usage, target));
+    return unavailableCreateRequireUsages(usages, installedPackages, matchers).map((usage) =>
+      createRequireUsageToWarning(usage, target)
+    );
   } catch (error) {
     logger.debug("[createRequire] Warning generation failed; skipping", { error });
 

@@ -5,6 +5,7 @@ import { ResolvedConfig } from "./resolvedConfig.js";
 export function esbuildPlugin(plugin: Plugin, options: RegisterPluginOptions = {}): BuildExtension {
   return {
     name: plugin.name,
+    installedPackagesForTarget: () => [],
     onBuildStart(context) {
       context.registerPlugin(plugin, options);
     },

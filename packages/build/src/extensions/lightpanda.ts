@@ -10,6 +10,7 @@ export const lightpanda = ({
   disableTelemetry = false,
 }: LightpandaOpts = {}): BuildExtension => ({
   name: "lightpanda",
+  installedPackagesForTarget: () => [],
   onBuildComplete: async (context) => {
     if (context.target === "dev") {
       return;

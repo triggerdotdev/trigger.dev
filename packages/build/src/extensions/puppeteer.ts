@@ -8,6 +8,10 @@ export function puppeteer() {
 class PuppeteerExtension implements BuildExtension {
   public readonly name = "PuppeteerExtension";
 
+  installedPackagesForTarget() {
+    return [];
+  }
+
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
     if (context.target === "dev") {
       return;

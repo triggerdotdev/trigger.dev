@@ -10,6 +10,7 @@ import {
   collectCreateRequireWarningMessages,
   CreateRequireCollector,
   extensionInstalledPackageMatchers,
+  NODE_MODULES_SEGMENT_REGEX,
 } from "./createRequireWarnings.js";
 import { bundleSkills } from "./bundleSkills.js";
 import {
@@ -56,6 +57,8 @@ export async function buildWorker(options: BuildWorkerOptions) {
   logBuildWorkerStart(options);
 
   const resolvedConfig = options.resolvedConfig;
+
+  const extensionPackages = extensionInstalledPackageMatchers(resolvedConfig);
 
   const externalsExtension = createExternalsBuildExtension(
     options.target,
@@ -144,18 +147,19 @@ export async function buildWorker(options: BuildWorkerOptions) {
   if (options.target !== "dev") {
     const buildWarnings = [
       ...bundleResult.warnings.filter(
-        (warning) => warning.location?.file && !warning.location.file.includes("node_modules")
+        (warning) =>
+          !warning.location?.file || !NODE_MODULES_SEGMENT_REGEX.test(warning.location.file)
       ),
       ...collectCreateRequireWarningMessages({
         usages: createRequireCollector.usages,
         buildManifest,
-        extensionPackages: extensionInstalledPackageMatchers(resolvedConfig),
+        extensionPackages,
         target: options.target,
       }),
     ];
 
     if (buildWarnings.length > 0) {
-      logBuildWarnings(buildWarnings);
+      logBuildWarnings(buildWarnings, { color: !options.plain });
     }
 
     buildManifest = options.rewritePaths

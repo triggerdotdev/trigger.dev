@@ -77,6 +77,7 @@ export type SyncEnvVarsOptions = {
 export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOptions): BuildExtension {
   return {
     name: "SyncEnvVarsExtension",
+    installedPackagesForTarget: () => [],
     async onBuildComplete(context, manifest) {
       if (context.target === "dev") {
         return;

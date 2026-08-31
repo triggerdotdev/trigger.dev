@@ -525,7 +525,7 @@ export function makeExternalRegexp(packageName: string): RegExp {
   return new RegExp(pattern);
 }
 
-export function escapeRegExp(value: string): string {
+function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 

@@ -8,6 +8,7 @@ export type AdditionalFilesOptions = {
 export function additionalFiles(options: AdditionalFilesOptions): BuildExtension {
   return {
     name: "additionalFiles",
+    installedPackagesForTarget: () => [],
     async onBuildComplete(context, manifest) {
       await addAdditionalFilesToBuild("additionalFiles", options, context, manifest);
     },
