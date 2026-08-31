@@ -11,6 +11,16 @@ Controlling concurrency is useful when you have a task that can't be run concurr
 
 It's important to note that only actively executing runs count towards concurrency limits. Runs that are delayed or waiting in a queue do not consume concurrency slots until they begin execution.
 
+## Use cases
+
+- **Limit how many runs of a task execute at once**: [Setting task concurrency](#setting-task-concurrency)
+- **Share one limit across several tasks**: [Sharing concurrency between tasks](#sharing-concurrency-between-tasks)
+- **Give each tenant its own separate concurrency**: [Concurrency keys and per-tenant queuing](#concurrency-keys-and-per-tenant-queuing)
+- **Per-tenant limits with a ceiling on the whole queue**: [Combined concurrency across keys](#combined-concurrency-across-keys)
+- **Cap a tenant across every task they run**: [A per-tenant cap across multiple tasks](#a-per-tenant-cap-across-multiple-tasks)
+- **Cap a shared resource, like an external API, across tasks and tenants**: [A global cap for a shared resource](#a-global-cap-for-a-shared-resource)
+- **Funnel every run into one shared pool**: [One shared pool ignoring keys](#one-shared-pool-ignoring-keys)
+
 ## Default concurrency
 
 By default, all tasks have an unbounded concurrency limit, limited only by the overall concurrency limits of your environment.
@@ -168,26 +178,37 @@ export const perUserQueue = queue({
   name: "per-user-queue",
   //each user runs at most 1 at a time...
   concurrencyLimit: 1,
-  //...and at most 10 users can be running at once
+  //...and at most 10 total runs across all users
   combinedConcurrencyLimit: 10,
 });
 ```
 
 The combined limit only applies to runs triggered with a `concurrencyKey`; runs without a key are governed by `concurrencyLimit` alone. On the Queues page in the dashboard, a queue with a combined limit shows it in brackets next to the per-key limit, e.g. `1 (10)`.
 
-<Note>
-  If you self-host, combined limits are enforced by default and can be disabled with
-  `RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED=0`. When enforcement is disabled the limit is
-  still accepted, stored, and shown, but runs are not held back by it.
-</Note>
+<Warning>
+  On a queue used with `concurrencyKey`, every limit applies per key value except
+  `combinedConcurrencyLimit`, which is the only cap that spans the whole queue.
+</Warning>
 
-## Holding slots in more than one queue (queue gates)
+## Using multiple queues at once
 
-Sometimes one limit isn't enough: each tenant's webhook processing should be capped, but the tenant should also have a global cap across every task they run. Queue gates let a run hold a concurrency slot in more than one queue at once.
+Sometimes one limit isn't enough. A run always waits in one queue, its **home queue**, but it can also hold a concurrency slot in up to two more queues, called **gates**. A run starts only when its home queue and every gate all have capacity, occupies a slot in each while it executes, and releases them together when it finishes or suspends.
 
-Pass an array as `queue`: the first entry is the run's home queue (where it waits), and up to two more entries name gates — other queues the run must also have capacity in before it starts, and occupies while it executes:
+Pass an array as `queue`: the first entry is the home queue, the rest name gates. The same array form works when you trigger, replacing the task's gates for that run:
+
+```ts
+await processWebhook.trigger(payload, {
+  queue: ["webhooks", "tenant"],
+  concurrencyKey: tenantId,
+});
+```
+
+### A per-tenant cap across multiple tasks
+
+A gate without a `concurrencyKey` uses the run's own key. Declare a shared queue and gate every relevant task on it, and each tenant gets one cap spanning all of those tasks:
 
 ```ts /trigger/webhooks.ts
+//each tenant runs at most 10 at once across every task that gates on this queue
 export const tenantQueue = queue({ name: "tenant", concurrencyLimit: 10 });
 
 export const processWebhook = task({
@@ -204,43 +225,47 @@ export const processWebhook = task({
 await processWebhook.trigger(payload, { concurrencyKey: tenantId });
 ```
 
-Because the trigger passes a `concurrencyKey`, the home queue splits per key as usual: `concurrencyLimit: 2` caps each tenant's webhook runs, not the task overall (add a `combinedConcurrencyLimit` to the home queue to bound it across all tenants).
+Because the trigger passes a `concurrencyKey`, the home queue splits per key as usual: `concurrencyLimit: 2` caps each tenant's webhook runs, not the task overall.
 
-A gate without a `concurrencyKey` uses the run's own key, so the shared `tenant` queue above caps each tenant across every task that names it as a gate. Give the gate a literal key to pin it to a single slot pool instead, for example capping all traffic to one external provider across your whole environment:
+### A global cap for a shared resource
+
+To cap something global, like total traffic to an external API, across many tasks and all tenants: declare a queue with only a `combinedConcurrencyLimit` and gate on it. Tenant keys still split the gate into per-key pools, but with no per-key limit the combined cap is the only constraint:
 
 ```ts /trigger/sync.ts
-//the gate's capacity comes from the queue's own declaration
-export const providerApiQueue = queue({ name: "provider-api", concurrencyLimit: 5 });
+//at most 10 concurrent provider calls across every task and every tenant
+export const providerApiQueue = queue({
+  name: "provider-api",
+  combinedConcurrencyLimit: 10,
+});
 
 export const syncToProvider = task({
   id: "sync-to-provider",
-  queue: [
-    { name: "sync-home", concurrencyLimit: 20 },
-    //every run shares one "provider-api" pool regardless of its own key
-    { name: "provider-api", concurrencyKey: "shared" },
-  ],
+  queue: [{ name: "sync-home", concurrencyLimit: 20 }, "provider-api"],
   run: async (payload) => {
     //...
   },
 });
 ```
 
-The same array form works when you trigger, replacing the task's gates for that run:
+### One shared pool ignoring keys
 
-```ts
-await processWebhook.trigger(payload, {
-  queue: ["webhooks", "tenant"],
-  concurrencyKey: tenantId,
+Give a gate a literal `concurrencyKey` to pin every run into a single first-come-first-served pool, regardless of each run's own key:
+
+```ts /trigger/print.ts
+export const printerQueue = queue({ name: "printer", concurrencyLimit: 1 });
+
+export const printLabel = task({
+  id: "print-label",
+  queue: [
+    { name: "print-home", concurrencyLimit: 5 },
+    //every run shares the single "printer" slot no matter its own key
+    { name: "printer", concurrencyKey: "shared" },
+  ],
+  run: async (payload) => {
+    //...
+  },
 });
 ```
-
-A run starts only when its home queue and every gate all have capacity, and it releases all of its slots together when it finishes or suspends.
-
-<Note>
-  Queue gates are enforced when the server has them enabled. If you self-host, set
-  `RUN_ENGINE_QUEUE_GATES_ENABLED=1`; servers without gates enabled accept the option but run
-  without it.
-</Note>
 
 ## Concurrency and subtasks
 
