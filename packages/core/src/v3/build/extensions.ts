@@ -14,6 +14,13 @@ export function esbuildPlugin(plugin: Plugin, options: RegisterPluginOptions = {
 export interface BuildExtension {
   name: string;
   externalsForTarget?: (target: BuildTarget) => string[] | undefined;
+  /**
+   * Package names this extension installs into the deployed image for the
+   * given target. Diagnostics only: the bundler ignores this, it just tells
+   * build warnings (e.g. the createRequire scan) the package will be
+   * available at runtime.
+   */
+  installedPackagesForTarget?: (target: BuildTarget) => string[] | undefined;
   onBuildStart?: (context: BuildContext) => Promise<void> | void;
   onBuildComplete?: (
     context: BuildContext,

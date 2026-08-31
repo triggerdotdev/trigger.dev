@@ -1,3 +1,4 @@
+import { BuildTarget } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { readFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
@@ -243,10 +244,37 @@ export class CreateRequireCollector {
   }
 }
 
-export function createRequireUsageToWarning(usage: CreateRequireUsage): esbuild.PartialMessage {
+/**
+ * Filters collected usages down to the ones that will actually be missing at
+ * runtime in the deployed image: not in the resolved externals (installed
+ * dependencies) and not matching any configured external.
+ */
+export function unavailableCreateRequireUsages(
+  usages: ReadonlyArray<CreateRequireUsage>,
+  installedPackages: Set<string>,
+  externalMatchers: RegExp[]
+): CreateRequireUsage[] {
+  return usages.filter(
+    (usage) =>
+      !installedPackages.has(usage.packageName) &&
+      !externalMatchers.some(
+        (matcher) => matcher.test(usage.packageName) || matcher.test(usage.specifier)
+      )
+  );
+}
+
+export function createRequireUsageToWarning(
+  usage: CreateRequireUsage,
+  target: BuildTarget
+): esbuild.PartialMessage {
+  const text =
+    target === "dev"
+      ? `"${usage.specifier}" is loaded with createRequire(). This works locally because your project's node_modules exists, but the package won't be available in the deployed image, so deploys of this code will fail at runtime. The bundler can't follow createRequire() calls, so "${usage.packageName}" is neither bundled into your code nor installed in the image.`
+      : `"${usage.specifier}" is loaded with createRequire() but won't be available in the deployed image, so loading it will fail at runtime. The bundler can't follow createRequire() calls, so "${usage.packageName}" is neither bundled into your code nor installed in the image.`;
+
   return {
     pluginName: "create-require-collector",
-    text: `"${usage.specifier}" is loaded with createRequire() but won't be available in the deployed image, so loading it will fail at runtime. The bundler can't follow createRequire() calls, so "${usage.packageName}" is neither bundled into your code nor installed in the image.`,
+    text,
     location: {
       file: usage.file,
       line: usage.line,
@@ -266,7 +294,7 @@ export function createRequireUsageToWarning(usage: CreateRequireUsage): esbuild.
     },
   });
 
-Alternatively, import the package statically so it gets bundled. Docs: https://trigger.dev/docs/config/extensions/additionalPackages`,
+Alternatively, replace the createRequire() call with a static import so the package is bundled. Docs: https://trigger.dev/docs/config/extensions/additionalPackages`,
       },
     ],
   };

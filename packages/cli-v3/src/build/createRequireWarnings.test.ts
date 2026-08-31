@@ -8,6 +8,7 @@ import {
   createRequireUsageToWarning,
   packageNameForSpecifier,
   scanSourceForCreateRequire,
+  unavailableCreateRequireUsages,
 } from "./createRequireWarnings.js";
 
 describe("scanSourceForCreateRequire", () => {
@@ -225,15 +226,17 @@ export const mssql = createRequire(import.meta.url)("mssql");
 });
 
 describe("createRequireUsageToWarning", () => {
+  const usage = {
+    specifier: "mssql/lib/tedious",
+    packageName: "mssql",
+    file: "src/db.ts",
+    line: 12,
+    column: 20,
+    lineText: `const mssql = createRequire(import.meta.url)("mssql/lib/tedious");`,
+  };
+
   it("carries the concrete fix in a note", () => {
-    const warning = createRequireUsageToWarning({
-      specifier: "mssql/lib/tedious",
-      packageName: "mssql",
-      file: "src/db.ts",
-      line: 12,
-      column: 20,
-      lineText: `const mssql = createRequire(import.meta.url)("mssql/lib/tedious");`,
-    });
+    const warning = createRequireUsageToWarning(usage, "deploy");
 
     expect(warning.location).toMatchObject({ file: "src/db.ts", line: 12, column: 20 });
 
@@ -241,6 +244,48 @@ describe("createRequireUsageToWarning", () => {
     expect(note).toContain("trigger.config.ts");
     expect(note).toContain(`additionalPackages({ packages: ["mssql"] })`);
     expect(note).toContain("https://trigger.dev/docs/config/extensions/additionalPackages");
+  });
+
+  it("explains that the failure is deploy-only when building for dev", () => {
+    const warning = createRequireUsageToWarning(usage, "dev");
+
+    expect(warning.text).toContain("works locally");
+    expect(warning.text).toContain("deploys of this code will fail at runtime");
+  });
+});
+
+describe("unavailableCreateRequireUsages", () => {
+  const usageFor = (specifier: string, packageName: string) => ({
+    specifier,
+    packageName,
+    file: "src/db.ts",
+    line: 1,
+    column: 0,
+    lineText: "",
+  });
+
+  it("keeps usages that are neither installed nor configured as external", () => {
+    const usages = [usageFor("mssql", "mssql")];
+
+    expect(unavailableCreateRequireUsages(usages, new Set(), [])).toHaveLength(1);
+  });
+
+  it("drops usages whose package is in the resolved externals", () => {
+    const usages = [usageFor("sharp", "sharp"), usageFor("mssql", "mssql")];
+
+    const result = unavailableCreateRequireUsages(usages, new Set(["sharp"]), []);
+
+    expect(result.map((u) => u.packageName)).toEqual(["mssql"]);
+  });
+
+  it("drops usages matching a configured external pattern", () => {
+    const usages = [usageFor("mssql/lib/tedious", "mssql"), usageFor("pg", "pg")];
+
+    const result = unavailableCreateRequireUsages(usages, new Set(), [
+      new RegExp(`^mssql(?:/[^'"]*)?$`),
+    ]);
+
+    expect(result.map((u) => u.packageName)).toEqual(["pg"]);
   });
 });
 

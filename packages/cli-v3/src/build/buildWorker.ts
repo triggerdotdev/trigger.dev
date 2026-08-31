@@ -7,7 +7,11 @@ import {
   createBuildManifestFromBundle,
   logBuildWarnings,
 } from "./bundle.js";
-import { CreateRequireCollector, createRequireUsageToWarning } from "./createRequireWarnings.js";
+import {
+  CreateRequireCollector,
+  createRequireUsageToWarning,
+  unavailableCreateRequireUsages,
+} from "./createRequireWarnings.js";
 import { bundleSkills } from "./bundleSkills.js";
 import {
   createBuildContext,
@@ -15,7 +19,7 @@ import {
   notifyExtensionOnBuildStart,
   resolvePluginsForContext,
 } from "./extensions.js";
-import { createExternalsBuildExtension } from "./externals.js";
+import { createExternalsBuildExtension, deployExternalMatchers } from "./externals.js";
 import { tmpdir } from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
@@ -142,7 +146,9 @@ export async function buildWorker(options: BuildWorkerOptions) {
     const buildWarnings = collectDeployBuildWarnings(
       bundleResult,
       createRequireCollector,
-      buildManifest
+      buildManifest,
+      resolvedConfig,
+      options.forcedExternals
     );
 
     if (buildWarnings.length > 0) {
@@ -167,12 +173,15 @@ export async function buildWorker(options: BuildWorkerOptions) {
 /**
  * Deploy-only diagnostics: esbuild's own warnings scoped to the user's files,
  * plus packages loaded via createRequire() that end up neither bundled nor
- * installed in the image (i.e. not in the manifest's externals).
+ * installed in the image (not in the manifest's externals and not configured
+ * as an external anywhere).
  */
 function collectDeployBuildWarnings(
   bundleResult: BundleResult,
   createRequireCollector: CreateRequireCollector,
-  buildManifest: BuildManifest
+  buildManifest: BuildManifest,
+  resolvedConfig: ResolvedConfig,
+  forcedExternals: string[] = []
 ): esbuild.PartialMessage[] {
   const esbuildWarnings = bundleResult.warnings.filter(
     (warning) => warning.location?.file && !warning.location.file.includes("node_modules")
@@ -182,9 +191,11 @@ function collectDeployBuildWarnings(
     (buildManifest.externals ?? []).map((external) => external.name)
   );
 
-  const createRequireWarnings = createRequireCollector.usages
-    .filter((usage) => !installedPackages.has(usage.packageName))
-    .map(createRequireUsageToWarning);
+  const createRequireWarnings = unavailableCreateRequireUsages(
+    createRequireCollector.usages,
+    installedPackages,
+    deployExternalMatchers(resolvedConfig, forcedExternals)
+  ).map((usage) => createRequireUsageToWarning(usage, "deploy"));
 
   return [...esbuildWarnings, ...createRequireWarnings];
 }
