@@ -81,6 +81,7 @@ describe("RunQueue queue-metrics emission", () => {
       definition,
       flag: { enabled: () => true },
     });
+    await emitter.waitUntilReady();
 
     const queue = new RunQueue({
       name: "rq",
@@ -183,6 +184,7 @@ describe("RunQueue queue-metrics emission", () => {
         definition,
         flag: { enabled: () => true },
       });
+      await emitter.waitUntilReady();
       const queue = new RunQueue({
         name: "rq",
         tracer: trace.getTracer("rq"),
@@ -255,6 +257,7 @@ describe("RunQueue queue-metrics emission", () => {
       maxLen: 1000,
     };
     const emitter = new MetricsStreamEmitter({ redis, definition, flag: { enabled: () => true } });
+    await emitter.waitUntilReady();
     const queue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
@@ -354,6 +357,7 @@ describe("RunQueue queue-metrics emission", () => {
       flag: { enabled: () => true },
       gaugeSampleRate: 0,
     });
+    await emitter.waitUntilReady();
     const queue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
