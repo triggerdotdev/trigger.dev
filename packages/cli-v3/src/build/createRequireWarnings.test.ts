@@ -688,6 +688,7 @@ describe("packagesInstalledByCommands", () => {
       "yarn add -D typescript",
       "npm install sqlite3@npm:@vscode/sqlite3",
       "npm install file:../local-lib",
+      "npm install -g wrangler-cli",
       "bun run generate",
       "npm ci",
       "apt-get install -y ffmpeg",

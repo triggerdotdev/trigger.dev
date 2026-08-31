@@ -156,7 +156,12 @@ type AstNode = {
 };
 
 const MODULE_BUILTIN_SPECIFIERS = new Set(["module", "node:module"]);
-const PARSER_PLUGIN_ATTEMPTS: ParserPlugin[][] = [["typescript", "jsx"], ["typescript"], []];
+const PARSER_PLUGIN_ATTEMPTS: ParserPlugin[][] = [
+  ["typescript", "jsx", "decorators-legacy"],
+  ["typescript", "decorators-legacy"],
+  ["typescript"],
+  [],
+];
 
 function parseWithFallbacks(source: string): AstNode | undefined {
   for (const plugins of PARSER_PLUGIN_ATTEMPTS) {
@@ -610,6 +615,10 @@ export function packagesInstalledByCommands(commands: ReadonlyArray<string>): st
 
   for (const command of commands) {
     for (const match of command.matchAll(INSTALL_COMMAND_REGEX)) {
+      if (/(?:^|\s)(?:-g|--global)(?:\s|$)/.test(match[1]!)) {
+        continue;
+      }
+
       for (const token of match[1]!.trim().split(/\s+/)) {
         if (token.length === 0 || token.startsWith("-")) {
           continue;
