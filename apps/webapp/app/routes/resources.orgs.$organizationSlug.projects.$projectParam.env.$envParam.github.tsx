@@ -698,8 +698,8 @@ function GitHubAppInstalledRow() {
       title="GitHub app"
       action={
         <span className="flex items-center gap-1.5 text-sm text-text-dimmed">
-          <CheckCircleIcon className="size-4 text-success" />
           Installed
+          <CheckCircleIcon className="size-4 text-success" />
         </span>
       }
     />
@@ -841,8 +841,8 @@ export function ConnectedGitHubRepoForm({
         title="GitHub repo"
         action={
           <span className="flex items-center gap-1.5 text-sm text-text-dimmed">
-            <CheckCircleIcon className="size-4 text-success" />
             Connected
+            <CheckCircleIcon className="size-4 text-success" />
           </span>
         }
       />
