@@ -15,7 +15,16 @@ import {
   notifyExtensionOnBuildStart,
   resolvePluginsForContext,
 } from "../build/extensions.js";
-import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/externals.js";
+import {
+  createExternalsBuildExtension,
+  deployExternalMatchers,
+  resolveAlwaysExternal,
+} from "../build/externals.js";
+import {
+  CreateRequireCollector,
+  createRequireUsageToWarning,
+  unavailableCreateRequireUsages,
+} from "../build/createRequireWarnings.js";
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
@@ -83,6 +92,8 @@ export async function startDevSession({
   });
 
   const externalsExtension = createExternalsBuildExtension("dev", rawConfig, alwaysExternal);
+  const createRequireCollector = new CreateRequireCollector(rawConfig.workingDir);
+  const externalMatchers = deployExternalMatchers(rawConfig, alwaysExternal);
   const buildContext = createBuildContext("dev", rawConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
@@ -114,6 +125,18 @@ export async function startDevSession({
     // whose task files read CLI-injected vars at module top level).
 
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
+
+    const missingWhenDeployed = unavailableCreateRequireUsages(
+      createRequireCollector.usages,
+      new Set((buildManifest.externals ?? []).map((external) => external.name)),
+      externalMatchers
+    );
+
+    if (missingWhenDeployed.length > 0) {
+      logBuildWarnings(
+        missingWhenDeployed.map((usage) => createRequireUsageToWarning(usage, "dev"))
+      );
+    }
 
     try {
       logger.debug("Updated bundle", { bundle, buildManifest });
@@ -194,7 +217,7 @@ export async function startDevSession({
         destination: destination.path,
         watch: true,
         resolvedConfig: rawConfig,
-        plugins: [...pluginsFromExtensions, onEnd],
+        plugins: [createRequireCollector.plugin, ...pluginsFromExtensions, onEnd],
         jsxFactory: rawConfig.build.jsx.factory,
         jsxFragment: rawConfig.build.jsx.fragment,
         jsxAutomatic: rawConfig.build.jsx.automatic,
