@@ -582,31 +582,6 @@ async function createWorkerQueue(
     await removeQueueTotalConcurrencyLimits(environment, taskQueue.name);
   }
 
-  /**
-   * Restore per-key limit overrides into the engine so a fresh or flushed Redis
-   * converges back to the durable records on the next deploy. Row-level failures
-   * are logged rather than failing the deploy; the next deploy retries them.
-   */
-  const keyOverrides = await prisma.taskQueueConcurrencyKeyOverride.findMany({
-    where: { taskQueueId: taskQueue.id },
-  });
-  for (const keyOverride of keyOverrides) {
-    try {
-      await engine.runQueue.updateQueueConcurrencyKeyLimit(
-        environment,
-        taskQueue.name,
-        keyOverride.concurrencyKey,
-        keyOverride.concurrencyLimit
-      );
-    } catch (error) {
-      logger.error("createWorkerQueue: failed to restore concurrency key override", {
-        taskQueueId: taskQueue.id,
-        concurrencyKey: keyOverride.concurrencyKey,
-        error,
-      });
-    }
-  }
-
   if (!taskQueue.paused) {
     if (typeof newConcurrencyLimit === "number") {
       logger.debug("createWorkerQueue: updating concurrency limit", {
