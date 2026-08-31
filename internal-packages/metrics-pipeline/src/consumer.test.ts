@@ -43,6 +43,7 @@ redisTest(
     });
 
     await consumer.start();
+    await emitter.waitUntilReady();
     emitter.emit("queueA", { op: "enqueue", q: "queueA" });
     emitter.emit("queueB", { op: "started", q: "queueB", wait: 42 });
 
