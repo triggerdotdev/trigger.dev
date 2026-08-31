@@ -89,6 +89,12 @@ export const workerCatalog = {
   ensureRunFinalized: {
     schema: z.object({
       runId: z.string(),
+      /**
+       * How many times the guard has already deferred to an in-flight cancellation.
+       * Bounds the watch: past the budget the guard delivers anyway, so a lost
+       * heartbeat job cannot turn the deferral into an infinite loop.
+       */
+      deferCount: z.number().int().nonnegative().optional(),
     }),
     visibilityTimeoutMs: 30_000,
     retry: {

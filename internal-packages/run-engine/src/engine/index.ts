@@ -312,6 +312,7 @@ export class RunEngine {
         ensureRunFinalized: async ({ payload }) => {
           await this.runAttemptSystem.ensureRunFinalized({
             runId: payload.runId,
+            deferCount: payload.deferCount,
           });
         },
         enqueueDelayedRun: async ({ payload }) => {

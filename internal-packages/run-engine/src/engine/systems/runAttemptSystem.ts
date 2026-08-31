@@ -104,6 +104,14 @@ const DEPLOYMENT_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
 const QUEUE_FRESH_TTL = 60000 * 60; // 1 hour
 const QUEUE_STALE_TTL = 60000 * 60 * 2; // 2 hours
 
+/**
+ * How many times the finalization guard defers to an in-flight cancellation before
+ * delivering anyway. The worker-owned states normally exit within a heartbeat cycle
+ * or two, so exhausting this budget means the heartbeat itself was lost; resuming the
+ * parent with the identical cancel error then beats watching forever.
+ */
+const MAX_FINALIZATION_GUARD_DEFERRALS = 10;
+
 export class RunAttemptSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -1798,11 +1806,11 @@ export class RunAttemptSystem {
    * {@link #finalizeRun} once every inline side effect succeeded. It only ever
    * executes when the inline path died in between.
    */
-  async #scheduleFinalizationGuard(runId: string): Promise<void> {
+  async #scheduleFinalizationGuard(runId: string, deferCount?: number): Promise<void> {
     await this.$.worker.enqueue({
       id: `ensureRunFinalized:${runId}`,
       job: "ensureRunFinalized",
-      payload: { runId },
+      payload: { runId, deferCount },
       availableAt: new Date(Date.now() + this.finalizationGuardDelayMs),
     });
   }
@@ -1819,7 +1827,13 @@ export class RunAttemptSystem {
    * finalize path owns that window, and completing early would resume the parent while
    * the child is still running.
    */
-  public async ensureRunFinalized({ runId }: { runId: string }): Promise<void> {
+  public async ensureRunFinalized({
+    runId,
+    deferCount,
+  }: {
+    runId: string;
+    deferCount?: number;
+  }): Promise<void> {
     return startSpan(this.$.tracer, "ensureRunFinalized", async (span) => {
       span.setAttribute("runId", runId);
 
@@ -1879,15 +1893,30 @@ export class RunAttemptSystem {
           latestSnapshot.executionStatus === "PENDING_CANCEL";
 
         if (latestSnapshot.executionStatus !== "FINISHED" && workerOwnsExecution) {
-          this.$.logger.info(
-            "ensureRunFinalized: run is canceled but the worker is still winding down, keeping watch until the cancellation finalize path completes it",
+          const currentDeferCount = deferCount ?? 0;
+
+          if (currentDeferCount < MAX_FINALIZATION_GUARD_DEFERRALS) {
+            this.$.logger.info(
+              "ensureRunFinalized: run is canceled but the worker is still winding down, keeping watch until the cancellation finalize path completes it",
+              {
+                runId,
+                executionStatus: latestSnapshot.executionStatus,
+                deferCount: currentDeferCount,
+              }
+            );
+            await this.#scheduleFinalizationGuard(runId, currentDeferCount + 1);
+            return;
+          }
+
+          this.rederivationsCounter.add(1, { leg: "cancel_deferral_budget" });
+          this.$.logger.warn(
+            "ensureRunFinalized: canceled run never reached a finished execution within the deferral budget, delivering anyway",
             {
               runId,
               executionStatus: latestSnapshot.executionStatus,
+              deferCount: currentDeferCount,
             }
           );
-          await this.#scheduleFinalizationGuard(runId);
-          return;
         }
       }
 

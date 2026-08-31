@@ -389,6 +389,67 @@ describe("RunEngine ensureRunFinalized guard", () => {
   );
 
   containerTest(
+    "an exhausted deferral budget delivers even while cancellation looks in flight",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { parentRun, childRun, childAttempt } = await setupParentAndChild(
+          engine,
+          prisma,
+          authenticatedEnvironment
+        );
+
+        vi.spyOn((engine as any).runStore, "completeAttemptSuccess").mockRejectedValueOnce(
+          new Error("simulated finish commit failure")
+        );
+
+        await expect(
+          engine.completeRunAttempt({
+            runId: childRun.id,
+            snapshotId: childAttempt.snapshot.id,
+            completion: {
+              id: childRun.id,
+              ok: true,
+              output: '{"foo":"bar"}',
+              outputType: "application/json",
+            },
+          })
+        ).rejects.toThrow("simulated finish commit failure");
+
+        await engine.cancelRun({ runId: childRun.id });
+
+        await engine.runAttemptSystem.ensureRunFinalized({ runId: childRun.id, deferCount: 3 });
+
+        const childWithinBudget = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childWithinBudget.associatedWaitpoint?.status).toBe("PENDING");
+
+        await engine.runAttemptSystem.ensureRunFinalized({ runId: childRun.id, deferCount: 10 });
+
+        const childAfterBudget = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterBudget.associatedWaitpoint?.status).toBe("COMPLETED");
+        expect(childAfterBudget.associatedWaitpoint?.outputIsError).toBe(true);
+
+        await setTimeout(1_000);
+
+        const parentExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionData);
+        expect(parentExecutionData.snapshot.executionStatus).toBe("EXECUTING");
+        expect(parentExecutionData.completedWaitpoints?.length).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "re-derives a cancellation lost after the CANCELED commit on a queued child",
     async ({ prisma, redisOptions }) => {
       const engine = createEngine(prisma, redisOptions);
