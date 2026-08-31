@@ -1,6 +1,5 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
-import * as esbuild from "esbuild";
 import {
   BundleResult,
   bundleWorker,
@@ -8,9 +7,9 @@ import {
   logBuildWarnings,
 } from "./bundle.js";
 import {
+  collectCreateRequireWarningMessages,
   CreateRequireCollector,
-  createRequireUsageToWarning,
-  unavailableCreateRequireUsages,
+  extensionInstalledPackageMatchers,
 } from "./createRequireWarnings.js";
 import { bundleSkills } from "./bundleSkills.js";
 import {
@@ -19,7 +18,7 @@ import {
   notifyExtensionOnBuildStart,
   resolvePluginsForContext,
 } from "./extensions.js";
-import { createExternalsBuildExtension, deployExternalMatchers } from "./externals.js";
+import { createExternalsBuildExtension } from "./externals.js";
 import { tmpdir } from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
@@ -143,13 +142,17 @@ export async function buildWorker(options: BuildWorkerOptions) {
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
   if (options.target !== "dev") {
-    const buildWarnings = collectDeployBuildWarnings(
-      bundleResult,
-      createRequireCollector,
-      buildManifest,
-      resolvedConfig,
-      options.forcedExternals
-    );
+    const buildWarnings = [
+      ...bundleResult.warnings.filter(
+        (warning) => warning.location?.file && !warning.location.file.includes("node_modules")
+      ),
+      ...collectCreateRequireWarningMessages({
+        usages: createRequireCollector.usages,
+        buildManifest,
+        extensionPackages: extensionInstalledPackageMatchers(resolvedConfig),
+        target: options.target,
+      }),
+    ];
 
     if (buildWarnings.length > 0) {
       logBuildWarnings(buildWarnings);
@@ -168,36 +171,6 @@ export async function buildWorker(options: BuildWorkerOptions) {
   }
 
   return buildManifest;
-}
-
-/**
- * Deploy-only diagnostics: esbuild's own warnings scoped to the user's files,
- * plus packages loaded via createRequire() that end up neither bundled nor
- * installed in the image (not in the manifest's externals and not configured
- * as an external anywhere).
- */
-function collectDeployBuildWarnings(
-  bundleResult: BundleResult,
-  createRequireCollector: CreateRequireCollector,
-  buildManifest: BuildManifest,
-  resolvedConfig: ResolvedConfig,
-  forcedExternals: string[] = []
-): esbuild.PartialMessage[] {
-  const esbuildWarnings = bundleResult.warnings.filter(
-    (warning) => warning.location?.file && !warning.location.file.includes("node_modules")
-  );
-
-  const installedPackages = new Set(
-    (buildManifest.externals ?? []).map((external) => external.name)
-  );
-
-  const createRequireWarnings = unavailableCreateRequireUsages(
-    createRequireCollector.usages,
-    installedPackages,
-    deployExternalMatchers(resolvedConfig, forcedExternals)
-  ).map((usage) => createRequireUsageToWarning(usage, "deploy"));
-
-  return [...esbuildWarnings, ...createRequireWarnings];
 }
 
 /** @knipignore Exported for the CLI end-to-end suite. */

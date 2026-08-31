@@ -24,7 +24,17 @@ export function additionalPackages(options: AdditionalPackagesOptions): BuildExt
         return [];
       }
 
-      return options.packages.map((pkg) => parsePackageName(pkg).name);
+      const names: string[] = [];
+
+      for (const pkg of options.packages) {
+        try {
+          names.push(parsePackageName(pkg).name);
+        } catch {
+          continue;
+        }
+      }
+
+      return names;
     },
     async onBuildStart(context) {
       if (context.target !== "deploy") {

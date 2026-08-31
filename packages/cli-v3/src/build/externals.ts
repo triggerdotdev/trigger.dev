@@ -414,34 +414,6 @@ function createExternalsCollector(
   };
 }
 
-/**
- * Matchers for every package that will be available at runtime in the deployed
- * image: configured externals (build.external, instrumented packages,
- * extension-declared externals, server-forced externals) plus packages that
- * extensions install into the image (e.g. additionalPackages). Diagnostics
- * only, regardless of the target currently being built.
- */
-export function deployExternalMatchers(
-  config: ResolvedConfig,
-  forcedExternal: string[] = []
-): RegExp[] {
-  const matchers = discoverMaybeExternals("deploy", config, forcedExternal).map(
-    (external) => external.filter
-  );
-
-  for (const buildExtension of config.build?.extensions ?? []) {
-    for (const packageName of buildExtension.installedPackagesForTarget?.("deploy") ?? []) {
-      const filter = makeExternalRegexp(packageName);
-
-      if (filter) {
-        matchers.push(filter);
-      }
-    }
-  }
-
-  return matchers;
-}
-
 type MaybeExternal = { raw: string; filter: RegExp };
 
 function discoverMaybeExternals(
@@ -547,7 +519,7 @@ export function createExternalsBuildExtension(
   };
 }
 
-function makeExternalRegexp(packageName: string): RegExp {
+export function makeExternalRegexp(packageName: string): RegExp {
   // Escape special regex characters in the package name
   const escapedPkg = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

@@ -3,10 +3,15 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { BuildManifest } from "@trigger.dev/core/v3/schemas";
 import {
+  collectCreateRequireWarningMessages,
   CreateRequireCollector,
   createRequireUsageToWarning,
+  extensionInstalledPackageMatchers,
   packageNameForSpecifier,
+  scanSource,
   scanSourceForCreateRequire,
   unavailableCreateRequireUsages,
 } from "./createRequireWarnings.js";
@@ -239,6 +244,71 @@ const mssql = createRequire(fileURLToPath(new URL(".", import.meta.url)))("mssql
     expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["mssql"]);
   });
 
+  it("supports bindings from a dynamic import of the module builtin", () => {
+    const source = `const { createRequire } = await import("node:module");
+const req = createRequire(import.meta.url);
+const pg = req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
+  it("supports a namespace bound from a dynamic import of the module builtin", () => {
+    const source = `const mod = await import("node:module");
+const mssql = mod.createRequire(import.meta.url)("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["mssql"]);
+  });
+
+  it("supports declare-then-assign require variables", () => {
+    const source = `import { createRequire } from "node:module";
+let req;
+req = createRequire(import.meta.url);
+const pg = req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
+  it("does not warn for call-shaped text inside string literals", () => {
+    const source = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url);
+const msg = 'try req("mssql") for details';
+const pg = req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
+  it("strips a comment that follows a regex literal containing quotes", () => {
+    const source = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url);
+const quote = /['"]/; /* old: req("bcrypt") */
+const pg = req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
+  it("follows require functions imported from other scanned files", () => {
+    const util = `import { createRequire } from "node:module";
+export const cjsRequire = createRequire(import.meta.url);
+`;
+    const task = `import { cjsRequire } from "./util.js";
+const mssql = cjsRequire("mssql");
+`;
+
+    const { exportedRequireFns, specifiers } = scanSource(util);
+
+    expect(exportedRequireFns).toEqual(["cjsRequire"]);
+    expect(specifiers).toEqual([]);
+
+    const taskResults = scanSourceForCreateRequire(task, new Set(exportedRequireFns));
+
+    expect(taskResults.map((r) => r.specifier)).toEqual(["mssql"]);
+  });
+
   it("returns nothing when the source doesn't mention createRequire", () => {
     const source = `import mssql from "mssql";
 export const pool = mssql.connect();
@@ -312,6 +382,51 @@ export const mssql = createRequire(import.meta.url)("mssql");
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("collects usages of a require function imported from another module", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "create-require-collector-"));
+
+    try {
+      await writeFile(
+        join(dir, "util.ts"),
+        `import { createRequire } from "node:module";
+export const cjsRequire = createRequire(import.meta.url);
+`
+      );
+
+      const entryPoint = join(dir, "entry.ts");
+      await writeFile(
+        entryPoint,
+        `import { cjsRequire } from "./util.js";
+export const mssql = cjsRequire("mssql");
+`
+      );
+
+      const collector = new CreateRequireCollector(dir);
+
+      await build({
+        entryPoints: [entryPoint],
+        bundle: true,
+        metafile: true,
+        write: false,
+        format: "esm",
+        platform: "node",
+        outdir: dir,
+        absWorkingDir: dir,
+        logLevel: "silent",
+        plugins: [collector.plugin],
+      });
+
+      expect(collector.usages).toHaveLength(1);
+      expect(collector.usages[0]).toMatchObject({
+        specifier: "mssql",
+        packageName: "mssql",
+        file: "entry.ts",
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("createRequireUsageToWarning", () => {
@@ -375,6 +490,106 @@ describe("unavailableCreateRequireUsages", () => {
     ]);
 
     expect(result.map((u) => u.packageName)).toEqual(["pg"]);
+  });
+});
+
+describe("extensionInstalledPackageMatchers", () => {
+  const configWith = (extensions: unknown[]) =>
+    ({ build: { extensions } }) as unknown as ResolvedConfig;
+
+  it("collects matchers from installedPackagesForTarget and externalsForTarget", () => {
+    const { matchers, incomplete } = extensionInstalledPackageMatchers(
+      configWith([
+        { name: "custom", installedPackagesForTarget: () => ["ffmpeg-static"] },
+        { name: "prisma", externalsForTarget: () => ["@prisma/client"] },
+      ])
+    );
+
+    expect(incomplete).toBe(false);
+    expect(matchers.some((m) => m.test("ffmpeg-static"))).toBe(true);
+    expect(matchers.some((m) => m.test("@prisma/client"))).toBe(true);
+    expect(matchers.some((m) => m.test("mssql"))).toBe(false);
+  });
+
+  it("marks the result incomplete instead of throwing when an extension hook throws", () => {
+    const { incomplete } = extensionInstalledPackageMatchers(
+      configWith([
+        {
+          name: "boom",
+          installedPackagesForTarget: () => {
+            throw new Error("bad package entry");
+          },
+        },
+      ])
+    );
+
+    expect(incomplete).toBe(true);
+  });
+
+  it("marks the result incomplete for an additionalPackages extension without the hook", () => {
+    const { incomplete } = extensionInstalledPackageMatchers(
+      configWith([{ name: "additionalPackages" }])
+    );
+
+    expect(incomplete).toBe(true);
+  });
+});
+
+describe("collectCreateRequireWarningMessages", () => {
+  const usage = {
+    specifier: "mssql",
+    packageName: "mssql",
+    file: "src/db.ts",
+    line: 1,
+    column: 0,
+    lineText: "",
+  };
+
+  const manifestWith = (externals: Array<{ name: string; version: string }>) =>
+    ({ externals }) as unknown as BuildManifest;
+
+  it("warns for a package missing from the manifest externals", () => {
+    const messages = collectCreateRequireWarningMessages({
+      usages: [usage],
+      buildManifest: manifestWith([]),
+      extensionPackages: { matchers: [], incomplete: false },
+      target: "deploy",
+    });
+
+    expect(messages).toHaveLength(1);
+  });
+
+  it("suppresses packages present in the manifest externals", () => {
+    const messages = collectCreateRequireWarningMessages({
+      usages: [usage],
+      buildManifest: manifestWith([{ name: "mssql", version: "10.0.0" }]),
+      extensionPackages: { matchers: [], incomplete: false },
+      target: "deploy",
+    });
+
+    expect(messages).toEqual([]);
+  });
+
+  it("stays silent in dev when extension-installed packages are unknown", () => {
+    const messages = collectCreateRequireWarningMessages({
+      usages: [usage],
+      buildManifest: manifestWith([]),
+      extensionPackages: { matchers: [], incomplete: true },
+      target: "dev",
+    });
+
+    expect(messages).toEqual([]);
+  });
+
+  it("still warns on deploy when extension-installed packages are unknown", () => {
+    const messages = collectCreateRequireWarningMessages({
+      usages: [usage],
+      buildManifest: manifestWith([]),
+      extensionPackages: { matchers: [], incomplete: true },
+      target: "deploy",
+    });
+
+    expect(messages).toHaveLength(1);
   });
 });
 
