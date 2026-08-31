@@ -3070,7 +3070,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: ["combinedConcurrencyLimit"]
+              required: ["concurrencyLimit"]
               properties:
                 type:
                   type: string
@@ -3081,7 +3081,7 @@ paths:
                     - `id`: Treat as a queue ID (default)
                     - `task`: Treat as a task ID to get the task's default queue
                     - `custom`: Treat as a custom queue name
-                combinedConcurrencyLimit:
+                concurrencyLimit:
                   type: integer
                   minimum: 0
                   maximum: 100000
@@ -3158,6 +3158,8 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/QueueObject"
+        "400":
+          description: The queue's combined concurrency limit is not overridden, or invalid request parameters
         "401":
           description: Unauthorized request
         "404":
