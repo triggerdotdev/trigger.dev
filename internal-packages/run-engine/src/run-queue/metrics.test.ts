@@ -26,8 +26,8 @@ const authenticatedEnvDev = {
 
 // A dead Redis leaves waitUntilReady() pending forever (the client retries
 // indefinitely), which would burn the whole test timeout with no diagnostic.
-// Races values, not throws: a rejection in the losing branch of a settled race
-// is an unhandled rejection, so the timer is aborted and swallowed instead.
+// The abort releases the losing timer promptly so it cannot hold an event
+// loop open for the remaining 15s after a fast ready.
 async function emitterReady(emitter: MetricsStreamEmitter) {
   const abort = new AbortController();
   const timedOut = setTimeout(15_000, "timeout", { signal: abort.signal }).catch(() => "aborted");
