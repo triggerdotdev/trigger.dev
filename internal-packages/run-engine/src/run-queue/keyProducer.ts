@@ -366,14 +366,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.TOTAL_CONCURRENCY_LIMIT_PART}`;
   }
 
-  queueCkLimitsKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
-    return `${this.queueKey(env, queue)}:ckLimits`;
-  }
-
-  queueCkLimitsKeyFromQueue(queue: string): string {
-    return `${this.baseQueueKeyFromQueue(queue)}:ckLimits`;
-  }
-
   isCkWildcard(queue: string): boolean {
     return queue.endsWith(":ck:*");
   }
