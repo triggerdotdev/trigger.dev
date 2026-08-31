@@ -24,6 +24,7 @@ import {
   shims,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
+import { checkEsbuildVersion } from "./esbuildVersion.js";
 import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { SkipLoggingError } from "../cli/common.js";
 
@@ -68,6 +69,21 @@ export class BundleError extends Error {
 
 export async function bundleWorker(options: BundleOptions): Promise<BundleResult> {
   const { resolvedConfig } = options;
+
+  // Check the esbuild that actually got installed, not the range we declare: a
+  // package manager `overrides` entry can resolve a version outside it without
+  // any warning, and some of those silently emit corrupt sourcemaps.
+  const esbuildVersionIssue = checkEsbuildVersion(esbuild.version);
+
+  if (esbuildVersionIssue) {
+    if (esbuildVersionIssue.level === "error") {
+      prettyError("Unsupported esbuild version", esbuildVersionIssue.message);
+
+      throw new SkipLoggingError();
+    }
+
+    logger.warn(esbuildVersionIssue.message);
+  }
 
   let currentContext: esbuild.BuildContext | undefined;
 
