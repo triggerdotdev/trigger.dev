@@ -1,5 +1,4 @@
 export { RunEngine } from "./engine/index.js";
-export { RunQueueConcurrencyKeyLimitExceededError } from "./run-queue/index.js";
 export {
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
