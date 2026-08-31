@@ -85,10 +85,15 @@ export function useAgentPanelMode(modePreference: DashboardAgentMode | undefined
     setMode(initialAgentMode(modePreference));
   }, [modePreference]);
 
-  // Pathname changes must drop fullscreen back to the preference, but leave any other
-  // transient mode (e.g. rightPanel) alone.
+  // Pathname changes must drop fullscreen so the new page is visible, even when the
+  // preference itself is fullscreen — the preference governs the next open, not
+  // mid-session navigation. Any other transient mode (e.g. rightPanel) is left alone.
   const revertFullscreen = useCallback(() => {
-    setMode((current) => (current !== "fullscreen" ? current : initialAgentMode(modePreference)));
+    setMode((current) => {
+      if (current !== "fullscreen") return current;
+      const next = initialAgentMode(modePreference);
+      return next === "fullscreen" ? "floating" : next;
+    });
   }, [modePreference]);
 
   return { mode, changeMode, resetToPreference, revertFullscreen };

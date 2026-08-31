@@ -81,4 +81,12 @@ describe("useAgentPanelMode", () => {
     act(() => hook.current.revertFullscreen());
     expect(hook.current.mode).toBe("rightPanel");
   });
+
+  it("revertFullscreen always collapses to floating, even when the preference is fullscreen", () => {
+    const hook = renderAgentPanelMode("fullscreen");
+    expect(hook.current.mode).toBe("fullscreen");
+
+    act(() => hook.current.revertFullscreen());
+    expect(hook.current.mode).toBe("floating");
+  });
 });
