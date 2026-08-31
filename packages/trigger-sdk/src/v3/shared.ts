@@ -360,7 +360,16 @@ export function createTask<
 
   const queue = normalizedQueue.queue;
 
-  if (queue && typeof queue.name === "string") {
+  /**
+   * A string queue name (bare or as a tuple's first element) is a REFERENCE to a
+   * queue defined elsewhere; registering it would create an empty definition that
+   * can shadow the real one depending on module evaluation order.
+   */
+  const homeIsReference = Array.isArray(params.queue)
+    ? typeof params.queue[0] === "string"
+    : typeof params.queue === "string";
+
+  if (queue && typeof queue.name === "string" && !homeIsReference) {
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
@@ -519,7 +528,16 @@ export function createSchemaTask<
 
   const queue = normalizedQueue.queue;
 
-  if (queue && typeof queue.name === "string") {
+  /**
+   * A string queue name (bare or as a tuple's first element) is a REFERENCE to a
+   * queue defined elsewhere; registering it would create an empty definition that
+   * can shadow the real one depending on module evaluation order.
+   */
+  const homeIsReference = Array.isArray(params.queue)
+    ? typeof params.queue[0] === "string"
+    : typeof params.queue === "string";
+
+  if (queue && typeof queue.name === "string" && !homeIsReference) {
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
