@@ -26,6 +26,7 @@ import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
+import { $replica } from "~/db.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
@@ -34,7 +35,7 @@ import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.se
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { type BuildSettings } from "~/v3/buildSettings";
+import { BuildSettingsSchema, type BuildSettings } from "~/v3/buildSettings";
 import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import {
@@ -184,12 +185,24 @@ export const action = dashboardAction(
     const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
       submission.value;
 
+    // Only admins may change the opt-out; other saves carry the stored value forward.
+    let disableNativeBuildServer: true | undefined = useNativeBuildServer ? undefined : true;
+    if (!user.admin && !user.isImpersonating) {
+      const project = await $replica.project.findFirst({
+        where: { id: projectId },
+        select: { buildSettings: true },
+      });
+      const stored = BuildSettingsSchema.safeParse(project?.buildSettings);
+      disableNativeBuildServer =
+        stored.success && stored.data.disableNativeBuildServer === true ? true : undefined;
+    }
+
     const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
       installCommand: installCommand || undefined,
       preBuildCommand: preBuildCommand || undefined,
       triggerConfigFilePath: triggerConfigFilePath || undefined,
       // Native build server is the default, so we only persist the opt-out.
-      disableNativeBuildServer: useNativeBuildServer ? undefined : true,
+      disableNativeBuildServer,
     });
 
     if (resultOrFail.isErr()) {
@@ -584,12 +597,7 @@ function BuildSettingsForm({
             {fields.useNativeBuildServer.errors}
           </FormError>
         </>
-      ) : (
-        // An absent field would read as an opt-out on save, so keep submitting the stored value.
-        nativeBuildServerEnabled && (
-          <input type="hidden" name={fields.useNativeBuildServer.name} value="on" />
-        )
-      )}
+      ) : null}
       <FormError>{buildSettingsForm.errors}</FormError>
 
       <SettingsActions>
