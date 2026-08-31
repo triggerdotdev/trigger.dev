@@ -9,11 +9,14 @@ Chat agent runs are pinned to the worker version they started on. When you deplo
 `chat.requestUpgrade()` is the managed upgrade signal for `chat.agent()` and the `chat.createSession()` iterator. Fully hand-rolled custom agents use `chat.endAndContinue()` between turns to immediately hand the Session to a new run.
 
 <Note>
-  If you use [version skew protection](/deployment/version-skew-protection#chat-sessions), most of
-  this page is done for you: sessions pin to the deployment matching the app build that started
-  them, so the agent and the frontend move together without a hand-maintained version. Read this
-  page for the cases skew protection doesn't cover — an agent that wants to leave its pin
-  mid-conversation, or a session that was never pinned.
+  If your sessions are pinned by [version skew
+  protection](/deployment/version-skew-protection#chat-sessions), you do not need this page to move a
+  conversation onto a new deployment. A pinned session follows its pin on its own: when the stored
+  `externalDeploymentId` stops naming the deployment a run is on, the agent hands over at the next
+  turn boundary. Set [`versionSkew: "hold"`](#staying-put) to turn that off for one agent.
+
+  Read on for the cases that are still yours to decide — leaving a pin for a version nobody named,
+  a session that was never pinned, and hand-rolled custom agents.
 </Note>
 
 ## How it works
@@ -130,6 +133,13 @@ This pattern is useful when:
 
 ## Auto-detect from build ID (Next.js / Vercel)
 
+<Warning>
+  You probably don't need this any more. If your sessions are pinned, following the pin is the
+  built-in behaviour and it needs no `clientData` and no `chat.local`. Reach for the recipe below
+  only when you want to upgrade on a signal the pin doesn't carry — a frontend build id that moves
+  independently of the deployment your app names.
+</Warning>
+
 For automatic upgrade on every deploy, pass your platform's build ID via `clientData` instead of a manual version. The agent stores the ID from the first message and upgrades when it changes:
 
 ```tsx title="app/components/Chat.tsx"
@@ -178,11 +188,37 @@ export const myChat = chat
 
 This upgrades on **every** deploy, not just breaking changes. Good for fast-moving projects where you always want the latest code.
 
-<Tip>
-  With [version skew protection](/deployment/version-skew-protection#chat-sessions) on, you don't
-  need this recipe: the session is already pinned to the deployment that matches the app build that
-  started it, and a client on a new build re-pins the session when it starts.
-</Tip>
+## Staying put
+
+A pinned session follows its pin by default. To keep one agent where it is — a long tool chain you
+don't want interrupted, or a conversation you'd rather move on your own terms — set `versionSkew`:
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  versionSkew: "hold",
+  run: async ({ messages, signal }) => { ... },
+});
+```
+
+`"hold"` only stops the automatic handoff. `chat.requestUpgrade()` still works, so you can keep the
+decision and still get the seamless swap.
+
+Two cases never hand over automatically, whatever `versionSkew` says:
+
+- **A session with no pin.** There is nothing to compare against, and an unpinned session already
+  lands on the current version every time it starts a run.
+- **A session using `lockToVersion`.** That pin outranks the external deployment id and
+  `chat.requestUpgrade()` cannot escape it, so handing over would land on the same version and
+  repeat.
+
+<Note>
+  Following the pin costs one session read per turn on pinned chats, and the handoff happens at a
+  turn boundary — never mid-turn. If the pin names a deployment that hasn't landed yet, the successor
+  parks: your messages stay durable, and the transport emits `run-pending-version` with
+  `source: "upgrade"` so you can say so in the UI. See [parked
+  chats](/deployment/version-skew-protection#chat-sessions).
+</Note>
 
 ## Custom agents
 
@@ -199,7 +235,7 @@ await chat.endAndContinue();
 return;
 ```
 
-The continuation uses the same durable Session and receives `.in` records that the old run has not consumed. It starts on the latest deployed task version unless the Session's trigger configuration sets `lockToVersion`.
+The continuation uses the same durable Session and receives `.in` records that the old run has not consumed. It starts on the latest deployed task version only if the Session is unpinned — a Session carrying `lockToVersion` or an `externalDeploymentId` re-applies that pin, so the continuation lands where the Session says rather than on the newest build.
 
 If input has been dispatched to the old run but should be processed by the continuation, detach the old listeners and skip the final `chat.writeTurnComplete()`. A turn-complete boundary acknowledges the latest input dispatched to the old run, so writing one after that dispatch would cause the continuation to resume past the input.
 

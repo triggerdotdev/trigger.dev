@@ -237,8 +237,11 @@ export type ChatTransportEvent =
       type: "run-pending-version";
       chatId: string;
       timestamp: number;
-      /** Whether we learned this from starting the session, a send, or the `headStart` POST. */
-      source: "start" | "send" | "head-start";
+      /**
+       * Where we learned it: creating the session, a send, the `headStart` POST, or an
+       * upgrade handing over to a deployment that has not landed yet.
+       */
+      source: "start" | "send" | "head-start" | "upgrade";
     }
   | {
       type: "message-sent";
@@ -2056,6 +2059,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               // `end-and-continue`; the next chunks on this same `.out`
               // stream come from v2. Filter the marker for cleanliness
               // and keep reading.
+              continue;
+            }
+
+            if (controlValue === TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION) {
+              this.emitEvent({
+                type: "run-pending-version",
+                chatId,
+                timestamp: Date.now(),
+                source: "upgrade",
+              });
               continue;
             }
 

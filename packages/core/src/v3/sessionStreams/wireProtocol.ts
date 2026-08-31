@@ -55,6 +55,7 @@ export const SESSION_IN_CONSUMED_ID_HEADER = "session-in-consumed-id" as const;
 export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",
+  PENDING_VERSION: "pending-version",
 } as const;
 
 export type TriggerControlSubtype =

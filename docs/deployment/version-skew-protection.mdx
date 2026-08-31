@@ -296,7 +296,7 @@ export const startChatSession = chat.createStartSessionAction<typeof myChat>("my
 
 Three things follow from the pin living on the session:
 
-- **Starting the session again refreshes it.** `sessions.start()` is idempotent on `chatId` and rewrites the stored config, so when your transport calls `startSession` after a redeploy, the *next* run picks up the new id. The turn already in flight finishes on the code it started on.
+- **Starting the session again refreshes it, and the conversation follows.** `sessions.start()` is idempotent on `chatId` and rewrites the stored config, so when your transport calls `startSession` after a redeploy, the session re-pins. The agent then hands the conversation over at the next turn boundary, so the next message is answered by the deployment you just named — not several turns later when the old run happens to end. The turn already in flight finishes on the code it started on. Set [`versionSkew: "hold"`](/ai-chat/patterns/version-upgrades#staying-put) on an agent that should stay put instead.
 - **There is one pin per `chatId`.** If the same conversation is open in two tabs on two different releases of your app, whichever called `startSession` most recently sets the pin for both.
 - **A parked chat is waiting, not broken.** A run pinned to a deployment that hasn't landed parks, and every message sent meanwhile is stored durably and delivered once the deployment arrives. Nothing is lost — but nothing answers either, so tell the user. Pass `pendingVersion` through your `startSession` callback and the transport emits a `run-pending-version` event:
 
@@ -312,7 +312,7 @@ const transport = useTriggerChatTransport({
 });
 ```
 
-The event repeats on every message sent while the chat is parked, so a notice driven off it stays accurate.
+The event repeats on every message sent while the chat is parked, so a notice driven off it stays accurate. Its `source` says where the park was learned: `start` from creating the session, `send` from an append, `head-start` from the route's response header, and `upgrade` when a session followed its pin onto a deployment that hasn't landed yet — that last one arrives as soon as the handoff happens, without waiting for another message.
 
 [Head Start](/ai-chat/fast-starts#head-start) softens this considerably: turn 1 runs in your own warm process, so a parked deployment costs nothing until step 2. The handover signal is durable, so the agent picks the turn up where it left off once the deployment lands. The transport emits `run-pending-version` with `source: "head-start"` for that case, and `chat.startHeadStart` returns `pendingVersion` for the detached flow.
 
@@ -336,7 +336,7 @@ Use this for a conversation that should always run on the current version — a 
 chat.requestUpgrade({ externalDeploymentId: clientData.commitSha });
 ```
 
-Either way the change is persisted on the session, so the next continuation doesn't fall back to the id the agent just rejected. `lockToVersion` is a separate, explicit pin and is never cleared — `requestUpgrade()` cannot escape it.
+Either way the change is persisted on the session, so the next continuation doesn't fall back to the id the agent just rejected. `lockToVersion` is a separate, explicit pin and is never cleared — `requestUpgrade()` cannot escape it, which is also why a session using it never follows its external deployment id automatically.
 
 ## Waiting and expiry
 

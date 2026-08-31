@@ -134,6 +134,7 @@ const { action, loader } = createActionApiRoute(
       const responseBody: EndAndContinueSessionResponseBody = {
         runId: run?.friendlyId ?? result.runId,
         swapped: result.swapped,
+        pendingVersion: result.pendingVersion,
       };
       return json<EndAndContinueSessionResponseBody>(responseBody);
     } catch (error) {

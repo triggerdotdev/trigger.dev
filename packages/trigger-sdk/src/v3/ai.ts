@@ -36,6 +36,7 @@ import {
   type TaskSchema,
   type TaskWithSchema,
   TRIGGER_CONTROL_SUBTYPE,
+  tryCatch,
   type StreamWriteResult,
   type RouterCheckpoint,
   type SessionRouteTable,
@@ -109,6 +110,7 @@ type ToolCallOptions = {
 import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
 import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
+import { type ChatVersionSkewPolicy, resolvePinToFollow } from "./chatVersionSkew.js";
 import {
   type SessionChannelHandleFor,
   type SessionHandle,
@@ -5516,6 +5518,18 @@ export type ChatAgentOptions<
   oomMachine?: MachinePresetName;
 
   /**
+   * What to do when the session's `externalDeploymentId` no longer names the deployment
+   * this run is on — after a redeploy re-pins the session, say.
+   *
+   * - `"follow"` (default) hands the conversation to the pinned deployment at the next
+   *   turn boundary, so no `chat.requestUpgrade()` of your own is needed.
+   * - `"hold"` stays put until you ask to move. Manual `chat.requestUpgrade()` works either way.
+   *
+   * Ignored for sessions with no pin, and for sessions using `lockToVersion`.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
+
+  /**
    * Schema for validating `clientData` from the frontend.
    * Accepts Zod, ArkType, Valibot, or any supported schema library.
    * When provided, `clientData` is parsed and typed in all hooks and `run`.
@@ -6394,6 +6408,7 @@ function chatAgent<
     onChatResume,
     exitAfterPreloadIdle = false,
     oomMachine,
+    versionSkew,
     ...restOptions
   } = options;
 
@@ -8009,6 +8024,8 @@ function chatAgent<
                       }
                     );
                   }
+
+                  await followSessionPin(currentWirePayload.chatId, versionSkew);
 
                   // chat.requestUpgrade() called in onTurnStart (or onValidateMessages) —
                   // skip run() and signal the transport to re-trigger the same message
@@ -9677,6 +9694,30 @@ function requestUpgrade(options?: { externalDeploymentId?: string }): void {
   if (target) locals.set(chatUpgradeExternalDeploymentIdKey, target);
 }
 
+/** @internal Requests a handoff when the session's pin no longer names this deployment. */
+async function followSessionPin(
+  chatId: string | undefined,
+  policy: ChatVersionSkewPolicy | undefined
+): Promise<void> {
+  if (!chatId) {
+    return;
+  }
+
+  const target = await resolvePinToFollow({
+    policy,
+    deployedExternalId: locals.get(chatAgentRunContextKey)?.deployment?.externalId,
+    upgradeAlreadyRequested: locals.get(chatUpgradeRequestedKey) === true,
+    readPin: async () => (await sessions.retrieve(chatId)).triggerConfig,
+  });
+
+  if (!target) {
+    return;
+  }
+
+  logger.info("chat.versionSkew: following the session pin", { chatId, target });
+  requestUpgrade({ externalDeploymentId: target });
+}
+
 /**
  * Hand off the current custom agent Session to a fresh run.
  *
@@ -9733,11 +9774,25 @@ async function performEndAndContinue(options?: { externalDeploymentId?: string }
 
   const externalDeploymentId = options?.externalDeploymentId;
   const apiClient = apiClientManager.clientOrThrow();
-  await apiClient.endAndContinueSession(chatId, {
+  const result = await apiClient.endAndContinueSession(chatId, {
     callingRunId,
     reason: "upgrade",
     ...(externalDeploymentId ? { externalDeploymentId } : {}),
   });
+
+  if (result?.pendingVersion !== true) {
+    return;
+  }
+
+  // The successor parked. Say so on `.out` while this run still can — the transport's
+  // subscription survives the swap, so the client learns without waiting for its next send.
+  const [error] = await tryCatch(
+    getChatSession().out.writeControl(TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION)
+  );
+
+  if (error) {
+    logger.warn("could not signal a parked handoff", { chatId, error });
+  }
 }
 
 /**
@@ -10494,6 +10549,11 @@ export type ChatSessionOptions = {
   timeout?: string;
   /** Max turns before ending. @default 100 */
   maxTurns?: number;
+  /**
+   * What to do when the session's `externalDeploymentId` no longer names this deployment.
+   * `"follow"` (default) hands over at the next turn boundary; `"hold"` stays put.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
   /** Automatic context compaction — same options as `chat.agent({ compaction })`. */
   compaction?: ChatAgentCompactionOptions;
   /** Configure mid-execution message injection — same options as `chat.agent({ pendingMessages })`. */
@@ -10710,6 +10770,7 @@ function createChatSession<TClientData = unknown>(
     maxTurns = 100,
     compaction: sessionCompaction,
     pendingMessages: sessionPendingMessages,
+    versionSkew: sessionVersionSkew,
   } = options;
 
   const idleTimeoutInSeconds = sessionIdleTimeoutOpt ?? 30;
@@ -10933,6 +10994,8 @@ function createChatSession<TClientData = unknown>(
             }
             accumulator.applyHandover(pendingHandoverSignal);
           }
+
+          await followSessionPin(currentPayload.chatId, sessionVersionSkew);
 
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {

@@ -835,6 +835,10 @@ export class AgentChat<TAgent = unknown> {
                 continue;
               }
 
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION) {
+                continue;
+              }
+
               if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
                 // Customer's callback may be async (e.g. persisting
                 // lastEventId to a DB). Wrap so a rejected Promise

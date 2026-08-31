@@ -50,6 +50,14 @@ function sseEncode(chunks: (UIMessageChunk | Record<string, unknown>)[]): string
         headers: [["trigger-control", "upgrade-required"]],
       };
     }
+    if (type === "trigger:pending-version") {
+      return {
+        body: "",
+        seq_num: nextSeq++,
+        timestamp: 1700000000000 + i,
+        headers: [["trigger-control", "pending-version"]],
+      };
+    }
     return {
       body: JSON.stringify({ data: chunk, id: partId }),
       seq_num: nextSeq++,
@@ -953,6 +961,45 @@ describe("TriggerChatTransport", () => {
       expect(surfaced).toHaveLength(sampleChunks.length);
       expect(surfaced.find((c: any) => c.type === "trigger:upgrade-required")).toBeUndefined();
       expect(surfaced.find((c: any) => c.type === "trigger:turn-complete")).toBeUndefined();
+    });
+
+    it("emits run-pending-version from an upgrade handing over to an unlanded deployment", async () => {
+      const chunks: (UIMessageChunk | Record<string, unknown>)[] = [
+        ...sampleChunks.slice(0, 2),
+        { type: "trigger:pending-version" },
+        { type: "trigger:upgrade-required" },
+        ...sampleChunks.slice(2),
+        { type: "trigger:turn-complete" },
+      ];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse(chunks);
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onEvent: (e) => events.push(e),
+        sessions: { "chat-parked-upgrade": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-parked-upgrade",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      const surfaced = await drainChunks(stream);
+
+      const parked = events.filter((e) => e.type === "run-pending-version");
+      expect(parked).toHaveLength(1);
+      expect(parked[0]).toMatchObject({ source: "upgrade", chatId: "chat-parked-upgrade" });
+      expect(surfaced).toHaveLength(sampleChunks.length);
+      expect(surfaced.find((c: any) => c.type === "trigger:pending-version")).toBeUndefined();
     });
 
     it("clears isStreaming on turn-complete and notifies", async () => {

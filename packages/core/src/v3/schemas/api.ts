@@ -1993,6 +1993,12 @@ export const EndAndContinueSessionResponseBody = z.object({
    * to drive the next run.
    */
   swapped: z.boolean(),
+  /**
+   * The run that took over is parked waiting for its deployment. Surface this so a
+   * handoff onto a version that has not landed reads as a deploy in progress rather
+   * than a chat that went quiet.
+   */
+  pendingVersion: z.boolean().optional(),
 });
 export type EndAndContinueSessionResponseBody = z.infer<typeof EndAndContinueSessionResponseBody>;
 

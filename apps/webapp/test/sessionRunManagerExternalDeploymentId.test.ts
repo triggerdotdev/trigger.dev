@@ -263,6 +263,50 @@ describe("session runs — external deployment id", () => {
     }
   );
 
+  postgresTest(
+    "a changed pin does not disturb a live run — the SDK moves it, not the server",
+    async ({ prisma }) => {
+      const suffix = `pin_live_${seq++}`;
+      const { seed, writerStore } = await setup(prisma as unknown as PrismaClient, suffix);
+
+      const liveRunId = cuidRunId(`l${seq}`);
+      await writerStore.createRun(
+        buildCreateRunInput({
+          runId: liveRunId,
+          friendlyId: `run_${suffix}_live`,
+          organizationId: seed.organization.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+          status: "EXECUTING",
+        })
+      );
+
+      const session = await prisma.session.create({
+        data: {
+          friendlyId: `session_${suffix}`,
+          type: "chat.agent",
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+          environmentType: "PRODUCTION",
+          organizationId: seed.organization.id,
+          taskIdentifier: "my-chat",
+          triggerConfig: { basePayload: {}, externalDeploymentId: "commit-new" },
+          currentRunId: liveRunId,
+          currentRunVersion: 0,
+        },
+      });
+
+      const result = await ensureRunForSession({
+        session,
+        environment: environmentFor(seed),
+        reason: "continuation",
+      });
+
+      expect(result.triggered).toBe(false);
+      expect(result.runId).toBe(liveRunId);
+    }
+  );
+
   postgresTest("reports pendingVersion when the triggered run parks", async ({ prisma }) => {
     const suffix = `pin_parked_${seq++}`;
     const { seed } = await setup(prisma as unknown as PrismaClient, suffix);
