@@ -428,6 +428,7 @@ export default function VercelIntegrationPage() {
                               <LinkButton
                                 variant="secondary/small-icon"
                                 LeadingIcon={Cog6ToothIcon}
+                                aria-label={`Configure ${projectIntegration.project.name}`}
                                 className="w-6 min-w-0 px-0"
                                 to={v3ProjectSettingsIntegrationsPath(
                                   organization,
