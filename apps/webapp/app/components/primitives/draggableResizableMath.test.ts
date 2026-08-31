@@ -6,9 +6,30 @@ import {
   clampPosition,
   clampRectToViewport,
   clampSize,
+  dockZoneForPoint,
   resizeRect,
   type Rect,
 } from "./draggableResizableMath";
+
+describe("dockZoneForPoint", () => {
+  const viewport = { width: 1200, height: 900 };
+
+  it("targets rightPanel near the right edge", () => {
+    expect(dockZoneForPoint({ x: 1180, y: 400 }, viewport)).toBe("rightPanel");
+  });
+
+  it("targets fullscreen near the top edge", () => {
+    expect(dockZoneForPoint({ x: 600, y: 10 }, viewport)).toBe("fullscreen");
+  });
+
+  it("prefers rightPanel in the top-right corner", () => {
+    expect(dockZoneForPoint({ x: 1180, y: 10 }, viewport)).toBe("rightPanel");
+  });
+
+  it("returns null away from every edge", () => {
+    expect(dockZoneForPoint({ x: 600, y: 400 }, viewport)).toBeNull();
+  });
+});
 
 describe("clamp", () => {
   it("clamps to the bounds", () => {

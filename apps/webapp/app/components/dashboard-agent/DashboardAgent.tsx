@@ -382,7 +382,7 @@ export function DashboardAgent({
               // Tailwind v4's important modifier is a trailing `!`, not a leading one.
               className={mode === "rightPanel" ? undefined : "overflow-visible!"}
             >
-              <FloatingAgentWindow mode={mode}>
+              <FloatingAgentWindow mode={mode} onRequestModeChange={changeMode}>
                 {({ dragHandleProps, dragHandleClassName }) => (
                   <DashboardAgentPanel
                     onClose={() => setPanelOpen(false)}

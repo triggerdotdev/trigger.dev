@@ -103,6 +103,21 @@ export function applyDragDelta(
   return { ...current, ...nextPosition };
 }
 
+export type DockZone = "rightPanel" | "fullscreen";
+
+export const DOCK_ZONE_SIZE = 48;
+
+/** Right edge wins the top-right corner, matching which hint the overlay shows there. */
+export function dockZoneForPoint(
+  point: Point,
+  viewport: Viewport,
+  zoneSize = DOCK_ZONE_SIZE
+): DockZone | null {
+  if (point.x >= viewport.width - zoneSize) return "rightPanel";
+  if (point.y <= zoneSize) return "fullscreen";
+  return null;
+}
+
 /** Resize counterpart of {@link applyDragDelta} — same incremental-step rationale. */
 export function applyResizeDelta(
   edge: ResizeEdge,

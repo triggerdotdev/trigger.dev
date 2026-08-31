@@ -86,6 +86,10 @@ function fakePanInfo(dx: number, dy: number): PanInfo {
   };
 }
 
+function fakePanInfoAt(point: { x: number; y: number }): PanInfo {
+  return { delta: { x: 0, y: 0 }, offset: { x: 0, y: 0 }, point, velocity: { x: 0, y: 0 } };
+}
+
 describe("the floating window's rect, wired with panel-layout's own constants", () => {
   it("renders at initialFloatingRect's position and size", () => {
     stubViewport(1200, 900);
@@ -107,19 +111,23 @@ describe("the floating window's rect, wired with panel-layout's own constants", 
 
 // Mirrors the real header: a title-like element (draggable) beside a
 // `data-agent-no-drag` action (opted out), same as DashboardAgentHeader's button group.
-function renderFloatingAgentWindow() {
+function renderFloatingAgentWindow(onRequestModeChange?: (mode: DashboardAgentMode) => void) {
   let latest!: FloatingDragProps;
   function Harness() {
-    return createElement(FloatingAgentWindow, { mode: "floating" }, (drag: FloatingDragProps) => {
-      // oxlint-disable-next-line react/globals -- test harness capturing the render-prop's value.
-      latest = drag;
-      return createElement(
-        "div",
-        null,
-        createElement("span", { "data-testid": "title" }, "Chat title"),
-        createElement("button", { "data-agent-no-drag": "", "data-testid": "action" }, "Close")
-      );
-    });
+    return createElement(
+      FloatingAgentWindow,
+      { mode: "floating", onRequestModeChange },
+      (drag: FloatingDragProps) => {
+        // oxlint-disable-next-line react/globals -- test harness capturing the render-prop's value.
+        latest = drag;
+        return createElement(
+          "div",
+          null,
+          createElement("span", { "data-testid": "title" }, "Chat title"),
+          createElement("button", { "data-agent-no-drag": "", "data-testid": "action" }, "Close")
+        );
+      }
+    );
   }
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -180,6 +188,82 @@ describe("FloatingAgentWindow's drag-vs-click filter", () => {
     });
 
     expect(view.outerLeft()).toBe(startLeft);
+  });
+});
+
+describe("FloatingAgentWindow's drag-to-dock zones", () => {
+  it("shows the rightPanel hint while dragging near the right edge", () => {
+    stubViewport(1200, 900);
+    const view = renderFloatingAgentWindow();
+    const target = view.titleEl() as unknown as PointerEvent["target"];
+
+    act(() => {
+      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfoAt({ x: 0, y: 0 }));
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfoAt({ x: 1190, y: 400 }));
+    });
+
+    expect(document.body.textContent).toContain("Dock right");
+  });
+
+  it("calls onRequestModeChange with rightPanel on release in the right zone, without a rect jump", () => {
+    stubViewport(1200, 900);
+    const onRequestModeChange = vi.fn();
+    const view = renderFloatingAgentWindow(onRequestModeChange);
+    const target = view.titleEl() as unknown as PointerEvent["target"];
+
+    act(() => {
+      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfoAt({ x: 0, y: 0 }));
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfoAt({ x: 1190, y: 400 }));
+    });
+    const leftBeforeRelease = view.outerLeft();
+
+    act(() => {
+      view.dragHandleProps.onPanEnd!({ target } as PointerEvent, fakePanInfoAt({ x: 1190, y: 400 }));
+    });
+
+    expect(onRequestModeChange).toHaveBeenCalledTimes(1);
+    expect(onRequestModeChange).toHaveBeenCalledWith("rightPanel");
+    expect(view.outerLeft()).toBe(leftBeforeRelease);
+    expect(document.body.textContent).not.toContain("Dock right");
+  });
+
+  it("shows the fullscreen hint and requests fullscreen on release near the top edge", () => {
+    stubViewport(1200, 900);
+    const onRequestModeChange = vi.fn();
+    const view = renderFloatingAgentWindow(onRequestModeChange);
+    const target = view.titleEl() as unknown as PointerEvent["target"];
+
+    act(() => {
+      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfoAt({ x: 0, y: 0 }));
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfoAt({ x: 500, y: 5 }));
+    });
+    expect(document.body.textContent).toContain("Fullscreen");
+
+    act(() => {
+      view.dragHandleProps.onPanEnd!({ target } as PointerEvent, fakePanInfoAt({ x: 500, y: 5 }));
+    });
+
+    expect(onRequestModeChange).toHaveBeenCalledTimes(1);
+    expect(onRequestModeChange).toHaveBeenCalledWith("fullscreen");
+  });
+
+  it("does not change mode and updates the rect normally on release outside any zone", () => {
+    stubViewport(1200, 900);
+    const onRequestModeChange = vi.fn();
+    const view = renderFloatingAgentWindow(onRequestModeChange);
+    const target = view.titleEl() as unknown as PointerEvent["target"];
+    const startLeft = view.outerLeft();
+
+    act(() => {
+      view.dragHandleProps.onPanStart!({ target } as PointerEvent, fakePanInfo(0, 0));
+      view.dragHandleProps.onPan!({ target } as PointerEvent, fakePanInfo(-20, 0));
+    });
+    act(() => {
+      view.dragHandleProps.onPanEnd!({ target } as PointerEvent, fakePanInfoAt({ x: 500, y: 400 }));
+    });
+
+    expect(onRequestModeChange).not.toHaveBeenCalled();
+    expect(view.outerLeft()).not.toBe(startLeft);
   });
 });
 

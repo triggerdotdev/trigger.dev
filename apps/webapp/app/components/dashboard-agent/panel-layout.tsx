@@ -1,6 +1,7 @@
 // Both class helpers apply to always-rendered wrappers, so switching display mode is a
 // class change only and the open chat's transport, session and transcript survive it.
 import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { motion, type PanInfo } from "framer-motion";
 import {
   draggableResizeHandleClassName,
@@ -8,6 +9,11 @@ import {
   type PanHandlerProps,
   type ResizeEdge,
 } from "~/components/primitives/DraggableResizable";
+import {
+  dockZoneForPoint,
+  type DockZone,
+  type Point,
+} from "~/components/primitives/draggableResizableMath";
 import { cn } from "~/utils/cn";
 
 // Mark an element (e.g. a header button, or just its icon) with `data-agent-no-drag` so a
@@ -89,6 +95,27 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
   return cn("h-full overflow-hidden", fullscreen && "invisible");
 }
 
+const DOCK_ZONE_LABEL: Record<DockZone, string> = {
+  rightPanel: "Dock right",
+  fullscreen: "Fullscreen",
+};
+
+/** Transparent hint over the drop target, portaled so panel overflow can't clip it. */
+function DockZoneOverlay({ zone }: { zone: DockZone }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      className={cn(
+        "pointer-events-none fixed z-50 flex items-center justify-center border-2 border-dashed border-text-link bg-background-dimmed/70 text-sm text-text-bright backdrop-blur-xs",
+        zone === "rightPanel" ? "inset-y-0 right-0 w-[380px]" : "inset-0"
+      )}
+    >
+      {DOCK_ZONE_LABEL[zone]}
+    </div>,
+    document.body
+  );
+}
+
 /**
  * Owns the drag-vs-click filter, so the panel and the standalone story behave identically.
  * Fullscreen needs a `relative` ancestor for `agentTakeoverClassName`, supplied by the caller.
@@ -97,9 +124,11 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
  */
 export function FloatingAgentWindow({
   mode,
+  onRequestModeChange,
   children,
 }: {
   mode: DashboardAgentMode;
+  onRequestModeChange?: (mode: DashboardAgentMode) => void;
   children: (drag: FloatingDragProps) => React.ReactNode;
 }) {
   const fullscreen = mode === "fullscreen";
@@ -111,6 +140,7 @@ export function FloatingAgentWindow({
     viewportPadding: FLOATING_MARGIN,
   });
   const [dragging, setDragging] = useState(false);
+  const [dockZone, setDockZone] = useState<DockZone | null>(null);
   // onPan can arrive before onPanStart, so the no-drag check runs once, on whichever fires first.
   const gestureClassified = useRef(false);
   const ignoringGesture = useRef(false);
@@ -120,6 +150,9 @@ export function FloatingAgentWindow({
     gestureClassified.current = true;
     ignoringGesture.current = !!(event.target as HTMLElement | null)?.closest(NO_DRAG_SELECTOR);
   };
+
+  const zoneForPoint = (point: Point) =>
+    dockZoneForPoint(point, { width: window.innerWidth, height: window.innerHeight });
 
   // Same shape as `dragHandleProps` below empty, so a mode with no drag doesn't change types.
   const filteredDragHandleProps: Partial<PanHandlerProps> =
@@ -135,12 +168,20 @@ export function FloatingAgentWindow({
           onPan: (event: PointerEvent, info: PanInfo) => {
             classifyGesture(event);
             if (ignoringGesture.current) return;
+            setDockZone(zoneForPoint(info.point));
             dragHandleProps.onPan?.(event, info);
           },
           onPanEnd: (event: PointerEvent, info: PanInfo) => {
+            const wasIgnoring = ignoringGesture.current;
             gestureClassified.current = false;
             ignoringGesture.current = false;
             setDragging(false);
+            setDockZone(null);
+            const droppedZone = wasIgnoring ? null : zoneForPoint(info.point);
+            if (droppedZone) {
+              onRequestModeChange?.(droppedZone);
+              return;
+            }
             dragHandleProps.onPanEnd?.(event, info);
           },
         };
@@ -148,43 +189,46 @@ export function FloatingAgentWindow({
   // Same two-`div` shape in all three modes — only classes/style change — so switching `mode`
   // never unmounts `children`; only className/style differ.
   return (
-    <div
-      style={fullscreen || docked ? CLEARED_FLOATING_STYLE : style}
-      className={
-        fullscreen
-          ? agentTakeoverClassName(true)
-          : docked
-            ? "flex h-full flex-col"
-            : "z-30 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
-      }
-    >
-      {/* Clips content to the rounded corners without clipping the resize handles below,
-          which sit half outside this box's edges. */}
+    <>
+      {dragging && dockZone && <DockZoneOverlay zone={dockZone} />}
       <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col",
-          !fullscreen && !docked && "overflow-hidden rounded-lg"
-        )}
+        style={fullscreen || docked ? CLEARED_FLOATING_STYLE : style}
+        className={
+          fullscreen
+            ? agentTakeoverClassName(true)
+            : docked
+              ? "flex h-full flex-col"
+              : "z-30 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
+        }
       >
-        {/* oxlint-disable-next-line react/refs -- the ref is only read inside event handlers, not during render. */}
-        {children({
-          dragHandleProps: filteredDragHandleProps,
-          dragHandleClassName:
-            fullscreen || docked
-              ? ""
-              : cn("select-none touch-none", dragging ? "cursor-grabbing" : "cursor-grab"),
-        })}
+        {/* Clips content to the rounded corners without clipping the resize handles below,
+          which sit half outside this box's edges. */}
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col",
+            !fullscreen && !docked && "overflow-hidden rounded-lg"
+          )}
+        >
+          {/* oxlint-disable-next-line react/refs -- the ref is only read inside event handlers, not during render. */}
+          {children({
+            dragHandleProps: filteredDragHandleProps,
+            dragHandleClassName:
+              fullscreen || docked
+                ? ""
+                : cn("select-none touch-none", dragging ? "cursor-grabbing" : "cursor-grab"),
+          })}
+        </div>
+        {!fullscreen &&
+          !docked &&
+          RESIZE_EDGES.map((edge) => (
+            <motion.div
+              key={edge}
+              {...resizeHandleProps(edge)}
+              className={draggableResizeHandleClassName(edge)}
+            />
+          ))}
       </div>
-      {!fullscreen &&
-        !docked &&
-        RESIZE_EDGES.map((edge) => (
-          <motion.div
-            key={edge}
-            {...resizeHandleProps(edge)}
-            className={draggableResizeHandleClassName(edge)}
-          />
-        ))}
-    </div>
+    </>
   );
 }
 
