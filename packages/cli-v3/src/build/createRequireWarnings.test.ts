@@ -1,4 +1,4 @@
-import { build } from "esbuild";
+import { build, type BuildResult, type PluginBuild } from "esbuild";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -291,6 +291,26 @@ const pg = req("pg");
     expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
   });
 
+  it("treats a slash after postfix increment or non-null assertion as division, not a regex", () => {
+    const source = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url);
+const z = x++ / y; const pg = req("pg");
+const w = a! / b; const mssql = req("mssql");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg", "mssql"]);
+  });
+
+  it("does not let a misread division corrupt string tracking", () => {
+    const source = `import { createRequire } from "node:module";
+const req = createRequire(import.meta.url);
+const z = x++ / y; const msg = 'a/b then req("evil-pkg") here';
+const pg = req("pg");
+`;
+
+    expect(scanSourceForCreateRequire(source).map((r) => r.specifier)).toEqual(["pg"]);
+  });
+
   it("follows require functions imported from other scanned files", () => {
     const util = `import { createRequire } from "node:module";
 export const cjsRequire = createRequire(import.meta.url);
@@ -427,6 +447,89 @@ export const mssql = cjsRequire("mssql");
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("ignores a same-named import that resolves to a module without the require export", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "create-require-collector-"));
+
+    try {
+      await writeFile(
+        join(dir, "util.ts"),
+        `import { createRequire } from "node:module";
+export const cjsRequire = createRequire(import.meta.url);
+export const unused = cjsRequire;
+`
+      );
+      await writeFile(
+        join(dir, "pluginLoader.ts"),
+        `export const cjsRequire = (name: string) => ({ name });
+`
+      );
+
+      const entryPoint = join(dir, "entry.ts");
+      await writeFile(
+        entryPoint,
+        `import { cjsRequire } from "./pluginLoader.js";
+import { unused } from "./util.js";
+export const plugin = cjsRequire("my-plugin");
+export const keep = unused;
+`
+      );
+
+      const collector = new CreateRequireCollector(dir);
+
+      await build({
+        entryPoints: [entryPoint],
+        bundle: true,
+        metafile: true,
+        write: false,
+        format: "esm",
+        platform: "node",
+        outdir: dir,
+        absWorkingDir: dir,
+        logLevel: "silent",
+        plugins: [collector.plugin],
+      });
+
+      expect(collector.usages).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("scans a file only once when it appears with and without a query suffix", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "create-require-collector-"));
+
+    try {
+      const entryPath = join(dir, "entry.ts");
+      await writeFile(
+        entryPath,
+        `import { createRequire } from "node:module";
+export const mssql = createRequire(import.meta.url)("mssql");
+`
+      );
+
+      const collector = new CreateRequireCollector(dir);
+      const onEndCallbacks: Array<(result: BuildResult) => Promise<void>> = [];
+
+      collector.plugin.setup({
+        onEnd: (callback: (result: BuildResult) => Promise<void>) => onEndCallbacks.push(callback),
+      } as unknown as PluginBuild);
+
+      await onEndCallbacks[0]!({
+        metafile: {
+          inputs: {
+            "entry.ts": { bytes: 0, imports: [] },
+            "entry.ts?sentryProxyModule=true": { bytes: 0, imports: [] },
+          },
+          outputs: {},
+        },
+      } as unknown as BuildResult);
+
+      expect(collector.usages).toHaveLength(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("createRequireUsageToWarning", () => {
@@ -500,8 +603,12 @@ describe("extensionInstalledPackageMatchers", () => {
   it("collects matchers from installedPackagesForTarget and externalsForTarget", () => {
     const { matchers, incomplete } = extensionInstalledPackageMatchers(
       configWith([
-        { name: "custom", installedPackagesForTarget: () => ["ffmpeg-static"] },
-        { name: "prisma", externalsForTarget: () => ["@prisma/client"] },
+        {
+          name: "custom",
+          onBuildStart: () => {},
+          installedPackagesForTarget: () => ["ffmpeg-static"],
+        },
+        { name: "prisma", onBuildStart: () => {}, externalsForTarget: () => ["@prisma/client"] },
       ])
     );
 
@@ -526,12 +633,18 @@ describe("extensionInstalledPackageMatchers", () => {
     expect(incomplete).toBe(true);
   });
 
-  it("marks the result incomplete for an additionalPackages extension without the hook", () => {
-    const { incomplete } = extensionInstalledPackageMatchers(
-      configWith([{ name: "additionalPackages" }])
+  it("marks the result incomplete for any hook-bearing extension that declares no packages", () => {
+    const oldAdditionalPackages = extensionInstalledPackageMatchers(
+      configWith([{ name: "additionalPackages", onBuildStart: () => {} }])
     );
 
-    expect(incomplete).toBe(true);
+    expect(oldAdditionalPackages.incomplete).toBe(true);
+
+    const layerInstaller = extensionInstalledPackageMatchers(
+      configWith([{ name: "syncEnvVars", onBuildComplete: () => {} }])
+    );
+
+    expect(layerInstaller.incomplete).toBe(true);
   });
 });
 
@@ -586,6 +699,34 @@ describe("collectCreateRequireWarningMessages", () => {
       usages: [usage],
       buildManifest: manifestWith([]),
       extensionPackages: { matchers: [], incomplete: true },
+      target: "deploy",
+    });
+
+    expect(messages).toHaveLength(1);
+  });
+
+  it("stays silent when a build-layer command runs a JS package manager", () => {
+    const messages = collectCreateRequireWarningMessages({
+      usages: [usage],
+      buildManifest: {
+        externals: [],
+        build: { commands: ["npm install @prisma/engines@5.0.0"] },
+      } as unknown as BuildManifest,
+      extensionPackages: { matchers: [], incomplete: false },
+      target: "deploy",
+    });
+
+    expect(messages).toEqual([]);
+  });
+
+  it("still warns when build-layer commands don't install JS packages", () => {
+    const messages = collectCreateRequireWarningMessages({
+      usages: [usage],
+      buildManifest: {
+        externals: [],
+        build: { commands: ["apt-get install -y ffmpeg"] },
+      } as unknown as BuildManifest,
+      extensionPackages: { matchers: [], incomplete: false },
       target: "deploy",
     });
 

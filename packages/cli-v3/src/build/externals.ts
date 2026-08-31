@@ -520,16 +520,16 @@ export function createExternalsBuildExtension(
 }
 
 export function makeExternalRegexp(packageName: string): RegExp {
-  // Escape special regex characters in the package name
-  const escapedPkg = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  // Create the regex pattern
-  const pattern = `^${escapedPkg}(?:/[^'"]*)?$`;
+  const pattern = `^${escapeRegExp(packageName)}(?:/[^'"]*)?$`;
 
   return new RegExp(pattern);
 }
 
-function packageNameForImportPath(importPath: string): string {
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function packageNameForImportPath(importPath: string): string {
   // Remove any leading '@' to handle it separately
   const withoutAtSign = importPath.replace(/^@/, "");
 
@@ -577,7 +577,7 @@ function isBareModuleImport(path: string): boolean {
   return !excludes.some((exclude) => path.startsWith(exclude));
 }
 
-function isBuiltinModule(path: string): boolean {
+export function isBuiltinModule(path: string): boolean {
   return builtinModules.includes(path.replace("node:", ""));
 }
 

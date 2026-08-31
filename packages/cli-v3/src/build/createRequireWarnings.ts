@@ -2,11 +2,18 @@ import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { readFile, stat } from "node:fs/promises";
-import { builtinModules } from "node:module";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
+import pLimit from "p-limit";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { logger } from "../utilities/logger.js";
-import { makeExternalRegexp } from "./externals.js";
+import {
+  escapeRegExp,
+  isBuiltinModule,
+  makeExternalRegexp,
+  packageNameForImportPath,
+} from "./externals.js";
+
+export { packageNameForImportPath as packageNameForSpecifier } from "./externals.js";
 
 export type CreateRequireSpecifier = {
   specifier: string;
@@ -27,6 +34,13 @@ export type SourceScanResult = {
   /** Names of require functions this file creates and exports (`export const req = createRequire(...)`) */
   exportedRequireFns: string[];
 };
+
+/**
+ * Decides whether an imported binding is a require function created in
+ * another scanned file. Receives the local binding's exported name and the
+ * import specifier it came from.
+ */
+export type KnownRequireFnImportPredicate = (name: string, fromSpecifier: string) => boolean;
 
 const IDENTIFIER = "[A-Za-z_$][\\w$]*";
 const STRING_LITERAL = `(["'])([^"'\\n]+)\\1`;
@@ -52,20 +66,19 @@ export function scanSourceForCreateRequire(
   source: string,
   knownRequireFnExports?: ReadonlySet<string>
 ): CreateRequireSpecifier[] {
-  return scanSource(source, knownRequireFnExports).specifiers;
+  return scanSource(
+    source,
+    knownRequireFnExports ? (name) => knownRequireFnExports.has(name) : undefined
+  ).specifiers;
 }
 
 export function scanSource(
   source: string,
-  knownRequireFnExports?: ReadonlySet<string>
+  isKnownRequireFnImport?: KnownRequireFnImportPredicate
 ): SourceScanResult {
   const empty: SourceScanResult = { specifiers: [], exportedRequireFns: [] };
 
-  const mentionsKnownExport = knownRequireFnExports
-    ? Array.from(knownRequireFnExports).some((name) => source.includes(name))
-    : false;
-
-  if (!source.includes("createRequire") && !mentionsKnownExport) {
+  if (!source.includes("createRequire") && !isKnownRequireFnImport) {
     return empty;
   }
 
@@ -134,7 +147,7 @@ export function scanSource(
     }
   }
 
-  if (knownRequireFnExports && knownRequireFnExports.size > 0) {
+  if (isKnownRequireFnImport) {
     const relativeImportRegex = new RegExp(
       `import\\s*(?:type\\s+)?\\{([^}]*)\\}\\s*from\\s*["'](\\.[^"'\\n]*)["']`,
       "g"
@@ -150,7 +163,7 @@ export function scanSource(
           new RegExp(`^\\s*(${IDENTIFIER})\\s*(?:as\\s+(${IDENTIFIER}))?\\s*$`)
         );
 
-        if (bindingMatch && knownRequireFnExports.has(bindingMatch[1]!)) {
+        if (bindingMatch && isKnownRequireFnImport(bindingMatch[1]!, match[2]!)) {
           requireFnNames.add(bindingMatch[2] ?? bindingMatch[1]!);
         }
       }
@@ -445,17 +458,11 @@ function regexLiteralAllowedAt(source: string, index: number): boolean {
     return REGEX_PRECEDING_KEYWORDS.has(source.slice(start, j + 1));
   }
 
-  return !/[)\]"'`.]/.test(prev);
-}
-
-export function packageNameForSpecifier(specifier: string): string {
-  const parts = specifier.split("/");
-
-  if (specifier.startsWith("@")) {
-    return parts.slice(0, 2).join("/");
+  if (prev === "+" || prev === "-") {
+    return source[j - 1] !== prev;
   }
 
-  return parts[0]!;
+  return !/[)\]"'`.!<]/.test(prev);
 }
 
 function isWarnableSpecifier(specifier: string): boolean {
@@ -465,7 +472,7 @@ function isWarnableSpecifier(specifier: string): boolean {
     return false;
   }
 
-  return !builtinModules.includes(packageNameForSpecifier(specifier));
+  return !isBuiltinModule(packageNameForImportPath(specifier));
 }
 
 function locationAt(
@@ -483,19 +490,18 @@ function locationAt(
   };
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 const SCANNABLE_FILE_REGEX = /\.(?:m|c)?(?:j|t)sx?$/;
 const NODE_MODULES_SEGMENT_REGEX = /(?:^|[\\/])node_modules[\\/]/;
+const FILE_READ_CONCURRENCY = 16;
 
 type CollectorCacheEntry = {
   mtimeMs: number;
   size: number;
-  exportedRequireFns: string[];
+  /** Scan without cross-file require-fn knowledge */
+  base: SourceScanResult;
+  /** Signature of the cross-file exports under which finalSpecifiers was computed */
   knownsSignature: string;
-  specifiers: CreateRequireSpecifier[];
+  finalSpecifiers: CreateRequireSpecifier[];
 };
 
 /**
@@ -503,8 +509,9 @@ type CollectorCacheEntry = {
  * Only files outside `node_modules` are scanned: bundled libraries commonly
  * use optional-require patterns that would drown real findings in noise.
  * Require functions exported from one scanned file and imported (by name,
- * from a relative path) into another are followed. Scan results are cached
- * per file by mtime and size so dev rebuilds only re-read changed files.
+ * from a relative path resolving to the exporting file) into another are
+ * followed. Scan results are cached per file by mtime and size so dev
+ * rebuilds only re-read changed files.
  */
 export class CreateRequireCollector {
   private _usages: CreateRequireUsage[] = [];
@@ -543,80 +550,100 @@ export class CreateRequireCollector {
 
   private async collect(metafile: esbuild.Metafile): Promise<void> {
     const files: Array<{ inputPath: string; filePath: string }> = [];
+    const seenPaths = new Set<string>();
 
     for (const inputPath of Object.keys(metafile.inputs)) {
       const cleanPath = inputPath.split("?")[0]!;
 
-      if (!SCANNABLE_FILE_REGEX.test(cleanPath) || NODE_MODULES_SEGMENT_REGEX.test(cleanPath)) {
+      if (
+        seenPaths.has(cleanPath) ||
+        !SCANNABLE_FILE_REGEX.test(cleanPath) ||
+        NODE_MODULES_SEGMENT_REGEX.test(cleanPath)
+      ) {
         continue;
       }
 
+      seenPaths.add(cleanPath);
       files.push({
         inputPath: cleanPath,
         filePath: isAbsolute(cleanPath) ? cleanPath : resolve(this.workingDir, cleanPath),
       });
     }
 
-    const scanned = await Promise.all(
-      files.map(async ({ inputPath, filePath }) => {
-        const [statError, stats] = await tryCatch(stat(filePath));
+    const limit = pLimit(FILE_READ_CONCURRENCY);
 
-        if (statError) {
-          logger.debug("[createRequire] Unable to stat bundle input file", {
-            filePath,
-            error: statError,
-          });
+    const scanned = (
+      await Promise.all(
+        files.map((file) =>
+          limit(async () => {
+            const [statError, stats] = await tryCatch(stat(file.filePath));
 
-          return undefined;
+            if (statError) {
+              logger.debug("[createRequire] Unable to stat bundle input file", {
+                filePath: file.filePath,
+                error: statError,
+              });
+
+              return undefined;
+            }
+
+            const cached = this._cache.get(file.filePath);
+            const unchanged =
+              cached !== undefined &&
+              cached.mtimeMs === stats.mtimeMs &&
+              cached.size === stats.size;
+
+            let source: string | undefined;
+            let base: SourceScanResult;
+
+            if (unchanged) {
+              base = cached.base;
+            } else {
+              const [readError, contents] = await tryCatch(readFile(file.filePath, "utf8"));
+
+              if (readError) {
+                logger.debug("[createRequire] Unable to read bundle input file", {
+                  filePath: file.filePath,
+                  error: readError,
+                });
+
+                return undefined;
+              }
+
+              source = contents;
+              base = scanSource(contents);
+            }
+
+            return { ...file, stats, cached: unchanged ? cached : undefined, source, base };
+          })
+        )
+      )
+    ).filter((entry) => entry !== undefined);
+
+    const exportsByFileKey = new Map<string, Set<string>>();
+    const exportedNames = new Set<string>();
+    const fileKey = (filePath: string) => filePath.replace(SCANNABLE_FILE_REGEX, "");
+
+    for (const entry of scanned) {
+      if (entry.base.exportedRequireFns.length > 0) {
+        exportsByFileKey.set(fileKey(entry.filePath), new Set(entry.base.exportedRequireFns));
+
+        for (const name of entry.base.exportedRequireFns) {
+          exportedNames.add(name);
         }
+      }
+    }
 
-        const cached = this._cache.get(filePath);
-        const unchanged =
-          cached !== undefined && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size;
+    const knownsSignature = Array.from(exportsByFileKey.entries())
+      .flatMap(([key, names]) => Array.from(names).map((name) => `${key}#${name}`))
+      .sort()
+      .join(",");
 
-        let source: string | undefined;
-
-        if (!unchanged) {
-          const [readError, contents] = await tryCatch(readFile(filePath, "utf8"));
-
-          if (readError) {
-            logger.debug("[createRequire] Unable to read bundle input file", {
-              filePath,
-              error: readError,
-            });
-
-            return undefined;
-          }
-
-          source = contents;
-        }
-
-        return { inputPath, filePath, stats, cached: unchanged ? cached : undefined, source };
-      })
-    );
-
-    const exportedRequireFns = new Set<string>();
-
-    const withExports = scanned
-      .filter((entry) => entry !== undefined)
-      .map((entry) => {
-        const exported =
-          entry.cached?.exportedRequireFns ?? scanSource(entry.source!).exportedRequireFns;
-
-        for (const name of exported) {
-          exportedRequireFns.add(name);
-        }
-
-        return { ...entry, exportedRequireFns: exported };
-      });
-
-    const knownsSignature = Array.from(exportedRequireFns).sort().join(",");
-
-    for (const entry of withExports) {
-      let specifiers: CreateRequireSpecifier[];
+    for (const entry of scanned) {
+      let finalSpecifiers: CreateRequireSpecifier[];
 
       if (entry.cached && entry.cached.knownsSignature === knownsSignature) {
-        specifiers = entry.cached.specifiers;
+        finalSpecifiers = entry.cached.finalSpecifiers;
       } else {
         const source =
           entry.source ?? (await tryCatch(readFile(entry.filePath, "utf8")))[1] ?? undefined;
@@ -625,22 +652,36 @@ export class CreateRequireCollector {
           continue;
         }
 
-        specifiers = scanSource(source, exportedRequireFns).specifiers;
+        const mentionsExportedName = Array.from(exportedNames).some((name) =>
+          source.includes(name)
+        );
+
+        if (!mentionsExportedName) {
+          finalSpecifiers = entry.base.specifiers;
+        } else {
+          const importerDir = dirname(entry.filePath);
+
+          finalSpecifiers = scanSource(source, (name, fromSpecifier) => {
+            const key = fileKey(resolve(importerDir, fromSpecifier));
+
+            return exportsByFileKey.get(key)?.has(name) ?? false;
+          }).specifiers;
+        }
 
         this._cache.set(entry.filePath, {
           mtimeMs: entry.stats.mtimeMs,
           size: entry.stats.size,
-          exportedRequireFns: entry.exportedRequireFns,
+          base: entry.base,
           knownsSignature,
-          specifiers,
+          finalSpecifiers,
         });
       }
 
-      for (const found of specifiers) {
+      for (const found of finalSpecifiers) {
         this._usages.push({
           ...found,
           file: entry.inputPath,
-          packageName: packageNameForSpecifier(found.specifier),
+          packageName: packageNameForImportPath(found.specifier),
         });
       }
     }
@@ -650,20 +691,21 @@ export class CreateRequireCollector {
 export type ExtensionInstalledPackages = {
   matchers: RegExp[];
   /**
-   * True when what extensions install can't be fully determined (an extension
-   * hook threw, or an additionalPackages extension predates the
-   * installedPackagesForTarget hook). Dev-mode warnings must stay silent in
-   * that case rather than risk false "deploys will fail" claims; deploy-mode
-   * warnings are unaffected because the manifest externals are the truth
-   * there.
+   * True when what extensions install can't be fully determined: an extension
+   * hook threw, or an extension participates in the build (has build hooks)
+   * without declaring installedPackagesForTarget or externalsForTarget, so it
+   * may install packages invisibly (e.g. via a build layer). Dev-mode
+   * warnings must stay silent in that case rather than risk false "deploys
+   * will fail" claims; deploy-mode warnings are unaffected because the
+   * manifest externals capture layer dependencies there.
    */
   incomplete: boolean;
 };
 
 /**
  * Package-name matchers for everything the configured build extensions
- * install into or externalize for the deployed image. Never throws:
- * diagnostics must not fail a build.
+ * declare they install into or externalize for the deployed image. Never
+ * throws: diagnostics must not fail a build.
  */
 export function extensionInstalledPackageMatchers(
   config: ResolvedConfig
@@ -673,6 +715,18 @@ export function extensionInstalledPackageMatchers(
 
   for (const buildExtension of config.build?.extensions ?? []) {
     try {
+      const declaresPackages =
+        typeof buildExtension.installedPackagesForTarget === "function" ||
+        typeof buildExtension.externalsForTarget === "function";
+      const hasBuildHooks =
+        typeof buildExtension.onBuildStart === "function" ||
+        typeof buildExtension.onBuildComplete === "function";
+
+      if (!declaresPackages && hasBuildHooks) {
+        incomplete = true;
+        continue;
+      }
+
       const declared = [
         ...(buildExtension.installedPackagesForTarget?.("deploy") ?? []),
         ...(buildExtension.externalsForTarget?.("deploy") ?? []),
@@ -680,13 +734,6 @@ export function extensionInstalledPackageMatchers(
 
       for (const packageName of declared) {
         matchers.push(makeExternalRegexp(packageName));
-      }
-
-      if (
-        buildExtension.name === "additionalPackages" &&
-        typeof buildExtension.installedPackagesForTarget !== "function"
-      ) {
-        incomplete = true;
       }
     } catch (error) {
       logger.debug("[createRequire] Build extension package declaration failed", {
@@ -720,11 +767,16 @@ export function unavailableCreateRequireUsages(
   );
 }
 
+const PACKAGE_INSTALL_COMMAND_REGEX = /\b(?:npm|pnpm|yarn|bun)\b/i;
+
 /**
  * The shared dev/deploy warning pipeline: suppress usages that will be
  * available in the image, render the rest. Returns [] instead of throwing on
- * any internal failure, and stays silent for dev when extension-installed
- * packages can't be determined (see ExtensionInstalledPackages.incomplete).
+ * any internal failure, stays silent for dev when extension-installed
+ * packages can't be determined (see ExtensionInstalledPackages.incomplete),
+ * and stays silent for every target when a build-layer command runs a JS
+ * package manager, since such commands can install packages invisibly to the
+ * manifest externals.
  */
 export function collectCreateRequireWarningMessages({
   usages,
@@ -739,6 +791,12 @@ export function collectCreateRequireWarningMessages({
 }): esbuild.PartialMessage[] {
   try {
     if (target === "dev" && extensionPackages.incomplete) {
+      return [];
+    }
+
+    const commands = buildManifest.build?.commands ?? [];
+
+    if (commands.some((command) => PACKAGE_INSTALL_COMMAND_REGEX.test(command))) {
       return [];
     }
 
