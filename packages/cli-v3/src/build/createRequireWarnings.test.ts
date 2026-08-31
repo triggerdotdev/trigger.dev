@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CreateRequireCollector,
+  createRequireUsageToWarning,
   packageNameForSpecifier,
   scanSourceForCreateRequire,
 } from "./createRequireWarnings.js";
@@ -220,6 +221,26 @@ export const mssql = createRequire(import.meta.url)("mssql");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("createRequireUsageToWarning", () => {
+  it("carries the concrete fix in a note", () => {
+    const warning = createRequireUsageToWarning({
+      specifier: "mssql/lib/tedious",
+      packageName: "mssql",
+      file: "src/db.ts",
+      line: 12,
+      column: 20,
+      lineText: `const mssql = createRequire(import.meta.url)("mssql/lib/tedious");`,
+    });
+
+    expect(warning.location).toMatchObject({ file: "src/db.ts", line: 12, column: 20 });
+
+    const note = warning.notes?.[0]?.text ?? "";
+    expect(note).toContain("trigger.config.ts");
+    expect(note).toContain(`additionalPackages({ packages: ["mssql"] })`);
+    expect(note).toContain("https://trigger.dev/docs/config/extensions/additionalPackages");
   });
 });
 

@@ -246,12 +246,28 @@ export class CreateRequireCollector {
 export function createRequireUsageToWarning(usage: CreateRequireUsage): esbuild.PartialMessage {
   return {
     pluginName: "create-require-collector",
-    text: `"${usage.specifier}" is loaded with createRequire() but won't be available in the deployed image. The bundler can't follow createRequire() calls, so "${usage.packageName}" is neither bundled into your code nor installed in the image, and loading it will fail at runtime. Install it into the image with the additionalPackages build extension (https://trigger.dev/docs/config/extensions/additionalPackages), or import it statically so it gets bundled.`,
+    text: `"${usage.specifier}" is loaded with createRequire() but won't be available in the deployed image, so loading it will fail at runtime. The bundler can't follow createRequire() calls, so "${usage.packageName}" is neither bundled into your code nor installed in the image.`,
     location: {
       file: usage.file,
       line: usage.line,
       column: usage.column,
       lineText: usage.lineText,
     },
+    notes: [
+      {
+        text: `To fix this, install "${usage.packageName}" into the image by adding the additionalPackages build extension to your trigger.config.ts:
+
+  import { additionalPackages } from "@trigger.dev/build/extensions/core";
+
+  export default defineConfig({
+    // ...
+    build: {
+      extensions: [additionalPackages({ packages: ["${usage.packageName}"] })],
+    },
+  });
+
+Alternatively, import the package statically so it gets bundled. Docs: https://trigger.dev/docs/config/extensions/additionalPackages`,
+      },
+    ],
   };
 }
