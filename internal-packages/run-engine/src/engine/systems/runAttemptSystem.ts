@@ -1815,9 +1815,9 @@ export class RunAttemptSystem {
    * blocked-run fan-out (which covers a lost `continueRunIfUnblocked` enqueue). A
    * non-final run means the finish commit itself never landed; the caller's retry
    * re-runs the whole completion, so there is nothing to re-deliver. A canceled run
-   * whose execution has not reached FINISHED re-arms the guard and waits: the
-   * cancellation finalize path owns that window, and completing early would resume the
-   * parent while the child is still winding down.
+   * whose worker is still winding down re-arms the guard and waits: the cancellation
+   * finalize path owns that window, and completing early would resume the parent while
+   * the child is still running.
    */
   public async ensureRunFinalized({ runId }: { runId: string }): Promise<void> {
     return startSpan(this.$.tracer, "ensureRunFinalized", async (span) => {
@@ -1865,9 +1865,22 @@ export class RunAttemptSystem {
           this.$.runStore
         );
 
-        if (latestSnapshot.executionStatus !== "FINISHED") {
+        /**
+         * Defer only while a worker still owns the execution: those states carry
+         * heartbeats that force the cancellation finalize path, which completes the
+         * waitpoint with the run's actual wind-down and acks this guard, so the watch
+         * always terminates. In any other snapshot state (queued, delayed, suspended,
+         * created) nobody is left to produce a FINISHED snapshot for a canceled run,
+         * so the guard must deliver or the parent is stranded.
+         */
+        const workerOwnsExecution =
+          isExecuting(latestSnapshot.executionStatus) ||
+          isPendingExecuting(latestSnapshot.executionStatus) ||
+          latestSnapshot.executionStatus === "PENDING_CANCEL";
+
+        if (latestSnapshot.executionStatus !== "FINISHED" && workerOwnsExecution) {
           this.$.logger.info(
-            "ensureRunFinalized: run is canceled but execution has not finished, keeping watch until the cancellation finalize path completes it",
+            "ensureRunFinalized: run is canceled but the worker is still winding down, keeping watch until the cancellation finalize path completes it",
             {
               runId,
               executionStatus: latestSnapshot.executionStatus,

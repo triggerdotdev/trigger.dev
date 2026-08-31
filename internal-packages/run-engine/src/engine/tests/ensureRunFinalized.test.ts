@@ -389,6 +389,54 @@ describe("RunEngine ensureRunFinalized guard", () => {
   );
 
   containerTest(
+    "re-derives a cancellation lost after the CANCELED commit on a queued child",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { parentRun, childRun } = await setupParentAndChild(
+          engine,
+          prisma,
+          authenticatedEnvironment,
+          { dequeueChild: false }
+        );
+
+        vi.spyOn((engine as any).runQueue, "acknowledgeMessage").mockRejectedValueOnce(
+          new Error("simulated redis loss")
+        );
+
+        await expect(engine.cancelRun({ runId: childRun.id })).rejects.toThrow(
+          "simulated redis loss"
+        );
+
+        const childAfterCrash = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterCrash.status).toBe("CANCELED");
+        expect(childAfterCrash.associatedWaitpoint?.status).toBe("PENDING");
+
+        await setTimeout(5_000);
+
+        const childAfterGuard = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterGuard.associatedWaitpoint?.status).toBe("COMPLETED");
+        expect(childAfterGuard.associatedWaitpoint?.outputIsError).toBe(true);
+
+        const parentExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionData);
+        expect(parentExecutionData.snapshot.executionStatus).toBe("EXECUTING");
+        expect(parentExecutionData.completedWaitpoints?.length).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "re-derives a waitpoint completion lost during TTL expiry",
     async ({ prisma, redisOptions }) => {
       const engine = createEngine(prisma, redisOptions);
