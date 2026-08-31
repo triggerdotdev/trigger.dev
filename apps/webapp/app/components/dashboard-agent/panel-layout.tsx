@@ -15,6 +15,7 @@ import {
   type Point,
   type Rect,
 } from "~/components/primitives/draggableResizableMath";
+import type { ChatOpenMode } from "~/utils/dashboardPreferences";
 import { cn } from "~/utils/cn";
 
 // Mark an element (e.g. a header button, or just its icon) with `data-agent-no-drag` so a
@@ -27,10 +28,7 @@ export type FloatingDragProps = {
   dragHandleClassName: string;
 };
 
-const AGENT_FULLSCREEN_STORAGE_KEY = "tdev:dashboard-agent:fullscreen";
-const AGENT_MODE_STORAGE_KEY = "tdev:dashboard-agent:mode";
-
-export type DashboardAgentMode = "floating" | "rightPanel" | "fullscreen";
+export type DashboardAgentMode = ChatOpenMode;
 
 // V1 floating window: FLOATING_WIDTH x FLOATING_HEIGHT, bottom-right, matching the
 // gallery's own panel frame.
@@ -62,28 +60,10 @@ export function initialFloatingRect() {
   };
 }
 
-// Reads the old boolean key once, so a browser that only ever knew fullscreen keeps its
-// choice after the upgrade to three modes.
-export function readAgentMode(): DashboardAgentMode {
-  if (typeof window === "undefined") return "floating";
-  try {
-    const stored = window.localStorage.getItem(AGENT_MODE_STORAGE_KEY);
-    if (stored === "floating" || stored === "rightPanel" || stored === "fullscreen") return stored;
-    return window.localStorage.getItem(AGENT_FULLSCREEN_STORAGE_KEY) === "true"
-      ? "fullscreen"
-      : "floating";
-  } catch {
-    return "floating";
-  }
-}
-
-export function writeAgentMode(mode: DashboardAgentMode): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(AGENT_MODE_STORAGE_KEY, mode);
-  } catch {
-    /* ignore */
-  }
+/** The mode a chat starts in, and the mode a transient in-chat switch reverts to: the
+ * account preference, defaulting to floating. */
+export function initialAgentMode(preference: DashboardAgentMode | undefined): DashboardAgentMode {
+  return preference ?? "floating";
 }
 
 function agentTakeoverClassName(fullscreen: boolean): string {

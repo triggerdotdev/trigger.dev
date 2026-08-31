@@ -8,6 +8,9 @@ import {
 } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
+import { ChatFloatingPanel } from "~/assets/icons/ChatFloatingPanel";
+import { ChatFullScreen } from "~/assets/icons/ChatFullScreen";
+import { ChatRightPanel } from "~/assets/icons/ChatRightPanel";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -24,6 +27,7 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
@@ -77,6 +81,7 @@ import {
   updateThemePreference,
   updateUnderlineLinksPreference,
 } from "~/services/dashboardPreferences.server";
+import type { ChatOpenMode } from "~/utils/dashboardPreferences";
 import {
   normalizeIconContrast,
   normalizeSystemDarkTheme,
@@ -778,6 +783,49 @@ function CustomizeSidebarButton({
   );
 }
 
+const CHAT_OPEN_MODE_OPTIONS: {
+  mode: ChatOpenMode;
+  label: string;
+  Icon: typeof ChatFloatingPanel;
+}[] = [
+  { mode: "floating", label: "Floating", Icon: ChatFloatingPanel },
+  { mode: "rightPanel", label: "Right panel", Icon: ChatRightPanel },
+  { mode: "fullscreen", label: "Fullscreen", Icon: ChatFullScreen },
+];
+
+/** The mode Ask Trigger opens in; in-chat mode switches stay transient and don't change this. */
+function ChatOpenModePicker() {
+  const user = useUser();
+  const fetcher = useFetcher();
+  const pending = fetcher.formData?.get("chatOpenMode");
+  const current =
+    typeof pending === "string"
+      ? (pending as ChatOpenMode)
+      : (user.dashboardPreferences.chatOpenMode ?? "floating");
+
+  return (
+    <SegmentedControl
+      name="chat-open-mode"
+      variant="secondary/small"
+      value={current}
+      options={CHAT_OPEN_MODE_OPTIONS.map(({ mode, label, Icon }) => ({
+        value: mode,
+        label: (
+          <span className="flex items-center justify-center" aria-label={label} title={label}>
+            <Icon className="size-4" />
+          </span>
+        ),
+      }))}
+      onChange={(value) =>
+        fetcher.submit(
+          { chatOpenMode: value },
+          { method: "POST", action: "/resources/preferences/chat-open-mode" }
+        )
+      }
+    />
+  );
+}
+
 export default function Page() {
   const user = useUser();
   const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
@@ -1094,6 +1142,17 @@ export default function Page() {
                   </div>
                 </div>
               )}
+              <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+                <div className="flex w-full items-center justify-between gap-4">
+                  <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
+                    <Label>Ask Trigger chat</Label>
+                    <SettingsRowDescription>Choose where the chat opens</SettingsRowDescription>
+                  </div>
+                  <div className="flex flex-none items-center">
+                    <ChatOpenModePicker />
+                  </div>
+                </div>
+              </div>
               <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
                 <div className="flex w-full items-center justify-between gap-4">
                   <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>

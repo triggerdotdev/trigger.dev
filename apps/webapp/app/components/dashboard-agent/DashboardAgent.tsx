@@ -11,6 +11,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useUser } from "~/hooks/useUser";
 import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
 import { agentDeepLinkParams, ASK_AI_SHORTCUT, askAiChannelTarget } from "./ask-ai-channels";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
@@ -19,8 +20,7 @@ import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
   FloatingAgentWindow,
-  readAgentMode,
-  writeAgentMode,
+  initialAgentMode,
   type DashboardAgentMode,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
@@ -36,6 +36,10 @@ import {
 } from "./WatchWakeToast";
 
 const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
+
+// Superseded by the account preference; a stray value here would otherwise pin the mode
+// forever if this cleanup effect never ran.
+const STALE_MODE_STORAGE_KEYS = ["tdev:dashboard-agent:mode", "tdev:dashboard-agent:fullscreen"];
 
 // Shorter than the poll interval, so a stuck request is dropped before the next tick.
 const UNREAD_REQUEST_TIMEOUT_MS = 30_000;
@@ -62,6 +66,8 @@ export function DashboardAgent({
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const user = useUser();
+  const modePreference = user.dashboardPreferences.chatOpenMode;
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
 
   const [open, setOpen] = useState(false);
@@ -116,13 +122,22 @@ export function DashboardAgent({
     setUnreadWakes(initialUnreadWakes);
     setUnreadWork(initialUnreadWork);
   }, [environment.id, initialUnreadWakes, initialUnreadWork]);
-  // Read lazily: SSR has no localStorage, so the server always renders the floating default.
-  const [mode, setMode] = useState<DashboardAgentMode>(readAgentMode);
+  // Every open starts from the account preference; in-chat switches (toggle, drag-to-dock)
+  // are transient and never write it back.
+  const [mode, setMode] = useState<DashboardAgentMode>(() => initialAgentMode(modePreference));
   const fullscreen = mode === "fullscreen";
 
   const changeMode = useCallback((next: DashboardAgentMode) => {
-    writeAgentMode(next);
     setMode(next);
+  }, []);
+
+  // Superseded localStorage keys; harmless to skip if storage is unavailable.
+  useEffect(() => {
+    try {
+      for (const key of STALE_MODE_STORAGE_KEYS) window.localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   // Pathname only: filter and search-param changes must keep fullscreen.
@@ -131,12 +146,8 @@ export function DashboardAgent({
   useEffect(() => {
     if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
-    setMode((current) => {
-      if (current !== "fullscreen") return current;
-      writeAgentMode("floating");
-      return "floating";
-    });
-  }, [pathname]);
+    setMode((current) => (current !== "fullscreen" ? current : initialAgentMode(modePreference)));
+  }, [pathname, modePreference]);
   const [newChatSeq, setNewChatSeq] = useState(0);
   const [requestedMessage, setRequestedMessage] = useState<
     { text: string; seq: number } | undefined
@@ -167,16 +178,14 @@ export function DashboardAgent({
       setOpen(false);
       // Pending requests must be dropped or a stale one re-applies on the next open.
       visibleChat.current = null;
-      setMode((current) => {
-        if (current !== "fullscreen") return current;
-        writeAgentMode("floating");
-        return "floating";
-      });
+      // Any transient in-chat mode switch applied only until close; the next open
+      // starts from the account preference again.
+      setMode(initialAgentMode(modePreference));
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       setWatchRequest(undefined);
     },
-    [openPanel]
+    [openPanel, modePreference]
   );
 
   const openChat = useCallback(

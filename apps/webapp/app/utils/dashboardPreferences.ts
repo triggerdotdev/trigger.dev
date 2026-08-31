@@ -45,6 +45,11 @@ export const SideMenuPreferences = z.object({
 
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 
+/** The mode the dashboard-agent chat opens in. In-chat switches (toggle, drag-to-dock)
+ * are transient and don't write here; only an explicit account-settings change does. */
+export const ChatOpenMode = z.enum(["floating", "rightPanel", "fullscreen"]);
+export type ChatOpenMode = z.infer<typeof ChatOpenMode>;
+
 const DashboardPreferences = z.object({
   version: z.literal("1"),
   /* An unknown value (e.g. written by a newer deploy) degrades to undefined
@@ -67,6 +72,7 @@ const DashboardPreferences = z.object({
     })
   ),
   sideMenu: SideMenuPreferences.optional(),
+  chatOpenMode: ChatOpenMode.optional().catch(undefined),
 });
 
 export type DashboardPreferences = z.infer<typeof DashboardPreferences>;
