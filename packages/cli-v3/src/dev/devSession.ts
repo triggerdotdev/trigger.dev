@@ -15,15 +15,11 @@ import {
   notifyExtensionOnBuildStart,
   resolvePluginsForContext,
 } from "../build/extensions.js";
+import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/externals.js";
 import {
-  createExternalsBuildExtension,
-  deployExternalMatchers,
-  resolveAlwaysExternal,
-} from "../build/externals.js";
-import {
+  collectCreateRequireWarningMessages,
   CreateRequireCollector,
-  createRequireUsageToWarning,
-  unavailableCreateRequireUsages,
+  extensionInstalledPackageMatchers,
 } from "../build/createRequireWarnings.js";
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
@@ -93,7 +89,7 @@ export async function startDevSession({
 
   const externalsExtension = createExternalsBuildExtension("dev", rawConfig, alwaysExternal);
   const createRequireCollector = new CreateRequireCollector(rawConfig.workingDir);
-  const externalMatchers = deployExternalMatchers(rawConfig, alwaysExternal);
+  const extensionPackages = extensionInstalledPackageMatchers(rawConfig);
   const buildContext = createBuildContext("dev", rawConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
@@ -126,16 +122,15 @@ export async function startDevSession({
 
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
-    const missingWhenDeployed = unavailableCreateRequireUsages(
-      createRequireCollector.usages,
-      new Set((buildManifest.externals ?? []).map((external) => external.name)),
-      externalMatchers
-    );
+    const createRequireWarnings = collectCreateRequireWarningMessages({
+      usages: createRequireCollector.usages,
+      buildManifest,
+      extensionPackages,
+      target: "dev",
+    });
 
-    if (missingWhenDeployed.length > 0) {
-      logBuildWarnings(
-        missingWhenDeployed.map((usage) => createRequireUsageToWarning(usage, "dev"))
-      );
+    if (createRequireWarnings.length > 0) {
+      logBuildWarnings(createRequireWarnings);
     }
 
     try {
