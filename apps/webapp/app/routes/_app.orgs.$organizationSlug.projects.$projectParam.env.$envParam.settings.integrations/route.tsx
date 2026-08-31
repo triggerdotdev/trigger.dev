@@ -26,7 +26,7 @@ import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
-import { $replica } from "~/db.server";
+import { prisma } from "~/db.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
@@ -188,7 +188,7 @@ export const action = dashboardAction(
     // Only admins may change the opt-out; other saves carry the stored value forward.
     let disableNativeBuildServer: true | undefined = useNativeBuildServer ? undefined : true;
     if (!user.admin && !user.isImpersonating) {
-      const project = await $replica.project.findFirst({
+      const project = await prisma.project.findFirst({
         where: { id: projectId },
         select: { buildSettings: true },
       });
