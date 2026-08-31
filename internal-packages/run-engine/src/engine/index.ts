@@ -427,6 +427,7 @@ export class RunEngine {
     this.ttlSystem = new TtlSystem({
       resources,
       waitpointSystem: this.waitpointSystem,
+      finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
     });
 
     const ttlWorkerCatalog = createTtlWorkerCatalog({

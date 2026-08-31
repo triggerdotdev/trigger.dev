@@ -28,6 +28,11 @@ describe("RunEngine ensureRunFinalized guard", () => {
         redis: redisOptions,
         masterQueueConsumersDisabled: true,
         processWorkerQueueDebounceMs: 50,
+        ttlSystem: {
+          pollIntervalMs: 100,
+          batchSize: 10,
+          batchMaxWaitMs: 100,
+        },
       },
       runLock: {
         redis: redisOptions,
@@ -52,7 +57,8 @@ describe("RunEngine ensureRunFinalized guard", () => {
   async function setupParentAndChild(
     engine: RunEngine,
     prisma: any,
-    authenticatedEnvironment: any
+    authenticatedEnvironment: any,
+    options?: { childTtl?: string; dequeueChild?: boolean }
   ) {
     const parentTask = "parent-task";
     const childTask = "child-task";
@@ -109,9 +115,15 @@ describe("RunEngine ensureRunFinalized guard", () => {
         resumeParentOnCompletion: true,
         parentTaskRunId: parentRun.id,
         workerQueue: "main",
+        ttl: options?.childTtl,
+        enableFastPath: options?.childTtl ? false : undefined,
       },
       prisma
     );
+
+    if (options?.dequeueChild === false) {
+      return { parentRun, childRun, childAttempt: undefined };
+    }
 
     await setTimeout(500);
     const dequeuedChild = await engine.dequeueFromWorkerQueue({
@@ -370,6 +382,55 @@ describe("RunEngine ensureRunFinalized guard", () => {
         assertNonNullable(parentAfterFinalize);
         expect(parentAfterFinalize.snapshot.executionStatus).toBe("EXECUTING");
         expect(parentAfterFinalize.completedWaitpoints?.length).toBe(1);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "re-derives a waitpoint completion lost during TTL expiry",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const { parentRun, childRun } = await setupParentAndChild(
+          engine,
+          prisma,
+          authenticatedEnvironment,
+          { childTtl: "1s", dequeueChild: false }
+        );
+
+        vi.spyOn(engine.waitpointSystem, "completeWaitpoint").mockRejectedValueOnce(
+          new Error("simulated DB connection loss")
+        );
+
+        await expect(engine.ttlSystem.expireRun({ runId: childRun.id })).rejects.toThrow(
+          "simulated DB connection loss"
+        );
+
+        const childAfterFailure = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterFailure.status).toBe("EXPIRED");
+        expect(childAfterFailure.associatedWaitpoint?.status).toBe("PENDING");
+
+        await setTimeout(5_000);
+
+        const childAfterGuard = await prisma.taskRun.findFirstOrThrow({
+          where: { id: childRun.id },
+          include: { associatedWaitpoint: true },
+        });
+        expect(childAfterGuard.status).toBe("EXPIRED");
+        expect(childAfterGuard.associatedWaitpoint?.status).toBe("COMPLETED");
+        expect(childAfterGuard.associatedWaitpoint?.outputIsError).toBe(true);
+
+        const parentExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionData);
+        expect(parentExecutionData.snapshot.executionStatus).toBe("EXECUTING");
+        expect(parentExecutionData.completedWaitpoints?.length).toBe(1);
       } finally {
         await engine.quit();
       }

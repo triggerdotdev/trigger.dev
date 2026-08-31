@@ -1454,6 +1454,8 @@ export class RunAttemptSystem {
           });
         }
 
+        await this.#scheduleFinalizationGuard(runId);
+
         const run = await this.$.runStore.cancelRun(
           runId,
           {
@@ -1546,8 +1548,6 @@ export class RunAttemptSystem {
           }
           // finalizeRun is true — fall through to finish the run immediately
         }
-
-        await this.#scheduleFinalizationGuard(runId);
 
         //not executing, so we will actually finish the run
         const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
@@ -1808,13 +1808,16 @@ export class RunAttemptSystem {
   }
 
   /**
-   * Re-delivers a finished run's finalization side effects: the associated waitpoint's
-   * completion, the parent unblock fan-out, and the batch completion nudge. Safe to run
-   * at-least-once and to race the inline path — every leg is idempotent, and completing
-   * an already-completed waitpoint still re-runs the blocked-run fan-out (which covers a
-   * lost `continueRunIfUnblocked` enqueue). A non-final run means the finish commit
-   * itself never landed; the caller's retry re-runs the whole completion, so there is
-   * nothing to re-deliver.
+   * Re-delivers a finished run's finalization side effects: the queue ack, the
+   * associated waitpoint's completion, the parent unblock fan-out, and the batch
+   * completion nudge. Safe to run at-least-once and to race the inline path — every leg
+   * is idempotent, and completing an already-completed waitpoint still re-runs the
+   * blocked-run fan-out (which covers a lost `continueRunIfUnblocked` enqueue). A
+   * non-final run means the finish commit itself never landed; the caller's retry
+   * re-runs the whole completion, so there is nothing to re-deliver. A canceled run
+   * whose execution has not reached FINISHED re-arms the guard and waits: the
+   * cancellation finalize path owns that window, and completing early would resume the
+   * parent while the child is still winding down.
    */
   public async ensureRunFinalized({ runId }: { runId: string }): Promise<void> {
     return startSpan(this.$.tracer, "ensureRunFinalized", async (span) => {
@@ -1830,6 +1833,7 @@ export class RunAttemptSystem {
             outputType: true,
             error: true,
             batchId: true,
+            runtimeEnvironmentId: true,
             associatedWaitpoint: {
               select: {
                 id: true,
@@ -1863,17 +1867,31 @@ export class RunAttemptSystem {
 
         if (latestSnapshot.executionStatus !== "FINISHED") {
           this.$.logger.info(
-            "ensureRunFinalized: run is canceled but execution has not finished, the cancellation finalize path owns the re-delivery",
+            "ensureRunFinalized: run is canceled but execution has not finished, keeping watch until the cancellation finalize path completes it",
             {
               runId,
               executionStatus: latestSnapshot.executionStatus,
             }
           );
+          await this.#scheduleFinalizationGuard(runId);
           return;
         }
       }
 
       span.setAttribute("runStatus", run.status);
+
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (env) {
+        await this.$.runQueue.acknowledgeMessage(env.organizationId, runId, {
+          removeFromWorkerQueue: true,
+        });
+      } else {
+        this.$.logger.error("ensureRunFinalized: environment not found, skipping queue ack", {
+          runId,
+          runtimeEnvironmentId: run.runtimeEnvironmentId,
+        });
+      }
 
       if (run.associatedWaitpoint) {
         const wasPending = run.associatedWaitpoint.status === "PENDING";
