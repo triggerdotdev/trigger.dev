@@ -4,9 +4,8 @@ import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { TrashIcon } from "@heroicons/react/20/solid";
-import { BugIcon } from "~/assets/icons/BugIcon";
 import { SlackMonoIcon } from "~/assets/icons/SlackMonoIcon";
+import { ProjectConnectSelect } from "~/components/integrations/ProjectConnectSelect";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -18,15 +17,16 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
-import {
-  MainHorizontallyCenteredContainer,
-  PageBody,
-  PageContainer,
-} from "~/components/layout/AppLayout";
+import { Header2 } from "~/components/primitives/Headers";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  SettingsContainer,
+  SettingsHeader,
+  SettingsRow,
+  SettingsSection,
+} from "~/components/primitives/SettingsLayout";
 import {
   Table,
   TableBody,
@@ -38,7 +38,12 @@ import {
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
-import { OrganizationParamsSchema, organizationSlackIntegrationPath } from "~/utils/pathBuilder";
+import {
+  OrganizationParamsSchema,
+  organizationSlackIntegrationPath,
+  v3ErrorsPath,
+} from "~/utils/pathBuilder";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { logger } from "~/services/logger.server";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -191,6 +196,9 @@ export default function SlackIntegrationPage() {
   const isUninstalling =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "uninstall";
 
+  const organization = useOrganization();
+  const projects = organization.projects;
+
   if (!slackIntegration) {
     return (
       <PageContainer>
@@ -202,11 +210,17 @@ export default function SlackIntegrationPage() {
             <SlackMonoIcon className="mb-2 size-16 text-secondary" />
             <Header2>No Slack integration found</Header2>
             <Paragraph className="max-w-md text-center text-text-dimmed">
-              Your organization doesn't have a Slack integration configured. You can connect Slack
-              when setting up alerts from the{" "}
-              <BugIcon className="-ml-0.5 mb-0.5 inline size-5 text-errors" />
-              <span className="text-text-bright">Errors</span> page.
+              Your organization doesn't have a Slack integration. Connect Slack when setting up
+              alerts from the Errors page.
             </Paragraph>
+            {projects.length > 0 ? (
+              <ProjectConnectSelect
+                projects={projects}
+                configurePathFor={(project) =>
+                  `${v3ErrorsPath(organization, project, { slug: "prod" })}?alerts=true`
+                }
+              />
+            ) : null}
           </div>
         </PageBody>
       </PageContainer>
@@ -219,127 +233,108 @@ export default function SlackIntegrationPage() {
         <PageTitle title="Slack integration" />
       </NavBar>
       <PageBody>
-        <MainHorizontallyCenteredContainer>
-          <div className="flex flex-col gap-6">
-            <div>
-              <div className="mb-3 border-b border-grid-dimmed pb-3">
-                <Header2>Integration details</Header2>
-              </div>
-              <div className="flex flex-col gap-1">
-                {teamName && (
-                  <Paragraph variant="small">
-                    <span className="text-text-dimmed">Workspace:</span>{" "}
-                    <span className="text-text-bright">{teamName}</span>
-                  </Paragraph>
-                )}
-                <Paragraph variant="small">
-                  <span className="text-text-dimmed">Installed:</span>{" "}
-                  <span className="text-text-bright">
-                    <DateTime date={slackIntegration.createdAt} />
-                  </span>
-                </Paragraph>
-              </div>
-            </div>
+        <SettingsContainer>
+          <SettingsSection>
+            <SettingsHeader title="Overview" />
+            {teamName ? (
+              <SettingsRow
+                title="Workspace"
+                action={<span className="text-sm text-text-bright">{teamName}</span>}
+              />
+            ) : null}
+            <SettingsRow
+              title="Installed"
+              action={
+                <span className="text-sm text-text-bright">
+                  <DateTime date={slackIntegration.createdAt} />
+                </span>
+              }
+            />
+            <SettingsRow
+              title="Remove integration"
+              align="end"
+              action={
+                <div className="flex flex-col items-end gap-1">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="danger/small" disabled={isUninstalling}>
+                        Remove integration…
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Remove Slack integration</DialogTitle>
+                      </DialogHeader>
+                      <DialogDescription>
+                        This will remove the Slack integration and disable all connected alert
+                        channels. This action cannot be undone.
+                      </DialogDescription>
+                      <FormButtons
+                        confirmButton={
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="uninstall" />
+                            <Button variant="danger/medium" type="submit" disabled={isUninstalling}>
+                              {isUninstalling ? "Removing…" : "Remove integration"}
+                            </Button>
+                          </Form>
+                        }
+                        cancelButton={
+                          <DialogClose asChild>
+                            <Button variant="secondary/medium">Cancel</Button>
+                          </DialogClose>
+                        }
+                      />
+                    </DialogContent>
+                  </Dialog>
+                  {actionData?.error ? (
+                    <Paragraph variant="small" className="text-error">
+                      {actionData.error}
+                    </Paragraph>
+                  ) : null}
+                </div>
+              }
+            />
+          </SettingsSection>
 
-            <div>
-              <Header3 spacing>
-                Connected alert channels
-                <span className="ml-1 text-text-dimmed">({alertChannels.length})</span>
-              </Header3>
-              {alertChannels.length === 0 ? (
-                <Paragraph variant="small" className="text-text-dimmed">
-                  No alert channels are currently connected to this Slack integration.
-                </Paragraph>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell>Channel</TableHeaderCell>
-                      <TableHeaderCell>Project</TableHeaderCell>
-                      <TableHeaderCell>Status</TableHeaderCell>
-                      <TableHeaderCell>Created</TableHeaderCell>
+          <SettingsSection>
+            <SettingsHeader
+              className={alertChannels.length === 0 ? undefined : "border-b-0"}
+              title={`${alertChannels.length} connected alert ${
+                alertChannels.length === 1 ? "channel" : "channels"
+              }`}
+            />
+            {alertChannels.length === 0 ? (
+              <Paragraph variant="small" className="pt-4 text-text-dimmed">
+                No alert channels are connected to this Slack integration yet.
+              </Paragraph>
+            ) : (
+              <Table variant="bright/no-hover">
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>Channel</TableHeaderCell>
+                    <TableHeaderCell>Project</TableHeaderCell>
+                    <TableHeaderCell>Status</TableHeaderCell>
+                    <TableHeaderCell>Created</TableHeaderCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {alertChannels.map((channel) => (
+                    <TableRow key={channel.id}>
+                      <TableCell>{channel.name}</TableCell>
+                      <TableCell>{channel.project.name}</TableCell>
+                      <TableCell>
+                        <EnabledStatus enabled={channel.enabled} />
+                      </TableCell>
+                      <TableCell>
+                        <DateTime date={channel.createdAt} />
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {alertChannels.map((channel) => (
-                      <TableRow key={channel.id}>
-                        <TableCell>{channel.name}</TableCell>
-                        <TableCell>{channel.project.name}</TableCell>
-                        <TableCell>
-                          <EnabledStatus enabled={channel.enabled} />
-                        </TableCell>
-                        <TableCell>
-                          <DateTime date={channel.createdAt} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-
-            <div>
-              <Header2 spacing>Danger zone</Header2>
-              <div className="w-full rounded-sm border border-rose-500/40 p-4">
-                <Header3 spacing>Remove integration</Header3>
-                <Hint>
-                  This will remove the Slack integration and disable all connected alert channels.
-                  This action cannot be undone.
-                </Hint>
-                {actionData?.error && (
-                  <Paragraph variant="small" className="mt-2 text-error">
-                    {actionData.error}
-                  </Paragraph>
-                )}
-                <FormButtons
-                  className="mt-2"
-                  confirmButton={
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="danger/small"
-                          LeadingIcon={TrashIcon}
-                          disabled={isUninstalling}
-                        >
-                          Remove integration
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Remove Slack integration</DialogTitle>
-                        </DialogHeader>
-                        <DialogDescription className="mb-2">
-                          This will remove the Slack integration and disable all connected alert
-                          channels. This action cannot be undone.
-                        </DialogDescription>
-                        <FormButtons
-                          confirmButton={
-                            <Form method="post">
-                              <input type="hidden" name="intent" value="uninstall" />
-                              <Button
-                                variant="danger/medium"
-                                LeadingIcon={TrashIcon}
-                                type="submit"
-                                disabled={isUninstalling}
-                              >
-                                {isUninstalling ? "Removing…" : "Remove integration"}
-                              </Button>
-                            </Form>
-                          }
-                          cancelButton={
-                            <DialogClose asChild>
-                              <Button variant="tertiary/medium">Cancel</Button>
-                            </DialogClose>
-                          }
-                        />
-                      </DialogContent>
-                    </Dialog>
-                  }
-                />
-              </div>
-            </div>
-          </div>
-        </MainHorizontallyCenteredContainer>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </SettingsSection>
+        </SettingsContainer>
       </PageBody>
     </PageContainer>
   );
