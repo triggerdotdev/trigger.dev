@@ -134,6 +134,13 @@ export type SnapshotStoreModeResolver = {
    * synchronous, MUST NOT query.
    */
   anyOrgReadEnabled?(): boolean;
+  /**
+   * Optional, cheap. Is ANY organisation currently at `redis-only`. Governs the fallback gate when a
+   * run's org cannot be resolved: with some org at `redis-only`, a Redis error on an unresolved run
+   * must throw rather than serve an empty Postgres, because that org holds its snapshots nowhere
+   * else. Same contract: synchronous, MUST NOT query.
+   */
+  anyOrgRedisOnly?(): boolean;
 };
 
 /**
@@ -1036,10 +1043,23 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * holds every row below `redis-only`, so falling back is strictly better than failing.
    *
    * At `redis-only` it is not an option: nothing else holds the rows, so the error is the answer and
-   * hiding it would serve an empty history as though it were real.
+   * hiding it would serve an empty history as though it were real. Org-scoped, so a single org soaked
+   * at `redis-only` throws while everyone else still falls back.
    */
-  #readMayFallBack(): boolean {
-    return this.mode !== "redis-only";
+  #readMayFallBack(runId?: string, environmentId?: string): boolean {
+    // The global dial preserves today's behaviour exactly.
+    if (this.mode === "redis-only") return false;
+
+    // Resolve the run's own org once. A run resolved to a concrete non-`redis-only` mode falls back
+    // normally, even when some OTHER org is `redis-only`.
+    if (runId !== undefined) {
+      const resolved = this.modeResolver?.readModeFor?.(runId, environmentId);
+      if (resolved !== undefined) return resolved !== "redis-only";
+    }
+
+    // Org unresolved (no runId, or the resolver had no answer). Conservative over-throw: if any org
+    // is `redis-only`, a retryable throw beats serving that org an empty read.
+    return this.modeResolver?.anyOrgRedisOnly?.() !== true;
   }
 
   #reportReadUnavailable(method: string, runId: string, error: unknown): void {
@@ -1102,7 +1122,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     try {
       read = await this.redis.getLatest(runId, { ...(environmentId && { environmentId }) });
     } catch (error) {
-      if (!this.#readMayFallBack()) throw error;
+      if (!this.#readMayFallBack(runId, environmentId)) throw error;
       this.#reportReadUnavailable("findLatestExecutionSnapshot", runId, error);
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
@@ -1131,7 +1151,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
       return hydrated;
     } catch (error) {
-      if (!this.#readMayFallBack()) throw error;
+      if (!this.#readMayFallBack(runId, environmentId)) throw error;
       this.#reportReadUnavailable("findLatestExecutionSnapshot", runId, error);
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
@@ -1152,7 +1172,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         ...(shape.environmentId && { environmentId: shape.environmentId }),
       });
     } catch (error) {
-      if (!this.#readMayFallBack()) throw error;
+      if (!this.#readMayFallBack(shape.runId, shape.environmentId)) throw error;
       this.#reportReadUnavailable("findExecutionSnapshot", shape.runId, error);
       return this.delegate.findExecutionSnapshot(args, client);
     }
@@ -1185,7 +1205,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         ...(shape.environmentId && { environmentId: shape.environmentId }),
       });
     } catch (error) {
-      if (!this.#readMayFallBack()) throw error;
+      if (!this.#readMayFallBack(shape.runId, shape.environmentId)) throw error;
       this.#reportReadUnavailable("findManyExecutionSnapshots", shape.runId, error);
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
@@ -1215,7 +1235,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.metrics?.recordRead("findManyExecutionSnapshots", "redis");
       return hydrated as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
     } catch (error) {
-      if (!this.#readMayFallBack()) throw error;
+      if (!this.#readMayFallBack(shape.runId, shape.environmentId)) throw error;
       this.#reportReadUnavailable("findManyExecutionSnapshots", shape.runId, error);
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
@@ -1235,7 +1255,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     try {
       ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
     } catch (error) {
-      if (!this.#readMayFallBack()) throw error;
+      if (!this.#readMayFallBack(runId)) throw error;
       this.#reportReadUnavailable("findSnapshotCompletedWaitpointIds", runId, error);
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
@@ -1261,7 +1281,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     try {
       ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
     } catch (error) {
-      if (!this.#readMayFallBack()) throw error;
+      if (!this.#readMayFallBack(runId)) throw error;
       this.#reportReadUnavailable("findSnapshotCompletedWaitpointIdsWithPresence", runId, error);
       return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
