@@ -99,17 +99,13 @@ npx trigger.dev@latest deploy [path]
 </ParamField>
 
 <ParamField body="Native build" type="--native-build">
-  Build the image on the Trigger.dev build server. Without a build flag, the server picks the build
-  path for your project.
-</ParamField>
-
-<ParamField body="Depot build" type="--depot-build">
-  Build the image with Depot, ignoring any build path configured on the server.
+  Use the native build server to install, bundle and build your project.
 </ParamField>
 
 <ParamField body="Local bundle" type="--local-bundle">
   Install and bundle on your machine, then build the image on the build server from the uploaded
-  bundle. Requires `--native-build`.
+  bundle. Requires `--native-build`. Use it if you prefer dependencies to be installed on your
+  machine rather than on the build server.
 </ParamField>
 
 <ParamField body="Detach" type="--detach">
@@ -117,13 +113,17 @@ npx trigger.dev@latest deploy [path]
   the build server. Requires `--native-build`.
 </ParamField>
 
-<ParamField body="Build logs" type="--build-logs">
-  How build logs are shown: `compact` (default, a single updating line) or `full` (every log line).
-  CI and piped output always use `full`.
+<ParamField body="Depot build" type="--depot-build">
+  Build the image with Depot, the default build provider.
 </ParamField>
 
 <ParamField body="Local build" type="--local-build">
   Force building the deployment image locally using your local Docker. This is automatic when self-hosting.
+</ParamField>
+
+<ParamField body="Build logs" type="--build-logs">
+  How build logs are shown: `compact` (default, a single updating line) or `full` (every log line).
+  CI and piped output always use `full`.
 </ParamField>
 
 ### Common options
