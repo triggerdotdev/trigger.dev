@@ -86,11 +86,11 @@ export async function listCurrentProductionProjectRuntimes(scope: Scope) {
 }
 
 /**
- * Whether any project in the organization runs the reported Node.js major in Production.
+ * Whether any project in the organization needs a Node.js runtime update in Production.
  *
- * The SQL filter mirrors `nodeMajor(runtime, runtimeVersion) === NODE_RUNTIME_UPDATE_MAJOR`, which
- * the page applies in JS: keep the two in step. Scoped to the caller's membership so the side menu
- * cannot report on an organization the user does not belong to.
+ * The SQL filter mirrors `needsNodeRuntimeUpdate(runtime, runtimeVersion)`, including legacy
+ * deployments with missing runtime metadata. Keep the two in step. Scoped to the caller's
+ * membership so the side menu cannot report on an organization the user does not belong to.
  */
 export async function organizationHasProjectRuntimeUpdate({
   organizationSlug,
@@ -115,8 +115,20 @@ export async function organizationHasProjectRuntimeUpdate({
             some: {
               label: CURRENT_DEPLOYMENT_LABEL,
               deployment: {
-                runtime: { startsWith: "node" },
-                runtimeVersion: { startsWith: `${NODE_RUNTIME_UPDATE_MAJOR}.` },
+                OR: [
+                  {
+                    runtimeVersion: { startsWith: `${NODE_RUNTIME_UPDATE_MAJOR}.` },
+                    OR: [{ runtime: null }, { runtime: { startsWith: "node" } }],
+                  },
+                  {
+                    runtimeVersion: null,
+                    OR: [
+                      { runtime: null },
+                      { runtime: "node" },
+                      { runtime: `node-${NODE_RUNTIME_UPDATE_MAJOR}` },
+                    ],
+                  },
+                ],
               },
             },
           },

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   BatchItemNDJSON,
   InitializeDeploymentRequestBody,
+  needsNodeRuntimeUpdate,
   nodeMajor,
   TriggerTaskRequestBody,
 } from "./api.js";
@@ -18,6 +19,22 @@ describe("nodeMajor", () => {
     ["node", "unknown", undefined],
   ])("resolves %s %s", (runtime, runtimeVersion, expected) => {
     expect(nodeMajor(runtime, runtimeVersion)).toBe(expected);
+  });
+});
+
+describe("needsNodeRuntimeUpdate", () => {
+  it.each([
+    ["node", "21.7.3", true],
+    [null, "21.7.3", true],
+    ["node", null, true],
+    [null, null, true],
+    ["node-21", null, true],
+    ["node-22", null, false],
+    ["node-22", "22.16.0", false],
+    ["node", "unknown", false],
+    ["bun", "1.3.3", false],
+  ])("classifies %s %s", (runtime, runtimeVersion, expected) => {
+    expect(needsNodeRuntimeUpdate(runtime, runtimeVersion)).toBe(expected);
   });
 });
 

@@ -79,6 +79,31 @@ export function nodeMajor(
   return match ? Number(match[1]) : undefined;
 }
 
+/**
+ * Whether a deployment should move off the Node.js major targeted by the runtime update report.
+ *
+ * Older deployments can be missing either runtime field. A missing runtime historically meant
+ * Node.js, while a missing version means we cannot prove that the deployment is on a supported
+ * major, so both are treated as needing an update. An explicit non-Node runtime is never included.
+ */
+export function needsNodeRuntimeUpdate(
+  runtime: string | null | undefined,
+  runtimeVersion: string | null | undefined
+) {
+  if (runtime && !runtime.startsWith("node")) return false;
+
+  const versionMatch = runtimeVersion?.match(/^(\d+)(?:\.\d+){1,2}(?:[-+].*)?$/);
+  if (versionMatch) return Number(versionMatch[1]) === NODE_RUNTIME_UPDATE_MAJOR;
+  if (runtimeVersion) return false;
+
+  if (!runtime || runtime === "node") return true;
+
+  const configuredMajorMatch = runtime.match(/^node-(\d+)$/);
+  return configuredMajorMatch
+    ? Number(configuredMajorMatch[1]) === NODE_RUNTIME_UPDATE_MAJOR
+    : false;
+}
+
 export const GetProjectRuntimesResponseBody = z.array(
   z.object({
     organization: z.object({
