@@ -134,8 +134,9 @@ export type PostgresRunStoreOptions = {
   snapshotWrites?: boolean;
   /**
    * Env-driven connection-blip retry, threaded from the app boundary (IoC). When set (and enabled)
-   * the store retries a snapshot write that carries a caller-supplied id (idempotent on replay) on
-   * an infrastructure/connectivity error. Undefined leaves every write running exactly once.
+   * the store retries safe-to-replay operations (reads, the status-guarded completion write, and a
+   * snapshot write carrying a caller-supplied id) on an infrastructure/connectivity error. Undefined
+   * leaves every operation running exactly once, preserving existing behavior.
    */
   infraRetry?: InfraRetryConfig;
 };
@@ -2456,29 +2457,38 @@ export class PostgresRunStore implements RunStore {
     return this.#findWaitpointOn(this.prisma, args);
   }
 
+  // Retries a replay-safe op (a read, or an idempotent write) on a connection blip, but never when
+  // `client` is an interactive-transaction client (a tx client has no `$transaction`) — retrying a
+  // statement inside an aborted transaction is unsafe. No-ops unless `infraRetry` is enabled.
+  #maybeInfraRetry<R>(client: object, run: () => Promise<R>): Promise<R> {
+    return "$transaction" in client ? withInfraRetry(run, this.infraRetry) : run();
+  }
+
   #findWaitpointOn<T extends Prisma.WaitpointFindFirstArgs>(
     prisma: ReadClient | RunOpsCapableClient,
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
   ): Promise<Prisma.WaitpointGetPayload<T> | null> {
-    if (this.schemaVariant !== "dedicated") {
-      return prisma.waitpoint.findFirst(args) as Promise<Prisma.WaitpointGetPayload<T> | null>;
-    }
+    return this.#maybeInfraRetry(prisma, () => {
+      if (this.schemaVariant !== "dedicated") {
+        return prisma.waitpoint.findFirst(args) as Promise<Prisma.WaitpointGetPayload<T> | null>;
+      }
 
-    const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    return this.#runDedicatedSelect(
-      prisma as RunOpsCapableClient,
-      (stripped) =>
-        (prisma as RunOpsCapableClient).waitpoint.findFirst({
-          where,
-          orderBy,
-          take,
-          skip,
-          cursor,
-          ...stripped,
-        }),
-      projection,
-      WAITPOINT_DEDICATED
-    ) as Promise<Prisma.WaitpointGetPayload<T> | null>;
+      const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
+      return this.#runDedicatedSelect(
+        prisma as RunOpsCapableClient,
+        (stripped) =>
+          (prisma as RunOpsCapableClient).waitpoint.findFirst({
+            where,
+            orderBy,
+            take,
+            skip,
+            cursor,
+            ...stripped,
+          }),
+        projection,
+        WAITPOINT_DEDICATED
+      ) as Promise<Prisma.WaitpointGetPayload<T> | null>;
+    });
   }
 
   async findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
@@ -2527,7 +2537,9 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.BatchPayload> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.waitpoint.updateMany(args);
+    // Safe to retry: the completion caller guards with `where: { status: "PENDING" }`, so a replay
+    // matches 0 rows. #maybeInfraRetry additionally skips retrying when `tx` is a caller's tx.
+    return this.#maybeInfraRetry(prisma, () => prisma.waitpoint.updateMany(args));
   }
 
   async forWaitpointCompletion(
@@ -2544,40 +2556,42 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
-    if (this.schemaVariant !== "dedicated") {
-      return prisma.taskRunWaitpoint.findMany(args) as Promise<
-        Prisma.TaskRunWaitpointGetPayload<T>[]
-      >;
-    }
+    return this.#maybeInfraRetry(prisma, async () => {
+      if (this.schemaVariant !== "dedicated") {
+        return prisma.taskRunWaitpoint.findMany(args) as Promise<
+          Prisma.TaskRunWaitpointGetPayload<T>[]
+        >;
+      }
 
-    // Dedicated subset: strip the `waitpoint`/`taskRun` relation keys (no relation on the subset →
-    // straight-through would throw a Prisma validation error), run the scalar findMany, then hydrate
-    // from the edge's own client. A cross-DB token is missed here and re-resolved by the router.
-    const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripDedicatedRelations(
-      projection,
-      TASK_RUN_WAITPOINT_DEDICATED
-    );
-    // Keep the scalar ids the hydrators key off through a narrowed select.
-    if (stripped.select) {
-      stripped.select.waitpointId = true;
-      stripped.select.taskRunId = true;
-    }
-    const rows = (await (prisma as RunOpsCapableClient).taskRunWaitpoint.findMany({
-      where,
-      orderBy,
-      take,
-      skip,
-      cursor,
-      ...stripped,
-    })) as Record<string, unknown>[];
-    await this.#hydrateDedicatedRelations(
-      prisma as RunOpsCapableClient,
-      rows,
-      requested,
-      TASK_RUN_WAITPOINT_DEDICATED
-    );
-    return rows as Prisma.TaskRunWaitpointGetPayload<T>[];
+      // Dedicated subset: strip the `waitpoint`/`taskRun` relation keys (no relation on the subset →
+      // straight-through would throw a Prisma validation error), run the scalar findMany, then hydrate
+      // from the edge's own client. A cross-DB token is missed here and re-resolved by the router.
+      const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
+      const { stripped, requested } = stripDedicatedRelations(
+        projection,
+        TASK_RUN_WAITPOINT_DEDICATED
+      );
+      // Keep the scalar ids the hydrators key off through a narrowed select.
+      if (stripped.select) {
+        stripped.select.waitpointId = true;
+        stripped.select.taskRunId = true;
+      }
+      const rows = (await (prisma as RunOpsCapableClient).taskRunWaitpoint.findMany({
+        where,
+        orderBy,
+        take,
+        skip,
+        cursor,
+        ...stripped,
+      })) as Record<string, unknown>[];
+      await this.#hydrateDedicatedRelations(
+        prisma as RunOpsCapableClient,
+        rows,
+        requested,
+        TASK_RUN_WAITPOINT_DEDICATED
+      );
+      return rows as Prisma.TaskRunWaitpointGetPayload<T>[];
+    });
   }
 
   async deleteManyTaskRunWaitpoints(
