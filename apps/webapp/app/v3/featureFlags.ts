@@ -62,6 +62,8 @@ export const FEATURE_FLAG = {
   // snapshot reads are global, so an org at a read position would read state its own writes never
   // created. Stripped from org payloads by withoutOrgForbiddenSnapshotKeys.
   snapshotStoreOrgMode: "snapshotStoreOrgMode",
+  // One-way residency latch. See the catalog entry below.
+  snapshotStoreEverEnabled: "snapshotStoreEverEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -177,6 +179,20 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write"]),
+  /**
+   * Whether this deployment has EVER had the store enabled. One way: set when the first dial or
+   * per-organisation override moves past `off`, and never cleared automatically.
+   *
+   * It exists so that `off` means genuinely inert before a ramp. A transition has to ask whether its
+   * run is resident, and the keyspace is the only record of that, so at `off` after a ramp every
+   * transition must still ask or a resident run's head freezes. Before any ramp nothing CAN be
+   * resident, so the question has one possible answer and asking it is pure cost: measured at 2 per
+   * cent with a healthy endpoint and four times the run duration with a slow one.
+   *
+   * Strict boolean, like the other kill switches: a stringified "false" read as true would put the
+   * whole fleet back on the run path.
+   */
+  [FEATURE_FLAG.snapshotStoreEverEnabled]: z.boolean(),
   // Strict, like the other kill switches: a stringified "false" read as true would freeze every
   // resident run's Redis head.
   [FEATURE_FLAG.snapshotStoreHalt]: z.boolean(),
@@ -221,6 +237,7 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   // The dial and the hard stop are deployment-wide; only snapshotStoreOrgMode is per-org.
   FEATURE_FLAG.snapshotStoreMode,
   FEATURE_FLAG.snapshotStoreHalt,
+  FEATURE_FLAG.snapshotStoreEverEnabled,
 ];
 
 /**

@@ -97,6 +97,18 @@ export type SnapshotStoreModeResolver = {
    * behaviour, never an error.
    */
   warm?(organizationId: string): Promise<void>;
+  /**
+   * Optional one-way latch: has this deployment EVER had the store enabled.
+   *
+   * Absent, or true, means behave as before. False means nothing can be resident yet, because only a
+   * birth creates a keyspace and every birth so far was refused, so a transition's question has one
+   * possible answer and asking it is pure cost. It is what makes `off` genuinely inert rather than
+   * merely quiet: measured at 2 per cent with a healthy endpoint and four times the run duration
+   * with a slow one, for every run, with no decay.
+   *
+   * MUST be synchronous and MUST NOT query, for the same reason `resolve` must not.
+   */
+  everEnabled?(): boolean;
 };
 
 /**
@@ -278,7 +290,25 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * outright is the halt switch, and it is a resync control rather than a rollback.
    */
   protected writesRedisForTransition(): boolean {
-    return !this.halted();
+    if (this.halted()) {
+      return false;
+    }
+
+    // The latch, and the ONLY case where a transition may be skipped without a keyspace check.
+    // Sound because residency is created by births alone: with the latch unset no birth has ever
+    // mirrored, so no keyspace exists and the append script would refuse every one of these anyway.
+    //
+    // Deliberately ignores the dial otherwise. Once the latch is set, `off` still mirrors a resident
+    // run's transitions, because the alternative freezes its head while Postgres moves on, and that
+    // makes turning the dial down worse than leaving it alone.
+    //
+    // The guard on the flag save refuses to enable anything until the latch is true, so "latch unset
+    // while runs are resident" is unreachable rather than merely unlikely.
+    if (this.modeResolver?.everEnabled?.() === false && this.mode === "off") {
+      return false;
+    }
+
+    return true;
   }
 
   /** Test seams for the two predicates. Not for production callers. */

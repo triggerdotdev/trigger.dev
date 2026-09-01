@@ -3,7 +3,12 @@ import {
   globalOnlySnapshotStoreFlagError,
   snapshotStoreFlagSaveError,
 } from "~/v3/snapshotStoreFlagGuard.server";
-import { FEATURE_FLAG, GLOBAL_LOCKED_FLAGS } from "~/v3/featureFlags";
+import {
+  FeatureFlagCatalog,
+  FEATURE_FLAG,
+  GLOBAL_LOCKED_FLAGS,
+  ORG_LOCKED_FLAGS,
+} from "~/v3/featureFlags";
 
 describe("snapshotStoreFlagSaveError", () => {
   it("refuses a flip past off when no host is configured", () => {
@@ -95,5 +100,62 @@ describe("the global page and the save guard agree", () => {
   it("leaves the deployment-wide dial editable on the global page", () => {
     expect(globalOnlySnapshotStoreFlagError({ snapshotStoreMode: "dual-write" })).toBeUndefined();
     expect(GLOBAL_LOCKED_FLAGS).not.toContain(FEATURE_FLAG.snapshotStoreMode);
+  });
+});
+
+describe("the residency latch", () => {
+  it("refuses to enable the deployment dial before the latch is set", () => {
+    // Ordering matters and must be impossible to get wrong. Transitions skip Redis entirely while
+    // the latch is unset, so a run born after the dial moved but before the latch landed would be
+    // resident with its transitions skipped, and its head would freeze. Latch first, always.
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreMode: "dual-write" },
+        { redisHostConfigured: true, everEnabled: false }
+      )
+    ).toMatch(/snapshotStoreEverEnabled/);
+  });
+
+  it("refuses to enable a per-organisation override before the latch is set", () => {
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreOrgMode: "dual-write" },
+        { redisHostConfigured: true, everEnabled: false }
+      )
+    ).toMatch(/snapshotStoreEverEnabled/);
+  });
+
+  it("allows enabling once the latch is set", () => {
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreMode: "dual-write" },
+        { redisHostConfigured: true, everEnabled: true }
+      )
+    ).toBeUndefined();
+  });
+
+  it("never blocks a move back to off, whatever the latch says", () => {
+    // Turning it down must never be gated. That is the rollback path.
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreMode: "off" },
+        { redisHostConfigured: true, everEnabled: false }
+      )
+    ).toBeUndefined();
+  });
+
+  it("does not block setting the latch itself", () => {
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreEverEnabled: true },
+        { redisHostConfigured: true, everEnabled: false }
+      )
+    ).toBeUndefined();
+  });
+
+  it("is a deployment-wide flag, and takes only a real boolean", () => {
+    expect(FeatureFlagCatalog.snapshotStoreEverEnabled.safeParse(true).success).toBe(true);
+    expect(FeatureFlagCatalog.snapshotStoreEverEnabled.safeParse("true").success).toBe(false);
+    expect(ORG_LOCKED_FLAGS).toContain("snapshotStoreEverEnabled");
   });
 });

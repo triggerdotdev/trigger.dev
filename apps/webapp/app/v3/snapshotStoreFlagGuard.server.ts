@@ -7,17 +7,28 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
  */
 export function snapshotStoreFlagSaveError(
   requested: Record<string, unknown>,
-  opts: { redisHostConfigured: boolean }
+  opts: { redisHostConfigured: boolean; everEnabled?: boolean }
 ): string | undefined {
-  if (opts.redisHostConfigured) {
+  // Both keys, because either one past `off` is equally silent without a connection, and either one
+  // equally makes a run resident once there is one.
+  const enabling = ([FEATURE_FLAG.snapshotStoreMode, FEATURE_FLAG.snapshotStoreOrgMode] as const)
+    .map((key) => ({ key, value: requested[key] }))
+    .filter(({ value }) => typeof value === "string" && value !== "off");
+
+  if (!opts.redisHostConfigured) {
+    for (const { key, value } of enabling) {
+      return `Cannot set ${key} to "${String(value)}": RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST is not configured in this deployment, so the snapshot store is never constructed and the flag would have no effect.`;
+    }
     return undefined;
   }
 
-  // Both keys, because either one past `off` is equally silent without a connection.
-  for (const key of [FEATURE_FLAG.snapshotStoreMode, FEATURE_FLAG.snapshotStoreOrgMode] as const) {
-    const value = requested[key];
-    if (typeof value === "string" && value !== "off") {
-      return `Cannot set ${key} to "${value}": RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST is not configured in this deployment, so the snapshot store is never constructed and the flag would have no effect.`;
+  // The latch must already be set before anything can become resident. Transitions skip Redis
+  // entirely while it is unset, so a run born after the dial moved but before the latch landed would
+  // be resident with its transitions skipped, and its head would freeze while Postgres moved on.
+  // Refusing here makes that ordering impossible to get wrong rather than merely documented.
+  if (opts.everEnabled === false) {
+    for (const { key, value } of enabling) {
+      return `Cannot set ${key} to "${String(value)}" before ${FEATURE_FLAG.snapshotStoreEverEnabled} is true. Set that flag first: until it is, transitions skip the store entirely, so a run born now would be resident with its transitions skipped and its head would freeze.`;
     }
   }
 

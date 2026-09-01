@@ -55,10 +55,15 @@ type ResolverOrgSource = Pick<OrgModeSource, "get" | "refresh"> &
 
 export function buildSnapshotStoreModeResolver(deps: {
   globalMode: () => DialMode | undefined;
+  /** The one-way residency latch. Absent is treated as latched, so behaviour is unchanged. */
+  everEnabled?: () => boolean | undefined;
   orgMode: ResolverOrgSource;
   envFloor: DialMode;
 }): SnapshotStoreModeResolver {
   return {
+    // False ONLY when the flag is explicitly false. An unreadable or cold registry must never
+    // report "never enabled", because that would suppress transitions for runs that are resident.
+    everEnabled: (): boolean => deps.everEnabled?.() !== false,
     // Awaited at birth sites only. Absent org id means nothing to look up, so it is a no-op.
     warm: async (organizationId: string): Promise<void> => {
       await deps.orgMode.warm?.(organizationId);
@@ -263,6 +268,7 @@ function orgModeSource(): OrgModeSource {
 
 export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapshotStoreModeResolver({
   globalMode: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreMode],
+  everEnabled: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreEverEnabled],
   orgMode: {
     get: (organizationId) => orgModeSource().get(organizationId),
     refresh: (organizationId) => orgModeSource().refresh(organizationId),

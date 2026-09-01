@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import {
   applyGlobalGracedFlips,
@@ -9,7 +10,7 @@ import {
   touchesGracedGroup,
   withoutDerivedKeys,
 } from "~/v3/featureFlags.server";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import { validatePartialFeatureFlags, FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   globalOnlySnapshotStoreFlagError,
   snapshotStoreFlagSaveError,
@@ -41,6 +42,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const snapshotStoreError = snapshotStoreFlagSaveError(body as Record<string, unknown>, {
       redisHostConfigured: !!env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST,
+      // Read from the live registry, not from the payload: the latch must ALREADY be true before
+      // anything can be enabled, or a run born in the gap would be resident with its transitions
+      // skipped.
+      everEnabled: globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreEverEnabled] === true,
     });
     if (snapshotStoreError) {
       return json({ error: snapshotStoreError }, { status: 400 });
