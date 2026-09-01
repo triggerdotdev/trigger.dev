@@ -58,7 +58,7 @@ export const lightpandaCloudPuppeteer = task({
 
     // Connect to Lightpanda's cloud
     const browser = await puppeteer.connect({
-      browserWSEndpoint: `wss://cloud.lightpanda.io/ws?browser=lightpanda&token=${token}`,
+      browserWSEndpoint: `wss://cloud.lightpanda.io/ws?token=${token}`,
     });
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
@@ -89,13 +89,8 @@ export const lightpandaCloudPuppeteer = task({
 
 ### Proxies
 
-Proxies can be used with your browser via the proxy query string parameter. By default, the proxy used is "datacenter" which is a pool of shared datacenter IPs.
-`datacenter` accepts an optional `country` query string parameter which is an [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code.
-
-```bash
-# This example will use a German IP
-wss://cloud.lightpanda.io/ws?proxy=datacenter&country=de&token=${token}
-```
+Proxies can be used with your browser via the proxy query string parameter. By default, the proxy used is a shared datacenter IP.
+But you can bring you own proxy into [the console](https://console.lightpanda.io/proxies)
 
 ### Session
 
