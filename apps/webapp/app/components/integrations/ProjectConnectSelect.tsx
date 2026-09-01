@@ -12,16 +12,8 @@ import {
 
 type ConnectableProject = { id: string; slug: string; name: string };
 
-// Matches the label sizing of the main side menu's project switcher.
 const MENU_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
 
-/**
- * Blank-state CTA shared by the org integration pages (Vercel, Slack). Picking a
- * project navigates straight to where that integration is configured for it, so
- * the menu item *is* the action — there's no separate button. Each integration is
- * configured on a different page, so the caller supplies `configurePathFor`.
- * Styled to match the main side menu's project switcher.
- */
 export function ProjectConnectSelect({
   projects,
   configurePathFor,
@@ -32,7 +24,6 @@ export function ProjectConnectSelect({
   const [isOpen, setIsOpen] = useState(false);
   const navigation = useNavigation();
 
-  // Close once a menu item's navigation kicks off, mirroring the side menu switcher.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- sync menu state after navigation.
     setIsOpen(false);
@@ -61,7 +52,6 @@ export function ProjectConnectSelect({
               title={
                 <span className="flex w-full items-center justify-between gap-2 text-text-bright">
                   <span className="min-w-0 grow truncate text-left">{project.name}</span>
-                  {/* In the DOM (reserves space) but only visible on row hover. */}
                   <ChevronExtraSmallDown className="size-3.5 shrink-0 -rotate-90 text-text-dimmed opacity-0 transition-opacity group-hover/button:opacity-100" />
                 </span>
               }

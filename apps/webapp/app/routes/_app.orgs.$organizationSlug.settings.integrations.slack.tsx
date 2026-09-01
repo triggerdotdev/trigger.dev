@@ -196,7 +196,6 @@ export default function SlackIntegrationPage() {
   const isUninstalling =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "uninstall";
 
-  // The org context (parent loader) carries the project list for the connect CTA.
   const organization = useOrganization();
   const projects = organization.projects;
 
@@ -218,7 +217,6 @@ export default function SlackIntegrationPage() {
               <ProjectConnectSelect
                 projects={projects}
                 configurePathFor={(project) =>
-                  // Slack alerts are configured from the Errors page; ?alerts=true opens the sheet.
                   `${v3ErrorsPath(organization, project, { slug: "prod" })}?alerts=true`
                 }
               />
@@ -300,8 +298,6 @@ export default function SlackIntegrationPage() {
 
           <SettingsSection>
             <SettingsHeader
-              // Keep the header's divide when there's no table; the table's own top
-              // border is the divide once rows are present.
               className={alertChannels.length === 0 ? undefined : "border-b-0"}
               title={`${alertChannels.length} connected alert ${
                 alertChannels.length === 1 ? "channel" : "channels"

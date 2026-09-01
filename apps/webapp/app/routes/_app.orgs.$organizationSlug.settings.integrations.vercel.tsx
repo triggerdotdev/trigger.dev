@@ -260,7 +260,6 @@ export default function VercelIntegrationPage() {
   const isUninstalling =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "uninstall";
 
-  // The org context (parent loader) carries the project list for the connect CTA.
   const { projects } = useOrganization();
 
   if (!vercelIntegration) {
@@ -281,7 +280,6 @@ export default function VercelIntegrationPage() {
               <ProjectConnectSelect
                 projects={projects}
                 configurePathFor={(project) =>
-                  // Default to the production environment, matching the connected-state links.
                   v3ProjectSettingsIntegrationsPath(organization, project, { slug: "prod" })
                 }
               />
@@ -387,8 +385,6 @@ export default function VercelIntegrationPage() {
 
           <SettingsSection>
             <SettingsHeader
-              // Keep the header's divide when there's no table; the table's own top
-              // border is the divide once rows are present.
               className={connectedProjects.length === 0 ? undefined : "border-b-0"}
               title={`${connectedProjects.length} connected ${
                 connectedProjects.length === 1 ? "project" : "projects"
@@ -433,7 +429,7 @@ export default function VercelIntegrationPage() {
                                 to={v3ProjectSettingsIntegrationsPath(
                                   organization,
                                   projectIntegration.project,
-                                  { slug: "prod" } // Default to production environment
+                                  { slug: "prod" }
                                 )}
                               />
                             </span>
