@@ -13,11 +13,12 @@ import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 import { processGitMetadata } from "./BranchesPresenter.server";
 import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
-import { S2 } from "@s2-dev/streamstore";
+import { createDeploymentS2Client } from "~/v3/s2Client.server";
 import { env } from "~/env.server";
 import { createRedisClient } from "~/redis.server";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
+import { s2CacheScope } from "~/v3/s2CacheScope";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:project:";
 
@@ -30,7 +31,7 @@ const s2TokenRedis = createRedisClient("s2-token-cache", {
   clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
 });
 
-const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
+const s2 = createDeploymentS2Client();
 
 export type ErrorData = {
   name: string;
@@ -286,7 +287,7 @@ export class DeploymentPresenter {
       throw new Error("Failed getting S2 access token: S2 is not enabled");
     }
 
-    const redisKey = `${S2_TOKEN_KEY_PREFIX}${projectRef}`;
+    const redisKey = `${S2_TOKEN_KEY_PREFIX}${s2CacheScope(env.S2_DEPLOYMENT_ENDPOINT)}${projectRef}`;
     const cachedToken = await s2TokenRedis.get(redisKey);
 
     if (cachedToken) {

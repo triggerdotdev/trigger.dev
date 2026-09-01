@@ -4,6 +4,7 @@ import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
+import { isValidS2Endpoint } from "./utils/s2Endpoint";
 import { isValidDuration } from "./services/realtime/duration.server";
 
 // `z.string()` constrained to a `parseDuration`-parseable string (e.g.
@@ -79,6 +80,19 @@ const S2EnvSchema = z.preprocess(
       S2_ACCESS_TOKEN: z.string(),
       S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
       S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
+      // Points deployment event logs at an S2 service other than the hosted one, e.g. the
+      // local s2-lite in docker compose. One value covers both the account and basin
+      // endpoints: splitting them lets a half-set config send the access token to the
+      // hosted service while the operator believes they are entirely local.
+      S2_DEPLOYMENT_ENDPOINT: z
+        .string()
+        .trim()
+        .transform((value) => (value === "" ? undefined : value))
+        .refine(
+          (value) => value === undefined || isValidS2Endpoint(value),
+          "must be an http(s) URL; http is only allowed for a loopback host, because the S2 access token is sent to it as a bearer token"
+        )
+        .optional(),
     }),
     z.object({
       S2_ENABLED: z.literal("0"),

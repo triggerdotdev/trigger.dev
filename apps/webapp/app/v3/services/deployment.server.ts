@@ -23,8 +23,10 @@ import {
 import { FEATURE_FLAG, type FeatureFlagKey } from "../featureFlags";
 import { flags } from "../featureFlags.server";
 import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
-import { AppendInput, AppendRecord, S2 } from "@s2-dev/streamstore";
+import { AppendInput, AppendRecord } from "@s2-dev/streamstore";
+import { createDeploymentS2Client } from "~/v3/s2Client.server";
 import { createRedisClient } from "~/redis.server";
+import { s2CacheScope } from "~/v3/s2CacheScope";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:read:deployment-event-stream:project:";
 const s2TokenRedis = createRedisClient("s2-token-cache", {
@@ -35,7 +37,7 @@ const s2TokenRedis = createRedisClient("s2-token-cache", {
   tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
   clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
 });
-const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
+const s2 = createDeploymentS2Client();
 
 const DEPLOY_BUILD_PATH_ENV_FLAG: Partial<Record<RuntimeEnvironmentType, FeatureFlagKey>> = {
   PREVIEW: FEATURE_FLAG.deployBuildPathPreview,
@@ -522,7 +524,7 @@ export class DeploymentService extends BaseService {
       return errAsync({ type: "s2_is_disabled" as const });
     }
     const basinName = env.S2_DEPLOYMENT_LOGS_BASIN_NAME;
-    const redisKey = `${S2_TOKEN_KEY_PREFIX}${project.externalRef}`;
+    const redisKey = `${S2_TOKEN_KEY_PREFIX}${s2CacheScope(env.S2_DEPLOYMENT_ENDPOINT)}${project.externalRef}`;
 
     const getTokenFromCache = () =>
       fromPromise(s2TokenRedis.get(redisKey), (error) => ({
