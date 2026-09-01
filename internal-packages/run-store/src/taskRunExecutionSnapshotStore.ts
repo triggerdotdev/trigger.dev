@@ -191,7 +191,7 @@ export function asSnapshotMirrorRepair(store: RunStore): SnapshotMirrorRepair | 
 
 export type DecoratorMetrics = {
   recordWrite(site: string, outcome: string): void;
-  recordAppendFailed(site: string): void;
+  recordAppendFailed(site: string, organizationId?: string): void;
   recordRead(method: string, source: "redis" | "postgres"): void;
 };
 
@@ -720,7 +720,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         }
 
         if (attempt === APPEND_ATTEMPTS - 1) {
-          this.metrics?.recordAppendFailed(site);
+          this.metrics?.recordAppendFailed(site, entry.organizationId);
           this.logger.error("snapshot birth append failed after retries", {
             runId: entry.runId,
             snapshotId: entry.id,
@@ -787,13 +787,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       } catch (error) {
         // An injected fault models a dead process, not a retryable append failure.
         if (isInjectedFault(error)) {
-          this.metrics?.recordAppendFailed(site);
+          this.metrics?.recordAppendFailed(site, entry.organizationId);
           await this.#enqueueRepair(entry);
           return;
         }
 
         if (attempt === APPEND_ATTEMPTS - 1) {
-          this.metrics?.recordAppendFailed(site);
+          this.metrics?.recordAppendFailed(site, entry.organizationId);
           this.logger.error("snapshot append failed after retries", {
             runId: entry.runId,
             snapshotId: entry.id,

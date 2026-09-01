@@ -217,7 +217,7 @@ const _outcomesExhaustive: AssertSameOutcomes<
 void _outcomesExhaustive;
 
 export type SnapshotStoreMetrics = {
-  recordAppend(outcome: string, ttl: string): void;
+  recordAppend(outcome: string, ttl: string, organizationId?: string): void;
   recordEntryBytes(bytes: number): void;
   recordCycleKeyBytes(bytes: number): void;
   recordCycleCount(count: number): void;
@@ -432,7 +432,7 @@ export class RedisSnapshotStore {
     // CREATES residency, so it must reach the script even when the run is currently unknown.
     if (args.kind === "transition" && this.#residency.get(args.entry.runId) === "non-resident") {
       this.metrics?.recordSkippedNoKeyspace();
-      this.metrics?.recordAppend("skippedNoKeyspace", "none");
+      this.metrics?.recordAppend("skippedNoKeyspace", "none", args.entry.organizationId);
       return { outcome: "skippedNoKeyspace" };
     }
 
@@ -491,7 +491,14 @@ export class RedisSnapshotStore {
         args.markGaps ? "1" : "0"
       )) as string[];
 
-      return this.#interpretAppend(reply, raw, orderJson, records, args.entry.runId);
+      return this.#interpretAppend(
+        reply,
+        raw,
+        orderJson,
+        records,
+        args.entry.runId,
+        args.entry.organizationId
+      );
     });
   }
 
@@ -500,26 +507,27 @@ export class RedisSnapshotStore {
     raw: string,
     orderJson: string,
     records: string,
-    runId: string
+    runId: string,
+    organizationId: string
   ): AppendResult {
     if (reply[0] === SKIPPED) {
       // Authoritative and final: the script looked and there is no keyspace. Only a birth could
       // create one and this run's birth has already happened.
       this.#residency.setNonResident(runId);
       this.metrics?.recordSkippedNoKeyspace();
-      this.metrics?.recordAppend("skippedNoKeyspace", "none");
+      this.metrics?.recordAppend("skippedNoKeyspace", "none", organizationId);
       return { outcome: "skippedNoKeyspace" };
     }
     if (reply[0] === FORKED) {
       // A fork means the script found a keyspace and disagreed about its head, so the run IS
       // resident.
       this.#residency.setResident(runId);
-      this.metrics?.recordAppend("forked", "none");
+      this.metrics?.recordAppend("forked", "none", organizationId);
       return { outcome: "forked", actualCur: reply[1] ?? "" };
     }
     if (reply[0] === DUPLICATE) {
       this.#residency.setResident(runId);
-      this.metrics?.recordAppend("duplicate", "none");
+      this.metrics?.recordAppend("duplicate", "none", organizationId);
       return { outcome: "duplicate", seq: Number(reply[1]) };
     }
     const seq = Number(reply[1]);
@@ -532,7 +540,7 @@ export class RedisSnapshotStore {
     // A written entry proves the keyspace exists. For a birth this is what makes the run resident.
     this.#residency.setResident(runId);
     this.#observeSizes(raw, orderJson, records, cycleSeq, runId);
-    this.metrics?.recordAppend("written", ttl);
+    this.metrics?.recordAppend("written", ttl, organizationId);
     return {
       outcome: "written",
       seq,

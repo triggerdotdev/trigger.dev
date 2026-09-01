@@ -1,6 +1,7 @@
 import type { Meter } from "@internal/tracing";
 import { APPEND_RESULT_OUTCOMES } from "@internal/run-store";
 import type { DecoratorMetrics, SnapshotStoreMetrics } from "@internal/run-store";
+import { cohortMetricLabel } from "./cohortMetricLabel.server";
 
 // Metric attributes must be bounded: every one of these is a time series. The store and the
 // decorator type their outcome strings loosely, so anything unrecognised collapses to "other"
@@ -52,7 +53,12 @@ function bounded(value: string, allowed: readonly string[]): string {
 /** Exported so the paging rule for a forked append is written against the real name. */
 export const SNAPSHOT_STORE_WRITE_TOTAL = "run_engine.snapshot_store.write_total";
 
-export function createSnapshotStoreMetrics(meter: Meter) {
+// The soak cohort predicate. Task 9 wires the real org-mode source in; until then everyone is
+// "other", so the per-org label mints no series.
+export function createSnapshotStoreMetrics(
+  meter: Meter,
+  isCohortMember: (organizationId: string) => boolean = () => false
+) {
   // Two layers, two counters. Sharing one would count a single logical write twice and mix
   // {outcome, ttl} points with {site, outcome} points under one name, so no sum or grouping over it
   // would mean anything.
@@ -68,10 +74,11 @@ export function createSnapshotStoreMetrics(meter: Meter) {
   const opLatency = meter.createHistogram("run_engine.snapshot_store.op_latency_ms");
 
   const store: SnapshotStoreMetrics = {
-    recordAppend: (outcome, ttl) =>
+    recordAppend: (outcome, ttl, organizationId) =>
       appendTotal.add(1, {
         outcome: bounded(outcome, APPEND_OUTCOMES),
         ttl: bounded(ttl, APPEND_TTLS),
+        org: cohortMetricLabel(organizationId, isCohortMember),
       }),
     recordEntryBytes: (bytes) => entryBytes.record(bytes),
     recordCycleKeyBytes: (bytes) => cycleKeyBytes.record(bytes),
@@ -88,7 +95,11 @@ export function createSnapshotStoreMetrics(meter: Meter) {
         outcome: bounded(outcome, WRITE_OUTCOMES),
       });
     },
-    recordAppendFailed: (site) => appendFailed.add(1, { site: bounded(site, WRITE_SITES) }),
+    recordAppendFailed: (site, organizationId) =>
+      appendFailed.add(1, {
+        site: bounded(site, WRITE_SITES),
+        org: cohortMetricLabel(organizationId, isCohortMember),
+      }),
     recordRead: (method, source) =>
       readSource.add(1, {
         method: bounded(method, READ_METHODS),
