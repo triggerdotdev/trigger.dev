@@ -15,7 +15,7 @@ describe("snapshotStoreFlagSaveError", () => {
     expect(
       snapshotStoreFlagSaveError(
         { snapshotStoreMode: "dual-write" },
-        { redisHostConfigured: false }
+        { redisHostConfigured: false, everEnabled: true }
       )
     ).toMatch(/RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST/);
   });
@@ -24,32 +24,44 @@ describe("snapshotStoreFlagSaveError", () => {
     expect(
       snapshotStoreFlagSaveError(
         { snapshotStoreMode: "redis-read" },
-        { redisHostConfigured: false }
+        { redisHostConfigured: false, everEnabled: true }
       )
     ).toMatch(/redis-read/);
   });
 
   it("allows a flip past off once the host is configured", () => {
     expect(
-      snapshotStoreFlagSaveError({ snapshotStoreMode: "dual-write" }, { redisHostConfigured: true })
+      snapshotStoreFlagSaveError(
+        { snapshotStoreMode: "dual-write" },
+        { redisHostConfigured: true, everEnabled: true }
+      )
     ).toBeUndefined();
   });
 
   it("allows off with no host, because that is the default state", () => {
     expect(
-      snapshotStoreFlagSaveError({ snapshotStoreMode: "off" }, { redisHostConfigured: false })
+      snapshotStoreFlagSaveError(
+        { snapshotStoreMode: "off" },
+        { redisHostConfigured: false, everEnabled: true }
+      )
     ).toBeUndefined();
   });
 
   it("ignores a payload that does not mention the dial", () => {
     expect(
-      snapshotStoreFlagSaveError({ runOpsMintKind: "cuid" }, { redisHostConfigured: false })
+      snapshotStoreFlagSaveError(
+        { runOpsMintKind: "cuid" },
+        { redisHostConfigured: false, everEnabled: true }
+      )
     ).toBeUndefined();
   });
 
   it("ignores a non-string dial value and leaves it to schema validation", () => {
     expect(
-      snapshotStoreFlagSaveError({ snapshotStoreMode: 3 }, { redisHostConfigured: false })
+      snapshotStoreFlagSaveError(
+        { snapshotStoreMode: 3 },
+        { redisHostConfigured: false, everEnabled: true }
+      )
     ).toBeUndefined();
   });
 
@@ -58,14 +70,17 @@ describe("snapshotStoreFlagSaveError", () => {
     expect(
       snapshotStoreFlagSaveError(
         { snapshotStoreOrgMode: "dual-write" },
-        { redisHostConfigured: false }
+        { redisHostConfigured: false, everEnabled: true }
       )
     ).toMatch(/RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST/);
   });
 
   it("allows a per-organisation off with no host", () => {
     expect(
-      snapshotStoreFlagSaveError({ snapshotStoreOrgMode: "off" }, { redisHostConfigured: false })
+      snapshotStoreFlagSaveError(
+        { snapshotStoreOrgMode: "off" },
+        { redisHostConfigured: false, everEnabled: true }
+      )
     ).toBeUndefined();
   });
 });

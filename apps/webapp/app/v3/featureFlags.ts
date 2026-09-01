@@ -245,7 +245,13 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
  * consults it, so the line is held here — the same way the mint grace stamps are stripped.
  */
 export function withoutOrgForbiddenSnapshotKeys<T extends Record<string, unknown>>(values: T): T {
-  const forbidden = [FEATURE_FLAG.snapshotStoreMode, FEATURE_FLAG.snapshotStoreHalt] as const;
+  const forbidden = [
+    FEATURE_FLAG.snapshotStoreMode,
+    FEATURE_FLAG.snapshotStoreHalt,
+    // Deployment-wide, like the other two. Nothing reads it from an organisation row, so accepting
+    // it on an organisation save reports success for a setting that does nothing.
+    FEATURE_FLAG.snapshotStoreEverEnabled,
+  ] as const;
   if (!forbidden.some((key) => key in values)) return values;
 
   const rest = { ...values };

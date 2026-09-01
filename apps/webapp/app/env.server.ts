@@ -1325,11 +1325,15 @@ const EnvironmentSchema = z
       .int()
       .default(2 * 60 * 60 * 1000),
     RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_SCHEDULE: z.string().default("0 */6 * * *"),
-    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_JITTER_IN_MS: z.coerce.number().int().default(60_000),
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_JITTER_IN_MS: z.coerce.number().int().min(0).default(60_000),
     // An existing run costs ~4 serial round trips and the orphan-marker clear cannot be batched
     // (cross-slot pipelines are rejected), so a full pass is hours, not minutes. A budget that
     // truncates every pass stops rule 2 converging, because it needs consecutive sightings.
-    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS: z.coerce.number().int().default(10_800_000),
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_800_000),
     /**
      * RETIRED. The hard stop is the snapshotStoreHalt feature flag and nothing else: an environment
      * variable converged over a rolling deploy rather than a flag interval, and during that window a
@@ -1341,8 +1345,16 @@ const EnvironmentSchema = z
      * ignored.
      */
     RUN_ENGINE_SNAPSHOT_STORE_HALT: z.string().optional(),
-    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
-    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX: z.coerce.number().int().default(10_000),
+    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(30_000),
+    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_000),
     // No fallback to REDIS_*: this is a distinct durable endpoint and must be set explicitly, or
     // execution state silently lands on the general-purpose cache.
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST: z.string().optional(),
@@ -1354,7 +1366,11 @@ const EnvironmentSchema = z
     // Fails an append fast rather than letting it wait on an unreachable endpoint. Postgres is
     // authoritative below the final dial position, so a refused append costs a mirrored write; a
     // blocked one costs the request.
-    RUN_ENGINE_SNAPSHOT_STORE_REDIS_COMMAND_TIMEOUT_MS: z.coerce.number().int().default(500),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_COMMAND_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(500),
 
     RUN_ENGINE_DEV_PRESENCE_REDIS_HOST: z
       .string()

@@ -7,7 +7,10 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
  */
 export function snapshotStoreFlagSaveError(
   requested: Record<string, unknown>,
-  opts: { redisHostConfigured: boolean; everEnabled?: boolean }
+  // Both REQUIRED. `everEnabled` was optional so as not to disturb existing callers, and a route
+  // that omitted it silently skipped the latch check: an optional safety argument disables the
+  // safety at every caller that forgets it. Required means the compiler enumerates them.
+  opts: { redisHostConfigured: boolean; everEnabled: boolean }
 ): string | undefined {
   // Both keys, because either one past `off` is equally silent without a connection, and either one
   // equally makes a run resident once there is one.
@@ -26,7 +29,7 @@ export function snapshotStoreFlagSaveError(
   // entirely while it is unset, so a run born after the dial moved but before the latch landed would
   // be resident with its transitions skipped, and its head would freeze while Postgres moved on.
   // Refusing here makes that ordering impossible to get wrong rather than merely documented.
-  if (opts.everEnabled === false) {
+  if (!opts.everEnabled) {
     for (const { key, value } of enabling) {
       return `Cannot set ${key} to "${String(value)}" before ${FEATURE_FLAG.snapshotStoreEverEnabled} is true. Set that flag first: until it is, transitions skip the store entirely, so a run born now would be resident with its transitions skipped and its head would freeze.`;
     }

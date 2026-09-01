@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
 import { invalidateSnapshotStoreOrgMode } from "~/v3/snapshotStoreMode.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
@@ -149,6 +150,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const snapshotStoreError = snapshotStoreFlagSaveError(requestedFlags, {
     redisHostConfigured: !!env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST,
+    // Read from the live registry, not the payload: the latch must ALREADY be true before anything
+    // can be enabled, or a run born in the gap is resident with its transitions skipped.
+    everEnabled: globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreEverEnabled] === true,
   });
   if (snapshotStoreError) {
     return json({ error: snapshotStoreError }, { status: 400 });

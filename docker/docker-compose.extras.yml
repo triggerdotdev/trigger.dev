@@ -136,7 +136,7 @@ services:
   # ioredis discovers the other five nodes from that one seed.
   redis-cluster:
     container_name: ${CONTAINER_PREFIX:-}redis-cluster
-    image: redis:7.2
+    image: redis:7.2@sha256:74566c6910d13ae61e7ce73ebd3127438a1fe805b309b097c323142719ec8a5b
     restart: always
     volumes:
       - ./config/redis-cluster-init.sh:/init.sh:ro
