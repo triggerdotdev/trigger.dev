@@ -113,6 +113,70 @@ describe("snapshot store mode resolver", () => {
   });
 });
 
+describe("the org-scoped read routing", () => {
+  function buildRead(opts: {
+    globalMode?: SnapshotStoreMode;
+    perOrg?: Record<string, SnapshotStoreMode>;
+    runToOrg?: Record<string, string>;
+    census?: { anyOrgReadEnabled: boolean; anyOrgRedisOnly: boolean };
+  }) {
+    return buildSnapshotStoreModeResolver({
+      globalMode: () => opts.globalMode,
+      orgMode: {
+        get: (id: string) => opts.perOrg?.[id],
+        refresh: () => {},
+      },
+      runOrg: { resolve: (runId: string) => opts.runToOrg?.[runId] },
+      census: opts.census
+        ? {
+            anyOrgReadEnabled: () => opts.census!.anyOrgReadEnabled,
+            anyOrgRedisOnly: () => opts.census!.anyOrgRedisOnly,
+          }
+        : undefined,
+      envFloor: "off",
+    });
+  }
+
+  it("routes a run in a redis-read org to that org's read position", () => {
+    const r = buildRead({
+      globalMode: "off",
+      perOrg: { org_a: "redis-read" },
+      runToOrg: { run_1: "org_a" },
+    });
+    expect(r.readModeFor?.("run_1")).toBe("redis-read");
+  });
+
+  it("returns undefined for a run whose org cannot be resolved, so the decorator falls back", () => {
+    const r = buildRead({ globalMode: "redis-read", runToOrg: {} });
+    expect(r.readModeFor?.("run_unknown")).toBeUndefined();
+  });
+
+  it("returns the global answer for a resolved run whose org has no override", () => {
+    const r = buildRead({ globalMode: "dual-write", runToOrg: { run_1: "org_a" }, perOrg: {} });
+    expect(r.readModeFor?.("run_1")).toBe("dual-write");
+  });
+
+  it("delegates the cheap read gates to the census", () => {
+    const r = buildRead({
+      globalMode: "off",
+      census: { anyOrgReadEnabled: true, anyOrgRedisOnly: false },
+    });
+    expect(r.anyOrgReadEnabled?.()).toBe(true);
+    expect(r.anyOrgRedisOnly?.()).toBe(false);
+  });
+
+  it("is inert when no run→org source or census is wired", () => {
+    const r = buildSnapshotStoreModeResolver({
+      globalMode: () => "off",
+      orgMode: { get: () => undefined, refresh: () => {} },
+      envFloor: "off",
+    });
+    expect(r.readModeFor?.("run_1")).toBeUndefined();
+    expect(r.anyOrgReadEnabled?.()).toBe(false);
+    expect(r.anyOrgRedisOnly?.()).toBe(false);
+  });
+});
+
 describe("a saved organisation dial survives a lagging replica", () => {
   type Deferred = { resolve: (v: unknown) => void; promise: Promise<unknown> };
 

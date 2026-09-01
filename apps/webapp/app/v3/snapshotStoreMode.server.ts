@@ -6,6 +6,8 @@ import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { snapshotRunOrgSource } from "~/v3/snapshotRunOrg.server";
+import { snapshotStoreOrgCensus } from "~/v3/snapshotStoreOrgCensus.server";
 
 /** A cached "this organisation has no override", distinct from "not cached". */
 export const NO_OVERRIDE = "__none__" as const;
@@ -71,6 +73,17 @@ type OrgModeSource = {
 type ResolverOrgSource = Pick<OrgModeSource, "get" | "refresh"> &
   Partial<Pick<OrgModeSource, "warm">>;
 
+/** Resolves a run to its organisation. Cache-only and synchronous, undefined on a miss. */
+type ResolverRunOrgSource = {
+  resolve(runId: string): string | undefined;
+};
+
+/** The census read accessors the resolver delegates to. Both synchronous and no-query. */
+type ResolverCensus = {
+  anyOrgReadEnabled(): boolean;
+  anyOrgRedisOnly(): boolean;
+};
+
 export function buildSnapshotStoreModeResolver(deps: {
   globalMode: () => DialMode | undefined;
   /** The one-way residency latch. Absent is treated as latched, so behaviour is unchanged. */
@@ -78,8 +91,38 @@ export function buildSnapshotStoreModeResolver(deps: {
   /** The per-organisation residency latch. Absent is treated as latched, so behaviour is unchanged. */
   everEnabledForOrg?: (organizationId: string) => boolean | undefined;
   orgMode: ResolverOrgSource;
+  /** Run→org resolution for the read path. Absent means readModeFor always falls back to global. */
+  runOrg?: ResolverRunOrgSource;
+  /** The org census for the cheap read gates. Absent means both gates report false. */
+  census?: ResolverCensus;
   envFloor: DialMode;
 }): SnapshotStoreModeResolver {
+  // Shared by resolve and readModeFor: the same org-mode logic, no read on this path.
+  const resolveMode = (organizationId?: string): DialMode => {
+    const global = deps.globalMode() ?? deps.envFloor;
+    if (!organizationId) {
+      return global;
+    }
+
+    const cached = deps.orgMode.get(organizationId);
+    if (cached === NO_OVERRIDE) {
+      return global;
+    }
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    // Deliberately no read here. Seven decorator methods accept a caller-supplied `tx`, so a
+    // query on this path can land inside another caller's open interactive transaction, on the
+    // same pool for single-DB and self-host. Serve the global answer, warm the cache off-path.
+    try {
+      deps.orgMode.refresh(organizationId);
+    } catch {
+      // a warm-up must never fail a state transition
+    }
+    return global;
+  };
+
   return {
     // False ONLY when the flag is explicitly false. An unreadable or cold registry must never
     // report "never enabled", because that would suppress transitions for runs that are resident.
@@ -92,30 +135,18 @@ export function buildSnapshotStoreModeResolver(deps: {
     warm: async (organizationId: string): Promise<void> => {
       await deps.orgMode.warm?.(organizationId);
     },
-    resolve(organizationId?: string): DialMode {
-      const global = deps.globalMode() ?? deps.envFloor;
+    resolve: (organizationId?: string): DialMode => resolveMode(organizationId),
+    // The org-scoped read position. Resolve run→org synchronously; on a miss return undefined so
+    // the decorator falls back to the global mode, which is safe during soak.
+    readModeFor: (runId: string): DialMode | undefined => {
+      const organizationId = deps.runOrg?.resolve(runId);
       if (!organizationId) {
-        return global;
+        return undefined;
       }
-
-      const cached = deps.orgMode.get(organizationId);
-      if (cached === NO_OVERRIDE) {
-        return global;
-      }
-      if (cached !== undefined) {
-        return cached;
-      }
-
-      // Deliberately no read here. Seven decorator methods accept a caller-supplied `tx`, so a
-      // query on this path can land inside another caller's open interactive transaction, on the
-      // same pool for single-DB and self-host. Serve the global answer, warm the cache off-path.
-      try {
-        deps.orgMode.refresh(organizationId);
-      } catch {
-        // a warm-up must never fail a state transition
-      }
-      return global;
+      return resolveMode(organizationId);
     },
+    anyOrgReadEnabled: (): boolean => deps.census?.anyOrgReadEnabled() ?? false,
+    anyOrgRedisOnly: (): boolean => deps.census?.anyOrgRedisOnly() ?? false,
   };
 }
 
@@ -299,6 +330,11 @@ export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapsho
     get: (organizationId) => orgModeSource().get(organizationId),
     refresh: (organizationId) => orgModeSource().refresh(organizationId),
     warm: (organizationId) => orgModeSource().warm(organizationId),
+  },
+  runOrg: { resolve: (runId) => snapshotRunOrgSource().resolve(runId) },
+  census: {
+    anyOrgReadEnabled: () => snapshotStoreOrgCensus.anyOrgReadEnabled(),
+    anyOrgRedisOnly: () => snapshotStoreOrgCensus.anyOrgRedisOnly(),
   },
   envFloor: env.RUN_ENGINE_SNAPSHOT_STORE_MODE ?? "off",
 });

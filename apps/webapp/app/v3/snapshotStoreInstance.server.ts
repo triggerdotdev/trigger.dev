@@ -15,6 +15,7 @@ import { singleton } from "~/utils/singleton";
 import { getSnapshotRepairEnqueuer } from "./snapshotStoreBindings.server";
 import { snapshotStoreHalted, snapshotStoreModeResolver } from "./snapshotStoreMode.server";
 import { createSnapshotStoreMetrics } from "./snapshotStoreMetrics.server";
+import { snapshotStoreOrgCensus } from "./snapshotStoreOrgCensus.server";
 import { meter } from "./tracer.server";
 
 const KEY_PREFIX = "engine:";
@@ -84,7 +85,9 @@ const instance = singleton<Instance | undefined>("snapshotStoreInstance", () => 
     return undefined;
   }
 
-  const metrics = createSnapshotStoreMetrics(meter);
+  const metrics = createSnapshotStoreMetrics(meter, (organizationId) =>
+    snapshotStoreOrgCensus.isCohortMember(organizationId)
+  );
 
   // The sweep gets a connection of its own so a full scan of every master can never stall a
   // transition append. It also backs the sweep's exclusion lock.

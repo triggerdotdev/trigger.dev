@@ -126,7 +126,7 @@ export type SnapshotStoreModeResolver = {
    * `redis-read` while everyone else stays on Postgres. Same contract as `resolve`: synchronous, MUST
    * NOT query. Absent, or unresolved, falls back to the global mode, which is safe during soak.
    */
-  readModeFor?(runId: string, environmentId?: string): SnapshotStoreMode;
+  readModeFor?(runId: string, environmentId?: string): SnapshotStoreMode | undefined;
   /**
    * Optional, cheap. Is ANY organisation currently at `redis-read` or `redis-only`. When false and
    * the global dial is not itself at a read position, a read short-circuits to Postgres without
