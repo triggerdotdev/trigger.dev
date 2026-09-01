@@ -7,6 +7,7 @@ import {
   FeatureFlagCatalog,
   GLOBAL_LOCKED_FLAGS,
   GRACED_FLAG_GROUPS,
+  stampSnapshotStoreGlobalModeEverEnabled,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
 import { env } from "~/env.server";
@@ -295,6 +296,26 @@ export async function applyGlobalGracedFlips(
   return applied;
 }
 
+// One-way global mode latch for the merge-semantics JSON admin API, whose two write branches would
+// otherwise bypass the stamp. Reading outside a transaction is safe: a one-way latch only ever
+// races to write true twice.
+export async function stampGlobalModeLatchForMerge<T extends Record<string, unknown>>(
+  client: PrismaClientOrTransaction,
+  requestedFlags: T
+): Promise<T> {
+  const stored = await client.featureFlag.findFirst({
+    where: { key: FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled },
+    select: { value: true },
+  });
+  // The stamp is the only writer, so an operator-supplied value (a `false` above all) never counts.
+  const stamped = { ...requestedFlags };
+  delete stamped[FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled];
+  return stampSnapshotStoreGlobalModeEverEnabled(
+    { [FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled]: stored?.value },
+    stamped
+  ) as T;
+}
+
 // Replace-semantics write for the global admin flags page: submitted flags upsert, omitted ones
 // delete unless protected. One transaction covers the stamp, the upserts and the deletes, so a
 // save cannot half-apply.
@@ -315,6 +336,8 @@ export async function replaceGlobalFeatureFlags(
   }
 ): Promise<void> {
   const requestedFlags = withoutDerivedKeys(params.requestedFlags);
+  // System-set latch: the save path is its only writer, so an operator-supplied value never counts.
+  delete requestedFlags[FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled];
 
   // A locked flag absent from the payload means the page never offered it, not that the admin
   // unset it, so it survives. Only a self-hosted page that says it unlocked them may delete one.
@@ -325,6 +348,15 @@ export async function replaceGlobalFeatureFlags(
   const applied = await $transaction(client, "replaceGlobalFeatureFlags", async (tx) => {
     await lockGracedGroups(tx);
     const stamped = await stampGracedGroups(tx, requestedFlags, params.graceMs);
+
+    // One-way global mode latch: OR the stored value with "enabling now" so a save back to off
+    // never clears it. Forced into the write set and out of the sweep below.
+    const latchKey = FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled;
+    const storedLatch = await tx.featureFlag.findFirst({
+      where: { key: latchKey },
+      select: { value: true },
+    });
+    stampSnapshotStoreGlobalModeEverEnabled({ [latchKey]: storedLatch?.value }, stamped);
 
     const toWrite: Record<string, unknown> = {};
     const keysToDelete: string[] = [];
@@ -348,6 +380,13 @@ export async function replaceGlobalFeatureFlags(
       } else if (!isProtected(key)) {
         keysToDelete.push(key);
       }
+    }
+
+    // Never delete the latch, even on a self-hosted unlock: write it and drop it from the sweep.
+    if (stamped[latchKey] === true) {
+      toWrite[latchKey] = true;
+      const deleteIndex = keysToDelete.indexOf(latchKey);
+      if (deleteIndex !== -1) keysToDelete.splice(deleteIndex, 1);
     }
 
     // One round trip to learn the stored values, then a write only for what actually differs.

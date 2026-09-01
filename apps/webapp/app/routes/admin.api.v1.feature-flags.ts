@@ -7,6 +7,7 @@ import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import {
   applyGlobalGracedFlips,
   makeSetMultipleFlags,
+  stampGlobalModeLatchForMerge,
   touchesGracedGroup,
   withoutDerivedKeys,
 } from "~/v3/featureFlags.server";
@@ -58,9 +59,12 @@ export async function action({ request }: ActionFunctionArgs) {
       typeof validationResult.data
     >;
 
-    const updatedFlags = touchesGracedGroup(requestedFlags)
-      ? await applyGlobalGracedFlips(prisma, requestedFlags, env.RUN_OPS_MINT_FLIP_GRACE_MS)
-      : await makeSetMultipleFlags(prisma)(requestedFlags);
+    // Stamp the one-way global mode latch before the write, so neither merge branch bypasses it.
+    const stampedFlags = await stampGlobalModeLatchForMerge(prisma, requestedFlags);
+
+    const updatedFlags = touchesGracedGroup(stampedFlags)
+      ? await applyGlobalGracedFlips(prisma, stampedFlags, env.RUN_OPS_MINT_FLIP_GRACE_MS)
+      : await makeSetMultipleFlags(prisma)(stampedFlags);
 
     return json({
       success: true,
