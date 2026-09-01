@@ -27,6 +27,15 @@ jobs:
       cli: ${{ steps.filter.outputs.cli }}
       sdk: ${{ steps.filter.outputs.sdk }}
     steps:
+      # Merge queue events use Git to compare the synthetic merge commit with
+      # its captured base, while pull request events use the GitHub API.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: github.event_name == 'merge_group'
+        with:
+          fetch-depth: 20
+          filter: blob:none
+          persist-credentials: false
+
       # `code` uses `every` semantics so the negation patterns actually subtract.
       # With the default `some` quantifier, `**` matches every file and the
       # subsequent `!...` patterns are no-ops (each pattern is OR'd, not AND'd).
