@@ -4,7 +4,7 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/**/*.{js,mjs,cjs,ts,mts,cts}"],
-      "ignoreDependencies": ["agentcrumbs", "eslint", "lefthook"],
+      "ignoreDependencies": ["agentcrumbs", "eslint"],
       "ignoreBinaries": ["infisical", "prisma"]
     },
     "apps/supervisor": {

@@ -2,7 +2,6 @@ import { formatTriggerUri } from "@internal/dashboard-agent-contracts";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { type Prettify, type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
 import {
-  boundedIn,
   type PrismaClientOrTransaction,
   type TaskQueue,
   type TaskRunStatus,
@@ -11,12 +10,13 @@ import {
 } from "@trigger.dev/database";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 
-export type SlotHolderPhase = "admitted" | "dequeued";
+type SlotHolderPhase = "admitted" | "dequeued";
 export type SlotHolderConsistency = "consistent" | "mismatch" | "unresolved";
 /** "not_found": a Redis slot holder with no matching TaskRun row. */
-export type SlotHolderStatus = TaskRunStatus | "not_found";
+type SlotHolderStatus = TaskRunStatus | "not_found";
 
 /** Env-scope concurrency, alongside the queue row — the queue can show headroom while the env is saturated. */
 export type EnvConcurrency = {
@@ -247,21 +247,19 @@ export class QueueRetrievePresenter extends BasePresenter {
       return unresolved;
     }
 
-    let runs: { id: string; friendlyId: string; status: TaskRunStatus }[] | undefined;
+    let runsById: Map<string, { friendlyId: string; status: TaskRunStatus }> | undefined;
     if (snapshot.holders.length > 0) {
       try {
-        runs = await this._replica.taskRun.findMany({
-          where: { id: { in: boundedIn(snapshot.holders.map((holder) => holder.runId)) } },
-          select: { id: true, friendlyId: true, status: true },
-        });
+        runsById = await runStore.findRunsByIds(
+          snapshot.holders.map((holder) => holder.runId),
+          { select: { friendlyId: true, status: true } }
+        );
       } catch {
-        runs = undefined;
+        runsById = undefined;
       }
     } else {
-      runs = [];
+      runsById = new Map();
     }
-
-    const runsById = runs ? new Map(runs.map((run) => [run.id, run])) : undefined;
 
     // An empty member id can't be formatted into a URI, so it can't be reported.
     const slotHolders = snapshot.holders

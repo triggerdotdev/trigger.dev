@@ -147,9 +147,9 @@ const DEFAULT_SLOT_HOLDER_MAX_VARIANTS = 50;
  * "admitted": the run holds a concurrency slot (member of currentConcurrency).
  * "dequeued": a worker has also pulled it off the worker queue (member of currentDequeued).
  */
-export type QueueSlotHolderPhase = "admitted" | "dequeued";
+type QueueSlotHolderPhase = "admitted" | "dequeued";
 
-export type QueueSlotHolder = {
+type QueueSlotHolder = {
   runId: string;
   concurrencyKey: string | null;
   phase: QueueSlotHolderPhase;
