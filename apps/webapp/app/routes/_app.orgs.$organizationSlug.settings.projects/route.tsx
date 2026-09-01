@@ -1,4 +1,4 @@
-import { NODE_RUNTIME_UPDATE_MAJOR } from "@trigger.dev/core/v3";
+import { needsNodeRuntimeUpdate } from "@trigger.dev/core/v3";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { listCurrentProductionProjectRuntimes } from "~/services/projectRuntimeUpdates.server";
@@ -54,7 +54,7 @@ export const loader = dashboardLoader(
           : null,
       };
 
-      if (deployment?.nodeMajor === NODE_RUNTIME_UPDATE_MAJOR) {
+      if (deployment && needsNodeRuntimeUpdate(deployment.runtime, deployment.runtimeVersion)) {
         needsUpdate.push(row);
       } else {
         otherProjects.push(row);
