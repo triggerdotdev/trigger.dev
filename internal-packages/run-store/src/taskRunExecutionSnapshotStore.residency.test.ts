@@ -33,8 +33,8 @@ describe("store residency is decided at birth", () => {
 
   it("does NOT let the dial decide a TRANSITION, at either scope", () => {
     // The run is already resident or already absent. Asking the dial again is what allows a run to
-    // change stores half way through its life, and the seam takes no organisation id so the
-    // compiler holds that line. Stopping writes outright is the halt switch; see the hardStop suite.
+    // change stores half way through its life. The seam takes an organisation id but must ignore it
+    // for a transition. Stopping writes outright is the halt switch; see the hardStop suite.
     expect(
       storeWith("off", resolverOf({ org_off: "off" }, "dual-write")).writesRedisForTransitionTest()
     ).toBe(true);

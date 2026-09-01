@@ -53,8 +53,8 @@ function bounded(value: string, allowed: readonly string[]): string {
 /** Exported so the paging rule for a forked append is written against the real name. */
 export const SNAPSHOT_STORE_WRITE_TOTAL = "run_engine.snapshot_store.write_total";
 
-// The soak cohort predicate. Task 9 wires the real org-mode source in; until then everyone is
-// "other", so the per-org label mints no series.
+// The soak cohort predicate. The injected `isCohortMember` decides the per-org label; the
+// `() => false` default labels everyone "other", minting no series, when no predicate is injected.
 export function createSnapshotStoreMetrics(
   meter: Meter,
   isCohortMember: (organizationId: string) => boolean = () => false

@@ -52,7 +52,7 @@ export function createSnapshotRunOrgSource(clients?: {
   });
   const inFlight = new Set<string>();
 
-  function read(runId: string, client: RunOrgClient): Promise<string> {
+  async function read(runId: string, client: RunOrgClient): Promise<string> {
     return client.taskRun
       .findFirst({
         where: { id: runId },

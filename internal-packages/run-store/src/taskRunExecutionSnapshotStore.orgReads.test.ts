@@ -77,6 +77,8 @@ describe("org-scoped read routing", () => {
     });
 
     expect(h.probe.readsFromRedis("run_a")).toBe(true);
+    // Complement to the short-circuit test's ==0: here the dial IS consulted per read.
+    expect(h.readModeForCalls()).toBeGreaterThan(0);
 
     await h.decorated.findSnapshotCompletedWaitpointIds("snap_1", undefined, "run_a");
     expect(h.redisTouched).toContain("getSnapshotWaitpointIds");
@@ -128,7 +130,7 @@ describe("org-scoped read routing", () => {
   });
 });
 
-describe("global read routing is byte-identical with a pass-through resolver", () => {
+describe("resolver is transparent to routing when no per-org override applies", () => {
   const ids = Array.from({ length: 500 }, (_, n) => `run_cohort_${n}_${n * 7919}`);
 
   function plain(mode: SnapshotStoreMode, readPercent: number): CohortProbe {

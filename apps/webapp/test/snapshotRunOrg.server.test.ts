@@ -80,6 +80,27 @@ describe("snapshot run→org source", () => {
     await expect(source.resolveAuthoritative("run_a")).rejects.toThrow();
   });
 
+  it("resolve stays silent and releases in-flight when findFirst throws synchronously", async () => {
+    let calls = 0;
+    const throwing = {
+      taskRun: {
+        findFirst() {
+          calls++;
+          throw new Error("sync boom");
+        },
+      },
+    } as unknown as NonNullable<Parameters<typeof createSnapshotRunOrgSource>[0]>["replica"];
+    const source = createSnapshotRunOrgSource({ primary: throwing, replica: throwing });
+
+    expect(() => source.resolve("run_a")).not.toThrow();
+
+    await tick();
+
+    // In-flight was released, so a fresh miss starts a new populate rather than wedging forever.
+    expect(() => source.resolve("run_a")).not.toThrow();
+    expect(calls).toBe(2);
+  });
+
   it("resolveAuthoritative throws when the read exceeds the deadline", async () => {
     const primary = fakeClient({ mapping: { run_a: "org_a" }, delayMs: 2000 });
     const source = createSnapshotRunOrgSource({ primary, replica: primary });
