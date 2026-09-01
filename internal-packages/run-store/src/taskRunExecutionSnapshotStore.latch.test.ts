@@ -2,13 +2,11 @@
 // only record of that, so at `off` AFTER a ramp every transition still has to ask or a resident
 // run's head freezes while Postgres moves on.
 //
-// Before any ramp, nothing CAN be resident: only a birth creates a keyspace and every birth was
-// refused. So the question has one possible answer and asking it is pure cost. Measured: 2 per cent
-// with a healthy endpoint, four times the run duration with a slow one, for every run, and it did
-// not decay.
-//
-// The latch is one way. Unset means this deployment has never enabled the store, so transitions skip
-// it entirely. Once set it is never cleared, and `off` returns to meaning "drain".
+// A transition may therefore be skipped only when nothing of this org's could be resident. A run is
+// resident only if its org's dial was non-off at its birth, i.e. the global dial had ever gone
+// non-off OR the org itself was ever enabled. So the skip is sound only when the global dial has
+// NEVER been non-off (globalModeEverEnabled() === false) AND this org is DEFINITELY never-enabled
+// (orgDefinitelyNeverEnabled(org) === true). Any uncertainty falls to "probe".
 import { describe, expect, it } from "vitest";
 import { TaskRunExecutionSnapshotStore } from "./taskRunExecutionSnapshotStore.js";
 import type { SnapshotStoreModeResolver } from "./taskRunExecutionSnapshotStore.js";
@@ -24,8 +22,8 @@ const SCOPE = {
 
 function harness(opts: {
   mode: "off" | "dual-write";
-  everEnabled?: boolean;
-  everEnabledForOrg?: (organizationId: string) => boolean;
+  globalModeEverEnabled?: boolean;
+  orgDefinitelyNeverEnabled?: (organizationId: string) => boolean;
 }) {
   const touched: string[] = [];
   const redis = new Proxy({} as RedisSnapshotStore, {
@@ -42,8 +40,12 @@ function harness(opts: {
 
   const modeResolver: SnapshotStoreModeResolver = {
     resolve: () => opts.mode,
-    ...(opts.everEnabled !== undefined && { everEnabled: () => opts.everEnabled! }),
-    ...(opts.everEnabledForOrg && { everEnabledForOrg: opts.everEnabledForOrg }),
+    ...(opts.globalModeEverEnabled !== undefined && {
+      globalModeEverEnabled: () => opts.globalModeEverEnabled!,
+    }),
+    ...(opts.orgDefinitelyNeverEnabled && {
+      orgDefinitelyNeverEnabled: opts.orgDefinitelyNeverEnabled,
+    }),
   };
 
   const decorated = new TaskRunExecutionSnapshotStore(delegate, {
@@ -73,27 +75,67 @@ const completion = {
   },
 };
 
-describe("the residency latch", () => {
-  it("a transition touches the store NOT AT ALL while the latch is unset", async () => {
-    const h = harness({ mode: "off", everEnabled: false });
+describe("the sound transition skip", () => {
+  it("touches the store NOT AT ALL for a definitely-never org while the global dial has never moved", async () => {
+    // The assertion the whole change exists for: no keyspace can exist for this org, so no probe.
+    const h = harness({
+      mode: "dual-write",
+      globalModeEverEnabled: false,
+      orgDefinitelyNeverEnabled: () => true,
+    });
 
-    await h.decorated.completeAttemptSuccess("run_1", completion, { select: { id: true } });
+    await h.decorated.completeAttemptSuccess("run_1", completionForOrg("org_a"), {
+      select: { id: true },
+    });
 
-    // The assertion the whole change exists for: no probe, so Redis is off the run path entirely.
     expect(h.touched).toEqual([]);
   });
 
-  it("a transition still asks once the latch is set, even at off", async () => {
-    // Non-negotiable. A run resident from an earlier ramp must keep mirroring, or its head freezes
-    // and the remedy becomes worse than the fault.
-    const h = harness({ mode: "off", everEnabled: true });
+  it("still probes an org that has ever been enabled", async () => {
+    // orgDefinitelyNeverEnabled is false for an org that may hold resident runs, so it keeps asking.
+    const h = harness({
+      mode: "dual-write",
+      globalModeEverEnabled: false,
+      orgDefinitelyNeverEnabled: (org) => org !== "org_a",
+    });
 
-    await h.decorated.completeAttemptSuccess("run_1", completion, { select: { id: true } });
+    await h.decorated.completeAttemptSuccess("run_1", completionForOrg("org_a"), {
+      select: { id: true },
+    });
 
     expect(h.touched).toContain("append");
   });
 
-  it("asks when the resolver offers no latch, so an unlatched deployment is unchanged", async () => {
+  it("never skips once the global dial has ever been non-off, even for a definitely-never org", async () => {
+    // Non-negotiable. Once the global dial has moved, resident runs exist, and suppressing their
+    // transitions freezes a head while Postgres advances. The global latch beats the per-org one.
+    const h = harness({
+      mode: "off",
+      globalModeEverEnabled: true,
+      orgDefinitelyNeverEnabled: () => true,
+    });
+
+    await h.decorated.completeAttemptSuccess("run_1", completionForOrg("org_a"), {
+      select: { id: true },
+    });
+
+    expect(h.touched).toContain("append");
+  });
+
+  it("never skips when the organisation is undefined", () => {
+    // No org id means orgDefinitelyNeverEnabled cannot be consulted, so an unknown org errs toward
+    // asking. The per-org term is only reached once an org id is supplied.
+    const h = harness({
+      mode: "dual-write",
+      globalModeEverEnabled: false,
+      orgDefinitelyNeverEnabled: () => true,
+    });
+
+    expect(h.decorated.writesRedisForTransitionTest()).toBe(true);
+    expect(h.decorated.writesRedisForTransitionTest("org_a")).toBe(false);
+  });
+
+  it("asks when the resolver offers no latch signals, so an unwired deployment is unchanged", async () => {
     const h = harness({ mode: "off" });
 
     await h.decorated.completeAttemptSuccess("run_1", completion, { select: { id: true } });
@@ -101,61 +143,21 @@ describe("the residency latch", () => {
     expect(h.touched).toContain("append");
   });
 
-  it("never suppresses a transition once the dial itself is past off", async () => {
-    // Belt and braces: the guard makes this state unreachable, but if it ever occurred, suppressing
-    // transitions while births are mirroring is the one combination that strands a head.
-    const h = harness({ mode: "dual-write", everEnabled: false });
-
-    await h.decorated.completeAttemptSuccess("run_1", completion, { select: { id: true } });
-
-    expect(h.touched).toContain("append");
-  });
-});
-
-describe("the per-organisation latch", () => {
-  it("keeps redis off a never-enabled org's transition path", async () => {
-    // Deployment-wide latch unset AND this org's latch unset: nothing can be resident for it, so the
-    // probe is pure cost even though the dial has moved past off for the ramping orgs.
-    const h = harness({
-      mode: "dual-write",
-      everEnabled: false,
-      everEnabledForOrg: () => false,
+  it("asks when only one of the two signals permits a skip", () => {
+    // Both halves are required. A cold census (orgDefinitelyNeverEnabled false) with an unmoved
+    // global dial must still probe, and vice versa.
+    const globalOnly = harness({
+      mode: "off",
+      globalModeEverEnabled: false,
+      orgDefinitelyNeverEnabled: () => false,
     });
+    expect(globalOnly.decorated.writesRedisForTransitionTest("org_a")).toBe(true);
 
-    await h.decorated.completeAttemptSuccess("run_1", completionForOrg("org_a"), {
-      select: { id: true },
+    const orgOnly = harness({
+      mode: "off",
+      globalModeEverEnabled: true,
+      orgDefinitelyNeverEnabled: () => true,
     });
-
-    expect(h.touched).toEqual([]);
-  });
-
-  it("still probes an org whose latch is set", async () => {
-    // An org that has ever been enabled may hold resident runs, so its transitions must keep asking.
-    const h = harness({
-      mode: "dual-write",
-      everEnabled: false,
-      everEnabledForOrg: (org) => org === "org_a",
-    });
-
-    await h.decorated.completeAttemptSuccess("run_1", completionForOrg("org_a"), {
-      select: { id: true },
-    });
-
-    expect(h.touched).toContain("append");
-  });
-
-  it("falls back to the global-only latch when the org is undefined", () => {
-    // No org id means the per-org latch cannot be consulted, so an unknown org errs toward asking:
-    // the deployment-wide check alone decides, exactly as before this latch existed.
-    const h = harness({
-      mode: "dual-write",
-      everEnabled: false,
-      everEnabledForOrg: () => false,
-    });
-
-    // Past off with the global latch unset, so the global-only check probes; the per-org term is
-    // only reached once an org id is supplied.
-    expect(h.decorated.writesRedisForTransitionTest()).toBe(true);
-    expect(h.decorated.writesRedisForTransitionTest("org_a")).toBe(false);
+    expect(orgOnly.decorated.writesRedisForTransitionTest("org_a")).toBe(true);
   });
 });

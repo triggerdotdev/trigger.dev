@@ -98,29 +98,26 @@ export type SnapshotStoreModeResolver = {
    */
   warm?(organizationId: string): Promise<void>;
   /**
-   * Optional one-way latch: has this deployment EVER had the store enabled.
+   * Optional one-way global latch: has the deployment-wide dial EVER been non-off. False means the
+   * global dial has never moved, so nothing was born resident by the global position; combined with a
+   * definite per-org negative it is what lets a transition skip the keyspace probe. It is what makes
+   * `off` genuinely inert rather than merely quiet: measured at 2 per cent with a healthy endpoint
+   * and four times the run duration with a slow one, for every run, with no decay.
    *
-   * Absent, or true, means behave as before. False means nothing can be resident yet, because only a
-   * birth creates a keyspace and every birth so far was refused, so a transition's question has one
-   * possible answer and asking it is pure cost. It is what makes `off` genuinely inert rather than
-   * merely quiet: measured at 2 per cent with a healthy endpoint and four times the run duration
-   * with a slow one, for every run, with no decay.
-   *
-   * MUST be synchronous and MUST NOT query, for the same reason `resolve` must not.
+   * MUST be synchronous and MUST NOT query. Conservative when cold: absent or true means "do not
+   * skip", so any uncertainty keeps probing.
    */
-  everEnabled?(): boolean;
+  globalModeEverEnabled?(): boolean;
   /**
-   * Optional per-organisation one-way latch: has this organisation EVER had the store enabled.
+   * Optional per-organisation definite negative: is this organisation DEFINITELY never-enabled, i.e.
+   * a source that is loaded AND has never seen this org enabled. True is the other half of the sound
+   * skip: with the global dial unmoved and this org definitely never-enabled, no birth of its runs
+   * ever mirrored, so no keyspace exists and a transition would be refused anyway.
    *
-   * The deployment-wide `everEnabled` goes true the moment ANY organisation is enabled, so on its
-   * own it puts a residency probe back on every other organisation's transition path the instant one
-   * organisation ramps. This narrows that: an organisation whose own latch is provably unset has had
-   * no birth mirror, so no keyspace exists for its runs and a transition would be refused anyway.
-   *
-   * Same contract as `everEnabled`: synchronous, MUST NOT query, and false ONLY when provably never
-   * enabled. Absent, true, or unknown all mean treat as enabled and keep probing.
+   * MUST be synchronous and MUST NOT query. Absent, false, or unknown (cold source) all mean "do not
+   * skip", so any uncertainty keeps probing.
    */
-  everEnabledForOrg?(organizationId: string): boolean;
+  orgDefinitelyNeverEnabled?(organizationId: string): boolean;
   /**
    * Optional. The effective READ position for one run, org-scoped so a single org can be soaked at
    * `redis-read` while everyone else stays on Postgres. Same contract as `resolve`: synchronous, MUST
@@ -326,33 +323,25 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return false;
     }
 
-    // The latch, and the ONLY case where a transition may be skipped without a keyspace check.
-    // Sound because residency is created by births alone: with the latch unset no birth has ever
+    // The ONLY case where a transition may be skipped without a keyspace check. Soundness invariant:
+    // a run is resident only if modeFor(org) != off at its birth, i.e. the org had an override OR the
+    // global dial was non-off. So skipping is safe only when the global dial was NEVER non-off
+    // (globalModeEverEnabled() === false) AND this org is DEFINITELY never-enabled
+    // (orgDefinitelyNeverEnabled(org) === true). With both true, no birth of this org's runs ever
     // mirrored, so no keyspace exists and the append script would refuse every one of these anyway.
+    // Any uncertainty (cold registry or census, absent signal, undefined org) leaves a guard
+    // unsatisfied and the transition probes: fail-safe toward asking.
     //
-    // Deliberately ignores the dial otherwise. Once the latch is set, `off` still mirrors a resident
-    // run's transitions, because the alternative freezes its head while Postgres moves on, and that
-    // makes turning the dial down worse than leaving it alone.
-    //
-    // The guard on the flag save refuses to enable anything until the latch is true, so "latch unset
-    // while runs are resident" is unreachable rather than merely unlikely.
-    if (this.modeResolver?.everEnabled?.() === false && this.mode === "off") {
-      return false;
-    }
-
-    // The per-org latch, an ADDITIONAL skip that keeps Redis off a never-enabled organisation once
-    // the dial has moved past off for the ramping ones. Sound for the same reason as the global
-    // latch: with both latches unset no birth of this org's runs ever mirrored, so no keyspace
-    // exists and the append script would refuse every one of these anyway.
-    //
-    // Only ever an additional skip. With no org id, or an absent or non-false per-org answer, this
-    // is not reached and the global-only check above decides alone, so an unknown org errs toward
-    // asking. Blind to the dial like the global latch, since the latch is one-way and cannot flip a
-    // ramped org's runs back to non-resident mid-life.
+    // Accepted transient at the enabling edge, not made airtight: the census is eventually
+    // consistent, so a just-enabled org may briefly still read as definitely-never-enabled and a
+    // transition could skip. It is recoverable (the census reloads within its interval and later
+    // transitions mirror again) and harmless at dual-write (Postgres is authoritative; an org reaches
+    // a read position only after soak far longer than census convergence). The enabling save refreshes
+    // the census in its own process to shrink the window; other pods lag at most the reload interval.
     if (
       organizationId !== undefined &&
-      this.modeResolver?.everEnabled?.() === false &&
-      this.modeResolver?.everEnabledForOrg?.(organizationId) === false
+      this.modeResolver?.globalModeEverEnabled?.() === false &&
+      this.modeResolver?.orgDefinitelyNeverEnabled?.(organizationId) === true
     ) {
       return false;
     }

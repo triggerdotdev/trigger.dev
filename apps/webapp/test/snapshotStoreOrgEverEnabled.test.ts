@@ -5,7 +5,6 @@ import {
   stampSnapshotStoreOrgEverEnabled,
   withoutOrgForbiddenSnapshotKeys,
 } from "~/v3/featureFlags";
-import { createOrgModeSource } from "~/v3/snapshotStoreMode.server";
 
 const MODE = FEATURE_FLAG.snapshotStoreOrgMode;
 const LATCH = FEATURE_FLAG.snapshotStoreOrgEverEnabled;
@@ -60,50 +59,5 @@ describe("clearedOrgFlagsPreservingLatch (clear-all keeps the one-way latch)", (
 
   it("never treats a false latch as latched", () => {
     expect(clearedOrgFlagsPreservingLatch({ [LATCH]: false })).toBeNull();
-  });
-});
-
-describe("orgEverEnabled reader", () => {
-  function clientReturning(flags: unknown) {
-    return {
-      organization: { findFirst: () => Promise.resolve({ featureFlags: flags }) },
-    } as never;
-  }
-
-  it("returns undefined for an unknown organisation (cache miss)", () => {
-    const source = createOrgModeSource({
-      primary: clientReturning({}),
-      replica: clientReturning({}),
-    });
-    expect(source.orgEverEnabled("org_unknown")).toBeUndefined();
-  });
-
-  it("returns the cached true latch", async () => {
-    const source = createOrgModeSource({
-      primary: clientReturning({}),
-      replica: clientReturning({ [LATCH]: true }),
-    });
-    await source.warm("org_1");
-    expect(source.orgEverEnabled("org_1")).toBe(true);
-  });
-
-  it("returns the cached false latch, distinct from absent", async () => {
-    const source = createOrgModeSource({
-      primary: clientReturning({}),
-      replica: clientReturning({ [LATCH]: false }),
-    });
-    await source.warm("org_1");
-    expect(source.orgEverEnabled("org_1")).toBe(false);
-  });
-
-  it("returns undefined when the cached flags omit the latch (not false)", async () => {
-    const source = createOrgModeSource({
-      primary: clientReturning({}),
-      replica: clientReturning({ [MODE]: "dual-write" }),
-    });
-    await source.warm("org_1");
-    // The dial is cached, but the latch key is absent, so the reader must not report false.
-    expect(source.get("org_1")).toBe("dual-write");
-    expect(source.orgEverEnabled("org_1")).toBeUndefined();
   });
 });

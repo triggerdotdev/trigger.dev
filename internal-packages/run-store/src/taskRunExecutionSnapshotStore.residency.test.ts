@@ -49,4 +49,20 @@ describe("store residency is decided at birth", () => {
       expect(s.writesRedisForTransitionTest()).toBe(true);
     }
   });
+
+  it("keeps an org-scoped transition on once the global dial has ever moved, whatever the census says", () => {
+    // The sound skip needs BOTH the global dial unmoved AND the org definitely-never-enabled. With
+    // the global latch set, a resident run exists, so an org-scoped transition must still mirror even
+    // if the census believes the org was never enabled.
+    const s = new TaskRunExecutionSnapshotStore({} as unknown as RunStore, {
+      store: {} as never,
+      mode: "off",
+      modeResolver: {
+        resolve: () => "off",
+        globalModeEverEnabled: () => true,
+        orgDefinitelyNeverEnabled: () => true,
+      },
+    });
+    expect(s.writesRedisForTransitionTest("org_a")).toBe(true);
+  });
 });

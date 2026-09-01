@@ -9,6 +9,7 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
 import { invalidateSnapshotStoreOrgMode } from "~/v3/snapshotStoreMode.server";
+import { snapshotStoreOrgCensus } from "~/v3/snapshotStoreOrgCensus.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
@@ -220,6 +221,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Org feature flags are embedded in every env of the org; drop all its cached env rows.
   controlPlaneResolver.invalidateOrganization(organizationId);
   invalidateSnapshotStoreOrgMode(organizationId);
+  // Refresh the census in THIS process at once, so a just-enabled org stops reading as
+  // definitely-never-enabled here immediately. Other pods lag at most the reload interval. This only
+  // shrinks the enabling-edge transient at the transition skip; it does not make it airtight.
+  void snapshotStoreOrgCensus.refresh();
 
   return json({ success: true });
 }

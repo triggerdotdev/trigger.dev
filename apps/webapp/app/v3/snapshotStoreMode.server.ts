@@ -37,27 +37,12 @@ export function cachedOrgModeFor(raw: unknown): CachedOrgMode {
   return parsed.success ? parsed.data : NO_OVERRIDE;
 }
 
-/**
- * The per-org residency latch, cached alongside the dial from the same row. `undefined` means the
- * key was absent or unreadable, kept distinct from an explicit `false` so the resolver's fail-safe
- * treats absence as "still probe" rather than "never enabled".
- */
-export function cachedOrgEverEnabledFor(raw: unknown): boolean | undefined {
-  const parsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgEverEnabled].safeParse(raw);
-  return parsed.success ? parsed.data : undefined;
-}
-
-/** One organisation's cached blob values, both read from the same row. */
-type CachedOrg = { mode: CachedOrgMode; everEnabled: boolean | undefined };
+/** One organisation's cached dial value. */
+type CachedOrg = { mode: CachedOrgMode };
 
 type OrgModeSource = {
   /** Cache-only: returns undefined on a true miss rather than querying. */
   get(organizationId: string): CachedOrgMode | undefined;
-  /**
-   * Cache-only read of the per-org residency latch. undefined on a miss OR a cached-but-absent key
-   * (both mean "still probe"); a definite boolean only when the key was explicitly set.
-   */
-  orgEverEnabled(organizationId: string): boolean | undefined;
   /** Fire-and-forget, de-duplicated per organisation, never throws. */
   refresh(organizationId: string): void;
   /** Re-reads from the primary after a write, so replica lag cannot re-cache the old value. */
@@ -86,10 +71,17 @@ type ResolverCensus = {
 
 export function buildSnapshotStoreModeResolver(deps: {
   globalMode: () => DialMode | undefined;
-  /** The one-way residency latch. Absent is treated as latched, so behaviour is unchanged. */
-  everEnabled?: () => boolean | undefined;
-  /** The per-organisation residency latch. Absent is treated as latched, so behaviour is unchanged. */
-  everEnabledForOrg?: (organizationId: string) => boolean | undefined;
+  /**
+   * The one-way global-mode latch, cold-aware: true when the global dial has ever been non-off, and
+   * also true when the source is cold, so a cold read never permits a transition skip. Only a loaded
+   * source with the latch unset returns false. Absent is treated as true (never skip).
+   */
+  globalModeEverEnabled?: () => boolean;
+  /**
+   * Whether an org is DEFINITELY never-enabled, per the census. Absent or cold means false, so an
+   * unknown answer keeps probing rather than suppressing a resident run.
+   */
+  orgDefinitelyNeverEnabled?: (organizationId: string) => boolean;
   orgMode: ResolverOrgSource;
   /** Run→org resolution for the read path. Absent means readModeFor always falls back to global. */
   runOrg?: ResolverRunOrgSource;
@@ -124,13 +116,13 @@ export function buildSnapshotStoreModeResolver(deps: {
   };
 
   return {
-    // False ONLY when the flag is explicitly false. An unreadable or cold registry must never
-    // report "never enabled", because that would suppress transitions for runs that are resident.
-    everEnabled: (): boolean => deps.everEnabled?.() !== false,
-    // Same fail-safe as the global latch: false ONLY when this org's flag is explicitly false, so an
-    // absent source or unknown org keeps probing rather than suppressing a resident run.
-    everEnabledForOrg: (organizationId: string): boolean =>
-      deps.everEnabledForOrg?.(organizationId) !== false,
+    // Cold-aware read delegated to deps; absent means true, so a transition never skips on a missing
+    // signal. The deps reader answers true while its source is cold.
+    globalModeEverEnabled: (): boolean => deps.globalModeEverEnabled?.() ?? true,
+    // False ONLY on a definite census negative; absent or cold means false, so an unknown answer
+    // keeps probing rather than suppressing a resident run.
+    orgDefinitelyNeverEnabled: (organizationId: string): boolean =>
+      deps.orgDefinitelyNeverEnabled?.(organizationId) ?? false,
     // Awaited at birth sites only. Absent org id means nothing to look up, so it is a no-op.
     warm: async (organizationId: string): Promise<void> => {
       await deps.orgMode.warm?.(organizationId);
@@ -220,7 +212,6 @@ export function createOrgModeSource(clients?: {
 
   return {
     get: (organizationId) => cache.get(organizationId)?.mode,
-    orgEverEnabled: (organizationId) => cache.get(organizationId)?.everEnabled,
     invalidate: (organizationId) => {
       // Drop first, so a resolve between now and the re-read falls back rather than serving a
       // value the write just replaced.
@@ -304,7 +295,6 @@ export function createOrgModeSource(clients?: {
         }
         cache.set(organizationId, {
           mode: cachedOrgModeFor(flags?.[FEATURE_FLAG.snapshotStoreOrgMode]),
-          everEnabled: cachedOrgEverEnabledFor(flags?.[FEATURE_FLAG.snapshotStoreOrgEverEnabled]),
         });
         return "loaded" as const;
       })
@@ -325,7 +315,15 @@ function orgModeSource(): OrgModeSource {
 
 export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapshotStoreModeResolver({
   globalMode: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreMode],
-  everEnabled: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreEverEnabled],
+  globalModeEverEnabled: () => {
+    // Conservative cold default: a cold registry must never permit a transition skip, so answer
+    // true. Only a loaded registry with the latch unset answers false (skip permitted).
+    const cur = globalFlagsRegistry.current();
+    if (cur === undefined) return true;
+    return cur[FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled] === true;
+  },
+  orgDefinitelyNeverEnabled: (organizationId) =>
+    snapshotStoreOrgCensus.orgDefinitelyNeverEnabled(organizationId),
   orgMode: {
     get: (organizationId) => orgModeSource().get(organizationId),
     refresh: (organizationId) => orgModeSource().refresh(organizationId),
