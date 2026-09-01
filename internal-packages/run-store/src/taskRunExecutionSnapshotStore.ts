@@ -121,6 +121,19 @@ export type SnapshotStoreModeResolver = {
    * enabled. Absent, true, or unknown all mean treat as enabled and keep probing.
    */
   everEnabledForOrg?(organizationId: string): boolean;
+  /**
+   * Optional. The effective READ position for one run, org-scoped so a single org can be soaked at
+   * `redis-read` while everyone else stays on Postgres. Same contract as `resolve`: synchronous, MUST
+   * NOT query. Absent, or unresolved, falls back to the global mode, which is safe during soak.
+   */
+  readModeFor?(runId: string, environmentId?: string): SnapshotStoreMode;
+  /**
+   * Optional, cheap. Is ANY organisation currently at `redis-read` or `redis-only`. When false and
+   * the global dial is not itself at a read position, a read short-circuits to Postgres without
+   * resolving the run's org, keeping the dual-write soak phase at zero new read cost. Same contract:
+   * synchronous, MUST NOT query.
+   */
+  anyOrgReadEnabled?(): boolean;
 };
 
 /**
@@ -1038,13 +1051,27 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     this.metrics?.recordRead(method, "postgres");
   }
 
-  protected readsFromRedis(runId: string): boolean {
-    if (this.mode !== "redis-read" && this.mode !== "redis-only") return false;
+  protected readsFromRedis(runId: string, environmentId?: string): boolean {
+    // Short-circuit before any org resolution: while no org is read-enabled and the global dial is
+    // not itself at a read position, nothing reads from Redis, so skip resolving the run's org
+    // entirely. This is what keeps the dual-write soak phase at zero new read cost.
+    if (
+      this.modeResolver?.anyOrgReadEnabled?.() !== true &&
+      this.mode !== "redis-read" &&
+      this.mode !== "redis-only"
+    ) {
+      return false;
+    }
+
+    // The org-scoped read position, falling back to the global answer when unresolved.
+    const effective = this.modeResolver?.readModeFor?.(runId, environmentId) ?? this.mode;
+
+    if (effective !== "redis-read" && effective !== "redis-only") return false;
 
     // At `redis-only` the cohort dial has no meaning. Postgres holds no snapshot rows at that
     // position, so a run routed away from Redis reads nothing at all. Ignoring the percentage here
     // makes that misconfiguration unreachable rather than merely documented.
-    if (this.mode === "redis-only") return true;
+    if (effective === "redis-only") return true;
 
     // Halted heads are frozen, and below `redis-only` Postgres still holds the whole log, so serving
     // reads from it is strictly better than serving a head that stopped moving.
@@ -1067,7 +1094,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
-    if (!this.readsFromRedis(runId)) {
+    if (!this.readsFromRedis(runId, environmentId)) {
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
 
@@ -1115,7 +1142,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     client?: ReadClient
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null> {
     const shape = matchSinceCursorLookup(args);
-    if (!shape || !this.readsFromRedis(shape.runId)) {
+    if (!shape || !this.readsFromRedis(shape.runId, shape.environmentId)) {
       return this.delegate.findExecutionSnapshot(args, client);
     }
 
@@ -1147,7 +1174,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     client?: ReadClient
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
     const shape = matchSinceWindow(args);
-    if (!shape || !this.readsFromRedis(shape.runId)) {
+    if (!shape || !this.readsFromRedis(shape.runId, shape.environmentId)) {
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
 
