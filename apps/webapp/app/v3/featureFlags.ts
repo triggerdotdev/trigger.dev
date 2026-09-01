@@ -178,7 +178,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
-  [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write"]),
+  [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   /**
    * Whether this deployment has EVER had the store enabled. One way: set when the first dial or
    * per-organisation override moves past `off`, and never cleared automatically.

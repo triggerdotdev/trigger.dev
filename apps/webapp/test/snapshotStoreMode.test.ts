@@ -71,8 +71,9 @@ describe("snapshot store mode resolver", () => {
     expect(cachedOrgModeFor(undefined)).toBe(NO_OVERRIDE);
     expect(cachedOrgModeFor(null)).toBe(NO_OVERRIDE);
     expect(cachedOrgModeFor("not-a-mode")).toBe(NO_OVERRIDE);
-    expect(cachedOrgModeFor("redis-read")).toBe(NO_OVERRIDE);
     expect(cachedOrgModeFor("dual-write")).toBe("dual-write");
+    expect(cachedOrgModeFor("redis-read")).toBe("redis-read");
+    expect(cachedOrgModeFor("redis-only")).toBe("redis-only");
   });
 
   it("stops querying once an absent override is cached", () => {

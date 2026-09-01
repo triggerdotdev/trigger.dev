@@ -16,13 +16,11 @@ describe("snapshot store dial catalog", () => {
     expect(FeatureFlagCatalog.snapshotStoreMode.safeParse("redis-write").success).toBe(false);
   });
 
-  it("accepts only write positions per organisation", () => {
-    for (const value of ["off", "dual-write"]) {
+  it("accepts all four positions per organisation, so an org can be soaked at a read position", () => {
+    for (const value of ["off", "dual-write", "redis-read", "redis-only"]) {
       expect(FeatureFlagCatalog.snapshotStoreOrgMode.safeParse(value).success).toBe(true);
     }
-    // Reads are global, so an org at a read position would read state its own writes never created.
-    expect(FeatureFlagCatalog.snapshotStoreOrgMode.safeParse("redis-read").success).toBe(false);
-    expect(FeatureFlagCatalog.snapshotStoreOrgMode.safeParse("redis-only").success).toBe(false);
+    expect(FeatureFlagCatalog.snapshotStoreOrgMode.safeParse("redis-write").success).toBe(false);
   });
 
   it("lists the global dial as org-locked", () => {

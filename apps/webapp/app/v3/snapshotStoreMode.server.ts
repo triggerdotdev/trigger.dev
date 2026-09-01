@@ -16,8 +16,8 @@ export const NO_OVERRIDE = "__none__" as const;
  */
 type DialMode = "off" | "dual-write" | "redis-read" | "redis-only";
 
-/** Only the write positions are settable per organisation: reads are global. */
-type OrgDialMode = "off" | "dual-write";
+/** An organisation can be soaked at any ladder position, including the read positions. */
+type OrgDialMode = DialMode;
 
 type AssertSame<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 const _dialMatchesRunStore: AssertSame<DialMode, SnapshotStoreMode> = true;
