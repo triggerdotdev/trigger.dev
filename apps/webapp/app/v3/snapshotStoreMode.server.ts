@@ -35,9 +35,27 @@ export function cachedOrgModeFor(raw: unknown): CachedOrgMode {
   return parsed.success ? parsed.data : NO_OVERRIDE;
 }
 
+/**
+ * The per-org residency latch, cached alongside the dial from the same row. `undefined` means the
+ * key was absent or unreadable, kept distinct from an explicit `false` so the resolver's fail-safe
+ * treats absence as "still probe" rather than "never enabled".
+ */
+export function cachedOrgEverEnabledFor(raw: unknown): boolean | undefined {
+  const parsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgEverEnabled].safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** One organisation's cached blob values, both read from the same row. */
+type CachedOrg = { mode: CachedOrgMode; everEnabled: boolean | undefined };
+
 type OrgModeSource = {
   /** Cache-only: returns undefined on a true miss rather than querying. */
   get(organizationId: string): CachedOrgMode | undefined;
+  /**
+   * Cache-only read of the per-org residency latch. undefined on a miss OR a cached-but-absent key
+   * (both mean "still probe"); a definite boolean only when the key was explicitly set.
+   */
+  orgEverEnabled(organizationId: string): boolean | undefined;
   /** Fire-and-forget, de-duplicated per organisation, never throws. */
   refresh(organizationId: string): void;
   /** Re-reads from the primary after a write, so replica lag cannot re-cache the old value. */
@@ -148,7 +166,7 @@ export function createOrgModeSource(clients?: {
   const replicaClient = (clients?.replica ?? $replica) as OrgModeClient;
   // Defaults inline as well as in the schema: this must not throw when a caller supplies a partial
   // env, and an LRU with neither bound set is a constructor error.
-  const cache = new LRUCache<string, CachedOrgMode>({
+  const cache = new LRUCache<string, CachedOrg>({
     max: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX ?? DEFAULT_CACHE_MAX,
     ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS ?? DEFAULT_CACHE_TTL_MS,
   });
@@ -170,7 +188,8 @@ export function createOrgModeSource(clients?: {
   const generationOf = (organizationId: string) => generations.get(organizationId) ?? 0;
 
   return {
-    get: (organizationId) => cache.get(organizationId),
+    get: (organizationId) => cache.get(organizationId)?.mode,
+    orgEverEnabled: (organizationId) => cache.get(organizationId)?.everEnabled,
     invalidate: (organizationId) => {
       // Drop first, so a resolve between now and the re-read falls back rather than serving a
       // value the write just replaced.
@@ -245,16 +264,17 @@ export function createOrgModeSource(clients?: {
     return client.organization
       .findFirst({ where: { id: organizationId }, select: { featureFlags: true } })
       .then((row) => {
-        // Only the narrow per-org key. The blob is never passed as `overrides` for the global
+        // Only the narrow per-org keys. The blob is never passed as `overrides` for the global
         // key, where a parsing override would win outright.
-        const raw = (row?.featureFlags as Record<string, unknown> | null | undefined)?.[
-          FEATURE_FLAG.snapshotStoreOrgMode
-        ];
+        const flags = row?.featureFlags as Record<string, unknown> | null | undefined;
         // A newer invalidation happened while this read was in flight, so its answer is stale.
         if (generation < generationOf(organizationId)) {
           return "stale" as const;
         }
-        cache.set(organizationId, cachedOrgModeFor(raw));
+        cache.set(organizationId, {
+          mode: cachedOrgModeFor(flags?.[FEATURE_FLAG.snapshotStoreOrgMode]),
+          everEnabled: cachedOrgEverEnabledFor(flags?.[FEATURE_FLAG.snapshotStoreOrgEverEnabled]),
+        });
         return "loaded" as const;
       })
       .catch((error) => {

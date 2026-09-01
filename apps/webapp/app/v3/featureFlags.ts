@@ -64,6 +64,9 @@ export const FEATURE_FLAG = {
   snapshotStoreOrgMode: "snapshotStoreOrgMode",
   // One-way residency latch. See the catalog entry below.
   snapshotStoreEverEnabled: "snapshotStoreEverEnabled",
+  // Per-org one-way residency latch, the per-org sibling of snapshotStoreEverEnabled. System-set on
+  // the org save path when the org dial first moves past `off`, never cleared. See the catalog entry.
+  snapshotStoreOrgEverEnabled: "snapshotStoreOrgEverEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -193,6 +196,10 @@ export const FeatureFlagCatalog = {
    * whole fleet back on the run path.
    */
   [FEATURE_FLAG.snapshotStoreEverEnabled]: z.boolean(),
+  // Per-org sibling of snapshotStoreEverEnabled. One way: set when the org dial first moves past
+  // `off`, never cleared, so an org toggled dual-write -> off keeps probing its resident runs.
+  // System-set, so stripped from org payloads by withoutOrgForbiddenSnapshotKeys. Strict boolean.
+  [FEATURE_FLAG.snapshotStoreOrgEverEnabled]: z.boolean(),
   // Strict, like the other kill switches: a stringified "false" read as true would freeze every
   // resident run's Redis head.
   [FEATURE_FLAG.snapshotStoreHalt]: z.boolean(),
@@ -217,6 +224,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   // Read from the org blob only, and refused outright on a global save, so an editable control here
   // would offer a setting whose only outcome is a 400.
   FEATURE_FLAG.snapshotStoreOrgMode,
+  FEATURE_FLAG.snapshotStoreOrgEverEnabled,
 ];
 
 // Flags that are read-only on the org-level dialog.
@@ -238,6 +246,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.snapshotStoreMode,
   FEATURE_FLAG.snapshotStoreHalt,
   FEATURE_FLAG.snapshotStoreEverEnabled,
+  // System-set latch: shown on the org dialog, but the operator never edits it.
+  FEATURE_FLAG.snapshotStoreOrgEverEnabled,
 ];
 
 /**
@@ -251,6 +261,9 @@ export function withoutOrgForbiddenSnapshotKeys<T extends Record<string, unknown
     // Deployment-wide, like the other two. Nothing reads it from an organisation row, so accepting
     // it on an organisation save reports success for a setting that does nothing.
     FEATURE_FLAG.snapshotStoreEverEnabled,
+    // System-set one-way latch. The save path is its only writer, so an operator-supplied value
+    // (a `false` above all) must never reach the stored blob.
+    FEATURE_FLAG.snapshotStoreOrgEverEnabled,
   ] as const;
   if (!forbidden.some((key) => key in values)) return values;
 
@@ -259,6 +272,29 @@ export function withoutOrgForbiddenSnapshotKeys<T extends Record<string, unknown
     delete rest[key];
   }
   return rest;
+}
+
+/**
+ * One-way per-org residency latch. Sets snapshotStoreOrgEverEnabled true when the resulting org dial
+ * is past `off`, and carries an already-set latch forward so a save back to `off` never clears it.
+ * Mutates and returns the stamped blob, which is written with replace semantics, so the carry-forward
+ * is what keeps the latch alive. Never writes `false`: an absent latch must stay distinguishable from
+ * an explicit one so the resolver keeps probing a resident org rather than skipping it.
+ */
+export function stampSnapshotStoreOrgEverEnabled(
+  existingFlags: Record<string, unknown> | null | undefined,
+  stamped: Record<string, unknown>
+): Record<string, unknown> {
+  const alreadyLatched = (existingFlags ?? {})[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+  const mode = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
+    stamped[FEATURE_FLAG.snapshotStoreOrgMode]
+  );
+  const enablingNow = mode.success && mode.data !== "off";
+
+  if (alreadyLatched || enablingNow) {
+    stamped[FEATURE_FLAG.snapshotStoreOrgEverEnabled] = true;
+  }
+  return stamped;
 }
 
 /**

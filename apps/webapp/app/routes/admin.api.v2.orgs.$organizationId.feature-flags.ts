@@ -13,6 +13,7 @@ import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigratio
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
+  stampSnapshotStoreOrgEverEnabled,
   validatePartialFeatureFlags,
   withoutOrgForbiddenSnapshotKeys,
   getAllFlagControlTypes,
@@ -183,6 +184,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       controlPlaneNow.getTime(),
       env.RUN_OPS_MINT_FLIP_GRACE_MS
     );
+
+    // One-way per-org residency latch, ORed against the locked existing value so it never clears.
+    stampSnapshotStoreOrgEverEnabled(existingRaw, stamped);
 
     await tx.organization.update({
       where: { id: organizationId },
