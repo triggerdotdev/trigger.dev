@@ -85,13 +85,6 @@ export async function listCurrentProductionProjectRuntimes(scope: Scope) {
   );
 }
 
-/**
- * Whether any project in the organization needs a Node.js runtime update in Production.
- *
- * The SQL filter mirrors `needsNodeRuntimeUpdate(runtime, runtimeVersion)`, including legacy
- * deployments with missing runtime metadata. Keep the two in step. Scoped to the caller's
- * membership so the side menu cannot report on an organization the user does not belong to.
- */
 export async function organizationHasProjectRuntimeUpdate({
   organizationSlug,
   userId,
