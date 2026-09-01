@@ -83,6 +83,42 @@ describe("snapshotStoreFlagSaveError", () => {
       )
     ).toBeUndefined();
   });
+
+  it("refuses a per-organisation redis-read when no host is configured", () => {
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreOrgMode: "redis-read" },
+        { redisHostConfigured: false, everEnabled: true }
+      )
+    ).toMatch(/RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST/);
+  });
+
+  it("refuses a per-organisation redis-only when no host is configured", () => {
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreOrgMode: "redis-only" },
+        { redisHostConfigured: false, everEnabled: true }
+      )
+    ).toMatch(/RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST/);
+  });
+
+  it("allows a per-organisation redis-read once host and latch are set", () => {
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreOrgMode: "redis-read" },
+        { redisHostConfigured: true, everEnabled: true }
+      )
+    ).toBeUndefined();
+  });
+
+  it("allows a per-organisation redis-only once host and latch are set", () => {
+    expect(
+      snapshotStoreFlagSaveError(
+        { snapshotStoreOrgMode: "redis-only" },
+        { redisHostConfigured: true, everEnabled: true }
+      )
+    ).toBeUndefined();
+  });
 });
 
 describe("globalOnlySnapshotStoreFlagError", () => {
