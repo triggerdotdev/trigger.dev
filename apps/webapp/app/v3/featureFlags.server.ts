@@ -296,6 +296,22 @@ export async function applyGlobalGracedFlips(
   return applied;
 }
 
+// Plain merge write in one transaction, so an ordered mode+latch pair commits atomically instead of
+// as two upserts a crash could split. The non-graced sibling of applyGlobalGracedFlips.
+export async function setGlobalFeatureFlagsTransactional(
+  client: PrismaClient,
+  requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>
+): Promise<{ key: string; value: any }[]> {
+  const applied = await $transaction(client, "setGlobalFeatureFlags", (tx) =>
+    makeSetMultipleFlags(tx)(requestedFlags)
+  );
+
+  if (!applied) {
+    throw new Error("setGlobalFeatureFlagsTransactional: transaction did not complete");
+  }
+  return applied;
+}
+
 // One-way global mode latch for the merge-semantics JSON admin API, whose two write branches would
 // otherwise bypass the stamp. Reading outside a transaction is safe: a one-way latch only ever
 // races to write true twice.
@@ -308,12 +324,22 @@ export async function stampGlobalModeLatchForMerge<T extends Record<string, unkn
     select: { value: true },
   });
   // The stamp is the only writer, so an operator-supplied value (a `false` above all) never counts.
+  const latchKey = FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled;
   const stamped = { ...requestedFlags };
-  delete stamped[FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled];
-  return stampSnapshotStoreGlobalModeEverEnabled(
-    { [FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled]: stored?.value },
-    stamped
-  ) as T;
+  delete stamped[latchKey];
+  const result = stampSnapshotStoreGlobalModeEverEnabled({ [latchKey]: stored?.value }, stamped);
+
+  // Order the latch BEFORE the mode. makeSetMultipleFlags upserts in insertion order with no
+  // enclosing transaction, so a crash between the two must leave latch=true with the mode possibly
+  // still off (the safe direction that makes 10c not skip), never mode=non-off with the latch absent.
+  if (result[latchKey] === true) {
+    const reordered: Record<string, unknown> = { [latchKey]: result[latchKey] };
+    for (const [key, value] of Object.entries(result)) {
+      if (key !== latchKey) reordered[key] = value;
+    }
+    return reordered as T;
+  }
+  return result as T;
 }
 
 // Replace-semantics write for the global admin flags page: submitted flags upsert, omitted ones

@@ -15,6 +15,7 @@ import {
 import {
   makeSetMultipleFlags,
   replaceGlobalFeatureFlags,
+  setGlobalFeatureFlagsTransactional,
   stampGlobalModeLatchForMerge,
 } from "~/v3/featureFlags.server";
 
@@ -131,5 +132,21 @@ describe("stampGlobalModeLatchForMerge — JSON admin API (merge semantics)", ()
   postgresTest("does not stamp when off and no stored latch", async ({ prisma }) => {
     const stamped = await stampGlobalModeLatchForMerge(prisma, { [MODE]: "off" });
     expect(LATCH in stamped).toBe(false);
+  });
+
+  postgresTest("orders the latch before the mode for a crash-safe write", async ({ prisma }) => {
+    // makeSetMultipleFlags upserts in insertion order, so the latch must come first: a crash mid-write
+    // then leaves latch=true with the mode possibly still off, never mode=non-off + latch absent.
+    const stamped = await stampGlobalModeLatchForMerge(prisma, { [MODE]: "dual-write" });
+    const keys = Object.keys(stamped);
+    expect(keys.indexOf(LATCH)).toBe(0);
+    expect(keys.indexOf(LATCH)).toBeLessThan(keys.indexOf(MODE));
+  });
+
+  postgresTest("transactional write lands both the mode and the latch", async ({ prisma }) => {
+    const stamped = await stampGlobalModeLatchForMerge(prisma, { [MODE]: "dual-write" });
+    await setGlobalFeatureFlagsTransactional(prisma, stamped);
+    expect(await readFlag(prisma, MODE)).toBe("dual-write");
+    expect(await readFlag(prisma, LATCH)).toBe(true);
   });
 });

@@ -6,7 +6,7 @@ import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import {
   applyGlobalGracedFlips,
-  makeSetMultipleFlags,
+  setGlobalFeatureFlagsTransactional,
   stampGlobalModeLatchForMerge,
   touchesGracedGroup,
   withoutDerivedKeys,
@@ -64,7 +64,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const updatedFlags = touchesGracedGroup(stampedFlags)
       ? await applyGlobalGracedFlips(prisma, stampedFlags, env.RUN_OPS_MINT_FLIP_GRACE_MS)
-      : await makeSetMultipleFlags(prisma)(stampedFlags);
+      : await setGlobalFeatureFlagsTransactional(prisma, stampedFlags);
 
     return json({
       success: true,
