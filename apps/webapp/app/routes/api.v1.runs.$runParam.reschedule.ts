@@ -12,6 +12,7 @@ import { RescheduleTaskRunService } from "~/v3/services/rescheduleTaskRun.server
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { parseDelay } from "~/utils/delays";
+import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -156,6 +157,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (error instanceof ServiceValidationError) {
       return json({ error: error.message }, { status: 400 });
     }
+    const unroutable = unroutableIdResponse(error);
+    if (unroutable) {
+      logger.warn("Unroutable run id on reschedule", {
+        error: error instanceof Error ? error.message : error,
+      });
+      return unroutable;
+    }
+
     logger.error("Failed to reschedule run", { error });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }

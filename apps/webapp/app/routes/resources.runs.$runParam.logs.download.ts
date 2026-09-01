@@ -15,6 +15,7 @@ import {
   type TraceExportContext,
 } from "~/v3/eventRepository/traceExport.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
@@ -31,20 +32,23 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   // Run-ops read keyed by friendlyId only (routes to the owning DB by residency). Org
   // membership is a control-plane concern resolved separately below — joining it here is a
   // cross-DB join that returns nothing once the run lives in run-ops.
-  let run = await runStore.findRun(
-    { friendlyId: parsedParams.runParam },
-    {
-      select: {
-        friendlyId: true,
-        traceId: true,
-        organizationId: true,
-        runtimeEnvironmentId: true,
-        createdAt: true,
-        completedAt: true,
-        taskEventStore: true,
-        taskIdentifier: true,
-      },
-    }
+  let run = await undefinedOnUnroutableId(
+    runStore.findRun(
+      { friendlyId: parsedParams.runParam },
+      {
+        select: {
+          friendlyId: true,
+          traceId: true,
+          organizationId: true,
+          runtimeEnvironmentId: true,
+          createdAt: true,
+          completedAt: true,
+          taskEventStore: true,
+          taskIdentifier: true,
+        },
+      }
+    ),
+    { runParam: parsedParams.runParam }
   );
 
   // Authorize on the control-plane DB: the user must be a member of the run's org. A

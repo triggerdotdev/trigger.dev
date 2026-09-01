@@ -6,6 +6,7 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { rootPath, v3RunPath } from "~/utils/pathBuilder";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -16,17 +17,20 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const { runParam } = ParamsSchema.parse(params);
 
-  const run = await runStore.findRun(
-    {
-      friendlyId: runParam,
-    },
-    {
-      select: {
-        spanId: true,
-        projectId: true,
-        runtimeEnvironmentId: true,
+  const run = await undefinedOnUnroutableId(
+    runStore.findRun(
+      {
+        friendlyId: runParam,
       },
-    }
+      {
+        select: {
+          spanId: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+        },
+      }
+    ),
+    { runParam: params.runParam ?? params.runId }
   );
 
   if (!run) {

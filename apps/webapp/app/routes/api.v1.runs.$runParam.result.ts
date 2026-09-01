@@ -5,6 +5,7 @@ import { ApiRunResultPresenter } from "~/presenters/v3/ApiRunResultPresenter.ser
 import { runOpsLegacyReplica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 
 const ParamsSchema = z.object({
   /* This is the run friendly ID */
@@ -41,6 +42,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     return json(result);
   } catch (error) {
+    const unroutable = unroutableIdResponse(error);
+    if (unroutable) {
+      logger.warn("Unroutable run id on run result", {
+        error: error instanceof Error ? error.message : error,
+      });
+      return unroutable;
+    }
+
     logger.error("Failed to load run result", { error });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }

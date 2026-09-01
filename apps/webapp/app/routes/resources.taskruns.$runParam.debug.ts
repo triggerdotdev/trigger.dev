@@ -6,6 +6,7 @@ import { requireUserId } from "~/services/session.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamSchema = z.object({
   runParam: z.string(),
@@ -18,20 +19,23 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // Run-ops read keyed by friendlyId only (routes to the owning DB by residency). The
   // project/org-membership auth is a control-plane concern resolved separately below —
   // joining it here is a cross-DB join that returns nothing once the run lives in run-ops.
-  const run = await runStore.findRun(
-    { friendlyId: runParam },
-    {
-      select: {
-        id: true,
-        engine: true,
-        friendlyId: true,
-        queue: true,
-        concurrencyKey: true,
-        queueTimestamp: true,
-        runtimeEnvironmentId: true,
-        projectId: true,
-      },
-    }
+  const run = await undefinedOnUnroutableId(
+    runStore.findRun(
+      { friendlyId: runParam },
+      {
+        select: {
+          id: true,
+          engine: true,
+          friendlyId: true,
+          queue: true,
+          concurrencyKey: true,
+          queueTimestamp: true,
+          runtimeEnvironmentId: true,
+          projectId: true,
+        },
+      }
+    ),
+    { runParam: params.runParam ?? params.runId }
   );
 
   if (!run) {

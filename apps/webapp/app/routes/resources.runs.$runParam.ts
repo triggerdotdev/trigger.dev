@@ -12,72 +12,76 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 
 import { boundedIn } from "@trigger.dev/database";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 export type RunInspectorData = UseDataFunctionReturn<typeof loader>;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const parsedParams = v3RunParamsSchema.pick({ runParam: true }).parse(params);
 
-  const run = await runStore.findRun(
-    {
-      friendlyId: parsedParams.runParam,
-    },
-    {
-      select: {
-        id: true,
-        traceId: true,
-        //metadata
-        number: true,
-        taskIdentifier: true,
-        friendlyId: true,
-        isTest: true,
-        runTags: true,
-        machinePreset: true,
-        runtimeEnvironmentId: true,
-        projectId: true,
-        lockedById: true,
-        lockedToVersionId: true,
-        //status + duration
-        status: true,
-        startedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        queuedAt: true,
-        completedAt: true,
-        logsDeletedAt: true,
-        //idempotency
-        idempotencyKey: true,
-        //delayed
-        delayUntil: true,
-        //ttl
-        ttl: true,
-        expiredAt: true,
-        //queue
-        queue: true,
-        concurrencyKey: true,
-        //schedule
-        scheduleId: true,
-        //usage
-        baseCostInCents: true,
-        costInCents: true,
-        usageDurationMs: true,
-        payload: true,
-        payloadType: true,
-        metadata: true,
-        metadataType: true,
-        maxAttempts: true,
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
+  const run = await undefinedOnUnroutableId(
+    runStore.findRun(
+      {
+        friendlyId: parsedParams.runParam,
       },
-    }
+      {
+        select: {
+          id: true,
+          traceId: true,
+          //metadata
+          number: true,
+          taskIdentifier: true,
+          friendlyId: true,
+          isTest: true,
+          runTags: true,
+          machinePreset: true,
+          runtimeEnvironmentId: true,
+          projectId: true,
+          lockedById: true,
+          lockedToVersionId: true,
+          //status + duration
+          status: true,
+          startedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          queuedAt: true,
+          completedAt: true,
+          logsDeletedAt: true,
+          //idempotency
+          idempotencyKey: true,
+          //delayed
+          delayUntil: true,
+          //ttl
+          ttl: true,
+          expiredAt: true,
+          //queue
+          queue: true,
+          concurrencyKey: true,
+          //schedule
+          scheduleId: true,
+          //usage
+          baseCostInCents: true,
+          costInCents: true,
+          usageDurationMs: true,
+          payload: true,
+          payloadType: true,
+          metadata: true,
+          metadataType: true,
+          maxAttempts: true,
+          parentTaskRun: {
+            select: {
+              friendlyId: true,
+            },
+          },
+          rootTaskRun: {
+            select: {
+              friendlyId: true,
+            },
+          },
+        },
+      }
+    ),
+    { runParam: params.runParam ?? params.runId }
   );
 
   if (!run) {

@@ -8,6 +8,7 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { impersonate, rootPath, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { findBufferedRunRedirectInfo } from "~/v3/mollifier/syntheticRedirectInfo.server";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -33,17 +34,20 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     );
   }
 
-  const run = await runStore.findRun(
-    {
-      friendlyId: runParam,
-    },
-    {
-      select: {
-        spanId: true,
-        runtimeEnvironmentId: true,
+  const run = await undefinedOnUnroutableId(
+    runStore.findRun(
+      {
+        friendlyId: runParam,
       },
-    },
-    prisma
+      {
+        select: {
+          spanId: true,
+          runtimeEnvironmentId: true,
+        },
+      },
+      prisma
+    ),
+    { runParam: params.runParam ?? params.runId }
   );
 
   if (!run) {
