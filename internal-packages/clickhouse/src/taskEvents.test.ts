@@ -62,6 +62,49 @@ describe("task events v2", () => {
           has_inserted_at: 1,
         },
       ]);
+
+      const readColumnKinds = ch.reader.query({
+        name: "read-task-event-attribute-column-kinds",
+        query: `SELECT name, default_kind, default_expression
+        FROM system.columns
+        WHERE database = 'trigger_dev'
+          AND table = 'task_events_v2'
+          AND name IN ('attributes', 'attributes_text')
+        ORDER BY name`,
+        schema: z.object({
+          name: z.string(),
+          default_kind: z.string(),
+          default_expression: z.string(),
+        }),
+      });
+      const [columnError, columns] = await readColumnKinds({});
+      expect(columnError).toBeNull();
+      expect(columns).toEqual([
+        {
+          name: "attributes",
+          default_kind: "EPHEMERAL",
+          default_expression: "defaultValueOfTypeName('JSON')",
+        },
+        {
+          name: "attributes_text",
+          default_kind: "MATERIALIZED",
+          default_expression: "toJSONString(attributes)",
+        },
+      ]);
+
+      const readRemovedIndexes = ch.reader.query({
+        name: "read-removed-task-event-text-indexes",
+        query: `SELECT name
+        FROM system.data_skipping_indices
+        WHERE database = 'trigger_dev'
+          AND table = 'task_events_v2'
+          AND name IN ('idx_attributes_text_search', 'idx_message_text_search')
+        ORDER BY name`,
+        schema: z.object({ name: z.string() }),
+      });
+      const [indexError, indexes] = await readRemovedIndexes({});
+      expect(indexError).toBeNull();
+      expect(indexes).toEqual([]);
     }
   );
 });
