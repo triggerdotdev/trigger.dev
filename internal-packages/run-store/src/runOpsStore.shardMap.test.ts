@@ -349,7 +349,10 @@ describe("RoutingRunStore id-to-shard-key seam", () => {
   });
 });
 
-function buildNShardRouter(shardKeys: string[], opts: { aliasOf?: Record<string, string> } = {}) {
+function buildNShardRouter(
+  shardKeys: string[],
+  opts: { aliasOf?: Record<string, string>; routed?: string[] } = {}
+) {
   const log: Call[] = [];
   const newStore = fakeStore("new", log);
   const legacyStore = fakeStore("legacy", log);
@@ -365,6 +368,15 @@ function buildNShardRouter(shardKeys: string[], opts: { aliasOf?: Record<string,
     legacy: legacyStore,
     shards,
     resolveShard: (id: string) => id.split(":")[0]!,
+    ...(opts.routed
+      ? {
+          metrics: {
+            recordDuplicateId() {},
+            recordWaitpointProbeFallback() {},
+            recordShardRouted: (key: string) => opts.routed!.push(key),
+          },
+        }
+      : {}),
   });
   return { router, log, byKey };
 }
@@ -382,6 +394,28 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
     const { router, log } = buildNShardRouter(["a", "b"]);
     await router.findRun({ id: "a:run_1" });
     expect(trace(log)).toEqual(["a:findRun"]);
+  });
+
+  // Per-shard routing was invisible from outside the process: nothing the router emitted carried
+  // the shard it routed to, so a cohort ramp could only be inferred from the databases themselves.
+  it("counts every routed operation against the shard it landed on", async () => {
+    const routed: string[] = [];
+    const { router } = buildNShardRouter(["a", "b"], { routed });
+
+    await router.findRun({ id: "a:run_1" });
+    await router.findRun({ id: "b:run_1" });
+    await router.findRun({ id: "a:run_2" });
+
+    expect(routed).toEqual(["a", "b", "a"]);
+  });
+
+  it("does not count anything before an operation is routed", async () => {
+    const routed: string[] = [];
+    buildNShardRouter(["a", "b"], { routed });
+
+    // Constructing the router touches every configured store to build #distinctStores; that is
+    // not traffic, and counting it would put a boot-time step in a per-shard traffic series.
+    expect(routed).toEqual([]);
   });
 
   it("counts an aliased shard's database ONCE in a sum", async () => {
@@ -555,6 +589,7 @@ describe("RoutingRunStore merge precedence and duplicate alarm", () => {
       metrics: {
         recordDuplicateId: (k: string[]) => seen.push(k),
         recordWaitpointProbeFallback() {},
+        recordShardRouted() {},
       },
       seen,
     };
@@ -670,7 +705,15 @@ describe("RoutingRunStore countPendingWaitpoints — disjoint-sum partition", ()
         { key: "b", store: mk("b") },
       ],
       resolveShard: (id: string) => (id.includes(":") ? id.split(":")[0]! : "legacy"),
-      ...(spy ? { metrics: { recordDuplicateId: spy, recordWaitpointProbeFallback() {} } } : {}),
+      ...(spy
+        ? {
+            metrics: {
+              recordDuplicateId: spy,
+              recordWaitpointProbeFallback() {},
+              recordShardRouted() {},
+            },
+          }
+        : {}),
     });
     return { router, log };
   }
@@ -791,6 +834,7 @@ describe("RoutingRunStore waitpoint probes at N", () => {
       metrics: {
         recordDuplicateId() {},
         recordWaitpointProbeFallback: (from, to) => falls.push([from, to]),
+        recordShardRouted() {},
       },
     });
     await router.updateWaitpoint({ where: { id: "cuid_w1" }, data: {} } as never);
@@ -910,7 +954,11 @@ describe("RoutingRunStore batch probe tolerates legitimate dual-residency", () =
       legacy: fakeStore("legacy", log, { batch: { id: "batch_dup", from: "legacy" } }),
       shards: [{ key: "a", store: fakeStore("a", log, { batch: { id: "batch_dup", from: "a" } }) }],
       resolveShard: (id: string) => id.split(":")[0]!,
-      metrics: { recordDuplicateId: (k) => seen.push(k), recordWaitpointProbeFallback() {} },
+      metrics: {
+        recordDuplicateId: (k) => seen.push(k),
+        recordWaitpointProbeFallback() {},
+        recordShardRouted() {},
+      },
     });
     const batch = (await router.findBatchTaskRunById("batch_dup")) as { from: string } | null;
     // batchTriggerV3 writes raw to the control plane while runEngine routes by id, so this is a
@@ -928,7 +976,11 @@ describe("RoutingRunStore batch probe tolerates legitimate dual-residency", () =
       legacy: fakeStore("legacy", log, { runs: [{ id: "dup", from: "legacy" }] }),
       shards: [{ key: "a", store: fakeStore("a", log, { runs: [{ id: "dup", from: "a" }] }) }],
       resolveShard: (id: string) => id.split(":")[0]!,
-      metrics: { recordDuplicateId: (k) => seen.push(k), recordWaitpointProbeFallback() {} },
+      metrics: {
+        recordDuplicateId: (k) => seen.push(k),
+        recordWaitpointProbeFallback() {},
+        recordShardRouted() {},
+      },
     });
     await router.findRun({ spanId: "span_x" });
     expect(seen).toEqual([["legacy", "a"]]);

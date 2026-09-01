@@ -170,11 +170,16 @@ export class RoutingRunStore implements RunStore {
     // it shares its target's database, and a second leg over one database double-counts a sum.
     // The discriminator is the DECLARATION, not object identity — the wiring layer may build a
     // second store object over a shared client.
+    // Direct map lookup rather than #shardStore: every key here comes from #precedence, so it is
+    // configured by construction, and #shardStore counts a ROUTED operation — building the list
+    // must not bump the per-shard counter at boot.
+    // Assigned before #distinctStores: reintroducing #shardStore below would otherwise throw on
+    // an unassigned #metrics at construction, in every deployment, at boot.
+    this.#metrics = options.metrics ?? noopRoutingStoreMetrics;
+
     this.#distinctStores = this.#precedence
       .filter((key) => !aliasedKeys.has(key))
-      .map((key) => ({ key, store: this.#shardStore(key) }));
-
-    this.#metrics = options.metrics ?? noopRoutingStoreMetrics;
+      .map((key) => ({ key, store: this.#shards.get(key)! }));
     this.#logger = options.logger ?? new Logger("RoutingRunStore", "warn");
   }
 
@@ -204,6 +209,7 @@ export class RoutingRunStore implements RunStore {
     if (store === undefined) {
       throw new UnknownShardKey(key, [...this.#shards.keys()]);
     }
+    this.#metrics.recordShardRouted(key);
     return store;
   }
 

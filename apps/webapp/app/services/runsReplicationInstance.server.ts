@@ -9,6 +9,7 @@ import {
   setRunsReplicationConfiguredSources,
   setRunsReplicationGlobal,
 } from "./runsReplicationGlobal.server";
+import { runsReplicationSourceMetrics } from "./runsReplicationMetrics.server";
 import {
   RunsReplicationService,
   type RunsReplicationSource,
@@ -249,6 +250,9 @@ function initializeRunsReplicationInstance() {
     insertStrategy: env.RUN_REPLICATION_INSERT_STRATEGY,
     disablePayloadInsert: env.RUN_REPLICATION_DISABLE_PAYLOAD_INSERT === "1",
     disableErrorFingerprinting: env.RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING === "1",
+    // A source whose publication carries no usable table logs every 30s and replicates nothing.
+    // Boot cannot see it (the source IS configured), so the counter is the alarmable signal.
+    onSourceError: runsReplicationSourceMetrics.recordSourceError,
   };
 
   // Construct the SINGLE legacy source synchronously (the split gate has not resolved
