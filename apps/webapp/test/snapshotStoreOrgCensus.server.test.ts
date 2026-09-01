@@ -6,10 +6,15 @@ import {
 
 type Row = { id: string; featureFlags: unknown };
 
-function fakeClient(rows: Row[]): SnapshotStoreOrgCensusClient {
+type FindManyArgs = Parameters<SnapshotStoreOrgCensusClient["organization"]["findMany"]>[0];
+
+function fakeClient(rows: Row[], calls?: FindManyArgs[]): SnapshotStoreOrgCensusClient {
   return {
     organization: {
-      findMany: async () => rows,
+      findMany: async (args) => {
+        calls?.push(args);
+        return rows;
+      },
     },
   };
 }
@@ -83,6 +88,37 @@ describe("snapshot store org census", () => {
     await expect(census.refresh()).resolves.toBeUndefined();
     expect(census.anyOrgReadEnabled()).toBe(true);
     expect(census.anyOrgRedisOnly()).toBe(true);
+    expect(census.isCohortMember("org_a")).toBe(true);
+  });
+
+  it("bounds the query to orgs that have the override key present", async () => {
+    const calls: FindManyArgs[] = [];
+    const census = createSnapshotStoreOrgCensus(
+      {
+        replica: fakeClient(
+          [{ id: "org_a", featureFlags: { snapshotStoreOrgMode: "redis-only" } }],
+          calls
+        ),
+      },
+      { autoStart: false }
+    );
+
+    await census.refresh();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].where.featureFlags.path).toEqual(["snapshotStoreOrgMode"]);
+    // The WHERE only bounds rows; classification is unaffected.
+    expect(census.isCohortMember("org_a")).toBe(true);
+    expect(census.anyOrgRedisOnly()).toBe(true);
+  });
+
+  it("counts a dual-write-only org as a cohort member without enabling reads", async () => {
+    const census = build([{ id: "org_a", featureFlags: { snapshotStoreOrgMode: "dual-write" } }]);
+
+    await census.refresh();
+
+    expect(census.anyOrgReadEnabled()).toBe(false);
+    expect(census.anyOrgRedisOnly()).toBe(false);
     expect(census.isCohortMember("org_a")).toBe(true);
   });
 });

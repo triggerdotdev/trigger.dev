@@ -1,3 +1,4 @@
+import { Prisma } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { createReloadingRegistry } from "~/utils/reloadingRegistry.server";
@@ -9,6 +10,7 @@ import { cachedOrgModeFor, NO_OVERRIDE } from "~/v3/snapshotStoreMode.server";
 export type SnapshotStoreOrgCensusClient = {
   organization: {
     findMany(args: {
+      where: { featureFlags: { path: string[]; not: typeof Prisma.DbNull } };
       select: { id: true; featureFlags: true };
     }): Promise<Array<{ id: string; featureFlags: unknown }>>;
   };
@@ -59,7 +61,16 @@ export function createSnapshotStoreOrgCensus(
     intervalMs: opts?.intervalMs ?? env.GLOBAL_FLAGS_RELOAD_INTERVAL_MS,
     autoStart: opts?.autoStart ?? process.env.NODE_ENV !== "test",
     load: async () =>
-      classify(await client.organization.findMany({ select: { id: true, featureFlags: true } })),
+      // WHERE bounds transfer to orgs that HAVE the key; cachedOrgModeFor still filters off /
+      // NO_OVERRIDE out of the cohort in code, so classification stays identical to the resolver.
+      classify(
+        await client.organization.findMany({
+          where: {
+            featureFlags: { path: [FEATURE_FLAG.snapshotStoreOrgMode], not: Prisma.DbNull },
+          },
+          select: { id: true, featureFlags: true },
+        })
+      ),
   });
 
   return {
