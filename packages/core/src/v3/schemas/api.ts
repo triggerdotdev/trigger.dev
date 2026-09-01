@@ -79,6 +79,24 @@ export function nodeMajor(
   return match ? Number(match[1]) : undefined;
 }
 
+export function needsNodeRuntimeUpdate(
+  runtime: string | null | undefined,
+  runtimeVersion: string | null | undefined
+) {
+  if (runtime && !runtime.startsWith("node")) return false;
+
+  const versionMatch = runtimeVersion?.match(/^(\d+)(?:\.\d+){1,2}(?:[-+].*)?$/);
+  if (versionMatch) return Number(versionMatch[1]) === NODE_RUNTIME_UPDATE_MAJOR;
+  if (runtimeVersion) return false;
+
+  if (!runtime || runtime === "node") return true;
+
+  const configuredMajorMatch = runtime.match(/^node-(\d+)$/);
+  return configuredMajorMatch
+    ? Number(configuredMajorMatch[1]) === NODE_RUNTIME_UPDATE_MAJOR
+    : false;
+}
+
 export const GetProjectRuntimesResponseBody = z.array(
   z.object({
     organization: z.object({
