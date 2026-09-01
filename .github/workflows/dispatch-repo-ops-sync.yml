@@ -23,7 +23,6 @@ jobs:
         with:
           app-id: ${{ vars.REPO_OPS_DISPATCHER_APP_ID }}
           private-key: ${{ secrets.REPO_OPS_DISPATCHER_APP_PRIVATE_KEY }}
-          owner: triggerdotdev
           repositories: ${{ secrets.REPO_OPS_MONO_REPOSITORY }}
           permission-contents: write
 

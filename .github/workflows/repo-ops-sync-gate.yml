@@ -2,6 +2,7 @@ name: repo-ops-sync-gate
 
 on:
   pull_request:
+    types: [opened, edited, reopened, synchronize]
   merge_group:
 
 permissions:
@@ -9,6 +10,8 @@ permissions:
 
 jobs:
   gate:
+    if: github.event_name == 'pull_request' || vars.REPO_OPS_SYNC_ENABLED == 'true'
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Reject reserved RepoOps trailers
@@ -41,7 +44,6 @@ jobs:
         with:
           app-id: ${{ vars.REPO_OPS_DISPATCHER_APP_ID }}
           private-key: ${{ secrets.REPO_OPS_DISPATCHER_APP_PRIVATE_KEY }}
-          owner: triggerdotdev
           repositories: ${{ secrets.REPO_OPS_MONO_REPOSITORY }}
           permission-contents: read
 
