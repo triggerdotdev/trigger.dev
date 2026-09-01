@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearedOrgFlagsPreservingLatch,
   FEATURE_FLAG,
   stampSnapshotStoreOrgEverEnabled,
   withoutOrgForbiddenSnapshotKeys,
@@ -41,6 +42,24 @@ describe("stampSnapshotStoreOrgEverEnabled (one-way per-org latch)", () => {
     expect(withoutOrgForbiddenSnapshotKeys({ [LATCH]: false, [MODE]: "off" })).toEqual({
       [MODE]: "off",
     });
+  });
+});
+
+describe("clearedOrgFlagsPreservingLatch (clear-all keeps the one-way latch)", () => {
+  it("preserves the latch when the org was ever enabled", () => {
+    expect(clearedOrgFlagsPreservingLatch({ [LATCH]: true, [MODE]: "off" })).toEqual({
+      [LATCH]: true,
+    });
+  });
+
+  it("wipes to null when the org never latched", () => {
+    expect(clearedOrgFlagsPreservingLatch({ [MODE]: "off" })).toBeNull();
+    expect(clearedOrgFlagsPreservingLatch({})).toBeNull();
+    expect(clearedOrgFlagsPreservingLatch(null)).toBeNull();
+  });
+
+  it("never treats a false latch as latched", () => {
+    expect(clearedOrgFlagsPreservingLatch({ [LATCH]: false })).toBeNull();
   });
 });
 

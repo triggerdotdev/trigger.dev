@@ -12,6 +12,7 @@ import { invalidateSnapshotStoreOrgMode } from "~/v3/snapshotStoreMode.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
+  clearedOrgFlagsPreservingLatch,
   FEATURE_FLAG,
   stampSnapshotStoreOrgEverEnabled,
   validatePartialFeatureFlags,
@@ -114,17 +115,33 @@ export async function action({ request, params }: ActionFunctionArgs) {
     body === null ||
     (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0)
   ) {
-    // Clear all flags. No grace stamp (nothing to flip) and no read-then-write race.
-    try {
-      await prisma.organization.update({
-        where: { id: organizationId },
-        data: { featureFlags: Prisma.JsonNull },
-      });
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
-        throw new Response("Organization not found", { status: 404 });
+    // Clear all flags, but preserve the one-way per-org residency latch so an ever-enabled org can
+    // never drop out of the census. Locked read-then-write so a concurrent enabling save (which also
+    // takes FOR UPDATE) can't slip a latch in between the read and the wipe.
+    const updated = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ featureFlags: unknown }[]>`
+        SELECT "featureFlags" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
+
+      if (rows.length === 0) {
+        return false;
       }
-      throw e;
+
+      const preserved = clearedOrgFlagsPreservingLatch(
+        rows[0].featureFlags as Record<string, unknown> | null
+      );
+
+      await tx.organization.update({
+        where: { id: organizationId },
+        data: {
+          featureFlags: preserved === null ? Prisma.JsonNull : (preserved as Prisma.InputJsonValue),
+        },
+      });
+
+      return true;
+    });
+
+    if (!updated) {
+      throw new Response("Organization not found", { status: 404 });
     }
 
     controlPlaneResolver.invalidateOrganization(organizationId);

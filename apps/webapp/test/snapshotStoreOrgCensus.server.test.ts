@@ -91,7 +91,7 @@ describe("snapshot store org census", () => {
     expect(census.isCohortMember("org_a")).toBe(true);
   });
 
-  it("bounds the query to orgs that have the override key present", async () => {
+  it("bounds the query to orgs that have EITHER the mode or the latch key present", async () => {
     const calls: FindManyArgs[] = [];
     const census = createSnapshotStoreOrgCensus(
       {
@@ -106,7 +106,10 @@ describe("snapshot store org census", () => {
     await census.refresh();
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].where.featureFlags.path).toEqual(["snapshotStoreOrgMode"]);
+    expect(calls[0].where.OR.map((clause) => clause.featureFlags.path)).toEqual([
+      ["snapshotStoreOrgMode"],
+      ["snapshotStoreOrgEverEnabled"],
+    ]);
     // The WHERE only bounds rows; classification is unaffected.
     expect(census.isCohortMember("org_a")).toBe(true);
     expect(census.anyOrgRedisOnly()).toBe(true);
@@ -120,5 +123,76 @@ describe("snapshot store org census", () => {
     expect(census.anyOrgReadEnabled()).toBe(false);
     expect(census.anyOrgRedisOnly()).toBe(false);
     expect(census.isCohortMember("org_a")).toBe(true);
+  });
+});
+
+describe("snapshot store org census — definite ever-enabled set", () => {
+  // A: latched but dialled back to off. B: at redis-read and latched. C: has the mode key but off,
+  // never latched. D: not returned by the query at all.
+  const rows = [
+    {
+      id: "org_a",
+      featureFlags: { snapshotStoreOrgMode: "off", snapshotStoreOrgEverEnabled: true },
+    },
+    {
+      id: "org_b",
+      featureFlags: { snapshotStoreOrgMode: "redis-read", snapshotStoreOrgEverEnabled: true },
+    },
+    { id: "org_c", featureFlags: { snapshotStoreOrgMode: "off" } },
+  ];
+
+  it("marks only orgs outside the ever-enabled set as definitely never enabled", async () => {
+    const census = build(rows);
+
+    await census.refresh();
+
+    expect(census.orgDefinitelyNeverEnabled("org_a")).toBe(false);
+    expect(census.orgDefinitelyNeverEnabled("org_b")).toBe(false);
+    expect(census.orgDefinitelyNeverEnabled("org_c")).toBe(true);
+    // Never returned by the query, so it is not in the set: definitely never enabled.
+    expect(census.orgDefinitelyNeverEnabled("org_d")).toBe(true);
+  });
+
+  it("treats a latched-but-off org as ever-enabled yet outside the read cohort", async () => {
+    const census = build(rows);
+
+    await census.refresh();
+
+    expect(census.orgDefinitelyNeverEnabled("org_a")).toBe(false);
+    expect(census.isCohortMember("org_a")).toBe(false);
+    // org_a is off; only org_b (redis-read) enables reads.
+    expect(census.anyOrgReadEnabled()).toBe(true);
+    expect(census.isCohortMember("org_b")).toBe(true);
+  });
+
+  it("reports nobody as definitely-never before the first load (cold)", () => {
+    const census = build(rows);
+
+    // Deliberately NOT refreshed: not-definite, so the caller must not skip anyone.
+    expect(census.orgDefinitelyNeverEnabled("org_a")).toBe(false);
+    expect(census.orgDefinitelyNeverEnabled("org_c")).toBe(false);
+    expect(census.orgDefinitelyNeverEnabled("org_d")).toBe(false);
+  });
+
+  it("keeps the last-good ever-enabled set when a later load fails", async () => {
+    let calls = 0;
+    const client: SnapshotStoreOrgCensusClient = {
+      organization: {
+        findMany: async () => {
+          calls += 1;
+          if (calls === 1) return rows;
+          throw new Error("control plane unreachable");
+        },
+      },
+    };
+    const census = createSnapshotStoreOrgCensus({ replica: client }, { autoStart: false });
+
+    await census.refresh();
+    expect(census.orgDefinitelyNeverEnabled("org_c")).toBe(true);
+    expect(census.orgDefinitelyNeverEnabled("org_b")).toBe(false);
+
+    await expect(census.refresh()).resolves.toBeUndefined();
+    expect(census.orgDefinitelyNeverEnabled("org_c")).toBe(true);
+    expect(census.orgDefinitelyNeverEnabled("org_b")).toBe(false);
   });
 });

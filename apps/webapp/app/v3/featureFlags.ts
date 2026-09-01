@@ -310,6 +310,18 @@ export function stampSnapshotStoreOrgEverEnabled(
 }
 
 /**
+ * The clear-all counterpart to the one-way per-org latch. Returns the blob to write when wiping an
+ * org's flags: `{ snapshotStoreOrgEverEnabled: true }` if the org was ever enabled (so it stays in
+ * the census), else null to wipe everything. Never resurrects a false or absent latch.
+ */
+export function clearedOrgFlagsPreservingLatch(
+  existingFlags: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  const latched = (existingFlags ?? {})[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+  return latched ? { [FEATURE_FLAG.snapshotStoreOrgEverEnabled]: true } : null;
+}
+
+/**
  * One-way global latch. Sets snapshotStoreGlobalModeEverEnabled true when the resulting global dial
  * is past `off`, and carries an already-set latch forward so a save back to `off` never clears it.
  * The global sibling of stampSnapshotStoreOrgEverEnabled: same never-writes-false, carry-forward
