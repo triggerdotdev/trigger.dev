@@ -5,6 +5,7 @@ import {
   type ClickHouseSettings,
   type BaseQueryParams,
   type CommandResult,
+  type InsertParams,
   type InsertResult,
 } from "@clickhouse/client";
 import type { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
@@ -272,6 +273,7 @@ export interface ClickhouseWriter {
   insertUnsafe<TRecord extends Record<string, any>>(req: {
     name: string;
     table: string;
+    columns?: InsertParams["columns"];
     settings?: ClickHouseSettings;
   }): ClickhouseInsertFunction<TRecord>;
 
