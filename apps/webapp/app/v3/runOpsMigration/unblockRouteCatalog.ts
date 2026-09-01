@@ -95,6 +95,12 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     site: RUN_ATTEMPT_SYSTEM,
     symbol: "#permanentlyFailRun",
   },
+  {
+    id: "runAttempt.ensureFinalized",
+    kind: "RUN",
+    site: RUN_ATTEMPT_SYSTEM,
+    symbol: "ensureRunFinalized",
+  },
 ];
 
 export function expectedCompleteWaitpointCallSites(): { site: string; symbol: string }[] {

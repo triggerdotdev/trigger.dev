@@ -36,6 +36,7 @@ import { PythonLogoIcon } from "~/assets/icons/PythonLogoIcon";
 import { TraceIcon } from "~/assets/icons/TraceIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { StreamsIcon } from "~/assets/icons/StreamsIcon";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -169,6 +170,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
           className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
         />
       );
+    case "sessions":
+      return <AIChatIcon className={cn(className, "text-sessions")} />;
     case "hero-sparkles":
       return (
         <SparklesIcon
