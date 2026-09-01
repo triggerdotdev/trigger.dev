@@ -109,6 +109,18 @@ export type SnapshotStoreModeResolver = {
    * MUST be synchronous and MUST NOT query, for the same reason `resolve` must not.
    */
   everEnabled?(): boolean;
+  /**
+   * Optional per-organisation one-way latch: has this organisation EVER had the store enabled.
+   *
+   * The deployment-wide `everEnabled` goes true the moment ANY organisation is enabled, so on its
+   * own it puts a residency probe back on every other organisation's transition path the instant one
+   * organisation ramps. This narrows that: an organisation whose own latch is provably unset has had
+   * no birth mirror, so no keyspace exists for its runs and a transition would be refused anyway.
+   *
+   * Same contract as `everEnabled`: synchronous, MUST NOT query, and false ONLY when provably never
+   * enabled. Absent, true, or unknown all mean treat as enabled and keep probing.
+   */
+  everEnabledForOrg?(organizationId: string): boolean;
 };
 
 /**
@@ -289,7 +301,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * births stop, resident runs keep mirroring, and the mirror drains as they finish. Stopping
    * outright is the halt switch, and it is a resync control rather than a rollback.
    */
-  protected writesRedisForTransition(): boolean {
+  protected writesRedisForTransition(organizationId?: string): boolean {
     if (this.halted()) {
       return false;
     }
@@ -308,6 +320,23 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return false;
     }
 
+    // The per-org latch, an ADDITIONAL skip that keeps Redis off a never-enabled organisation once
+    // the dial has moved past off for the ramping ones. Sound for the same reason as the global
+    // latch: with both latches unset no birth of this org's runs ever mirrored, so no keyspace
+    // exists and the append script would refuse every one of these anyway.
+    //
+    // Only ever an additional skip. With no org id, or an absent or non-false per-org answer, this
+    // is not reached and the global-only check above decides alone, so an unknown org errs toward
+    // asking. Blind to the dial like the global latch, since the latch is one-way and cannot flip a
+    // ramped org's runs back to non-resident mid-life.
+    if (
+      organizationId !== undefined &&
+      this.modeResolver?.everEnabled?.() === false &&
+      this.modeResolver?.everEnabledForOrg?.(organizationId) === false
+    ) {
+      return false;
+    }
+
     return true;
   }
 
@@ -316,8 +345,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return this.writesRedisForBirth(organizationId);
   }
 
-  writesRedisForTransitionTest(): boolean {
-    return this.writesRedisForTransition();
+  writesRedisForTransitionTest(organizationId?: string): boolean {
+    return this.writesRedisForTransition(organizationId);
   }
 
   haltedTest(): boolean {
@@ -472,7 +501,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    if (!this.writesRedisForTransition()) {
+    if (!this.writesRedisForTransition(data.snapshot?.organizationId)) {
       return this.delegate.completeAttemptSuccess(runId, data, args, tx);
     }
 
@@ -497,7 +526,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    if (!this.writesRedisForTransition()) {
+    if (!this.writesRedisForTransition(data.snapshot?.organizationId)) {
       return this.delegate.expireRun(runId, data as never, args, tx);
     }
 
@@ -524,7 +553,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     },
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
-    if (!this.writesRedisForTransition()) {
+    if (!this.writesRedisForTransition(data.snapshot?.organizationId)) {
       return this.delegate.expireParkedRun(runId, data as never, tx);
     }
 
@@ -550,7 +579,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<TaskRun> {
     // The delegate writes a snapshot only when one is supplied, so an absent snapshot is a plain run
     // update with nothing for Redis to mirror.
-    if (!data.snapshot || !this.writesRedisForTransition()) {
+    if (!data.snapshot || !this.writesRedisForTransition(data.snapshot?.organizationId)) {
       return this.delegate.rescheduleRun(runId, data, tx);
     }
 
@@ -571,7 +600,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     data: LockRunData,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<Record<string, never>>> {
-    if (!this.writesRedisForTransition()) {
+    if (!this.writesRedisForTransition(data.snapshot?.organizationId)) {
       return this.delegate.lockRunToWorker(runId, data, tx);
     }
 
@@ -601,7 +630,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
-    if (!this.writesRedisForTransition()) {
+    if (!this.writesRedisForTransition(input.organizationId)) {
       return this.delegate.createExecutionSnapshot(input, tx);
     }
 
