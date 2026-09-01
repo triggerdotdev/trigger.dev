@@ -29,7 +29,7 @@ jobs:
     steps:
       # Merge queue events use Git to compare the synthetic merge commit with
       # its captured base, while pull request events use the GitHub API.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'merge_group'
         with:
           fetch-depth: 20
@@ -39,7 +39,7 @@ jobs:
       # `code` uses `every` semantics so the negation patterns actually subtract.
       # With the default `some` quantifier, `**` matches every file and the
       # subsequent `!...` patterns are no-ops (each pattern is OR'd, not AND'd).
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: code_filter
         with:
           predicate-quantifier: every
@@ -52,7 +52,7 @@ jobs:
               - '!.github/**'
               - '!**/*.md'
               - '!**/.env.example'
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
