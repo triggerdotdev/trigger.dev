@@ -1355,6 +1355,7 @@ const EnvironmentSchema = z
       .int()
       .positive()
       .default(10_000),
+    RUN_ENGINE_SNAPSHOT_STORE_RUN_ORG_CACHE_MAX: z.coerce.number().int().positive().default(50_000),
     // No fallback to REDIS_*: this is a distinct durable endpoint and must be set explicitly, or
     // execution state silently lands on the general-purpose cache.
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST: z.string().optional(),
