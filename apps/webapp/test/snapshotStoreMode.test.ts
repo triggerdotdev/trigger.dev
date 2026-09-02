@@ -1,23 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SnapshotStoreMode } from "@internal/run-store";
 import {
-  createOrgModeSource,
   buildSnapshotStoreModeResolver,
-  cachedOrgModeFor,
   NO_OVERRIDE,
+  snapshotStoreAnyOrgReadEnabled,
+  snapshotStoreAnyOrgRedisOnly,
+  snapshotStoreIsCohortMember,
+  snapshotStoreOrgDefinitelyNeverEnabled,
 } from "~/v3/snapshotStoreMode.server";
 
+/** A cold registry is modelled by `dials: undefined`; a loaded one by a (possibly empty) map. */
+type Dials = Record<string, SnapshotStoreMode> | undefined;
+
+/**
+ * Builds the resolver the way production wires it: every org-scoped answer derives from the polled
+ * dial map. `dials` undefined models a cold registry; the map value (including "off") is authoritative
+ * when present, and an absent org reads as NO_OVERRIDE so `resolve` falls back to the global dial.
+ */
 function build(opts: {
   globalMode?: SnapshotStoreMode;
-  perOrg?: Record<string, SnapshotStoreMode>;
+  dials?: Dials;
+  runToOrg?: Record<string, string>;
+  resolveAuthoritative?: (runId: string) => Promise<string>;
   envFloor?: SnapshotStoreMode;
-  refresh?: (organizationId: string) => void;
 }) {
+  const dials = opts.dials;
   return buildSnapshotStoreModeResolver({
     globalMode: () => opts.globalMode,
+    orgDefinitelyNeverEnabled: (id) => snapshotStoreOrgDefinitelyNeverEnabled(dials, id),
     orgMode: {
-      get: (id: string) => opts.perOrg?.[id],
-      refresh: opts.refresh ?? (() => {}),
+      get: (id) => dials?.[id] ?? NO_OVERRIDE,
+      refresh: () => {},
+      warm: async () => {},
+    },
+    runOrg:
+      opts.runToOrg || opts.resolveAuthoritative
+        ? {
+            resolve: (runId: string) => opts.runToOrg?.[runId],
+            ...(opts.resolveAuthoritative && { resolveAuthoritative: opts.resolveAuthoritative }),
+          }
+        : undefined,
+    census: {
+      anyOrgReadEnabled: () => snapshotStoreAnyOrgReadEnabled(dials),
+      anyOrgRedisOnly: () => snapshotStoreAnyOrgRedisOnly(dials),
     },
     envFloor: opts.envFloor ?? "off",
   });
@@ -33,76 +58,36 @@ describe("snapshot store mode resolver", () => {
     expect(build({ globalMode: "redis-read", envFloor: "off" }).resolve()).toBe("redis-read");
   });
 
-  it("prefers an organisation override over the global flag", () => {
-    const r = build({ globalMode: "off", perOrg: { org_a: "dual-write" } });
+  it("prefers an organisation dial over the global flag", () => {
+    const r = build({ globalMode: "off", dials: { org_a: "dual-write" } });
     expect(r.resolve("org_a")).toBe("dual-write");
     expect(r.resolve("org_b")).toBe("off");
   });
 
   it("lets an organisation be off while the global flag is on", () => {
-    const r = build({ globalMode: "dual-write", perOrg: { org_a: "off" } });
+    const r = build({ globalMode: "dual-write", dials: { org_a: "off" } });
     expect(r.resolve("org_a")).toBe("off");
     expect(r.resolve("org_b")).toBe("dual-write");
   });
 
-  it("serves the global answer on a cold organisation and schedules a refresh", () => {
-    const refresh = vi.fn();
-    const r = build({ globalMode: "dual-write", refresh });
-    expect(r.resolve("org_cold")).toBe("dual-write");
-    expect(refresh).toHaveBeenCalledWith("org_cold");
+  it("resolves an org absent from the map to the global answer", () => {
+    const r = build({ globalMode: "dual-write", dials: {} });
+    expect(r.resolve("org_absent")).toBe("dual-write");
   });
 
-  it("never lets a refresh failure reach the caller", () => {
-    const refresh = vi.fn(() => {
-      throw new Error("control plane unreachable");
-    });
-    const r = build({ globalMode: "off", refresh });
-    expect(() => r.resolve("org_x")).not.toThrow();
-    expect(r.resolve("org_x")).toBe("off");
+  it("resolves any org to the global answer while the map is cold", () => {
+    const r = build({ globalMode: "dual-write", dials: undefined });
+    expect(r.resolve("org_cold")).toBe("dual-write");
   });
 
   it("resolves an unknown organisation to the global answer, never a throw", () => {
-    const r = build({ globalMode: "off", perOrg: {} });
+    const r = build({ globalMode: "off", dials: {} });
+    expect(() => r.resolve("org_deleted")).not.toThrow();
     expect(r.resolve("org_deleted")).toBe("off");
   });
 
-  it("caches an absent override rather than nothing", () => {
-    // Caching nothing means every organisation without an override re-queries on every write.
-    expect(cachedOrgModeFor(undefined)).toBe(NO_OVERRIDE);
-    expect(cachedOrgModeFor(null)).toBe(NO_OVERRIDE);
-    expect(cachedOrgModeFor("not-a-mode")).toBe(NO_OVERRIDE);
-    expect(cachedOrgModeFor("dual-write")).toBe("dual-write");
-    expect(cachedOrgModeFor("redis-read")).toBe("redis-read");
-    expect(cachedOrgModeFor("redis-only")).toBe("redis-only");
-  });
-
-  it("stops querying once an absent override is cached", () => {
-    // Without a cached negative, every organisation with no override re-queries on every write,
-    // which is every organisation until a ramp starts.
-    const refresh = vi.fn();
-    let cached: string | undefined;
-    const r = buildSnapshotStoreModeResolver({
-      globalMode: () => "off",
-      orgMode: {
-        get: () => cached as never,
-        refresh: (id: string) => {
-          refresh(id);
-          cached = "__none__";
-        },
-      },
-      envFloor: "off",
-    });
-
-    expect(r.resolve("org_a")).toBe("off");
-    expect(refresh).toHaveBeenCalledTimes(1);
-
-    expect(r.resolve("org_a")).toBe("off");
-    expect(r.resolve("org_a")).toBe("off");
-    expect(refresh).toHaveBeenCalledTimes(1);
-  });
-
   it("does not consult the organisation source when no organisation is supplied", () => {
-    const get = vi.fn(() => undefined);
+    const get = vi.fn(() => NO_OVERRIDE as const);
     const r = buildSnapshotStoreModeResolver({
       globalMode: () => "redis-read",
       orgMode: { get, refresh: () => {} },
@@ -114,53 +99,27 @@ describe("snapshot store mode resolver", () => {
 });
 
 describe("the org-scoped read routing", () => {
-  function buildRead(opts: {
-    globalMode?: SnapshotStoreMode;
-    perOrg?: Record<string, SnapshotStoreMode>;
-    runToOrg?: Record<string, string>;
-    census?: { anyOrgReadEnabled: boolean; anyOrgRedisOnly: boolean };
-  }) {
-    return buildSnapshotStoreModeResolver({
-      globalMode: () => opts.globalMode,
-      orgMode: {
-        get: (id: string) => opts.perOrg?.[id],
-        refresh: () => {},
-      },
-      runOrg: { resolve: (runId: string) => opts.runToOrg?.[runId] },
-      census: opts.census
-        ? {
-            anyOrgReadEnabled: () => opts.census!.anyOrgReadEnabled,
-            anyOrgRedisOnly: () => opts.census!.anyOrgRedisOnly,
-          }
-        : undefined,
-      envFloor: "off",
-    });
-  }
-
   it("routes a run in a redis-read org to that org's read position", () => {
-    const r = buildRead({
+    const r = build({
       globalMode: "off",
-      perOrg: { org_a: "redis-read" },
+      dials: { org_a: "redis-read" },
       runToOrg: { run_1: "org_a" },
     });
     expect(r.readModeFor?.("run_1")).toBe("redis-read");
   });
 
   it("returns undefined for a run whose org cannot be resolved, so the decorator falls back", () => {
-    const r = buildRead({ globalMode: "redis-read", runToOrg: {} });
+    const r = build({ globalMode: "redis-read", runToOrg: {} });
     expect(r.readModeFor?.("run_unknown")).toBeUndefined();
   });
 
-  it("returns the global answer for a resolved run whose org has no override", () => {
-    const r = buildRead({ globalMode: "dual-write", runToOrg: { run_1: "org_a" }, perOrg: {} });
+  it("returns the global answer for a resolved run whose org is absent from the map", () => {
+    const r = build({ globalMode: "dual-write", runToOrg: { run_1: "org_a" }, dials: {} });
     expect(r.readModeFor?.("run_1")).toBe("dual-write");
   });
 
-  it("delegates the cheap read gates to the census", () => {
-    const r = buildRead({
-      globalMode: "off",
-      census: { anyOrgReadEnabled: true, anyOrgRedisOnly: false },
-    });
+  it("delegates the cheap read gates to the map-derived census", () => {
+    const r = build({ globalMode: "off", dials: { org_a: "redis-read" } });
     expect(r.anyOrgReadEnabled?.()).toBe(true);
     expect(r.anyOrgRedisOnly?.()).toBe(false);
   });
@@ -168,7 +127,7 @@ describe("the org-scoped read routing", () => {
   it("is inert when no run→org source or census is wired", () => {
     const r = buildSnapshotStoreModeResolver({
       globalMode: () => "off",
-      orgMode: { get: () => undefined, refresh: () => {} },
+      orgMode: { get: () => NO_OVERRIDE, refresh: () => {} },
       envFloor: "off",
     });
     expect(r.readModeFor?.("run_1")).toBeUndefined();
@@ -178,52 +137,26 @@ describe("the org-scoped read routing", () => {
 });
 
 describe("the authoritative read position (redis-only fallback gate)", () => {
-  function buildAuth(opts: {
-    globalMode?: SnapshotStoreMode;
-    perOrg?: Record<string, SnapshotStoreMode>;
-    resolveAuthoritative?: (runId: string) => Promise<string>;
-    warm?: (organizationId: string) => Promise<void>;
-  }) {
-    return buildSnapshotStoreModeResolver({
-      globalMode: () => opts.globalMode,
-      orgMode: {
-        get: (id: string) => opts.perOrg?.[id],
-        refresh: () => {},
-        ...(opts.warm && { warm: opts.warm }),
-      },
-      runOrg: {
-        resolve: () => undefined,
-        ...(opts.resolveAuthoritative && { resolveAuthoritative: opts.resolveAuthoritative }),
-      },
-      envFloor: "off",
-    });
-  }
-
-  it("resolves the run's org authoritatively, warms the dial, and returns the org mode", async () => {
-    const warmed: string[] = [];
-    const r = buildAuth({
+  it("resolves the run's org authoritatively and returns the org mode from the map", async () => {
+    const r = build({
       globalMode: "redis-read",
-      perOrg: { org_ro: "redis-only" },
+      dials: { org_ro: "redis-only" },
       resolveAuthoritative: async () => "org_ro",
-      warm: async (id) => {
-        warmed.push(id);
-      },
     });
     await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBe("redis-only");
-    expect(warmed).toContain("org_ro");
   });
 
   it("returns a non-redis-only mode for a pre-cutover run so the decorator falls back", async () => {
-    const r = buildAuth({
+    const r = build({
       globalMode: "redis-read",
-      perOrg: {},
+      dials: {},
       resolveAuthoritative: async () => "org_pre",
     });
     await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBe("redis-read");
   });
 
   it("propagates a throw from the authoritative run→org read so the decorator fails closed", async () => {
-    const r = buildAuth({
+    const r = build({
       globalMode: "redis-read",
       resolveAuthoritative: async () => {
         throw new Error("run→org read timed out");
@@ -233,227 +166,63 @@ describe("the authoritative read position (redis-only fallback gate)", () => {
   });
 
   it("returns undefined when no authoritative run→org source is wired", async () => {
-    const r = buildAuth({ globalMode: "redis-read" });
+    const r = build({ globalMode: "redis-read" });
     await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBeUndefined();
   });
 });
 
-describe("a saved organisation dial survives a lagging replica", () => {
-  type Deferred = { resolve: (v: unknown) => void; promise: Promise<unknown> };
-
-  function deferred(): Deferred {
-    let resolve!: (v: unknown) => void;
-    const promise = new Promise<unknown>((r) => (resolve = r));
-    return { resolve, promise };
-  }
-
-  function clientFor(read: () => Promise<unknown>) {
-    return { organization: { findFirst: () => read() as never } } as never;
-  }
-
-  it("does not let a replica read that starts after the save re-cache the old value", async () => {
-    // The primary carries the saved value; the replica is still lagging and carries the old one.
-    const primary = deferred();
-    const replica = deferred();
-
-    const source = createOrgModeSource({
-      primary: clientFor(() => primary.promise),
-      replica: clientFor(() => replica.promise),
-    });
-
-    // The save path invalidates, which drops the cache and reads the primary.
-    source.invalidate("org_1");
-    // A concurrent write for the same organisation misses the now-empty cache and warms off-path.
-    source.refresh("org_1");
-
-    // The primary lands first with the saved value.
-    primary.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(source.get("org_1")).toBe("dual-write");
-
-    // Then the lagging replica lands with the pre-save value. It must not win.
-    replica.resolve({ featureFlags: {} });
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(source.get("org_1")).toBe("dual-write");
-  });
-  it("keeps the save protected when two invalidations for one organisation overlap", async () => {
-    // primaryPending was a Set, so the FIRST primary read's finally cleared it while the SECOND was
-    // still in flight. A refresh arriving in that window then started a replica read carrying the
-    // current generation, so the generation guard could not discard it, and a lagging replica put
-    // the pre-save value back for a full cache TTL.
-    const firstPrimary = deferred();
-    const secondPrimary = deferred();
-    const replica = deferred();
-    const primaries = [firstPrimary, secondPrimary];
-    let primaryCalls = 0;
-
-    const source = createOrgModeSource({
-      primary: clientFor(() => primaries[primaryCalls++]!.promise),
-      replica: clientFor(() => replica.promise),
-    });
-
-    // Two saves for the same organisation, overlapping.
-    source.invalidate("org_1");
-    source.invalidate("org_1");
-
-    // The FIRST primary read completes. The second is still outstanding, so the organisation must
-    // still count as pending.
-    firstPrimary.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } });
-    await new Promise((r) => setTimeout(r, 0));
-
-    // A concurrent read arrives while the second save is still reading. It must not start a replica
-    // read, because the authoritative answer is still on its way.
-    source.refresh("org_1");
-
-    // The second save lands with the value that must win.
-    secondPrimary.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(source.get("org_1")).toBe("dual-write");
-
-    // NOW the lagging replica lands, carrying the pre-save value. It shares the second save's
-    // generation, so the generation guard cannot discard it: only never having started can stop it.
-    replica.resolve({ featureFlags: {} });
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(source.get("org_1")).toBe("dual-write");
-  });
-});
-
-describe("warming the organisation dial before a birth", () => {
-  type Deferred = { resolve: (v: unknown) => void; promise: Promise<unknown> };
-  function deferred(): Deferred {
-    let resolve!: (v: unknown) => void;
-    const promise = new Promise<unknown>((r) => (resolve = r));
-    return { resolve, promise };
-  }
-  function clientFor(read: () => Promise<unknown>) {
-    return { organization: { findFirst: () => read() as never } } as never;
-  }
-
-  it("resolves once the organisation's value is cached, so a birth sees the truth", async () => {
-    const replica = deferred();
-    const source = createOrgModeSource({
-      primary: clientFor(() => Promise.resolve({})),
-      replica: clientFor(() => replica.promise),
-    });
-
-    expect(source.get("org_1")).toBeUndefined();
-
-    const warming = source.warm("org_1");
-    replica.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
-    await warming;
-
-    // The point of the whole exercise: after warm, the cache holds the real value, so the
-    // synchronous resolve a birth then performs no longer falls back to the global position.
-    expect(source.get("org_1")).toBe("dual-write");
+describe("the map-derived aggregates and census accessors", () => {
+  it("anyOrgReadEnabled derives from values, cold default TRUE", () => {
+    // Cold: no map yet, so err toward resolving per-org reads rather than silently suppressing them.
+    expect(snapshotStoreAnyOrgReadEnabled(undefined)).toBe(true);
+    // Loaded but empty, or only dual-write/off: no read position, so false.
+    expect(snapshotStoreAnyOrgReadEnabled({})).toBe(false);
+    expect(snapshotStoreAnyOrgReadEnabled({ a: "dual-write", b: "off" })).toBe(false);
+    // A read position anywhere flips it true.
+    expect(snapshotStoreAnyOrgReadEnabled({ a: "redis-read" })).toBe(true);
+    expect(snapshotStoreAnyOrgReadEnabled({ a: "off", b: "redis-only" })).toBe(true);
   });
 
-  it("costs nothing when the value is already cached", async () => {
-    let reads = 0;
-    const source = createOrgModeSource({
-      primary: clientFor(() => Promise.resolve({})),
-      replica: clientFor(() => {
-        reads += 1;
-        return Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } });
-      }),
-    });
-
-    await source.warm("org_1");
-    expect(reads).toBe(1);
-    expect(source.get("org_1")).toBe("off");
-
-    // A warm organisation is the common case once it has any traffic, and must not re-read.
-    await source.warm("org_1");
-    expect(reads).toBe(1);
+  it("anyOrgRedisOnly derives from values, cold default FALSE", () => {
+    // Cold: err toward Postgres fallback, which is authoritative.
+    expect(snapshotStoreAnyOrgRedisOnly(undefined)).toBe(false);
+    expect(snapshotStoreAnyOrgRedisOnly({})).toBe(false);
+    expect(snapshotStoreAnyOrgRedisOnly({ a: "redis-read", b: "dual-write" })).toBe(false);
+    expect(snapshotStoreAnyOrgRedisOnly({ a: "redis-only" })).toBe(true);
   });
 
-  it("gives up rather than holding a birth open on a slow read", async () => {
-    // A birth is on the trigger path and the caller may already hold an open transaction, so this
-    // must be bounded. Giving up restores the previous behaviour, it does not fail the trigger.
-    const neverResolves = new Promise<unknown>(() => {});
-    const source = createOrgModeSource({
-      primary: clientFor(() => Promise.resolve({})),
-      replica: clientFor(() => neverResolves),
-    });
-
-    const started = Date.now();
-    await expect(source.warm("org_1")).resolves.toBeUndefined();
-    const elapsed = Date.now() - started;
-
-    // Bounded, and nowhere near indefinite.
-    expect(elapsed).toBeLessThan(2_000);
-    // Still unknown, so the synchronous resolve falls back exactly as it did before.
-    expect(source.get("org_1")).toBeUndefined();
-  });
-  it("keeps replica refreshes out while a failed primary read is still retrying", async () => {
-    // While the primary is failing and retries are pending, a lagging replica must not restore the
-    // pre-save value: primaryPending stays set for the generation, so refresh does not read the replica.
-    let primaryCalls = 0;
-    const source = createOrgModeSource(
-      {
-        primary: clientFor(() => {
-          primaryCalls += 1;
-          return Promise.reject(new Error("primary unavailable"));
-        }),
-        replica: clientFor(() =>
-          Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } })
-        ),
-      },
-      // Long delays: the retry window is still open for the duration of this test.
-      { primaryInvalidateRetryDelaysMs: [10_000, 10_000] }
-    );
-
-    source.invalidate("org_1");
-    await vi.waitFor(() => expect(primaryCalls).toBeGreaterThanOrEqual(1));
-
-    // A refresh arriving mid-retry must not start a replica read; the resolver falls back to global.
-    source.refresh("org_1");
-    await new Promise((r) => setTimeout(r, 0));
-    expect(source.get("org_1")).toBeUndefined();
+  it("isCohortMember derives from the org's value, cold default FALSE", () => {
+    expect(snapshotStoreIsCohortMember(undefined, "org_a")).toBe(false);
+    expect(snapshotStoreIsCohortMember({}, "org_a")).toBe(false);
+    expect(snapshotStoreIsCohortMember({ org_a: "dual-write" }, "org_a")).toBe(true);
+    expect(snapshotStoreIsCohortMember({ org_a: "redis-only" }, "org_a")).toBe(true);
   });
 
-  it("retries the primary and recovers the saved value after a transient failure", async () => {
-    let calls = 0;
-    const source = createOrgModeSource(
-      {
-        primary: clientFor(() => {
-          calls += 1;
-          return calls === 1
-            ? Promise.reject(new Error("primary unavailable"))
-            : Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
-        }),
-        replica: clientFor(() => Promise.resolve({ featureFlags: {} })),
-      },
-      { primaryInvalidateRetryDelaysMs: [5, 5, 5] }
-    );
-
-    source.invalidate("org_1");
-    // A concurrent refresh during the retry must not read the replica out from under the retry.
-    source.refresh("org_1");
-
-    await vi.waitFor(() => expect(source.get("org_1")).toBe("dual-write"));
-    expect(calls).toBeGreaterThanOrEqual(2);
+  it("orgDefinitelyNeverEnabled derives from ABSENCE, cold default FALSE", () => {
+    // Cold: not definite, so the caller keeps probing.
+    expect(snapshotStoreOrgDefinitelyNeverEnabled(undefined, "org_a")).toBe(false);
+    // Loaded and the key is absent: a definite negative.
+    expect(snapshotStoreOrgDefinitelyNeverEnabled({}, "org_a")).toBe(true);
+    expect(snapshotStoreOrgDefinitelyNeverEnabled({ org_b: "dual-write" }, "org_a")).toBe(true);
+    // Present at any value is NOT a definite negative.
+    expect(snapshotStoreOrgDefinitelyNeverEnabled({ org_a: "dual-write" }, "org_a")).toBe(false);
   });
 
-  it("unwedges after exhausting primary retries so a later refresh repopulates", async () => {
-    const source = createOrgModeSource(
-      {
-        primary: clientFor(() => Promise.reject(new Error("primary unavailable"))),
-        replica: clientFor(() =>
-          Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "redis-read" } })
-        ),
-      },
-      { primaryInvalidateRetryDelaysMs: [1, 1] }
-    );
+  it("a retained off entry is present but neither a cohort member nor a read enabler", () => {
+    const dials: Dials = { org_off: "off" };
+    // Present, so NOT a definite never-enabled negative (presence is the one-way latch).
+    expect(snapshotStoreOrgDefinitelyNeverEnabled(dials, "org_off")).toBe(false);
+    // But its value is off, so it is not a cohort member and does not enable reads.
+    expect(snapshotStoreIsCohortMember(dials, "org_off")).toBe(false);
+    expect(snapshotStoreAnyOrgReadEnabled(dials)).toBe(false);
+    expect(snapshotStoreAnyOrgRedisOnly(dials)).toBe(false);
+  });
 
-    source.invalidate("org_1");
-
-    // Once the retries exhaust, primaryPending clears and a refresh can repopulate from the replica,
-    // rather than the org staying wedged on the global position forever.
-    await vi.waitFor(() => {
-      source.refresh("org_1");
-      expect(source.get("org_1")).toBe("redis-read");
-    });
+  it("the resolver reflects the map values through its census and definite-negative accessors", () => {
+    const r = build({ globalMode: "off", dials: { org_read: "redis-read", org_off: "off" } });
+    expect(r.anyOrgReadEnabled?.()).toBe(true);
+    expect(r.anyOrgRedisOnly?.()).toBe(false);
+    expect(r.orgDefinitelyNeverEnabled?.("org_off")).toBe(false);
+    expect(r.orgDefinitelyNeverEnabled?.("org_absent")).toBe(true);
   });
 });

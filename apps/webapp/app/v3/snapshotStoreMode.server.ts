@@ -1,15 +1,10 @@
-import { LRUCache } from "lru-cache";
 import type { SnapshotStoreMode, SnapshotStoreModeResolver } from "@internal/run-store";
-import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { logger } from "~/services/logger.server";
-import { singleton } from "~/utils/singleton";
-import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { snapshotRunOrgSource } from "~/v3/snapshotRunOrg.server";
-import { snapshotStoreOrgCensus } from "~/v3/snapshotStoreOrgCensus.server";
 
-/** A cached "this organisation has no override", distinct from "not cached". */
+/** A resolved "this organisation has no override", distinct from a real dial value. */
 export const NO_OVERRIDE = "__none__" as const;
 
 /**
@@ -27,36 +22,83 @@ void _dialMatchesRunStore;
 
 type CachedOrgMode = OrgDialMode | typeof NO_OVERRIDE;
 
+/** The enrolled-cohort dial map: orgId -> current dial. Undefined models a cold registry. */
+type OrgDialMap = Record<string, DialMode>;
+
 /**
- * What to cache for one organisation's blob value. An unparseable or absent value caches
- * NO_OVERRIDE rather than nothing: caching nothing means every organisation without an override
- * re-queries on every write, which is all of them until a ramp starts.
+ * The polled cohort dial map. The map arrives as a single global-flags key, distributed by
+ * `globalFlagsRegistry`, so every read here is pure in-memory: no query, no cache, no TTL. An org
+ * absent from the map is never-enrolled; a stored value (including "off", which is never deleted) is
+ * that org's current dial.
  */
-export function cachedOrgModeFor(raw: unknown): CachedOrgMode {
-  const parsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(raw);
-  return parsed.success ? parsed.data : NO_OVERRIDE;
+function orgDials(): OrgDialMap {
+  return (globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreOrgDials] ?? {}) as OrgDialMap;
 }
 
-/** One organisation's cached dial value. */
-type CachedOrg = { mode: CachedOrgMode };
+/** True once the registry has loaded at least once. Cold before the first poll completes. */
+function orgDialsLoaded(): boolean {
+  return globalFlagsRegistry.current() !== undefined;
+}
 
-type OrgModeSource = {
-  /** Cache-only: returns undefined on a true miss rather than querying. */
+/** The dial map when loaded, or undefined when the registry is still cold. */
+function loadedOrgDials(): OrgDialMap | undefined {
+  return orgDialsLoaded() ? orgDials() : undefined;
+}
+
+// The four aggregate/census accessors, derived purely from the map. Cold is modelled by a `dials`
+// argument of undefined, so these are testable without touching the registry. Every derivation reads
+// VALUES, never presence alone: a retained "off" entry must not re-enable routing or count as a
+// cohort member, but it IS present, so it is not a definite negative either.
+
+/** Any org at a read position. Cold default TRUE, so a cold read never suppresses per-org routing. */
+export function snapshotStoreAnyOrgReadEnabled(dials: OrgDialMap | undefined): boolean {
+  if (dials === undefined) return true;
+  return Object.values(dials).some((m) => m === "redis-read" || m === "redis-only");
+}
+
+/** Any org at redis-only. Cold default FALSE, so a cold read falls back to Postgres. */
+export function snapshotStoreAnyOrgRedisOnly(dials: OrgDialMap | undefined): boolean {
+  if (dials === undefined) return false;
+  return Object.values(dials).some((m) => m === "redis-only");
+}
+
+/** Cohort membership by VALUE: present and past off. Cold default FALSE (cardinality-safe label). */
+export function snapshotStoreIsCohortMember(
+  dials: OrgDialMap | undefined,
+  organizationId: string
+): boolean {
+  if (dials === undefined) return false;
+  const mode = dials[organizationId];
+  return mode !== undefined && mode !== "off";
+}
+
+/**
+ * DEFINITE never-enabled by ABSENCE: only a loaded map whose keys exclude the org is a definite
+ * negative. Cold default FALSE, so an unknown answer keeps the caller probing rather than skipping.
+ * A retained "off" entry is present, so it is NOT a definite negative.
+ */
+export function snapshotStoreOrgDefinitelyNeverEnabled(
+  dials: OrgDialMap | undefined,
+  organizationId: string
+): boolean {
+  if (dials === undefined) return false;
+  return dials[organizationId] === undefined;
+}
+
+/** The map-derived cohort predicate the metrics label uses. Reads the live registry. */
+export function isSnapshotStoreCohortMember(organizationId: string): boolean {
+  return snapshotStoreIsCohortMember(loadedOrgDials(), organizationId);
+}
+
+/** What resolution needs from the org source. Read-only and synchronous; warm is a birth-only hook. */
+type ResolverOrgSource = {
+  /** The org's dial, or NO_OVERRIDE when absent so `resolveMode` falls back to the global dial. */
   get(organizationId: string): CachedOrgMode | undefined;
-  /** Fire-and-forget, de-duplicated per organisation, never throws. */
+  /** No-op with the map source: the dial arrives via the poll, so there is nothing to warm off-path. */
   refresh(organizationId: string): void;
-  /** Re-reads from the primary after a write, so replica lag cannot re-cache the old value. */
-  invalidate(organizationId: string): void;
-  /**
-   * Awaits the organisation's value on a cache miss, bounded, and never throws. Used at BIRTH sites
-   * only: residency is permanent, so a run born during a miss is excluded from the mirror for life.
-   */
-  warm(organizationId: string): Promise<void>;
+  /** No-op with the map source: births read the map synchronously, so there is nothing to await. */
+  warm?(organizationId: string): Promise<void>;
 };
-
-/** What resolution needs. Invalidation is a save-path concern, not a read-path one. */
-type ResolverOrgSource = Pick<OrgModeSource, "get" | "refresh"> &
-  Partial<Pick<OrgModeSource, "warm">>;
 
 /** Resolves a run to its organisation. Cache-only and synchronous, undefined on a miss. */
 type ResolverRunOrgSource = {
@@ -80,7 +122,7 @@ export function buildSnapshotStoreModeResolver(deps: {
    */
   globalModeEverEnabled?: () => boolean;
   /**
-   * Whether an org is DEFINITELY never-enabled, per the census. Absent or cold means false, so an
+   * Whether an org is DEFINITELY never-enabled, per the map. Absent or cold means false, so an
    * unknown answer keeps probing rather than suppressing a resident run.
    */
   orgDefinitelyNeverEnabled?: (organizationId: string) => boolean;
@@ -121,11 +163,12 @@ export function buildSnapshotStoreModeResolver(deps: {
     // Cold-aware read delegated to deps; absent means true, so a transition never skips on a missing
     // signal. The deps reader answers true while its source is cold.
     globalModeEverEnabled: (): boolean => deps.globalModeEverEnabled?.() ?? true,
-    // False ONLY on a definite census negative; absent or cold means false, so an unknown answer
-    // keeps probing rather than suppressing a resident run.
+    // False ONLY on a definite negative; absent or cold means false, so an unknown answer keeps
+    // probing rather than suppressing a resident run.
     orgDefinitelyNeverEnabled: (organizationId: string): boolean =>
       deps.orgDefinitelyNeverEnabled?.(organizationId) ?? false,
-    // Awaited at birth sites only. Absent org id means nothing to look up, so it is a no-op.
+    // Awaited at birth sites only. With the map source this resolves immediately: the dial is read
+    // synchronously from the polled map, so there is no per-org read to await.
     warm: async (organizationId: string): Promise<void> => {
       await deps.orgMode.warm?.(organizationId);
     },
@@ -140,15 +183,13 @@ export function buildSnapshotStoreModeResolver(deps: {
       return resolveMode(organizationId);
     },
     // Authoritative counterpart, used only when the sync read is unresolved and some org is
-    // redis-only. Resolves run→org from the primary (bounded, throws on failure), warms the org dial
-    // so the immediate read is accurate, then answers with the org's mode. A throw propagates so the
-    // decorator fails closed.
+    // redis-only. Resolves run→org from the primary (bounded, throws on failure), then answers with
+    // the org's mode straight from the map. A throw propagates so the decorator fails closed.
     readModeForAuthoritative: async (runId: string): Promise<DialMode | undefined> => {
       if (!deps.runOrg?.resolveAuthoritative) {
         return undefined;
       }
       const organizationId = await deps.runOrg.resolveAuthoritative(runId);
-      await deps.orgMode.warm?.(organizationId);
       return resolveMode(organizationId);
     },
     anyOrgReadEnabled: (): boolean => deps.census?.anyOrgReadEnabled() ?? false,
@@ -176,183 +217,6 @@ export const snapshotStoreHalted = buildSnapshotStoreHaltCheck({
   flag: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreHalt],
 });
 
-/**
- * How long a birth will wait for its organisation's dial before proceeding without it. Short because
- * the read is a single primary-key select, and because the cost of overrunning is a caller's
- * transaction held open.
- */
-const WARM_TIMEOUT_MS = 500;
-
-const DEFAULT_CACHE_MAX = 10_000;
-const DEFAULT_CACHE_TTL_MS = 30_000;
-
-// A failed post-save primary read must not wedge the org on the global fallback forever: retry the
-// PRIMARY a few times (the replica stays blocked meanwhile so it cannot restore the superseded value),
-// then give up and let normal refreshes resume. A bounded stale window beats a permanent one.
-const DEFAULT_PRIMARY_INVALIDATE_RETRY_DELAYS_MS = [100, 250, 500, 1000];
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-type OrgModeClient = {
-  organization: {
-    findFirst(args: {
-      where: { id: string };
-      select: { featureFlags: true };
-    }): Promise<{ featureFlags: unknown } | null>;
-  };
-};
-
-export function createOrgModeSource(
-  clients?: {
-    primary: OrgModeClient;
-    replica: OrgModeClient;
-  },
-  opts?: { primaryInvalidateRetryDelaysMs?: number[] }
-): OrgModeSource {
-  const primaryClient = (clients?.primary ?? prisma) as OrgModeClient;
-  const replicaClient = (clients?.replica ?? $replica) as OrgModeClient;
-  const primaryInvalidateRetryDelaysMs =
-    opts?.primaryInvalidateRetryDelaysMs ?? DEFAULT_PRIMARY_INVALIDATE_RETRY_DELAYS_MS;
-  // Defaults inline as well as in the schema: this must not throw when a caller supplies a partial
-  // env, and an LRU with neither bound set is a constructor error.
-  const cache = new LRUCache<string, CachedOrg>({
-    max: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX ?? DEFAULT_CACHE_MAX,
-    ttl: env.RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS ?? DEFAULT_CACHE_TTL_MS,
-  });
-  const inFlight = new Set<string>();
-  // Organisations whose primary read is still in flight after a save, keyed to the GENERATION that
-  // owns the read. A replica refresh started in that window would carry the SAME generation as the
-  // invalidation, so the generation guard below could not discard it, and a lagging replica landing
-  // second would restore the pre-save value for a full cache TTL. The save is the one read that must
-  // win, so nothing else reads during it.
-  //
-  // A Set was not enough. Two overlapping saves for one organisation share one entry, so the FIRST
-  // read's completion cleared it while the second was still outstanding, and the window reopened
-  // exactly when a second save made it most dangerous. Holding the generation means a completing
-  // read only clears the flag when it still owns it.
-  const primaryPending = new Map<string, number>();
-  // A replica read that started before an invalidation can land after the primary read and put the
-  // superseded value back. A per-organisation generation lets a stale load discard its own result.
-  const generations = new Map<string, number>();
-  const generationOf = (organizationId: string) => generations.get(organizationId) ?? 0;
-
-  return {
-    get: (organizationId) => cache.get(organizationId)?.mode,
-    invalidate: (organizationId) => {
-      // Drop first, so a resolve between now and the re-read falls back rather than serving a
-      // value the write just replaced.
-      const generation = generationOf(organizationId) + 1;
-      generations.set(organizationId, generation);
-      cache.delete(organizationId);
-      primaryPending.set(organizationId, generation);
-      void loadWithPrimaryRetry(organizationId, generation);
-    },
-    refresh: (organizationId) => {
-      // A save is mid-read for this organisation. Its answer is authoritative and a replica cannot
-      // improve on it, so skip: the resolver falls back to the global position until it lands.
-      if (primaryPending.has(organizationId) || inFlight.has(organizationId)) {
-        return;
-      }
-      inFlight.add(organizationId);
-
-      void load(organizationId, replicaClient, generationOf(organizationId)).finally(() => {
-        inFlight.delete(organizationId);
-      });
-    },
-    warm: async (organizationId) => {
-      // Already known, including a cached "no override". Costs nothing, which is the common case
-      // once an organisation has any traffic at all.
-      if (cache.get(organizationId) !== undefined) {
-        return;
-      }
-
-      // A save is mid-read: its answer is the authoritative one and is already on its way, so wait
-      // for that rather than starting a second read of the same row.
-      const pending = primaryPending.has(organizationId)
-        ? undefined
-        : load(organizationId, replicaClient, generationOf(organizationId));
-
-      // Bounded on purpose. A birth is on the trigger path and the caller may already hold an open
-      // transaction, so a slow flag read must give up rather than hold that transaction open. Giving
-      // up restores the previous behaviour (answer with the deployment-wide position) rather than
-      // failing the trigger.
-      let timer: NodeJS.Timeout | undefined;
-      const deadline = new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, WARM_TIMEOUT_MS);
-      });
-
-      try {
-        await Promise.race([pending ?? deadline, deadline]);
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-    },
-  };
-
-  // The save's own primary read, with bounded retry. primaryPending stays set for `generation` across
-  // retries so a lagging replica cannot restore the superseded value; a success clears it, and so does
-  // exhausting the retries, so a persistent primary fault falls back to normal refreshes rather than
-  // wedging the org on the global position until the next save or a restart.
-  async function loadWithPrimaryRetry(organizationId: string, generation: number): Promise<void> {
-    for (let attempt = 0; ; attempt++) {
-      const outcome = await load(organizationId, primaryClient, generation);
-      // A newer save (or its read) has superseded this one; it now owns the flag.
-      if (primaryPending.get(organizationId) !== generation) {
-        return;
-      }
-      if (outcome !== "failed") {
-        primaryPending.delete(organizationId);
-        return;
-      }
-      if (attempt >= primaryInvalidateRetryDelaysMs.length) {
-        // Retries exhausted: clear the flag so replica refreshes resume. The next save or reload
-        // corrects any briefly-restored stale value; a permanent wedge would not.
-        if (primaryPending.get(organizationId) === generation) {
-          primaryPending.delete(organizationId);
-        }
-        return;
-      }
-      await sleep(primaryInvalidateRetryDelaysMs[attempt]);
-      if (primaryPending.get(organizationId) !== generation) {
-        return;
-      }
-    }
-  }
-
-  function load(
-    organizationId: string,
-    client: OrgModeClient,
-    generation: number
-  ): Promise<"loaded" | "stale" | "failed"> {
-    return client.organization
-      .findFirst({ where: { id: organizationId }, select: { featureFlags: true } })
-      .then((row) => {
-        // Only the narrow per-org keys. The blob is never passed as `overrides` for the global
-        // key, where a parsing override would win outright.
-        const flags = row?.featureFlags as Record<string, unknown> | null | undefined;
-        // A newer invalidation happened while this read was in flight, so its answer is stale.
-        if (generation < generationOf(organizationId)) {
-          return "stale" as const;
-        }
-        cache.set(organizationId, {
-          mode: cachedOrgModeFor(flags?.[FEATURE_FLAG.snapshotStoreOrgMode]),
-        });
-        return "loaded" as const;
-      })
-      .catch((error) => {
-        logger.warn("snapshotStoreMode: organisation override read failed", {
-          organizationId,
-          error,
-        });
-        return "failed" as const;
-      });
-  }
-}
-
-/** Built on first use, never at import: importing this module must have no side effect. */
-function orgModeSource(): OrgModeSource {
-  return singleton("snapshotStoreOrgModeSource", createOrgModeSource);
-}
-
 export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapshotStoreModeResolver({
   globalMode: () => globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreMode],
   globalModeEverEnabled: () => {
@@ -363,24 +227,21 @@ export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapsho
     return cur[FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled] === true;
   },
   orgDefinitelyNeverEnabled: (organizationId) =>
-    snapshotStoreOrgCensus.orgDefinitelyNeverEnabled(organizationId),
+    snapshotStoreOrgDefinitelyNeverEnabled(loadedOrgDials(), organizationId),
   orgMode: {
-    get: (organizationId) => orgModeSource().get(organizationId),
-    refresh: (organizationId) => orgModeSource().refresh(organizationId),
-    warm: (organizationId) => orgModeSource().warm(organizationId),
+    // Present value (including "off") wins; absent -> NO_OVERRIDE so resolveMode falls back to the
+    // global dial. A cold registry yields an empty map, which reads as NO_OVERRIDE for every org.
+    get: (organizationId) => orgDials()[organizationId] ?? NO_OVERRIDE,
+    refresh: () => {},
+    warm: async () => {},
   },
   runOrg: {
     resolve: (runId) => snapshotRunOrgSource().resolve(runId),
     resolveAuthoritative: (runId) => snapshotRunOrgSource().resolveAuthoritative(runId),
   },
   census: {
-    anyOrgReadEnabled: () => snapshotStoreOrgCensus.anyOrgReadEnabled(),
-    anyOrgRedisOnly: () => snapshotStoreOrgCensus.anyOrgRedisOnly(),
+    anyOrgReadEnabled: () => snapshotStoreAnyOrgReadEnabled(loadedOrgDials()),
+    anyOrgRedisOnly: () => snapshotStoreAnyOrgRedisOnly(loadedOrgDials()),
   },
   envFloor: env.RUN_ENGINE_SNAPSHOT_STORE_MODE ?? "off",
 });
-
-/** Called by the organisation flag save path so the writing process sees a dial change at once. */
-export function invalidateSnapshotStoreOrgMode(organizationId: string): void {
-  orgModeSource().invalidate(organizationId);
-}
