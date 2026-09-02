@@ -45,11 +45,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const { projectRef, env, runId } = parsed.data;
 
     const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
+    // An org-claim token resolves a run in any project of its org, so the agent can follow a run
+    // it found in a sibling project. Membership is `findProjectByRef` inside the resolve.
     runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authentication.authenticationResult,
       projectRef,
       env,
-      triggerBranch
+      triggerBranch,
+      { organizationScoped: true }
     );
 
     // The answer is a deployment's git metadata, so it's gated like the deployments list.
