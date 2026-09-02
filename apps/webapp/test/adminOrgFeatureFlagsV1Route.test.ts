@@ -50,6 +50,13 @@ let orgSeq = 0;
 
 async function seedOrg(prisma: PrismaClient, featureFlags?: Record<string, unknown>) {
   db.client = prisma;
+  // The save path maintains the global cohort dial map, whose row the backfill migration guarantees
+  // in prod. Seed it here so the route's atomic UPDATE finds it (its own test covers the guard).
+  await prisma.featureFlag.upsert({
+    where: { key: FEATURE_FLAG.snapshotStoreOrgDials },
+    create: { key: FEATURE_FLAG.snapshotStoreOrgDials, value: {} },
+    update: {},
+  });
   const id = `org_v1route_${orgSeq++}`;
   await prisma.organization.create({
     data: {

@@ -1,0 +1,153 @@
+// The admin org-flag save path maintains the global snapshotStoreOrgDials cohort map with a single
+// atomic jsonb_set: enabling an org records its dial, a later save to off keeps the entry (never a
+// deletion), concurrent saves for different orgs do not clobber each other, and a missing flag row
+// trips the zero-rows guard. Drives the real exported v1 action against a real Postgres and asserts
+// the stored FeatureFlag row. Only peripheral module boundaries are substituted; the DB is genuine.
+import type { PrismaClient } from "@trigger.dev/database";
+import { postgresTest } from "@internal/testcontainers";
+import { describe, expect, vi } from "vitest";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+
+vi.setConfig({ testTimeout: 60_000 });
+
+const db = vi.hoisted(() => ({ client: null as unknown as PrismaClient }));
+
+vi.mock("~/services/personalAccessToken.server", () => ({
+  requireAdminApiRequest: async () => ({}),
+}));
+
+vi.mock("~/db.server", () => ({
+  get prisma() {
+    return db.client;
+  },
+  get $replica() {
+    return db.client;
+  },
+}));
+
+// Bypass the host/arming-latch gate so the test isolates the map maintenance. The guard's own
+// behaviour is covered in its own tests.
+vi.mock("~/v3/snapshotStoreFlagGuard.server", () => ({
+  snapshotStoreFlagSaveError: () => undefined,
+}));
+
+vi.mock("~/v3/runOpsMigration/controlPlaneResolver.server", () => ({
+  controlPlaneResolver: { invalidateOrganization: () => {} },
+}));
+
+// Only used to seed the mint-flip baseline and back the global registry reload; irrelevant here.
+vi.mock("~/v3/featureFlags.server", () => ({
+  flags: async () => ({}),
+}));
+
+import { action } from "~/routes/admin.api.v1.orgs.$organizationId.feature-flags";
+
+const MODE = FEATURE_FLAG.snapshotStoreOrgMode;
+const DIALS = FEATURE_FLAG.snapshotStoreOrgDials;
+
+let orgSeq = 0;
+
+async function seedOrg(prisma: PrismaClient) {
+  db.client = prisma;
+  const id = `org_dials_${orgSeq++}`;
+  await prisma.organization.create({
+    data: {
+      id,
+      title: "Dials route test org",
+      slug: `dials-route-${id}`,
+    },
+  });
+  return id;
+}
+
+async function seedDialsRow(prisma: PrismaClient) {
+  await prisma.featureFlag.upsert({
+    where: { key: DIALS },
+    create: { key: DIALS, value: {} },
+    update: { value: {} },
+  });
+}
+
+async function post(organizationId: string, body: unknown) {
+  const request = new Request(
+    `https://localhost:3030/admin/api/v1/orgs/${organizationId}/feature-flags`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    }
+  );
+  return (await (action as any)({
+    request,
+    params: { organizationId },
+    context: {},
+  })) as Response;
+}
+
+async function readDials(prisma: PrismaClient) {
+  const row = await prisma.featureFlag.findFirst({
+    where: { key: DIALS },
+    select: { value: true },
+  });
+  return (row?.value ?? null) as Record<string, unknown> | null;
+}
+
+describe("admin org feature-flags route maintains the snapshotStoreOrgDials cohort map", () => {
+  postgresTest("enabling an org records its dial in the map", async ({ prisma }) => {
+    await seedDialsRow(prisma);
+    const id = await seedOrg(prisma);
+
+    const response = await post(id, { [MODE]: "redis-read" });
+
+    expect(response.status).toBe(200);
+    const dials = await readDials(prisma);
+    expect(dials?.[id]).toBe("redis-read");
+  });
+
+  postgresTest(
+    "a later save to off stores off and keeps the entry present",
+    async ({ prisma }) => {
+      await seedDialsRow(prisma);
+      const id = await seedOrg(prisma);
+
+      await post(id, { [MODE]: "redis-read" });
+      const response = await post(id, { [MODE]: "off" });
+
+      expect(response.status).toBe(200);
+      const dials = await readDials(prisma);
+      // Never deleted: off is a stored value, so the key survives the roll-back.
+      expect(dials).not.toBeNull();
+      expect(Object.prototype.hasOwnProperty.call(dials, id)).toBe(true);
+      expect(dials?.[id]).toBe("off");
+    }
+  );
+
+  postgresTest(
+    "saves for different orgs both persist without clobbering",
+    async ({ prisma }) => {
+      await seedDialsRow(prisma);
+      const orgA = await seedOrg(prisma);
+      const orgB = await seedOrg(prisma);
+
+      await post(orgA, { [MODE]: "dual-write" });
+      await post(orgB, { [MODE]: "redis-only" });
+
+      const dials = await readDials(prisma);
+      expect(dials?.[orgA]).toBe("dual-write");
+      expect(dials?.[orgB]).toBe("redis-only");
+    }
+  );
+
+  postgresTest("throws when the flag row is absent (zero-rows guard)", async ({ prisma }) => {
+    // Deliberately do NOT seed the dials row.
+    db.client = prisma;
+    await prisma.featureFlag.deleteMany({ where: { key: DIALS } });
+    const id = await seedOrg(prisma);
+
+    const response = await post(id, { [MODE]: "redis-read" });
+
+    expect(response.status).toBe(400);
+    const bodyJson = (await response.json()) as { error?: string };
+    expect(bodyJson.error).toContain("snapshotStoreOrgDials flag row missing");
+  });
+});

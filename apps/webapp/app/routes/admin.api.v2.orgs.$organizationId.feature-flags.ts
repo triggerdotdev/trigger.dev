@@ -8,13 +8,12 @@ import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
-import { invalidateSnapshotStoreOrgMode } from "~/v3/snapshotStoreMode.server";
-import { snapshotStoreOrgCensus } from "~/v3/snapshotStoreOrgCensus.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   clearedOrgFlagsPreservingLatch,
   FEATURE_FLAG,
+  FeatureFlagCatalog,
   stampSnapshotStoreOrgEverEnabled,
   validatePartialFeatureFlags,
   withoutOrgForbiddenSnapshotKeys,
@@ -138,6 +137,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
         },
       });
 
+      // A wipe clears the org's dial, so record "off" in the cohort map. Single atomic jsonb_set;
+      // the entry is never deleted, so presence keeps recording the org's one-way enrollment.
+      const affected = await tx.$executeRaw`
+        UPDATE "FeatureFlag"
+        SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb('off'::text)),
+            "updatedAt" = now()
+        WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
+      if (affected === 0) {
+        throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+      }
+
       return true;
     });
 
@@ -146,7 +156,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     controlPlaneResolver.invalidateOrganization(organizationId);
-    invalidateSnapshotStoreOrgMode(organizationId);
+    void globalFlagsRegistry.reload();
     return json({ success: true });
   }
 
@@ -211,6 +221,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
       data: { featureFlags: stamped as Prisma.InputJsonValue },
     });
 
+    // Maintain this org's entry in the global cohort dial map with a single atomic jsonb_set (no
+    // read-modify-write of the map, so concurrent org saves can't clobber each other). Presence
+    // is the one-way enrollment latch; "off" is a stored value, never a deletion.
+    const orgDialParsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
+      stamped[FEATURE_FLAG.snapshotStoreOrgMode]
+    );
+    const orgDial = orgDialParsed.success ? orgDialParsed.data : "off";
+    const affected = await tx.$executeRaw`
+      UPDATE "FeatureFlag"
+      SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb(${orgDial}::text)),
+          "updatedAt" = now()
+      WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
+    if (affected === 0) {
+      throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+    }
+
     return true;
   });
 
@@ -220,11 +246,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Org feature flags are embedded in every env of the org; drop all its cached env rows.
   controlPlaneResolver.invalidateOrganization(organizationId);
-  invalidateSnapshotStoreOrgMode(organizationId);
-  // Refresh the census in THIS process at once, so a just-enabled org stops reading as
-  // definitely-never-enabled here immediately. Other pods lag at most the reload interval. This only
-  // shrinks the enabling-edge transient at the transition skip; it does not make it airtight.
-  void snapshotStoreOrgCensus.refresh();
+  // Reload the global registry in THIS process at once so the writing pod converges on the new
+  // cohort dial immediately. Other pods lag at most the reload interval.
+  void globalFlagsRegistry.reload();
 
   return json({ success: true });
 }
