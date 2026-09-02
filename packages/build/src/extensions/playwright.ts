@@ -319,10 +319,9 @@ class PlaywrightExtension implements BuildExtension {
       instructions.push(
         // Playwright < 1.58 prints `browser: <name> version <v>`; 1.58+ prints
         // `<Product> <v> (playwright <name> v<build>)`. The trailing space / `v`
-        // keep `chromium` from matching the `chromium-headless-shell` block.
-        // Only the two lines after the header are needed (install location and
-        // download url); 1.58+ blocks are that short, so a longer window would
-        // bleed into the next browser's install location.
+        // keep `chromium` from matching the `chromium-headless-shell` block, and
+        // only the two lines after the header (install location, download url)
+        // are read, so the window stops there.
         `RUN grep -A2 -m1 -E "browser: ${browser} |\\(playwright ${browser} v" /tmp/browser-info.txt > /tmp/${browser}-info.txt`,
 
         `RUN INSTALL_DIR=$(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs) && \
