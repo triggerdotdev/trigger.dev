@@ -2075,36 +2075,46 @@ export class PostgresRunStore implements RunStore {
 
     const dedicated = this.schemaVariant === "dedicated";
 
-    const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
-      data: {
-        id,
-        createdAt,
-        updatedAt: createdAt,
-        engine: "V2",
-        executionStatus: snapshot.executionStatus,
-        description: snapshot.description,
-        previousSnapshotId,
-        runId: run.id,
-        // We can't set the runStatus to DEQUEUED because it will break older runners
-        runStatus: run.status === "DEQUEUED" ? "PENDING" : run.status,
-        attemptNumber: run.attemptNumber ?? undefined,
-        batchId,
-        environmentId,
-        environmentType,
-        projectId,
-        organizationId,
-        checkpointId,
-        workerId,
-        runnerId,
-        metadata: snapshot.metadata ?? undefined,
-        // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas, so a
-        // cross-DB (NEW-resident) token can be recorded without a Prisma `connect` existence check.
-        completedWaitpointOrder,
-        isValid: !error,
-        error,
-      },
-      include: { checkpoint: true },
-    });
+    const data = {
+      id,
+      createdAt,
+      updatedAt: createdAt,
+      engine: "V2" as const,
+      executionStatus: snapshot.executionStatus,
+      description: snapshot.description,
+      previousSnapshotId,
+      runId: run.id,
+      // We can't set the runStatus to DEQUEUED because it will break older runners
+      runStatus: run.status === "DEQUEUED" ? ("PENDING" as const) : run.status,
+      attemptNumber: run.attemptNumber ?? undefined,
+      batchId,
+      environmentId,
+      environmentType,
+      projectId,
+      organizationId,
+      checkpointId,
+      workerId,
+      runnerId,
+      metadata: snapshot.metadata ?? undefined,
+      // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas, so a
+      // cross-DB (NEW-resident) token can be recorded without a Prisma `connect` existence check.
+      completedWaitpointOrder,
+      isValid: !error,
+      error,
+    };
+
+    // With a caller-supplied id the write is idempotent: a blip-retry replaying the same transition
+    // hits ON CONFLICT and returns the existing row (empty update = no-op) instead of aborting the
+    // transaction on a unique violation. Without an id, plain create keeps minting a fresh cuid.
+    const newSnapshot =
+      id !== undefined
+        ? await prisma.taskRunExecutionSnapshot.upsert({
+            where: { id },
+            create: data,
+            update: {},
+            include: { checkpoint: true },
+          })
+        : await prisma.taskRunExecutionSnapshot.create({ data, include: { checkpoint: true } });
 
     const completedWaitpointIds = completedWaitpoints?.map((w) => w.id) ?? [];
     if (dedicated) {
