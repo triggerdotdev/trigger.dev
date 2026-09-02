@@ -209,6 +209,13 @@ export class RoutingRunStore implements RunStore {
     if (store === undefined) {
       throw new UnknownShardKey(key, [...this.#shards.keys()]);
     }
+    return store;
+  }
+
+  // Counted separately from #shardStore, which probes, fan-outs and fallback legs also go through.
+  // Only a key an id resolved to on its own is traffic for that shard.
+  #shardStoreRoutedById(key: ShardKey): RunStore {
+    const store = this.#shardStore(key);
     this.#metrics.recordShardRouted(key);
     return store;
   }
@@ -461,7 +468,7 @@ export class RoutingRunStore implements RunStore {
 
   // Route an existing run-ops id by residency. Throws on an unclassifiable id.
   #route(id: string): RunStore {
-    return this.#shardStore(this.#shardKeyOf(id));
+    return this.#shardStoreRoutedById(this.#shardKeyOf(id));
   }
 
   // Best-effort shard key; falls back to #idlessRouteShard when the id is absent. Classification is
@@ -479,7 +486,7 @@ export class RoutingRunStore implements RunStore {
   }
 
   #routeOrNew(id: string | undefined): RunStore {
-    return this.#shardStore(this.#routeKeyOrDefault(id));
+    return this.#shardStoreRoutedById(this.#routeKeyOrDefault(id));
   }
 
   // WRITE routing is pure id-shape (cuid → LEGACY, run-ops id → NEW). A LEGACY-classified id is

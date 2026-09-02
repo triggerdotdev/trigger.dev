@@ -141,7 +141,7 @@ const routingStoreMetrics: RoutingStoreMetrics = singleton("routingStoreMetrics"
   // the shard alphabet plus the two reserved keys.
   const shardRouted = new Counter({
     name: "runops_shard_routed_total",
-    help: "Run-ops store resolutions keyed by id. Fan-outs and probe hits resolve no single shard and are not counted, so read this as relative ramp signal rather than served requests.",
+    help: "Operations routed to a shard by an id that resolves to it alone. Fan-outs, probes and fallback legs resolve no single shard and are excluded.",
     labelNames: ["shard"],
     registers: [metricsRegister],
   });

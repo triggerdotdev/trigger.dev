@@ -20,67 +20,68 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const parsedParams = v3RunParamsSchema.pick({ runParam: true }).parse(params);
 
   const run = await undefinedOnUnroutableId(
-    runStore.findRun(
-      {
-        friendlyId: parsedParams.runParam,
-      },
-      {
-        select: {
-          id: true,
-          traceId: true,
-          //metadata
-          number: true,
-          taskIdentifier: true,
-          friendlyId: true,
-          isTest: true,
-          runTags: true,
-          machinePreset: true,
-          runtimeEnvironmentId: true,
-          projectId: true,
-          lockedById: true,
-          lockedToVersionId: true,
-          //status + duration
-          status: true,
-          startedAt: true,
-          createdAt: true,
-          updatedAt: true,
-          queuedAt: true,
-          completedAt: true,
-          logsDeletedAt: true,
-          //idempotency
-          idempotencyKey: true,
-          //delayed
-          delayUntil: true,
-          //ttl
-          ttl: true,
-          expiredAt: true,
-          //queue
-          queue: true,
-          concurrencyKey: true,
-          //schedule
-          scheduleId: true,
-          //usage
-          baseCostInCents: true,
-          costInCents: true,
-          usageDurationMs: true,
-          payload: true,
-          payloadType: true,
-          metadata: true,
-          metadataType: true,
-          maxAttempts: true,
-          parentTaskRun: {
-            select: {
-              friendlyId: true,
-            },
-          },
-          rootTaskRun: {
-            select: {
-              friendlyId: true,
-            },
-          },
+    () =>
+      runStore.findRun(
+        {
+          friendlyId: parsedParams.runParam,
         },
-      }
-    ),
+        {
+          select: {
+            id: true,
+            traceId: true,
+            //metadata
+            number: true,
+            taskIdentifier: true,
+            friendlyId: true,
+            isTest: true,
+            runTags: true,
+            machinePreset: true,
+            runtimeEnvironmentId: true,
+            projectId: true,
+            lockedById: true,
+            lockedToVersionId: true,
+            //status + duration
+            status: true,
+            startedAt: true,
+            createdAt: true,
+            updatedAt: true,
+            queuedAt: true,
+            completedAt: true,
+            logsDeletedAt: true,
+            //idempotency
+            idempotencyKey: true,
+            //delayed
+            delayUntil: true,
+            //ttl
+            ttl: true,
+            expiredAt: true,
+            //queue
+            queue: true,
+            concurrencyKey: true,
+            //schedule
+            scheduleId: true,
+            //usage
+            baseCostInCents: true,
+            costInCents: true,
+            usageDurationMs: true,
+            payload: true,
+            payloadType: true,
+            metadata: true,
+            metadataType: true,
+            maxAttempts: true,
+            parentTaskRun: {
+              select: {
+                friendlyId: true,
+              },
+            },
+            rootTaskRun: {
+              select: {
+                friendlyId: true,
+              },
+            },
+          },
+        }
+      ),
     { runParam: params.runParam ?? params.runId }
   );
 

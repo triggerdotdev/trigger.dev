@@ -409,6 +409,30 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
     expect(routed).toEqual(["a", "b", "a"]);
   });
 
+  // The counter is read as per-shard traffic during a ramp, so a lookup that had to search
+  // rather than route must not be attributed to whichever store answered.
+  it("does not count an unrouted lookup that misses", async () => {
+    const routed: string[] = [];
+    const { router } = buildNShardRouter(["a", "b"], { routed });
+
+    await router.findRun({ spanId: "nope" });
+
+    expect(routed).toEqual([]);
+  });
+
+  it("does not count the legacy leg of an unrouted probe", async () => {
+    const routed: string[] = [];
+    const { router } = buildNShardRouter(["a", "b"], { routed });
+
+    await router.findRunsByIdempotencyKeys({
+      runtimeEnvironmentId: "env_1",
+      taskIdentifier: "task",
+      idempotencyKeys: ["k1"],
+    });
+
+    expect(routed).toEqual([]);
+  });
+
   it("does not count anything before an operation is routed", async () => {
     const routed: string[] = [];
     buildNShardRouter(["a", "b"], { routed });

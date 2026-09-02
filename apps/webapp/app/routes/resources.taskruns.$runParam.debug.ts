@@ -20,21 +20,22 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // project/org-membership auth is a control-plane concern resolved separately below —
   // joining it here is a cross-DB join that returns nothing once the run lives in run-ops.
   const run = await undefinedOnUnroutableId(
-    runStore.findRun(
-      { friendlyId: runParam },
-      {
-        select: {
-          id: true,
-          engine: true,
-          friendlyId: true,
-          queue: true,
-          concurrencyKey: true,
-          queueTimestamp: true,
-          runtimeEnvironmentId: true,
-          projectId: true,
-        },
-      }
-    ),
+    () =>
+      runStore.findRun(
+        { friendlyId: runParam },
+        {
+          select: {
+            id: true,
+            engine: true,
+            friendlyId: true,
+            queue: true,
+            concurrencyKey: true,
+            queueTimestamp: true,
+            runtimeEnvironmentId: true,
+            projectId: true,
+          },
+        }
+      ),
     { runParam: params.runParam ?? params.runId }
   );
 

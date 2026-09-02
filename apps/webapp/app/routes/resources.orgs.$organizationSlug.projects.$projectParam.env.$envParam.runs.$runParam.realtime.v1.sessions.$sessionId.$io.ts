@@ -62,10 +62,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // Replica lag can null out a live run; a spurious 404 breaks the dashboard Agent tab subscription
   // (useRealtimeStream surfaces the error and does not auto-retry). Re-read the primary on a miss.
   const run =
-    (await undefinedOnUnroutableId(runStore.findRun(runWhere, runArgs, $replica), {
+    (await undefinedOnUnroutableId(() => runStore.findRun(runWhere, runArgs, $replica), {
       runParam: params.runParam,
     })) ??
-    (await undefinedOnUnroutableId(runStore.findRunOnPrimary(runWhere, runArgs), {
+    (await undefinedOnUnroutableId(() => runStore.findRunOnPrimary(runWhere, runArgs), {
       runParam: params.runParam,
     }));
 

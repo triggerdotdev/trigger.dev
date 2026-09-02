@@ -38,19 +38,20 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const run = await undefinedOnUnroutableId(
-    runStore.findRun(
-      {
-        friendlyId: validatedParams.runParam,
-      },
-      {
-        select: {
-          friendlyId: true,
-          spanId: true,
-          runtimeEnvironmentId: true,
+    () =>
+      runStore.findRun(
+        {
+          friendlyId: validatedParams.runParam,
         },
-      },
-      prisma
-    ),
+        {
+          select: {
+            friendlyId: true,
+            spanId: true,
+            runtimeEnvironmentId: true,
+          },
+        },
+        prisma
+      ),
     { runParam: params.runParam ?? params.runId }
   );
 

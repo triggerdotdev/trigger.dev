@@ -33,21 +33,22 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   // membership is a control-plane concern resolved separately below — joining it here is a
   // cross-DB join that returns nothing once the run lives in run-ops.
   let run = await undefinedOnUnroutableId(
-    runStore.findRun(
-      { friendlyId: parsedParams.runParam },
-      {
-        select: {
-          friendlyId: true,
-          traceId: true,
-          organizationId: true,
-          runtimeEnvironmentId: true,
-          createdAt: true,
-          completedAt: true,
-          taskEventStore: true,
-          taskIdentifier: true,
-        },
-      }
-    ),
+    () =>
+      runStore.findRun(
+        { friendlyId: parsedParams.runParam },
+        {
+          select: {
+            friendlyId: true,
+            traceId: true,
+            organizationId: true,
+            runtimeEnvironmentId: true,
+            createdAt: true,
+            completedAt: true,
+            taskEventStore: true,
+            taskIdentifier: true,
+          },
+        }
+      ),
     { runParam: parsedParams.runParam }
   );
 
