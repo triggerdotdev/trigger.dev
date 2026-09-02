@@ -115,6 +115,24 @@ describe("snapshotStoreOrgMode ladder on the org save path", () => {
   });
 });
 
+// The cohort dial map is a single global flag: orgId -> dial. The catalog must accept a well-formed
+// map and reject one carrying a value outside the dial ladder.
+describe("snapshotStoreOrgDials catalog", () => {
+  const DIALS_KEY = FEATURE_FLAG.snapshotStoreOrgDials;
+
+  it("parses a valid dial map", () => {
+    const parsed = validatePartialFeatureFlags({
+      [DIALS_KEY]: { org_a: "redis-only", org_b: "off" },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a map with a bad dial value", () => {
+    const parsed = validatePartialFeatureFlags({ [DIALS_KEY]: { org_a: "nope" } });
+    expect(parsed.success).toBe(false);
+  });
+});
+
 // The fall-through above is right for an entitlement and wrong for consent: judging sends the
 // turn to a third-party model, so the eval flag refuses on an override it cannot read.
 describe("hasUnreadableTurnEvalsOverride", () => {

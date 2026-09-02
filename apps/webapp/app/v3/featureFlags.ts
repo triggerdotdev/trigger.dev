@@ -70,6 +70,8 @@ export const FEATURE_FLAG = {
   // Global one-way latch: true once the global dial has been non-off at least once. System-set on
   // the global save paths, never cleared. See the catalog entry below.
   snapshotStoreGlobalModeEverEnabled: "snapshotStoreGlobalModeEverEnabled",
+  // The enrolled-cohort dial map, global and system-maintained. See the catalog entry below.
+  snapshotStoreOrgDials: "snapshotStoreOrgDials",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -207,6 +209,13 @@ export const FeatureFlagCatalog = {
   // `off`, never cleared. Distinct from snapshotStoreEverEnabled, the manual arming latch: this one
   // means the dial WAS non-off. System-set, so stripped from org payloads. Strict boolean.
   [FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled]: z.boolean(),
+  // The whole enrolled-cohort map: orgId -> current dial. Presence is a one-way enrollment latch;
+  // the value is the org's current dial. Ramp-to-off stores "off", entries are NEVER deleted.
+  // Global and system-maintained (stripped from org payloads by withoutOrgForbiddenSnapshotKeys).
+  [FEATURE_FLAG.snapshotStoreOrgDials]: z.record(
+    z.string(),
+    z.enum(["off", "dual-write", "redis-read", "redis-only"])
+  ),
   // Strict, like the other kill switches: a stringified "false" read as true would freeze every
   // resident run's Redis head.
   [FEATURE_FLAG.snapshotStoreHalt]: z.boolean(),
@@ -234,6 +243,8 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.snapshotStoreOrgEverEnabled,
   // System-set global latch: read-only on the page, and the save path is its only writer.
   FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled,
+  // System-maintained cohort dial map: read-only on the page, the save path is its only writer.
+  FEATURE_FLAG.snapshotStoreOrgDials,
 ];
 
 // Flags that are read-only on the org-level dialog.
@@ -258,6 +269,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   // System-set latches: shown on the org dialog, but the operator never edits them.
   FEATURE_FLAG.snapshotStoreOrgEverEnabled,
   FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled,
+  // System-maintained cohort dial map, deployment-wide; the save path is its only writer.
+  FEATURE_FLAG.snapshotStoreOrgDials,
 ];
 
 /**
@@ -276,6 +289,8 @@ export function withoutOrgForbiddenSnapshotKeys<T extends Record<string, unknown
     FEATURE_FLAG.snapshotStoreOrgEverEnabled,
     // Global system-set latch. Deployment-wide and written only by the global save path.
     FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled,
+    // System-maintained cohort dial map. Global-only; an org save must never set it.
+    FEATURE_FLAG.snapshotStoreOrgDials,
   ] as const;
   if (!forbidden.some((key) => key in values)) return values;
 
