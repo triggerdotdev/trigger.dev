@@ -6,6 +6,7 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
@@ -46,6 +47,22 @@ export function deriveOrder(completedWaitpoints: CompletedWaitpointRef[]): strin
  */
 export function deriveDistinctIds(completedWaitpoints: CompletedWaitpointRef[]): string[] {
   return [...new Set(completedWaitpoints.map((w) => w.id))];
+}
+
+/**
+ * Whether a cycle carrying these ids could hold a record set.
+ *
+ * A record set is written for store-format waitpoint ids and nothing else, so a cycle whose ids
+ * are all legacy has none, and a read for one could only ever return nothing. Callers use this to
+ * skip that read, which keeps a deployment holding no store-format waitpoint at zero extra round
+ * trips on the resume path.
+ *
+ * This is the one place this module looks INSIDE a waitpoint id rather than treating the record
+ * set as opaque. It is named and exported rather than inlined so the cost decision it drives is
+ * testable on its own.
+ */
+export function mayHoldRecords(completedWaitpoints: CompletedWaitpointRef[]): boolean {
+  return completedWaitpoints.some((w) => parseWaitpointId(w.id).format === "b32hexW");
 }
 
 // isValid is derived, never stored, so the entry JSON stays byte-identical to the caller's document.

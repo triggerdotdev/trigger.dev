@@ -12,7 +12,7 @@
 // Each order is chosen so the crash state is the harmless one. A lost cross-store write is never
 // recovered by a transaction or an outbox: recovery is always the existing stall-and-repair job.
 import { Logger } from "@trigger.dev/core/logger";
-import { generateInternalId, parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { DelegatingRunStore } from "./delegatingRunStore.js";
 import type {
   CompletedWaitpointRecord,
@@ -21,7 +21,7 @@ import type {
   SnapshotEntryInput,
   SnapshotRead,
 } from "./redisSnapshotStore.js";
-import { deriveDistinctIds, deriveOrder } from "./redisSnapshotStore.js";
+import { deriveDistinctIds, deriveOrder, mayHoldRecords } from "./redisSnapshotStore.js";
 import {
   entryFromCompletion,
   entryFromCreateExecutionSnapshot,
@@ -630,22 +630,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         // cycle already minted. But the script may refuse the pointer and mint a replacement
         // from these refs, and a replacement minted with no records holds ids that nothing
         // resolves. So carry the surviving cycle's records for that branch.
-        // Read only when a record could exist. A record set is written for store-format waitpoint
-        // ids and nothing else, so a cycle whose ids are all legacy has none, and the read could
-        // only ever return nothing. Gating on the id keeps a deployment with no store-format
-        // waitpoint at zero extra round trips, and confines the cost to the organisations that
-        // actually hold them.
-        //
-        // This is the one place the snapshot store looks INSIDE a waitpoint id rather than
-        // treating the record set as opaque. It buys a per-append round trip on the resume path,
-        // which is worth the narrower layering.
-        const mayHaveRecords = completedWaitpoints.some(
-          (w) => parseWaitpointId(w.id).format === "b32hexW"
-        );
-
+        // Read only when a record could exist: see mayHoldRecords. A legacy-only cycle has none,
+        // so the read would return nothing and the round trip is pure cost.
         const carried =
           records ??
-          (mayHaveRecords ? await this.#recordsForCycle(runId, head.cycle.cycleSeq) : undefined);
+          (mayHoldRecords(completedWaitpoints)
+            ? await this.#recordsForCycle(runId, head.cycle.cycleSeq)
+            : undefined);
 
         return {
           kind: "carryForward",
