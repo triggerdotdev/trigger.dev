@@ -67,11 +67,15 @@ export async function assertUserActorEnvironmentAccess(
 export async function assertUserActorScope(
   userActor: UserActorClaims | undefined,
   scope: { organizationId?: string; projectId?: string; environmentId?: string },
-  route?: { identityOnly?: boolean }
+  route?: { identityOnly?: boolean; organizationScoped?: boolean }
 ): Promise<void> {
   if (!userActor) return;
 
   if (!userActor.environmentId) {
+    if (route?.organizationScoped && userActor.organizationId) {
+      assertUserActorOrganization(userActor.organizationId, scope.organizationId);
+      return;
+    }
     assertClaimIsOptional(userActor);
     return;
   }
@@ -116,11 +120,15 @@ export type UserActorEnvironmentScope =
  */
 export async function resolveUserActorEnvironmentScope(
   userActor: UserActorClaims | undefined,
-  target: { projectId: string; requestedEnvironmentSlugs?: string[] }
+  target: { projectId: string; requestedEnvironmentSlugs?: string[] },
+  route?: { organizationScoped?: boolean }
 ): Promise<UserActorEnvironmentScope> {
   if (!userActor) return { scoped: false };
 
   if (!userActor.environmentId) {
+    // An org claim spans every environment of its org, so it narrows nothing here. The org
+    // binding itself is `assertUserActorScope`'s, against the organization the route named.
+    if (route?.organizationScoped && userActor.organizationId) return { scoped: false };
     assertClaimIsOptional(userActor);
     return { scoped: false };
   }
@@ -146,6 +154,12 @@ export async function resolveUserActorEnvironmentScope(
     slug: environment.slug,
     organizationId: environment.organizationId,
   };
+}
+
+/** An org claim only reaches a route that names its own organization. */
+function assertUserActorOrganization(claimed: string, named: string | undefined): void {
+  if (named === claimed) return;
+  throw forbiddenEnvironment("This token isn't scoped to that organization.");
 }
 
 function assertClaimIsOptional(userActor: UserActorClaims): void {

@@ -528,6 +528,10 @@ type PATLoaderRouteBuilderOptions<
   // which mutate nothing — otherwise such a token is refused for want of anything to check.
   // Loaders only: an action mutates by definition, so the action options forbid it.
   identityOnly?: true;
+  // Opts a route into being reachable by an org-scoped user-actor token, bound to the
+  // organization its `context` names. Only for routes that resolve their target scoped to the
+  // caller's membership, since the claim itself proves none.
+  organizationScoped?: true;
 };
 
 type PATHandlerFunction<
@@ -568,6 +572,7 @@ export function createLoaderPATApiRoute<
       corsStrategy = "none",
       context: contextFn,
       identityOnly,
+      organizationScoped,
       authorization,
     } = options;
 
@@ -671,7 +676,7 @@ export function createLoaderPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        await assertUserActorScope(claims, ctx, { identityOnly });
+        await assertUserActorScope(claims, ctx, { identityOnly, organizationScoped });
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
@@ -768,8 +773,9 @@ type PATActionRouteBuilderOptions<
   method?: PATActionMethod | PATActionMethod[];
   body?: TBodySchema;
   // `identityOnly` waives the contextless refusal for reads that mutate nothing. An action
-  // never qualifies, so it cannot be declared here.
+  // never qualifies, so it cannot be declared here. Same for the org-scoped read opt-in.
   identityOnly?: never;
+  organizationScoped?: never;
 };
 
 type PATActionHandlerFunction<

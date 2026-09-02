@@ -28,6 +28,9 @@ export const loader = createLoaderPATApiRoute(
       return project ? { organizationId: project.organizationId } : {};
     },
     authorization: { action: "read", resource: () => ({ type: "environments" }) },
+    // An org-wide delegated token lists any project of its org, so the agent can sweep
+    // sibling projects. The org binding is the context above; membership is `findProjectByRef`.
+    organizationScoped: true,
   },
   async ({ params, authentication }) => {
     const project = await findProjectByRef(params.projectRef, authentication.userId);
@@ -37,9 +40,11 @@ export const loader = createLoaderPATApiRoute(
     }
 
     // A delegated token signed for one environment only ever lists that one.
-    const scope = await resolveUserActorEnvironmentScope(authentication.userActor, {
-      projectId: project.id,
-    });
+    const scope = await resolveUserActorEnvironmentScope(
+      authentication.userActor,
+      { projectId: project.id },
+      { organizationScoped: true }
+    );
 
     const environments = await $replica.runtimeEnvironment.findMany({
       where: {
