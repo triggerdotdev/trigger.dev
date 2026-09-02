@@ -49,7 +49,13 @@ export interface ChatListItem {
   metadata: Record<string, unknown>;
 }
 
-/** Never joins the messages or selects the session token. Covered by `chats_org_user_last_msg_idx`. */
+/**
+ * Never joins the messages or selects the session token. Covered by `chats_org_user_last_msg_idx`.
+ *
+ * A chat with no messages yet is hidden — an abandoned or failed head-start otherwise leaves a
+ * permanent "New chat" in the history. Pinned chats are exempt, in case a chat is ever pinned
+ * before it has a message.
+ */
 export async function listChats(
   db: DashboardAgentDb,
   params: { organizationId: string; userId: string; limit?: number }
@@ -70,7 +76,8 @@ export async function listChats(
       and(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
-        isNull(chats.deletedAt)
+        isNull(chats.deletedAt),
+        sql`(${chats.lastMessageAt} is not null or ${chats.pinnedAt} is not null)`
       )
     )
     .orderBy(sql`${chats.pinnedAt} desc nulls last`, desc(chats.lastMessageAt))

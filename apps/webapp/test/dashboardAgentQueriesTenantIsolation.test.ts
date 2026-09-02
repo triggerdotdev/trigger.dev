@@ -6,6 +6,7 @@ import {
   deleteTerminalWatchesOlderThan,
   getWatch,
   listChats,
+  persistMessages,
   releaseWatchDelivery,
   softDeleteChat,
   softDeleteChatsForOrganization,
@@ -42,6 +43,10 @@ describe("softDeleteChat tenant isolation", () => {
       const db = await boot(prisma, postgresContainer.getConnectionUri());
 
       await createChat(db, { id: "chat_1", organizationId: ORG, userId: USER });
+      await persistMessages(db, {
+        chatId: "chat_1",
+        messages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+      });
 
       // Right user, wrong org: must not delete.
       const wrongOrg = await softDeleteChat(db, {
