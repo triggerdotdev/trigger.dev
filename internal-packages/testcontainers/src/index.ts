@@ -13,6 +13,7 @@ import {
   runClickhouseMigrations,
   truncateClickhouseTables,
 } from "./clickhouse";
+import { createDbBlipController, type DbBlipController } from "./dbBlip";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
 import { type MinIOConnectionConfig, type StartedMinIOContainer, MinIOContainer } from "./minio";
 import {
@@ -35,6 +36,7 @@ export {
 } from "./utils";
 export { OtelCollectorContainer, StartedOtelCollectorContainer } from "./otelCollector";
 export { laggingReplica, type LaggingModel } from "./laggingReplica";
+export { createDbBlipController, type DbBlipController, type DbBlipHandle } from "./dbBlip";
 export { logCleanup };
 export type { MinIOConnectionConfig };
 
@@ -347,6 +349,32 @@ export const postgresTest = withWarmup(
   test.extend<PostgresTestContext>({
     postgresContainer: clonedPostgresContainer,
     prisma: prismaFromContainer,
+  }),
+  async () => {
+    await getWorkerPostgresContainer();
+  }
+);
+
+export type PostgresBlipTestContext = PostgresTestContext & { blip: DbBlipController };
+
+const blipFromContainer = async (
+  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer } & TestContext,
+  use: Use<DbBlipController>
+) => {
+  const handle = await createDbBlipController(postgresContainer.getConnectionUri());
+  try {
+    await use(handle);
+  } finally {
+    await handle.close();
+  }
+};
+
+// postgresTest + a DbBlipController bound to the same per-test database.
+export const postgresBlipTest = withWarmup(
+  test.extend<PostgresBlipTestContext>({
+    postgresContainer: clonedPostgresContainer,
+    prisma: prismaFromContainer,
+    blip: blipFromContainer,
   }),
   async () => {
     await getWorkerPostgresContainer();
