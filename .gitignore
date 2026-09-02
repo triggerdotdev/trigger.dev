@@ -92,3 +92,4 @@ observability-map.json
 # CPU benchmark artifacts (profiles + summaries)
 .bench/
 *.swo
+.idea/
