@@ -6,9 +6,12 @@
 -- stored. Writers must include attributes in an explicit insert column list
 -- because implicit INSERT column lists exclude EPHEMERAL columns.
 ALTER TABLE trigger_dev.task_events_v2
+    MODIFY COLUMN attributes JSON EPHEMERAL,
     DROP INDEX IF EXISTS idx_attributes_text_search,
+    DROP INDEX IF EXISTS idx_attributes_text,
     DROP INDEX IF EXISTS idx_message_text_search,
-    MODIFY COLUMN attributes JSON EPHEMERAL;
+    DROP INDEX IF EXISTS message_text_search
+SETTINGS mutations_sync = 2, alter_sync = 2;
 
 -- +goose Down
 
