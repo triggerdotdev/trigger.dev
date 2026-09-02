@@ -641,6 +641,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           chatId,
           clientData: {
             ...pickAgentClientMetadata(clientData),
+            // A resume replaces the session's stored metadata, so it has to carry a token
+            // of its own: without one a run booting from it has no delegated access at all.
+            userActorToken: await mintDashboardAgentUserActorToken(userId, {
+              environmentId: runtimeEnv.id,
+              organizationId: project.organizationId,
+            }),
+            apiOrigin: dashboardAgentUserApiOrigin(),
+            projectRef: project.externalRef,
             organizationId: project.organizationId,
             userId,
             projectId: project.id,
