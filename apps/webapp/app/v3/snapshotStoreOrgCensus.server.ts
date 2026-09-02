@@ -4,6 +4,7 @@ import { env } from "~/env.server";
 import { createReloadingRegistry } from "~/utils/reloadingRegistry.server";
 import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { isSnapshotStoreConfigured } from "~/v3/snapshotStoreConfigured.server";
 import { cachedOrgModeFor, NO_OVERRIDE } from "~/v3/snapshotStoreMode.server";
 
 /** The narrow slice of Prisma the census reads, so a test injects a fake without a mocking library. */
@@ -58,6 +59,18 @@ function classify(rows: Array<{ id: string; featureFlags: unknown }>): OrgCensus
   return { readEnabled, redisOnly, cohort, everEnabled };
 }
 
+/**
+ * The census poll runs only when the store is configured AND we are outside test. The host gate is
+ * independent of NODE_ENV so a production process with no Redis host never starts the poll: the
+ * merged-but-off deploy pays no standing organization.findMany.
+ */
+export function defaultCensusAutoStart(
+  host: string | undefined = env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST ?? undefined,
+  nodeEnv: string | undefined = process.env.NODE_ENV
+): boolean {
+  return isSnapshotStoreConfigured(host) && nodeEnv !== "test";
+}
+
 export function createSnapshotStoreOrgCensus(
   clients?: { replica: SnapshotStoreOrgCensusClient },
   opts?: { intervalMs?: number; autoStart?: boolean }
@@ -66,7 +79,7 @@ export function createSnapshotStoreOrgCensus(
   const registry = createReloadingRegistry<OrgCensusSnapshot>({
     name: "snapshot-store-org-census",
     intervalMs: opts?.intervalMs ?? env.GLOBAL_FLAGS_RELOAD_INTERVAL_MS,
-    autoStart: opts?.autoStart ?? process.env.NODE_ENV !== "test",
+    autoStart: opts?.autoStart ?? defaultCensusAutoStart(),
     load: async () =>
       // WHERE returns orgs with EITHER key, so an ever-enabled org that is now off (or holds only
       // the latch after a clear) still returns. Classification stays in code, identical to the resolver.
@@ -116,7 +129,10 @@ export function createSnapshotStoreOrgCensus(
   };
 }
 
-/** Built at import, like globalFlagsRegistry: reads the DB-backed census on GLOBAL_FLAGS_RELOAD_INTERVAL_MS. */
+/**
+ * Built at import, like globalFlagsRegistry, but the poll starts only when a Redis host is configured
+ * (see defaultCensusAutoStart). Unconfigured, the object is inert: constructed, never polling.
+ */
 export const snapshotStoreOrgCensus = singleton("snapshotStoreOrgCensus", () =>
   createSnapshotStoreOrgCensus()
 );

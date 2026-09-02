@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createSnapshotStoreOrgCensus,
+  defaultCensusAutoStart,
   type SnapshotStoreOrgCensusClient,
 } from "~/v3/snapshotStoreOrgCensus.server";
 
@@ -123,6 +124,31 @@ describe("snapshot store org census", () => {
     expect(census.anyOrgReadEnabled()).toBe(false);
     expect(census.anyOrgRedisOnly()).toBe(false);
     expect(census.isCohortMember("org_a")).toBe(true);
+  });
+});
+
+describe("snapshot store org census — autoStart host gate", () => {
+  it("never polls when no Redis host is configured, even in production", () => {
+    expect(defaultCensusAutoStart(undefined, "production")).toBe(false);
+    expect(defaultCensusAutoStart("", "production")).toBe(false);
+  });
+
+  it("polls only when configured and outside test", () => {
+    expect(defaultCensusAutoStart("snap-redis", "production")).toBe(true);
+    expect(defaultCensusAutoStart("snap-redis", "test")).toBe(false);
+  });
+
+  it("does not issue a query when built with a disabled autoStart", async () => {
+    const calls: FindManyArgs[] = [];
+    const census = createSnapshotStoreOrgCensus(
+      { replica: fakeClient([{ id: "org_a", featureFlags: null }], calls) },
+      { autoStart: defaultCensusAutoStart(undefined, "production"), intervalMs: 5 }
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(calls).toHaveLength(0);
+    census.stop();
   });
 });
 

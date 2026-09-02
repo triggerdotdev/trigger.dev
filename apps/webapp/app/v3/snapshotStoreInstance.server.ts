@@ -13,6 +13,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { getSnapshotRepairEnqueuer } from "./snapshotStoreBindings.server";
+import { isSnapshotStoreConfigured } from "./snapshotStoreConfigured.server";
 import { snapshotStoreHalted, snapshotStoreModeResolver } from "./snapshotStoreMode.server";
 import { createSnapshotStoreMetrics } from "./snapshotStoreMetrics.server";
 import { snapshotStoreOrgCensus } from "./snapshotStoreOrgCensus.server";
@@ -21,7 +22,7 @@ import { meter } from "./tracer.server";
 const KEY_PREFIX = "engine:";
 
 function isConfigured(): boolean {
-  return !!env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST;
+  return isSnapshotStoreConfigured();
 }
 
 function redisOptions(): RedisOptions {

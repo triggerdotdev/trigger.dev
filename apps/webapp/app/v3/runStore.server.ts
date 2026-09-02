@@ -20,6 +20,7 @@ import {
 } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import { isSnapshotStoreConfigured } from "./snapshotStoreConfigured.server";
 import { decorateWithSnapshotStore } from "./snapshotStoreInstance.server";
 import { snapshotStoreModeResolver } from "./snapshotStoreMode.server";
 import {
@@ -55,6 +56,10 @@ type BuildRunStoreDeps = {
   singleResilience?: TransactionResilienceConfig;
   newResilience?: TransactionResilienceConfig;
   legacyResilience?: TransactionResilienceConfig;
+  /** The redis-only PG-suppression predicate, or undefined for a plain passthrough. Passed in (never
+   * read from env here) so this builder stays pure; the caller wires it only when the store is
+   * configured, so an unconfigured deploy writes every snapshot row with no per-write resolution. */
+  snapshotWrites?: (organizationId?: string) => boolean;
 };
 
 /**
@@ -62,8 +67,9 @@ type BuildRunStoreDeps = {
  *
  * Split OFF (default / self-host): returns the exact passthrough PostgresRunStore we
  * have always returned, built from the single control-plane handles. No second store
- * is constructed and no marker predicate is consulted, so behavior is byte-identical
- * to single-DB today.
+ * is constructed, and the redis-only marker predicate is consulted only when the caller
+ * wired one (i.e. the snapshot store is configured); with it unset behavior is
+ * byte-identical to single-DB today.
  *
  * Split ON: returns a RoutingRunStore that selects between a NEW store (where new runs
  * are born) and a LEGACY store (draining) by run-id residency (id shape). There is no cuid
@@ -74,6 +80,10 @@ type BuildRunStoreDeps = {
 const suppressPgAtRedisOnly = (organizationId?: string) =>
   snapshotStoreModeResolver.resolve(organizationId) !== "redis-only";
 
+// Wired into the store only when the snapshot store is configured. Unconfigured, this stays undefined
+// and PostgresRunStore writes every snapshot row with no per-write mode resolution (the inert state).
+const snapshotWritesPredicate = isSnapshotStoreConfigured() ? suppressPgAtRedisOnly : undefined;
+
 export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
   if (!deps.splitEnabled) {
     return new PostgresRunStore({
@@ -81,7 +91,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       readOnlyPrisma: deps.singleReplica,
       maxWait: deps.singleResilience?.maxWait,
       transactionStartRetry: deps.singleResilience?.startRetry,
-      snapshotWrites: suppressPgAtRedisOnly,
+      snapshotWrites: deps.snapshotWrites,
     });
   }
 
@@ -97,14 +107,14 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     schemaVariant: "dedicated",
     maxWait: deps.newResilience?.maxWait,
     transactionStartRetry: deps.newResilience?.startRetry,
-    snapshotWrites: suppressPgAtRedisOnly,
+    snapshotWrites: deps.snapshotWrites,
   });
   const legacyStore = new PostgresRunStore({
     prisma: deps.legacyWriter,
     readOnlyPrisma: deps.legacyReplica,
     maxWait: deps.legacyResilience?.maxWait,
     transactionStartRetry: deps.legacyResilience?.startRetry,
-    snapshotWrites: suppressPgAtRedisOnly,
+    snapshotWrites: deps.snapshotWrites,
   });
 
   // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
@@ -118,7 +128,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       schemaVariant: "dedicated" as const,
       maxWait: shard.resilience?.maxWait,
       transactionStartRetry: shard.resilience?.startRetry,
-      snapshotWrites: suppressPgAtRedisOnly,
+      snapshotWrites: deps.snapshotWrites,
     }),
     aliasOf: shard.aliasOf,
   }));
@@ -198,6 +208,7 @@ export const runStoreWithoutSnapshotDecorator: RunStore = singleton("RunStore.un
       singleWriter: prisma,
       singleReplica: $replica,
       singleResilience: resilienceForClient(prisma),
+      snapshotWrites: snapshotWritesPredicate,
     });
   }
   const { shardHandles, ...storeHandles } = handles;
@@ -216,6 +227,7 @@ export const runStoreWithoutSnapshotDecorator: RunStore = singleton("RunStore.un
     singleResilience: resilienceForClient(prisma),
     newResilience: resilienceForClient(handles.newWriter),
     legacyResilience: resilienceForClient(handles.legacyWriter),
+    snapshotWrites: snapshotWritesPredicate,
   });
 });
 
