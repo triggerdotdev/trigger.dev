@@ -6,7 +6,11 @@
 // a legacy-only wait carry none — which is what keeps a Postgres-resident resume unchanged.
 import { createRedisClient } from "@internal/redis";
 import { containerTest } from "@internal/testcontainers";
-import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  generateInternalId,
+  generateWaitpointId,
+  parseWaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore, type CompletedWaitpointRecord } from "./redisSnapshotStore.js";
@@ -243,6 +247,86 @@ describe("the completed-waitpoint record set", () => {
         expect(ids.order).toEqual([wpA, wpA]);
       } finally {
         await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+});
+
+// The records read is gated on id shape, so a deployment holding no store-format waitpoint pays
+// no extra round trip on the resume path. These count the reads rather than infer them: the cost
+// is the whole point of the gate, and it is not visible in the resulting entry.
+describe("the records read is gated on waitpoint id shape", () => {
+  containerTest(
+    "a legacy-only carry-forward performs NO getCycleRecords read",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const reads: number[] = [];
+      const original = redis.getCycleRecords.bind(redis);
+      redis.getCycleRecords = async (runId: string, cycleSeq: number) => {
+        reads.push(cycleSeq);
+        return original(runId, cycleSeq);
+      };
+
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+        const waitpoints = [{ id: wpA!, index: 0 }];
+
+        // Two appends with the same id set: the second carries the first's cycle forward.
+        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+
+        // The fixture mints cuid waitpoints, so no id is store-format and no record can exist.
+        expect(wpA && parseWaitpointId(wpA).format).toBe("legacy");
+        expect(reads).toEqual([]);
+      } finally {
+        redis.getCycleRecords = original;
+        await redis.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a store-format id in the cycle DOES perform the read",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const reads: number[] = [];
+      const original = redis.getCycleRecords.bind(redis);
+      redis.getCycleRecords = async (runId: string, cycleSeq: number) => {
+        reads.push(cycleSeq);
+        return original(runId, cycleSeq);
+      };
+
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        // A real row, but with a store-format id rather than the fixture's cuid. The delegate
+        // still writes the completed-waitpoint join, so the row has to exist.
+        const storeId = generateWaitpointId("MANUAL");
+        await prisma.waitpoint.create({
+          data: {
+            id: storeId,
+            friendlyId: `waitpoint_${storeId}`,
+            type: "MANUAL",
+            status: "COMPLETED",
+            completedAt: new Date(),
+            idempotencyKey: `idem_${storeId.slice(-12)}`,
+            userProvidedIdempotencyKey: false,
+            projectId: env.projectId,
+            environmentId: env.id,
+          },
+        });
+        const waitpoints = [{ id: storeId, index: 0 }];
+
+        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+
+        expect(parseWaitpointId(storeId).format).toBe("b32hexW");
+        expect(reads.length).toBeGreaterThan(0);
+      } finally {
+        redis.getCycleRecords = original;
+        await redis.quit();
       }
     }
   );
