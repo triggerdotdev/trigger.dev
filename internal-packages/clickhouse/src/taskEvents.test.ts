@@ -13,7 +13,7 @@ describe("task events v2", () => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
       const startTime = new Date("2026-09-01T10:00:00.000Z");
       const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-      const spanId = "span_ephemeral_attributes";
+      const spanId = "span_materialized_attributes";
 
       const [insertError] = await ch.taskEventsV2.insert([
         {
@@ -42,7 +42,7 @@ describe("task events v2", () => {
       expect(insertError).toBeNull();
 
       const readAttributes = ch.reader.query({
-        name: "read-ephemeral-task-event-attributes",
+        name: "read-task-event-attributes",
         query: `SELECT attributes_text,
           toUInt8(inserted_at > toDateTime64('2020-01-01 00:00:00', 3)) AS has_inserted_at
         FROM trigger_dev.task_events_v2
@@ -82,8 +82,8 @@ describe("task events v2", () => {
       expect(columns).toEqual([
         {
           name: "attributes",
-          default_kind: "EPHEMERAL",
-          default_expression: "defaultValueOfTypeName('JSON')",
+          default_kind: "",
+          default_expression: "",
         },
         {
           name: "attributes_text",
@@ -98,7 +98,12 @@ describe("task events v2", () => {
         FROM system.data_skipping_indices
         WHERE database = 'trigger_dev'
           AND table = 'task_events_v2'
-          AND name IN ('idx_attributes_text_search', 'idx_message_text_search')
+          AND name IN (
+            'idx_attributes_text_search',
+            'idx_attributes_text',
+            'idx_message_text_search',
+            'message_text_search'
+          )
         ORDER BY name`,
         schema: z.object({ name: z.string() }),
       });
