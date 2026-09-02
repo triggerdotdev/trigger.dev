@@ -33,6 +33,7 @@ vi.mock("~/v3/runStore.server", () => ({
 }));
 
 const { loader } = await import("~/routes/api.v1.projects.$projectRef.$env.runs.$runId.commit");
+const { authenticatedEnvironmentForAuthentication } = await import("~/services/apiAuth.server");
 
 function suffix() {
   return Math.random().toString(36).slice(2, 10);
@@ -255,5 +256,25 @@ postgresTest(
     });
     expect(scopedSibling.status).toBe(403);
     expect(scopedSibling.body.code).toBe("forbidden_environment");
+
+    // The control: without the opt-in, the same org-claim token is refused a sibling
+    // environment, so the flag stays the only way in.
+    const authenticationResult = {
+      type: "personalAccessToken" as const,
+      result: { userId: orgA.member.id },
+      userActor: { ...minted, client: "dashboard-agent" },
+    };
+
+    try {
+      await authenticatedEnvironmentForAuthentication(
+        authenticationResult,
+        orgA.sibling.project.externalRef,
+        "prod"
+      );
+      expect.unreachable("a sibling environment must be refused without the opt-in");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(Response);
+      expect((thrown as Response).status).toBe(403);
+    }
   }
 );
