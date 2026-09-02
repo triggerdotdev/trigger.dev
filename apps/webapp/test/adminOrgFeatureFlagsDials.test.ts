@@ -119,7 +119,7 @@ describe("admin org feature-flags route maintains the snapshotStoreOrgDials coho
 
       expect(response.status).toBe(200);
       const dials = await readDials(prisma);
-      expect(Object.prototype.hasOwnProperty.call(dials ?? {}, id)).toBe(false);
+      expect(Object.hasOwn(dials ?? {}, id)).toBe(false);
       expect(dials?.[id]).toBeUndefined();
     }
   );
@@ -140,39 +140,33 @@ describe("admin org feature-flags route maintains the snapshotStoreOrgDials coho
     }
   );
 
-  postgresTest(
-    "a later save to off stores off and keeps the entry present",
-    async ({ prisma }) => {
-      await seedDialsRow(prisma);
-      const id = await seedOrg(prisma);
+  postgresTest("a later save to off stores off and keeps the entry present", async ({ prisma }) => {
+    await seedDialsRow(prisma);
+    const id = await seedOrg(prisma);
 
-      await post(id, { [MODE]: "redis-read" });
-      const response = await post(id, { [MODE]: "off" });
+    await post(id, { [MODE]: "redis-read" });
+    const response = await post(id, { [MODE]: "off" });
 
-      expect(response.status).toBe(200);
-      const dials = await readDials(prisma);
-      // Never deleted: off is a stored value, so the key survives the roll-back.
-      expect(dials).not.toBeNull();
-      expect(Object.prototype.hasOwnProperty.call(dials, id)).toBe(true);
-      expect(dials?.[id]).toBe("off");
-    }
-  );
+    expect(response.status).toBe(200);
+    const dials = await readDials(prisma);
+    // Never deleted: off is a stored value, so the key survives the roll-back.
+    expect(dials).not.toBeNull();
+    expect(Object.hasOwn(dials, id)).toBe(true);
+    expect(dials?.[id]).toBe("off");
+  });
 
-  postgresTest(
-    "saves for different orgs both persist without clobbering",
-    async ({ prisma }) => {
-      await seedDialsRow(prisma);
-      const orgA = await seedOrg(prisma);
-      const orgB = await seedOrg(prisma);
+  postgresTest("saves for different orgs both persist without clobbering", async ({ prisma }) => {
+    await seedDialsRow(prisma);
+    const orgA = await seedOrg(prisma);
+    const orgB = await seedOrg(prisma);
 
-      await post(orgA, { [MODE]: "dual-write" });
-      await post(orgB, { [MODE]: "redis-only" });
+    await post(orgA, { [MODE]: "dual-write" });
+    await post(orgB, { [MODE]: "redis-only" });
 
-      const dials = await readDials(prisma);
-      expect(dials?.[orgA]).toBe("dual-write");
-      expect(dials?.[orgB]).toBe("redis-only");
-    }
-  );
+    const dials = await readDials(prisma);
+    expect(dials?.[orgA]).toBe("dual-write");
+    expect(dials?.[orgB]).toBe("redis-only");
+  });
 
   // The atomicity invariant the design rests on, which the sequential test above cannot see (a
   // read-modify-write regression passes a sequential save identically). Two independent clients
