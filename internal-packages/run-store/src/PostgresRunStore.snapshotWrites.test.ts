@@ -8,6 +8,7 @@ import { PostgresRunStore } from "./PostgresRunStore.js";
 import {
   buildCreateRunData,
   seedSnapshotEnvironment,
+  seedSnapshotWaitpoints,
   seedSnapshotWorker,
   setupSnapshotIdFixture,
 } from "./testFixtures/snapshotIdFixture.js";
@@ -309,4 +310,94 @@ describe("PostgresRunStore snapshotWrites flag", () => {
       })
     ).rejects.toThrow(/snapshotWrites is off/);
   });
+
+  postgresTest(
+    "a per-org predicate suppresses the snapshot only for the redis-only org",
+    async ({ prisma }) => {
+      const ro = await setupSnapshotIdFixture(prisma);
+      const keep = await setupSnapshotIdFixture(prisma);
+      const store = new PostgresRunStore({
+        prisma,
+        readOnlyPrisma: prisma,
+        snapshotWrites: (org) => org !== ro.env.organizationId,
+      });
+
+      for (const fx of [ro, keep]) {
+        await store.completeAttemptSuccess(
+          fx.run.id,
+          {
+            completedAt: new Date(),
+            outputType: "application/json",
+            usageDurationMs: 1,
+            costInCents: 0,
+            snapshot: {
+              executionStatus: "FINISHED",
+              description: "Run completed",
+              runStatus: "COMPLETED_SUCCESSFULLY",
+              attemptNumber: 1,
+              environmentId: fx.env.id,
+              environmentType: fx.env.type,
+              projectId: fx.env.projectId,
+              organizationId: fx.env.organizationId,
+            },
+          },
+          { select: { id: true } }
+        );
+      }
+
+      expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: ro.run.id } })).toBe(0);
+      expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: keep.run.id } })).toBe(
+        1
+      );
+    }
+  );
+
+  postgresTest(
+    "a per-org predicate suppresses the completed-waitpoint join rows for the redis-only org",
+    async ({ prisma }) => {
+      const ro = await setupSnapshotIdFixture(prisma);
+      const keep = await setupSnapshotIdFixture(prisma);
+      const store = new PostgresRunStore({
+        prisma,
+        readOnlyPrisma: prisma,
+        snapshotWrites: (org) => org !== ro.env.organizationId,
+      });
+
+      for (const fx of [ro, keep]) {
+        const { workerId, taskId } = await seedSnapshotWorker(prisma, fx.env);
+        const waitpointIds = await seedSnapshotWaitpoints(prisma, fx.env, 2);
+        const snapshotId = generateInternalId();
+        await store.lockRunToWorker(fx.run.id, {
+          lockedAt: new Date(),
+          lockedById: taskId,
+          lockedToVersionId: workerId,
+          lockedQueueId: undefined,
+          startedAt: new Date(),
+          baseCostInCents: 0,
+          machinePreset: "small-1x",
+          taskVersion: "1.0.0",
+          snapshot: {
+            id: snapshotId,
+            previousSnapshotId: generateInternalId(),
+            attemptNumber: 1,
+            environmentId: fx.env.id,
+            environmentType: fx.env.type,
+            projectId: fx.env.projectId,
+            organizationId: fx.env.organizationId,
+            completedWaitpointIds: waitpointIds,
+            completedWaitpointOrder: waitpointIds,
+          },
+        });
+      }
+
+      // The redis-only org has no snapshot row, so no join rows link to it either.
+      expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: ro.run.id } })).toBe(0);
+
+      const keepSnapshot = await prisma.taskRunExecutionSnapshot.findFirstOrThrow({
+        where: { runId: keep.run.id },
+        include: { completedWaitpoints: true },
+      });
+      expect(keepSnapshot.completedWaitpoints).toHaveLength(2);
+    }
+  );
 });

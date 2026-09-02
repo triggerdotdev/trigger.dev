@@ -21,6 +21,7 @@ import {
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { decorateWithSnapshotStore } from "./snapshotStoreInstance.server";
+import { snapshotStoreModeResolver } from "./snapshotStoreMode.server";
 import {
   resilienceForClient,
   type TransactionResilienceConfig,
@@ -68,6 +69,11 @@ type BuildRunStoreDeps = {
  * are born) and a LEGACY store (draining) by run-id residency (id shape). There is no cuid
  * migration, so a LEGACY-classified id is always LEGACY-resident.
  */
+// A run's org is redis-only exactly when the same resolver the snapshot decorator uses says so, so
+// the Redis mirror and the Postgres suppression always agree on the effective mode for that run.
+const suppressPgAtRedisOnly = (organizationId?: string) =>
+  snapshotStoreModeResolver.resolve(organizationId) !== "redis-only";
+
 export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
   if (!deps.splitEnabled) {
     return new PostgresRunStore({
@@ -75,6 +81,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       readOnlyPrisma: deps.singleReplica,
       maxWait: deps.singleResilience?.maxWait,
       transactionStartRetry: deps.singleResilience?.startRetry,
+      snapshotWrites: suppressPgAtRedisOnly,
     });
   }
 
@@ -90,12 +97,14 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     schemaVariant: "dedicated",
     maxWait: deps.newResilience?.maxWait,
     transactionStartRetry: deps.newResilience?.startRetry,
+    snapshotWrites: suppressPgAtRedisOnly,
   });
   const legacyStore = new PostgresRunStore({
     prisma: deps.legacyWriter,
     readOnlyPrisma: deps.legacyReplica,
     maxWait: deps.legacyResilience?.maxWait,
     transactionStartRetry: deps.legacyResilience?.startRetry,
+    snapshotWrites: suppressPgAtRedisOnly,
   });
 
   // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
@@ -109,6 +118,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       schemaVariant: "dedicated" as const,
       maxWait: shard.resilience?.maxWait,
       transactionStartRetry: shard.resilience?.startRetry,
+      snapshotWrites: suppressPgAtRedisOnly,
     }),
     aliasOf: shard.aliasOf,
   }));

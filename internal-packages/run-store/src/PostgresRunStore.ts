@@ -123,9 +123,10 @@ export type PostgresRunStoreOptions = {
    * When false the store writes no execution-snapshot rows: every nested `executionSnapshots.create`
    * is omitted and `createExecutionSnapshot` echoes its input instead of inserting. Only the
    * redis-only dial position sets this, once the Redis store is the sole snapshot writer.
-   * Defaults to true, so the store behaves exactly as it always has.
+   * A predicate form decides per run from its organisation id, so a per-org redis-only override
+   * suppresses only that org's snapshots. Defaults to true, so the store behaves exactly as it always has.
    */
-  snapshotWrites?: boolean;
+  snapshotWrites?: boolean | ((organizationId?: string) => boolean);
 };
 
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
@@ -646,7 +647,7 @@ export class PostgresRunStore implements RunStore {
   private readonly prisma: RunOpsCapableClient;
   private readonly readOnlyPrisma: RunOpsCapableClient;
   private readonly schemaVariant: RunStoreSchemaVariant;
-  private readonly snapshotWrites: boolean;
+  private readonly snapshotWrites: boolean | ((organizationId?: string) => boolean);
   private readonly maxWait?: number;
   private readonly transactionStartRetry?: TransactionStartRetryConfig;
 
@@ -662,6 +663,13 @@ export class PostgresRunStore implements RunStore {
     this.snapshotWrites = options.snapshotWrites ?? true;
   }
 
+  // Resolves the write flag for one run, from its organisation id when the option is a predicate.
+  #writesSnapshot(organizationId?: string): boolean {
+    return typeof this.snapshotWrites === "function"
+      ? this.snapshotWrites(organizationId)
+      : this.snapshotWrites;
+  }
+
   /**
    * Wraps a nested snapshot create so a single flag removes it everywhere. Prisma treats an absent
    * key and `undefined` alike, so spreading an empty object drops the nested write entirely rather
@@ -674,7 +682,7 @@ export class PostgresRunStore implements RunStore {
         };
       }
     | Record<string, never> {
-    return this.snapshotWrites ? { executionSnapshots: { create } } : {};
+    return this.#writesSnapshot(create.organizationId) ? { executionSnapshots: { create } } : {};
   }
 
   // The writer handle in read-client form, so the routing layer can honor a caller-passed client
@@ -1316,7 +1324,7 @@ export class PostgresRunStore implements RunStore {
 
     // The join rows link to the snapshot row above. With snapshot writes off there is no such row,
     // so inserting them would leave dangling links for a snapshot that only the Redis store holds.
-    if (this.snapshotWrites) {
+    if (this.#writesSnapshot(data.snapshot.organizationId)) {
       if (dedicated) {
         await this.#connectCompletedWaitpoints(
           prisma,
@@ -2036,7 +2044,7 @@ export class PostgresRunStore implements RunStore {
 
     // Redis-only: no row is written and the decorator owns the document. Echo the input in the shape
     // the caller expects, so every caller of this method keeps working while Postgres holds nothing.
-    if (!this.snapshotWrites) {
+    if (!this.#writesSnapshot(input.organizationId)) {
       if (!id) {
         throw new Error(
           "PostgresRunStore.createExecutionSnapshot: snapshotWrites is off, so the caller must supply the snapshot id"

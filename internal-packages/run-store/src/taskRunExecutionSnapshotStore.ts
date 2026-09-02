@@ -777,6 +777,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         // An injected fault models a dead process, not a retryable append failure.
         if (isInjectedFault(error)) {
           this.metrics?.recordAppendFailed(site, entry.organizationId);
+          // At redis-only Postgres holds nothing, so a lost transition is unrecoverable and the
+          // repair cannot help: surface it instead, as the birth path does.
+          if (this.modeFor(entry.organizationId) === "redis-only") {
+            throw error;
+          }
           await this.#enqueueRepair(entry);
           return;
         }
@@ -789,6 +794,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
             site,
             error,
           });
+          if (this.modeFor(entry.organizationId) === "redis-only") {
+            throw error;
+          }
           await this.#enqueueRepair(entry);
           return;
         }
@@ -1051,6 +1059,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return this.modeResolver?.anyOrgRedisOnly?.() !== true;
   }
 
+  // Thrown on a read MISS when the run is redis-only and Postgres holds nothing. Retryable by design:
+  // the head may still be catching up, and serving an empty Postgres would strand the run.
+  #redisOnlyMissError(): Error {
+    return new Error("snapshot store: run is redis-only and has no Redis snapshot");
+  }
+
   #reportReadUnavailable(method: string, runId: string, error: unknown): void {
     this.logger.warn("snapshot read fell back to Postgres after a store error", {
       method,
@@ -1116,7 +1130,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
     if (!read) {
-      // A miss is the coexistence path: a pre-cutover run, or expired history. It is not an error.
+      // A miss is the coexistence path: a pre-cutover run, or expired history. It is not an error —
+      // unless the run is redis-only, where Postgres holds nothing, so a miss must throw not delegate.
+      if (!this.#readMayFallBack(runId, environmentId)) throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findLatestExecutionSnapshot", "postgres");
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
@@ -1167,6 +1183,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     if (!found) {
+      if (!this.#readMayFallBack(shape.runId, shape.environmentId))
+        throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findExecutionSnapshot", "postgres");
       return this.delegate.findExecutionSnapshot(args, client);
     }
@@ -1200,6 +1218,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     if (result.kind === "miss") {
+      if (!this.#readMayFallBack(shape.runId, shape.environmentId))
+        throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
@@ -1249,6 +1269,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
     if (!ids.present) {
+      if (!this.#readMayFallBack(runId)) throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findSnapshotCompletedWaitpointIds", "postgres");
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
@@ -1276,7 +1297,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
     if (!ids.present) {
       // present=false means this reader cannot see the snapshot, so its empty list is not
-      // authoritative and the engine's read-repair needs the Postgres answer.
+      // authoritative and the engine's read-repair needs the Postgres answer — except at redis-only,
+      // where Postgres holds nothing, so the miss must throw rather than serve an empty set.
+      if (!this.#readMayFallBack(runId)) throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findSnapshotCompletedWaitpointIdsWithPresence", "postgres");
       return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
