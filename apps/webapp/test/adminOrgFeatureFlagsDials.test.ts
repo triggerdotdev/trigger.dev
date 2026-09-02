@@ -3,7 +3,7 @@
 // deletion), concurrent saves for different orgs do not clobber each other, and a missing flag row
 // trips the zero-rows guard. Drives the real exported v1 action against a real Postgres and asserts
 // the stored FeatureFlag row. Only peripheral module boundaries are substituted; the DB is genuine.
-import type { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
@@ -134,6 +134,73 @@ describe("admin org feature-flags route maintains the snapshotStoreOrgDials coho
 
       const dials = await readDials(prisma);
       expect(dials?.[orgA]).toBe("dual-write");
+      expect(dials?.[orgB]).toBe("redis-only");
+    }
+  );
+
+  // The atomicity invariant the design rests on, which the sequential test above cannot see (a
+  // read-modify-write regression passes a sequential save identically). Two independent clients
+  // overlap on the same map row: client 1 writes org A and holds its transaction open, client 2
+  // then writes org B (blocking on the row lock), client 1 commits, client 2 unblocks and merges
+  // onto the committed value. A read-modify-write regression would clobber org A here.
+  postgresTest(
+    "overlapping transactions on the same map row both survive (atomic merge under contention)",
+    async ({ prisma, postgresContainer }) => {
+      await seedDialsRow(prisma);
+      const orgA = `org_concurrent_a_${orgSeq++}`;
+      const orgB = `org_concurrent_b_${orgSeq++}`;
+
+      const url = postgresContainer.getConnectionUri();
+      const client1 = new PrismaClient({ datasources: { db: { url } } });
+      const client2 = new PrismaClient({ datasources: { db: { url } } });
+
+      // The exact maintenance statement the routes run, keyed by org and dial.
+      const maintain = (tx: PrismaClient, orgId: string, dial: string) => tx.$executeRaw`
+        UPDATE "FeatureFlag"
+        SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${orgId}], to_jsonb(${dial}::text)),
+            "updatedAt" = now()
+        WHERE "key" = ${DIALS}`;
+
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      let signalAHolding: () => void;
+      const aHolding = new Promise<void>((resolve) => (signalAHolding = resolve));
+      let signalBIssued: () => void;
+      const bIssued = new Promise<void>((resolve) => (signalBIssued = resolve));
+
+      try {
+        const p1 = client1.$transaction(
+          async (tx) => {
+            await maintain(tx as unknown as PrismaClient, orgA, "redis-read");
+            // Row lock now held by this open transaction.
+            signalAHolding();
+            // Wait until client 2 has fired its (blocking) write, then hold a beat so it reaches the
+            // lock wait, before committing.
+            await bIssued;
+            await sleep(300);
+          },
+          { timeout: 20_000 }
+        );
+
+        const p2 = client2.$transaction(
+          async (tx) => {
+            await aHolding;
+            // Fire the write without awaiting: it blocks on client 1's row lock until the commit.
+            const writeB = maintain(tx as unknown as PrismaClient, orgB, "redis-only");
+            signalBIssued();
+            await writeB;
+          },
+          { timeout: 20_000 }
+        );
+
+        await Promise.all([p1, p2]);
+      } finally {
+        await client1.$disconnect();
+        await client2.$disconnect();
+      }
+
+      const dials = await readDials(prisma);
+      expect(dials?.[orgA]).toBe("redis-read");
       expect(dials?.[orgB]).toBe("redis-only");
     }
   );
