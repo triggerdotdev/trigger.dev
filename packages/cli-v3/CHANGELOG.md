@@ -1,5 +1,36 @@
 # trigger.dev
 
+## 4.5.15
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.15`
+  - `@trigger.dev/build@4.5.15`
+  - `@trigger.dev/schema-to-json@4.5.15`
+
+## 4.5.14
+
+### Patch Changes
+
+- Native build server deploys now show a single updating build log line by default; pass `--build-logs full` to stream every line (always used in CI and when output is not a terminal). ([#4817](https://github.com/triggerdotdev/trigger.dev/pull/4817))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.14`
+  - `@trigger.dev/build@4.5.14`
+  - `@trigger.dev/schema-to-json@4.5.14`
+
+## 4.5.13
+
+### Patch Changes
+
+- `trigger.dev deploy` now asks the server whether to build with Depot or the native build server unless `--native-build`, `--depot-build`, or `--local-build` is passed, so the native build server can be rolled out per organization without a CLI change. `--local-bundle` and `--detach` now require `--native-build`. ([#4803](https://github.com/triggerdotdev/trigger.dev/pull/4803))
+- Add an experimental `--local-bundle` deploy flag that runs the install and bundling steps on your machine and uploads only the build output; the image is still built remotely. Useful when your project's install step needs tooling or credentials that only exist locally. ([#4331](https://github.com/triggerdotdev/trigger.dev/pull/4331))
+- Send the CLI version header on all API requests so deployments are attributable to a CLI version ([#4778](https://github.com/triggerdotdev/trigger.dev/pull/4778))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.13`
+  - `@trigger.dev/build@4.5.13`
+  - `@trigger.dev/schema-to-json@4.5.13`
+
 ## 4.5.12
 
 ### Patch Changes

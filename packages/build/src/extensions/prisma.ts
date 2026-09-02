@@ -815,6 +815,14 @@ export class PrismaEngineOnlyModeExtension implements BuildExtension {
     this._binaryTarget = options.binaryTarget ?? "debian-openssl-3.0.x";
   }
 
+  installedPackagesForTarget(target: BuildTarget) {
+    if (target !== "deploy") {
+      return [];
+    }
+
+    return ["@prisma/engines"];
+  }
+
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
     if (context.target === "dev") {
       return;

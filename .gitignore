@@ -24,6 +24,7 @@ packages/**/styles/tailwind.css
 
 # misc
 .DS_Store
+*.swp
 *.pem
 
 # debug

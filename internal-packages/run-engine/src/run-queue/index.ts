@@ -671,9 +671,8 @@ export class RunQueue {
   }
 
   public async redriveMessage(env: MinimalAuthenticatedEnvironment, messageId: string) {
-    // Publish redrive message
-    await this.redis.publish(
-      "rq:redrive",
+    const subscriberCount = await this.redis.publish(
+      this.#redriveChannel,
       JSON.stringify({
         runId: messageId,
         orgId: env.organization.id,
@@ -681,6 +680,19 @@ export class RunQueue {
         projectId: env.project.id,
       })
     );
+
+    if (subscriberCount === 0) {
+      this.logger.error(
+        "redriveMessage: no subscribers on the redrive channel, message remains in the dead letter queue",
+        {
+          channel: this.#redriveChannel,
+          messageId,
+          orgId: env.organization.id,
+          envId: env.id,
+          projectId: env.project.id,
+        }
+      );
+    }
   }
 
   public async oldestMessageInQueue(
@@ -1116,12 +1128,19 @@ export class RunQueue {
     messageId,
     retryAt,
     incrementAttemptCount = true,
+    resetAttemptCount = false,
     skipDequeueProcessing = false,
   }: {
     orgId: string;
     messageId: string;
     retryAt?: number;
     incrementAttemptCount?: boolean;
+    /**
+     * Zero the message's attempt counter instead of incrementing it. The counter is the budget
+     * for dequeues that never reach execution; a caller that knows an attempt did execute passes
+     * this so an ordinary task retry cannot exhaust it and dead-letter the run.
+     */
+    resetAttemptCount?: boolean;
     skipDequeueProcessing?: boolean;
   }) {
     return this.#trace(
@@ -1148,7 +1167,9 @@ export class RunQueue {
           [SemanticAttributes.WORKER_QUEUE]: this.#getWorkerQueueFromMessage(message),
         });
 
-        if (incrementAttemptCount) {
+        if (resetAttemptCount) {
+          message.attempt = 0;
+        } else if (incrementAttemptCount) {
           message.attempt = message.attempt + 1;
           if (message.attempt >= maxAttempts) {
             await this.#callMoveToDeadLetterQueue({ message });
@@ -1451,8 +1472,12 @@ export class RunQueue {
     );
   }
 
+  get #redriveChannel() {
+    return `${this.options.name}:redrive`;
+  }
+
   async #setupSubscriber() {
-    const channel = `${this.options.name}:redrive`;
+    const channel = this.#redriveChannel;
     this.subscriber.subscribe(channel, (err) => {
       if (err) {
         this.logger.error(`Failed to subscribe to ${channel}`, { error: err });

@@ -79,6 +79,24 @@ export function nodeMajor(
   return match ? Number(match[1]) : undefined;
 }
 
+export function needsNodeRuntimeUpdate(
+  runtime: string | null | undefined,
+  runtimeVersion: string | null | undefined
+) {
+  if (runtime && !runtime.startsWith("node")) return false;
+
+  const versionMatch = runtimeVersion?.match(/^(\d+)(?:\.\d+){1,2}(?:[-+].*)?$/);
+  if (versionMatch) return Number(versionMatch[1]) === NODE_RUNTIME_UPDATE_MAJOR;
+  if (runtimeVersion) return false;
+
+  if (!runtime || runtime === "node") return true;
+
+  const configuredMajorMatch = runtime.match(/^node-(\d+)$/);
+  return configuredMajorMatch
+    ? Number(configuredMajorMatch[1]) === NODE_RUNTIME_UPDATE_MAJOR
+    : false;
+}
+
 export const GetProjectRuntimesResponseBody = z.array(
   z.object({
     organization: z.object({
@@ -838,6 +856,16 @@ export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFu
 );
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
+
+export const DeployBuildPath = z.enum(["depot", "native", "native_local_bundle"]);
+
+export type DeployBuildPath = z.infer<typeof DeployBuildPath>;
+
+export const GetDeploySettingsResponseBody = z.object({
+  build_path: DeployBuildPath,
+});
+
+export type GetDeploySettingsResponseBody = z.infer<typeof GetDeploySettingsResponseBody>;
 
 export const RemoteBuildProviderStatusResponseBody = z.object({
   status: z.enum(["operational", "degraded", "unknown"]),
@@ -1842,7 +1870,7 @@ export const SessionTriggerConfig = z.object({
   basePayload: z.record(z.unknown()),
   machine: MachinePresetName.optional(),
   queue: z.string().max(128).optional(),
-  tags: z.array(z.string().max(128)).max(5).optional(),
+  tags: z.array(z.string().max(128)).max(10).optional(),
   maxAttempts: z.number().int().positive().max(10).optional(),
   /** Per-run wall-clock cap (seconds). Forwarded to `TaskRunOptions.maxDuration`. */
   maxDuration: z.number().int().positive().optional(),

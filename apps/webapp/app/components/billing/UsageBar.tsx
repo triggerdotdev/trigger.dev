@@ -2,7 +2,6 @@ import { cn } from "~/utils/cn";
 import { formatCurrency } from "~/utils/numberFormatter";
 import { Paragraph } from "../primitives/Paragraph";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import { motion } from "framer-motion";
 
 type UsageBarProps = {
   current: number;
@@ -10,8 +9,6 @@ type UsageBarProps = {
   tierLimit?: number;
   isPaying: boolean;
 };
-
-const startFactor = 4;
 
 export function UsageBar({ current, billingLimit, tierLimit, isPaying }: UsageBarProps) {
   const getLargestNumber = Math.max(current, tierLimit ?? -Infinity, billingLimit ?? -Infinity, 5);
@@ -26,13 +23,10 @@ export function UsageBar({ current, billingLimit, tierLimit, isPaying }: UsageBa
   const usageCappedToLimitPercentage = Math.min(usagePercentage, tierRunLimitPercentage);
 
   return (
-    <div className="h-fit w-full py-6">
+    <div className={cn("h-fit w-full pt-6", billingLimit !== undefined ? "pb-12" : "pb-6")}>
       <div className="relative h-3 w-full rounded-sm bg-background-bright">
         {billingLimit !== undefined && (
-          <motion.div
-            initial={{ width: billingLimitPercentage / startFactor + "%" }}
-            animate={{ width: billingLimitPercentage + "%" }}
-            transition={{ duration: 1.5, type: "spring" }}
+          <div
             style={{ width: `${billingLimitPercentage}%` }}
             className="absolute h-3 rounded-l-sm"
           >
@@ -42,12 +36,9 @@ export function UsageBar({ current, billingLimit, tierLimit, isPaying }: UsageBa
               position="bottomRow2"
               percentage={billingLimitPercentage}
             />
-          </motion.div>
+          </div>
         )}
-        <motion.div
-          initial={{ width: usagePercentage / startFactor + "%" }}
-          animate={{ width: usagePercentage + "%" }}
-          transition={{ duration: 1.5, type: "spring" }}
+        <div
           style={{ width: `${usagePercentage}%` }}
           className={cn(
             "absolute h-3 rounded-l-sm",
@@ -60,12 +51,9 @@ export function UsageBar({ current, billingLimit, tierLimit, isPaying }: UsageBa
             position="topRow1"
             percentage={usagePercentage}
           />
-        </motion.div>
+        </div>
         {tierLimit !== undefined && (
-          <motion.div
-            initial={{ width: tierRunLimitPercentage / startFactor + "%" }}
-            animate={{ width: tierRunLimitPercentage + "%" }}
-            transition={{ duration: 1.5, type: "spring" }}
+          <div
             style={{ width: `${tierRunLimitPercentage}%` }}
             className="absolute h-3 rounded-l-sm bg-green-900/20"
           >
@@ -75,12 +63,9 @@ export function UsageBar({ current, billingLimit, tierLimit, isPaying }: UsageBa
               position="bottomRow1"
               percentage={tierRunLimitPercentage}
             />
-          </motion.div>
+          </div>
         )}
-        <motion.div
-          initial={{ width: usageCappedToLimitPercentage / startFactor + "%" }}
-          animate={{ width: usageCappedToLimitPercentage + "%" }}
-          transition={{ duration: 1.5, type: "spring" }}
+        <div
           style={{ width: `${usageCappedToLimitPercentage}%` }}
           className="absolute h-3 rounded-l-sm bg-green-600"
         />

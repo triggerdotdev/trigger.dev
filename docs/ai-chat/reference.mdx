@@ -490,7 +490,7 @@ Options for [`chat.headStart()`](/ai-chat/fast-starts#head-start), the warm-serv
 | `agentId`              | `string`                                                | required    | The `chat.agent` / `chat.customAgent` id to hand off to                                              |
 | `run`                  | `(args: HeadStartRunArgs) => Promise<StreamTextResult>` | required    | First-turn callback. Call `streamText` and spread `chat.toStreamTextOptions({ tools })`              |
 | `idleTimeoutInSeconds` | `number`                                                | `60`        | How long the agent waits for the handover signal                                                     |
-| `triggerConfig`        | `Partial<SessionTriggerConfig>`                         | `undefined` | Run options (tags, queue, machine, maxAttempts, maxDuration, region, lockToVersion) for the auto-triggered handover-prepare run. The `chat:{chatId}` tag is prepended automatically |
+| `triggerConfig`        | `Partial<SessionTriggerConfig>`                         | `undefined` | Run options (tags, queue, machine, maxAttempts, maxDuration, region, lockToVersion) for the auto-triggered handover-prepare run. The `chat:{chatId}` tag is prepended automatically and counts toward the 10-tag limit |
 
 `chat.headStart(options)` returns the handler `(req: Request) => Promise<Response>`. The `run` callback receives `HeadStartRunArgs`: `{ messages: UIMessage[], signal: AbortSignal, chat: HeadStartChatHelper }`, where the helper exposes `chat.toStreamTextOptions({ tools })` and a `chat.session` escape hatch. See [Head Start](/ai-chat/fast-starts#head-start) for the full guide.
 
@@ -547,15 +547,30 @@ Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data
 
 ## `chat.withClientData`
 
-Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. All hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options.
+Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. Managed-agent hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options. Custom agents parse `payload.metadata` on the initial payload and later input frames before passing it to user code.
 
 ```ts
-chat.withClientData<TSchema>({ schema: TSchema }): ChatBuilder<UIMessage, TSchema>;
+chat.withClientData<TSchema extends TaskSchema>(config: {
+  schema: TSchema;
+  reportErrorAt?: "turn-end" | "arrival";
+  onValidationError?: (event: {
+    error: unknown;
+    payload: ChatTaskWirePayload;
+  }) => Promise<void> | void;
+}): ChatBuilder<UIMessage, TSchema>;
 ```
 
-| Parameter | Type         | Description                                        |
-| --------- | ------------ | -------------------------------------------------- |
-| `schema`  | `TaskSchema` | Zod, ArkType, Valibot, or any supported schema lib |
+| Parameter           | Type                        | Default      | Description                                                                                                              |
+| ------------------- | --------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `schema`            | `TaskSchema`                | required     | Zod, ArkType, Valibot, or any supported schema lib                                                                       |
+| `reportErrorAt`     | `"turn-end" \| "arrival"`   | `"turn-end"` | When the client-visible `Invalid client data` error is written for a steering frame that failed validation mid-turn       |
+| `onValidationError` | `(event) => void`           | —            | Called when an input fails validation. Composes with the task-level `onClientDataValidationError` rather than replacing it |
+
+`reportErrorAt` governs only the stream-visible error, and only for frames arriving on the steering subscription created by `chat.createSession({ pendingMessages })`. `"turn-end"` holds it until the turn closes, so a bad send cannot truncate an answer the user is already reading; `"arrival"` writes it as soon as validation fails, ending the response in progress. `onValidationError` and the task log fire on arrival in both modes, and the frame is never delivered as a turn either way. A raw `chat.messages.on()` subscription has no turn boundary to defer to, so it always reports through the callback and the task log without writing to the stream.
+
+For `chat.customAgent()`, invalid client data is skipped. Async reads emit an error chunk followed by `turn-complete`. A `chat.messages.on()` subscription uses the task's `onClientDataValidationError` callback and task log instead, so an active response is not ended early. Without a schema, metadata is passed through unchanged.
+
+Passing options directly to `chat.customAgent()` instead of through the builder uses the flat equivalents: `clientDataSchema`, `clientDataReportErrorAt`, and `onClientDataValidationError`.
 
 Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chatwithclientdata).
 
@@ -785,7 +800,7 @@ Send a custom action to the agent. Actions wake the agent from suspension and fi
 transport.sendAction(chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>>
 ```
 
-The action payload is validated against the agent's `actionSchema` on the backend.
+For managed `chat.agent()` tasks, the action payload is validated against the agent's `actionSchema` on the backend. Raw `chat.customAgent()` tasks receive it as `unknown` and must validate it themselves.
 
 ```tsx
 // Undo button

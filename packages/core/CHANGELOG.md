@@ -1,5 +1,96 @@
 # internal-platform
 
+## 4.5.15
+
+### Patch Changes
+
+- Stop shipping compiled test files in the published packages. The `*.test.ts` sources were being emitted into `dist`, adding dead weight to every install and leaving modules that `require("vitest")` (not a dependency) inside the tarball, which tripped tooling that walks every file in a package. ([#4833](https://github.com/triggerdotdev/trigger.dev/pull/4833))
+- Named side channels on a Session: durable, two-way realtime streams that outlive a single run and are shared across runs. Open a channel with `sessions.open(id).channel(name)` (or `chat.channel(name)` inside a `chat.agent`) to get an `.in`/`.out` pair addressed by name rather than the reserved default pair. Writing a side channel's `.in` does not wake or trigger a run, so a channel can carry out-of-band data (a stream of frames, a control signal) that many clients read while the agent produces it. ([#4815](https://github.com/triggerdotdev/trigger.dev/pull/4815))
+
+  ```ts
+  // Inside a chat.agent: stream frames on a named channel, wakes nothing
+  const frames = chat.channel("screenshots");
+  await frames.out.append(frame);
+  frames.in.on((control) => {
+    /* client control, no suspend */
+  });
+  ```
+
+  Declare channel record types once with `sessions.defineChannel(...)` and infer them on both the producer and the consumer, including `useSessionStreamChannel` in React. Channels get a default retention that keeps them bounded, overridable per channel.
+
+- Session `triggerConfig.tags` now accepts up to 10 tags, matching the run tag limit. Previously it was capped at 5, which for `chat.agent` left room for only 4 of your own tags after the automatic `chat:{chatId}` tag. ([#4832](https://github.com/triggerdotdev/trigger.dev/pull/4832))
+
+## 4.5.14
+
+### Patch Changes
+
+- Realtime stream subscriptions can now refresh an expired access token and reconnect, via a new optional `refreshAccessToken` option on the client configuration and the React hooks. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+- Subscribe to a realtime stream from its latest record instead of replaying the whole history. Pass `from: "latest"` to `useRealtimeStream`, `streams.read()`, or `fetchStream` to start at the current tail (the latest record, then live updates) instead of replaying (a live "last value" view), and `maxParts` to keep the accumulated `parts` array bounded. A reconnect or remount resumes from the last record it saw, so no records are missed and none are replayed. `from: "latest"` needs a server that supports it; older servers safely fall back to a full replay. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+
+  `useRealtimeStream` also gains a `lastEventId` option and returns the `lastEventId` of the last part seen, so you can persist the cursor (for example across a page reload) and resume exactly where you left off. An `onParts` callback delivers each throttled batch of parts with their event ids.
+
+  ```tsx
+  const { parts, lastEventId } = useRealtimeStream<Frame>(runId, "frames", {
+    from: "latest", // skip history, start at the current tail
+    maxParts: 1, // keep only the most recent frame
+    lastEventId: savedCursor, // resume from a persisted cursor
+    onParts: (batch) => save(batch.at(-1)?.id), // track the cursor
+    accessToken,
+  });
+  ```
+
+## 4.5.13
+
+### Patch Changes
+
+- `trigger.dev deploy` now asks the server whether to build with Depot or the native build server unless `--native-build`, `--depot-build`, or `--local-build` is passed, so the native build server can be rolled out per organization without a CLI change. `--local-bundle` and `--detach` now require `--native-build`. ([#4803](https://github.com/triggerdotdev/trigger.dev/pull/4803))
+- Add an experimental `--local-bundle` deploy flag that runs the install and bundling steps on your machine and uploads only the build output; the image is still built remotely. Useful when your project's install step needs tooling or credentials that only exist locally. ([#4331](https://github.com/triggerdotdev/trigger.dev/pull/4331))
+- A message that arrives mid-turn and is not injected into that turn is now answered as the next turn, instead of being dropped. This is what the `pendingMessages` docs have always described, and it applies to the default too: configuring `pendingMessages` without a `shouldInject` declines every batch, which previously meant every mid-turn message was lost with no error at either end. ([#4795](https://github.com/triggerdotdev/trigger.dev/pull/4795))
+
+  ```ts
+  chat.agent({
+    id: "my-chat",
+    pendingMessages: {
+      onReceived: ({ message }) =>
+        logger.info("arrived mid-turn", { id: message.id }),
+      // Only interrupt once the agent has started calling tools.
+      shouldInject: ({ steps }) => steps.length > 0,
+    },
+    run: async ({ messages, signal }) =>
+      streamText({
+        model,
+        messages,
+        abortSignal: signal,
+        // Required for injection. Without it nothing injects, and every
+        // mid-turn message is answered as the next turn instead.
+        ...chat.toStreamTextOptions(),
+      }),
+  });
+  ```
+
+  A declined message keeps its place in the queue, so it survives a crash and is answered by whichever run picks the conversation up. An injected one is consumed at the moment it is injected, so it is never also answered as a later turn.
+
+- Fixes a case where a chat could silently lose a message. If a message arrived while the agent was between turns and a stop arrived after it, the cursor the next boot resumed from could point past that message, so it was never answered and no error was raised. This affected `chat.agent`, not just custom agents. ([#4644](https://github.com/triggerdotdev/trigger.dev/pull/4644))
+
+  Fixes a recovered answer being cut off. After a crash the agent replays the message it had not answered yet, but it was replaying the stop that arrived after that message too, so the turn answering it was aborted the moment it began. A stop is now only applied to the turn that was live when it arrived. That holds however the stop got there: sent after the last completed turn, or sent to a chat whose most recent turn was completed by an older version of the SDK.
+
+  One limitation to know about: the recovered answer is persisted correctly, but a chat page that stayed open across the crash keeps showing the partial answer it had already received. Reload the page to see the full recovered answer.
+
+  Also fixes a retried send being answered twice. When a send was retried and its idempotency claim was lost, the agent could consume the same message a second time.
+
+  Custom agent loops can now inspect pending chat input without consuming it, and consume one record at a time, with `chat.messages.hasPending()` and `chat.messages.next()`. Records carry stable identifiers so a redelivery is recognisable.
+
+  ```ts
+  if (await chat.messages.hasPending()) {
+    const record = await chat.messages.next({ timeoutInSeconds: 0 });
+    if (record) handle(record.payload);
+  }
+  ```
+
+  `hasPending()` answers for messages alone, so a message sitting behind a stop, or behind a record this version of the SDK does not recognise, still reports as pending and is still delivered. Anything the agent has no consumer for is discarded rather than left where it would make every message queued behind it undeliverable. `chat.messages.next()` returning `undefined` means no message became consumable before the timeout.
+
+  `chat.writeTurnComplete()`'s `sessionInEventId` is the cursor that is safe to resume from, not the sequence of the record the turn answered. It is held back behind any message still waiting to be handled, so a value below the record you just handled is expected.
+
 ## 4.5.12
 
 ### Patch Changes

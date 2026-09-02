@@ -741,7 +741,7 @@ export class WaitpointSystem {
   /**
    * Builds the waitpoint output payload from a completed run's stored output/error.
    */
-  #buildWaitpointOutputFromRun(
+  public buildWaitpointOutputFromRun(
     run: Pick<TaskRun, "status" | "output" | "outputType" | "error">
   ): { value: string; type?: string; isError: boolean } | undefined {
     if (run.status === "COMPLETED_SUCCESSFULLY") {
@@ -830,7 +830,7 @@ export class WaitpointSystem {
 
       // If run has already finished (per snapshot), complete the waitpoint immediately so the parent can resume
       if (snapshot.executionStatus === "FINISHED") {
-        const output = this.#buildWaitpointOutputFromRun(runAfterLock);
+        const output = this.buildWaitpointOutputFromRun(runAfterLock);
         const completed = await this.completeWaitpoint({
           id: waitpoint.id,
           output,

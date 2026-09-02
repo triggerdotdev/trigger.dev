@@ -7,7 +7,7 @@ import {
   RedisCacheStore,
 } from "@internal/cache";
 import type { RedisOptions } from "@internal/redis";
-import { startSpan } from "@internal/tracing";
+import { startSpan, type Counter } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import type {
   CompleteRunAttemptResult,
@@ -41,6 +41,7 @@ import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
 import {
   isExecuting,
+  isFinalRunStatus,
   isFinishedOrPendingFinished,
   isInitialState,
   isPendingExecuting,
@@ -67,6 +68,7 @@ export type RunAttemptSystemOptions = {
   waitpointSystem: WaitpointSystem;
   delayedRunSystem: DelayedRunSystem;
   retryWarmStartThresholdMs?: number;
+  finalizationGuardDelayMs?: number;
   machines: RunEngineOptions["machines"];
   redisOptions: RedisOptions;
 };
@@ -102,12 +104,22 @@ const DEPLOYMENT_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
 const QUEUE_FRESH_TTL = 60000 * 60; // 1 hour
 const QUEUE_STALE_TTL = 60000 * 60 * 2; // 2 hours
 
+/**
+ * How many times the finalization guard defers to an in-flight cancellation before
+ * delivering anyway. The worker-owned states normally exit within a heartbeat cycle
+ * or two, so exhausting this budget means the heartbeat itself was lost; resuming the
+ * parent with the identical cancel error then beats watching forever.
+ */
+const MAX_FINALIZATION_GUARD_DEFERRALS = 10;
+
 export class RunAttemptSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly batchSystem: BatchSystem;
   private readonly waitpointSystem: WaitpointSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
+  private readonly finalizationGuardDelayMs: number;
+  private readonly rederivationsCounter: Counter;
   private readonly cache: UnkeyCache<{
     tasks: BackwardsCompatibleTaskRunExecution["task"];
     machinePresets: MachinePreset;
@@ -123,6 +135,15 @@ export class RunAttemptSystem {
     this.batchSystem = options.batchSystem;
     this.waitpointSystem = options.waitpointSystem;
     this.delayedRunSystem = options.delayedRunSystem;
+    this.finalizationGuardDelayMs = options.finalizationGuardDelayMs ?? 60_000;
+    this.rederivationsCounter = this.$.meter.createCounter(
+      "run_attempt_system.finalization_rederivations",
+      {
+        description:
+          "Lost run-finalization side effects re-delivered by the ensureRunFinalized guard",
+        unit: "runs",
+      }
+    );
 
     const ctx = new DefaultStatefulContext();
     const memory = createLRUMemoryStore(5000);
@@ -757,6 +778,8 @@ export class RunAttemptSystem {
             environmentType: latestSnapshot.environmentType,
           });
 
+          await this.#scheduleFinalizationGuard(runId);
+
           const run = await this.$.runStore.completeAttemptSuccess(
             runId,
             {
@@ -1126,6 +1149,7 @@ export class RunAttemptSystem {
                   orgId: env.organizationId,
                   projectId: env.project.id,
                   timestamp: retryAt.getTime(),
+                  resetQueueAttempts: !forceRequeue,
                   error: {
                     type: "INTERNAL_ERROR",
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1249,6 +1273,7 @@ export class RunAttemptSystem {
     checkpointId,
     completedWaitpoints,
     batchId,
+    resetQueueAttempts = false,
     tx,
   }: {
     run: { id: string };
@@ -1269,6 +1294,12 @@ export class RunAttemptSystem {
       index?: number;
     }[];
     batchId?: string;
+    /**
+     * Pass when the worker reported the attempt's failure itself (an ordinary task retry), so the
+     * queue's redelivery budget is reset rather than consumed. Engine-detected stalls and dequeue
+     * failures leave it unset so a run that never comes back healthy is still bounded.
+     */
+    resetQueueAttempts?: boolean;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1278,6 +1309,7 @@ export class RunAttemptSystem {
         orgId,
         messageId: run.id,
         retryAt: timestamp,
+        resetAttemptCount: resetQueueAttempts,
       });
 
       if (!gotRequeued) {
@@ -1429,6 +1461,8 @@ export class RunAttemptSystem {
             environmentType: latestSnapshot.environmentType,
           });
         }
+
+        await this.#scheduleFinalizationGuard(runId);
 
         const run = await this.$.runStore.cancelRun(
           runId,
@@ -1645,6 +1679,8 @@ export class RunAttemptSystem {
         environmentType: latestSnapshot.environmentType,
       });
 
+      await this.#scheduleFinalizationGuard(runId);
+
       //run permanently failed
       const run = await this.$.runStore.failRunPermanently(
         runId,
@@ -1760,6 +1796,167 @@ export class RunAttemptSystem {
 
     //cancel the heartbeats
     await this.$.worker.ack(`heartbeatSnapshot.${id}`);
+
+    await this.$.worker.ack(`ensureRunFinalized:${id}`);
+  }
+
+  /**
+   * Write-ahead guard for run finalization. Enqueued BEFORE the finish commit (so no
+   * finish write can exist without a durable watcher) and acked at the end of
+   * {@link #finalizeRun} once every inline side effect succeeded. It only ever
+   * executes when the inline path died in between.
+   */
+  async #scheduleFinalizationGuard(runId: string, deferCount?: number): Promise<void> {
+    await this.$.worker.enqueue({
+      id: `ensureRunFinalized:${runId}`,
+      job: "ensureRunFinalized",
+      payload: { runId, deferCount },
+      availableAt: new Date(Date.now() + this.finalizationGuardDelayMs),
+    });
+  }
+
+  /**
+   * Re-delivers a finished run's finalization side effects: the queue ack, the
+   * associated waitpoint's completion, the parent unblock fan-out, and the batch
+   * completion nudge. Safe to run at-least-once and to race the inline path — every leg
+   * is idempotent, and completing an already-completed waitpoint still re-runs the
+   * blocked-run fan-out (which covers a lost `continueRunIfUnblocked` enqueue). A
+   * non-final run means the finish commit itself never landed; the caller's retry
+   * re-runs the whole completion, so there is nothing to re-deliver. A canceled run
+   * whose worker is still winding down re-arms the guard and waits: the cancellation
+   * finalize path owns that window, and completing early would resume the parent while
+   * the child is still running.
+   */
+  public async ensureRunFinalized({
+    runId,
+    deferCount,
+  }: {
+    runId: string;
+    deferCount?: number;
+  }): Promise<void> {
+    return startSpan(this.$.tracer, "ensureRunFinalized", async (span) => {
+      span.setAttribute("runId", runId);
+
+      const run = await this.$.runStore.findRun(
+        { id: runId },
+        {
+          select: {
+            id: true,
+            status: true,
+            output: true,
+            outputType: true,
+            error: true,
+            batchId: true,
+            runtimeEnvironmentId: true,
+            associatedWaitpoint: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+          },
+        },
+        this.$.prisma
+      );
+
+      if (!run) {
+        this.$.logger.error("ensureRunFinalized: run not found", { runId });
+        return;
+      }
+
+      if (!isFinalRunStatus(run.status)) {
+        this.$.logger.debug("ensureRunFinalized: run is not final, nothing to re-deliver", {
+          runId,
+          status: run.status,
+        });
+        return;
+      }
+
+      if (run.status === "CANCELED") {
+        const latestSnapshot = await getLatestExecutionSnapshot(
+          this.$.prisma,
+          runId,
+          this.$.runStore
+        );
+
+        /**
+         * Defer only while a worker still owns the execution: those states carry
+         * heartbeats that force the cancellation finalize path, which completes the
+         * waitpoint with the run's actual wind-down and acks this guard, so the watch
+         * always terminates. In any other snapshot state (queued, delayed, suspended,
+         * created) nobody is left to produce a FINISHED snapshot for a canceled run,
+         * so the guard must deliver or the parent is stranded.
+         */
+        const workerOwnsExecution =
+          isExecuting(latestSnapshot.executionStatus) ||
+          isPendingExecuting(latestSnapshot.executionStatus) ||
+          latestSnapshot.executionStatus === "PENDING_CANCEL";
+
+        if (latestSnapshot.executionStatus !== "FINISHED" && workerOwnsExecution) {
+          const currentDeferCount = deferCount ?? 0;
+
+          if (currentDeferCount < MAX_FINALIZATION_GUARD_DEFERRALS) {
+            this.$.logger.info(
+              "ensureRunFinalized: run is canceled but the worker is still winding down, keeping watch until the cancellation finalize path completes it",
+              {
+                runId,
+                executionStatus: latestSnapshot.executionStatus,
+                deferCount: currentDeferCount,
+              }
+            );
+            await this.#scheduleFinalizationGuard(runId, currentDeferCount + 1);
+            return;
+          }
+
+          this.rederivationsCounter.add(1, { leg: "cancel_deferral_budget" });
+          this.$.logger.warn(
+            "ensureRunFinalized: canceled run never reached a finished execution within the deferral budget, delivering anyway",
+            {
+              runId,
+              executionStatus: latestSnapshot.executionStatus,
+              deferCount: currentDeferCount,
+            }
+          );
+        }
+      }
+
+      span.setAttribute("runStatus", run.status);
+
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (env) {
+        await this.$.runQueue.acknowledgeMessage(env.organizationId, runId, {
+          removeFromWorkerQueue: true,
+        });
+      } else {
+        this.$.logger.error("ensureRunFinalized: environment not found, skipping queue ack", {
+          runId,
+          runtimeEnvironmentId: run.runtimeEnvironmentId,
+        });
+      }
+
+      if (run.associatedWaitpoint) {
+        const wasPending = run.associatedWaitpoint.status === "PENDING";
+
+        if (wasPending) {
+          this.rederivationsCounter.add(1, { leg: "waitpoint" });
+          this.$.logger.warn("ensureRunFinalized: re-deriving lost waitpoint completion", {
+            runId,
+            runStatus: run.status,
+            waitpointId: run.associatedWaitpoint.id,
+          });
+        }
+
+        await this.waitpointSystem.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: this.waitpointSystem.buildWaitpointOutputFromRun(run),
+        });
+      }
+
+      if (run.batchId) {
+        await this.batchSystem.scheduleCompleteBatch({ batchId: run.batchId });
+      }
+    });
   }
 
   async #resolveTaskRunExecutionTask(

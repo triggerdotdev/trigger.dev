@@ -963,6 +963,7 @@ describe("RunQueue", () => {
   redisTest("Dead Letter Queue", async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
+      name: "rq-redrive",
       retryOptions: {
         maxAttempts: 1,
       },

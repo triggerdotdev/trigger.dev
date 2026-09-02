@@ -17,6 +17,7 @@ export default defineConfig({
       "app/v3/services/bulk/**/*.test.ts",
       "app/runEngine/concerns/**/*.test.ts",
       "app/runEngine/services/**/*.test.ts",
+      "app/services/realtime/**/*.test.ts",
       "app/utils/**/*.test.ts",
       "app/components/code/**/*.test.ts",
       "app/components/runs/**/*.test.ts",

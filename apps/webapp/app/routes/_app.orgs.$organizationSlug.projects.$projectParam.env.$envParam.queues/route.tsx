@@ -493,12 +493,10 @@ function QueuesWithMetricsView() {
         </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
-        {/* Filters — pinned bar directly under the NavBar. Left cluster = search + period; right
-            cluster = pagination. */}
+        {/* Filters — pinned bar directly under the NavBar. This row is page-wide only: Period is
+            the one control that changes the tiles and charts below, so it leads the row. Search
+            and pagination scope the table alone and live in that table's own bar instead. */}
         <MetricsLayout.Filters className="px-2">
-          <div className="flex items-center gap-1.5">
-            <QueueFilters />
-          </div>
           <div className="flex items-center gap-1.5">
             <TimeFilter
               period={timeRange.period ?? undefined}
@@ -507,16 +505,12 @@ function QueuesWithMetricsView() {
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
             />
+          </div>
+          <div className="flex items-center gap-1.5">
             {environment.runsEnabled &&
             env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
               <EnvironmentPauseResumeButton env={env} />
             ) : null}
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
-              hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
-              showPageNumbers={false}
-            />
           </div>
         </MetricsLayout.Filters>
 
@@ -688,7 +682,22 @@ function QueuesWithMetricsView() {
           </ChartSyncProvider>
         ) : null}
 
-        <MetricsLayout.Content>
+        <MetricsLayout.Content
+          /* Search + pagination only ever affect the table, so they sit on the table rather than
+             in the page-wide Filters bar, where their position implied they filtered the metrics
+             above. Same left/right split as the classic view's bar. */
+          toolbar={
+            <>
+              <QueueFilters />
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
+                hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
+                showPageNumbers={false}
+              />
+            </>
+          }
+        >
           {/* Default overflow-x-auto container so wide tables still scroll horizontally on
                 narrow viewports; the page (not this region) owns vertical scrolling. */}
           <Table containerClassName="border-t">

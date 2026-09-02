@@ -56,6 +56,7 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
+import { runOpsNonAliasedShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -104,6 +105,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     runOpsNew: runOpsNewReplicaClient,
     runOpsLegacyReplica: runOpsLegacyReplicaClient,
     controlPlaneReplica: $replica as unknown as PrismaClientOrTransaction,
+    shardReplicas: runOpsNonAliasedShardReplicas,
     splitEnabled: runOpsSplitReadEnabled,
   });
   const list = await presenter.call({

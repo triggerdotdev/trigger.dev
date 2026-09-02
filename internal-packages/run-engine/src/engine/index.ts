@@ -309,6 +309,12 @@ export class RunEngine {
             runId: payload.runId,
           });
         },
+        ensureRunFinalized: async ({ payload }) => {
+          await this.runAttemptSystem.ensureRunFinalized({
+            runId: payload.runId,
+            deferCount: payload.deferCount,
+          });
+        },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
@@ -422,6 +428,7 @@ export class RunEngine {
     this.ttlSystem = new TtlSystem({
       resources,
       waitpointSystem: this.waitpointSystem,
+      finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
     });
 
     const ttlWorkerCatalog = createTtlWorkerCatalog({
@@ -505,6 +512,7 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
+      finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 

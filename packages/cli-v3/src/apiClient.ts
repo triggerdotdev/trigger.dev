@@ -29,6 +29,7 @@ import {
   GetLatestDeploymentResponseBody,
   GetPersonalAccessTokenResponseSchema,
   GetProjectEnvResponse,
+  GetDeploySettingsResponseBody,
   GetProjectResponseBody,
   GetProjectRuntimesResponseBody,
   GetProjectsResponseBody,
@@ -483,6 +484,19 @@ export class CliApiClient {
         headers: this.getHeaders(),
         body: JSON.stringify(params),
       }
+    );
+  }
+
+  async getDeploySettings(projectRef: string, env: string, signal?: AbortSignal) {
+    return wrapZodFetch(
+      GetDeploySettingsResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/${env}/deploy-settings`,
+      {
+        method: "GET",
+        headers: this.getHeaders(),
+        signal,
+      },
+      { retry: { maxAttempts: 1 } }
     );
   }
 
