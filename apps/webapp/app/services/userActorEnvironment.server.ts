@@ -145,6 +145,8 @@ export async function resolveUserActorEnvironmentScope(
     if (!project) {
       throw forbiddenEnvironment("This token isn't scoped to that organization.");
     }
+    // Nothing narrows, so `requestedEnvironmentSlugs` is the caller's own filter and isn't
+    // refused here. A route that opted in must not rely on this for environment filtering.
     return { scoped: false };
   }
 

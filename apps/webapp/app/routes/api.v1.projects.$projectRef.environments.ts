@@ -41,7 +41,7 @@ export const loader = createLoaderPATApiRoute(
       return json({ error: "Project not found" }, { status: 404 });
     }
 
-    // A delegated token signed for one environment only ever lists that one.
+    // An org claim makes the org the boundary; an environment claim alone lists that one only.
     const scope = await resolveUserActorEnvironmentScope(
       authentication.userActor,
       { projectId: project.id },
