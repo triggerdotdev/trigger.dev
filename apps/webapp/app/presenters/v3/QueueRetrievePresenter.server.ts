@@ -15,6 +15,7 @@ import { BasePresenter } from "./basePresenter.server";
 
 type SlotHolderPhase = "admitted" | "dequeued";
 export type SlotHolderConsistency = "consistent" | "mismatch" | "unresolved";
+type SlotHolderCounterAgreement = "agree" | "disagree" | "unresolved";
 /** "not_found": a Redis slot holder with no matching TaskRun row. */
 type SlotHolderStatus = TaskRunStatus | "not_found";
 
@@ -25,6 +26,11 @@ export type EnvConcurrency = {
   current: number;
   /** The dequeue gate is `current < limit * burstFactor`, not `current < limit`. */
   burstFactor: number;
+  /**
+   * Env-scoped admitted slots. When `admitted > current`, the environment holds admitted
+   * slots the queue's holder list can't attribute.
+   */
+  admitted: number;
 };
 
 export type SlotHolder = {
@@ -47,7 +53,9 @@ export type SlotHolderFacts = {
   /** Dequeued holders that provably exist but aren't listed. */
   unlistedRunning: number;
   /** The counts mean nothing when this is "unresolved". */
-  consistency: SlotHolderConsistency;
+  counterAgreement: SlotHolderCounterAgreement;
+  /** Always true: an admitted concurrency-key holder with no backlog is never listable. */
+  ckAdmittedMayBeUnlisted: true;
 };
 
 // A run can only hold a slot before its final status. PENDING counts because Redis
@@ -78,11 +86,11 @@ export function slotHolderConsistency(
 export async function envConcurrencyFromRead(
   limit: number,
   burstFactor: number,
-  readCurrent: () => Promise<number>
+  readCounts: () => Promise<{ current: number; admitted: number }>
 ): Promise<EnvConcurrency | undefined> {
   try {
-    const current = await readCurrent();
-    return { limit, current, burstFactor };
+    const { current, admitted } = await readCounts();
+    return { limit, current, burstFactor, admitted };
   } catch {
     return undefined;
   }
@@ -215,9 +223,13 @@ export class QueueRetrievePresenter extends BasePresenter {
       typeof environment.concurrencyLimitBurstFactor === "number"
         ? environment.concurrencyLimitBurstFactor
         : environment.concurrencyLimitBurstFactor.toNumber();
-    return envConcurrencyFromRead(environment.maximumConcurrencyLimit, burstFactor, () =>
-      engine.concurrencyOfEnvQueue(environment)
-    );
+    return envConcurrencyFromRead(environment.maximumConcurrencyLimit, burstFactor, async () => {
+      const [current, admitted] = await Promise.all([
+        engine.concurrencyOfEnvQueue(environment),
+        engine.admittedConcurrencyOfEnvQueue(environment),
+      ]);
+      return { current, admitted };
+    });
   }
 
   /**
@@ -236,7 +248,8 @@ export class QueueRetrievePresenter extends BasePresenter {
         runningReported: 0,
         truncated: false,
         unlistedRunning: 0,
-        consistency: "unresolved" as const,
+        counterAgreement: "unresolved" as const,
+        ckAdmittedMayBeUnlisted: true as const,
       },
     };
 
@@ -290,7 +303,8 @@ export class QueueRetrievePresenter extends BasePresenter {
         runningReported: snapshot.runningReported,
         truncated: snapshot.truncated,
         unlistedRunning: snapshot.unlistedRunning,
-        consistency: snapshot.consistency,
+        counterAgreement: snapshot.counterAgreement,
+        ckAdmittedMayBeUnlisted: snapshot.ckAdmittedMayBeUnlisted,
       },
     };
   }

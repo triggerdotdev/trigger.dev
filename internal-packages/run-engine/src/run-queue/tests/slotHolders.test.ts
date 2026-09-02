@@ -101,7 +101,7 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       expect(admitted.runningReported).toBe(0);
       expect(admitted.truncated).toBe(false);
       expect(admitted.unlistedRunning).toBe(0);
-      expect(admitted.consistency).toBe("consistent");
+      expect(admitted.counterAgreement).toBe("agree");
 
       const dequeued = await queue.dequeueMessageFromWorkerQueue("consumer_1", WORKER_QUEUE);
       expect(dequeued?.messageId).toBe("r1");
@@ -111,7 +111,7 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       expect(after.dequeuedCount).toBe(1);
       expect(after.runningReported).toBe(1);
       expect(after.unlistedRunning).toBe(0);
-      expect(after.consistency).toBe("consistent");
+      expect(after.counterAgreement).toBe("agree");
     } finally {
       await queue.quit();
     }
@@ -143,7 +143,7 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       expect(result.runningReported).toBe(1);
       expect(result.truncated).toBe(false);
       expect(result.unlistedRunning).toBe(0);
-      expect(result.consistency).toBe("consistent");
+      expect(result.counterAgreement).toBe("agree");
     } finally {
       await queue.quit();
     }
@@ -167,7 +167,7 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       });
 
       const baseline = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
-      expect(baseline.consistency).toBe("consistent");
+      expect(baseline.counterAgreement).toBe("agree");
 
       // Control break: the counter no longer matches the enumerated members.
       await queue.redis.set(
@@ -176,7 +176,7 @@ describe("RunQueue.slotHoldersOfQueue", () => {
       );
 
       const broken = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
-      expect(broken.consistency).toBe("mismatch");
+      expect(broken.counterAgreement).toBe("disagree");
       expect(broken.holders).toEqual([{ runId: "r1", concurrencyKey: "ck-a", phase: "admitted" }]);
       expect(broken.runningReported).toBe(7);
       expect(broken.unlistedRunning).toBe(7);
@@ -204,41 +204,45 @@ describe("RunQueue.slotHoldersOfQueue", () => {
         expect(result.holders).toEqual([]);
         expect(result.runningReported).toBe(1);
         expect(result.unlistedRunning).toBe(1);
-        expect(result.consistency).toBe("mismatch");
+        expect(result.counterAgreement).toBe("disagree");
       } finally {
         await queue.quit();
       }
     }
   );
 
-  redisTest("a lone fast-path CK holder is simply not listed", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer);
-    try {
-      // Nothing queued on the variant means no ckIndex entry, so this holder can't be
-      // enumerated. No field claims otherwise — the payload just doesn't mention it.
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: makeMessage({ runId: "r1", concurrencyKey: "ck-a" }),
-        workerQueue: WORKER_QUEUE,
-        skipDequeueProcessing: true,
-        enableFastPath: true,
-      });
+  redisTest(
+    "a lone fast-path CK holder is not listed, and the payload says so",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        // Nothing queued on the variant means no ckIndex entry, so this holder can't be
+        // enumerated. `ckAdmittedMayBeUnlisted` is what stops the zeroes reading as "idle".
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r1", concurrencyKey: "ck-a" }),
+          workerQueue: WORKER_QUEUE,
+          skipDequeueProcessing: true,
+          enableFastPath: true,
+        });
 
-      const result = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
-      expect(result).toEqual({
-        holders: [],
-        admittedCount: 0,
-        dequeuedCount: 0,
-        runningReported: 0,
-        truncated: false,
-        unlistedRunning: 0,
-        consistency: "consistent",
-      });
-      expect(result).not.toHaveProperty("holderResolution");
-    } finally {
-      await queue.quit();
+        const result = await queue.slotHoldersOfQueue(authenticatedEnvDev, QUEUE);
+        expect(result).toEqual({
+          holders: [],
+          admittedCount: 0,
+          dequeuedCount: 0,
+          runningReported: 0,
+          truncated: false,
+          unlistedRunning: 0,
+          counterAgreement: "agree",
+          ckAdmittedMayBeUnlisted: true,
+        });
+        expect(result).not.toHaveProperty("holderResolution");
+      } finally {
+        await queue.quit();
+      }
     }
-  });
+  );
 
   redisTest("caps the holder list and reports it as truncated", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer);

@@ -1730,6 +1730,13 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfEnvironment(environment);
   }
 
+  /** Admitted env-scope slots — the gating count, ahead of the displayed dequeued one. */
+  async admittedConcurrencyOfEnvQueue(
+    environment: MinimalAuthenticatedEnvironment
+  ): Promise<number> {
+    return this.runQueue.operationalCurrentConcurrencyOfEnvironment(environment);
+  }
+
   async lengthOfQueues(
     environment: MinimalAuthenticatedEnvironment,
     queues: string[]

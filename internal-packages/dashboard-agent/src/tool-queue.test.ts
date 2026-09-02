@@ -371,7 +371,8 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
       runningReported: 4,
       truncated: true,
       unlistedRunning: 2,
-      consistency: "mismatch",
+      counterAgreement: "disagree",
+      ckAdmittedMayBeUnlisted: true,
     };
     stubFetch({ slotHolders: [], slotHolderFacts });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
@@ -392,7 +393,8 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
       runningReported: 2,
       truncated: false,
       unlistedRunning: 0,
-      consistency: "consistent",
+      counterAgreement: "agree",
+      ckAdmittedMayBeUnlisted: true,
     };
     stubFetch({ slotHolderFacts });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
@@ -400,8 +402,24 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
     expect(answer).not.toHaveProperty("slotHolders");
   });
 
-  it("carries envConcurrency verbatim, including burstFactor", async () => {
-    const envConcurrency = { limit: 10, current: 10, burstFactor: 2 };
+  it("carries ckAdmittedMayBeUnlisted alongside an all-zero holder list", async () => {
+    // The zeroes alone would read as "idle"; the flag is what stops that.
+    const slotHolderFacts = {
+      admittedCount: 0,
+      dequeuedCount: 0,
+      runningReported: 0,
+      truncated: false,
+      unlistedRunning: 0,
+      counterAgreement: "agree",
+      ckAdmittedMayBeUnlisted: true,
+    };
+    stubFetch({ slotHolders: [], slotHolderFacts });
+    const answer = await getQueue()({ queue: "email-sends", type: "custom" });
+    expect(answer).toMatchObject({ slotHolders: [], slotHolderFacts });
+  });
+
+  it("carries envConcurrency verbatim, including burstFactor and admitted", async () => {
+    const envConcurrency = { limit: 10, current: 10, burstFactor: 2, admitted: 14 };
     stubFetch({ envConcurrency });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
     expect(answer).toMatchObject({ envConcurrency });

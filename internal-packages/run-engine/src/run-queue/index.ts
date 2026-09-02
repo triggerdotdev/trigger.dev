@@ -165,7 +165,13 @@ export type QueueSlotHolders = {
   truncated: boolean;
   /** Dequeued holders that provably exist but aren't in the list. */
   unlistedRunning: number;
-  consistency: "consistent" | "mismatch";
+  /** Whether the queue's own counters agree with the enumerated members. */
+  counterAgreement: "agree" | "disagree";
+  /**
+   * Structurally always true: enumeration covers the base queue and backlogged CK variants
+   * only, and any run can carry a concurrency key, so an admitted CK holder can be unlistable.
+   */
+  ckAdmittedMayBeUnlisted: true;
 };
 
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
@@ -687,7 +693,8 @@ export class RunQueue {
 
   /**
    * Snapshot of who holds this queue's slots. Never complete: ckIndex only tracks queued
-   * variants, so a drained CK variant's holders are invisible. `consistency` flags drift.
+   * variants, so a drained CK variant's holders are invisible — `ckAdmittedMayBeUnlisted`
+   * states that unconditionally. `counterAgreement` flags drift.
    */
   public async slotHoldersOfQueue(
     env: MinimalAuthenticatedEnvironment,
@@ -729,8 +736,9 @@ export class RunQueue {
       // A CK-variant scan cap also makes the snapshot incomplete, same as a holder-list cap.
       truncated: truncated === 1 || skippedVariants > 0,
       unlistedRunning: Math.max(0, runningReported - dequeuedCount),
-      consistency:
-        dequeuedCount === runningReported && orphanCount === 0 ? "consistent" : "mismatch",
+      counterAgreement:
+        dequeuedCount === runningReported && orphanCount === 0 ? "agree" : "disagree",
+      ckAdmittedMayBeUnlisted: true,
     };
   }
 

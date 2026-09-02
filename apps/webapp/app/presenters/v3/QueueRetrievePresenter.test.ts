@@ -46,11 +46,14 @@ describe("slotHolderConsistency", () => {
 });
 
 describe("envConcurrencyFromRead", () => {
-  it("pairs the env limit and burst factor with the read current concurrency", async () => {
-    await expect(envConcurrencyFromRead(10, 2, async () => 7)).resolves.toEqual({
+  it("pairs the env limit and burst factor with the read concurrency counts", async () => {
+    await expect(
+      envConcurrencyFromRead(10, 2, async () => ({ current: 7, admitted: 9 }))
+    ).resolves.toEqual({
       limit: 10,
       current: 7,
       burstFactor: 2,
+      admitted: 9,
     });
   });
 
