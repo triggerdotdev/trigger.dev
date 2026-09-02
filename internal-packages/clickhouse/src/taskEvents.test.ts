@@ -11,7 +11,8 @@ describe("task events v2", () => {
     "stores materialized attributes with explicit insert columns",
     async ({ clickhouseContainer }) => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
-      const now = new Date("2026-09-01T10:00:00.000Z");
+      const startTime = new Date("2026-09-01T10:00:00.000Z");
+      const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
       const spanId = "span_ephemeral_attributes";
 
       const [insertError] = await ch.taskEventsV2.insert([
@@ -21,7 +22,7 @@ describe("task events v2", () => {
           project_id: "project_ephemeral_attributes",
           task_identifier: "ephemeral-attributes",
           run_id: "run_ephemeral_attributes",
-          start_time: clickhouseDate(now),
+          start_time: clickhouseDate(startTime),
           duration: "1000000",
           trace_id: "trace_ephemeral_attributes",
           span_id: spanId,
@@ -35,7 +36,7 @@ describe("task events v2", () => {
             nested: { enabled: true },
           },
           metadata: "{}",
-          expires_at: clickhouseDate(new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)),
+          expires_at: clickhouseDate(expiresAt),
         },
       ]);
       expect(insertError).toBeNull();
@@ -61,7 +62,6 @@ describe("task events v2", () => {
           has_inserted_at: 1,
         },
       ]);
-
     }
   );
 });
