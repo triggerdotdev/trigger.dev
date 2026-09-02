@@ -1,7 +1,6 @@
 import { LRUCache } from "lru-cache";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 
 /**
@@ -29,31 +28,38 @@ type RunOrgClient = {
 
 export type SnapshotRunOrgSource = {
   /**
-   * Cache hit or undefined. On a miss, kicks off a replica populate off-path and returns at once.
-   * Never blocks, never throws.
+   * A PURE cache get: the cached org id, or undefined on a miss. Never queries, never blocks, never
+   * throws. The hot read path calls this, so it does no work — a resident run's mapping is put here
+   * for free by `prime`, from a mirrored write or a Redis read hit, and a non-resident run never
+   * needs one. There is deliberately no off-path populate: during pure dual-write the read path must
+   * issue zero run→org DB reads fleet-wide.
    */
   resolve(runId: string): string | undefined;
   /**
+   * Records a run→org mapping the caller learned for free — from a mirrored write or a Redis read
+   * hit — so a later `resolve` is a pure hit with no DB read. In-memory, immutable (run→org never
+   * changes), no TTL, no invalidation. Fire-and-forget: never queries, never throws.
+   */
+  prime(runId: string, organizationId: string): void;
+  /**
    * Awaits a bounded primary read, caches, and returns the org id. Throws on timeout, client
-   * failure, or a run with no organisation, so a caller can fail closed.
+   * failure, or a run with no organisation, so a caller can fail closed. This is the redis-only
+   * fallback gate's last leg, reached only when the sync cache is cold AND some org is redis-only.
    */
   resolveAuthoritative(runId: string): Promise<string>;
 };
 
 export function createSnapshotRunOrgSource(clients?: {
   primary: RunOrgClient;
-  replica: RunOrgClient;
 }): SnapshotRunOrgSource {
   const primaryClient = (clients?.primary ?? prisma) as RunOrgClient;
-  const replicaClient = (clients?.replica ?? $replica) as RunOrgClient;
   // No ttl: run→org is immutable, so a cached mapping never goes stale.
   const cache = new LRUCache<string, string>({
     max: env.RUN_ENGINE_SNAPSHOT_STORE_RUN_ORG_CACHE_MAX ?? DEFAULT_CACHE_MAX,
   });
-  const inFlight = new Set<string>();
 
-  async function read(runId: string, client: RunOrgClient): Promise<string> {
-    return client.taskRun
+  async function read(runId: string): Promise<string> {
+    return primaryClient.taskRun
       .findFirst({
         where: { id: runId },
         select: { runtimeEnvironment: { select: { organizationId: true } } },
@@ -70,21 +76,12 @@ export function createSnapshotRunOrgSource(clients?: {
 
   return {
     resolve(runId) {
-      const cached = cache.get(runId);
-      if (cached !== undefined) {
-        return cached;
-      }
-      if (!inFlight.has(runId)) {
-        inFlight.add(runId);
-        void read(runId, replicaClient)
-          .catch((error) => {
-            logger.warn("snapshotRunOrg: run→org populate failed", { runId, error });
-          })
-          .finally(() => {
-            inFlight.delete(runId);
-          });
-      }
-      return undefined;
+      return cache.get(runId);
+    },
+    prime(runId, organizationId) {
+      // run→org is immutable, so this can only ever confirm what is already there; setting keeps the
+      // active run hot in the LRU, which is exactly the run whose mapping the read path will want.
+      cache.set(runId, organizationId);
     },
     async resolveAuthoritative(runId) {
       const cached = cache.get(runId);
@@ -104,7 +101,7 @@ export function createSnapshotRunOrgSource(clients?: {
       });
 
       try {
-        return await Promise.race([read(runId, primaryClient), deadline]);
+        return await Promise.race([read(runId), deadline]);
       } finally {
         if (timer) clearTimeout(timer);
       }

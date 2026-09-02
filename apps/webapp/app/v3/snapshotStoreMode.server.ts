@@ -103,6 +103,8 @@ type ResolverOrgSource = {
 /** Resolves a run to its organisation. Cache-only and synchronous, undefined on a miss. */
 type ResolverRunOrgSource = {
   resolve(runId: string): string | undefined;
+  /** Records an immutable run→org mapping learned off a mirrored write or a Redis read hit. */
+  prime?(runId: string, organizationId: string): void;
   /** Bounded authoritative read, throws on failure/timeout, for the redis-only fallback gate. */
   resolveAuthoritative?(runId: string): Promise<string>;
 };
@@ -194,6 +196,11 @@ export function buildSnapshotStoreModeResolver(deps: {
     },
     anyOrgReadEnabled: (): boolean => deps.census?.anyOrgReadEnabled() ?? false,
     anyOrgRedisOnly: (): boolean => deps.census?.anyOrgRedisOnly() ?? false,
+    // The decorator hands back a run→org mapping it learned on a mirrored write or a Redis read hit.
+    // Recorded in-memory so a later readModeFor is a pure hit; absent hook is a no-op.
+    prime: (runId: string, organizationId: string): void => {
+      deps.runOrg?.prime?.(runId, organizationId);
+    },
   };
 }
 
@@ -237,6 +244,7 @@ export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapsho
   },
   runOrg: {
     resolve: (runId) => snapshotRunOrgSource().resolve(runId),
+    prime: (runId, organizationId) => snapshotRunOrgSource().prime(runId, organizationId),
     resolveAuthoritative: (runId) => snapshotRunOrgSource().resolveAuthoritative(runId),
   },
   census: {

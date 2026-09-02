@@ -165,6 +165,14 @@ export type SnapshotStoreModeResolver = {
    * else. Same contract: synchronous, MUST NOT query.
    */
   anyOrgRedisOnly?(): boolean;
+  /**
+   * Optional. Records a run→org mapping the decorator learned for free — from a mirrored write or a
+   * Redis read hit — so `readModeFor` later resolves the run's org from memory with no DB read. This
+   * is what removes the run→org populate from the standing dual-write state: the mappings the read
+   * path needs arrive as a side effect of the writes and read hits it was doing anyway. In-memory,
+   * immutable, fire-and-forget, no TTL. MUST NOT throw and MUST NOT query.
+   */
+  prime?(runId: string, organizationId: string): void;
 };
 
 /**
@@ -288,6 +296,20 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return this.modeResolver?.resolve(organizationId) ?? this.#staticMode;
   }
 
+  /**
+   * Feeds the run→org cache a mapping learned for free on a mirrored write or a Redis read hit, so a
+   * later read resolves the run's org with no DB. Best-effort: a resolver that offers no hook, or a
+   * write with no org, is a no-op, and a throw is swallowed so a cache write never fails a store op.
+   */
+  #prime(runId: string, organizationId?: string): void {
+    if (!organizationId) return;
+    try {
+      this.modeResolver?.prime?.(runId, organizationId);
+    } catch {
+      // priming is fire-and-forget; a cache write must never fail the caller's read or write.
+    }
+  }
+
   /** Whether the hard stop is thrown. A halt beats every dial position, in both directions. */
   protected halted(): boolean {
     try {
@@ -329,19 +351,20 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   /**
-   * Whether a TRANSITION mirrors to Redis. Deliberately blind to the organisation.
+   * Whether a TRANSITION mirrors to Redis. A transition never re-decides residency by the org's
+   * CURRENT dial — that would let a run change stores half way through its life, the one thing the
+   * design forbids. A transition belongs to a run that is already resident or already absent, and
+   * the append script refuses a transition into a keyspace that does not exist, so the keyspace IS
+   * the per-run residency record and the default is to attempt the append and let Redis answer.
    *
-   * A transition belongs to a run that is already resident or already absent, and the append script
-   * refuses a transition into a keyspace that does not exist. So the keyspace IS the per-run
-   * residency record, and asking the organisation again would only introduce the one thing the
-   * design forbids: a run changing stores half way through its life. That is not a hypothetical.
-   * The override is served from a short-lived cache that falls back to the deployment-wide position
-   * on a miss, so a run could be born into Redis during one window and have its next transitions
-   * refused in the next, freezing its head while Postgres moved on, with no fault and no log line.
+   * The one exception is the sound skip below: when NOTHING of this org's could ever have been born
+   * resident, the append would be refused anyway, so it is skipped without a probe. That test is by
+   * absence and by the global one-way latch, not by the org's live dial, so it cannot freeze a
+   * resident run. Everything else probes.
    *
-   * The deployment-wide dial is blind here for the same reason. An operator turning it down to `off`
-   * mid-incident would otherwise inflict that identical freeze on every resident run at once, which
-   * makes the remedy indistinguishable from the fault. `off` therefore stops new residency only:
+   * `off` is deliberately NOT a reason to skip a resident run's transition. An operator turning the
+   * dial down to `off` mid-incident must not freeze every resident run's head while Postgres advances,
+   * which would make the remedy indistinguishable from the fault. `off` stops new residency only:
    * births stop, resident runs keep mirroring, and the mirror drains as they finish. Stopping
    * outright is the halt switch, and it is a resync control rather than a rollback.
    */
@@ -708,6 +731,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * Throwing here happens before the run row exists, so the caller retries a clean creation.
    */
   async #appendBirth(site: string, entry: SnapshotEntryInput): Promise<void> {
+    // A birth reaches here only when it mirrors, so its run is resident: learn the run→org mapping
+    // now, off the write it was doing anyway, so the read path never has to query for it.
+    this.#prime(entry.runId, entry.organizationId);
+
     if (this.staging) {
       // A birth inside a transaction cannot be staged: staging flushes after the commit, which is
       // the opposite of what a birth needs. No caller does this today, so say so and append now.
@@ -775,6 +802,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     expectedCur?: string,
     completedWaitpoints?: CompletedWaitpointRef[]
   ): Promise<void> {
+    // A transition mirrors only for a resident run, so learn its run→org mapping here too, whether it
+    // is staged now or appended immediately.
+    this.#prime(entry.runId, entry.organizationId);
+
     if (this.staging) {
       // Inside a transaction the append cannot run until the Postgres side commits, or a rollback
       // leaves Redis holding a transition that never happened.
@@ -1216,6 +1247,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
 
+    // A read hit carries the run's org, so learn the mapping before hydration: this run is resident,
+    // and a future read now resolves its org from memory with no DB.
+    this.#prime(runId, read.entry.organizationId as string | undefined);
+
     if (read.danglingCycle) {
       // The entry says it has waitpoints and the cycle key holding them is gone. Serving it would
       // hand back an empty set that looks authoritative, and the run would resume with no waits.
@@ -1275,6 +1310,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return this.delegate.findExecutionSnapshot(args, client);
     }
 
+    this.#prime(shape.runId, found.entry.organizationId as string | undefined);
     this.metrics?.recordRead("findExecutionSnapshot", "redis");
     // The engine selects createdAt only, so the answer is the cursor and nothing else.
     return {
@@ -1315,6 +1351,9 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
+
+    // Every entry in the window is the same run, so one carries the org for the whole hit.
+    this.#prime(shape.runId, result.entries[0]?.entry.organizationId as string | undefined);
 
     if (result.entries.some((entry) => entry.danglingCycle)) {
       if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId)))

@@ -33,77 +33,77 @@ function fakeClient(opts: {
 const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
 
 describe("snapshot run→org source", () => {
-  it("returns undefined on a cold miss, then serves the org id once the populate settles", async () => {
-    const replica = fakeClient({ mapping: { run_a: "org_a" } });
-    const source = createSnapshotRunOrgSource({ primary: replica, replica });
+  it("resolve is a pure cache get: a cold miss is undefined and never queries", async () => {
+    const primary = fakeClient({ mapping: { run_a: "org_a" } });
+    const source = createSnapshotRunOrgSource({ primary });
 
     expect(source.resolve("run_a")).toBeUndefined();
 
     await tick();
 
-    expect(source.resolve("run_a")).toBe("org_a");
+    // No off-path populate exists anymore, so a miss stays a miss and the DB is never touched.
+    expect(source.resolve("run_a")).toBeUndefined();
+    expect(primary.calls).toBe(0);
   });
 
-  it("does not start a second populate while one is in flight", async () => {
-    const replica = fakeClient({ mapping: { run_a: "org_a" }, delayMs: 20 });
-    const source = createSnapshotRunOrgSource({ primary: replica, replica });
+  it("prime makes a later resolve a pure hit, with no query", async () => {
+    const primary = fakeClient({ mapping: { run_a: "org_a" } });
+    const source = createSnapshotRunOrgSource({ primary });
 
-    source.resolve("run_a");
-    source.resolve("run_a");
-    source.resolve("run_a");
+    source.prime("run_a", "org_a");
 
-    await new Promise((resolve) => setTimeout(resolve, 40));
-
-    expect(replica.calls).toBe(1);
     expect(source.resolve("run_a")).toBe("org_a");
+    await tick();
+    expect(primary.calls).toBe(0);
+  });
+
+  it("prime is idempotent and never queries, however many times it is called", async () => {
+    const primary = fakeClient({ mapping: { run_a: "org_a" } });
+    const source = createSnapshotRunOrgSource({ primary });
+
+    source.prime("run_a", "org_a");
+    source.prime("run_a", "org_a");
+    source.prime("run_a", "org_a");
+
+    expect(source.resolve("run_a")).toBe("org_a");
+    expect(primary.calls).toBe(0);
   });
 
   it("resolveAuthoritative returns the org id on success and caches it", async () => {
     const primary = fakeClient({ mapping: { run_a: "org_a" } });
-    const source = createSnapshotRunOrgSource({ primary, replica: primary });
+    const source = createSnapshotRunOrgSource({ primary });
 
     await expect(source.resolveAuthoritative("run_a")).resolves.toBe("org_a");
     expect(source.resolve("run_a")).toBe("org_a");
   });
 
+  it("resolveAuthoritative serves a primed mapping without querying", async () => {
+    const primary = fakeClient({ mapping: { run_a: "org_a" } });
+    const source = createSnapshotRunOrgSource({ primary });
+
+    source.prime("run_a", "org_a");
+
+    await expect(source.resolveAuthoritative("run_a")).resolves.toBe("org_a");
+    expect(primary.calls).toBe(0);
+  });
+
   it("resolveAuthoritative throws when the run has no organization", async () => {
     const primary = fakeClient({ mapping: {} });
-    const source = createSnapshotRunOrgSource({ primary, replica: primary });
+    const source = createSnapshotRunOrgSource({ primary });
 
     await expect(source.resolveAuthoritative("run_missing")).rejects.toThrow();
   });
 
   it("resolveAuthoritative throws when the client rejects", async () => {
     const primary = fakeClient({ reject: true });
-    const source = createSnapshotRunOrgSource({ primary, replica: primary });
+    const source = createSnapshotRunOrgSource({ primary });
 
     await expect(source.resolveAuthoritative("run_a")).rejects.toThrow();
   });
 
-  it("resolve stays silent and releases in-flight when findFirst throws synchronously", async () => {
-    let calls = 0;
-    const throwing = {
-      taskRun: {
-        findFirst() {
-          calls++;
-          throw new Error("sync boom");
-        },
-      },
-    } as unknown as NonNullable<Parameters<typeof createSnapshotRunOrgSource>[0]>["replica"];
-    const source = createSnapshotRunOrgSource({ primary: throwing, replica: throwing });
-
-    expect(() => source.resolve("run_a")).not.toThrow();
-
-    await tick();
-
-    // In-flight was released, so a fresh miss starts a new populate rather than wedging forever.
-    expect(() => source.resolve("run_a")).not.toThrow();
-    expect(calls).toBe(2);
-  });
-
   it("resolveAuthoritative throws when the read exceeds the deadline", async () => {
     const primary = fakeClient({ mapping: { run_a: "org_a" }, delayMs: 2000 });
-    const source = createSnapshotRunOrgSource({ primary, replica: primary });
+    const source = createSnapshotRunOrgSource({ primary });
 
     await expect(source.resolveAuthoritative("run_a")).rejects.toThrow(/deadline|exceed/i);
   });
