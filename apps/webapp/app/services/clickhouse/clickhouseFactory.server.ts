@@ -97,6 +97,8 @@ function initializeLogsClickhouseClient() {
   });
 }
 
+const ADMIN_CLICKHOUSE_REQUEST_TIMEOUT_MS = 30_000;
+
 const defaultAdminClickhouseClient = singleton(
   "adminClickhouseClient",
   initializeAdminClickhouseClient
@@ -109,6 +111,7 @@ function initializeAdminClickhouseClient() {
 
   const url = new URL(env.ADMIN_CLICKHOUSE_URL);
   url.searchParams.delete("secure");
+  url.searchParams.delete("readonly");
 
   return new ClickHouse({
     url: url.toString(),
@@ -120,6 +123,10 @@ function initializeAdminClickhouseClient() {
     logLevel: env.CLICKHOUSE_LOG_LEVEL,
     compression: { request: true },
     maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+    // readonly=2 blocks writes while allowing bounded per-query settings.
+    clickhouseSettings: { readonly: 2 },
+    // Keep this above the missing-model query's 25-second execution limit.
+    requestTimeoutMs: ADMIN_CLICKHOUSE_REQUEST_TIMEOUT_MS,
   });
 }
 
