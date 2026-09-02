@@ -24,6 +24,7 @@ import {
   dashboardAgentEvalTriggerKey,
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
+  dashboardAgentTitleDeadlineKey,
   dashboardAgentToolsKey,
   DEFAULT_CI_EVAL_SAMPLE_RATE,
   DEFAULT_EVAL_SAMPLE_RATE,
@@ -109,6 +110,33 @@ describe("dashboardAgent (mock harness)", () => {
       { chatId: "chat_title", title: "Why orders fail" },
     ]);
   });
+
+  // A provider request that stalls instead of failing has no deadline of its own, so
+  // the await that collects the title used to hang the whole turn after the model's
+  // final word: nothing streamed, nothing persisted, and the run never ended.
+  it("settles the turn when the title generation never comes back (regression)", async () => {
+    const { store, calls } = fakeStore();
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: simulateReadableStream({ chunks: textStep("answered") }) }),
+      doGenerate: (() => new Promise(() => {})) as never,
+    });
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_title_stalled",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+        set(dashboardAgentTitleDeadlineKey, 30);
+      },
+    });
+
+    const turn = await harness.sendMessage(userMessage("why do my orders fail?"));
+
+    expect(collectText(turn.chunks)).toBe("answered");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(calls.persistTurn).toHaveLength(1);
+    expect(calls.setChatTitleIfDefault).toHaveLength(0);
+  }, 10_000);
 
   describe("which turn names the chat", () => {
     const user = (id: string) => ({ id, role: "user" });

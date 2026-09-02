@@ -284,6 +284,37 @@ function cleanTitle(raw: string): string {
 const pendingTitles = new Map<string, Promise<void>>();
 
 /**
+ * How long the turn's settle may wait for that name.
+ *
+ * The title is best-effort — a failure only costs the generated name — but the await
+ * that collects it is the last gate before the turn completes. A provider request
+ * that stalls rather than fails has no deadline of its own, so without this the
+ * whole turn hangs after the model's final word: nothing streams, nothing persists,
+ * and the run sits there until it is killed. 15s is set against the run's own
+ * `idleTimeoutInSeconds: 60`, so a stalled name delays the client's settle by a
+ * fraction of it rather than outliving the turn.
+ */
+export const TITLE_DEADLINE_MS = 15_000;
+
+// Test-only override, so a regression test needn't wait the real deadline.
+export const dashboardAgentTitleDeadlineKey = locals.create<number>(
+  "dashboard-agent.titleDeadlineMs"
+);
+
+/** The promise, or nothing, once the deadline passes. */
+async function withinTitleDeadline(pending: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, locals.get(dashboardAgentTitleDeadlineKey) ?? TITLE_DEADLINE_MS);
+  });
+  try {
+    await Promise.race([pending, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Whether this turn is the one that names the chat. Counted in user messages, not in
  * transcript length: a head-started turn arrives with the warm first step already in
  * `uiMessages`, so a length gate would see two messages on the very first exchange and
@@ -440,7 +471,7 @@ export const dashboardAgent = chat.agent({
     const pending = pendingTitles.get(chatId);
     if (!pending) return;
     pendingTitles.delete(chatId);
-    await pending;
+    await withinTitleDeadline(pending);
   },
 
   onTurnComplete: async ({
