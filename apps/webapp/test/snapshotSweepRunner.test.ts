@@ -166,20 +166,23 @@ redisTest("retries a transiently-failing release and frees the lock", async ({ r
   }
 });
 
-redisTest("leaves the lock to its TTL only when every release attempt fails", async ({ redisOptions }) => {
-  const real = createRedisClient(redisOptions);
-  const client = flakyEvalClient(real, 999); // release can never succeed
-  try {
-    const runner = buildSnapshotSweepRunner({
-      client,
-      sweep: async () => CLEAN,
-      lockTtlMs: 60_000,
-      releaseRetryDelaysMs: [0],
-    });
+redisTest(
+  "leaves the lock to its TTL only when every release attempt fails",
+  async ({ redisOptions }) => {
+    const real = createRedisClient(redisOptions);
+    const client = flakyEvalClient(real, 999); // release can never succeed
+    try {
+      const runner = buildSnapshotSweepRunner({
+        client,
+        sweep: async () => CLEAN,
+        lockTtlMs: 60_000,
+        releaseRetryDelaysMs: [0],
+      });
 
-    expect((await runner(opts())).outcome).toBe("completed"); // runner never throws on a release failure
-    expect(await real.get(LOCK_KEY)).not.toBeNull(); // still held; the TTL is the backstop
-  } finally {
-    await real.quit();
+      expect((await runner(opts())).outcome).toBe("completed"); // runner never throws on a release failure
+      expect(await real.get(LOCK_KEY)).not.toBeNull(); // still held; the TTL is the backstop
+    } finally {
+      await real.quit();
+    }
   }
-});
+);
