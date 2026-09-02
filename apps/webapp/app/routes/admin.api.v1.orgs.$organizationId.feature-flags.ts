@@ -149,20 +149,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
         },
       });
 
-      // Maintain this org's entry in the global cohort dial map with a single atomic jsonb_set (no
-      // read-modify-write of the map, so concurrent org saves can't clobber each other). Presence
-      // is the one-way enrollment latch; "off" is a stored value, never a deletion.
-      const orgDialParsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
-        mergedFlags[FEATURE_FLAG.snapshotStoreOrgMode]
-      );
-      const orgDial = orgDialParsed.success ? orgDialParsed.data : "off";
-      const affected = await tx.$executeRaw`
-        UPDATE "FeatureFlag"
-        SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb(${orgDial}::text)),
-            "updatedAt" = now()
-        WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
-      if (affected === 0) {
-        throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+      // Maintain the cohort map ONLY for an enrolled org (latch set in the stamped blob). Writing a
+      // never-enrolled org as "off" would auto-enroll it: the resolver reads a present "off" as an
+      // opt-out that beats the global dial, silently pinning the org off the fleet rollout. Single
+      // atomic jsonb_set; "off" is a stored value for a genuinely-enrolled org, never a deletion.
+      const enrolled = mergedFlags[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+      if (enrolled) {
+        const orgDialParsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
+          mergedFlags[FEATURE_FLAG.snapshotStoreOrgMode]
+        );
+        const orgDial = orgDialParsed.success ? orgDialParsed.data : "off";
+        const affected = await tx.$executeRaw`
+          UPDATE "FeatureFlag"
+          SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb(${orgDial}::text)),
+              "updatedAt" = now()
+          WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
+        if (affected === 0) {
+          throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+        }
       }
 
       return updated;

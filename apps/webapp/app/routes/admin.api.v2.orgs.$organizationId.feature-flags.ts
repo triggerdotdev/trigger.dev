@@ -137,15 +137,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
         },
       });
 
-      // A wipe clears the org's dial, so record "off" in the cohort map. Single atomic jsonb_set;
-      // the entry is never deleted, so presence keeps recording the org's one-way enrollment.
-      const affected = await tx.$executeRaw`
-        UPDATE "FeatureFlag"
-        SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb('off'::text)),
-            "updatedAt" = now()
-        WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
-      if (affected === 0) {
-        throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+      // A wipe clears the org's dial, so record "off" in the cohort map, but ONLY for an org still
+      // enrolled after the wipe (clearedOrgFlagsPreservingLatch keeps the latch for one that was).
+      // A never-enrolled org must not be auto-enrolled as "off" here (see the main save path).
+      const enrolled = preserved?.[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+      if (enrolled) {
+        const affected = await tx.$executeRaw`
+          UPDATE "FeatureFlag"
+          SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb('off'::text)),
+              "updatedAt" = now()
+          WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
+        if (affected === 0) {
+          throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+        }
       }
 
       return true;
@@ -221,20 +225,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
       data: { featureFlags: stamped as Prisma.InputJsonValue },
     });
 
-    // Maintain this org's entry in the global cohort dial map with a single atomic jsonb_set (no
-    // read-modify-write of the map, so concurrent org saves can't clobber each other). Presence
-    // is the one-way enrollment latch; "off" is a stored value, never a deletion.
-    const orgDialParsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
-      stamped[FEATURE_FLAG.snapshotStoreOrgMode]
-    );
-    const orgDial = orgDialParsed.success ? orgDialParsed.data : "off";
-    const affected = await tx.$executeRaw`
-      UPDATE "FeatureFlag"
-      SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb(${orgDial}::text)),
-          "updatedAt" = now()
-      WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
-    if (affected === 0) {
-      throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+    // Maintain the cohort map ONLY for an enrolled org (latch set in the stamped blob). Writing a
+    // never-enrolled org as "off" would auto-enroll it: the resolver reads a present "off" as an
+    // opt-out that beats the global dial, silently pinning the org off the fleet rollout. Single
+    // atomic jsonb_set; "off" is a stored value for a genuinely-enrolled org, never a deletion.
+    const enrolled = stamped[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+    if (enrolled) {
+      const orgDialParsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
+        stamped[FEATURE_FLAG.snapshotStoreOrgMode]
+      );
+      const orgDial = orgDialParsed.success ? orgDialParsed.data : "off";
+      const affected = await tx.$executeRaw`
+        UPDATE "FeatureFlag"
+        SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb(${orgDial}::text)),
+            "updatedAt" = now()
+        WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
+      if (affected === 0) {
+        throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+      }
     }
 
     return true;

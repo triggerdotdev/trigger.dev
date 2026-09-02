@@ -44,6 +44,8 @@ import { action } from "~/routes/admin.api.v1.orgs.$organizationId.feature-flags
 
 const MODE = FEATURE_FLAG.snapshotStoreOrgMode;
 const DIALS = FEATURE_FLAG.snapshotStoreOrgDials;
+// An org flag unrelated to the snapshot dial, used to prove an ordinary save never enrolls an org.
+const UNRELATED = FEATURE_FLAG.hasAiAccess;
 
 let orgSeq = 0;
 
@@ -103,6 +105,40 @@ describe("admin org feature-flags route maintains the snapshotStoreOrgDials coho
     const dials = await readDials(prisma);
     expect(dials?.[id]).toBe("redis-read");
   });
+
+  postgresTest(
+    "an unrelated save on a never-enrolled org leaves it out of the map",
+    async ({ prisma }) => {
+      await seedDialsRow(prisma);
+      const id = await seedOrg(prisma);
+
+      // No snapshotStoreOrgMode: the one-way latch is never stamped, so the org is not enrolled and
+      // must NOT be auto-written as "off" (which the resolver would read as an opt-out beating the
+      // global dial, pinning the org off the fleet rollout).
+      const response = await post(id, { [UNRELATED]: true });
+
+      expect(response.status).toBe(200);
+      const dials = await readDials(prisma);
+      expect(Object.prototype.hasOwnProperty.call(dials ?? {}, id)).toBe(false);
+      expect(dials?.[id]).toBeUndefined();
+    }
+  );
+
+  postgresTest(
+    "an unrelated save on an already-enrolled org maintains its entry",
+    async ({ prisma }) => {
+      await seedDialsRow(prisma);
+      const id = await seedOrg(prisma);
+
+      // Enroll first (stamps the latch), then a later unrelated save keeps the entry at its dial.
+      await post(id, { [MODE]: "redis-read" });
+      const response = await post(id, { [UNRELATED]: true });
+
+      expect(response.status).toBe(200);
+      const dials = await readDials(prisma);
+      expect(dials?.[id]).toBe("redis-read");
+    }
+  );
 
   postgresTest(
     "a later save to off stores off and keeps the entry present",
