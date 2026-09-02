@@ -177,6 +177,67 @@ describe("the org-scoped read routing", () => {
   });
 });
 
+describe("the authoritative read position (redis-only fallback gate)", () => {
+  function buildAuth(opts: {
+    globalMode?: SnapshotStoreMode;
+    perOrg?: Record<string, SnapshotStoreMode>;
+    resolveAuthoritative?: (runId: string) => Promise<string>;
+    warm?: (organizationId: string) => Promise<void>;
+  }) {
+    return buildSnapshotStoreModeResolver({
+      globalMode: () => opts.globalMode,
+      orgMode: {
+        get: (id: string) => opts.perOrg?.[id],
+        refresh: () => {},
+        ...(opts.warm && { warm: opts.warm }),
+      },
+      runOrg: {
+        resolve: () => undefined,
+        ...(opts.resolveAuthoritative && { resolveAuthoritative: opts.resolveAuthoritative }),
+      },
+      envFloor: "off",
+    });
+  }
+
+  it("resolves the run's org authoritatively, warms the dial, and returns the org mode", async () => {
+    const warmed: string[] = [];
+    const r = buildAuth({
+      globalMode: "redis-read",
+      perOrg: { org_ro: "redis-only" },
+      resolveAuthoritative: async () => "org_ro",
+      warm: async (id) => {
+        warmed.push(id);
+      },
+    });
+    await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBe("redis-only");
+    expect(warmed).toContain("org_ro");
+  });
+
+  it("returns a non-redis-only mode for a pre-cutover run so the decorator falls back", async () => {
+    const r = buildAuth({
+      globalMode: "redis-read",
+      perOrg: {},
+      resolveAuthoritative: async () => "org_pre",
+    });
+    await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBe("redis-read");
+  });
+
+  it("propagates a throw from the authoritative run→org read so the decorator fails closed", async () => {
+    const r = buildAuth({
+      globalMode: "redis-read",
+      resolveAuthoritative: async () => {
+        throw new Error("run→org read timed out");
+      },
+    });
+    await expect(r.readModeForAuthoritative?.("run_1")).rejects.toThrow(/timed out/);
+  });
+
+  it("returns undefined when no authoritative run→org source is wired", async () => {
+    const r = buildAuth({ globalMode: "redis-read" });
+    await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBeUndefined();
+  });
+});
+
 describe("a saved organisation dial survives a lagging replica", () => {
   type Deferred = { resolve: (v: unknown) => void; promise: Promise<unknown> };
 

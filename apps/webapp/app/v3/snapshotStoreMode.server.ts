@@ -61,6 +61,8 @@ type ResolverOrgSource = Pick<OrgModeSource, "get" | "refresh"> &
 /** Resolves a run to its organisation. Cache-only and synchronous, undefined on a miss. */
 type ResolverRunOrgSource = {
   resolve(runId: string): string | undefined;
+  /** Bounded authoritative read, throws on failure/timeout, for the redis-only fallback gate. */
+  resolveAuthoritative?(runId: string): Promise<string>;
 };
 
 /** The census read accessors the resolver delegates to. Both synchronous and no-query. */
@@ -135,6 +137,18 @@ export function buildSnapshotStoreModeResolver(deps: {
       if (!organizationId) {
         return undefined;
       }
+      return resolveMode(organizationId);
+    },
+    // Authoritative counterpart, used only when the sync read is unresolved and some org is
+    // redis-only. Resolves run→org from the primary (bounded, throws on failure), warms the org dial
+    // so the immediate read is accurate, then answers with the org's mode. A throw propagates so the
+    // decorator fails closed.
+    readModeForAuthoritative: async (runId: string): Promise<DialMode | undefined> => {
+      if (!deps.runOrg?.resolveAuthoritative) {
+        return undefined;
+      }
+      const organizationId = await deps.runOrg.resolveAuthoritative(runId);
+      await deps.orgMode.warm?.(organizationId);
       return resolveMode(organizationId);
     },
     anyOrgReadEnabled: (): boolean => deps.census?.anyOrgReadEnabled() ?? false,
@@ -329,7 +343,10 @@ export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapsho
     refresh: (organizationId) => orgModeSource().refresh(organizationId),
     warm: (organizationId) => orgModeSource().warm(organizationId),
   },
-  runOrg: { resolve: (runId) => snapshotRunOrgSource().resolve(runId) },
+  runOrg: {
+    resolve: (runId) => snapshotRunOrgSource().resolve(runId),
+    resolveAuthoritative: (runId) => snapshotRunOrgSource().resolveAuthoritative(runId),
+  },
   census: {
     anyOrgReadEnabled: () => snapshotStoreOrgCensus.anyOrgReadEnabled(),
     anyOrgRedisOnly: () => snapshotStoreOrgCensus.anyOrgRedisOnly(),

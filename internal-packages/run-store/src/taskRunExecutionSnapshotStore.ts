@@ -125,6 +125,15 @@ export type SnapshotStoreModeResolver = {
    */
   readModeFor?(runId: string, environmentId?: string): SnapshotStoreMode | undefined;
   /**
+   * Optional, ASYNC authoritative counterpart to `readModeFor`. Called only when `readModeFor` is
+   * unresolved AND some org is `redis-only`, to decide whether a Postgres fallback would strand the
+   * run. Bounded and MAY throw; the caller fails closed (no fallback) on a throw or when absent.
+   */
+  readModeForAuthoritative?(
+    runId: string,
+    environmentId?: string
+  ): Promise<SnapshotStoreMode | undefined>;
+  /**
    * Optional, cheap. Is ANY organisation currently at `redis-read` or `redis-only`. When false and
    * the global dial is not itself at a read position, a read short-circuits to Postgres without
    * resolving the run's org, keeping the dual-write soak phase at zero new read cost. Same contract:
@@ -1043,26 +1052,50 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * hiding it would serve an empty history as though it were real. Org-scoped, so a single org soaked
    * at `redis-only` throws while everyone else still falls back.
    */
-  #readMayFallBack(runId?: string, environmentId?: string): boolean {
-    // The global dial preserves today's behaviour exactly.
+  async #fallbackAllowed(runId?: string, environmentId?: string): Promise<boolean> {
+    // The global dial preserves today's behaviour exactly: at redis-only Postgres holds nothing.
     if (this.mode === "redis-only") return false;
 
-    // Resolve the run's own org once. A run resolved to a concrete non-`redis-only` mode falls back
-    // normally, even when some OTHER org is `redis-only`.
+    // The run's own org from the sync cache, checked BEFORE the census: a run whose org resolves to
+    // redis-only must throw even when anyOrgRedisOnly (a separate, independently-lagging source) has
+    // not yet caught the enable, or the writing-process window strands it. A concrete non-`redis-only`
+    // mode falls back normally, even when some OTHER org is `redis-only`.
     if (runId !== undefined) {
       const resolved = this.modeResolver?.readModeFor?.(runId, environmentId);
-      if (resolved !== undefined) return resolved !== "redis-only";
+      if (resolved === "redis-only") return false;
+      if (resolved !== undefined) return true;
     }
 
-    // Org unresolved (no runId, or the resolver had no answer). Conservative over-throw: if any org
-    // is `redis-only`, a retryable throw beats serving that org an empty read.
-    return this.modeResolver?.anyOrgRedisOnly?.() !== true;
+    // Org unresolved (cold run→org cache, or no runId). If no org is `redis-only`, this run cannot
+    // be either, so Postgres is a valid answer.
+    if (this.modeResolver?.anyOrgRedisOnly?.() !== true) return true;
+
+    // Some org IS redis-only and the sync cache cannot tell if it is this one. Resolve the run's org
+    // authoritatively rather than strand a redis-only run or over-throw a pre-cutover one. An absent
+    // hook, an undefined answer, or a bounded read that fails all fail closed: a retryable throw beats
+    // serving an empty Postgres when some org genuinely has nowhere else.
+    //
+    // A missing runId cannot be attributed to a redis-only org, and every engine read of a resident
+    // run threads one; global redis-only is already handled above. So fall back rather than over-throw
+    // the run-id-less fan-out that only exists below redis-only.
+    if (runId === undefined) return true;
+    try {
+      const authoritative = await this.modeResolver?.readModeForAuthoritative?.(
+        runId,
+        environmentId
+      );
+      if (authoritative === undefined) return false;
+      return authoritative !== "redis-only";
+    } catch {
+      return false;
+    }
   }
 
-  // Thrown on a read MISS when the run is redis-only and Postgres holds nothing. Retryable by design:
-  // the head may still be catching up, and serving an empty Postgres would strand the run.
+  // Thrown when a redis-only run cannot fall back to Postgres (a miss, a dangling cycle, or a routed
+  // read Redis cannot serve). Retryable by design: the head may still be catching up, and serving an
+  // empty Postgres would strand the run.
   #redisOnlyMissError(): Error {
-    return new Error("snapshot store: run is redis-only and has no Redis snapshot");
+    return new Error("snapshot store: run is redis-only, so Postgres cannot serve this read");
   }
 
   #reportReadUnavailable(method: string, runId: string, error: unknown): void {
@@ -1118,6 +1151,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
     if (!this.readsFromRedis(runId, environmentId)) {
+      if (!(await this.#fallbackAllowed(runId, environmentId))) throw this.#redisOnlyMissError();
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
 
@@ -1125,14 +1159,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     try {
       read = await this.redis.getLatest(runId, { ...(environmentId && { environmentId }) });
     } catch (error) {
-      if (!this.#readMayFallBack(runId, environmentId)) throw error;
+      if (!(await this.#fallbackAllowed(runId, environmentId))) throw error;
       this.#reportReadUnavailable("findLatestExecutionSnapshot", runId, error);
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
     if (!read) {
       // A miss is the coexistence path: a pre-cutover run, or expired history. It is not an error —
       // unless the run is redis-only, where Postgres holds nothing, so a miss must throw not delegate.
-      if (!this.#readMayFallBack(runId, environmentId)) throw this.#redisOnlyMissError();
+      if (!(await this.#fallbackAllowed(runId, environmentId))) throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findLatestExecutionSnapshot", "postgres");
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
@@ -1140,7 +1174,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (read.danglingCycle) {
       // The entry says it has waitpoints and the cycle key holding them is gone. Serving it would
       // hand back an empty set that looks authoritative, and the run would resume with no waits.
-      // Postgres still has the join rows.
+      // Postgres still has the join rows — unless the run is redis-only, where it does not.
+      if (!(await this.#fallbackAllowed(runId, environmentId))) throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findLatestExecutionSnapshot", "postgres");
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
@@ -1156,7 +1191,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.metrics?.recordRead("findLatestExecutionSnapshot", "redis");
       return hydrated;
     } catch (error) {
-      if (!this.#readMayFallBack(runId, environmentId)) throw error;
+      if (!(await this.#fallbackAllowed(runId, environmentId))) throw error;
       this.#reportReadUnavailable("findLatestExecutionSnapshot", runId, error);
       return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
     }
@@ -1167,7 +1202,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     client?: ReadClient
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null> {
     const shape = matchSinceCursorLookup(args);
-    if (!shape || !this.readsFromRedis(shape.runId, shape.environmentId)) {
+    if (!shape) {
+      // A query shape Redis cannot serve. It is not a redis-only miss, so it delegates unguarded.
+      return this.delegate.findExecutionSnapshot(args, client);
+    }
+    if (!this.readsFromRedis(shape.runId, shape.environmentId)) {
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId)))
+        throw this.#redisOnlyMissError();
       return this.delegate.findExecutionSnapshot(args, client);
     }
 
@@ -1177,13 +1218,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         ...(shape.environmentId && { environmentId: shape.environmentId }),
       });
     } catch (error) {
-      if (!this.#readMayFallBack(shape.runId, shape.environmentId)) throw error;
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId))) throw error;
       this.#reportReadUnavailable("findExecutionSnapshot", shape.runId, error);
       return this.delegate.findExecutionSnapshot(args, client);
     }
 
     if (!found) {
-      if (!this.#readMayFallBack(shape.runId, shape.environmentId))
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId)))
         throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findExecutionSnapshot", "postgres");
       return this.delegate.findExecutionSnapshot(args, client);
@@ -1201,7 +1242,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     client?: ReadClient
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
     const shape = matchSinceWindow(args);
-    if (!shape || !this.readsFromRedis(shape.runId, shape.environmentId)) {
+    if (!shape) {
+      // A query shape Redis cannot serve. It is not a redis-only miss, so it delegates unguarded.
+      return this.delegate.findManyExecutionSnapshots(args, client);
+    }
+    if (!this.readsFromRedis(shape.runId, shape.environmentId)) {
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId)))
+        throw this.#redisOnlyMissError();
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
 
@@ -1212,19 +1259,21 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         ...(shape.environmentId && { environmentId: shape.environmentId }),
       });
     } catch (error) {
-      if (!this.#readMayFallBack(shape.runId, shape.environmentId)) throw error;
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId))) throw error;
       this.#reportReadUnavailable("findManyExecutionSnapshots", shape.runId, error);
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
 
     if (result.kind === "miss") {
-      if (!this.#readMayFallBack(shape.runId, shape.environmentId))
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId)))
         throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
 
     if (result.entries.some((entry) => entry.danglingCycle)) {
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId)))
+        throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findManyExecutionSnapshots", "postgres");
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
@@ -1244,7 +1293,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.metrics?.recordRead("findManyExecutionSnapshots", "redis");
       return hydrated as unknown as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
     } catch (error) {
-      if (!this.#readMayFallBack(shape.runId, shape.environmentId)) throw error;
+      if (!(await this.#fallbackAllowed(shape.runId, shape.environmentId))) throw error;
       this.#reportReadUnavailable("findManyExecutionSnapshots", shape.runId, error);
       return this.delegate.findManyExecutionSnapshots(args, client);
     }
@@ -1257,6 +1306,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<string[]> {
     // Without a run id there is no keyspace to look in, so the router's fan-out is the only answer.
     if (!runId || !this.readsFromRedis(runId)) {
+      if (!(await this.#fallbackAllowed(runId))) throw this.#redisOnlyMissError();
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
 
@@ -1264,12 +1314,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     try {
       ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
     } catch (error) {
-      if (!this.#readMayFallBack(runId)) throw error;
+      if (!(await this.#fallbackAllowed(runId))) throw error;
       this.#reportReadUnavailable("findSnapshotCompletedWaitpointIds", runId, error);
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
     if (!ids.present) {
-      if (!this.#readMayFallBack(runId)) throw this.#redisOnlyMissError();
+      if (!(await this.#fallbackAllowed(runId))) throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findSnapshotCompletedWaitpointIds", "postgres");
       return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
@@ -1284,6 +1334,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     runId?: string
   ): Promise<{ present: boolean; ids: string[] }> {
     if (!runId || !this.readsFromRedis(runId)) {
+      if (!(await this.#fallbackAllowed(runId))) throw this.#redisOnlyMissError();
       return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
 
@@ -1291,7 +1342,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     try {
       ids = await this.redis.getSnapshotWaitpointIds(runId, snapshotId);
     } catch (error) {
-      if (!this.#readMayFallBack(runId)) throw error;
+      if (!(await this.#fallbackAllowed(runId))) throw error;
       this.#reportReadUnavailable("findSnapshotCompletedWaitpointIdsWithPresence", runId, error);
       return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
@@ -1299,7 +1350,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       // present=false means this reader cannot see the snapshot, so its empty list is not
       // authoritative and the engine's read-repair needs the Postgres answer — except at redis-only,
       // where Postgres holds nothing, so the miss must throw rather than serve an empty set.
-      if (!this.#readMayFallBack(runId)) throw this.#redisOnlyMissError();
+      if (!(await this.#fallbackAllowed(runId))) throw this.#redisOnlyMissError();
       this.metrics?.recordRead("findSnapshotCompletedWaitpointIdsWithPresence", "postgres");
       return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
