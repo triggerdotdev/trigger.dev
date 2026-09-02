@@ -128,3 +128,58 @@ redisTest("reports aborted when shutdown cancels the pass", async ({ redisOption
     await client.quit();
   }
 });
+
+function flakyEvalClient(real: RedisClient, failEvalTimes: number): RedisClient {
+  let fails = 0;
+  return new Proxy(real, {
+    get(target, prop, receiver) {
+      if (prop === "eval") {
+        return (...args: unknown[]) => {
+          if (fails < failEvalTimes) {
+            fails += 1;
+            return Promise.reject(new Error("simulated release eval failure"));
+          }
+          return (target.eval as (...a: unknown[]) => unknown)(...args);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as unknown as RedisClient;
+}
+
+redisTest("retries a transiently-failing release and frees the lock", async ({ redisOptions }) => {
+  const real = createRedisClient(redisOptions);
+  const client = flakyEvalClient(real, 2); // first two release attempts fail, third succeeds
+  try {
+    const runner = buildSnapshotSweepRunner({
+      client,
+      sweep: async () => CLEAN,
+      lockTtlMs: 60_000,
+      releaseRetryDelaysMs: [0, 0, 0],
+    });
+
+    expect((await runner(opts())).outcome).toBe("completed");
+    expect(await real.get(LOCK_KEY)).toBeNull(); // released after the retries, not left to TTL
+  } finally {
+    await real.quit();
+  }
+});
+
+redisTest("leaves the lock to its TTL only when every release attempt fails", async ({ redisOptions }) => {
+  const real = createRedisClient(redisOptions);
+  const client = flakyEvalClient(real, 999); // release can never succeed
+  try {
+    const runner = buildSnapshotSweepRunner({
+      client,
+      sweep: async () => CLEAN,
+      lockTtlMs: 60_000,
+      releaseRetryDelaysMs: [0],
+    });
+
+    expect((await runner(opts())).outcome).toBe("completed"); // runner never throws on a release failure
+    expect(await real.get(LOCK_KEY)).not.toBeNull(); // still held; the TTL is the backstop
+  } finally {
+    await real.quit();
+  }
+});

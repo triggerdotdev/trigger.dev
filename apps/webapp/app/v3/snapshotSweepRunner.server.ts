@@ -13,13 +13,47 @@ end
 return 0
 `;
 
+// The release is a WRITE, so the fault that fails a pass fails the release too; a single attempt
+// then leaks the lock to its full TTL (budget + 2h), stalling every sweep for hours after a blip.
+// Retry over a short window so a Redis that recovers frees the lock promptly; the TTL is the backstop.
+const DEFAULT_RELEASE_RETRY_DELAYS_MS = [250, 500, 1000, 2000, 4000, 8000];
+
+const sleep = (ms: number) =>
+  ms > 0 ? new Promise<void>((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+
 type SweepCounts = Record<string, number | boolean>;
+
+async function releaseLock(
+  client: RedisClient,
+  fence: string,
+  retryDelaysMs: number[]
+): Promise<void> {
+  // attempts = retryDelaysMs.length + 1. A successful eval ends it, whether it deleted our lock
+  // (returned 1) or found the fence no longer ours (returned 0) — both mean nothing more to do.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await client.eval(RELEASE_LUA, 1, LOCK_KEY, fence);
+      return;
+    } catch (error) {
+      if (attempt >= retryDelaysMs.length) {
+        logger.warn(
+          "snapshot sweep lock release failed after retries; lock will clear on its TTL",
+          { error }
+        );
+        return;
+      }
+      await sleep(retryDelaysMs[attempt]);
+    }
+  }
+}
 
 export function buildSnapshotSweepRunner(deps: {
   client: RedisClient;
   sweep: (opts: { deadline: number; signal: AbortSignal }) => Promise<SweepCounts>;
   lockTtlMs: number;
   fence?: () => string;
+  /** Backoff between release attempts. Defaults to a bounded ~16s ramp; tests pass short delays. */
+  releaseRetryDelaysMs?: number[];
 }): SweepRunner {
   return async ({ deadline, signal }): Promise<SweepPassOutcome> => {
     // enqueueOnce gives no overlap protection: its dedup record IS the queue item and the ack
@@ -50,9 +84,11 @@ export function buildSnapshotSweepRunner(deps: {
       logger.error("snapshot orphan sweep pass failed", { error });
       return { outcome: "failed" };
     } finally {
-      await deps.client
-        .eval(RELEASE_LUA, 1, LOCK_KEY, fence)
-        .catch((error) => logger.warn("snapshot sweep lock release failed", { error }));
+      await releaseLock(
+        deps.client,
+        fence,
+        deps.releaseRetryDelaysMs ?? DEFAULT_RELEASE_RETRY_DELAYS_MS
+      );
     }
   };
 }
