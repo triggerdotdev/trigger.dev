@@ -1,5 +1,5 @@
 import { intro, outro } from "@clack/prompts";
-import { NODE_RUNTIME_UPDATE_MAJOR } from "@trigger.dev/core/v3";
+import { needsNodeRuntimeUpdate, NODE_RUNTIME_UPDATE_MAJOR } from "@trigger.dev/core/v3";
 import type { Command } from "commander";
 import { z } from "zod";
 import { CliApiClient } from "../../apiClient.js";
@@ -70,7 +70,11 @@ async function listProjects(options: ProjectsListCommandOptions) {
   }
 
   const projects = options.needsUpdate
-    ? response.data.filter((project) => project.deployment?.nodeMajor === NODE_RUNTIME_UPDATE_MAJOR)
+    ? response.data.filter(
+        (project) =>
+          project.deployment &&
+          needsNodeRuntimeUpdate(project.deployment.runtime, project.deployment.runtimeVersion)
+      )
     : response.data;
 
   if (projects.length === 0) {

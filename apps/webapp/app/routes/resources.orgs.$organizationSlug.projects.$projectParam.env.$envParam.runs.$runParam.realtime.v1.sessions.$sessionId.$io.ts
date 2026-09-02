@@ -13,6 +13,7 @@ import {
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -61,8 +62,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // Replica lag can null out a live run; a spurious 404 breaks the dashboard Agent tab subscription
   // (useRealtimeStream surfaces the error and does not auto-retry). Re-read the primary on a miss.
   const run =
-    (await runStore.findRun(runWhere, runArgs, $replica)) ??
-    (await runStore.findRunOnPrimary(runWhere, runArgs));
+    (await undefinedOnUnroutableId(() => runStore.findRun(runWhere, runArgs, $replica), {
+      runParam: params.runParam,
+    })) ??
+    (await undefinedOnUnroutableId(() => runStore.findRunOnPrimary(runWhere, runArgs), {
+      runParam: params.runParam,
+    }));
 
   if (!run) {
     return new Response("Run not found", { status: 404 });

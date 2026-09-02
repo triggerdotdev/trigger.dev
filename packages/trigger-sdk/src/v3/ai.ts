@@ -41,6 +41,8 @@ import {
   type RouterCheckpoint,
   type SessionRouteTable,
   type SessionStreamRecord,
+  type AnySessionChannel,
+  type SessionChannelName,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -77,6 +79,7 @@ import {
   type InferChatUIMessageFromTools,
   PENDING_MESSAGE_INJECTED_TYPE,
   upsertIncomingMessage,
+  chatRunTags,
 } from "./ai-shared.js";
 import { auth } from "./auth.js";
 import { locals } from "./locals.js";
@@ -107,6 +110,7 @@ type ToolCallOptions = {
 import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
 import {
+  type SessionChannelHandleFor,
   type SessionHandle,
   type SessionPipeStreamOptions,
   sessions,
@@ -11587,9 +11591,11 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
-    const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
-    // SessionTriggerConfig.tags allows at most 5; the auto chat tag takes one slot.
-    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+    // IDs too long to fit within the tag length limit get no automatic tag.
+    const tags = chatRunTags(
+      params.chatId,
+      params.triggerConfig?.tags ?? options?.triggerConfig?.tags
+    );
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};
@@ -11849,6 +11855,17 @@ export const chat = {
   response: chatResponse,
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
+  /** The current chat.agent run's Session handle. See {@link SessionHandle}. */
+  session: getChatSession,
+  /**
+   * Open a named side channel on the current chat.agent run's Session: a
+   * durable, cross-run `.in`/`.out` pair addressed by `name`, separate from the
+   * chat transcript. Writing its `.in` does not wake a run. Shortcut for
+   * `chat.session().channel(name)`.
+   */
+  channel: <C extends AnySessionChannel = AnySessionChannel>(
+    channel: SessionChannelName<C> | C
+  ): SessionChannelHandleFor<C> => getChatSession().channel<C>(channel),
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
   createStopSignal,
   /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */

@@ -229,6 +229,7 @@ for (const topology of TOPOLOGIES) {
       const { router } = buildRouter(topology, {
         recordDuplicateId: (keys) => seen.push(keys),
         recordWaitpointProbeFallback() {},
+        recordShardRouted() {},
       });
       await router.findManyWaitpointTags({ where: { environmentId: "env" } });
       // A duplicate confined to {legacy, new} is the known drain-mirror case and stays silent. Once a

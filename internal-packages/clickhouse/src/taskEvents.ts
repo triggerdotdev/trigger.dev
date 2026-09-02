@@ -176,6 +176,27 @@ export function getSpanDetailsQueryBuilder(ch: ClickhouseReader, settings?: Clic
 // V2 Table Functions (partitioned by inserted_at instead of start_time)
 // ============================================================================
 
+const TASK_EVENT_V2_INSERT_COLUMNS = [
+  "environment_id",
+  "organization_id",
+  "project_id",
+  "task_identifier",
+  "run_id",
+  "start_time",
+  "duration",
+  "trace_id",
+  "span_id",
+  "parent_span_id",
+  "message",
+  "kind",
+  "status",
+  "attributes",
+  "metadata",
+  "expires_at",
+  "machine_id",
+  "inserted_at",
+] satisfies [string, ...string[]];
+
 export const TaskEventV2Input = z.object({
   environment_id: z.string(),
   organization_id: z.string(),
@@ -204,6 +225,7 @@ export function insertTaskEventsV2(ch: ClickhouseWriter, settings?: ClickHouseSe
   return ch.insertUnsafe<TaskEventV2Input>({
     name: "insertTaskEventsV2",
     table: "trigger_dev.task_events_v2",
+    columns: TASK_EVENT_V2_INSERT_COLUMNS,
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,

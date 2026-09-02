@@ -19,12 +19,14 @@ import {
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
+import { prisma } from "~/db.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
@@ -33,7 +35,7 @@ import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.se
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { type BuildSettings } from "~/v3/buildSettings";
+import { BuildSettingsSchema, type BuildSettings } from "~/v3/buildSettings";
 import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import {
@@ -183,12 +185,24 @@ export const action = dashboardAction(
     const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
       submission.value;
 
+    // Only admins may change the opt-out; other saves carry the stored value forward.
+    let disableNativeBuildServer: true | undefined = useNativeBuildServer ? undefined : true;
+    if (!user.admin && !user.isImpersonating) {
+      const project = await prisma.project.findFirst({
+        where: { id: projectId },
+        select: { buildSettings: true },
+      });
+      const stored = BuildSettingsSchema.safeParse(project?.buildSettings);
+      disableNativeBuildServer =
+        stored.success && stored.data.disableNativeBuildServer === true ? true : undefined;
+    }
+
     const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
       installCommand: installCommand || undefined,
       preBuildCommand: preBuildCommand || undefined,
       triggerConfigFilePath: triggerConfigFilePath || undefined,
       // Native build server is the default, so we only persist the opt-out.
-      disableNativeBuildServer: useNativeBuildServer ? undefined : true,
+      disableNativeBuildServer,
     });
 
     if (resultOrFail.isErr()) {
@@ -389,7 +403,7 @@ export default function IntegrationsSettingsPage() {
               <>
                 Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
                 <InlineCode variant="extra-small" className="whitespace-nowrap">
-                  --native-build-server
+                  --native-build
                 </InlineCode>{" "}
                 flag.
               </>
@@ -443,6 +457,8 @@ function BuildSettingsForm({
   const navigation = useNavigation();
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
+  const hasAdminAccess = useHasAdminAccess();
+
   // The native build server is enabled by default; it's only off when the
   // project has explicitly opted out via `disableNativeBuildServer`.
   const nativeBuildServerEnabled = buildSettings?.disableNativeBuildServer !== true;
@@ -484,7 +500,7 @@ function BuildSettingsForm({
         align="start"
         htmlFor={fields.triggerConfigFilePath.id}
         title="Trigger config file"
-        description="Path relative to your repo root."
+        description="Path relative to your repo root. Auto-detected by default."
         action={
           <SettingsControl>
             <Input
@@ -517,7 +533,7 @@ function BuildSettingsForm({
               {...getInputProps(fields.installCommand, { type: "text" })}
               variant="medium"
               defaultValue={buildSettings?.installCommand || ""}
-              placeholder="pnpm install"
+              placeholder="e.g., pnpm install"
               onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
@@ -542,7 +558,7 @@ function BuildSettingsForm({
               {...getInputProps(fields.preBuildCommand, { type: "text" })}
               variant="medium"
               defaultValue={buildSettings?.preBuildCommand || ""}
-              placeholder="npm run prisma:generate"
+              placeholder="e.g., npm run prisma:generate"
               onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
@@ -557,27 +573,31 @@ function BuildSettingsForm({
         }
       />
 
-      <SettingsRow
-        title="Use native build server"
-        description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
-        action={
-          <Switch
-            variant="medium"
-            name={fields.useNativeBuildServer.name}
-            defaultChecked={nativeBuildServerEnabled}
-            onCheckedChange={(isChecked) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                useNativeBuildServer: isChecked,
-              }));
-            }}
+      {hasAdminAccess ? (
+        <>
+          <SettingsRow
+            title="Use native build server"
+            description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
+            action={
+              <Switch
+                variant="medium"
+                name={fields.useNativeBuildServer.name}
+                defaultChecked={nativeBuildServerEnabled}
+                onCheckedChange={(isChecked) => {
+                  setBuildSettingsValues((prev) => ({
+                    ...prev,
+                    useNativeBuildServer: isChecked,
+                  }));
+                }}
+              />
+            }
           />
-        }
-      />
 
-      <FormError id={fields.useNativeBuildServer.errorId}>
-        {fields.useNativeBuildServer.errors}
-      </FormError>
+          <FormError id={fields.useNativeBuildServer.errorId}>
+            {fields.useNativeBuildServer.errors}
+          </FormError>
+        </>
+      ) : null}
       <FormError>{buildSettingsForm.errors}</FormError>
 
       <SettingsActions>

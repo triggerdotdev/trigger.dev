@@ -70,6 +70,87 @@ function repeatingApiClient(record: {
   } as unknown as ApiClient;
 }
 
+function channelAwareApiClient(
+  byChannel: Record<string, Array<{ id: string; chunk: unknown; timestamp: number }>>
+): ApiClient {
+  const delivered = new Set<string>();
+  return {
+    async subscribeToSessionStream<T>(
+      _sessionIdOrExternalId: string,
+      _io: "out" | "in",
+      options?: {
+        onPart?: (part: SSEStreamPart<T>) => void;
+        signal?: AbortSignal;
+        channel?: string;
+      }
+    ) {
+      const channelKey = options?.channel ?? "";
+      if (!delivered.has(channelKey)) {
+        delivered.add(channelKey);
+        for (const record of byChannel[channelKey] ?? []) {
+          options?.onPart?.(record as SSEStreamPart<T>);
+        }
+      }
+      const signal = options?.signal;
+      // eslint-disable-next-line require-yield
+      return (async function* () {
+        if (signal?.aborted) return;
+        await new Promise<void>((resolve) => {
+          signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+      })() as unknown as Awaited<ReturnType<ApiClient["subscribeToSessionStream"]>>;
+    },
+  } as unknown as ApiClient;
+}
+
+describe("StandardSessionStreamManager — named channels", () => {
+  const sessionId = "session-1";
+  const io = "in" as const;
+
+  it("routes records to the addressed channel and never across channels", async () => {
+    const manager = new StandardSessionStreamManager(
+      channelAwareApiClient({
+        a: [{ id: "0", chunk: { v: "a-record" }, timestamp: 1000 }],
+        b: [{ id: "0", chunk: { v: "b-record" }, timestamp: 1000 }],
+      }),
+      "http://localhost"
+    );
+
+    const fromA = await manager.once(sessionId, io, { timeoutMs: 500 }, "a");
+    const fromB = await manager.once(sessionId, io, { timeoutMs: 500 }, "b");
+
+    expect(fromA).toEqual({ ok: true, output: { v: "a-record" } });
+    expect(fromB).toEqual({ ok: true, output: { v: "b-record" } });
+
+    manager.disconnectStream(sessionId, io, "a");
+    manager.disconnectStream(sessionId, io, "b");
+    manager.disconnect();
+  });
+
+  it("keeps the reserved channel isolated from a named channel", async () => {
+    const manager = new StandardSessionStreamManager(
+      channelAwareApiClient({
+        "": [{ id: "0", chunk: { v: "reserved" }, timestamp: 1000 }],
+        screenshots: [{ id: "0", chunk: { v: "named" }, timestamp: 1000 }],
+      }),
+      "http://localhost"
+    );
+
+    const reserved = await manager.once(sessionId, io, { timeoutMs: 500 });
+    const named = await manager.once(sessionId, io, { timeoutMs: 500 }, "screenshots");
+
+    expect(reserved).toEqual({ ok: true, output: { v: "reserved" } });
+    expect(named).toEqual({ ok: true, output: { v: "named" } });
+
+    expect(manager.peek(sessionId, io)).toBeUndefined();
+    expect(manager.peek(sessionId, io, "screenshots")).toBeUndefined();
+
+    manager.disconnectStream(sessionId, io);
+    manager.disconnectStream(sessionId, io, "screenshots");
+    manager.disconnect();
+  });
+});
+
 describe("StandardSessionStreamManager — minTimestamp filter", () => {
   const sessionId = "session-1";
   const io = "in" as const;

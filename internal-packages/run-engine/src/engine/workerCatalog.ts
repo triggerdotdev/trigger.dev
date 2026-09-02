@@ -77,6 +77,32 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  /**
+   * Write-ahead guard enqueued before every run-finish commit and acked when the
+   * inline finalization side effects (waitpoint completion, parent unblock fan-out,
+   * batch nudge) all succeed. It is the recovery mechanism for a finish whose side
+   * effects were lost mid-flight, so its retry budget must outlive any database
+   * outage: roughly five weeks at the capped backoff before it dead-letters, where
+   * a genuinely poisoned item becomes visible and redrivable instead of retrying
+   * silently forever.
+   */
+  ensureRunFinalized: {
+    schema: z.object({
+      runId: z.string(),
+      /**
+       * How many times the guard has already deferred to an in-flight cancellation.
+       * Bounds the watch: past the budget the guard delivers anyway, so a lost
+       * heartbeat job cannot turn the deferral into an infinite loop.
+       */
+      deferCount: z.number().int().nonnegative().optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
+  },
   enqueueDelayedRun: {
     schema: z.object({
       runId: z.string(),

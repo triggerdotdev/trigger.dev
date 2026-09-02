@@ -12,15 +12,33 @@ import { boundedIn } from "@trigger.dev/database";
 export type TtlSystemOptions = {
   resources: SystemResources;
   waitpointSystem: WaitpointSystem;
+  finalizationGuardDelayMs?: number;
 };
 
 export class TtlSystem {
   private readonly $: SystemResources;
   private readonly waitpointSystem: WaitpointSystem;
+  private readonly finalizationGuardDelayMs: number;
 
   constructor(private readonly options: TtlSystemOptions) {
     this.$ = options.resources;
     this.waitpointSystem = options.waitpointSystem;
+    this.finalizationGuardDelayMs = options.finalizationGuardDelayMs ?? 60_000;
+  }
+
+  /**
+   * Write-ahead guard for TTL expiry, mirroring the run attempt system's: enqueued
+   * before the EXPIRED commit so a crash or error between that commit and the
+   * waitpoint completion cannot strand a waiting parent, and acked once the inline
+   * side effects succeed.
+   */
+  async #scheduleFinalizationGuard(runId: string): Promise<void> {
+    await this.$.worker.enqueue({
+      id: `ensureRunFinalized:${runId}`,
+      job: "ensureRunFinalized",
+      payload: { runId },
+      availableAt: new Date(Date.now() + this.finalizationGuardDelayMs),
+    });
   }
 
   async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
@@ -61,6 +79,8 @@ export class TtlSystem {
         type: "STRING_ERROR",
         raw: `Run expired because the TTL (${run.ttl}) was reached`,
       };
+
+      await this.#scheduleFinalizationGuard(runId);
 
       const updatedRun = await this.$.runStore.expireRun(
         runId,
@@ -121,6 +141,8 @@ export class TtlSystem {
         project: { id: snapshot.projectId },
         environment: { id: snapshot.environmentId },
       });
+
+      await this.$.worker.ack(`ensureRunFinalized:${runId}`);
     });
   }
 
@@ -220,6 +242,10 @@ export class TtlSystem {
         raw: "Run expired because the TTL was reached",
       };
 
+      await pMap(runsToExpire, (run) => this.#scheduleFinalizationGuard(run.id), {
+        concurrency: 10,
+      });
+
       await this.$.runStore.expireRunsBatch(runIdsToExpire, { error, now }, this.$.prisma);
 
       // Process each run: enqueue waitpoint completion jobs and emit events
@@ -261,6 +287,16 @@ export class TtlSystem {
               project: { id: run.projectId },
               environment: { id: run.runtimeEnvironmentId },
             });
+
+            /**
+             * Waitpoint completion in this path is delegated to the finishWaitpoint job,
+             * which can still exhaust its retries, so the guard stays armed for runs with
+             * a waiting parent and verifies the completion landed. Runs with no waitpoint
+             * have nothing left to re-deliver, so release their guard now.
+             */
+            if (!run.associatedWaitpoint) {
+              await this.$.worker.ack(`ensureRunFinalized:${run.id}`);
+            }
 
             expired.push(run.id);
           } catch (e) {

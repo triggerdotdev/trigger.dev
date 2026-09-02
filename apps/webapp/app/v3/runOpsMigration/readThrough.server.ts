@@ -25,11 +25,12 @@ import {
 import { logger as defaultLogger } from "~/services/logger.server";
 import { resolveShard, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import { isSplitEnabled } from "./splitMode.server";
+import { recordReadThroughSource } from "./readThroughSourceMetric.server";
 import { runOpsShardReplicas } from "./shardHandles.server";
 
 type ShardSource = `shard:${string}`;
 
-type ReadThroughSource = "new" | "legacy-replica" | ShardSource;
+export type ReadThroughSource = "new" | "legacy-replica" | ShardSource;
 
 /**
  * `found` carries hit/miss STRUCTURALLY. `source` is open-ended once shards exist, so a
@@ -56,6 +57,8 @@ type ReadThroughDeps = {
   logger?: { error: (m: string, meta?: Record<string, unknown>) => void };
   /** Saturation-signal emit hook: called on each legacy-replica hit. */
   onLegacyReplicaRead?: (id: string) => void;
+  /** Per-source emit hook: called with the store that served a HIT. Defaults to the metric. */
+  onSource?: (source: ReadThroughSource) => void;
 };
 
 type ReadThroughRunInput<T> = {
@@ -67,7 +70,12 @@ type ReadThroughRunInput<T> = {
   deps?: ReadThroughDeps;
 };
 
-function hit<T>(source: ReadThroughSource, value: T): ReadThroughResult<T> {
+function hit<T>(
+  source: ReadThroughSource,
+  value: T,
+  onSource: (source: ReadThroughSource) => void
+): ReadThroughResult<T> {
+  onSource(source);
   return { found: true, source, value };
 }
 
@@ -83,13 +91,14 @@ export async function readThroughRun<T>(
   const legacyReplica = deps?.legacyReplica ?? defaultLegacyReplica;
   const shardReplicas = deps?.shardReplicas ?? runOpsShardReplicas;
   const logger = deps?.logger ?? defaultLogger;
+  const onSource = deps?.onSource ?? recordReadThroughSource;
 
   const splitEnabled = deps?.splitEnabled ?? (await isSplitEnabled());
 
   // Passthrough: single plain read against the one collapsed store.
   if (!splitEnabled) {
     const v = await input.readNew(newClient);
-    return v != null ? hit("new", v) : miss("not-found");
+    return v != null ? hit("new", v, onSource) : miss("not-found");
   }
 
   // Total: an unclassifiable id resolves to "legacy" (probe rather than drop a real run).
@@ -111,18 +120,18 @@ export async function readThroughRun<T>(
     }
     // A gen-2 shard is a dedicated-schema store, exactly like `new`, so `readNew` fits.
     const v = await input.readNew(shardReplica);
-    return v != null ? hit(`shard:${shardKey}`, v) : miss("not-found");
+    return v != null ? hit(`shard:${shardKey}`, v, onSource) : miss("not-found");
   }
 
   if (shardKey === "new") {
     const v = await input.readNew(newClient);
-    return v != null ? hit("new", v) : miss("not-found");
+    return v != null ? hit("new", v, onSource) : miss("not-found");
   }
 
   if (idKind === "waitpoint") {
     const v = await input.readNew(newClient);
     if (v != null) {
-      return hit("new", v);
+      return hit("new", v, onSource);
     }
   }
 
@@ -130,7 +139,7 @@ export async function readThroughRun<T>(
   const lv = await input.readLegacy(legacyReplica);
   if (lv != null) {
     deps?.onLegacyReplicaRead?.(id);
-    return hit("legacy-replica", lv);
+    return hit("legacy-replica", lv, onSource);
   }
 
   if (deps?.isPastRetention?.(id)) {

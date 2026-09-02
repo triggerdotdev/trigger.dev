@@ -123,7 +123,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               .map((t) => t.trim())
               .filter(Boolean)
           : []),
-      ].slice(0, 5);
+      ].slice(0, 10);
 
       const triggerConfig = {
         basePayload: {

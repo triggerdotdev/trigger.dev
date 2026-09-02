@@ -156,9 +156,28 @@ const routingStoreMetrics: RoutingStoreMetrics = singleton("routingStoreMetrics"
     labelNames: ["from", "to"],
     registers: [metricsRegister],
   });
+  // The only per-shard series /metrics carries, so a cohort ramp is visible per shard while it
+  // happens. On every routed operation: the label child is resolved once per shard and cached,
+  // because `inc({ shard })` hashes a fresh label object on each call. Cardinality is bounded by
+  // the shard alphabet plus the two reserved keys.
+  const shardRouted = new Counter({
+    name: "runops_shard_routed_total",
+    help: "Operations routed to a shard by an id that resolves to it alone. Fan-outs, probes and fallback legs resolve no single shard and are excluded.",
+    labelNames: ["shard"],
+    registers: [metricsRegister],
+  });
+  const shardRoutedChildren = new Map<string, { inc: (value?: number) => void }>();
   return {
     recordDuplicateId: (shardKeys) => duplicateId.inc({ shard_keys: shardKeys.join(",") }),
     recordWaitpointProbeFallback: (from, to) => probeFallback.inc({ from, to }),
+    recordShardRouted: (shardKey) => {
+      let child = shardRoutedChildren.get(shardKey);
+      if (child === undefined) {
+        child = shardRouted.labels(shardKey);
+        shardRoutedChildren.set(shardKey, child);
+      }
+      child.inc();
+    },
   };
 });
 

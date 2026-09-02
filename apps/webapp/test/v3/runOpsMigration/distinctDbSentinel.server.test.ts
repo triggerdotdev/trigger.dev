@@ -1,6 +1,6 @@
 import { heteroPostgresTest } from "@internal/testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
-import { describe, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   probeDistinctDatabases,
   probeDistinctStores,
@@ -64,6 +64,78 @@ describe("probeDistinctDatabases", () => {
       expect(result.distinct).toBe(false);
     }
   );
+});
+
+// A transient failure on ONE store must not refuse the boot fleet-wide. The probe fails closed,
+// so an unretried blip on any shard collapses the whole deployment to single-DB and the boot
+// interlock then throws. Retry a bounded number of times, then fail closed exactly as before.
+describe("probeDistinctStores bounded retry", () => {
+  const fp = (sysId: string, db: string) => ({ systemIdentifier: sysId, databaseName: db });
+
+  it("recovers when a transient failure clears within the retry budget", async () => {
+    let calls = 0;
+    const readFingerprint = vi.fn(async (url: string) => {
+      calls++;
+      if (calls === 2) throw new Error("ECONNREFUSED");
+      return fp("sys", url);
+    });
+    const result = await probeDistinctStores(
+      [
+        { id: "new", url: "a" },
+        { id: "shard-a", url: "b" },
+      ],
+      { readFingerprint, attempts: 3, sleep: async () => {} }
+    );
+    expect(result).toEqual({ distinct: true });
+  });
+
+  it("fails closed once the retry budget is exhausted", async () => {
+    const readFingerprint = vi.fn(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    const result = await probeDistinctStores(
+      [
+        { id: "new", url: "a" },
+        { id: "shard-a", url: "b" },
+      ],
+      { readFingerprint, attempts: 3, sleep: async () => {} }
+    );
+    expect(result).toMatchObject({ distinct: false });
+  });
+
+  it("bounds the attempts it makes", async () => {
+    const readFingerprint = vi.fn(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    await probeDistinctStores(
+      [
+        { id: "a", url: "a" },
+        { id: "b", url: "b" },
+      ],
+      {
+        readFingerprint,
+        attempts: 3,
+        sleep: async () => {},
+      }
+    );
+    // 2 targets x 3 attempts each, and no more.
+    expect(readFingerprint).toHaveBeenCalledTimes(6);
+  });
+
+  // A duplicate is a correct, final answer. Retrying it would delay every boot of a genuinely
+  // misconfigured deployment for no benefit.
+  it("does not retry a genuine duplicate", async () => {
+    const readFingerprint = vi.fn(async () => fp("sys", "same"));
+    const result = await probeDistinctStores(
+      [
+        { id: "new", url: "a" },
+        { id: "shard-a", url: "b" },
+      ],
+      { readFingerprint, attempts: 3, sleep: async () => {} }
+    );
+    expect(result).toMatchObject({ distinct: false });
+    expect(readFingerprint).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("probeDistinctStores (set uniqueness at N)", () => {

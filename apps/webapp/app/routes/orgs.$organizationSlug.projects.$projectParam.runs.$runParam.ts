@@ -6,6 +6,7 @@ import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, v3RunPath } from "~/utils/pathBuilder";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamSchema = ProjectParamSchema.extend({
   runParam: z.string(),
@@ -15,16 +16,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, runParam } = ParamSchema.parse(params);
 
-  const run = await runStore.findRun(
-    {
-      friendlyId: runParam,
-    },
-    {
-      select: {
-        projectId: true,
-        runtimeEnvironmentId: true,
-      },
-    }
+  const run = await undefinedOnUnroutableId(
+    () =>
+      runStore.findRun(
+        {
+          friendlyId: runParam,
+        },
+        {
+          select: {
+            projectId: true,
+            runtimeEnvironmentId: true,
+          },
+        }
+      ),
+    { runParam: params.runParam ?? params.runId }
   );
 
   if (!run) {

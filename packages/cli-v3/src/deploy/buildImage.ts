@@ -837,10 +837,9 @@ ${postInstallCommands}
 # node_modules may not exist when there are no dependencies to install
 RUN mkdir -p node_modules
 
-FROM build AS code
+FROM scratch AS code
 
-# u+rwX first: non-root rm fails on read-only or non-traversable directories
-RUN chmod -R u+rwX node_modules && rm -rf node_modules
+COPY --from=build --exclude=node_modules /app /app
 
 FROM build AS indexer
 
@@ -945,10 +944,9 @@ COPY --chown=node:node . .
 # node_modules may not exist when there are no dependencies to install
 RUN mkdir -p node_modules
 
-FROM build AS code
+FROM scratch AS code
 
-# u+rwX first: non-root rm fails on read-only or non-traversable directories
-RUN chmod -R u+rwX node_modules && rm -rf node_modules
+COPY --from=build --exclude=node_modules /app /app
 
 FROM build AS indexer
 

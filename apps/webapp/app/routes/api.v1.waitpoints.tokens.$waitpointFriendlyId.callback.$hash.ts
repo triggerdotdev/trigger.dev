@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
+import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
@@ -102,6 +103,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
       { status: 200 }
     );
   } catch (error) {
+    // Same as the complete route: the waitpoint id comes off the URL, so an unconfigured shard
+    // key is caller-supplied input and must answer 404 rather than 500. This route is a bare
+    // Remix action, so the api-builder boundary never sees the error — answer it here.
+    const unroutable = unroutableIdResponse(error);
+    if (unroutable) {
+      // Same reason as the complete route: a silent 404 would hide a dropped shard key.
+      logger.warn("Unroutable waitpoint id on HTTP callback", {
+        waitpointFriendlyId: params.waitpointFriendlyId,
+        error: error instanceof Error ? error.message : error,
+      });
+      return unroutable;
+    }
+
     logger.error("Failed to complete HTTP callback", { error });
     throw json({ error: "Failed to complete HTTP callback" }, { status: 500 });
   }

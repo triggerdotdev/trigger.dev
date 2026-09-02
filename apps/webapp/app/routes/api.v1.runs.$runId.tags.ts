@@ -10,6 +10,7 @@ import { logger } from "~/services/logger.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
 import { runStore } from "~/v3/runStore.server";
+import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 
 // Pull the existing tags out of a buffer entry's serialised payload so
 // the buffer-path response can dedup against them, matching the
@@ -137,6 +138,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
     return outcome.response;
   } catch (error) {
+    const unroutable = unroutableIdResponse(error);
+    if (unroutable) {
+      logger.warn("Unroutable run id on run tags", {
+        error: error instanceof Error ? error.message : error,
+      });
+      return unroutable;
+    }
+
     logger.error("Failed to add run tags", { error });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }

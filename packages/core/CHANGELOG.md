@@ -1,5 +1,44 @@
 # internal-platform
 
+## 4.5.15
+
+### Patch Changes
+
+- Stop shipping compiled test files in the published packages. The `*.test.ts` sources were being emitted into `dist`, adding dead weight to every install and leaving modules that `require("vitest")` (not a dependency) inside the tarball, which tripped tooling that walks every file in a package. ([#4833](https://github.com/triggerdotdev/trigger.dev/pull/4833))
+- Named side channels on a Session: durable, two-way realtime streams that outlive a single run and are shared across runs. Open a channel with `sessions.open(id).channel(name)` (or `chat.channel(name)` inside a `chat.agent`) to get an `.in`/`.out` pair addressed by name rather than the reserved default pair. Writing a side channel's `.in` does not wake or trigger a run, so a channel can carry out-of-band data (a stream of frames, a control signal) that many clients read while the agent produces it. ([#4815](https://github.com/triggerdotdev/trigger.dev/pull/4815))
+
+  ```ts
+  // Inside a chat.agent: stream frames on a named channel, wakes nothing
+  const frames = chat.channel("screenshots");
+  await frames.out.append(frame);
+  frames.in.on((control) => {
+    /* client control, no suspend */
+  });
+  ```
+
+  Declare channel record types once with `sessions.defineChannel(...)` and infer them on both the producer and the consumer, including `useSessionStreamChannel` in React. Channels get a default retention that keeps them bounded, overridable per channel.
+
+- Session `triggerConfig.tags` now accepts up to 10 tags, matching the run tag limit. Previously it was capped at 5, which for `chat.agent` left room for only 4 of your own tags after the automatic `chat:{chatId}` tag. ([#4832](https://github.com/triggerdotdev/trigger.dev/pull/4832))
+
+## 4.5.14
+
+### Patch Changes
+
+- Realtime stream subscriptions can now refresh an expired access token and reconnect, via a new optional `refreshAccessToken` option on the client configuration and the React hooks. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+- Subscribe to a realtime stream from its latest record instead of replaying the whole history. Pass `from: "latest"` to `useRealtimeStream`, `streams.read()`, or `fetchStream` to start at the current tail (the latest record, then live updates) instead of replaying (a live "last value" view), and `maxParts` to keep the accumulated `parts` array bounded. A reconnect or remount resumes from the last record it saw, so no records are missed and none are replayed. `from: "latest"` needs a server that supports it; older servers safely fall back to a full replay. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+
+  `useRealtimeStream` also gains a `lastEventId` option and returns the `lastEventId` of the last part seen, so you can persist the cursor (for example across a page reload) and resume exactly where you left off. An `onParts` callback delivers each throttled batch of parts with their event ids.
+
+  ```tsx
+  const { parts, lastEventId } = useRealtimeStream<Frame>(runId, "frames", {
+    from: "latest", // skip history, start at the current tail
+    maxParts: 1, // keep only the most recent frame
+    lastEventId: savedCursor, // resume from a persisted cursor
+    onParts: (batch) => save(batch.at(-1)?.id), // track the cursor
+    accessToken,
+  });
+  ```
+
 ## 4.5.13
 
 ### Patch Changes

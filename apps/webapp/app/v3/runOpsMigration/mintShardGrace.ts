@@ -67,15 +67,25 @@ export function effectiveMintShardSet(
   return nowMs < r.flippedAtMs + graceMs ? r.prevSet : r.set;
 }
 
+/** Reports a stored value that could not be parsed. The module stays pure; the caller logs. */
+export type MintShardSetParseFailure = { key: string; value: string; error: unknown };
+
 // The active set lives in the control-plane database, not in the environment. A deploy rolls
 // for hours, so two pods can hold different environment values at the same time; only a shared
 // row lets every pod agree on one set. Boot may reject a bad environment value, but the mint
 // path must never throw on a bad stored value, so an unreadable list degrades to empty.
-function readStoredCsv(value: unknown): string[] {
+//
+// Degrading is right; degrading SILENTLY is not. An unparseable value (a `"A,B"` typed in
+// uppercase) reverts the whole fleet to gen-1 minting, so the failure is reported to the caller,
+// which owns the logger. The reserved-key and alphabet rejections are the same failure.
+export type OnInvalidShardSet = (failure: MintShardSetParseFailure) => void;
+
+function readStoredCsv(value: unknown, key: string, onInvalid?: OnInvalidShardSet): string[] {
   if (typeof value !== "string") return [];
   try {
     return parseShardCsv(value);
-  } catch {
+  } catch (error) {
+    onInvalid?.({ key, value, error });
     return [];
   }
 }
@@ -84,7 +94,8 @@ function readStoredCsv(value: unknown): string[] {
 // timestamp can never apply, so it is dropped. A timestamp with an EMPTY prevSet is meaningful:
 // it graces a first activation, serving no shards for the window.
 export function readMintShardSetResolution(
-  flags: Record<string, unknown> | null | undefined
+  flags: Record<string, unknown> | null | undefined,
+  onInvalid?: OnInvalidShardSet
 ): MintShardSetResolution {
   const source = flags ?? {};
   const flippedAtRaw = source[SET_FLIPPED_AT_KEY];
@@ -92,8 +103,11 @@ export function readMintShardSetResolution(
   const flippedAtMs = Number.isNaN(parsed) ? undefined : parsed;
 
   return {
-    set: readStoredCsv(source[SET_KEY]),
-    prevSet: flippedAtMs === undefined ? undefined : readStoredCsv(source[SET_PREV_KEY]),
+    set: readStoredCsv(source[SET_KEY], SET_KEY, onInvalid),
+    prevSet:
+      flippedAtMs === undefined
+        ? undefined
+        : readStoredCsv(source[SET_PREV_KEY], SET_PREV_KEY, onInvalid),
     flippedAtMs,
   };
 }
@@ -105,7 +119,8 @@ export function stampMintShardSetFlip(
   existingFlags: Record<string, unknown> | null | undefined,
   outgoingFlags: Record<string, unknown>,
   nowMs: number,
-  graceMs: number
+  graceMs: number,
+  onInvalid?: OnInvalidShardSet
 ): Record<string, unknown> {
   // Only act when the save actually SETS the list. Omitting it must not inject a default.
   if (typeof outgoingFlags[SET_KEY] !== "string") {
@@ -113,11 +128,15 @@ export function stampMintShardSetFlip(
   }
 
   const existing = existingFlags ?? {};
-  const outgoingSet = readStoredCsv(outgoingFlags[SET_KEY]);
-  const storedSet = readStoredCsv(existing[SET_KEY]);
+  const outgoingSet = readStoredCsv(outgoingFlags[SET_KEY], SET_KEY, onInvalid);
+  const storedSet = readStoredCsv(existing[SET_KEY], SET_KEY, onInvalid);
 
   if (outgoingSet.join(",") !== storedSet.join(",")) {
-    const effective = effectiveMintShardSet(readMintShardSetResolution(existing), nowMs, graceMs);
+    const effective = effectiveMintShardSet(
+      readMintShardSetResolution(existing, onInvalid),
+      nowMs,
+      graceMs
+    );
     outgoingFlags[SET_PREV_KEY] = effective.join(",");
     outgoingFlags[SET_FLIPPED_AT_KEY] = new Date(nowMs).toISOString();
     return outgoingFlags;

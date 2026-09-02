@@ -33,7 +33,18 @@ on:
       - "packages/**"
       - "!packages/**/*.md"
       - "!packages/**/*.eslintrc"
+      # CLI + libraries published to npm; none are built into the webapp/supervisor images.
+      - "!packages/cli-v3/**"
+      - "!packages/build/**"
+      - "!packages/python/**"
+      - "!packages/react-hooks/**"
+      - "!packages/rsc/**"
+      - "!packages/schema-to-json/**"
       - "internal-packages/**"
+      # Test/tooling-only internal packages, never in an image.
+      - "!internal-packages/testcontainers/**"
+      - "!internal-packages/sdk-compat-tests/**"
+      - "!internal-packages/observability-map/**"
       - "apps/**"
       - "!apps/**/*.md"
       - "!apps/**/*.eslintrc"
