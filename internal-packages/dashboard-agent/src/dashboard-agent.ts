@@ -88,6 +88,14 @@ export {
 export const TURN_FAILED_MESSAGE =
   "Something went wrong on my side, so that turn didn't finish. Ask again and I'll pick it up.";
 
+/**
+ * What one failed tool call leaves behind. The panel shows it verbatim on the call,
+ * so it stays one clause and what to do next is the system prompt's job; the turn
+ * itself is still alive, and saying it isn't would end a turn the model can still
+ * finish.
+ */
+export const TOOL_FAILED_MESSAGE = "That call failed and returned no data.";
+
 /** Stable per turn, so a re-run of the error path can't stack two records. */
 export function turnFailureMessageId(turn: number): string {
   return `turn-error:${turn}`;
@@ -391,15 +399,27 @@ export const dashboardAgent = chat.agent({
   idleTimeoutInSeconds: 60,
 
   uiMessageStreamOptions: {
-    // The stream carries the same sentence the transcript keeps, so the live chunk
-    // and the stored record never disagree. The provider's own message is logged
-    // here and goes no further.
+    /**
+     * Called for a failed TOOL CALL as well as a failed stream, and what it returns
+     * is both what the panel shows and what the model reads back as that call's
+     * result. Only `run`'s own `onError` sees a stream failure, and it has already
+     * run by the time an error reaches here, so the flag is what tells the two
+     * apart: a call the model can recover from must neither claim the turn is over
+     * nor be the only thing the model is told about it.
+     *
+     * For a turn failure the stream carries the same sentence the transcript keeps,
+     * so the live chunk and the stored record never disagree. Either way the
+     * provider's — or the tool's — own message is logged here and goes no further.
+     */
     onError: (error) => {
-      locals.set(turnErroredKey, true);
-      logger.error("dashboard-agent turn failed", {
+      if (locals.get(turnErroredKey) === true) return TURN_FAILED_MESSAGE;
+      // A tool's exception is swallowed into that call's result, so this is the only
+      // place it is ever visible.
+      logger.error("dashboard-agent tool call failed", {
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
-      return TURN_FAILED_MESSAGE;
+      return TOOL_FAILED_MESSAGE;
     },
   },
 
@@ -616,6 +636,16 @@ export const dashboardAgent = chat.agent({
         resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
       messages,
       abortSignal: signal,
+      // Only a stream failure reaches here — a tool's own failure never does. That
+      // is what makes this the turn's error flag: a failed call the model then
+      // works around used to mark the whole turn failed and append the apology to
+      // a turn that had already answered.
+      onError: ({ error }) => {
+        locals.set(turnErroredKey, true);
+        logger.error("dashboard-agent turn failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
       prepareStep: stepCachePrepareStep(options) as never,
       // Per model call, so the head-start prefix and this one can be compared.
       onStepFinish: (finished) =>

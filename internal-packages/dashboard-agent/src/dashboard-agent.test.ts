@@ -36,6 +36,7 @@ import {
   prepareTurnMessages,
   sanitizeReplayedToolInputs,
   truncateEvalToolOutput,
+  TOOL_FAILED_MESSAGE,
   TURN_FAILED_MESSAGE,
   turnFailureMessageId,
   type DashboardAgentEvalPolicyCheck,
@@ -1181,6 +1182,63 @@ describe("a turn that ends in an error", () => {
     expect(JSON.stringify(stored)).not.toContain("upstream_connect_error");
     // The user's question stays in the transcript next to it.
     expect(stored.some((message) => message.role === "user")).toBe(true);
+  });
+
+  /**
+   * A tool's exception is handed to the same hook a stream failure is, so one failed
+   * call used to mark the whole turn failed: the model worked around it, answered,
+   * and the user still got "Something went wrong" under a finished answer — and the
+   * model was told the turn was over instead of what to try next.
+   */
+  it("a failed tool call the model works around is not a failed turn", async () => {
+    const { store, history } = transcriptStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_tool_error",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentToolsKey, {
+          render_view: tool({
+            description: "test double",
+            inputSchema: z.object({ blocks: z.array(z.unknown()).optional() }),
+            execute: async () => ({ blocks: [] }),
+          }),
+          offer_watch: tool({
+            description: "test double that fails the way a tool bug does",
+            inputSchema: z.object({ note: z.string().optional() }),
+            execute: async (): Promise<{ ok: boolean }> => {
+              throw new Error("Cannot read properties of undefined (reading 'fingerprint')");
+            },
+          }),
+        });
+        set(
+          dashboardAgentModelKey,
+          mockModel([
+            toolCallStep("render_view", {}, "tc_verdict"),
+            toolCallStep("offer_watch", {}, "tc_offer"),
+            textStep("Rate limited — the retries all land in one window."),
+          ])
+        );
+      },
+    });
+
+    const turn = await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
+
+    // The model is told what happened to that call, not that the turn is over.
+    const toolError = turn.chunks.find(
+      (chunk) => (chunk as { type?: string }).type === "tool-output-error"
+    ) as { errorText?: string } | undefined;
+    expect(toolError?.errorText).toBe(TOOL_FAILED_MESSAGE);
+    expect(collectText(turn.chunks)).toBe("Rate limited — the retries all land in one window.");
+
+    await new Promise((r) => setTimeout(r, 30));
+
+    // And nothing tells the user the turn didn't finish, because it did.
+    const stored = history();
+    expect(stored.find((message) => message.id === turnFailureMessageId(0))).toBeUndefined();
+    expect(JSON.stringify(stored)).not.toContain(TURN_FAILED_MESSAGE);
+    // The tool's own words never reach the transcript either.
+    expect(JSON.stringify(stored)).not.toContain("fingerprint");
   });
 });
 
