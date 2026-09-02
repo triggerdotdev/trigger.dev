@@ -10,6 +10,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -86,6 +87,19 @@ const { action, loader } = createActionApiRoute(
       // Re-throw Response objects (intentional HTTP responses like the 404 above) so the
       // client gets the correct status code instead of a 500, and we don't log them as errors.
       if (error instanceof Response) throw error;
+
+      // A caller-supplied id naming a shard this topology has no store for cannot be routed,
+      // so it is a 404 like an absent token — not the 500 this catch would otherwise answer.
+      const unroutable = unroutableIdResponse(error);
+      if (unroutable) {
+        // Logged so a shard key dropped from an append-only config still alarms, rather than
+        // every live token on it quietly answering "not found".
+        logger.warn("Unroutable waitpoint id on token completion", {
+          waitpointFriendlyId: params.waitpointFriendlyId,
+          error: error instanceof Error ? error.message : error,
+        });
+        throw unroutable;
+      }
 
       logger.error("Failed to complete waitpoint token", {
         error:

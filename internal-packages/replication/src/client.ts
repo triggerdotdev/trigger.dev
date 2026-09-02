@@ -5,7 +5,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import EventEmitter from "node:events";
 import { type ClientConfig, type Connection, Client } from "pg";
 import Redlock, { type Lock } from "redlock";
-import { LogicalReplicationClientError } from "./errors.js";
+import { LogicalReplicationClientError, PublicationMisconfiguredError } from "./errors.js";
 import {
   type PgoutputMessage,
   getPgoutputStartReplicationSQL,
@@ -609,7 +609,13 @@ export class LogicalReplicationClient {
           error: validationError,
         });
 
-        this.events.emit("error", new LogicalReplicationClientError(validationError));
+        this.events.emit(
+          "error",
+          new PublicationMisconfiguredError(validationError, {
+            publicationName: this.options.publicationName,
+            table: this.options.table,
+          })
+        );
         return false;
       }
 
@@ -672,7 +678,14 @@ export class LogicalReplicationClient {
 
   async #validatePublicationConfiguration(): Promise<string | null> {
     if (!this.client) {
-      return "Cannot validate publication configuration: client not connected";
+      // Not a misconfiguration: a disconnected client cannot be inspected, and reporting it as
+      // one would count a connectivity fault on the publication series. Unreachable today, since
+      // both callers guard on `this.client` first.
+      this.logger.debug("Skipping publication validation: client not connected", {
+        name: this.options.name,
+        publicationName: this.options.publicationName,
+      });
+      return null;
     }
 
     // Check if the publication has the correct table

@@ -1785,6 +1785,12 @@ export function createLoaderWorkerApiRoute<
         return error;
       }
 
+      const unroutable = unroutableIdResponse(error);
+      if (unroutable) {
+        logBoundaryError("Unroutable id", error, request.url);
+        return unroutable;
+      }
+
       logBoundaryError("Error in loader", error, request.url);
 
       return json({ error: "Internal Server Error" }, { status: 500 });
@@ -1952,6 +1958,12 @@ export function createActionWorkerApiRoute<
 
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: error.status ?? 422 });
+      }
+
+      const unroutable = unroutableIdResponse(error);
+      if (unroutable) {
+        logBoundaryError("Unroutable id", error, request.url);
+        return unroutable;
       }
 
       logBoundaryError("Error in action", error, request.url);

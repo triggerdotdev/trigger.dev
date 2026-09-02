@@ -66,6 +66,27 @@ function reportOverrideRejected(info: { override: string; activeSet: string[] })
   logger.error("[runOpsMintShard] override shard is not in the active set; ignoring it", info);
 }
 
+// Keyed by the offending value, like the override report: one bad stored list applies to the whole
+// fleet. Bounded and TTL'd because the refresh runs once per cache TTL per process, which would
+// otherwise repeat this line for as long as the value stays broken.
+const reportedSetParseFailures = singleton(
+  "runOpsMintShardReportedSetParseFailures",
+  () => new BoundedTtlCache<true>(REPORT_TTL_MS, REPORT_MAX_ENTRIES)
+);
+
+// The stored list degrades to empty on a parse failure, which is the correct fail-safe but reverts
+// the whole fleet to gen-1 minting. `shard-set read failed` never covers this: the read SUCCEEDED.
+function reportSetParseFailed(failure: { key: string; value: string; error: unknown }): void {
+  const cacheKey = `${failure.key}:${failure.value}`;
+  if (reportedSetParseFailures.get(cacheKey) !== undefined) return;
+  reportedSetParseFailures.set(cacheKey, true);
+  logger.error("[runOpsMintShard] stored shard set is unparseable; minting gen-1 (fail-safe)", {
+    key: failure.key,
+    value: failure.value,
+    error: failure.error instanceof Error ? failure.error.message : failure.error,
+  });
+}
+
 /**
  * Which shard an environment mints new roots into. Call only after resolveRunIdMintKind has
  * returned "runOpsId". Returns "new" to mean a gen-1 run-ops id, which is today's behaviour.
@@ -94,5 +115,6 @@ export async function resolveMintShard(environment: {
     onOverrideRejected: reportOverrideRejected,
     onReadFailed: (error) =>
       logger.error("[runOpsMintShard] shard-set read failed; minting gen-1 (fail-safe)", { error }),
+    onSetParseFailed: reportSetParseFailed,
   });
 }

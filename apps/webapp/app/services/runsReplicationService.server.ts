@@ -116,6 +116,12 @@ export type RunsReplicationServiceOptions = {
   disablePayloadInsert?: boolean;
   disableErrorFingerprinting?: boolean;
   maxPoisonStripsPerBatch?: number;
+  /**
+   * Per-source client error hook. A client error does not stop the service — a misconfigured
+   * publication just replicates nothing while the retry loop logs — so the owner needs a seam to
+   * count it on.
+   */
+  onSourceError?: (info: { sourceId: string; error: unknown }) => void;
 };
 
 type PostgresTaskRun = TaskRun & { masterQueue: string };
@@ -470,6 +476,7 @@ export class RunsReplicationService {
         sourceId: source.id,
         error,
       });
+      this.options.onSourceError?.({ sourceId: source.id, error });
     });
 
     client.events.on("start", () => {
