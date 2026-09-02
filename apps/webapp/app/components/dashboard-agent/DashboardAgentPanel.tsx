@@ -49,7 +49,12 @@ import {
   unreadWorkCount,
 } from "./unread-counts";
 import { AgentPanelColumn } from "./panel-layout";
-import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
+import {
+  markerAfterActiveChat,
+  markerAfterActivity,
+  markerChatId,
+  type ThinkingMarker,
+} from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
@@ -150,10 +155,10 @@ export function DashboardAgentPanel({
     [user.id, organization.id, project.id, environment.id, location.pathname, pageContextKey]
   );
 
-  const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
+  const [thinkingMarker, setThinkingMarker] = useState<ThinkingMarker | null>(null);
   const handleActivityChange = useCallback(
     (chatId: string, activity: TurnActivity | null) => {
-      setThinkingChatId((previous) => markerAfterActivity(previous, chatId, activity));
+      setThinkingMarker((previous) => markerAfterActivity(previous, chatId, activity, Date.now()));
       onTurnActivityChange?.(chatId, activity !== null);
     },
     [onTurnActivityChange]
@@ -168,8 +173,21 @@ export function DashboardAgentPanel({
 
   // Ordering-safe: if the new chat has not reported yet, its own report re-sets the marker.
   useEffect(() => {
-    setThinkingChatId((previous) => markerAfterActiveChat(previous, active?.chatId));
+    setThinkingMarker((previous) => markerAfterActiveChat(previous, active?.chatId, Date.now()));
   }, [active?.chatId]);
+
+  const thinkingChatId = markerChatId(thinkingMarker, active?.chatId, Date.now());
+
+  useEffect(() => {
+    if (thinkingMarker === null || thinkingMarker.chatId === active?.chatId) return;
+    const remaining = thinkingMarker.expiresAt - Date.now();
+    if (remaining <= 0) {
+      setThinkingMarker(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setThinkingMarker(null), remaining);
+    return () => window.clearTimeout(timer);
+  }, [thinkingMarker, active?.chatId]);
 
   const loadHistory = useMemo(
     () =>
@@ -534,7 +552,7 @@ export function DashboardAgentPanel({
         toast.error("We couldn't delete that chat. Try again in a moment.");
         return;
       }
-      setThinkingChatId((previous) => (previous === id ? null : previous));
+      setThinkingMarker((previous) => (previous?.chatId === id ? null : previous));
       if (id === active?.chatId) newChat();
       void loadHistory();
     },
