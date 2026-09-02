@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.5.16
+
+### Patch Changes
+
+- The `trigger.dev deploy` and `trigger.dev dev` commands now warn (with the suggested fix) when your code loads a package through `createRequire()` that won't be available in the deployed image. Previously it would fail at runtime in production to load the package. Deploys also now show bundler warnings for your code instead of discarding them. ([#4851](https://github.com/triggerdotdev/trigger.dev/pull/4851))
+
 ## 4.5.15
 
 ### Patch Changes
