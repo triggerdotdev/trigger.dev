@@ -1,7 +1,13 @@
-import { Prisma, boundedIn, withTransactionStartRetry } from "@trigger.dev/database";
+import {
+  Prisma,
+  boundedIn,
+  withInfraRetry,
+  withTransactionStartRetry,
+} from "@trigger.dev/database";
 import type {
   BatchTaskRun,
   BatchTaskRunItemStatus,
+  InfraRetryConfig,
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
@@ -126,6 +132,12 @@ export type PostgresRunStoreOptions = {
    * Defaults to true, so the store behaves exactly as it always has.
    */
   snapshotWrites?: boolean;
+  /**
+   * Env-driven connection-blip retry, threaded from the app boundary (IoC). When set (and enabled)
+   * the store retries a snapshot write that carries a caller-supplied id (idempotent on replay) on
+   * an infrastructure/connectivity error. Undefined leaves every write running exactly once.
+   */
+  infraRetry?: InfraRetryConfig;
 };
 
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
@@ -649,6 +661,7 @@ export class PostgresRunStore implements RunStore {
   private readonly snapshotWrites: boolean;
   private readonly maxWait?: number;
   private readonly transactionStartRetry?: TransactionStartRetryConfig;
+  private readonly infraRetry?: InfraRetryConfig;
 
   constructor(options: PostgresRunStoreOptions) {
     // Normalize foreign (run-ops-generation) Prisma known-request-errors to the control-plane
@@ -659,6 +672,7 @@ export class PostgresRunStore implements RunStore {
     this.schemaVariant = options.schemaVariant ?? "legacy";
     this.maxWait = options.maxWait;
     this.transactionStartRetry = options.transactionStartRetry;
+    this.infraRetry = options.infraRetry;
     this.snapshotWrites = options.snapshotWrites ?? true;
   }
 
@@ -1996,7 +2010,18 @@ export class PostgresRunStore implements RunStore {
     // can be served from a lagging read replica, so a snapshot that commits before its links can be
     // read back waitpoint-less and the runner's resume is lost (the run hangs). This is the warm-continue
     // path: the engine threads its base prisma through as `tx`, which is not a real transaction.
-    return this.#withOptionalTransaction(tx, (c) => this.#createExecutionSnapshot(input, c));
+    const run = () =>
+      this.#withOptionalTransaction(tx, (c) => this.#createExecutionSnapshot(input, c));
+
+    // Retry a connection blip only where it is safe: a caller-supplied id makes the write idempotent
+    // (a replay hits ON CONFLICT and returns the existing row), and only when the caller did not hand
+    // us their own transaction (re-running a statement inside an aborted tx is unsafe).
+    const callerTx =
+      tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
+    if (input.id !== undefined && !callerTx) {
+      return withInfraRetry(run, this.infraRetry);
+    }
+    return run();
   }
 
   async #createExecutionSnapshot(
