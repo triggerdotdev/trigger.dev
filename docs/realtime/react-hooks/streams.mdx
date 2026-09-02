@@ -130,15 +130,83 @@ export function AIStreamViewer({
 The `useRealtimeStream` hook accepts the following options:
 
 ```tsx
-const { parts, error } = useRealtimeStream(streamOrRunId, streamKeyOrOptions, {
+const { parts, lastEventId, error } = useRealtimeStream(streamOrRunId, streamKeyOrOptions, {
   accessToken: "pk_...", // Required: Public access token
   baseURL: "https://api.trigger.dev", // Optional: Custom API URL
   timeoutInSeconds: 60, // Optional: Timeout (default: 60)
-  startIndex: 0, // Optional: Start from specific chunk
+  from: "beginning", // Optional: "beginning" (default) or "latest"
+  maxParts: 100, // Optional: keep only the most recent N parts (default: unbounded)
+  lastEventId: undefined, // Optional: resume cursor (takes precedence over startIndex)
+  startIndex: 0, // Optional: start from a specific chunk index
   throttleInMs: 16, // Optional: Throttle updates (default: 16ms)
-  onData: (chunk) => {}, // Optional: Callback for each chunk
+  onData: (chunk) => {}, // Optional: callback for each chunk
+  onParts: (batch) => {}, // Optional: callback per throttled batch, each with its event id
+  refreshAccessToken: async () => "pk_...", // Optional: mint a fresh token on expiry
 });
 ```
+
+The hook returns `lastEventId`, the cursor of the last part it received. Persist it and pass it back as the `lastEventId` option to resume later.
+
+### Live view: start from the latest record
+
+By default a subscriber replays the whole stream history, then live-tails. Pass `from: "latest"` to start at the current tail (the latest record, then live updates) instead of replaying, and `maxParts` to keep memory bounded. Together they give a last-value view:
+
+```tsx
+"use client";
+
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+
+export function LatestFrame({ runId, accessToken }: { runId: string; accessToken: string }) {
+  const { parts } = useRealtimeStream<{ url: string }>(runId, "frames", {
+    accessToken,
+    from: "latest", // start at the latest frame, then live updates
+    maxParts: 1, // keep just the most recent frame
+  });
+
+  const frame = parts.at(-1);
+  return frame ? <img src={frame.url} alt="latest frame" /> : null;
+}
+```
+
+<Note>
+  `from: "latest"` requires a server that supports it. Against an older server a client that passes
+  it degrades safely to a full replay.
+</Note>
+
+### Resume across a page reload
+
+The hook resumes automatically across a component remount. A full page reload clears in-memory
+state, so to resume there, persist the returned `lastEventId` and pass it back on the next load. The
+subscription then continues after that record with no replay and no gap:
+
+```tsx
+const cursorKey = `frames-cursor:${runId}`; // scope the key to this stream
+const saved = localStorage.getItem(cursorKey) ?? undefined;
+
+const { parts, lastEventId } = useRealtimeStream<{ url: string }>(runId, "frames", {
+  accessToken,
+  lastEventId: saved, // resume where the previous session left off
+  onParts: (batch) => localStorage.setItem(cursorKey, batch.at(-1)!.id),
+});
+```
+
+### Refresh an expired access token
+
+Public access tokens are short-lived. For a long-running subscription, pass `refreshAccessToken` to
+mint a fresh token when the server rejects the connection with a 401/403. The subscription re-mints
+once and reconnects; with no refresher, auth errors stay terminal:
+
+```tsx
+const { parts } = useRealtimeStream<{ url: string }>(runId, "frames", {
+  accessToken,
+  refreshAccessToken: async () => {
+    const res = await fetch("/api/realtime-token"); // your backend mints a fresh public token
+    return (await res.json()).token;
+  },
+});
+```
+
+`refreshAccessToken` is also available on [`useApiClient` and `TriggerAuthContext`](/realtime/auth), so every hook under a provider shares one refresher.
 
 ### Using Default Stream
 

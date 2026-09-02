@@ -90,4 +90,53 @@ describe("TriggerFailedTaskService — failed run residency (callWithoutTraceEve
       await engine.quit();
     }
   );
+
+  containerTest(
+    "a pre-minted runFriendlyId passes through untouched",
+    async ({ prisma, redisOptions }) => {
+      const engine = makeEngine(prisma, redisOptions);
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "failed-residency-passthrough";
+      await setupBackgroundWorker(engine, environment, taskIdentifier);
+
+      const parentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
+      await engine.trigger(
+        {
+          friendlyId: parentFriendlyId,
+          environment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          traceId: "00000000000000000000000000000000",
+          spanId: "0000000000000000",
+          workerQueue: "main",
+          queue: `task/${taskIdentifier}`,
+          isTest: false,
+          tags: [],
+        } as any,
+        prisma
+      );
+
+      // A batch item arrives with its id already minted from the BATCH. Re-resolving it
+      // here would move the item off its batch's shard, so the pass-through has to win
+      // over the mint-target resolver.
+      const preMinted = RunId.toFriendlyId(generateRunOpsId());
+
+      const friendlyId = await makeService(prisma, engine).callWithoutTraceEvents({
+        environmentId: environment.id,
+        environmentType: environment.type,
+        projectId: environment.projectId,
+        organizationId: environment.organizationId,
+        taskId: taskIdentifier,
+        payload: { test: "passthrough" },
+        errorMessage: "boom",
+        parentRunId: parentFriendlyId,
+        runFriendlyId: preMinted,
+      });
+
+      expect(friendlyId).toBe(preMinted);
+
+      await engine.quit();
+    }
+  );
 });

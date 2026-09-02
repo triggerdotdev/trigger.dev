@@ -1,4 +1,4 @@
-import { isRunOpsIdBody, parseRunOpsIdV2Body } from "./friendlyId.js";
+import { isRunOpsIdBodyShape, runOpsIdV2ShardShape } from "./friendlyId.js";
 
 /**
  * The two store FAMILIES a run/waitpoint can reside in. "NEW" is the dedicated
@@ -61,10 +61,10 @@ function internalForm(id: string): string {
 export function resolveShard(id: string): ShardKey {
   const body = internalForm(id);
 
-  const genTwo = parseRunOpsIdV2Body(body);
-  if (genTwo) return genTwo.shard;
+  const shard = runOpsIdV2ShardShape(body);
+  if (shard !== undefined) return shard;
 
-  return isRunOpsIdBody(body) ? "new" : "legacy";
+  return isRunOpsIdBodyShape(body) ? "new" : "legacy";
 }
 
 /**

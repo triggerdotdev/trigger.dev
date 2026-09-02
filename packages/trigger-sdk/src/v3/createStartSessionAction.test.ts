@@ -96,12 +96,12 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.basePayload).not.toHaveProperty("metadata");
   });
 
-  it("prepends chat:{chatId} to triggerConfig.tags and caps at 5", async () => {
+  it("prepends chat:{chatId} to triggerConfig.tags and caps at 10", async () => {
     installStartFixture();
 
     const start = chat.createStartSessionAction("fake-chat", {
       triggerConfig: {
-        tags: ["org:acme", "a", "b", "c", "d", "e"],
+        tags: ["org:acme", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
       },
     });
     await start({ chatId: "chat-tags" });
@@ -112,7 +112,25 @@ describe("chat.createStartSessionAction — runtime", () => {
       "a",
       "b",
       "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
     ]);
+  });
+
+  it("omits the chat tag when the chat ID would exceed the tag length limit", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { tags: ["org:acme"] },
+    });
+    const longChatId = "c".repeat(200);
+    await start({ chatId: longChatId });
+
+    expect(lastStartBody?.triggerConfig.tags).toEqual(["org:acme"]);
+    expect(lastStartBody?.externalId).toBe(longChatId);
   });
 
   it("forwards maxDuration, region, and lockToVersion from triggerConfig", async () => {

@@ -113,7 +113,12 @@ export type MockTaskContextDrivers = {
        * Send a record onto `session.in` for the given session. Resolves
        * pending `once()` waiters and fires all `on()` handlers.
        */
-      send(sessionId: string, data: unknown, io?: SessionChannelIO): Promise<void>;
+      send(
+        sessionId: string,
+        data: unknown,
+        io?: SessionChannelIO,
+        metadata?: { id?: string; seqNum?: number }
+      ): Promise<void>;
       /** Close pending `once()` waiters with a timeout error. */
       close(sessionId: string, io?: SessionChannelIO): void;
     };
@@ -277,9 +282,9 @@ export async function runInMockTaskContext<T>(
     },
     sessions: {
       in: {
-        send: (sessionId, data, io = "in") =>
+        send: (sessionId, data, io = "in", metadata) =>
           sessionStreamManager instanceof TestSessionStreamManager
-            ? sessionStreamManager.__sendFromTest(sessionId, io, data)
+            ? sessionStreamManager.__sendFromTest(sessionId, io, data, metadata)
             : Promise.reject(
                 new Error("drivers.sessions.in.send requires the default TestSessionStreamManager")
               ),

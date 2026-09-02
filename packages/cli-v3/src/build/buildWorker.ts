@@ -1,6 +1,17 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
-import { BundleResult, bundleWorker, createBuildManifestFromBundle } from "./bundle.js";
+import {
+  BundleResult,
+  bundleWorker,
+  createBuildManifestFromBundle,
+  logBuildWarnings,
+} from "./bundle.js";
+import {
+  collectCreateRequireWarningMessages,
+  CreateRequireCollector,
+  extensionInstalledPackageMatchers,
+  NODE_MODULES_SEGMENT_REGEX,
+} from "./createRequireWarnings.js";
 import { bundleSkills } from "./bundleSkills.js";
 import {
   createBuildContext,
@@ -47,6 +58,8 @@ export async function buildWorker(options: BuildWorkerOptions) {
 
   const resolvedConfig = options.resolvedConfig;
 
+  const extensionPackages = extensionInstalledPackageMatchers(resolvedConfig);
+
   const externalsExtension = createExternalsBuildExtension(
     options.target,
     resolvedConfig,
@@ -72,6 +85,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);
 
   const sdkVersionExtractor = new SdkVersionExtractor();
+  const createRequireCollector = new CreateRequireCollector(resolvedConfig.workingDir);
 
   options.listener?.onBundleStart?.();
 
@@ -81,7 +95,11 @@ export async function buildWorker(options: BuildWorkerOptions) {
     destination: options.destination,
     watch: false,
     resolvedConfig,
-    plugins: [sdkVersionExtractor.plugin, ...pluginsFromExtensions],
+    plugins: [
+      sdkVersionExtractor.plugin,
+      ...(options.target === "dev" ? [] : [createRequireCollector.plugin]),
+      ...pluginsFromExtensions,
+    ],
     jsxFactory: resolvedConfig.build.jsx.factory,
     jsxFragment: resolvedConfig.build.jsx.fragment,
     jsxAutomatic: resolvedConfig.build.jsx.automatic,
@@ -127,6 +145,23 @@ export async function buildWorker(options: BuildWorkerOptions) {
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
   if (options.target !== "dev") {
+    const buildWarnings = [
+      ...bundleResult.warnings.filter(
+        (warning) =>
+          !warning.location?.file || !NODE_MODULES_SEGMENT_REGEX.test(warning.location.file)
+      ),
+      ...collectCreateRequireWarningMessages({
+        usages: createRequireCollector.usages,
+        buildManifest,
+        extensionPackages,
+        target: options.target,
+      }),
+    ];
+
+    if (buildWarnings.length > 0) {
+      logBuildWarnings(buildWarnings, { color: !options.plain });
+    }
+
     buildManifest = options.rewritePaths
       ? rewriteBuildManifestPaths(buildManifest, options.destination)
       : buildManifest;

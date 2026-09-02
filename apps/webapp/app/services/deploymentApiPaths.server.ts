@@ -4,6 +4,7 @@ export const deploymentApiPaths: (RegExp | string)[] = [
   // /current is runtime SDK surface, kept out of the deploy budget
   /^\/api\/v\d+\/deployments(?!\/current$)(\/|$)/,
   /^\/api\/v1\/projects\/[^/]+\/(dev|staging|prod|preview)$/,
+  /^\/api\/v1\/projects\/[^/]+\/(dev|staging|prod|preview)\/deploy-settings$/,
   /^\/api\/v1\/projects\/[^/]+\/envvars$/,
   /^\/api\/v1\/projects\/[^/]+\/envvars\/[^/]+\/import$/,
   /^\/api\/v1\/projects\/[^/]+\/branches$/,

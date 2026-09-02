@@ -5,14 +5,16 @@
  * is what keeps every gen-2 arm unreachable today.
  */
 import type { PrismaClient } from "@trigger.dev/database";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaReplicaClient } from "~/db.server";
 import { runOpsShardHandles } from "~/db.server";
 
 type ShardHandle = {
   key: string;
-  writer: unknown;
-  replica: unknown;
+  writer: RunOpsPrismaClient;
+  replica: RunOpsPrismaClient;
+  aliasOf?: string;
 };
 
 export function buildShardHandleMaps(handles: ShardHandle[]): {
@@ -22,8 +24,8 @@ export function buildShardHandleMaps(handles: ShardHandle[]): {
   const replicas = new Map<ShardKey, PrismaReplicaClient>();
   const writers = new Map<ShardKey, PrismaClient>();
   for (const handle of handles) {
-    replicas.set(handle.key, handle.replica as PrismaReplicaClient);
-    writers.set(handle.key, handle.writer as PrismaClient);
+    replicas.set(handle.key, handle.replica as unknown as PrismaReplicaClient);
+    writers.set(handle.key, handle.writer as unknown as PrismaClient);
   }
   return { replicas, writers };
 }
@@ -40,7 +42,17 @@ function resolveShardHandles(): ShardHandle[] {
   }
 }
 
-const maps = buildShardHandleMaps(resolveShardHandles());
+export function nonAliasedShardReplicas<TClient>(
+  handles: ReadonlyArray<{ key: string; replica: TClient; aliasOf?: string }>
+): ReadonlyArray<{ key: string; replica: TClient }> {
+  return handles
+    .filter((handle) => handle.aliasOf === undefined)
+    .map((handle) => ({ key: handle.key, replica: handle.replica }));
+}
+
+const handles = resolveShardHandles();
+const maps = buildShardHandleMaps(handles);
 
 export const runOpsShardReplicas = maps.replicas;
 export const runOpsShardWriters = maps.writers;
+export const runOpsNonAliasedShardReplicas = nonAliasedShardReplicas(handles);

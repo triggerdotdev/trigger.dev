@@ -144,8 +144,11 @@ With options:
 const stream = await aiStream.read(runId, {
   timeoutInSeconds: 60, // Stop if no data for 60 seconds
   startIndex: 10, // Start from the 10th chunk
+  from: "latest", // Or skip history and read only new records from now
 });
 ```
+
+Pass `from: "latest"` to start at the current tail and receive only records appended after the read connects, instead of replaying from the beginning.
 
 #### Appending to a Stream
 

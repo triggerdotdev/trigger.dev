@@ -150,8 +150,14 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
    * the session's `friendlyId` and the I/O direction. Used by the session
    * realtime routes to route traffic to `sessions/{friendlyId}/{out|in}`.
    */
-  public toSessionStreamName(friendlyId: string, io: "out" | "in"): string {
-    return `${this.streamPrefix}/sessions/${friendlyId}/${io}`;
+  public toSessionStreamName(friendlyId: string, io: "out" | "in", channel?: string): string {
+    return `${this.streamPrefix}${this.#sessionStreamRelativeName(friendlyId, io, channel)}`;
+  }
+
+  #sessionStreamRelativeName(friendlyId: string, io: "out" | "in", channel?: string): string {
+    return channel
+      ? `/sessions/${friendlyId}/channels/${channel}/${io}`
+      : `/sessions/${friendlyId}/${io}`;
   }
 
   async initializeStream(
@@ -170,11 +176,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
    */
   async initializeSessionStream(
     friendlyId: string,
-    io: "out" | "in"
+    io: "out" | "in",
+    channel?: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
     return this.#initializeStreamByName(
-      this.toSessionStreamName(friendlyId, io),
-      `/sessions/${friendlyId}/${io}`
+      this.toSessionStreamName(friendlyId, io, channel),
+      this.#sessionStreamRelativeName(friendlyId, io, channel)
     );
   }
 
@@ -217,9 +224,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     part: string,
     partId: string,
     friendlyId: string,
-    io: "out" | "in"
+    io: "out" | "in",
+    channel?: string
   ): Promise<number> {
-    return this.#appendPartByName(part, partId, this.toSessionStreamName(friendlyId, io));
+    return this.#appendPartByName(part, partId, this.toSessionStreamName(friendlyId, io, channel));
   }
 
   async #appendPartByName(part: string, partId: string, s2Stream: string): Promise<number> {
@@ -259,9 +267,62 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   async readSessionStreamRecords(
     friendlyId: string,
     io: "out" | "in",
-    afterSeqNum?: number
+    afterSeqNum?: number,
+    channel?: string
   ): Promise<StreamRecord[]> {
-    return this.#readRecordsByName(this.toSessionStreamName(friendlyId, io), afterSeqNum);
+    return this.#readRecordsByName(this.toSessionStreamName(friendlyId, io, channel), afterSeqNum);
+  }
+
+  async listSessionChannels(friendlyId: string): Promise<string[]> {
+    const prefix = `${this.streamPrefix}/sessions/${friendlyId}/channels/`;
+    const names = await this.#s2ListStreamNames(prefix);
+    const channels = new Set<string>();
+    for (const name of names) {
+      const rest = name.slice(prefix.length);
+      const channel = rest.split("/")[0];
+      if (channel) channels.add(channel);
+    }
+    return [...channels];
+  }
+
+  async #s2ListStreamNames(prefix: string): Promise<string[]> {
+    const names: string[] = [];
+    let startAfter: string | undefined;
+
+    for (let page = 0; page < 100; page++) {
+      const qs = new URLSearchParams();
+      qs.set("prefix", prefix);
+      if (startAfter) qs.set("start_after", startAfter);
+
+      const res = await fetch(`${this.baseUrl}/streams?${qs}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/json",
+          "S2-Basin": this.basin,
+        },
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) return names;
+        const text = await res.text().catch(() => "");
+        throw new Error(`S2 listStreams failed: ${res.status} ${res.statusText} ${text}`);
+      }
+
+      const body = (await res.json()) as {
+        has_more?: boolean;
+        streams?: Array<{ name: string; deleted_at?: string | null }>;
+      };
+      const streams = body.streams ?? [];
+      for (const stream of streams) {
+        if (stream.deleted_at) continue;
+        names.push(stream.name);
+      }
+      if (!body.has_more || streams.length === 0) break;
+      startAfter = streams[streams.length - 1]!.name;
+    }
+
+    return names;
   }
 
   async #readRecordsByName(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
@@ -402,9 +463,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     friendlyId: string,
     io: "out" | "in",
     signal: AbortSignal,
-    options?: StreamResponseOptions
+    options?: StreamResponseOptions,
+    channel?: string
   ): Promise<Response> {
-    const s2Stream = this.toSessionStreamName(friendlyId, io);
+    const s2Stream = this.toSessionStreamName(friendlyId, io, channel);
 
     let waitSeconds = options?.timeoutInSeconds ?? this.s2WaitSeconds;
     let settled = false;
@@ -527,12 +589,19 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   ): Promise<Response> {
     const startSeq = this.parseLastEventId(options?.lastEventId);
 
-    this.logger.info(`S2 streaming records from stream`, { stream: s2Stream, startSeq });
+    const tailFromLatest = startSeq == null && options?.startFrom === "latest";
+
+    this.logger.info(`S2 streaming records from stream`, {
+      stream: s2Stream,
+      startSeq,
+      tailFromLatest,
+    });
 
     // Request SSE stream from S2 and return it directly
     const s2Response = await this.s2StreamRecords(s2Stream, {
-      seq_num: startSeq ?? 0,
-      clamp: true,
+      ...(tailFromLatest
+        ? { tail_offset: 1, clamp: true }
+        : { seq_num: startSeq ?? 0, clamp: true }),
       wait: options?.timeoutInSeconds ?? this.s2WaitSeconds, // S2 will keep the connection open and stream new records
       signal, // Pass abort signal so S2 connection is cleaned up when client disconnects
     });
@@ -672,6 +741,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     stream: string,
     opts: {
       seq_num?: number;
+      tail_offset?: number;
       clamp?: boolean;
       wait?: number;
       signal?: AbortSignal;
@@ -680,6 +750,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     // GET /v1/streams/{stream}/records with Accept: text/event-stream for SSE streaming
     const qs = new URLSearchParams();
     if (opts.seq_num != null) qs.set("seq_num", String(opts.seq_num));
+    if (opts.tail_offset != null) qs.set("tail_offset", String(opts.tail_offset));
     if (opts.clamp != null) qs.set("clamp", String(opts.clamp));
     if (opts.wait != null) qs.set("wait", String(opts.wait));
 

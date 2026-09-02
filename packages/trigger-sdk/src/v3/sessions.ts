@@ -21,6 +21,12 @@ import type {
   UpdateSessionRequestBody,
   WriterStreamOptions,
   CursorPagePromise,
+  AnySessionChannel,
+  SessionChannel,
+  SessionChannelIn,
+  SessionChannelName,
+  SessionChannelOut,
+  SessionChannelShape,
 } from "@trigger.dev/core/v3";
 import {
   InputStreamOncePromise,
@@ -58,6 +64,7 @@ export const sessions = {
   close: closeSession,
   list: listSessions,
   open,
+  defineChannel,
 };
 
 // Test hook: lets `@trigger.dev/sdk/ai/test` replace `sessions.open()` with
@@ -252,6 +259,59 @@ export class SessionHandle {
     this.out = overrides?.out ?? new SessionOutputChannel(id);
     this.in = overrides?.in ?? new SessionInputChannel(id);
   }
+
+  /**
+   * Open a named side channel on this session: a durable, cross-run `.in`/`.out`
+   * pair addressed by `name` rather than the reserved default pair. Writing a
+   * side channel's `.in` does not wake or trigger a run; a run observes it via
+   * `.in.on()` / `.in.once()`. Records outlive any single run and are bounded by
+   * the org's stream retention, the same as the reserved chat streams.
+   *
+   * Pass a `sessions.defineChannel(...)` definition to type `.in`/`.out` records;
+   * a bare name string works too, with records typed `unknown`.
+   */
+  channel<C extends AnySessionChannel = AnySessionChannel>(
+    channel: SessionChannelName<C> | C
+  ): SessionChannelHandleFor<C> {
+    const name = typeof channel === "string" ? channel : channel.name;
+    if (!SESSION_CHANNEL_NAME_REGEX.test(name)) {
+      throw new Error(
+        `Invalid session channel name "${name}": use 1-128 chars from [A-Za-z0-9._-].`
+      );
+    }
+    return {
+      name,
+      out: new SessionOutputChannel(this.id, name),
+      in: new SessionInputChannel(this.id, name),
+    } as SessionChannelHandleFor<C>;
+  }
+}
+
+export type SessionChannelHandleFor<C extends AnySessionChannel> = {
+  readonly name: string;
+  readonly out: SessionOutputChannel<SessionChannelOut<C>>;
+  readonly in: SessionInputChannel<SessionChannelIn<C>>;
+};
+
+export type SessionChannelHandle = SessionChannelHandleFor<AnySessionChannel>;
+
+const SESSION_CHANNEL_NAME_REGEX = /^[A-Za-z0-9._-]{1,128}$/;
+
+/**
+ * Declare a named Session channel with typed `.in` / `.out` records, inferred
+ * on both the producer and the consumer. The channel analogue of a task
+ * definition: pass the result to `session.channel(...)` / `chat.channel(...)`
+ * and to `useSessionStreamChannel<typeof channel>` so the record types line up
+ * on every side.
+ */
+function defineChannel<
+  TShape extends SessionChannelShape = SessionChannelShape,
+  const TName extends string = string,
+>(name: TName): SessionChannel<TName, TShape> {
+  if (!SESSION_CHANNEL_NAME_REGEX.test(name)) {
+    throw new Error(`Invalid session channel name "${name}": use 1-128 chars from [A-Za-z0-9._-].`);
+  }
+  return { name };
 }
 
 /**
@@ -268,7 +328,7 @@ export type SessionPipeStreamOptions = Omit<PipeStreamOptions, "target">;
  * consume via SSE. S2 credentials for direct writes are fetched
  * internally by `pipe`/`writer` — there's no public `initialize()`.
  */
-export class SessionOutputChannel {
+export class SessionOutputChannel<TOut = unknown> {
   // Cache of the in-flight / resolved `initializeSessionStream` PUT for
   // this channel. Every `pipe()` / `writer()` call needs the same S2
   // credentials, so we share a single promise instead of re-PUTing on
@@ -279,7 +339,10 @@ export class SessionOutputChannel {
   // Evicts on failure (so the next call retries) and on `reset()`.
   #initPromise?: Promise<InitializeSessionStreamResponseLike>;
 
-  constructor(public readonly sessionId: string) {}
+  constructor(
+    public readonly sessionId: string,
+    public readonly channel?: string
+  ) {}
 
   /**
    * Drop the cached `initializeSessionStream` response. Surfaces for
@@ -300,8 +363,8 @@ export class SessionOutputChannel {
    * which would give SSE consumers a JSON-string instead of an object.
    * Mirrors how `streams.define.append` delegates to `streams.writer`.
    */
-  async append<T>(value: T, options?: SessionPipeStreamOptions): Promise<void> {
-    const { waitUntilComplete } = this.writer<T>({
+  async append(value: TOut, options?: SessionPipeStreamOptions): Promise<void> {
+    const { waitUntilComplete } = this.writer({
       ...options,
       spanName: "sessions.append()",
       execute: ({ write }) => {
@@ -317,7 +380,7 @@ export class SessionOutputChannel {
    * {@link SessionStreamInstance}. Parallel to {@link streams.pipe} but
    * session-scoped — no `target` option because the session is the target.
    */
-  pipe<T>(
+  pipe<T = TOut>(
     value: AsyncIterable<T> | ReadableStream<T>,
     options?: SessionPipeStreamOptions
   ): PipeStreamResult<T> {
@@ -331,7 +394,7 @@ export class SessionOutputChannel {
    * stream and await completion. Span is collapsible via `options.spanName`
    * / `options.collapsed`.
    */
-  writer<T>(options: WriterStreamOptions<T>): PipeStreamResult<T> {
+  writer<T = TOut>(options: WriterStreamOptions<T>): PipeStreamResult<T> {
     let controller!: ReadableStreamDefaultController<T>;
     const ongoingStreamPromises: Promise<void>[] = [];
 
@@ -407,11 +470,12 @@ export class SessionOutputChannel {
    * shared {@link SSEStreamSubscription} plumbing used by run-scoped
    * realtime streams.
    */
-  async read<T = unknown>(options?: SessionSubscribeOptions<T>): Promise<AsyncIterableStream<T>> {
+  async read<T = TOut>(options?: SessionSubscribeOptions<T>): Promise<AsyncIterableStream<T>> {
     const apiClient = apiClientManager.clientOrThrow();
 
     return apiClient.subscribeToSessionStream<T>(this.sessionId, "out", {
       signal: options?.signal,
+      channel: this.channel,
       timeoutInSeconds: options?.timeoutInSeconds,
       lastEventId: options?.lastEventId != null ? String(options.lastEventId) : undefined,
       onPart: options?.onPart,
@@ -433,12 +497,18 @@ export class SessionOutputChannel {
       attributes: {
         session: this.sessionId,
         io: "out",
+        ...(this.channel ? { channel: this.channel } : {}),
         [SemanticInternalAttributes.ENTITY_TYPE]: "session-stream",
-        [SemanticInternalAttributes.ENTITY_ID]: `${this.sessionId}:out`,
+        [SemanticInternalAttributes.ENTITY_ID]: `${this.sessionId}:${this.channel ?? ""}:out`,
         [SemanticInternalAttributes.STYLE_ICON]: "sessions",
         ...(collapsed ? { [SemanticInternalAttributes.COLLAPSED]: true } : {}),
         ...accessoryAttributes({
-          items: [{ text: `${this.sessionId}.out`, variant: "normal" }],
+          items: this.channel
+            ? [
+                { text: this.channel, variant: "normal" },
+                { text: "out", variant: "normal" },
+              ]
+            : [{ text: `${this.sessionId}.out`, variant: "normal" }],
           style: "codepath",
         }),
       },
@@ -481,7 +551,8 @@ export class SessionOutputChannel {
       const fresh = apiClient.initializeSessionStream(
         this.sessionId,
         "out",
-        options?.requestOptions
+        options?.requestOptions,
+        this.channel
       );
       this.#initPromise = fresh;
       // Evict on failure so the next call retries instead of returning a
@@ -569,7 +640,14 @@ export class SessionOutputChannel {
     extraHeaders?: ReadonlyArray<readonly [string, string]>
   ): Promise<StreamWriteResult> {
     const apiClient = apiClientManager.clientOrThrow();
-    return writeSessionControlRecord(apiClient, this.sessionId, "out", subtype, extraHeaders);
+    return writeSessionControlRecord(
+      apiClient,
+      this.sessionId,
+      "out",
+      subtype,
+      extraHeaders,
+      this.channel
+    );
   }
 
   /**
@@ -583,7 +661,7 @@ export class SessionOutputChannel {
    */
   async trimTo(earliestSeqNum: number): Promise<void> {
     const apiClient = apiClientManager.clientOrThrow();
-    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum);
+    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum, this.channel);
   }
 }
 
@@ -594,8 +672,19 @@ export class SessionOutputChannel {
  * external clients. Keyed on the session rather than the run so a
  * conversation can survive across run boundaries.
  */
-export class SessionInputChannel {
-  constructor(public readonly sessionId: string) {}
+export class SessionInputChannel<TIn = unknown> {
+  constructor(
+    public readonly sessionId: string,
+    public readonly channel?: string
+  ) {}
+
+  #assertReservedChannelForWait(method: string): void {
+    if (this.channel) {
+      throw new Error(
+        `session.channel("${this.channel}").in.${method} is not supported: a named side channel does not wake a run. Use .in.on() / .in.once() to observe it instead.`
+      );
+    }
+  }
 
   /**
    * Send a single record to the channel. Called by external clients
@@ -603,21 +692,34 @@ export class SessionInputChannel {
    * Matches {@link streams.input.send} but session-scoped — the session
    * is the address, no `runId` required.
    */
-  async send(value: unknown, requestOptions?: ApiRequestOptions): Promise<void> {
+  async send(value: TIn, requestOptions?: ApiRequestOptions): Promise<void> {
     const apiClient = apiClientManager.clientOrThrow();
     const body = typeof value === "string" ? value : JSON.stringify(value);
+
+    const spanName = this.channel
+      ? `sessions.open(${this.sessionId}).channel(${this.channel}).in.send()`
+      : `sessions.open(${this.sessionId}).in.send()`;
 
     const $requestOptions = mergeRequestOptions(
       {
         tracer,
-        name: `sessions.open(${this.sessionId}).in.send()`,
+        name: spanName,
         icon: "sessions",
-        attributes: sessionAttributes(this.sessionId, { io: "in" }),
+        attributes: sessionAttributes(this.sessionId, {
+          io: "in",
+          ...(this.channel ? { channel: this.channel } : {}),
+        }),
       },
       requestOptions
     );
 
-    await apiClient.appendToSessionStream(this.sessionId, "in", body, $requestOptions);
+    await apiClient.appendToSessionStream(
+      this.sessionId,
+      "in",
+      body,
+      $requestOptions,
+      this.channel
+    );
   }
 
   /**
@@ -630,11 +732,12 @@ export class SessionInputChannel {
    * won't be buffered for a later `once()` and won't be re-delivered on a
    * future `on()` attach. Plain observers should return nothing.
    */
-  on<T = unknown>(handler: (data: T) => void | boolean | Promise<void>): { off: () => void } {
+  on<T = TIn>(handler: (data: T) => void | boolean | Promise<void>): { off: () => void } {
     return sessionStreams.on(
       this.sessionId,
       "in",
-      handler as (data: unknown) => void | boolean | Promise<void>
+      handler as (data: unknown) => void | boolean | Promise<void>,
+      this.channel
     );
   }
 
@@ -643,11 +746,11 @@ export class SessionInputChannel {
    * Returns `{ ok: true, output }` on arrival or `{ ok: false, error }`
    * when the timeout fires. Chain `.unwrap()` to get the data directly.
    */
-  once<T = unknown>(options?: InputStreamOnceOptions): InputStreamOncePromise<T> {
+  once<T = TIn>(options?: InputStreamOnceOptions): InputStreamOncePromise<T> {
     const ctx = taskContext.ctx;
     const runId = ctx?.run.id;
 
-    const innerPromise = sessionStreams.once(this.sessionId, "in", options);
+    const innerPromise = sessionStreams.once(this.sessionId, "in", options, this.channel);
 
     return new InputStreamOncePromise<T>((resolve, reject) => {
       tracer
@@ -662,12 +765,22 @@ export class SessionInputChannel {
               [SemanticInternalAttributes.STYLE_ICON]: "sessions",
               [SemanticInternalAttributes.ENTITY_TYPE]: "session-stream",
               ...(runId
-                ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${this.sessionId}:in` }
+                ? {
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${this.sessionId}:${
+                      this.channel ?? ""
+                    }:in`,
+                  }
                 : {}),
               session: this.sessionId,
               io: "in",
+              ...(this.channel ? { channel: this.channel } : {}),
               ...accessoryAttributes({
-                items: [{ text: `${this.sessionId}.in`, variant: "normal" }],
+                items: this.channel
+                  ? [
+                      { text: this.channel, variant: "normal" },
+                      { text: "in", variant: "normal" },
+                    ]
+                  : [{ text: `${this.sessionId}.in`, variant: "normal" }],
                 style: "codepath",
               }),
             },
@@ -678,22 +791,22 @@ export class SessionInputChannel {
   }
 
   /** Non-blocking peek at the head of the `.in` buffer. */
-  peek<T = unknown>(): T | undefined {
-    return sessionStreams.peek(this.sessionId, "in") as T | undefined;
+  peek<T = TIn>(): T | undefined {
+    return sessionStreams.peek(this.sessionId, "in", this.channel) as T | undefined;
   }
 
   /**
-   * The highest S2 sequence number of any record this channel has
-   * delivered to a `once()` / `wait()` consumer (or had shifted off its
-   * buffer into one). Distinct from "last received" — buffered-but-not-
-   * yet-consumed records don't count.
+   * The highest S2 sequence number that is safe to persist as consumed.
+   * This stays behind the earliest unconsumed record if a later record was
+   * handled first. Distinct from "last received", which advances for records
+   * that may still be pending.
    *
    * Used by `chat.agent` to persist the `.in` resume cursor on each
    * `turn-complete` control record, so the next worker boot can subscribe
    * past already-processed user messages.
    */
   lastDispatchedSeqNum(): number | undefined {
-    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
+    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in", this.channel);
   }
 
   /**
@@ -702,79 +815,123 @@ export class SessionInputChannel {
    * run-engine waitpoint holds the run until the session append handler
    * fires it. Only callable from inside `task.run()`.
    */
+  /**
+   * Suspend until the channel wakes this run, and read nothing.
+   *
+   * The waitpoint is only a wake signal: the append route commits the record to
+   * the channel before it drains any waitpoint, so once this resolves the
+   * record is durably readable from the channel itself, carrying its real
+   * sequence. Separating the wake from the read is what lets a consumer that
+   * owns its own delivery (the chat input router) reuse this without the
+   * channel also taking a record out from under it.
+   *
+   * @internal
+   */
+  async awaitWake(
+    options?: InputStreamWaitOptions & { lastSeqNum?: number }
+  ): Promise<{ ok: true; waitpointId: string } | { ok: false; error: Error }> {
+    this.#assertReservedChannelForWait("awaitWake()");
+    const ctx = taskContext.ctx;
+
+    if (!ctx) {
+      throw new Error("session.in.wait() can only be used from inside a task.run()");
+    }
+
+    const apiClient = apiClientManager.clientOrThrow();
+
+    const lastConsumedSeqNum =
+      options?.lastSeqNum ?? sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
+    const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
+      session: this.sessionId,
+      io: "in",
+      timeout: options?.timeout,
+      idempotencyKey: options?.idempotencyKey,
+      idempotencyKeyTTL: options?.idempotencyKeyTTL,
+      tags: options?.tags,
+      lastSeqNum: lastConsumedSeqNum,
+    });
+
+    const waitResponse = await apiClient.waitForWaitpointToken({
+      runFriendlyId: ctx.run.id,
+      waitpointFriendlyId: response.waitpointId,
+    });
+
+    if (!waitResponse.success) {
+      throw new Error("Failed to block on session stream waitpoint");
+    }
+
+    sessionStreams.disconnectStream(this.sessionId, "in");
+
+    const waitResult = await runtime.waitUntil(response.waitpointId);
+
+    if (!waitResult.ok) {
+      const parsed =
+        waitResult.output !== undefined
+          ? await conditionallyImportAndParsePacket(
+              {
+                data: waitResult.output,
+                dataType: waitResult.outputType ?? "application/json",
+              },
+              apiClient
+            )
+          : undefined;
+      return {
+        ok: false as const,
+        error: new WaitpointTimeoutError(parsed?.message ?? "Timed out"),
+      };
+    }
+
+    sessionStreams.reconnectStream(this.sessionId, "in");
+    return { ok: true as const, waitpointId: response.waitpointId };
+  }
+
   wait<T = unknown>(options?: InputStreamWaitOptions): ManualWaitpointPromise<T> {
     return new ManualWaitpointPromise<T>(async (resolve, reject) => {
       try {
-        const ctx = taskContext.ctx;
-
-        if (!ctx) {
-          throw new Error("session.in.wait() can only be used from inside a task.run()");
-        }
-
+        this.#assertReservedChannelForWait("wait()");
         const apiClient = apiClientManager.clientOrThrow();
-
-        const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
-          session: this.sessionId,
-          io: "in",
-          timeout: options?.timeout,
-          idempotencyKey: options?.idempotencyKey,
-          idempotencyKeyTTL: options?.idempotencyKeyTTL,
-          tags: options?.tags,
-          lastSeqNum: sessionStreams.lastSeqNum(this.sessionId, "in"),
-        });
 
         const result = await tracer.startActiveSpan(
           options?.spanName ?? `sessions.open(${this.sessionId}).in.wait()`,
           async (span) => {
-            const waitResponse = await apiClient.waitForWaitpointToken({
-              runFriendlyId: ctx.run.id,
-              waitpointFriendlyId: response.waitpointId,
-            });
+            const wake = await this.awaitWake(options);
 
-            if (!waitResponse.success) {
-              throw new Error("Failed to block on session stream waitpoint");
+            if (!wake.ok) {
+              span.recordException(wake.error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+              return { ok: false as const, error: wake.error };
             }
 
-            // Drop the SSE tail + buffer before suspending so the record
-            // delivered via the waitpoint path isn't re-buffered on resume.
-            sessionStreams.disconnectStream(this.sessionId, "in");
+            span.setAttribute(SemanticInternalAttributes.ENTITY_ID, wake.waitpointId);
 
-            const waitResult = await runtime.waitUntil(response.waitpointId);
+            const record = await sessionStreams.onceRecord(this.sessionId, "in");
 
-            const data =
-              waitResult.output !== undefined
-                ? await conditionallyImportAndParsePacket(
-                    {
-                      data: waitResult.output,
-                      dataType: waitResult.outputType ?? "application/json",
-                    },
-                    apiClient
-                  )
-                : undefined;
-
-            if (waitResult.ok) {
-              // Advance both cursors past the record consumed via the
-              // waitpoint: the seq counter so the SSE tail doesn't replay
-              // it, and the consume cursor so turn-completes don't stamp a
-              // stale `session-in-event-id`.
-              const prevSeq = sessionStreams.lastSeqNum(this.sessionId, "in");
-              const nextSeq = (prevSeq ?? -1) + 1;
-              sessionStreams.setLastSeqNum(this.sessionId, "in", nextSeq);
-              sessionStreams.setLastDispatchedSeqNum(this.sessionId, "in", nextSeq);
-
-              return { ok: true as const, output: data as T };
-            } else {
-              const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
+            if (!record.ok) {
+              const error = new WaitpointTimeoutError("Timed out");
               span.recordException(error);
               span.setStatus({ code: SpanStatusCode.ERROR });
               return { ok: false as const, error };
             }
+
+            sessionStreams.setLastSeqNum(this.sessionId, "in", record.output.seqNum);
+
+            const data = await conditionallyImportAndParsePacket(
+              {
+                data:
+                  typeof record.output.data === "string"
+                    ? record.output.data
+                    : JSON.stringify(record.output.data),
+                dataType: "application/json",
+              },
+              apiClient
+            );
+
+            return { ok: true as const, output: data as T };
           },
           {
             attributes: {
               [SemanticInternalAttributes.STYLE_ICON]: "wait",
               [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
-              [SemanticInternalAttributes.ENTITY_ID]: response.waitpointId,
               session: this.sessionId,
               io: "in",
               ...accessoryAttributes({
@@ -801,6 +958,7 @@ export class SessionInputChannel {
   async waitWithIdleTimeout<T = unknown>(
     options: InputStreamWaitWithIdleTimeoutOptions
   ): Promise<{ ok: true; output: T } | { ok: false; error?: Error }> {
+    this.#assertReservedChannelForWait("waitWithIdleTimeout()");
     // eslint-disable-next-line no-this-alias
     const self = this;
     const spanName =

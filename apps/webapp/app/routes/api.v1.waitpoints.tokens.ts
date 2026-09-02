@@ -17,6 +17,7 @@ import {
   type PrismaClientOrTransaction,
 } from "~/db.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { resolveMintShard } from "~/v3/runOpsMigration/runOpsMintShard.server";
 import { logger } from "~/services/logger.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { publicAccessTokenResponseHeaders } from "~/services/publicAccessTokenResponse.server";
@@ -70,6 +71,15 @@ const { action } = createActionApiRoute(
       });
       const residency = mintKind === "runOpsId" ? "NEW" : "LEGACY";
 
+      // No extra query: the org flags are already loaded on the authenticated env.
+      const standaloneShardKey =
+        mintKind === "runOpsId"
+          ? await resolveMintShard({
+              id: authentication.environment.id,
+              orgFeatureFlags: authentication.environment.organization.featureFlags,
+            })
+          : undefined;
+
       //upsert tags
       let tags: { id: string; name: string }[] = [];
       const bodyTags = typeof body.tags === "string" ? [body.tags] : body.tags;
@@ -87,6 +97,7 @@ const { action } = createActionApiRoute(
             environmentId: authentication.environment.id,
             projectId: authentication.environment.projectId,
             residency,
+            shardKey: standaloneShardKey,
           });
           if (tagRecord) {
             tags.push(tagRecord);
@@ -109,6 +120,7 @@ const { action } = createActionApiRoute(
         timeout,
         tags: bodyTags,
         standaloneResidency: residency,
+        standaloneShardKey,
       });
 
       const waitpointId = WaitpointId.toFriendlyId(result.waitpoint.id);

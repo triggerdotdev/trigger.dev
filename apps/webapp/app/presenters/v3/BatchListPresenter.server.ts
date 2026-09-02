@@ -75,6 +75,7 @@ export class BatchListPresenter extends BasePresenter {
       runOpsNew?: RunOpsPrismaClient; // new run-ops client (run-ops brand ⇒ guard classifies as runops)
       runOpsLegacyReplica?: RunOpsPrismaClient; // legacy run-ops READ REPLICA only — never the legacy primary
       controlPlaneReplica?: PrismaClientOrTransaction; // control-plane DB (for project)
+      shardReplicas?: ReadonlyArray<{ key: string; replica: RunOpsPrismaClient }>;
       splitEnabled?: boolean; // resolved boot constant
     }
   ) {
@@ -110,9 +111,11 @@ export class BatchListPresenter extends BasePresenter {
     // unsound across the residency split: legacy cuid ids ("c…") sort ABOVE new run-ops ids ("0…")
     // under id order, so a new-only page can hide pre-flip legacy batches that belong ahead of it.
     // Ordering is by createdAt (id tiebreak), which is chronologically correct across both schemes.
-    const [newRows, legacyRows] = await Promise.all([
+    const shardReplicas = this.readRoute.shardReplicas ?? [];
+    const [newRows, legacyRows, ...shardRows] = await Promise.all([
       scan(this.readRoute.runOpsNew ?? passthrough),
       scan(this.readRoute.runOpsLegacyReplica ?? passthrough),
+      ...shardReplicas.map((shard) => scan(shard.replica)),
     ]);
 
     // De-dupe by id (new wins), re-sort under the page's keyset order, re-apply the over-fetch LIMIT.
@@ -122,6 +125,11 @@ export class BatchListPresenter extends BasePresenter {
     }
     for (const row of legacyRows) {
       if (!byId.has(row.id)) {
+        byId.set(row.id, row);
+      }
+    }
+    for (const rows of shardRows) {
+      for (const row of rows) {
         byId.set(row.id, row);
       }
     }
@@ -167,7 +175,23 @@ export class BatchListPresenter extends BasePresenter {
     ).batchTaskRun.findFirst({
       where: { runtimeEnvironmentId: environmentId },
     });
-    return Boolean(onLegacy);
+    if (onLegacy) {
+      return true;
+    }
+
+    const shardReplicas = this.readRoute.shardReplicas ?? [];
+    if (shardReplicas.length === 0) {
+      return false;
+    }
+
+    const onShards = await Promise.all(
+      shardReplicas.map((shard) =>
+        shard.replica.batchTaskRun.findFirst({
+          where: { runtimeEnvironmentId: environmentId },
+        })
+      )
+    );
+    return onShards.some(Boolean);
   }
 
   public async call({

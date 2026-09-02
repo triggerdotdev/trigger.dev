@@ -190,7 +190,7 @@ export class WaitpointRouterCoordinator implements WaitpointCoordinator {
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
-    anchorRunId?: string;
+    anchorRunId: string;
     mintKind?: WaitpointMintKind;
   }): AssociatedWaitpointData {
     const mintKind = params.mintKind ?? "legacy";

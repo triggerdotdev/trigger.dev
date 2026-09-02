@@ -1,5 +1,6 @@
 import type { ReadClient } from "@internal/run-store";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
+import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 
 /**
  * The waitpoint and edge state operations that `WaitpointSystem` delegates.
@@ -29,11 +30,11 @@ export type WaitpointCoordinator = {
     projectId: string;
     environmentId: string;
     /**
-     * The run this waitpoint belongs to. A store arm derives the waitpoint id from the
-     * run's own id body, so the derivation is a pure function of the anchor and needs no
-     * lock. A Postgres arm mints a fresh id and ignores this.
+     * The run this waitpoint belongs to. This write skips the router's stamp check. A store
+     * arm also derives the waitpoint id from the run's own id body, so the derivation is a
+     * pure function of the anchor and needs no lock.
      */
-    anchorRunId?: string;
+    anchorRunId: string;
     /** Which arm mints it. Absent means legacy, which is what every existing caller wants. */
     mintKind?: WaitpointMintKind;
   }): AssociatedWaitpointData;
@@ -47,7 +48,7 @@ export type WaitpointCoordinator = {
  * Which coordinator mints a NEW waitpoint. Structurally identical to the webapp's own
  * WaitpointMintKind; re-declared because the engine never imports from the webapp.
  *
- * Read at the mint and never again — every later operation routes by the minted id's shape.
+ * Read at the mint and never again: every later operation routes by the minted id's shape.
  */
 export type WaitpointMintKind = "legacy" | "store";
 
@@ -178,7 +179,11 @@ export type CreateWaitpointResult =
 
 export type CreateDateTimeWaitpointParams = {
   mintKind: WaitpointMintKind;
-  /** When set, the waitpoint co-locates with this run's DB and the dedup probe targets it. */
+  /**
+   * Co-locates the waitpoint with this run's DB. There is deliberately no standalone arm: omitting
+   * it on a gen-2 environment lands the row on a gen-1 store, silently. A standalone caller needs
+   * a shard hint here first, as `CreateManualWaitpointParams` has.
+   */
   runId?: string;
   projectId: string;
   environmentId: string;
@@ -201,6 +206,8 @@ export type CreateManualWaitpointParams = {
    * full rationale. Only a Postgres implementation reads this.
    */
   standaloneResidency?: "NEW" | "LEGACY";
+  /** For a standalone token. When it names a gen-2 shard, ignore `standaloneResidency`. */
+  standaloneShardKey?: ShardKey;
 };
 
 /** The RUN-waitpoint row data. Pure — no store touch — so the mint is coordinator-owned. */

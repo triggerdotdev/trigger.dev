@@ -112,6 +112,7 @@ export const DateTime = ({
       }
       side="right"
       asChild={true}
+      delayDuration={500}
     />
   );
 };
@@ -291,6 +292,7 @@ const DateTimeAccurateInner = ({
       content={tooltipContent}
       side="right"
       asChild={true}
+      delayDuration={500}
     />
   );
 };
@@ -389,6 +391,7 @@ export const RelativeDateTime = ({ date, timeZone, capitalize = true }: Relative
       }
       side="right"
       asChild={true}
+      delayDuration={500}
     />
   );
 };

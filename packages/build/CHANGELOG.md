@@ -1,5 +1,27 @@
 # @trigger.dev/build
 
+## 4.5.15
+
+### Patch Changes
+
+- Stop shipping compiled test files in the published packages. The `*.test.ts` sources were being emitted into `dist`, adding dead weight to every install and leaving modules that `require("vitest")` (not a dependency) inside the tarball, which tripped tooling that walks every file in a package. ([#4833](https://github.com/triggerdotdev/trigger.dev/pull/4833))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.15`
+
+## 4.5.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.14`
+
+## 4.5.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.13`
+
 ## 4.5.12
 
 ### Patch Changes

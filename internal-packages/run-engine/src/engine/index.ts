@@ -28,6 +28,7 @@ import {
   parseNaturalLanguageDurationInMs,
   parseWaitpointId,
   RunId,
+  type ShardKey,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
   type PrismaClient,
@@ -315,6 +316,12 @@ export class RunEngine {
             runId: payload.runId,
           });
         },
+        ensureRunFinalized: async ({ payload }) => {
+          await this.runAttemptSystem.ensureRunFinalized({
+            runId: payload.runId,
+            deferCount: payload.deferCount,
+          });
+        },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
@@ -452,6 +459,7 @@ export class RunEngine {
     this.ttlSystem = new TtlSystem({
       resources,
       waitpointSystem: this.waitpointSystem,
+      finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
     });
 
     const ttlWorkerCatalog = createTtlWorkerCatalog({
@@ -535,6 +543,7 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
+      finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 
@@ -1889,6 +1898,7 @@ export class RunEngine {
     tags,
     standaloneResidency,
     waitpointMintKind,
+    standaloneShardKey,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1902,6 +1912,7 @@ export class RunEngine {
     standaloneResidency?: "NEW" | "LEGACY";
     /** Which coordinator mints this waitpoint. Resolved from the org flag by the caller. */
     waitpointMintKind?: WaitpointMintKind;
+    standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -1913,6 +1924,7 @@ export class RunEngine {
       tags,
       standaloneResidency,
       waitpointMintKind,
+      standaloneShardKey,
     });
   }
 

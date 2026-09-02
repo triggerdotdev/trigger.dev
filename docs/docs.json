@@ -97,6 +97,7 @@
                   "ai-chat/frontend",
                   "ai-chat/server-chat",
                   "ai-chat/sessions",
+                  "ai-chat/side-channels",
                   "ai-chat/chat-local",
                   "ai-chat/types",
                   "ai-chat/custom-agents",
@@ -217,6 +218,7 @@
                   "realtime/react-hooks/triggering",
                   "realtime/react-hooks/subscribe",
                   "realtime/react-hooks/streams",
+                  "realtime/react-hooks/session-stream",
                   "realtime/react-hooks/swr",
                   "realtime/react-hooks/use-wait-token"
                 ]
