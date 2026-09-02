@@ -26,7 +26,8 @@ import {
   generateInternalId,
   parseNaturalLanguageDurationInMs,
   RunId,
-  WaitpointId,
+  mintWaitpointIdFor,
+  type ShardKey,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
   type PrismaClient,
@@ -308,6 +309,12 @@ export class RunEngine {
             runId: payload.runId,
           });
         },
+        ensureRunFinalized: async ({ payload }) => {
+          await this.runAttemptSystem.ensureRunFinalized({
+            runId: payload.runId,
+            deferCount: payload.deferCount,
+          });
+        },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
@@ -421,6 +428,7 @@ export class RunEngine {
     this.ttlSystem = new TtlSystem({
       resources,
       waitpointSystem: this.waitpointSystem,
+      finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
     });
 
     const ttlWorkerCatalog = createTtlWorkerCatalog({
@@ -504,6 +512,7 @@ export class RunEngine {
       delayedRunSystem: this.delayedRunSystem,
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
+      finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 
@@ -1087,6 +1096,7 @@ export class RunEngine {
                   ? this.waitpointSystem.buildRunAssociatedWaitpoint({
                       projectId: environment.project.id,
                       environmentId: environment.id,
+                      anchorRunId: taskRunId,
                     })
                   : undefined,
             },
@@ -1373,6 +1383,7 @@ export class RunEngine {
             ? this.waitpointSystem.buildRunAssociatedWaitpoint({
                 projectId: environment.project.id,
                 environmentId: environment.id,
+                anchorRunId: taskRunId,
               })
             : undefined;
 
@@ -1815,6 +1826,7 @@ export class RunEngine {
     timeout,
     tags,
     standaloneResidency,
+    standaloneShardKey,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1826,6 +1838,7 @@ export class RunEngine {
     tags?: string[];
     /** Standalone-token residency (no owning run) from the env mint kind; ignored when `runId` is set. */
     standaloneResidency?: "NEW" | "LEGACY";
+    standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -1836,6 +1849,7 @@ export class RunEngine {
       timeout,
       tags,
       standaloneResidency,
+      standaloneShardKey,
     });
   }
 
@@ -1861,7 +1875,9 @@ export class RunEngine {
       const waitpoint = await this.runStore.createWaitpoint(
         {
           data: {
-            ...WaitpointId.generate(),
+            // From the batch, not the blocked run: the create passes only completedByBatchId,
+            // which is the owner the router validates against.
+            ...mintWaitpointIdFor(batchId),
             type: "BATCH",
             idempotencyKey: batchId,
             userProvidedIdempotencyKey: false,

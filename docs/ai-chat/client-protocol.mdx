@@ -771,7 +771,7 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unk
 ```
 
 <Note>
-  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then every `kind: "message"` payload — and the `triggerConfig.basePayload` you sent at session create — must carry a matching `metadata.userId`. The agent rejects messages whose metadata fails schema validation.
+  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then the `triggerConfig.basePayload` you sent at session create and every non-close `kind: "message"` payload must carry a matching `metadata.userId`. Invalid metadata is not passed to agent code. Async reads produce an error chunk followed by `turn-complete`; raw `chat.messages.on()` subscriptions use `onClientDataValidationError` and the task log so they do not end an active response.
 </Note>
 
 ### Sending a message
@@ -832,7 +832,9 @@ Custom actions (undo, rollback, edit) ride on the same `.in` channel using `kind
 }
 ```
 
-Actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend (but still no `run()` or `onTurnComplete`). The `action` payload is validated against the agent's `actionSchema`. If the agent didn't register an `actionSchema` (or your `action` payload doesn't match it), validation fails the same way `metadata` does — `.in/append` returns `200 OK`, but the run trace shows `chat turn N [ERROR]` and the wire emits a `turn-complete` control record with no other chunks. See [Actions](/ai-chat/actions) for the agent-side schema setup.
+For managed `chat.agent()` tasks, actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend (but still no `run()` or `onTurnComplete`). The `action` payload is validated against the agent's `actionSchema`. If the agent didn't register an `actionSchema` (or your `action` payload doesn't match it), validation fails the same way `metadata` does — `.in/append` returns `200 OK`, but the run trace shows `chat turn N [ERROR]` and the wire emits a `turn-complete` control record with no other chunks. See [Actions](/ai-chat/actions) for the agent-side schema setup.
+
+Raw `chat.customAgent()` tasks receive `action` as `unknown` and must validate it in their own loop.
 
 ### Regenerating the last response
 
@@ -953,8 +955,11 @@ You can send messages while the agent is still streaming a response. These are *
 
 The wire format is identical to a normal `kind: "message"` send — same `.in` channel, single `message` field. The difference is timing. What happens depends on the agent's `pendingMessages` configuration:
 
-- **With `pendingMessages.shouldInject`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With `pendingMessages.shouldInject` returning `true`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With a `pendingMessages` config that declines it**, either because `shouldInject` returned `false` or because it is absent: the message stays queued on the backend and is answered as the next turn.
 - **Without `pendingMessages` config**: the message queues for the next turn.
+
+In every case the message is answered. A declined message keeps its place in the queue, so it also survives a crash and is picked up by whichever run continues the conversation.
 
 See [Pending Messages](/ai-chat/pending-messages) for how to configure the agent side.
 

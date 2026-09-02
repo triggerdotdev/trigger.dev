@@ -1,4 +1,4 @@
-import { CheckIcon, SparklesIcon } from "@heroicons/react/20/solid";
+import { CheckIcon } from "@heroicons/react/20/solid";
 import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
@@ -180,19 +180,25 @@ export function InitAgentPromptV3() {
     void navigator.clipboard.writeText(prompt).catch(() => {});
   };
 
+  // The idle label is the longest, so reserve its width to stop the button from
+  // resizing when it briefly swaps to the shorter "Copied prompt".
+  const idleLabel = "Copy AI agent prompt";
+
   return (
     <SimpleTooltip
       asChild
       tabbable
       button={
-        <Button
-          type="button"
-          variant="primary/medium"
-          LeadingIcon={copied ? CheckIcon : SparklesIcon}
-          leadingIconClassName={copied ? "text-success" : undefined}
-          onClick={onCopy}
-        >
-          {copied ? "Copied prompt" : "Copy AI agent prompt"}
+        <Button type="button" variant="primary/medium" onClick={onCopy}>
+          <span className="grid justify-items-center">
+            <span className="col-start-1 row-start-1 flex items-center gap-x-1.5">
+              {copied && <CheckIcon className="size-4 shrink-0 text-text-bright" />}
+              <span>{copied ? "Copied prompt" : idleLabel}</span>
+            </span>
+            <span aria-hidden className="invisible col-start-1 row-start-1">
+              {idleLabel}
+            </span>
+          </span>
         </Button>
       }
       content="Copies a setup prompt to paste into Claude Code, Cursor, or any coding agent"

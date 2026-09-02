@@ -19,6 +19,23 @@ export type AdditionalPackagesOptions = {
 export function additionalPackages(options: AdditionalPackagesOptions): BuildExtension {
   return {
     name: "additionalPackages",
+    installedPackagesForTarget(target) {
+      if (target !== "deploy") {
+        return [];
+      }
+
+      const names: string[] = [];
+
+      for (const pkg of options.packages) {
+        try {
+          names.push(parsePackageName(pkg).name);
+        } catch {
+          continue;
+        }
+      }
+
+      return names;
+    },
     async onBuildStart(context) {
       if (context.target !== "deploy") {
         return;

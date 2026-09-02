@@ -1,5 +1,32 @@
 # @trigger.dev/python
 
+## 4.5.15
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.15`
+  - `@trigger.dev/core@4.5.15`
+  - `@trigger.dev/build@4.5.15`
+
+## 4.5.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.14`
+  - `@trigger.dev/sdk@4.5.14`
+  - `@trigger.dev/build@4.5.14`
+
+## 4.5.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.13`
+  - `@trigger.dev/core@4.5.13`
+  - `@trigger.dev/build@4.5.13`
+
 ## 4.5.12
 
 ### Patch Changes

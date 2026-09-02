@@ -64,6 +64,9 @@ export async function action({ request }: ActionFunctionArgs) {
                 case "deployment_context":
                   errorMessage = `Artifact size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB. Make sure you are in the correct directory of your Trigger.dev project. Reach out to us if you are seeing this error consistently.`;
                   break;
+                case "deployment_bundle":
+                  errorMessage = `Bundle size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB. Reach out to us if you are seeing this error consistently.`;
+                  break;
                 default:
                   body.data.type satisfies never;
                   errorMessage = `Artifact size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB`;

@@ -3,6 +3,10 @@ import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RoutingRunStore } from "./runOpsStore.js";
 import type { RunStore } from "./types.js";
 
+// This suite is deliberately TWO-STORE. runOpsStore.shardMap.test.ts runs this same method at four
+// stores ("routes a gen-2 waitpoint directly, with no probe"; "lets a gen-2 waitpoint id beat the
+// cross-tree legacy pin"), so a shard arm here would repeat that coverage rather than add any.
+//
 // forWaitpointCompletion is async: it picks a preferred store from the id-shape + pins, then
 // PROBES findWaitpoint to resolve where the token ACTUALLY lives (drain can relocate a cuid
 // waitpoint onto NEW, or a run-ops token can be pinned LEGACY), falling back to the other store.

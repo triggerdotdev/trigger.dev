@@ -1,6 +1,12 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopSessionStreamManager } from "./noopManager.js";
-import type { InputStreamOncePromise, SessionChannelIO, SessionStreamManager } from "./types.js";
+import type {
+  InputStreamOncePromise,
+  SessionChannelIO,
+  SessionStreamManager,
+  SessionStreamRecord,
+  SessionStreamRecordPredicate,
+} from "./types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 const API_NAME = "session-streams";
@@ -30,53 +36,139 @@ export class SessionStreamsAPI implements SessionStreamManager {
   public on(
     sessionId: string,
     io: SessionChannelIO,
-    handler: (data: unknown) => void | boolean | Promise<void>
+    handler: (data: unknown) => void | boolean | Promise<void>,
+    channel?: string
   ): { off: () => void } {
-    return this.#getManager().on(sessionId, io, handler);
+    return this.#getManager().on(sessionId, io, handler, channel);
+  }
+
+  public onRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    handler: (record: SessionStreamRecord) => void | boolean | Promise<void>,
+    channel?: string
+  ): { off: () => void } {
+    const manager = this.#getManager();
+    if (!manager.onRecord) {
+      throw new Error("The configured Session stream manager does not support record handlers");
+    }
+    return manager.onRecord(sessionId, io, handler, channel);
   }
 
   public once(
     sessionId: string,
     io: SessionChannelIO,
-    options?: InputStreamOnceOptions
+    options?: InputStreamOnceOptions,
+    channel?: string
   ): InputStreamOncePromise<unknown> {
-    return this.#getManager().once(sessionId, io, options);
+    return this.#getManager().once(sessionId, io, options, channel);
   }
 
-  public peek(sessionId: string, io: SessionChannelIO): unknown | undefined {
-    return this.#getManager().peek(sessionId, io);
+  public onceRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    options?: InputStreamOnceOptions,
+    channel?: string
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    const manager = this.#getManager();
+    if (!manager.onceRecord) {
+      throw new Error("The configured Session stream manager does not support record metadata");
+    }
+    return manager.onceRecord(sessionId, io, options, channel);
   }
 
-  public lastSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.#getManager().lastSeqNum(sessionId, io);
+  public onceRecordWhere(
+    sessionId: string,
+    io: SessionChannelIO,
+    predicate: SessionStreamRecordPredicate,
+    options?: InputStreamOnceOptions,
+    channel?: string
+  ): InputStreamOncePromise<SessionStreamRecord> {
+    const manager = this.#getManager();
+    if (!manager.onceRecordWhere) {
+      throw new Error("The configured Session stream manager does not support selective records");
+    }
+    return manager.onceRecordWhere(sessionId, io, predicate, options, channel);
   }
 
-  public setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
-    this.#getManager().setLastSeqNum(sessionId, io, seqNum);
+  public peek(sessionId: string, io: SessionChannelIO, channel?: string): unknown | undefined {
+    return this.#getManager().peek(sessionId, io, channel);
   }
 
-  public lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
-    return this.#getManager().lastDispatchedSeqNum(sessionId, io);
+  public peekRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    channel?: string
+  ): SessionStreamRecord | undefined {
+    const manager = this.#getManager();
+    if (!manager.peekRecord) {
+      throw new Error("The configured Session stream manager does not support record metadata");
+    }
+    return manager.peekRecord(sessionId, io, channel);
   }
 
-  public setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
-    this.#getManager().setLastDispatchedSeqNum(sessionId, io, seqNum);
+  public lastSeqNum(sessionId: string, io: SessionChannelIO, channel?: string): number | undefined {
+    return this.#getManager().lastSeqNum(sessionId, io, channel);
+  }
+
+  public setLastSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    seqNum: number,
+    channel?: string
+  ): void {
+    this.#getManager().setLastSeqNum(sessionId, io, seqNum, channel);
+  }
+
+  public consumeRecord(
+    sessionId: string,
+    io: SessionChannelIO,
+    seqNum: number,
+    channel?: string
+  ): void {
+    const manager = this.#getManager();
+    if (!manager.consumeRecord) {
+      throw new Error("The configured Session stream manager does not support exact consumption");
+    }
+    manager.consumeRecord(sessionId, io, seqNum, channel);
+  }
+
+  public lastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    channel?: string
+  ): number | undefined {
+    return this.#getManager().lastDispatchedSeqNum(sessionId, io, channel);
+  }
+
+  public setLastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    seqNum: number,
+    channel?: string
+  ): void {
+    this.#getManager().setLastDispatchedSeqNum(sessionId, io, seqNum, channel);
   }
 
   public setMinTimestamp(
     sessionId: string,
     io: SessionChannelIO,
-    minTimestamp: number | undefined
+    minTimestamp: number | undefined,
+    channel?: string
   ): void {
-    this.#getManager().setMinTimestamp(sessionId, io, minTimestamp);
+    this.#getManager().setMinTimestamp(sessionId, io, minTimestamp, channel);
   }
 
-  public shiftBuffer(sessionId: string, io: SessionChannelIO): boolean {
-    return this.#getManager().shiftBuffer(sessionId, io);
+  public shiftBuffer(sessionId: string, io: SessionChannelIO, channel?: string): boolean {
+    return this.#getManager().shiftBuffer(sessionId, io, channel);
   }
 
-  public disconnectStream(sessionId: string, io: SessionChannelIO): void {
-    this.#getManager().disconnectStream(sessionId, io);
+  public reconnectStream(sessionId: string, io: SessionChannelIO, channel?: string): void {
+    this.#getManager().reconnectStream?.(sessionId, io, channel);
+  }
+
+  public disconnectStream(sessionId: string, io: SessionChannelIO, channel?: string): void {
+    this.#getManager().disconnectStream(sessionId, io, channel);
   }
 
   public clearHandlers(): void {

@@ -2,7 +2,6 @@ import { useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEffect, useState, useRef, useCallback } from "react";
-import { S2, S2Error } from "@s2-dev/streamstore";
 import {
   Clipboard,
   ClipboardCheck,
@@ -14,6 +13,8 @@ import {
   ServerIcon,
 } from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
+import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { GitMetadata } from "~/components/GitMetadata";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
@@ -51,7 +52,9 @@ import { cn } from "~/utils/cn";
 import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathBuilder";
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
-import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { useDeploymentLogs } from "~/hooks/useDeploymentLogs";
+import { useFollowScroll } from "~/hooks/useFollowScroll";
+import { type DeploymentLogEntry } from "~/components/runs/v3/deploymentLogsCache";
 import { deploymentAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
 
@@ -89,12 +92,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
-};
-
-type LogEntry = {
-  message: string;
-  timestamp: Date;
-  level: "info" | "error" | "warn" | "debug";
 };
 
 function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
@@ -205,110 +202,10 @@ export default function Page() {
   const page = new URLSearchParams(location.search).get("page");
 
   const logsDisabled = eventStream === undefined;
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isStreaming, setIsStreaming] = useState(true);
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const isPending = deployment.status === "PENDING";
-
-  useEffect(() => {
-    if (logsDisabled) return;
-
-    const abortController = new AbortController();
-
-    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
-    setLogs([]);
-    setStreamError(null);
-    setIsStreaming(true);
-
-    const streamLogs = async () => {
-      try {
-        const s2 = new S2({ accessToken: eventStream.s2.accessToken });
-        const basin = s2.basin(eventStream.s2.basin);
-        const stream = basin.stream(eventStream.s2.stream);
-
-        const readSession = await stream.readSession(
-          {
-            start: { from: { seqNum: 0 }, clamp: true },
-            stop: { waitSecs: 60 },
-          },
-          { signal: abortController.signal }
-        );
-
-        for await (const record of readSession) {
-          const decoded = record.body;
-          const result = DeploymentEventFromString.safeParse(decoded);
-
-          if (!result.success) {
-            // fallback to the previous format in s2 logs for compatibility
-            try {
-              const headers: Record<string, string> = {};
-
-              if (record.headers) {
-                for (const [name, value] of record.headers) {
-                  headers[name] = value;
-                }
-              }
-              const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
-
-              setLogs((prevLogs) => [
-                ...prevLogs,
-                {
-                  timestamp: new Date(record.timestamp),
-                  message: decoded,
-                  level,
-                },
-              ]);
-            } catch (err) {
-              console.error("Failed to parse log record:", err);
-            }
-
-            continue;
-          }
-
-          const event = result.data;
-          if (event.type !== "log") {
-            continue;
-          }
-
-          setLogs((prevLogs) => [
-            ...prevLogs,
-            {
-              timestamp: new Date(record.timestamp),
-              message: event.data.message,
-              level: event.data.level,
-            },
-          ]);
-        }
-      } catch (error) {
-        if (abortController.signal.aborted) return;
-
-        const isNotFoundError =
-          error instanceof S2Error &&
-          error.code &&
-          ["permission_denied", "stream_not_found"].includes(error.code);
-        if (isNotFoundError) return;
-
-        console.error("Failed to stream logs:", error);
-        setStreamError("Failed to stream logs");
-      } finally {
-        if (!abortController.signal.aborted) {
-          setIsStreaming(false);
-        }
-      }
-    };
-
-    streamLogs();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [
-    eventStream?.s2?.basin,
-    eventStream?.s2?.stream,
-    eventStream?.s2?.accessToken,
-    isPending,
-    logsDisabled,
-  ]);
+  const { logs, isStreaming, streamError } = useDeploymentLogs({
+    eventStream,
+    status: deployment.status,
+  });
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -413,6 +310,7 @@ export default function Page() {
                 <Property.Item>
                   <Property.Label>Logs</Property.Label>
                   <LogsDisplay
+                    key={deployment.id}
                     logs={logs}
                     isStreaming={isStreaming}
                     streamError={streamError}
@@ -622,7 +520,7 @@ function LogsDisplay({
   streamError,
   initialCollapsed = false,
 }: {
-  logs: LogEntry[];
+  logs: readonly DeploymentLogEntry[];
   isStreaming: boolean;
   streamError: string | null;
   initialCollapsed?: boolean;
@@ -631,18 +529,12 @@ function LogsDisplay({
   const [mouseOver, setMouseOver] = useState(false);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const { isAtBottom, scrollToBottom, scrollToTop } = useFollowScroll(logsContainerRef, logs);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- Deployment status changes intentionally reset the user-controlled collapse state.
     setCollapsed(initialCollapsed);
   }, [initialCollapsed]);
-
-  // auto-scroll log container to bottom when new logs arrive
-  useEffect(() => {
-    if (logsContainerRef.current) {
-      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-    }
-  }, [logs]);
 
   const onCopyLogs = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -690,6 +582,27 @@ function LogsDisplay({
         </div>
         {logs.length > 0 && (
           <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger
+                  onClick={isAtBottom ? scrollToTop : scrollToBottom}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  {isAtBottom ? (
+                    <MoveToTopIcon className="size-4" />
+                  ) : (
+                    <MoveToBottomIcon className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="left" className="text-xs">
+                  {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <TooltipProvider>
               <Tooltip open={copied || mouseOver} disableHoverableContent>
                 <TooltipTrigger

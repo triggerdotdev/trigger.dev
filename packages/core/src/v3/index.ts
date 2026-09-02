@@ -3,6 +3,7 @@ export * from "./apiClient/types.js";
 export * from "./apiClient/pagination.js";
 export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./apiClient/core.js";
 export * from "./apiClient/errors.js";
+export * from "./apiClient/refreshAccessToken.js";
 export * from "./clock-api.js";
 export * from "./errors.js";
 export * from "./externalDeploymentId.js";

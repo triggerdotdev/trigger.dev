@@ -1,0 +1,88 @@
+name: repo-ops-sync-gate
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    if: github.event_name == 'pull_request' || vars.REPO_OPS_SYNC_ENABLED == 'true'
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject reserved RepoOps trailers
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          text = f"{os.environ.get('PR_TITLE', '')}\n{os.environ.get('PR_BODY', '')}"
+          match = re.search(r"(?m)^(?:OSS-RevId|Mono-RevId):", text)
+          if match:
+              print(f"BLOCKED: PR title/body contains reserved RepoOps trailer {match.group(0)!r}", file=sys.stderr)
+              raise SystemExit(1)
+          print("ok: no reserved RepoOps trailers")
+          PY
+
+      - name: Pull request check context
+        if: github.event_name == 'pull_request'
+        run: echo 'State is checked again against the live tips by merge queue.'
+
+      - name: Create read-only Dispatcher App token
+        if: github.event_name == 'merge_group'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.REPO_OPS_DISPATCHER_APP_ID }}
+          private-key: ${{ secrets.REPO_OPS_DISPATCHER_APP_PRIVATE_KEY }}
+          repositories: ${{ secrets.REPO_OPS_MONO_REPOSITORY }}
+          permission-contents: read
+
+      - name: Wait for pending mono changes
+        if: github.event_name == 'merge_group'
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PUBLIC_TOKEN: ${{ github.token }}
+          MONO_BASELINE: ${{ vars.REPO_OPS_MONO_BASELINE }}
+          PUBLIC_BASELINE: ${{ vars.REPO_OPS_PUBLIC_BASELINE }}
+          MONO_REPOSITORY: ${{ secrets.REPO_OPS_MONO_REPOSITORY }}
+          PUBLIC_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$MONO_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "$PUBLIC_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          git clone --filter=blob:none --no-tags \
+            "https://x-access-token:${PUBLIC_TOKEN}@github.com/${PUBLIC_REPOSITORY}.git" public
+          git clone --filter=blob:none --no-tags \
+            "https://x-access-token:${APP_TOKEN}@github.com/${MONO_REPOSITORY}.git" mono
+
+          for _ in $(seq 1 60); do
+            git -C public fetch --no-tags origin \
+              +refs/heads/main:refs/remotes/origin/main
+            git -C mono fetch --no-tags origin \
+              +refs/heads/main:refs/remotes/origin/main
+            output="$(mktemp)"
+            mono/tooling/plan-repo-ops-outbound.sh \
+              mono public "$(git -C mono rev-parse origin/main)" \
+              "$MONO_BASELINE" "$PUBLIC_BASELINE" "$output"
+            native_count="$(grep -E '^native_count=' "$output" | cut -d= -f2)"
+            rm -f "$output"
+
+            if (( native_count == 0 )); then
+              echo 'No unsynced native mono oss/ commits.'
+              exit 0
+            fi
+            echo "Waiting for $native_count native mono oss/ commit(s)."
+            sleep 10
+          done
+          echo 'Timed out waiting for mono-to-public sync.' >&2
+          exit 1

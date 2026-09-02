@@ -9,12 +9,33 @@
     <!-- Official recommendations for systems with <16GB RAM -->
     <mark_cache_size>524288000</mark_cache_size> <!-- 500MB -->
     <concurrent_threads_soft_limit_num>1</concurrent_threads_soft_limit_num>
-    <profiles>
-        <default>
-        <max_block_size>8192</max_block_size>
-        <max_download_threads>1</max_download_threads>
-        <input_format_parallel_parsing>0</input_format_parallel_parsing>
-        <output_format_parallel_formatting>0</output_format_parallel_formatting>
-        </default>
-    </profiles>
+
+    <!-- ClickHouse's own telemetry, too heavy for the recommended machine size -->
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+    <trace_log remove="1"/>
+    <query_thread_log remove="1"/>
+    <session_log remove="1"/>
+    <text_log remove="1"/>
+    <zookeeper_log remove="1"/>
+    <processors_profile_log remove="1"/>
+    <asynchronous_insert_log remove="1"/>
+    <backup_log remove="1"/>
+    <latency_log remove="1"/>
+    <query_metric_log remove="1"/>
+    <opentelemetry_span_log remove="1"/>
+    <query_views_log remove="1"/>
+
+    <!-- A config-level ttl survives log-table recreation, unlike ALTER ... MODIFY TTL -->
+    <part_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </part_log>
+    <query_log>
+        <ttl>event_date + INTERVAL 7 DAY DELETE</ttl>
+    </query_log>
+    <error_log>
+        <ttl>event_date + INTERVAL 30 DAY DELETE</ttl>
+    </error_log>
+
+    <!-- Profile settings only apply from users.d, see users-override.xml -->
 </clickhouse>

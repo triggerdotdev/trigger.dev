@@ -110,6 +110,7 @@ import {
   zodfetchOffsetLimitPage,
 } from "./core.js";
 import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
+import { refreshAccessTokenOnce, type RefreshAccessTokenFn } from "./refreshAccessToken.js";
 import {
   type AnyRealtimeRun,
   type AnyRunShape,
@@ -123,6 +124,7 @@ import {
   SSEStreamSubscriptionFactory,
   runShapeStream,
   type SSEStreamPart,
+  STREAM_START_HEADER,
 } from "./runStream.js";
 import type {
   CreateBulkActionOptions,
@@ -190,11 +192,12 @@ export type ApiClientFutureFlags = {
   v2RealtimeStreams?: boolean;
 };
 
-export { SSEStreamSubscription, isRequestOptions };
+export { SSEStreamSubscription, STREAM_START_HEADER, isRequestOptions };
 export type {
   AnyRealtimeRun,
   AnyRunShape,
   ApiRequestOptions,
+  ControlEvent,
   RealtimeRun,
   RunShape,
   RunStreamCallback,
@@ -224,6 +227,7 @@ export class ApiClient {
   public readonly futureFlags: ApiClientFutureFlags;
   private readonly additionalHeaders?: Record<string, string>;
   private readonly defaultRequestOptions: ZodFetchOptions;
+  private readonly refreshAccessToken?: RefreshAccessTokenFn;
 
   constructor(
     baseUrl: string,
@@ -232,9 +236,11 @@ export class ApiClient {
     // x-trigger-branch header, and the server disambiguates by the token's env.
     previewBranch?: string,
     requestOptions: ApiRequestOptions = {},
-    futureFlags: ApiClientFutureFlags = {}
+    futureFlags: ApiClientFutureFlags = {},
+    refreshAccessToken?: RefreshAccessTokenFn
   ) {
     this.accessToken = accessToken;
+    this.refreshAccessToken = refreshAccessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
     const { additionalHeaders, ...restRequestOptions } = requestOptions;
@@ -278,6 +284,32 @@ export class ApiClient {
 
   getHeaders() {
     return this.#getHeaders(false);
+  }
+
+  /**
+   * Header resolver handed to stream subscriptions so a connection rejected with
+   * a 401/403 can reconnect with a freshly minted token. `undefined` when no
+   * `refreshAccessToken` was configured, which keeps auth errors terminal.
+   */
+  #resolveStreamHeaders(): (() => Promise<Record<string, string>>) | undefined {
+    const refreshAccessToken = this.refreshAccessToken;
+    if (!refreshAccessToken) return undefined;
+
+    return async () => {
+      const accessToken = await refreshAccessTokenOnce(refreshAccessToken);
+      return this.#getHeaders(false, { Authorization: `Bearer ${accessToken}` });
+    };
+  }
+
+  /** As {@link ApiClient.#resolveStreamHeaders}, for the leaner realtime header set. */
+  #resolveRealtimeHeaders(): (() => Promise<Record<string, string>>) | undefined {
+    const refreshAccessToken = this.refreshAccessToken;
+    if (!refreshAccessToken) return undefined;
+
+    return async () => {
+      const accessToken = await refreshAccessTokenOnce(refreshAccessToken);
+      return { ...this.#getRealtimeHeaders(), Authorization: `Bearer ${accessToken}` };
+    };
   }
 
   async getRunResult(
@@ -1355,15 +1387,18 @@ export class ApiClient {
   async initializeSessionStream(
     sessionIdOrExternalId: string,
     io: "out" | "in",
-    requestOptions?: ZodFetchOptions
+    requestOptions?: ZodFetchOptions,
+    channel?: string
   ) {
     // The server returns S2 credentials in response headers alongside a tiny
     // JSON body with the realtime version. Follow the same shape as
     // `createStream` so downstream clients can feed them into
     // `StreamsWriterV2`.
+    const base = `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
+    const url = channel ? `${base}/channels/${encodeURIComponent(channel)}/${io}` : `${base}/${io}`;
     return zodfetch(
       CreateStreamResponseBody,
-      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`,
+      url,
       {
         method: "PUT",
         headers: this.#getHeaders(false),
@@ -1381,16 +1416,21 @@ export class ApiClient {
     sessionIdOrExternalId: string,
     io: "out" | "in",
     part: TBody,
-    requestOptions?: ZodFetchOptions
+    requestOptions?: ZodFetchOptions,
+    channel?: string
   ) {
     // Generated once per logical append, outside zodfetch, so its internal
     // retries reuse the same part id and the server-side dedupe collapses a
     // retried POST whose first attempt actually committed. Full-length nanoid
     // (~126 bits) to match the browser transport's randomUUID entropy.
     const partId = nanoid();
+    const base = `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
+    const appendUrl = channel
+      ? `${base}/channels/${encodeURIComponent(channel)}/${io}/append`
+      : `${base}/${io}/append`;
     return zodfetch(
       AppendToStreamResponseBody,
-      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}/append`,
+      appendUrl,
       {
         method: "POST",
         headers: { ...this.#getHeaders(false), "X-Part-Id": partId },
@@ -1414,15 +1454,19 @@ export class ApiClient {
   async readSessionStreamRecords(
     sessionIdOrExternalId: string,
     io: "out" | "in",
-    options?: { afterEventId?: string; baseUrl?: string }
+    options?: { afterEventId?: string; baseUrl?: string; channel?: string }
   ) {
     const qs = new URLSearchParams();
     if (options?.afterEventId !== undefined) {
       qs.set("afterEventId", options.afterEventId);
     }
-    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(
+    const recordsBase = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(
       sessionIdOrExternalId
-    )}/${io}/records${qs.toString() ? `?${qs.toString()}` : ""}`;
+    )}`;
+    const recordsPath = options?.channel
+      ? `${recordsBase}/channels/${encodeURIComponent(options.channel)}/${io}/records`
+      : `${recordsBase}/${io}/records`;
+    const url = `${recordsPath}${qs.toString() ? `?${qs.toString()}` : ""}`;
     return zodfetch(
       ReadSessionStreamRecordsResponseBody,
       url,
@@ -1445,10 +1489,21 @@ export class ApiClient {
     options?: {
       signal?: AbortSignal;
       baseUrl?: string;
+      /**
+       * A named side channel on the session. When omitted, the session's
+       * reserved default channel (`session.in` / `session.out`) is used.
+       */
+      channel?: string;
       timeoutInSeconds?: number;
       onComplete?: () => void;
       onError?: (error: Error) => void;
       lastEventId?: string;
+      /**
+       * Where a fresh subscription (no `lastEventId`) starts reading. `"latest"`
+       * starts at the current tail (only records after connect); `"beginning"`
+       * (default) replays history.
+       */
+      from?: "beginning" | "latest";
       onPart?: (part: SSEStreamPart<T>) => void;
       /**
        * Fires when a `trigger-control` record arrives on the stream (e.g.
@@ -1458,15 +1513,20 @@ export class ApiClient {
       onControl?: (event: ControlEvent) => void;
     }
   ): Promise<AsyncIterableStream<T>> {
-    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`;
+    const sessionSegment = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`;
+    const url = options?.channel
+      ? `${sessionSegment}/channels/${encodeURIComponent(options.channel)}/${io}`
+      : `${sessionSegment}/${io}`;
 
     const subscription = new SSEStreamSubscription(url, {
       headers: this.getHeaders(),
+      resolveHeaders: this.#resolveStreamHeaders(),
       signal: options?.signal,
       onComplete: options?.onComplete,
       onError: options?.onError,
       timeoutInSeconds: options?.timeoutInSeconds,
       lastEventId: options?.lastEventId,
+      from: options?.from,
     });
 
     const stream = await subscription.subscribe();
@@ -1665,6 +1725,7 @@ export class ApiClient {
         closeOnComplete:
           typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
         headers: this.#getRealtimeHeaders(),
+        resolveHeaders: this.#resolveRealtimeHeaders(),
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
@@ -1688,6 +1749,7 @@ export class ApiClient {
       {
         closeOnComplete: false,
         headers: this.#getRealtimeHeaders(),
+        resolveHeaders: this.#resolveRealtimeHeaders(),
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
@@ -1714,6 +1776,7 @@ export class ApiClient {
       {
         closeOnComplete: false,
         headers: this.#getRealtimeHeaders(),
+        resolveHeaders: this.#resolveRealtimeHeaders(),
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
@@ -1778,6 +1841,12 @@ export class ApiClient {
       onComplete?: () => void;
       onError?: (error: Error) => void;
       lastEventId?: string;
+      /**
+       * Where a fresh subscription (no `lastEventId`) starts reading. `"latest"`
+       * starts at the current tail (only records after connect); `"beginning"`
+       * (default) replays history.
+       */
+      from?: "beginning" | "latest";
       /** Called for each SSE event with the full event metadata (id, timestamp). */
       onPart?: (part: SSEStreamPart<T>) => void;
     }
@@ -1785,6 +1854,7 @@ export class ApiClient {
     const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
       headers: this.getHeaders(),
       signal: options?.signal,
+      resolveHeaders: this.#resolveStreamHeaders(),
     });
 
     const subscription = streamFactory.createSubscription(runId, streamKey, {
@@ -1792,6 +1862,7 @@ export class ApiClient {
       onError: options?.onError,
       timeoutInSeconds: options?.timeoutInSeconds,
       lastEventId: options?.lastEventId,
+      from: options?.from,
     });
 
     const stream = await subscription.subscribe();

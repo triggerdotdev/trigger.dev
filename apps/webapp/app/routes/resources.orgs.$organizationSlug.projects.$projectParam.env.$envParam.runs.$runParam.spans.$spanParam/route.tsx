@@ -1803,6 +1803,21 @@ function SpanEntity({ span }: { span: Span }) {
         />
       );
     }
+    case "session-stream": {
+      const { sessionId, channel, io } = span.entity.object;
+      const base = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodeURIComponent(sessionId)}/realtime/v1`;
+      const resourcePath = channel
+        ? `${base}/channels/${encodeURIComponent(channel)}/${io}`
+        : `${base}/${io}`;
+      const displayName = channel ? `${channel}.${io}` : `${sessionId}.${io}`;
+      return (
+        <RealtimeStreamViewer
+          resourcePath={resourcePath}
+          headerLabel={channel ? "Channel:" : "Session:"}
+          displayName={displayName}
+        />
+      );
+    }
     case "ai-generation":
     case "ai-summary": {
       return (

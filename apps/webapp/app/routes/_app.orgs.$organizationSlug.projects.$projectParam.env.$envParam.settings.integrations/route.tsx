@@ -19,12 +19,14 @@ import {
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
+import { prisma } from "~/db.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
@@ -33,7 +35,7 @@ import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.se
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { type BuildSettings } from "~/v3/buildSettings";
+import { BuildSettingsSchema, type BuildSettings } from "~/v3/buildSettings";
 import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import {
@@ -59,8 +61,9 @@ export const loader = dashboardLoader(
   async ({ params, user, ability }) => {
     const { projectParam, organizationSlug } = params;
 
+    const canManageBuildSettings = ability.can("write", { type: "github" });
     const canManageIntegrations =
-      ability.can("write", { type: "github" }) || ability.can("write", { type: "vercel" });
+      canManageBuildSettings || ability.can("write", { type: "vercel" });
 
     if (!canManageIntegrations) {
       throwPermissionDenied("With your current role, you can't manage integrations.");
@@ -102,6 +105,7 @@ export const loader = dashboardLoader(
       githubAppEnabled: gitHubApp.enabled,
       buildSettings,
       vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
+      canManageBuildSettings,
     });
   }
 );
@@ -181,12 +185,24 @@ export const action = dashboardAction(
     const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
       submission.value;
 
+    // Only admins may change the opt-out; other saves carry the stored value forward.
+    let disableNativeBuildServer: true | undefined = useNativeBuildServer ? undefined : true;
+    if (!user.admin && !user.isImpersonating) {
+      const project = await prisma.project.findFirst({
+        where: { id: projectId },
+        select: { buildSettings: true },
+      });
+      const stored = BuildSettingsSchema.safeParse(project?.buildSettings);
+      disableNativeBuildServer =
+        stored.success && stored.data.disableNativeBuildServer === true ? true : undefined;
+    }
+
     const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
       installCommand: installCommand || undefined,
       preBuildCommand: preBuildCommand || undefined,
       triggerConfigFilePath: triggerConfigFilePath || undefined,
       // Native build server is the default, so we only persist the opt-out.
-      disableNativeBuildServer: useNativeBuildServer ? undefined : true,
+      disableNativeBuildServer,
     });
 
     if (resultOrFail.isErr()) {
@@ -208,7 +224,7 @@ export const action = dashboardAction(
 );
 
 export default function IntegrationsSettingsPage() {
-  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
+  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled, canManageBuildSettings } =
     useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -223,6 +239,8 @@ export default function IntegrationsSettingsPage() {
   const loadVercelOnboarding = vercelFetcher.load;
   const onboardingData = vercelFetcher.data?.onboardingData ?? null;
   const hasVercelFetcherData = vercelFetcher.data !== undefined;
+  const onboardingDataUnavailable =
+    hasVercelFetcherData && vercelFetcher.state === "idle" && onboardingData === null;
   const vercelOnboardingPath = `${vercelResourcePath(
     organization.slug,
     project.slug,
@@ -375,24 +393,27 @@ export default function IntegrationsSettingsPage() {
                 />
               </SettingsSection>
             )}
-
-            <SettingsSection>
-              <SettingsHeader
-                title="Build settings"
-                description={
-                  <>
-                    Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
-                    <InlineCode variant="extra-small" className="whitespace-nowrap">
-                      --native-build-server
-                    </InlineCode>{" "}
-                    flag.
-                  </>
-                }
-              />
-              <BuildSettingsForm buildSettings={buildSettings ?? {}} />
-            </SettingsSection>
           </>
         )}
+
+        <SettingsSection>
+          <SettingsHeader
+            title="Build settings"
+            description={
+              <>
+                Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
+                <InlineCode variant="extra-small" className="whitespace-nowrap">
+                  --native-build
+                </InlineCode>{" "}
+                flag.
+              </>
+            }
+          />
+          <BuildSettingsForm
+            buildSettings={buildSettings ?? {}}
+            canManageBuildSettings={canManageBuildSettings}
+          />
+        </SettingsSection>
       </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
@@ -407,6 +428,7 @@ export default function IntegrationsSettingsPage() {
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
           hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          onboardingDataUnavailable={onboardingDataUnavailable}
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
@@ -424,11 +446,19 @@ export default function IntegrationsSettingsPage() {
   );
 }
 
-function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) {
+function BuildSettingsForm({
+  buildSettings,
+  canManageBuildSettings = true,
+}: {
+  buildSettings: BuildSettings;
+  canManageBuildSettings?: boolean;
+}) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
+  const hasAdminAccess = useHasAdminAccess();
+
   // The native build server is enabled by default; it's only off when the
   // project has explicitly opted out via `disableNativeBuildServer`.
   const nativeBuildServerEnabled = buildSettings?.disableNativeBuildServer !== true;
@@ -470,7 +500,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
         align="start"
         htmlFor={fields.triggerConfigFilePath.id}
         title="Trigger config file"
-        description="Path relative to your repo root."
+        description="Path relative to your repo root. Auto-detected by default."
         action={
           <SettingsControl>
             <Input
@@ -503,7 +533,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               {...getInputProps(fields.installCommand, { type: "text" })}
               variant="medium"
               defaultValue={buildSettings?.installCommand || ""}
-              placeholder="pnpm install"
+              placeholder="e.g., pnpm install"
               onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
@@ -528,7 +558,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               {...getInputProps(fields.preBuildCommand, { type: "text" })}
               variant="medium"
               defaultValue={buildSettings?.preBuildCommand || ""}
-              placeholder="npm run prisma:generate"
+              placeholder="e.g., npm run prisma:generate"
               onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
@@ -543,27 +573,31 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
         }
       />
 
-      <SettingsRow
-        title="Use native build server"
-        description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
-        action={
-          <Switch
-            variant="medium"
-            name={fields.useNativeBuildServer.name}
-            defaultChecked={nativeBuildServerEnabled}
-            onCheckedChange={(isChecked) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                useNativeBuildServer: isChecked,
-              }));
-            }}
+      {hasAdminAccess ? (
+        <>
+          <SettingsRow
+            title="Use native build server"
+            description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
+            action={
+              <Switch
+                variant="medium"
+                name={fields.useNativeBuildServer.name}
+                defaultChecked={nativeBuildServerEnabled}
+                onCheckedChange={(isChecked) => {
+                  setBuildSettingsValues((prev) => ({
+                    ...prev,
+                    useNativeBuildServer: isChecked,
+                  }));
+                }}
+              />
+            }
           />
-        }
-      />
 
-      <FormError id={fields.useNativeBuildServer.errorId}>
-        {fields.useNativeBuildServer.errors}
-      </FormError>
+          <FormError id={fields.useNativeBuildServer.errorId}>
+            {fields.useNativeBuildServer.errors}
+          </FormError>
+        </>
+      ) : null}
       <FormError>{buildSettingsForm.errors}</FormError>
 
       <SettingsActions>
@@ -572,7 +606,12 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
           name="action"
           value="update-build-settings"
           variant="secondary/small"
-          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
+          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges || !canManageBuildSettings}
+          tooltip={
+            canManageBuildSettings
+              ? undefined
+              : "You don't have permission to manage build settings"
+          }
           LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
         >
           Save

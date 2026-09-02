@@ -32,6 +32,7 @@ import {
 } from "./tools/prompts.js";
 import { listAgentsTool } from "./tools/agents.js";
 import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
+import { readSessionChannelTool, writeSessionChannelTool } from "./tools/sessionChannels.js";
 import { respondWithError } from "./utils.js";
 
 /** Tool names that perform write/mutating operations. */
@@ -49,6 +50,7 @@ const WRITE_TOOLS = new Set([
   startAgentChatTool.name,
   sendAgentMessageTool.name,
   closeAgentChatTool.name,
+  writeSessionChannelTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
@@ -90,6 +92,8 @@ export function registerTools(context: McpContext) {
     startAgentChatTool,
     sendAgentMessageTool,
     closeAgentChatTool,
+    readSessionChannelTool,
+    writeSessionChannelTool,
     getReportTool,
   ];
 

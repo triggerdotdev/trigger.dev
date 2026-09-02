@@ -11,6 +11,7 @@ import {
   runOpsNewPrismaClient,
   runOpsNewReplicaClient,
   runOpsLegacyPrismaClient,
+  runOpsShardHandles,
 } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById, findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
@@ -1060,6 +1061,7 @@ export function setupBatchQueueCallbacks() {
       newReplica: runOpsNewReplicaClient,
       newWriter: runOpsNewPrismaClient,
       legacyWriter: runOpsLegacyPrismaClient,
+      shards: runOpsShardHandles,
       tryCompleteBatch: (batchId) => engine.tryCompleteBatch({ batchId }),
     });
   });

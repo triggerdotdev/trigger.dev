@@ -29,6 +29,11 @@ import {
 import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import {
+  RunsListErrorState,
+  RunsListErrorStateNoop,
+} from "~/components/runs/v3/RunsListErrorState";
+import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
@@ -116,10 +121,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const runsDirectionRaw = url.searchParams.get("runsDirection") ?? undefined;
   const runsDirection = runsDirectionRaw ? DirectionSchema.parse(runsDirectionRaw) : undefined;
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-    project.organizationId,
-    "standard"
-  );
+  const [clickhouse, runsListClickhouse] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(project.organizationId, "runsList"),
+  ]);
 
   const presenter = new WebhookDetailPresenter($replica, clickhouse);
   const webhook = await presenter.findWebhook({
@@ -156,7 +161,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] }) satisfies WebhookActivity);
 
-  const runList = new NextRunListPresenter($replica, clickhouse)
+  const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -167,7 +172,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       cursor: runsCursor,
       direction: runsDirection,
     })
-    .catch(() => null);
+    .catch((error) => {
+      if (error instanceof RunsListQueryError) {
+        throw error;
+      }
+      return null;
+    });
 
   const deliveriesList = presenter
     .listDeliveries({
@@ -329,7 +339,7 @@ export default function Page() {
                       </Suspense>
                     ) : (
                       <Suspense fallback={null}>
-                        <TypedAwait resolve={runList} errorElement={null}>
+                        <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
                           {(list) =>
                             list ? (
                               <ListPagination
@@ -482,7 +492,7 @@ function WebhookContentArea({
         </Suspense>
       ) : (
         <Suspense fallback={<TableLoading />}>
-          <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+          <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
             {(list) =>
               list ? (
                 <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

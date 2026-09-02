@@ -141,7 +141,8 @@ export function OrganizationSettingsSideMenu({
             badge={
               hasProjectRuntimeUpdate ? (
                 <>
-                  <span aria-hidden className="size-2 shrink-0 rounded-full bg-warning" />
+                  {/* mr-1 lifts the right gap to 12px so it matches the dot's 12px top/bottom inset in the h-8 row */}
+                  <span aria-hidden className="mr-1 size-2 shrink-0 rounded-full bg-warning" />
                   <span className="sr-only">Runtime update available.</span>
                 </>
               ) : undefined

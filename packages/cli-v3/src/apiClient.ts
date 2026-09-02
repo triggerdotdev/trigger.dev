@@ -23,11 +23,13 @@ import {
   DevDisconnectResponseBody,
   EnvironmentVariableResponseBody,
   FailDeploymentResponseBody,
+  GetDeploymentBuildEnvVarsResponseBody,
   GetDeploymentResponseBody,
   GetEnvironmentVariablesResponseBody,
   GetLatestDeploymentResponseBody,
   GetPersonalAccessTokenResponseSchema,
   GetProjectEnvResponse,
+  GetDeploySettingsResponseBody,
   GetProjectResponseBody,
   GetProjectRuntimesResponseBody,
   GetProjectsResponseBody,
@@ -485,6 +487,19 @@ export class CliApiClient {
     );
   }
 
+  async getDeploySettings(projectRef: string, env: string, signal?: AbortSignal) {
+    return wrapZodFetch(
+      GetDeploySettingsResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/${env}/deploy-settings`,
+      {
+        method: "GET",
+        headers: this.getHeaders(),
+        signal,
+      },
+      { retry: { maxAttempts: 1 } }
+    );
+  }
+
   async getRemoteBuildProviderStatus() {
     return wrapZodFetch(
       RemoteBuildProviderStatusResponseBody,
@@ -683,6 +698,20 @@ export class CliApiClient {
     return wrapZodFetch(
       GetDeploymentResponseBody,
       `${this.apiURL}/api/v1/deployments/${deploymentId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async getDeploymentBuildEnvVars(deploymentId: string) {
+    if (!this.accessToken) {
+      throw new Error("getDeploymentBuildEnvVars: No access token");
+    }
+
+    return wrapZodFetch(
+      GetDeploymentBuildEnvVarsResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/build-env-vars`,
       {
         headers: this.getHeaders(),
       }
@@ -1001,6 +1030,7 @@ export class CliApiClient {
       Authorization: `Bearer ${this.accessToken}`,
       "Content-Type": "application/json",
       "x-trigger-source": this.source,
+      "x-trigger-cli-version": VERSION,
       ...this.getBranchHeader(),
     };
   }

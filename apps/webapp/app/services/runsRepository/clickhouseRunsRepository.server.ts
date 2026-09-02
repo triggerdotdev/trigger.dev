@@ -1,4 +1,4 @@
-import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
+import { type ClickhouseQueryBuilder, isClickhouseResourceLimitError } from "@internal/clickhouse";
 import { ErrorId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type FilterRunsOptions,
@@ -10,6 +10,7 @@ import {
   type RunsRepositoryOptions,
   type TagListOptions,
   convertRunListInputOptionsToFilterRunsOptions,
+  RunsListQueryError,
 } from "./runsRepository.server";
 import parseDuration from "parse-duration";
 import { decodeRunsCursor, encodeRunsCursor } from "./runsCursor.server";
@@ -18,6 +19,18 @@ import { type PrismaClientOrTransaction } from "~/db.server";
 
 import { boundedIn, type Prisma } from "@trigger.dev/database";
 type RunCursorRow = { runId: string; createdAt: number };
+
+/**
+ * Re-throws a runs-list query error, converting a ClickHouse resource-limit rejection (execution
+ * time or memory) into a typed {@link RunsListQueryError} so callers can surface an actionable 4xx
+ * instead of an opaque 500. Any other error is re-thrown unchanged.
+ */
+function rethrowRunsListQueryError(queryError: unknown): never {
+  if (isClickhouseResourceLimitError(queryError)) {
+    throw new RunsListQueryError(undefined, { cause: queryError });
+  }
+  throw queryError;
+}
 
 /**
  * Default hydrate select for the runs list, used when a caller does not derive
@@ -103,7 +116,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     return (result?.length ?? 0) > 0;
@@ -167,7 +180,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     return result.map((row) => ({ runId: row.run_id, createdAt: row.created_at_ms }));
@@ -350,7 +363,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     if (result.length === 0) {
@@ -403,7 +416,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const [queryError, result] = await queryBuilder.execute();
 
     if (queryError) {
-      throw queryError;
+      rethrowRunsListQueryError(queryError);
     }
 
     return {
@@ -412,6 +425,22 @@ export class ClickHouseRunsRepository implements IRunsRepository {
   }
 }
 
+/**
+ * Builds the shared filter clauses for the runs list against `task_runs_v2 FINAL`.
+ *
+ * A filter may go in PREWHERE only if its truth value can never flip true->false across a run's
+ * versions, because PREWHERE is evaluated before FINAL reconciles versions and would otherwise keep
+ * a stale matching version and drop the winning one. That holds for columns that are only ever set
+ * once and never change: trigger-time identity columns (task_identifier, task_version, schedule_id,
+ * is_test, root_run_id, batch_id, friendly_id, queue, task_kind), append-only arrays under
+ * `hasAny`/`hasAll` (tags, bulk_action_group_ids), `region` (set once at dequeue, `''` -> value,
+ * never changes), and `error_fingerprint` (empty until a terminal error status, then fixed). Those
+ * go in PREWHERE to filter (and, for tags, use the skip index) before FINAL and before materialising
+ * the wide columns, which is what bounds memory on these scans. Columns that change as a run runs
+ * stay in WHERE (post-FINAL): `status` (lifecycle) and `machine_preset` (escalates on OOM retry).
+ * The `(organization_id, project_id, environment_id)` primary-key prefix and the `created_at` range
+ * also stay in WHERE so they keep driving primary-key and partition pruning.
+ */
 function applyRunFiltersToQueryBuilder<T>(
   queryBuilder: ClickhouseQueryBuilder<T>,
   options: FilterRunsOptions
@@ -427,28 +456,14 @@ function applyRunFiltersToQueryBuilder<T>(
       environmentId: options.environmentId,
     });
 
-  if (options.tasks && options.tasks.length > 0) {
-    queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
-  }
-
-  if (options.versions && options.versions.length > 0) {
-    queryBuilder.where("task_version IN {versions: Array(String)}", {
-      versions: options.versions,
-    });
-  }
-
   if (options.statuses && options.statuses.length > 0) {
     queryBuilder.where("status IN {statuses: Array(String)}", { statuses: options.statuses });
   }
 
-  if (options.tags && options.tags.length > 0) {
-    // Both hasAny and hasAll are served by the tags bloom_filter skip index.
-    const tagsFn = options.tagsMatch === "all" ? "hasAll" : "hasAny";
-    queryBuilder.where(`${tagsFn}(tags, {tags: Array(String)})`, { tags: options.tags });
-  }
-
-  if (options.scheduleId) {
-    queryBuilder.where("schedule_id = {scheduleId: String}", { scheduleId: options.scheduleId });
+  if (options.machines && options.machines.length > 0) {
+    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
+      machines: options.machines,
+    });
   }
 
   // Period is a number of milliseconds duration
@@ -468,49 +483,63 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
   }
 
+  if (options.tasks && options.tasks.length > 0) {
+    queryBuilder.prewhere("task_identifier IN {tasks: Array(String)}", { tasks: options.tasks });
+  }
+
+  if (options.versions && options.versions.length > 0) {
+    queryBuilder.prewhere("task_version IN {versions: Array(String)}", {
+      versions: options.versions,
+    });
+  }
+
+  if (options.tags && options.tags.length > 0) {
+    // Both hasAny and hasAll are served by the tags bloom_filter skip index.
+    const tagsFn = options.tagsMatch === "all" ? "hasAll" : "hasAny";
+    queryBuilder.prewhere(`${tagsFn}(tags, {tags: Array(String)})`, { tags: options.tags });
+  }
+
+  if (options.scheduleId) {
+    queryBuilder.prewhere("schedule_id = {scheduleId: String}", {
+      scheduleId: options.scheduleId,
+    });
+  }
+
   if (typeof options.isTest === "boolean") {
-    queryBuilder.where("is_test = {isTest: Boolean}", { isTest: options.isTest });
+    queryBuilder.prewhere("is_test = {isTest: Boolean}", { isTest: options.isTest });
   }
 
   if (options.rootOnly) {
-    queryBuilder.where("root_run_id = ''");
+    queryBuilder.prewhere("root_run_id = ''");
   }
 
   if (options.batchId) {
-    queryBuilder.where("batch_id = {batchId: String}", { batchId: options.batchId });
+    queryBuilder.prewhere("batch_id = {batchId: String}", { batchId: options.batchId });
   }
 
   if (options.bulkId) {
-    queryBuilder.where("hasAny(bulk_action_group_ids, {bulkActionGroupIds: Array(String)})", {
+    queryBuilder.prewhere("hasAny(bulk_action_group_ids, {bulkActionGroupIds: Array(String)})", {
       bulkActionGroupIds: [options.bulkId],
     });
   }
 
   if (options.runId && options.runId.length > 0) {
     // it's important that in the query it's "runIds", otherwise it clashes with the cursor which is called "runId"
-    queryBuilder.where("friendly_id IN {runIds: Array(String)}", {
+    queryBuilder.prewhere("friendly_id IN {runIds: Array(String)}", {
       runIds: options.runId.map((runId) => RunId.toFriendlyId(runId)),
     });
   }
 
   if (options.queues && options.queues.length > 0) {
-    queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
+    queryBuilder.prewhere("queue IN {queues: Array(String)}", { queues: options.queues });
   }
 
   if (options.regions && options.regions.length > 0) {
-    queryBuilder.where("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
-      regions: options.regions,
-    });
-  }
-
-  if (options.machines && options.machines.length > 0) {
-    queryBuilder.where("machine_preset IN {machines: Array(String)}", {
-      machines: options.machines,
-    });
+    queryBuilder.prewhere("region IN {regions: Array(String)}", { regions: options.regions });
   }
 
   if (options.errorId) {
-    queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
+    queryBuilder.prewhere("error_fingerprint = {errorFingerprint: String}", {
       errorFingerprint: ErrorId.toId(options.errorId),
     });
   }
@@ -521,11 +550,11 @@ function applyRunFiltersToQueryBuilder<T>(
     const effectiveKinds = includesStandard ? [...options.taskKinds, ""] : options.taskKinds;
 
     if (effectiveKinds.length === 1) {
-      queryBuilder.where("task_kind = {taskKind: String}", {
+      queryBuilder.prewhere("task_kind = {taskKind: String}", {
         taskKind: effectiveKinds[0]!,
       });
     } else {
-      queryBuilder.where("task_kind IN {taskKinds: Array(String)}", {
+      queryBuilder.prewhere("task_kind IN {taskKinds: Array(String)}", {
         taskKinds: effectiveKinds,
       });
     }

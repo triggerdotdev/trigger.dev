@@ -13,6 +13,7 @@ import {
   SettingsContainer,
   SettingsHeader,
   SettingsRow,
+  SettingsRowDescription,
   SettingsRowTitle,
   SettingsSection,
 } from "~/components/primitives/SettingsLayout";
@@ -52,6 +53,10 @@ export function ProjectsPage({
   otherProjects: ProjectRuntimeRow[];
 }) {
   const count = needsUpdate.length;
+  // "All projects" lists every project — both the ones needing an update and the rest — sorted by name.
+  const allProjects = [...needsUpdate, ...otherProjects].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
 
   return (
     <PageContainer>
@@ -64,10 +69,15 @@ export function ProjectsPage({
             <>
               <SettingsSection>
                 <SettingsHeader
-                  title="Runtime update available"
+                  title={
+                    <span className="flex items-center gap-x-2">
+                      <span aria-hidden className="size-2 shrink-0 rounded-full bg-warning" />
+                      Runtime update available
+                    </span>
+                  }
                   description={`${count} ${
                     count === 1 ? "project is" : "projects are"
-                  } still running Node.js ${NODE_RUNTIME_UPDATE_MAJOR} in Production. Update each one to Node.js ${NODE_RUNTIME_TARGET_MAJOR} and deploy a new version.`}
+                  } still running Node.js ${NODE_RUNTIME_UPDATE_MAJOR} in production. Update each one to Node.js ${NODE_RUNTIME_TARGET_MAJOR} and deploy a new version.`}
                 />
 
                 <SettingsRow
@@ -76,11 +86,12 @@ export function ProjectsPage({
                   description={
                     <>
                       Set the runtime in{" "}
-                      <InlineCode variant="extra-small" className="whitespace-nowrap">
+                      <InlineCode variant="extra-extra-small" className="whitespace-nowrap">
                         trigger.config.ts
                       </InlineCode>
-                      , then deploy. <InlineCode variant="extra-small">node-22</InlineCode> and{" "}
-                      <InlineCode variant="extra-small">node-26</InlineCode> are also supported.
+                      , then deploy. <InlineCode variant="extra-extra-small">node-22</InlineCode>{" "}
+                      and <InlineCode variant="extra-extra-small">node-26</InlineCode> are also
+                      supported.
                     </>
                   }
                   action={
@@ -108,7 +119,13 @@ export function ProjectsPage({
               </SettingsSection>
 
               <SettingsSection>
-                <SettingsHeader title="Projects to update" />
+                <SettingsHeader
+                  title={
+                    <span className="text-warning">
+                      {count} {count === 1 ? "project" : "projects"} to update
+                    </span>
+                  }
+                />
                 {needsUpdate.map((project) => (
                   <ProjectRow
                     key={project.ref}
@@ -121,21 +138,34 @@ export function ProjectsPage({
           ) : null}
 
           <SettingsSection>
-            <SettingsHeader title="Projects" />
-            {otherProjects.length === 0 ? (
+            <SettingsHeader title="All projects" />
+            {allProjects.length === 0 ? (
               <SettingsBlock>
-                <Paragraph variant="small">
-                  {count === 0 ? "This organization has no projects yet." : "No other projects."}
-                </Paragraph>
+                <Paragraph variant="small">This organization has no projects yet.</Paragraph>
               </SettingsBlock>
             ) : (
-              otherProjects.map((project) => (
-                <ProjectRow
-                  key={project.ref}
-                  organizationSlug={organizationSlug}
-                  project={project}
-                />
-              ))
+              <>
+                {count === 0 ? (
+                  <SettingsBlock>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-x-2">
+                        <span aria-hidden className="size-2 shrink-0 rounded-full bg-success" />
+                        <SettingsRowTitle>All projects are up to date</SettingsRowTitle>
+                      </div>
+                      <SettingsRowDescription>
+                        Every project is running the latest Node.js version in production.
+                      </SettingsRowDescription>
+                    </div>
+                  </SettingsBlock>
+                ) : null}
+                {allProjects.map((project) => (
+                  <ProjectRow
+                    key={project.ref}
+                    organizationSlug={organizationSlug}
+                    project={project}
+                  />
+                ))}
+              </>
             )}
           </SettingsSection>
         </SettingsContainer>
