@@ -478,8 +478,14 @@ export class ExecutionSnapshotSystem {
     // The heartbeat/eventBus side effects below are unchanged.
     store?: RunStore
   ) {
+    // Mint the snapshot id here, above the store, so a connection-blip retry inside the store
+    // replays the same transition idempotently (upsert on the id) instead of duplicating it. Same
+    // scheme the redis dual-write decorator uses, so both stores hold one id.
+    const id = SnapshotId.generate().id;
+
     const newSnapshot = await (store ?? this.$.runStore).createExecutionSnapshot(
       {
+        id,
         run,
         snapshot,
         previousSnapshotId,

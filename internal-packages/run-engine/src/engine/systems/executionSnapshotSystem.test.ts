@@ -56,12 +56,14 @@ function createEngineOptions(redisOptions: any, prisma: any, store?: PostgresRun
 class CountingPostgresRunStore extends PostgresRunStore {
   public creates = 0;
   public latestReads = 0;
+  public snapshotCreateIds: (string | undefined)[] = [];
 
   override async createExecutionSnapshot(
     input: CreateExecutionSnapshotInput,
     tx?: any
   ): ReturnType<PostgresRunStore["createExecutionSnapshot"]> {
     this.creates++;
+    this.snapshotCreateIds.push(input.id);
     return super.createExecutionSnapshot(input, tx);
   }
 
@@ -129,6 +131,38 @@ describe("executionSnapshotSystem store routing (single-DB passthrough)", () => 
       await engine.quit();
     }
   });
+
+  // A transition routed through the engine hands the store a stable id, so a blip-retry inside the
+  // store replays the same transition idempotently instead of duplicating it.
+  containerTest(
+    "snapshot transitions carry a store-supplied id",
+    async ({ prisma, redisOptions }) => {
+      const countingStore = new CountingPostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const engine = new RunEngine(createEngineOptions(redisOptions, prisma, countingStore));
+
+      try {
+        const run = await triggerRun(engine, prisma, "run_snapid1");
+        const latest = await getLatestExecutionSnapshot(prisma, run.id, countingStore);
+        countingStore.snapshotCreateIds.length = 0;
+
+        const created = await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          run: { id: run.id, status: latest.runStatus, attemptNumber: latest.attemptNumber },
+          snapshot: { executionStatus: latest.executionStatus, description: "test transition" },
+          previousSnapshotId: latest.id,
+          environmentId: latest.environmentId,
+          environmentType: latest.environmentType,
+          projectId: latest.projectId,
+          organizationId: latest.organizationId,
+        });
+
+        expect(created.id).toBeDefined();
+        expect(SnapshotId.fromFriendlyId(SnapshotId.toFriendlyId(created.id))).toBe(created.id);
+        expect(countingStore.snapshotCreateIds).toEqual([created.id]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 
   // getLatestExecutionSnapshot reads through the store, routed by run id.
   containerTest(
