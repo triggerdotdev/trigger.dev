@@ -486,7 +486,10 @@ export class RoutingRunStore implements RunStore {
   }
 
   #routeOrNew(id: string | undefined): RunStore {
-    return this.#shardStoreRoutedById(this.#routeKeyOrDefault(id));
+    const key = this.#routeKeyOrDefault(id);
+    // An absent id fell back to the default store rather than resolving anywhere, so it is not
+    // traffic attributable to that shard.
+    return typeof id === "string" ? this.#shardStoreRoutedById(key) : this.#shardStore(key);
   }
 
   // WRITE routing is pure id-shape (cuid → LEGACY, run-ops id → NEW). A LEGACY-classified id is

@@ -1,6 +1,6 @@
 import { UnknownShardKey } from "@internal/run-store";
 import { describe, expect, it } from "vitest";
-import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
+import { undefinedOnUnroutableId } from "./unroutableRead.server";
 
 // `RoutingRunStore.findRun` is not async: it resolves the shard and throws before returning
 // anything, so these stand in for a read that fails while the call expression is still being

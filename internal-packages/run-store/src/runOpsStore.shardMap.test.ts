@@ -420,6 +420,16 @@ describe("RoutingRunStore #distinctStores — one entry per database", () => {
     expect(routed).toEqual([]);
   });
 
+  it("does not count an id-less operation against the default store", async () => {
+    const routed: string[] = [];
+    const { router } = buildNShardRouter(["a", "b"], { routed });
+
+    await router.findRun({ spanId: "s1" }, undefined);
+    await router.runInTransaction(undefined, async () => undefined);
+
+    expect(routed).toEqual([]);
+  });
+
   it("does not count the legacy leg of an unrouted probe", async () => {
     const routed: string[] = [];
     const { router } = buildNShardRouter(["a", "b"], { routed });
