@@ -29,7 +29,9 @@ export const loader = createLoaderPATApiRoute(
     },
     authorization: { action: "read", resource: () => ({ type: "environments" }) },
     // An org-wide delegated token lists any project of its org, so the agent can sweep
-    // sibling projects. The org binding is the context above; membership is `findProjectByRef`.
+    // sibling projects. The context above names no project, so the org is what binds the claim
+    // here; `resolveUserActorEnvironmentScope` binds it to this project's org, and
+    // `findProjectByRef` is the membership floor.
     organizationScoped: true,
   },
   async ({ params, authentication }) => {

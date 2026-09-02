@@ -101,7 +101,15 @@ export async function assertUserActorScope(
   if (!environment) {
     throw forbiddenEnvironment("This token isn't scoped to an environment.");
   }
-  if (scope.projectId && environment.projectId !== scope.projectId) {
+  // An org claim makes the organization the boundary, so a route that opted in reads any project
+  // of it. The org check below still runs, so the route's own organization does the binding.
+  const orgWide =
+    route?.organizationScoped &&
+    !!userActor.organizationId &&
+    userActor.organizationId === environment.organizationId &&
+    scope.organizationId === environment.organizationId;
+
+  if (scope.projectId && environment.projectId !== scope.projectId && !orgWide) {
     throw forbiddenEnvironment("This token isn't scoped to that project.");
   }
   if (scope.organizationId && environment.organizationId !== scope.organizationId) {
@@ -125,10 +133,22 @@ export async function resolveUserActorEnvironmentScope(
 ): Promise<UserActorEnvironmentScope> {
   if (!userActor) return { scoped: false };
 
+  // An org claim makes the organization the boundary, not the environment, so on a route that
+  // opted in it narrows nothing — for any project of that org, the environment claim included.
+  // The org binding is this query: a project outside the claimed org is refused.
+  if (route?.organizationScoped && userActor.organizationId) {
+    const project = await $replica.project.findFirst({
+      where: { id: target.projectId, organizationId: userActor.organizationId },
+      select: { id: true },
+    });
+
+    if (!project) {
+      throw forbiddenEnvironment("This token isn't scoped to that organization.");
+    }
+    return { scoped: false };
+  }
+
   if (!userActor.environmentId) {
-    // An org claim spans every environment of its org, so it narrows nothing here. The org
-    // binding itself is `assertUserActorScope`'s, against the organization the route named.
-    if (route?.organizationScoped && userActor.organizationId) return { scoped: false };
     assertClaimIsOptional(userActor);
     return { scoped: false };
   }

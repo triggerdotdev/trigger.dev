@@ -56,12 +56,14 @@ vi.mock("@internal/run-engine", () => ({
 }));
 
 const { loader } = await import("~/routes/api.v1.projects.$projectRef.environments");
+const { assertUserActorScope, resolveUserActorEnvironmentScope } =
+  await import("~/services/userActorEnvironment.server");
 
 function suffix() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-/** An org with one project, prod/staging/dev environments, a member and an outsider. */
+/** An org with two projects, each with prod/staging/dev environments, a member and an outsider. */
 async function seedOrg(prisma: PrismaClient) {
   const slug = `orgenvs_${suffix()}`;
   const member = await prisma.user.create({
@@ -74,31 +76,45 @@ async function seedOrg(prisma: PrismaClient) {
   const orgMember = await prisma.orgMember.create({
     data: { organizationId: organization.id, userId: member.id, role: "ADMIN" },
   });
-  const project = await prisma.project.create({
-    data: { name: slug, slug, organizationId: organization.id, externalRef: `proj_${slug}` },
-  });
-  const environmentFor = (envSlug: string, type: "PRODUCTION" | "STAGING" | "DEVELOPMENT") =>
-    prisma.runtimeEnvironment.create({
+
+  async function projectWithEnvironments(name: string) {
+    const projectSlug = `${slug}_${name}`;
+    const project = await prisma.project.create({
       data: {
-        slug: envSlug,
-        type,
-        projectId: project.id,
+        name: projectSlug,
+        slug: projectSlug,
         organizationId: organization.id,
-        apiKey: `tr_${envSlug}_${slug}`,
-        pkApiKey: `pk_${envSlug}_${slug}`,
-        shortcode: `${envSlug}${suffix()}`,
-        ...(type === "DEVELOPMENT" ? { orgMemberId: orgMember.id } : {}),
+        externalRef: `proj_${projectSlug}`,
       },
     });
+    const environmentFor = (envSlug: string, type: "PRODUCTION" | "STAGING" | "DEVELOPMENT") =>
+      prisma.runtimeEnvironment.create({
+        data: {
+          slug: envSlug,
+          type,
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: `tr_${envSlug}_${projectSlug}`,
+          pkApiKey: `pk_${envSlug}_${projectSlug}`,
+          shortcode: `${envSlug}${suffix()}`,
+          ...(type === "DEVELOPMENT" ? { orgMemberId: orgMember.id } : {}),
+        },
+      });
+
+    return {
+      project,
+      prod: await environmentFor("prod", "PRODUCTION"),
+      staging: await environmentFor("stg", "STAGING"),
+      dev: await environmentFor("dev", "DEVELOPMENT"),
+    };
+  }
 
   return {
     member,
     outsider,
     organization,
-    project,
-    prod: await environmentFor("prod", "PRODUCTION"),
-    staging: await environmentFor("stg", "STAGING"),
-    dev: await environmentFor("dev", "DEVELOPMENT"),
+    current: await projectWithEnvironments("current"),
+    sibling: await projectWithEnvironments("sibling"),
   };
 }
 
@@ -138,6 +154,16 @@ async function callLoader(opts: {
   return { status: response.status, body: await response.json() };
 }
 
+async function statusOf(promise: Promise<unknown>) {
+  try {
+    await promise;
+    return 200;
+  } catch (thrown) {
+    if (thrown instanceof Response) return thrown.status;
+    throw thrown;
+  }
+}
+
 postgresTest(
   "org-wide user-actor token lists a sibling project's environments",
   async ({ prisma }) => {
@@ -145,47 +171,66 @@ postgresTest(
     const orgA = await seedOrg(prisma);
     const orgB = await seedOrg(prisma);
 
-    // Its own org's project: every environment, dev included — the whole point of the sweep.
-    const own = await callLoader({
-      projectRef: orgA.project.externalRef,
+    // The shape the dashboard agent actually mints: the turn's environment plus its organization.
+    const minted = {
       userId: orgA.member.id,
       organizationId: orgA.organization.id,
-    });
+      environmentId: orgA.current.dev.id,
+    };
+
+    // A sibling project of the same org — the sweep this whole route exists for. Every
+    // environment, dev included, none of them the one the token was minted for.
+    const sibling = await callLoader({ ...minted, projectRef: orgA.sibling.project.externalRef });
+    expect(sibling.status).toBe(200);
+    expect(sibling.body.map((env: any) => env.slug).sort()).toEqual(["dev", "prod", "stg"]);
+
+    // Its own project answers the same way: with an org claim, the org is the boundary.
+    const own = await callLoader({ ...minted, projectRef: orgA.current.project.externalRef });
     expect(own.status).toBe(200);
     expect(own.body.map((env: any) => env.slug).sort()).toEqual(["dev", "prod", "stg"]);
 
-    // A project outside the claimed organization is refused on the claim alone.
-    const foreign = await callLoader({
-      projectRef: orgB.project.externalRef,
-      userId: orgA.member.id,
-      organizationId: orgA.organization.id,
-    });
+    // A project outside the claimed organization.
+    const foreign = await callLoader({ ...minted, projectRef: orgB.current.project.externalRef });
     expect(foreign.status).toBe(403);
     expect(foreign.body.code).toBe("forbidden_environment");
 
     // A claim naming the right org still needs membership of it.
     const outsider = await callLoader({
-      projectRef: orgA.project.externalRef,
+      projectRef: orgA.current.project.externalRef,
       userId: orgB.outsider.id,
       organizationId: orgA.organization.id,
     });
     expect(outsider.status).toBe(404);
 
-    // The environment-claim path is unchanged: exactly its own environment, and nothing elsewhere.
-    const scoped = await callLoader({
-      projectRef: orgA.project.externalRef,
-      userId: orgA.member.id,
-      environmentId: orgA.staging.id,
-    });
+    // An environment claim with no org claim is unchanged: that environment only, and nothing
+    // in another project.
+    const envOnly = { userId: orgA.member.id, environmentId: orgA.current.staging.id };
+    const scoped = await callLoader({ ...envOnly, projectRef: orgA.current.project.externalRef });
     expect(scoped.status).toBe(200);
     expect(scoped.body.map((env: any) => env.slug)).toEqual(["stg"]);
 
-    const scopedForeign = await callLoader({
-      projectRef: orgB.project.externalRef,
-      userId: orgA.member.id,
-      environmentId: orgA.staging.id,
+    const scopedSibling = await callLoader({
+      ...envOnly,
+      projectRef: orgA.sibling.project.externalRef,
     });
-    expect(scopedForeign.status).toBe(403);
-    expect(scopedForeign.body.code).toBe("forbidden_environment");
+    expect(scopedSibling.status).toBe(403);
+    expect(scopedSibling.body.code).toBe("forbidden_environment");
+
+    // The control: a route that hasn't opted in refuses the same org-wide token, so nothing is
+    // loosened for the PAT routes at large.
+    const claims = { ...minted, client: "dashboard-agent" };
+    expect(
+      await statusOf(
+        resolveUserActorEnvironmentScope(claims, { projectId: orgA.sibling.project.id })
+      )
+    ).toBe(403);
+    expect(
+      await statusOf(
+        assertUserActorScope(claims, {
+          organizationId: orgA.organization.id,
+          projectId: orgA.sibling.project.id,
+        })
+      )
+    ).toBe(403);
   }
 );
