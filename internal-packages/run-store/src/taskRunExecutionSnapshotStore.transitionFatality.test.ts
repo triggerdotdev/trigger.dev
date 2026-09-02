@@ -13,14 +13,22 @@ import type { RunStore } from "./types.js";
 
 const ORG = "org_a";
 
-function harness(opts: { global: SnapshotStoreMode; forOrg: SnapshotStoreMode }) {
+function harness(opts: {
+  global: SnapshotStoreMode;
+  forOrg: SnapshotStoreMode;
+  /** When set, append RESOLVES with this outcome instead of rejecting (the returned-outcome path). */
+  appendResult?: { outcome: string; actualCur?: string; seq?: number };
+}) {
   const delegateCalls: string[] = [];
   const repairs: string[] = [];
 
   const redis = new Proxy({} as RedisSnapshotStore, {
     get: (_t, prop) => {
       if (prop === "append") {
-        return () => Promise.reject(new Error("redis append boom"));
+        return () =>
+          opts.appendResult
+            ? Promise.resolve(opts.appendResult)
+            : Promise.reject(new Error("redis append boom"));
       }
       // No waitpoints in this transition, so #resolveCycle never probes.
       return () => Promise.resolve(null);
@@ -93,5 +101,62 @@ describe("transition append fatality is decided by the organisation dial", () =>
       (decorated.completeAttemptSuccess as (...a: never[]) => Promise<unknown>)(...completeParams())
     ).resolves.toBeDefined();
     expect(repairs).toEqual(["run_1"]);
+  });
+});
+
+// The append that RESOLVES with a non-persisting outcome (forked / skippedNoKeyspace) is the gap the
+// thrown-error path above always covered: at redis-only the repair reads an empty Postgres, so the
+// outcome must be fatal here too, not enqueued for a doomed repair or silently dropped.
+describe("a non-persisting append outcome is fatal at redis-only", () => {
+  it("throws and enqueues NO repair when a transition forks at redis-only", async () => {
+    const { decorated, repairs } = harness({
+      global: "dual-write",
+      forOrg: "redis-only",
+      appendResult: { outcome: "forked", actualCur: "snap_other" },
+    });
+
+    await expect(
+      (decorated.completeAttemptSuccess as (...a: never[]) => Promise<unknown>)(...completeParams())
+    ).rejects.toThrow(/unrecoverable at redis-only/);
+    expect(repairs).toEqual([]);
+  });
+
+  it("throws when a transition is skippedNoKeyspace at redis-only", async () => {
+    const { decorated, repairs } = harness({
+      global: "dual-write",
+      forOrg: "redis-only",
+      appendResult: { outcome: "skippedNoKeyspace" },
+    });
+
+    await expect(
+      (decorated.completeAttemptSuccess as (...a: never[]) => Promise<unknown>)(...completeParams())
+    ).rejects.toThrow(/unrecoverable at redis-only/);
+    expect(repairs).toEqual([]);
+  });
+
+  it("below redis-only, a fork still enqueues a repair and a skip is a no-op", async () => {
+    const forked = harness({
+      global: "dual-write",
+      forOrg: "dual-write",
+      appendResult: { outcome: "forked", actualCur: "snap_other" },
+    });
+    await expect(
+      (forked.decorated.completeAttemptSuccess as (...a: never[]) => Promise<unknown>)(
+        ...completeParams()
+      )
+    ).resolves.toBeDefined();
+    expect(forked.repairs).toEqual(["run_1"]);
+
+    const skipped = harness({
+      global: "dual-write",
+      forOrg: "dual-write",
+      appendResult: { outcome: "skippedNoKeyspace" },
+    });
+    await expect(
+      (skipped.decorated.completeAttemptSuccess as (...a: never[]) => Promise<unknown>)(
+        ...completeParams()
+      )
+    ).resolves.toBeDefined();
+    expect(skipped.repairs).toEqual([]);
   });
 });

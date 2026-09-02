@@ -9,9 +9,11 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
 import { invalidateSnapshotStoreOrgMode } from "~/v3/snapshotStoreMode.server";
+import { snapshotStoreOrgCensus } from "~/v3/snapshotStoreOrgCensus.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import {
   FEATURE_FLAG,
+  stampSnapshotStoreOrgEverEnabled,
   validatePartialFeatureFlags,
   withoutOrgForbiddenSnapshotKeys,
 } from "~/v3/featureFlags";
@@ -128,6 +130,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
         env.RUN_OPS_MINT_FLIP_GRACE_MS
       );
 
+      // One-way per-org residency latch, exactly as the v2 route does. Without it a run born after
+      // this enable is resident but the census keeps classifying the org definitely-never-enabled, so
+      // its transitions are skipped and its Redis head freezes. ORed against the locked existing value
+      // so a save back to off never clears it.
+      stampSnapshotStoreOrgEverEnabled(existingRaw, mergedFlags);
+
       return tx.organization.update({
         where: {
           id: organizationId,
@@ -150,6 +158,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // Org feature flags are embedded in every env of the org; drop all its cached env rows.
     controlPlaneResolver.invalidateOrganization(organizationId);
     invalidateSnapshotStoreOrgMode(organizationId);
+    // Refresh the census in THIS process at once, as the v2 route does, so a just-enabled org stops
+    // reading as definitely-never-enabled here immediately. Other pods lag at most the reload interval.
+    void snapshotStoreOrgCensus.refresh();
 
     const updatedFlagsResult = updatedOrganization.featureFlags
       ? validatePartialFeatureFlags(updatedOrganization.featureFlags as Record<string, unknown>)

@@ -51,6 +51,24 @@ import type { Prisma, PrismaClientOrTransaction, TaskRun } from "@trigger.dev/da
 /** One initial attempt plus three retries, per the write protocol. */
 const APPEND_ATTEMPTS = 4;
 
+// A `forked` or `skippedNoKeyspace` append did NOT persist the transition. Below redis-only that is
+// survivable (Postgres holds the head: repair a fork, ignore a legitimate non-resident skip). At
+// redis-only Postgres holds nothing, so #recordOutcome throws this instead, mirroring the thrown-error
+// fatality the append loops already apply. The loops re-throw it at once rather than retrying, because
+// a retry can neither create the keyspace nor unwind a fork.
+class RedisOnlyAppendUnrecoverableError extends Error {
+  constructor(outcome: string) {
+    super(`snapshot store: append outcome "${outcome}" is unrecoverable at redis-only`);
+    this.name = "RedisOnlyAppendUnrecoverableError";
+  }
+}
+
+function isRedisOnlyAppendUnrecoverable(
+  error: unknown
+): error is RedisOnlyAppendUnrecoverableError {
+  return error instanceof RedisOnlyAppendUnrecoverableError;
+}
+
 /**
  * Matches the engine's own chunked waitpoint fetch. A batch can complete a thousand waitpoints at
  * once, and an unbounded `in:` makes each distinct list length its own prepared statement.
@@ -713,6 +731,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         this.faults?.("afterRedisBirthBeforePg", { runId: entry.runId, snapshotId: entry.id });
         return;
       } catch (error) {
+        // A non-persisting outcome at redis-only is fatal; never retry it (a retry cannot create the
+        // keyspace), so run creation fails loudly rather than being born unrecorded.
+        if (isRedisOnlyAppendUnrecoverable(error)) {
+          throw error;
+        }
         if (isInjectedFault(error)) {
           throw error;
         }
@@ -783,6 +806,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         await this.#recordOutcome(site, entry, result);
         return;
       } catch (error) {
+        // A non-persisting outcome at redis-only is fatal: never retry it (the keyspace cannot appear
+        // and a fork cannot unwind), surface it at once.
+        if (isRedisOnlyAppendUnrecoverable(error)) {
+          throw error;
+        }
         // An injected fault models a dead process, not a retryable append failure.
         if (isInjectedFault(error)) {
           this.metrics?.recordAppendFailed(site, entry.organizationId);
@@ -1002,6 +1030,23 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     result: Awaited<ReturnType<RedisSnapshotStore["append"]>>
   ): Promise<void> {
     this.metrics?.recordWrite(site, result.outcome);
+
+    // At redis-only Postgres holds no snapshot for this run, so an outcome that did not persist the
+    // transition is unrecoverable: a fork cannot be repaired from an empty Postgres, and a
+    // skippedNoKeyspace has nowhere else to land. Surface a retryable failure rather than enqueue a
+    // doomed repair or silently drop it, matching the thrown-error fatality in the append loops.
+    if (
+      (result.outcome === "forked" || result.outcome === "skippedNoKeyspace") &&
+      this.modeFor(entry.organizationId) === "redis-only"
+    ) {
+      this.logger.error("snapshot append did not persist at redis-only", {
+        runId: entry.runId,
+        snapshotId: entry.id,
+        site,
+        outcome: result.outcome,
+      });
+      throw new RedisOnlyAppendUnrecoverableError(result.outcome);
+    }
 
     if (result.outcome === "forked") {
       this.logger.error("snapshot append forked", {

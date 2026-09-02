@@ -95,7 +95,7 @@ export async function assertSnapshotStoreBoot(deps: SnapshotStoreBootDeps): Prom
 
   if (deps.mode === "redis-only") {
     deps.warn(
-      "Snapshot store dial is redis-only but this build always writes Postgres snapshots. Double-writing is safe, but a Redis fault at this position fails run creation.",
+      "Snapshot store dial is redis-only: Postgres snapshot writes are suppressed, so Redis is the sole store for run snapshots. A Redis fault at this position fails run creation and cannot be repaired from Postgres, and rolling the dial down does not recover runs born here.",
       { mode: deps.mode }
     );
   }

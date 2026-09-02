@@ -186,6 +186,12 @@ const WARM_TIMEOUT_MS = 500;
 const DEFAULT_CACHE_MAX = 10_000;
 const DEFAULT_CACHE_TTL_MS = 30_000;
 
+// A failed post-save primary read must not wedge the org on the global fallback forever: retry the
+// PRIMARY a few times (the replica stays blocked meanwhile so it cannot restore the superseded value),
+// then give up and let normal refreshes resume. A bounded stale window beats a permanent one.
+const DEFAULT_PRIMARY_INVALIDATE_RETRY_DELAYS_MS = [100, 250, 500, 1000];
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 type OrgModeClient = {
   organization: {
     findFirst(args: {
@@ -195,12 +201,17 @@ type OrgModeClient = {
   };
 };
 
-export function createOrgModeSource(clients?: {
-  primary: OrgModeClient;
-  replica: OrgModeClient;
-}): OrgModeSource {
+export function createOrgModeSource(
+  clients?: {
+    primary: OrgModeClient;
+    replica: OrgModeClient;
+  },
+  opts?: { primaryInvalidateRetryDelaysMs?: number[] }
+): OrgModeSource {
   const primaryClient = (clients?.primary ?? prisma) as OrgModeClient;
   const replicaClient = (clients?.replica ?? $replica) as OrgModeClient;
+  const primaryInvalidateRetryDelaysMs =
+    opts?.primaryInvalidateRetryDelaysMs ?? DEFAULT_PRIMARY_INVALIDATE_RETRY_DELAYS_MS;
   // Defaults inline as well as in the schema: this must not throw when a caller supplies a partial
   // env, and an LRU with neither bound set is a constructor error.
   const cache = new LRUCache<string, CachedOrg>({
@@ -233,22 +244,7 @@ export function createOrgModeSource(clients?: {
       generations.set(organizationId, generation);
       cache.delete(organizationId);
       primaryPending.set(organizationId, generation);
-      void load(organizationId, primaryClient, generation).then((outcome) => {
-        // Only if no NEWER save has claimed it since. Deleting unconditionally is what let an older
-        // read reopen the window for a newer one.
-        if (primaryPending.get(organizationId) !== generation) {
-          return;
-        }
-        // And only if the primary actually ANSWERED. `load` swallows its own errors, so a rejected
-        // primary read used to clear the flag with nothing cached, reopening the window to a lagging
-        // replica that would then restore the pre-save value for a full cache lifetime. Staying
-        // pending keeps replica refreshes out until a primary read succeeds; the resolver falls back
-        // to the deployment-wide position meanwhile, which is the safe answer.
-        if (outcome === "failed") {
-          return;
-        }
-        primaryPending.delete(organizationId);
-      });
+      void loadWithPrimaryRetry(organizationId, generation);
     },
     refresh: (organizationId) => {
       // A save is mid-read for this organisation. Its answer is authoritative and a replica cannot
@@ -291,6 +287,36 @@ export function createOrgModeSource(clients?: {
       }
     },
   };
+
+  // The save's own primary read, with bounded retry. primaryPending stays set for `generation` across
+  // retries so a lagging replica cannot restore the superseded value; a success clears it, and so does
+  // exhausting the retries, so a persistent primary fault falls back to normal refreshes rather than
+  // wedging the org on the global position until the next save or a restart.
+  async function loadWithPrimaryRetry(organizationId: string, generation: number): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      const outcome = await load(organizationId, primaryClient, generation);
+      // A newer save (or its read) has superseded this one; it now owns the flag.
+      if (primaryPending.get(organizationId) !== generation) {
+        return;
+      }
+      if (outcome !== "failed") {
+        primaryPending.delete(organizationId);
+        return;
+      }
+      if (attempt >= primaryInvalidateRetryDelaysMs.length) {
+        // Retries exhausted: clear the flag so replica refreshes resume. The next save or reload
+        // corrects any briefly-restored stale value; a permanent wedge would not.
+        if (primaryPending.get(organizationId) === generation) {
+          primaryPending.delete(organizationId);
+        }
+        return;
+      }
+      await sleep(primaryInvalidateRetryDelaysMs[attempt]);
+      if (primaryPending.get(organizationId) !== generation) {
+        return;
+      }
+    }
+  }
 
   function load(
     organizationId: string,

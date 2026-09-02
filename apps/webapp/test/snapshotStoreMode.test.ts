@@ -386,31 +386,74 @@ describe("warming the organisation dial before a birth", () => {
     // Still unknown, so the synchronous resolve falls back exactly as it did before.
     expect(source.get("org_1")).toBeUndefined();
   });
-  it("keeps replica refreshes out after a FAILED primary read", async () => {
-    // load() swallows its own errors, so a rejected primary read used to clear primaryPending with
-    // nothing cached. A refresh could then read a lagging replica carrying the current generation,
-    // which the generation guard cannot discard, restoring the pre-save value for a cache lifetime.
-    const primary = deferred();
-    const replica = deferred();
-    const source = createOrgModeSource({
-      primary: clientFor(() => primary.promise),
-      replica: clientFor(() => replica.promise),
-    });
+  it("keeps replica refreshes out while a failed primary read is still retrying", async () => {
+    // While the primary is failing and retries are pending, a lagging replica must not restore the
+    // pre-save value: primaryPending stays set for the generation, so refresh does not read the replica.
+    let primaryCalls = 0;
+    const source = createOrgModeSource(
+      {
+        primary: clientFor(() => {
+          primaryCalls += 1;
+          return Promise.reject(new Error("primary unavailable"));
+        }),
+        replica: clientFor(() =>
+          Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } })
+        ),
+      },
+      // Long delays: the retry window is still open for the duration of this test.
+      { primaryInvalidateRetryDelaysMs: [10_000, 10_000] }
+    );
+
+    source.invalidate("org_1");
+    await vi.waitFor(() => expect(primaryCalls).toBeGreaterThanOrEqual(1));
+
+    // A refresh arriving mid-retry must not start a replica read; the resolver falls back to global.
+    source.refresh("org_1");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(source.get("org_1")).toBeUndefined();
+  });
+
+  it("retries the primary and recovers the saved value after a transient failure", async () => {
+    let calls = 0;
+    const source = createOrgModeSource(
+      {
+        primary: clientFor(() => {
+          calls += 1;
+          return calls === 1
+            ? Promise.reject(new Error("primary unavailable"))
+            : Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "dual-write" } });
+        }),
+        replica: clientFor(() => Promise.resolve({ featureFlags: {} })),
+      },
+      { primaryInvalidateRetryDelaysMs: [5, 5, 5] }
+    );
+
+    source.invalidate("org_1");
+    // A concurrent refresh during the retry must not read the replica out from under the retry.
+    source.refresh("org_1");
+
+    await vi.waitFor(() => expect(source.get("org_1")).toBe("dual-write"));
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it("unwedges after exhausting primary retries so a later refresh repopulates", async () => {
+    const source = createOrgModeSource(
+      {
+        primary: clientFor(() => Promise.reject(new Error("primary unavailable"))),
+        replica: clientFor(() =>
+          Promise.resolve({ featureFlags: { snapshotStoreOrgMode: "redis-read" } })
+        ),
+      },
+      { primaryInvalidateRetryDelaysMs: [1, 1] }
+    );
 
     source.invalidate("org_1");
 
-    // The primary read FAILS.
-    primary.resolve(Promise.reject(new Error("primary unavailable")) as never);
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
-
-    // A refresh arriving now must not start a replica read, because no primary answer ever landed.
-    source.refresh("org_1");
-    replica.resolve({ featureFlags: { snapshotStoreOrgMode: "off" } });
-    await new Promise((r) => setTimeout(r, 0));
-
-    // Nothing cached: the resolver falls back to the deployment-wide position, which is the safe
-    // answer, rather than serving a stale replica value as though it were the saved one.
-    expect(source.get("org_1")).toBeUndefined();
+    // Once the retries exhaust, primaryPending clears and a refresh can repopulate from the replica,
+    // rather than the org staying wedged on the global position forever.
+    await vi.waitFor(() => {
+      source.refresh("org_1");
+      expect(source.get("org_1")).toBe("redis-read");
+    });
   });
 });
