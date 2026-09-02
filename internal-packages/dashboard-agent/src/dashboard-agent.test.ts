@@ -3,7 +3,13 @@
 // register at module load.
 import { mockChatAgent, type MockChatAgentHarness } from "@trigger.dev/sdk/ai/test";
 
-import { convertToModelMessages, tool, type UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  simulateReadableStream,
+  tool,
+  type ModelMessage,
+  type UIMessage,
+} from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -26,6 +32,7 @@ import {
   isCiEvalContext,
   isFirstUserExchange,
   MAX_EVAL_TOOL_OUTPUT_CHARS,
+  prepareTurnMessages,
   sanitizeReplayedToolInputs,
   truncateEvalToolOutput,
   TURN_FAILED_MESSAGE,
@@ -44,6 +51,7 @@ import {
   mockModel,
   textStep,
   toolCallStep,
+  USAGE,
   userMessage,
   type StoreCalls,
 } from "./test-support";
@@ -184,6 +192,43 @@ describe("dashboardAgent (mock harness)", () => {
     expect(last?.providerOptions?.anthropic).toMatchObject({
       cacheControl: { type: "ephemeral" },
     });
+  });
+
+  // Resending the same message id merges onto the user message already in history
+  // instead of appending after it, so the turn-failure record would be the last
+  // message — and the newer Anthropic models reject a request that ends with one.
+  it("a retried turn never sends the failure record as an assistant prefill (regression)", async () => {
+    const { store } = fakeStore();
+    let call = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        call++;
+        if (call === 1) throw new Error("the provider failed");
+        return { stream: simulateReadableStream({ chunks: textStep("recovered") }) };
+      },
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "Why it fails" }],
+        finishReason: { unified: "stop", raw: "stop" } as const,
+        usage: USAGE,
+        warnings: [],
+      }),
+    });
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_retry_prefill",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendMessage(userMessage("why is it failing?", "u1"));
+    await new Promise((r) => setTimeout(r, 30));
+    const turn = await harness.sendMessage(userMessage("why is it failing?", "u1"));
+
+    const prompt = model.doStreamCalls[1]?.prompt ?? [];
+    expect(prompt[prompt.length - 1]?.role).not.toBe("assistant");
+    expect(collectText(turn.chunks)).toBe("recovered");
   });
 
   it("Head Start handover: executes the handed-over tool call despite the cache hook (regression)", async () => {
@@ -520,6 +565,42 @@ describe("dashboardAgent (mock harness)", () => {
     const state = finalInvestigationState(calls);
     expect(state.outcome).toBe("concluded");
     expect(state.remediation).toBe("Raise minTimeoutInMs to 30s with a factor of 2.");
+  });
+});
+
+describe("prepareTurnMessages", () => {
+  const prepared = (messages: unknown[]) =>
+    prepareTurnMessages({ messages: messages as ModelMessage[], reason: "run" });
+
+  // Anthropic's newer models reject a trailing assistant message outright, so no
+  // turn may ever send one.
+  it("drops the trailing assistant messages history can end with", () => {
+    const messages = [
+      { role: "user", content: "why is it failing?" },
+      { role: "assistant", content: [{ type: "text", text: TURN_FAILED_MESSAGE }] },
+    ];
+
+    const result = prepared(messages);
+
+    expect(result.map((message) => message.role)).toEqual(["user"]);
+    // The breakpoint follows the new last message.
+    expect(
+      (result[0] as { providerOptions?: Record<string, unknown> }).providerOptions?.anthropic
+    ).toBeDefined();
+  });
+
+  it("leaves a history that already ends with the user alone", () => {
+    const messages = [
+      { role: "user", content: "why is it failing?" },
+      { role: "assistant", content: [{ type: "text", text: TURN_FAILED_MESSAGE }] },
+      { role: "user", content: "asking again" },
+    ];
+
+    expect(prepared(messages).map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
   });
 });
 

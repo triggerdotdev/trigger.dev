@@ -18,6 +18,7 @@ import {
   modeFor,
   resolveDashboardAgentModel,
   sanitizeReplayedToolInputs,
+  withoutAssistantPrefill,
   settlementCardMessages,
   clearOpenInvestigations,
   pendingInvestigationSettlements,
@@ -342,8 +343,10 @@ export function prepareTurnMessages(args: {
 }): ModelMessage[] {
   if (args.messages.length === 0) return args.messages;
   return withCacheBreakpointOnLast(
-    sanitizeReplayedToolInputs(
-      args.reason === "run" ? args.messages : withDurableState(args.messages, chat.history.all())
+    withoutAssistantPrefill(
+      sanitizeReplayedToolInputs(
+        args.reason === "run" ? args.messages : withDurableState(args.messages, chat.history.all())
+      )
     )
   );
 }

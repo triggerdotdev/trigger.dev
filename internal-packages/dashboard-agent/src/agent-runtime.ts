@@ -360,6 +360,24 @@ export function sanitizeReplayedToolInputs(messages: ModelMessage[]): ModelMessa
   }) as ModelMessage[];
 }
 
+/**
+ * Drop a trailing assistant message, which the newer Anthropic models reject:
+ * "This model does not support assistant message prefill. The conversation must end
+ * with a user message."
+ *
+ * A transcript legitimately ends with one. A failed turn records its own apology as
+ * the last assistant message, and a resend of the same message id merges onto the
+ * user message already in history rather than appending after it — so the retry
+ * would send that apology as a prefill and fail the whole turn again. Nothing after
+ * a dropped assistant message can be orphaned by dropping it, since it was last.
+ */
+export function withoutAssistantPrefill(messages: ModelMessage[]): ModelMessage[] {
+  let end = messages.length;
+  while (end > 0 && messages[end - 1]!.role === "assistant") end--;
+  // Nothing but assistant messages: sending none would be rejected too, so leave it.
+  return end === 0 || end === messages.length ? messages : messages.slice(0, end);
+}
+
 // Same breakpoint `prepareMessages` rolls onto a turn's last message.
 export function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
   if (messages.length === 0) return messages;
