@@ -86,6 +86,21 @@ describe("isRetryableInfrastructureError", () => {
     ).toBe(false);
   });
 
+  it("never retries a panic from the run-ops runtime, even with a connectivity-ish message", () => {
+    // The run-ops client is a separately generated Prisma runtime, so its panic is not the
+    // control-plane class. Recognised by name so it can never fall through to the message check.
+    const foreignPanic = {
+      name: "PrismaClientRustPanicError",
+      message: "connection terminated: RUST PANIC in query engine",
+    };
+    expect(isRetryableInfrastructureError(foreignPanic)).toBe(false);
+  });
+
+  it("retries a run-ops-runtime known-request error by name + code, not instanceof", () => {
+    const foreignKnown = { name: "PrismaClientKnownRequestError", code: "P1017", message: "" };
+    expect(isRetryableInfrastructureError(foreignKnown)).toBe(true);
+  });
+
   it("never retries pool exhaustion (P2024), even though its message looks like connectivity", () => {
     const poolMsg = "Timed out fetching a new connection from the connection pool";
     expect(isRetryableInfrastructureError(known("P2024", poolMsg))).toBe(false);

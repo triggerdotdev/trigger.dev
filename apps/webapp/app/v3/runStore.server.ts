@@ -75,6 +75,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       maxWait: deps.singleResilience?.maxWait,
       transactionStartRetry: deps.singleResilience?.startRetry,
       infraRetry: deps.singleResilience?.infraRetry,
+      readInfraRetry: deps.singleResilience?.readInfraRetry,
     });
   }
 
@@ -91,6 +92,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     maxWait: deps.newResilience?.maxWait,
     transactionStartRetry: deps.newResilience?.startRetry,
     infraRetry: deps.newResilience?.infraRetry,
+    readInfraRetry: deps.newResilience?.readInfraRetry,
   });
   const legacyStore = new PostgresRunStore({
     prisma: deps.legacyWriter,
@@ -98,6 +100,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     maxWait: deps.legacyResilience?.maxWait,
     transactionStartRetry: deps.legacyResilience?.startRetry,
     infraRetry: deps.legacyResilience?.infraRetry,
+    readInfraRetry: deps.legacyResilience?.readInfraRetry,
   });
 
   // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
@@ -112,6 +115,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       maxWait: shard.resilience?.maxWait,
       transactionStartRetry: shard.resilience?.startRetry,
       infraRetry: shard.resilience?.infraRetry,
+      readInfraRetry: shard.resilience?.readInfraRetry,
     }),
     aliasOf: shard.aliasOf,
   }));

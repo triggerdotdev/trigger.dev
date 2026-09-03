@@ -20,10 +20,15 @@ export type TransactionResilienceConfig = {
   maxWait: number;
   startRetry: TransactionStartRetryConfig;
   /**
-   * Connection-blip retry for the run store. Its own token bucket (so a storm on one pool cannot
-   * drain another's), driven by the shared DATABASE_INFRA_RETRY_* env and OFF by default.
+   * Connection-blip retry for the run store's WRITER pool. Its own token bucket (so a storm on one
+   * pool cannot drain another's), driven by the DATABASE_INFRA_RETRY_* env and gated by the flag.
    */
   infraRetry: InfraRetryConfig;
+  /**
+   * Same config for the store's READ-ONLY (replica) pool, with a SEPARATE budget: a replica retry
+   * storm must not drain the writer's budget and starve a completion or snapshot write of its retry.
+   */
+  readInfraRetry: InfraRetryConfig;
 };
 
 // Exported so the topology singleton can build a per-shard config (each call creates its OWN
@@ -44,6 +49,35 @@ export function resolveTransactionResilience(
   const budgetPerSec =
     overrides.budgetPerSec ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC;
   const budgetBurst = overrides.budgetBurst ?? env.DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST;
+
+  // A fresh InfraRetryConfig with its OWN budget each call. `label` only tags the log line.
+  const buildInfraRetry = (label: string): InfraRetryConfig => ({
+    options: {
+      // Ignored: `isEnabled` (the flag) is the gate. Kept true so the mechanism is available.
+      enabled: true,
+      maxAttempts: env.DATABASE_INFRA_RETRY_MAX_ATTEMPTS,
+      backoffMinMs: env.DATABASE_INFRA_RETRY_BACKOFF_MIN_MS,
+      backoffMaxMs: env.DATABASE_INFRA_RETRY_BACKOFF_MAX_MS,
+    },
+    // Resolved per call from the global feature flag (30s cache), so operators flip it at runtime.
+    // Lazy import: featureFlags.server -> db.server -> this module is a cycle.
+    isEnabled: async () => {
+      const { cachedFlag } = await import("./featureFlags.server");
+      const { FEATURE_FLAG } = await import("~/v3/featureFlags");
+      return cachedFlag({ key: FEATURE_FLAG.runStoreInfraRetryEnabled, defaultValue: false });
+    },
+    budget: new TokenBucketRetryBudget({
+      ratePerSec: env.DATABASE_INFRA_RETRY_BUDGET_PER_SEC,
+      burst: env.DATABASE_INFRA_RETRY_BUDGET_BURST,
+    }),
+    onRetry: ({ attempt, delayMs }) =>
+      logger.warn("retrying run-store operation after a connection blip", {
+        pool: label,
+        attempt,
+        delayMs,
+      }),
+  });
+
   return {
     maxWait: Math.max(0, overrides.maxWaitMs ?? env.DATABASE_TRANSACTION_MAX_WAIT_MS),
     startRetry: {
@@ -61,34 +95,11 @@ export function resolveTransactionResilience(
           delayMs,
         }),
     },
-    // Own budget per pool. Tuning comes from env; the on/off gate is the runtime
-    // `runStoreInfraRetryEnabled` feature flag (below), so it flips without a redeploy.
-    infraRetry: {
-      options: {
-        // Ignored: `isEnabled` (the flag) is the gate. Kept true so the mechanism is available.
-        enabled: true,
-        maxAttempts: env.DATABASE_INFRA_RETRY_MAX_ATTEMPTS,
-        backoffMinMs: env.DATABASE_INFRA_RETRY_BACKOFF_MIN_MS,
-        backoffMaxMs: env.DATABASE_INFRA_RETRY_BACKOFF_MAX_MS,
-      },
-      // Resolved per call from the global feature flag (30s cache), so operators can turn the retry
-      // on/off at runtime. Lazy import: featureFlags.server -> db.server -> this module is a cycle.
-      isEnabled: async () => {
-        const { cachedFlag } = await import("./featureFlags.server");
-        const { FEATURE_FLAG } = await import("~/v3/featureFlags");
-        return cachedFlag({ key: FEATURE_FLAG.runStoreInfraRetryEnabled, defaultValue: false });
-      },
-      budget: new TokenBucketRetryBudget({
-        ratePerSec: env.DATABASE_INFRA_RETRY_BUDGET_PER_SEC,
-        burst: env.DATABASE_INFRA_RETRY_BUDGET_BURST,
-      }),
-      onRetry: ({ attempt, delayMs }) =>
-        logger.warn("retrying run-store operation after a connection blip", {
-          pool,
-          attempt,
-          delayMs,
-        }),
-    },
+    // Writer and reader each get their OWN budget (fresh per buildInfraRetry call), so a replica
+    // retry storm cannot drain the writer's budget. Tuning comes from env; the on/off gate is the
+    // runtime `runStoreInfraRetryEnabled` feature flag, so it flips without a redeploy.
+    infraRetry: buildInfraRetry(pool),
+    readInfraRetry: buildInfraRetry(`${pool}-read`),
   };
 }
 

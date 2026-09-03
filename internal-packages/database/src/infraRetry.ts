@@ -50,8 +50,20 @@ export async function withInfraRetry<R>(
     return run();
   }
 
-  // A runtime gate (feature flag) wins over the static option when present.
-  const enabled = config.isEnabled ? await config.isEnabled() : config.options.enabled;
+  // A runtime gate (feature flag) wins over the static option when present. It must NEVER break the
+  // protected operation: if resolving it throws (e.g. the flag store is itself blipping), treat it
+  // as disabled and run once — exactly as if retry were off. Otherwise the very blip we guard
+  // against could turn into a 5xx from the gate lookup.
+  let enabled: boolean;
+  if (config.isEnabled) {
+    try {
+      enabled = await config.isEnabled();
+    } catch {
+      enabled = false;
+    }
+  } else {
+    enabled = config.options.enabled;
+  }
   if (!enabled) {
     return run();
   }

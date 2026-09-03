@@ -139,6 +139,12 @@ export type PostgresRunStoreOptions = {
    * leaves every operation running exactly once, preserving existing behavior.
    */
   infraRetry?: InfraRetryConfig;
+  /**
+   * Same as {@link infraRetry} but for operations that run on the READ-ONLY (replica) client, with
+   * its own budget so a replica retry storm cannot drain the writer's. Defaults to `infraRetry`
+   * when omitted (single-pool callers/tests share one budget, as before).
+   */
+  readInfraRetry?: InfraRetryConfig;
 };
 
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
@@ -663,6 +669,7 @@ export class PostgresRunStore implements RunStore {
   private readonly maxWait?: number;
   private readonly transactionStartRetry?: TransactionStartRetryConfig;
   private readonly infraRetry?: InfraRetryConfig;
+  private readonly readInfraRetry?: InfraRetryConfig;
 
   constructor(options: PostgresRunStoreOptions) {
     // Normalize foreign (run-ops-generation) Prisma known-request-errors to the control-plane
@@ -674,6 +681,7 @@ export class PostgresRunStore implements RunStore {
     this.maxWait = options.maxWait;
     this.transactionStartRetry = options.transactionStartRetry;
     this.infraRetry = options.infraRetry;
+    this.readInfraRetry = options.readInfraRetry ?? options.infraRetry;
     this.snapshotWrites = options.snapshotWrites ?? true;
   }
 
@@ -2461,7 +2469,11 @@ export class PostgresRunStore implements RunStore {
   // `client` is an interactive-transaction client (a tx client has no `$transaction`) — retrying a
   // statement inside an aborted transaction is unsafe. No-ops unless `infraRetry` is enabled.
   #maybeInfraRetry<R>(client: object, run: () => Promise<R>): Promise<R> {
-    return "$transaction" in client ? withInfraRetry(run, this.infraRetry) : run();
+    // Budget by the physical pool the op runs on: the read-only (replica) client gets its own so a
+    // replica retry storm can't drain the writer's. A caller-passed client (e.g. the writer for a
+    // read-your-writes read) uses the writer budget, which is correct — it IS the writer pool.
+    const config = client === this.readOnlyPrisma ? this.readInfraRetry : this.infraRetry;
+    return "$transaction" in client ? withInfraRetry(run, config) : run();
   }
 
   #findWaitpointOn<T extends Prisma.WaitpointFindFirstArgs>(

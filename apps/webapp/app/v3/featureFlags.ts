@@ -203,6 +203,9 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
+  // Global only: the run store reads this from the global table, never per-org. An org override
+  // would silently do nothing, so don't offer the control.
+  FEATURE_FLAG.runStoreInfraRetryEnabled,
 ];
 
 /**
