@@ -194,7 +194,7 @@ export const myChat = chat.agent({
 
 ## Two lanes: trusted and untrusted
 
-The role you inject with decides more than position — it decides whether the model
+The role you inject with decides more than position. It decides whether the model
 treats the content as trustworthy.
 
 **`role: "system"` goes to the instructions lane.** The block is appended to the
@@ -203,7 +203,7 @@ as your system prompt. This is the lane for context the agent should believe:
 entitlements, plan changes, operational notices.
 
 It has to work this way. On AI SDK 7 a system message inside `messages` is rejected
-for every provider — `standardizePrompt` throws before any provider is called, and
+for every provider. `standardizePrompt` throws before any provider is called, and
 its own advice is to use the instructions option, so the injected block goes there
 rather than into the transcript.
 
@@ -212,7 +212,7 @@ rather than into the transcript.
   is the only place the SDK can set `streamText`'s instructions for you. If your
   `run()` calls `streamText({ model, messages, abortSignal })` without spreading
   `chat.toStreamTextOptions()`, a `role: "system"` injection never reaches the
-  model. The conversational lane has no such requirement — it arrives through
+  model. The conversational lane has no such requirement: it arrives through
   `messages` either way.
 </Warning>
 
@@ -227,7 +227,7 @@ rather than into the transcript.
 
 **Any other role joins the conversation, and is untrusted by construction.** A
 message injected as `user` is indistinguishable from something the user typed, and a
-well-aligned model treats it accordingly — it may say so and re-derive the answer
+well-aligned model treats it accordingly, and may say so and re-derive the answer
 from tools instead of taking it at face value:
 
 > "that text arrived embedded in your message, not from a tool I called, so I
