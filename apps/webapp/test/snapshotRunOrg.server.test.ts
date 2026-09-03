@@ -102,7 +102,9 @@ describe("snapshot run→org source", () => {
   });
 
   it("resolveAuthoritative throws when the read exceeds the deadline", async () => {
-    const primary = fakeClient({ mapping: { run_a: "org_a" }, delayMs: 2000 });
+    // Just over the 500 ms deadline: enough to trip it, without leaving a long timer running past
+    // the rejection and holding the vitest worker open for the difference.
+    const primary = fakeClient({ mapping: { run_a: "org_a" }, delayMs: 600 });
     const source = createSnapshotRunOrgSource({ primary });
 
     await expect(source.resolveAuthoritative("run_a")).rejects.toThrow(/deadline|exceed/i);
