@@ -11,7 +11,7 @@ import { logger } from "~/services/logger.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
-import { engine } from "~/v3/runEngine.server";
+import { completeWaitpointWithGuard } from "~/v3/completeWaitpointWithGuard.server";
 import { runStore } from "~/v3/runStore.server";
 
 const { action, loader } = createActionApiRoute(
@@ -70,7 +70,7 @@ const { action, loader } = createActionApiRoute(
         `${WaitpointId.toFriendlyId(waitpointId)}/token`
       );
 
-      const _result = await engine.completeWaitpoint({
+      await completeWaitpointWithGuard({
         id: waitpointId,
         output: finalData.data
           ? { type: finalData.dataType, value: finalData.data, isError: false }

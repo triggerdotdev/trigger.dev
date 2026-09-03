@@ -8,7 +8,7 @@ import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { engine } from "~/v3/runEngine.server";
+import { completeWaitpointWithGuard } from "~/v3/completeWaitpointWithGuard.server";
 import { runStore } from "~/v3/runStore.server";
 
 const paramsSchema = z.object({
@@ -89,7 +89,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       `${WaitpointId.toFriendlyId(waitpointId)}/http-callback`
     );
 
-    const _result = await engine.completeWaitpoint({
+    await completeWaitpointWithGuard({
       id: waitpointId,
       output: finalData.data
         ? { type: finalData.dataType, value: finalData.data, isError: false }
