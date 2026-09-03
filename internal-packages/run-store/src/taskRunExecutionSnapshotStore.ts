@@ -233,8 +233,6 @@ export type TaskRunExecutionSnapshotStoreOptions = {
   mode?: SnapshotStoreMode;
   /** Takes precedence over `mode`, and is re-read on every write so the dial can move at runtime. */
   modeResolver?: SnapshotStoreModeResolver;
-  /** Percentage of runs whose reads come from Redis at `redis-read` and `redis-only`. Defaults to 0. */
-  readPercent?: number;
   /** Defaults to never halted. */
   halted?: SnapshotStoreHaltCheck;
   onAppendFailure?: SnapshotRepairEnqueuer;
@@ -265,7 +263,6 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   readonly #staticMode: SnapshotStoreMode;
   protected readonly modeResolver?: SnapshotStoreModeResolver;
   protected readonly redis: RedisSnapshotStore;
-  protected readonly readPercent: number;
   protected readonly haltCheck?: SnapshotStoreHaltCheck;
   protected readonly onAppendFailure?: SnapshotRepairEnqueuer;
   protected readonly faults?: SnapshotFaultInjector;
@@ -278,7 +275,6 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     this.redis = options.store;
     this.#staticMode = options.mode ?? "off";
     this.modeResolver = options.modeResolver;
-    this.readPercent = options.readPercent ?? 0;
     this.haltCheck = options.halted;
     this.onAppendFailure = options.onAppendFailure;
     this.faults = options.faults;
@@ -480,7 +476,6 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     return new TaskRunExecutionSnapshotStore(store, {
       store: this.redis,
       mode: this.#staticMode,
-      readPercent: this.readPercent,
       ...(this.haltCheck && { halted: this.haltCheck }),
       ...(this.modeResolver && { modeResolver: this.modeResolver }),
       logger: this.logger,
@@ -1200,23 +1195,17 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
 
     if (effective !== "redis-read" && effective !== "redis-only") return false;
 
-    // At `redis-only` the cohort dial has no meaning. Postgres holds no snapshot rows at that
-    // position, so a run routed away from Redis reads nothing at all. Ignoring the percentage here
-    // makes that misconfiguration unreachable rather than merely documented.
+    // At `redis-only` Postgres holds no snapshot rows, so a run routed away from Redis reads nothing
+    // at all. Always reading from Redis here makes that misconfiguration unreachable.
     if (effective === "redis-only") return true;
 
     // Halted heads are frozen, and below `redis-only` Postgres still holds the whole log, so serving
     // reads from it is strictly better than serving a head that stopped moving.
     if (this.halted()) return false;
 
-    if (this.readPercent >= 100) return true;
-    if (this.readPercent <= 0) return false;
-
-    let hash = 0;
-    for (let i = 0; i < runId.length; i++) {
-      hash = (hash * 31 + runId.charCodeAt(i)) >>> 0;
-    }
-    return hash % 100 < this.readPercent;
+    // `redis-read` is org-gated: an org at this position reads every one of its runs from Redis, with
+    // Postgres as the fallback on a miss or error.
+    return true;
   }
 
   override async findLatestExecutionSnapshot(

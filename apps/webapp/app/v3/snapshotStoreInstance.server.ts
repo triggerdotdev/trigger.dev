@@ -114,9 +114,7 @@ const instance = singleton<Instance | undefined>("snapshotStoreInstance", () => 
         store: redisSnapshotStore,
         modeResolver: snapshotStoreModeResolver,
         halted: snapshotStoreHalted,
-        // Pinned: the field defaults to 0, which would mean no read ever reaches Redis. The
-        // organisation is the ramp unit, so there is no percentage to ramp.
-        readPercent: 100,
+        // The organisation is the ramp unit.
         metrics: metrics.decorator,
         onAppendFailure: async (args) => {
           const enqueue = getSnapshotRepairEnqueuer();

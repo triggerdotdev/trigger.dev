@@ -22,7 +22,6 @@ function storeWith(options: {
     mode: options.mode,
     ...(options.resolver && { modeResolver: options.resolver }),
     ...(options.halted !== undefined && { halted: () => options.halted === true }),
-    readPercent: 100,
   });
 }
 

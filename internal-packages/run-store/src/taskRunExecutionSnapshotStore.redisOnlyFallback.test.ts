@@ -48,7 +48,6 @@ function harness(opts: {
     store: redis,
     mode: opts.globalMode,
     modeResolver,
-    readPercent: 100,
   });
 
   return { decorated, delegateTouched };
@@ -176,7 +175,6 @@ function missHarness(opts: {
     store: redis,
     mode: opts.globalMode,
     modeResolver,
-    readPercent: 100,
   });
 
   return { decorated, delegateTouched };
@@ -320,7 +318,6 @@ function authHarness(opts: {
     store: redis,
     mode: opts.globalMode,
     modeResolver,
-    readPercent: 100,
   });
 
   return { decorated, delegateTouched, authoritativeCalls };

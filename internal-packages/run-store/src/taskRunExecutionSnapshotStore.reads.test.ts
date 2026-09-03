@@ -18,11 +18,7 @@ import {
 
 const COMPLETED_TTL_MS = 72 * 60 * 60 * 1000;
 
-function build(
-  prisma: never,
-  redisOptions: never,
-  opts?: { mode?: SnapshotStoreMode; readPercent?: number }
-) {
+function build(prisma: never, redisOptions: never, opts?: { mode?: SnapshotStoreMode }) {
   const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
   const reads: { method: string; source: string }[] = [];
 
@@ -31,7 +27,6 @@ function build(
     {
       store: redis,
       mode: opts?.mode ?? "redis-read",
-      readPercent: opts?.readPercent ?? 100,
       metrics: {
         recordWrite: () => {},
         recordAppendFailed: () => {},
@@ -200,23 +195,6 @@ describe("snapshot reads", () => {
       }
     }
   );
-
-  containerTest("reads from Postgres at readPercent 0", async ({ prisma, redisOptions }) => {
-    const { decorated, redis, reads } = build(prisma as never, redisOptions as never, {
-      readPercent: 0,
-    });
-    try {
-      const env = await seedSnapshotEnvironment(prisma);
-      const runId = await seedRun(decorated, env);
-
-      const latest = await decorated.findLatestExecutionSnapshot(runId);
-
-      expect(latest).not.toBeNull();
-      expect(reads).toEqual([]);
-    } finally {
-      await redis.quit();
-    }
-  });
 
   containerTest("reads from Postgres at mode dual-write", async ({ prisma, redisOptions }) => {
     const { decorated, redis, reads } = build(prisma as never, redisOptions as never, {

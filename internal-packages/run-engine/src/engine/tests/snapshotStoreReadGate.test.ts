@@ -60,7 +60,6 @@ describe("snapshot store read gate", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
       });
       const engine = new RunEngine(engineOptions(prisma, redisOptions, harness) as never);
 
@@ -116,7 +115,6 @@ describe("snapshot store read gate", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
       });
       const engine = new RunEngine(engineOptions(prisma, redisOptions, harness) as never);
 
@@ -162,7 +160,6 @@ describe("snapshot store read gate", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
       });
       const engine = new RunEngine(engineOptions(prisma, redisOptions, harness) as never);
 
@@ -219,7 +216,6 @@ describe("snapshot store read gate", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
       });
       const engine = new RunEngine(engineOptions(prisma, redisOptions, harness) as never);
 
@@ -287,7 +283,6 @@ describe("snapshot store read gate", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
       });
       const engineOn = new RunEngine(engineOptions(prisma, redisOptions, on) as never);
       try {

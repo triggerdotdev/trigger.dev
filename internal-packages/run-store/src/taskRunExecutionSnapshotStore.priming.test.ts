@@ -70,7 +70,6 @@ function harness(opts: {
     store: redis,
     mode: opts.globalMode,
     modeResolver,
-    readPercent: 100,
   });
 
   return { decorated, runOrg, delegateTouched, dbReads: () => dbReads };

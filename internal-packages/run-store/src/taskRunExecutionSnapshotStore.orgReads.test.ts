@@ -16,7 +16,6 @@ function harness(opts: {
   globalMode: SnapshotStoreMode;
   readModeFor?: (runId: string, environmentId?: string) => SnapshotStoreMode;
   anyOrgReadEnabled?: () => boolean;
-  readPercent?: number;
 }) {
   const redisTouched: string[] = [];
   const redis = new Proxy({} as RedisSnapshotStore, {
@@ -55,7 +54,6 @@ function harness(opts: {
     store: redis,
     mode: opts.globalMode,
     modeResolver,
-    readPercent: opts.readPercent ?? 100,
   });
 
   return {
@@ -133,25 +131,23 @@ describe("org-scoped read routing", () => {
 describe("resolver is transparent to routing when no per-org override applies", () => {
   const ids = Array.from({ length: 500 }, (_, n) => `run_cohort_${n}_${n * 7919}`);
 
-  function plain(mode: SnapshotStoreMode, readPercent: number): CohortProbe {
+  function plain(mode: SnapshotStoreMode): CohortProbe {
     return new TaskRunExecutionSnapshotStore({} as unknown as RunStore, {
       store: {} as never,
       mode,
-      readPercent,
     }) as unknown as CohortProbe;
   }
 
   it("routes every run exactly as the global dial did before per-org reads existed", () => {
     // A resolver that always answers the global mode, with no org read-enabled. The short-circuit
-    // does not fire (global IS a read position), effective === global, and the hash path is
-    // untouched, so the population must route identically to a store with no resolver at all.
+    // does not fire (global IS a read position) and effective === global, so the population must
+    // route identically to a store with no resolver at all.
     const withResolver = harness({
       globalMode: "redis-read",
-      readPercent: 50,
       anyOrgReadEnabled: () => false,
       readModeFor: () => "redis-read",
     }).probe;
-    const withoutResolver = plain("redis-read", 50);
+    const withoutResolver = plain("redis-read");
 
     for (const id of ids) {
       expect(withResolver.readsFromRedis(id)).toBe(withoutResolver.readsFromRedis(id));

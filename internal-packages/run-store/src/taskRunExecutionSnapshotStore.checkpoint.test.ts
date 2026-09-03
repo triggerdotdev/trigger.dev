@@ -44,7 +44,6 @@ describe("a checkpoint on a snapshot served from Redis", () => {
       const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
         store: redis,
         mode: "redis-read",
-        readPercent: 100,
       });
       try {
         const env = await seedSnapshotEnvironment(prisma);
@@ -121,7 +120,6 @@ describe("a checkpoint on a snapshot served from Redis", () => {
       const decorated = new TaskRunExecutionSnapshotStore(store as unknown as RunStore, {
         store: redis,
         mode: "redis-only",
-        readPercent: 100,
       });
       try {
         const env = await seedSnapshotEnvironment(prisma);
@@ -191,7 +189,6 @@ describe("a checkpoint on a snapshot served from Redis", () => {
       const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
         store: redis,
         mode: "redis-read",
-        readPercent: 100,
         metrics: {
           recordWrite: () => {},
           recordAppendFailed: () => {},

@@ -38,7 +38,6 @@ function build(
     {
       store: redis,
       mode,
-      readPercent: 100,
       metrics: {
         recordWrite: (site, outcome) => writes.push({ site, outcome }),
         recordAppendFailed: () => {},

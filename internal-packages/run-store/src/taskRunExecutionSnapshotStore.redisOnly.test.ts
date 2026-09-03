@@ -279,43 +279,38 @@ describe("redis-only: every read is served from Redis", () => {
     }
   );
 
-  containerTest(
-    "the read cohort dial cannot route a run away from Redis",
-    async ({ prisma, redisOptions }) => {
-      // readPercent is a ramp control for `redis-read`. At `redis-only` a run routed to Postgres
-      // would read a database that holds no snapshots at all, so the dial must be ignored here
-      // whatever it is set to.
-      const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
-      const reads: string[] = [];
-      const decorated = new TaskRunExecutionSnapshotStore(
-        new PostgresRunStore({
-          prisma: prisma as never,
-          readOnlyPrisma: prisma as never,
-          snapshotWrites: false,
-        }) as unknown as RunStore,
-        {
-          store: redis,
-          mode: "redis-only",
-          readPercent: 0,
-          metrics: {
-            recordWrite: () => {},
-            recordAppendFailed: () => {},
-            recordRead: (_m, source) => reads.push(source),
-          },
-        }
-      );
-
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const { runId, snapshotId } = await seedRun(decorated, env);
-
-        const latest = await decorated.findLatestExecutionSnapshot(runId);
-
-        expect(latest!.id).toBe(snapshotId);
-        expect(reads).not.toContain("postgres");
-      } finally {
-        await redis.quit();
+  containerTest("a redis-only run always reads from Redis", async ({ prisma, redisOptions }) => {
+    // At `redis-only` a run routed to Postgres would read a database that holds no snapshots at
+    // all, so every run reads from Redis here.
+    const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+    const reads: string[] = [];
+    const decorated = new TaskRunExecutionSnapshotStore(
+      new PostgresRunStore({
+        prisma: prisma as never,
+        readOnlyPrisma: prisma as never,
+        snapshotWrites: false,
+      }) as unknown as RunStore,
+      {
+        store: redis,
+        mode: "redis-only",
+        metrics: {
+          recordWrite: () => {},
+          recordAppendFailed: () => {},
+          recordRead: (_m, source) => reads.push(source),
+        },
       }
+    );
+
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const { runId, snapshotId } = await seedRun(decorated, env);
+
+      const latest = await decorated.findLatestExecutionSnapshot(runId);
+
+      expect(latest!.id).toBe(snapshotId);
+      expect(reads).not.toContain("postgres");
+    } finally {
+      await redis.quit();
     }
-  );
+  });
 });

@@ -210,7 +210,7 @@ describe("a Redis that stops answering", () => {
       const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
       const decorated = new TaskRunExecutionSnapshotStore(
         new PostgresRunStore({ prisma, readOnlyPrisma: prisma }) as unknown as RunStore,
-        { store: redis, mode: "redis-read", readPercent: 100 }
+        { store: redis, mode: "redis-read" }
       );
       try {
         const env = await seedSnapshotEnvironment(prisma);
@@ -243,7 +243,7 @@ describe("a Redis that stops answering", () => {
     });
     const decorated = new TaskRunExecutionSnapshotStore(
       new PostgresRunStore({ prisma, readOnlyPrisma: prisma }) as unknown as RunStore,
-      { store: redis, mode: "redis-read", readPercent: 100 }
+      { store: redis, mode: "redis-read" }
     );
     try {
       const env = await seedSnapshotEnvironment(prisma);
@@ -285,7 +285,6 @@ describe("a Redis that stops answering", () => {
       const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
         store: redis,
         mode: "redis-read",
-        readPercent: 100,
       });
       try {
         const env = await seedSnapshotEnvironment(prisma);
@@ -365,7 +364,6 @@ describe("a Redis that stops answering", () => {
       const decorated = new TaskRunExecutionSnapshotStore(plain as unknown as RunStore, {
         store: redis,
         mode: "redis-read",
-        readPercent: 100,
         metrics: {
           recordWrite: () => {},
           recordAppendFailed: () => {},

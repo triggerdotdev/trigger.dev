@@ -32,7 +32,6 @@ function harness(
     {
       store: redis,
       mode: "redis-read",
-      readPercent: 100,
       ...(opts?.faults && { faults: opts.faults }),
       onAppendFailure: async (args) => {
         repairs.push(args);

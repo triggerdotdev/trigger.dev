@@ -45,7 +45,6 @@ function harness(global: SnapshotStoreMode, perOrg: SnapshotStoreMode) {
     store: redis,
     mode: global,
     modeResolver,
-    readPercent: 100,
   });
 
   return { decorated, appends };

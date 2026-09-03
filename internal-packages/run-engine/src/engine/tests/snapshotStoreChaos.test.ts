@@ -112,7 +112,6 @@ describe("snapshot store crash boundaries", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
         faults: faults.hook,
       });
       const engine = new RunEngine(engineOptions(prisma, redisOptions, harness, 200) as never);
@@ -170,7 +169,6 @@ describe("snapshot store crash boundaries", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
         faults: faults.hook,
       });
       const engine = new RunEngine(engineOptions(prisma, redisOptions, harness, 200) as never);
@@ -286,7 +284,6 @@ describe("snapshot store crash boundaries", () => {
         prisma,
         redisOptions,
         mode: "redis-read",
-        readPercent: 100,
         faults: faults.hook,
       });
       const engine = new RunEngine(engineOptions(prisma, redisOptions, harness, 200) as never);
