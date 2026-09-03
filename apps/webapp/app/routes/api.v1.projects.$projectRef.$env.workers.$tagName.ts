@@ -39,11 +39,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     const triggerBranch = branchNameFromRequest(request);
 
+    // An org-claim token lists tasks in any project of its org, so the agent can read a sibling
+    // project's worker. Membership is `findProjectByRef` inside the resolve.
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authentication.authenticationResult,
       projectRef,
       env,
-      triggerBranch
+      triggerBranch,
+      { organizationScoped: true }
     );
 
     const currentWorker = await findCurrentWorkerFromEnvironment(

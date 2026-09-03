@@ -33,11 +33,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const { projectRef, env } = parsed.data;
 
     const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
+    // An org-claim token reads the repo of any project in its org, so the agent can open code
+    // for a sibling project. Membership is `findProjectByRef` inside the resolve.
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authentication.authenticationResult,
       projectRef,
       env,
-      triggerBranch
+      triggerBranch,
+      { organizationScoped: true }
     );
 
     // The signed URL exposes the project's whole source tree, so gate it like the environment's
