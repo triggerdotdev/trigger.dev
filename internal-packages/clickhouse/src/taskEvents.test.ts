@@ -112,4 +112,29 @@ describe("task events v2", () => {
       expect(indexes).toEqual([]);
     }
   );
+
+  clickhouseTest("adds an ephemeral attributes input", async ({ clickhouseContainer }) => {
+    const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+    const readInputColumn = ch.reader.query({
+      name: "read-task-event-attributes-input-kind",
+      query: `SELECT default_kind, default_expression
+      FROM system.columns
+      WHERE database = 'trigger_dev'
+        AND table = 'task_events_v2'
+        AND name = 'attributes_input'`,
+      schema: z.object({
+        default_kind: z.string(),
+        default_expression: z.string(),
+      }),
+    });
+
+    const [columnError, columns] = await readInputColumn({});
+    expect(columnError).toBeNull();
+    expect(columns).toEqual([
+      {
+        default_kind: "EPHEMERAL",
+        default_expression: "defaultValueOfTypeName('JSON')",
+      },
+    ]);
+  });
 });

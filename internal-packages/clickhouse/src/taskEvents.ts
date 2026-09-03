@@ -1,6 +1,10 @@
 import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type {
+  ClickhouseInsertFunction,
+  ClickhouseReader,
+  ClickhouseWriter,
+} from "./client/types.js";
 
 export const TaskEventV1Input = z.object({
   environment_id: z.string(),
@@ -191,6 +195,7 @@ const TASK_EVENT_V2_INSERT_COLUMNS = [
   "kind",
   "status",
   "attributes",
+  "attributes_input",
   "metadata",
   "expires_at",
   "machine_id",
@@ -221,8 +226,22 @@ export const TaskEventV2Input = z.object({
 
 export type TaskEventV2Input = z.input<typeof TaskEventV2Input>;
 
-export function insertTaskEventsV2(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insertUnsafe<TaskEventV2Input>({
+type TaskEventV2DualAttributesInput = TaskEventV2Input & {
+  attributes_input: unknown;
+};
+
+function withAttributesInput(event: TaskEventV2Input): TaskEventV2DualAttributesInput {
+  return {
+    ...event,
+    attributes_input: event.attributes,
+  };
+}
+
+export function insertTaskEventsV2(
+  ch: ClickhouseWriter,
+  settings?: ClickHouseSettings
+): ClickhouseInsertFunction<TaskEventV2Input> {
+  const insert = ch.insertUnsafe<TaskEventV2DualAttributesInput>({
     name: "insertTaskEventsV2",
     table: "trigger_dev.task_events_v2",
     columns: TASK_EVENT_V2_INSERT_COLUMNS,
@@ -235,6 +254,14 @@ export function insertTaskEventsV2(ch: ClickhouseWriter, settings?: ClickHouseSe
       ...settings,
     },
   });
+
+  return (events, options) => {
+    const values = Array.isArray(events)
+      ? events.map(withAttributesInput)
+      : withAttributesInput(events);
+
+    return insert(values, options);
+  };
 }
 
 export function getTraceSummaryQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
