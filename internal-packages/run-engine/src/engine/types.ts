@@ -224,6 +224,11 @@ export type RunEngineOptions = {
    * stays a pure failure path in steady state. Default: 60s.
    */
   finalizationGuardDelayMs?: number;
+  /**
+   * Delay before the `ensureWaitpointCompleted` write-ahead guard fires after a manual/API waitpoint
+   * completion whose inline side effects never acked it. Default: 30s.
+   */
+  completionGuardDelayMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;

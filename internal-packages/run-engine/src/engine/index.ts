@@ -315,6 +315,12 @@ export class RunEngine {
             deferCount: payload.deferCount,
           });
         },
+        ensureWaitpointCompleted: async ({ payload }) => {
+          await this.waitpointSystem.ensureWaitpointCompleted({
+            waitpointId: payload.waitpointId,
+            output: payload.output,
+          });
+        },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
@@ -423,6 +429,7 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+      completionGuardDelayMs: options.completionGuardDelayMs,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -2097,6 +2104,7 @@ export class RunEngine {
   async completeWaitpoint({
     id,
     output,
+    armGuard = false,
   }: {
     id: string;
     output?: {
@@ -2104,6 +2112,11 @@ export class RunEngine {
       type?: string;
       isError: boolean;
     };
+    /**
+     * Arm the durable write-ahead completion guard (the caller sets this from the
+     * runStoreInfraRetryEnabled flag). Off ⇒ no guard job, byte-identical to before.
+     */
+    armGuard?: boolean;
   }): Promise<Waitpoint> {
     // Consult the cross-seam guard FIRST so an unclassifiable id fails loudly
     // here (never a silent local apply). Do NOT branch on decision.store: store routing is
@@ -2113,7 +2126,7 @@ export class RunEngine {
     if (guard) {
       await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
     }
-    return this.waitpointSystem.completeWaitpoint({ id, output });
+    return this.waitpointSystem.completeWaitpoint({ id, output, armGuard });
   }
 
   /**
