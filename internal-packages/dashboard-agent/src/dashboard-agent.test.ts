@@ -1349,6 +1349,7 @@ describe("buildDashboardAgentTools", () => {
         "list_projects",
         "list_runs",
         "list_tasks",
+        "locate",
         "navigate_to",
         "run_query",
         "render_view",

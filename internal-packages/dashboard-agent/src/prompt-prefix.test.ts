@@ -88,8 +88,8 @@ describe("the head-start and agent prefixes are the same prefix", () => {
  * drift. The snapshot below is the itemised diff a reviewer reads.
  */
 const PREFIX_BUDGET = {
-  assistant: { chars: 81_300, estimatedTokens: 20_600, tools: 24, promptChars: 27_800 },
-  code: { chars: 88_900, estimatedTokens: 22_500, tools: 28, promptChars: 30_300 },
+  assistant: { chars: 79_400, estimatedTokens: 20_100, tools: 25, promptChars: 27_500 },
+  code: { chars: 87_000, estimatedTokens: 22_000, tools: 29, promptChars: 30_100 },
 } as const;
 
 describe("the prefix stays inside its budget", () => {

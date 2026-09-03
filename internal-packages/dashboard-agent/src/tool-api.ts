@@ -16,6 +16,7 @@ import {
   listProjectsSchema,
   listRunsSchema,
   listTasksSchema,
+  locateSchema,
   renderViewSchema,
   runQuerySchema,
   searchDocsSchema,
@@ -212,6 +213,38 @@ export function withLiveState(metrics: unknown, queueType: "task" | "custom", li
     ...(row.concurrency !== undefined ? { concurrency: relabelConcurrency(row.concurrency) } : {}),
     // Env-scope facts: the binding constraint can be the environment, not this queue.
     ...(row.envConcurrency !== undefined ? { envConcurrency: row.envConcurrency } : {}),
+  };
+}
+
+/**
+ * The org-wide locator. A user-level route, so it spends the delegated token directly, and
+ * the organization comes only from that token's claim — never from the model.
+ */
+export function buildLocateTool(args: {
+  ctx: DashboardAgentToolContext;
+  client: DashboardAgentApiClient;
+}): ToolSet {
+  const { userActorToken } = args.ctx;
+  const { origin, hasAuth } = args.client;
+  return {
+    locate: tool({
+      ...locateSchema,
+      execute: async ({ kind, id }) => {
+        if (!hasAuth) return NO_AUTH;
+        const result = await apiGet(
+          origin,
+          `/api/v1/locate/${kind}/${encodeURIComponent(id)}`,
+          userActorToken!
+        );
+        // A failed locate is not a `found: false`: it never proves absence.
+        if (!result.ok) {
+          return {
+            error: `Couldn't locate ${kind} ${id}${fetchReason(result)}. That is not evidence it doesn't exist.`,
+          };
+        }
+        return result.data;
+      },
+    }),
   };
 }
 
@@ -774,7 +807,7 @@ export function buildApiTools(args: {
           if ("status" in result && result.status === 404) {
             const scope = target ? "that project/environment" : "the current environment";
             return {
-              error: `No commit found for run ${runId} in ${scope}. That is not evidence the run isn't locked to a deployment — sweep (list_projects, then get_run with project/environment) before concluding, then retry this call with project/environment for wherever it's found.`,
+              error: `No commit found for run ${runId} in ${scope}. That is not evidence the run isn't locked to a deployment — call locate before concluding, then retry this call with the project/environment it names.`,
             };
           }
           return { error: `Couldn't resolve the commit for ${runId}${fetchReason(result)}.` };
