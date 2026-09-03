@@ -126,3 +126,49 @@ postgresBlipTest(
     expect(caught).toBeGreaterThanOrEqual(1);
   }
 );
+
+postgresBlipTest(
+  "createExecutionSnapshot stays idempotent under a blip when the prior attempt already committed",
+  { timeout: 120_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { run, env } = await setupSnapshotIdFixture(client);
+    const id = generateInternalId();
+
+    let retries = 0;
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry: {
+        options: { enabled: true, maxAttempts: 15, backoffMinMs: 10, backoffMaxMs: 60 },
+        onRetry: () => {
+          retries++;
+        },
+      },
+    });
+
+    // The dangerous case: a prior attempt COMMITTED the row and its ack was lost, so the operation
+    // is replayed. Write it once (committed), then replay the same transition under a mid-statement
+    // blip. The upsert-on-id must return the existing row and never duplicate.
+    await store.createExecutionSnapshot(snapshotInput(run.id, env, id));
+
+    let caught = 0;
+    for (let i = 0; i < 12 && caught < 1; i++) {
+      const before = retries;
+      const p = store.createExecutionSnapshot(snapshotInput(run.id, env, id));
+      await blip
+        .severDuringNextStatement({
+          queryContains: "TaskRunExecutionSnapshot",
+          timeoutMs: 8000,
+          pollMs: 2,
+        })
+        .catch(() => {});
+      const created = await p;
+      expect(created.id).toBe(id);
+      if (retries > before) caught++;
+    }
+
+    expect(caught).toBeGreaterThanOrEqual(1);
+    expect(await client.taskRunExecutionSnapshot.count({ where: { id } })).toBe(1);
+  }
+);

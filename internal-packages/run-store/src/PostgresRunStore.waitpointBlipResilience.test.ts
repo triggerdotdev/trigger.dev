@@ -293,3 +293,52 @@ postgresBlipTest(
     expect(await client.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
   }
 );
+
+postgresBlipTest(
+  "a caller transaction is never retried on a blip (safety boundary)",
+  { timeout: 120_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { run, env } = await setupSnapshotIdFixture(client);
+    const waitpointId = generateInternalId();
+    await createPendingWaitpoint(client, waitpointId, env.projectId, env.id);
+    await client.taskRunWaitpoint.create({
+      data: { taskRunId: run.id, waitpointId, projectId: env.projectId },
+    });
+
+    let retries = 0;
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry: {
+        options: infraRetry.options,
+        onRetry: () => {
+          retries++;
+        },
+      },
+    });
+    await store.findManyTaskRunWaitpoints({ where: { taskRunId: run.id } }); // warm
+
+    // Inside a caller transaction the store must NOT retry (retrying a statement in an aborted tx is
+    // unsafe): a mid-statement blip aborts the tx and surfaces the error, and onRetry never fires.
+    let observedThrow = false;
+    for (let i = 0; i < 30 && !observedThrow; i++) {
+      const before = retries;
+      const p = (prisma as any)
+        .$transaction((tx: any) =>
+          store.findManyTaskRunWaitpoints({ where: { taskRunId: run.id } }, tx)
+        )
+        .then(() => "ok")
+        .catch(() => "threw");
+      await blip
+        .severDuringNextStatement({ queryContains: "TaskRunWaitpoint", timeoutMs: 6000, pollMs: 1 })
+        .catch(() => {});
+      const result = await p;
+      if (result === "threw") {
+        expect(retries).toBe(before); // never retried inside a caller tx
+        observedThrow = true;
+      }
+    }
+    expect(observedThrow).toBe(true);
+  }
+);

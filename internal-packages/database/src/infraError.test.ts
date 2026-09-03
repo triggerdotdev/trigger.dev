@@ -107,6 +107,19 @@ describe("isRetryableInfrastructureError", () => {
     ).toBe(true);
   });
 
+  it("retries the raw admin-shutdown 'terminating connection' error (pg 57P01)", () => {
+    // The other shape a mid-statement backend kill produces on the adapter: the raw PostgreSQL
+    // 57P01 fatal surfaced as an unknown-request error. Both shapes must be retryable.
+    expect(
+      isRetryableInfrastructureError(
+        new Prisma.PrismaClientUnknownRequestError(
+          "terminating connection due to administrator command",
+          { clientVersion: "6.14.0" }
+        )
+      )
+    ).toBe(true);
+  });
+
   it("retries an unknown-request error only with a connectivity signal", () => {
     expect(
       isRetryableInfrastructureError(
