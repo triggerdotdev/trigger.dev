@@ -169,7 +169,7 @@ describe("schedule_watch branch override", () => {
     });
   });
 
-  it("resolves the current project's branch child when only branch is given", async () => {
+  it("errors when branch is given without environment, before any network call", async () => {
     vi.stubGlobal("fetch", stubBranchFetch());
     const t = tools();
 
@@ -178,11 +178,8 @@ describe("schedule_watch branch override", () => {
       {} as any
     );
 
-    expect(calls).toEqual([`${ORIGIN}/api/v1/projects/proj_current/prod/jwt`]);
-    expect(result.intent.target).toEqual({
-      projectRef: "proj_current",
-      environmentId: "env_proj_current_prod_feat/x",
-    });
+    expect(calls).toEqual([]);
+    expect(result.error).toBe("branch needs environment: preview or dev.");
   });
 });
 

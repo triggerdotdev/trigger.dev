@@ -148,7 +148,7 @@ describe("the project/environment override", () => {
 describe("list_projects org scoping", () => {
   // /api/v1/projects is identity-only: it lists every project the user's account
   // touches, across every org they belong to, with no per-org authorization gate.
-  // The sweep's own org must be the only thing that narrows that down.
+  // The conversation's own org must be the only thing that narrows that down.
   const MULTI_ORG_PROJECTS = [
     { externalRef: "proj_same_org_a", name: "hello-world", organization: { id: "org_this" } },
     { externalRef: "proj_same_org_b", name: "other-project", organization: { id: "org_this" } },
@@ -188,11 +188,11 @@ describe("list_projects org scoping", () => {
   });
 });
 
-describe("the sweep survives a sibling whose environments list is inaccessible", () => {
+describe("a direct cross-project lookup survives a sibling's inaccessible environments list", () => {
   // The real failure this reproduces: list_environments 403s cross-project on the
   // delegated token, but the JWT exchange (env-scoped) is unrelated to it — a
   // direct project/environment lookup still works.
-  function stubSweepFetch() {
+  function stubCrossProjectFetch() {
     return vi.fn(async (input: any, init: any = {}) => {
       const url = typeof input === "string" ? input : input.url;
       if (url === `${ORIGIN}/api/v1/projects/proj_other/environments`) {
@@ -210,7 +210,7 @@ describe("the sweep survives a sibling whose environments list is inaccessible",
   }
 
   it("returns a structured, non-fatal shape for list_environments, and a direct sibling lookup still succeeds", async () => {
-    vi.stubGlobal("fetch", stubSweepFetch());
+    vi.stubGlobal("fetch", stubCrossProjectFetch());
     const t = tools();
 
     const envs = await (t.list_environments as any).execute(
@@ -368,5 +368,23 @@ describe("a project the org doesn't have", () => {
     await (t.list_runs as any).execute({ project: "proj_nope" }, {} as any);
 
     expect(jwtCalls()[0].url).toBe(`${ORIGIN}/api/v1/projects/proj_nope/prod/jwt`);
+  });
+});
+
+describe("branch without environment", () => {
+  // Otherwise the branch resolves against the chat's own environment (which may be
+  // prod) while still sending the branch header — silently wrong, not just unscoped.
+  const CASES: Array<[string, Record<string, unknown>]> = [
+    ["branch alone", { branch: "feat/x" }],
+    ["branch with a project but no environment", { project: "proj_other", branch: "feat/x" }],
+  ];
+
+  it.each(CASES)("%s is refused before any network call", async (_label, extra) => {
+    const t = tools();
+
+    const result = await (t.list_runs as any).execute({ ...extra }, {} as any);
+
+    expect(result.error).toBe("branch needs environment: preview or dev.");
+    expect(calls).toEqual([]);
   });
 });

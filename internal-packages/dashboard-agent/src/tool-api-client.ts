@@ -178,6 +178,16 @@ export function crossProjectTarget(input: TargetInput): ApiTarget | undefined {
   };
 }
 
+// `branch` without `environment` would otherwise resolve against the chat's own
+// environment (which may be prod) while still sending the branch header. Every
+// caller must check this before resolving a target.
+export function targetInputError(input: TargetInput): string | undefined {
+  if (input.branch && !input.environment) {
+    return "branch needs environment: preview or dev.";
+  }
+  return undefined;
+}
+
 export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient {
   const { userActorToken, apiOrigin, projectRef, environmentName, environmentBranch } = ctx;
   const origin = apiOrigin ? apiOrigin.replace(/\/$/, "") : "";

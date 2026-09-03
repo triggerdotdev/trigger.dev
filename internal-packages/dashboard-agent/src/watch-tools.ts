@@ -1,7 +1,12 @@
 import { agentIntentSchema } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
 import { scheduleWatchSchema } from "./tool-schemas";
-import { isEnvUnavailable, NO_AUTH, type DashboardAgentApiClient } from "./tool-api-client";
+import {
+  isEnvUnavailable,
+  NO_AUTH,
+  targetInputError,
+  type DashboardAgentApiClient,
+} from "./tool-api-client";
 import type { DashboardAgentToolContext } from "./tool-context";
 
 /** The watch-facing tool set. Everything watch-specific the agent can call lives here. */
@@ -22,6 +27,8 @@ export function buildWatchTools(args: {
         // Only reached to spend a network call: the current-environment path (no
         // override) stays pure schema validation, unchanged from before.
         if (project || environment || branch) {
+          const targetError = targetInputError({ project, environment, branch });
+          if (targetError) return { error: targetError };
           if (!client.hasAuth) return NO_AUTH;
           const projectRef = project ?? ctx.projectRef;
           if (!projectRef) {

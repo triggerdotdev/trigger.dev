@@ -27,6 +27,7 @@ import {
   fetchReason,
   isEnvUnavailable,
   NO_AUTH,
+  targetInputError,
   type ApiTarget,
   type DashboardAgentApiClient,
   type EnvFetchResult,
@@ -268,6 +269,8 @@ export function buildApiTools(args: {
   let knownProjectRefs: Set<string> | undefined;
 
   function resolveTarget(input: TargetInput): { target?: ApiTarget; error?: string } {
+    const targetError = targetInputError(input);
+    if (targetError) return { error: targetError };
     if (
       input.project &&
       input.project !== projectRef &&
