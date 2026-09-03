@@ -252,6 +252,127 @@ describe("the completed-waitpoint record set", () => {
   );
 });
 
+// A cycle-probe failure must not mint an unresolvable cycle.
+//
+// The probe is how a copy-forward append discovers that its id set continues the previous cycle.
+// When it throws, the append still has to write, and minting fresh is the safe direction -- but a
+// copy-forward carries no records of its own, so a plain mint writes ids that resolve from
+// nothing. The next resume then refuses the whole cycle: one transient probe failure would leave
+// a run permanently unable to resume, with the join rows still sitting in Postgres.
+//
+// Reachable with Redis healthy: getLatest JSON-parses the entry payload, so one corrupt entry
+// does it.
+describe("a failed cycle probe", () => {
+  async function recordsAtHead(
+    redis: RedisSnapshotStore,
+    probe: ReturnType<typeof createRedisClient>,
+    runId: string
+  ): Promise<CompletedWaitpointRecord[] | undefined> {
+    const head = await redis.getLatest(runId);
+    const cycleSeq = head?.cycle?.cycleSeq;
+    if (cycleSeq === undefined) return undefined;
+    const raw = await probe.hget(`snap:{${runId}}:wp:${cycleSeq}`, "records");
+    return raw ? (JSON.parse(raw) as CompletedWaitpointRecord[]) : undefined;
+  }
+
+  // Fails the NEXT probe only, so the append that follows it still runs against a healthy store.
+  function breakNextProbe(redis: RedisSnapshotStore) {
+    const original = redis.getLatest.bind(redis);
+    let broken = true;
+    redis.getLatest = async (runId: string, opts?: { environmentId?: string }) => {
+      if (broken) {
+        broken = false;
+        throw new Error("probe failed");
+      }
+      return original(runId, opts);
+    };
+    return () => void (redis.getLatest = original);
+  }
+
+  containerTest(
+    "inherits the records when the id set is unchanged",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const storeId = generateWaitpointId("MANUAL");
+        await prisma.waitpoint.create({
+          data: {
+            id: storeId,
+            friendlyId: `waitpoint_${storeId}`,
+            type: "MANUAL",
+            status: "COMPLETED",
+            completedAt: new Date(),
+            idempotencyKey: `idem_${storeId.slice(-12)}`,
+            userProvidedIdempotencyKey: false,
+            projectId: env.projectId,
+            environmentId: env.id,
+          },
+        });
+        const waitpoints = [{ id: storeId, index: 0 }];
+
+        // The resume, which supplies the records and mints cycle 1.
+        await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, waitpoints, [record(storeId)])
+        );
+
+        // The copy-forward that follows it, with the probe broken. It carries the same refs and
+        // no records of its own, exactly as attempt-start and dequeue do.
+        const restore = breakNextProbe(redis);
+        try {
+          await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+        } finally {
+          restore();
+        }
+
+        // A fresh cycle, because an unverified pointer must not be carried...
+        const cycleKeys = await probe.keys(`snap:{${runId}}:wp:*`);
+        expect(cycleKeys.length).toBe(2);
+
+        // ...but it still holds the records, so the cycle stays resolvable.
+        const records = await recordsAtHead(redis, probe, runId);
+        expect(records).toHaveLength(1);
+        expect(records?.[0]?.id).toBe(storeId);
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  // The other direction: a genuinely NEW wait must not inherit the previous cycle's records, or
+  // the resolver would hand the run a result belonging to a waitpoint it is not waiting on.
+  containerTest("inherits nothing when the id set differs", async ({ prisma, redisOptions }) => {
+    const { decorated, redis } = build(prisma as never, redisOptions as never);
+    const probe = createRedisClient(redisOptions, { onError: () => {} });
+
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = await seedRun(decorated, redis, env);
+      const [first, second] = await seedSnapshotWaitpoints(prisma, env, 2);
+
+      await decorated.createExecutionSnapshot(
+        resumeInput(runId, env, [{ id: first!, index: 0 }], [record(first!)])
+      );
+
+      const restore = breakNextProbe(redis);
+      try {
+        await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: second!, index: 0 }])
+        );
+      } finally {
+        restore();
+      }
+
+      expect(await recordsAtHead(redis, probe, runId)).toBeUndefined();
+    } finally {
+      await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+    }
+  });
+});
+
 // A copy-forward append reads NO cycle key, whatever the ids look like.
 //
 // The record set a refusal needs is sourced inside the append script now, so the decorator does

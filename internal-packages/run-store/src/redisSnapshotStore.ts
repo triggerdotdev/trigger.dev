@@ -310,6 +310,21 @@ export class RedisSnapshotStore {
           records?: CompletedWaitpointRecord[];
         }
       | {
+          /**
+           * Mint a cycle, and if the caller has no records, inherit the current cycle's when its
+           * id set is identical.
+           *
+           * For the one caller that cannot tell whether this id set continues the previous cycle:
+           * a head probe that FAILED. It must not carry a pointer it could not verify, and it
+           * cannot read the records it would need to mint a complete replacement. Minting without
+           * them would leave ids that resolve from nothing, so the comparison and the copy happen
+           * here, atomically, where the previous cycle can still be read.
+           */
+          kind: "newInherit";
+          completedWaitpoints: CompletedWaitpointRef[];
+          records?: CompletedWaitpointRecord[];
+        }
+      | {
           kind: "carryForward";
           cycleSeq: number;
           /**
@@ -341,9 +356,9 @@ export class RedisSnapshotStore {
       let distinctJson = "";
       let records = "";
       let orderCount = "0";
-      if (args.cycle?.kind === "new") {
+      if (args.cycle?.kind === "new" || args.cycle?.kind === "newInherit") {
         const order = deriveOrder(args.cycle.completedWaitpoints);
-        cycleMode = "new";
+        cycleMode = args.cycle.kind === "newInherit" ? "newInherit" : "new";
         orderJson = JSON.stringify(order);
         distinctJson = JSON.stringify(deriveDistinctIds(args.cycle.completedWaitpoints));
         records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
@@ -810,6 +825,24 @@ export class RedisSnapshotStore {
 
         if cycleMode == 'new' then
           cycleSeq = mintCycle(records)
+        elseif cycleMode == 'newInherit' then
+          -- The caller's head probe failed, so it knows neither whether this id set continues the
+          -- previous cycle nor what records that cycle holds. Minting fresh is the safe direction,
+          -- but minting with NO records leaves ids that resolve from nothing, and the next resume
+          -- refuses the whole cycle rather than losing a result quietly. So inherit them here.
+          --
+          -- Guarded on the distinct set being IDENTICAL, which is the same test the caller would
+          -- have made had its probe succeeded. A differing set is a genuinely new wait and must
+          -- start with the caller's own records, even when that is none. Read before mintCycle,
+          -- because mintCycle advances the counter this reads.
+          local inherited = records
+          if inherited == '' then
+            local prev = tonumber(redis.call('HGET', seqKey, 'c') or '0')
+            if prev > 0 and redis.call('HGET', wpKey(prev), 'distinct') == distinctJson then
+              inherited = redis.call('HGET', wpKey(prev), 'records') or ''
+            end
+          end
+          cycleSeq = mintCycle(inherited)
         elseif cycleMode == 'carry' then
           -- Attach the CARRIED pointer only if this incarnation actually minted that cycle. seq can
           -- be evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead

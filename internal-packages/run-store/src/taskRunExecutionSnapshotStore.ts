@@ -597,7 +597,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     records?: CompletedWaitpointRecord[]
   ): Promise<
     | {
-        kind: "new";
+        kind: "new" | "newInherit";
         completedWaitpoints: CompletedWaitpointRef[];
         records?: CompletedWaitpointRecord[];
       }
@@ -645,7 +645,15 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       // A failed probe must not lose the waitpoints. Minting a fresh cycle is the safe direction:
       // it costs one duplicated record set, where a wrong carryForward would point at another
       // cycle's ids.
+      //
+      // `newInherit` rather than `new`, because a copy-forward caller carries no records of its
+      // own: the probe is what would have found the previous cycle to read them from. Minting
+      // plain `new` here writes ids with no records, and the next resume then refuses the cycle
+      // outright -- a probe failure that recovers turns into a run that cannot resume. The script
+      // inherits them instead, and only when the id set is identical.
       this.logger.warn("snapshot cycle probe failed, minting a new cycle", { runId, error });
+
+      return { kind: "newInherit", completedWaitpoints, ...(records && { records }) };
     }
 
     return { kind: "new", completedWaitpoints, ...(records && { records }) };
