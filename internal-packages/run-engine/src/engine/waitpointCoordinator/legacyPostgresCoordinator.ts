@@ -1,6 +1,10 @@
 import type { RunStore } from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
-import { mintWaitpointIdFor, mintWaitpointIdForShard } from "@trigger.dev/core/v3/isomorphic";
+import {
+  mintWaitpointIdFor,
+  mintWaitpointIdForShard,
+  UnclassifiableRunId,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
@@ -118,11 +122,28 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     try {
       store = await this.runStore.forWaitpointCompletion(waitpointId, { routeKind: "MANUAL" });
     } catch (error) {
-      this.logger.error("completeWaitpoint: unclassifiable waitpointId", {
+      // Only a genuine id-classification failure should become UnclassifiableWaitpointId.
+      // forWaitpointCompletion also probes the DB to resolve the owning store, so a transient
+      // database/infra error (e.g. can't reach the database) can surface here too. Those MUST
+      // bubble up unchanged so they keep their original type, retryability, and error grouping
+      // instead of being mislabelled as an unclassifiable id.
+      const isClassificationFailure =
+        error instanceof UnclassifiableRunId ||
+        (error instanceof Error && error.name === "UnclassifiableRunId");
+
+      if (isClassificationFailure) {
+        this.logger.error("completeWaitpoint: unclassifiable waitpointId", {
+          waitpointId,
+          error,
+        });
+        throw new UnclassifiableWaitpointId(waitpointId, { cause: error });
+      }
+
+      this.logger.error("completeWaitpoint: error resolving waitpoint store", {
         waitpointId,
         error,
       });
-      throw new UnclassifiableWaitpointId(waitpointId, { cause: error });
+      throw error;
     }
 
     // 1. Complete the Waitpoint (if not completed)
